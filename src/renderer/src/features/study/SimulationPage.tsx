@@ -300,6 +300,7 @@ export function SimulationPage() {
         topic,
         mark: gradingStopped ? "ungraded" : i === gradedCount ? "grading" : "queued",
         answer,
+        typed: "math",
         long: true,
         expectedLabel: t("simulation.reference"),
       };
@@ -312,6 +313,7 @@ export function SimulationPage() {
         ? { score: t("quiz.questionPoints", { points: questionPoints(result.score, i18n.language) }) }
         : {}),
       answer,
+      typed: "math",
       long: true,
       expected: result.expected,
       expectedLabel: t("simulation.reference"),

@@ -21,6 +21,16 @@ export type QuizQuestion = {
   grade: { kind: string };
 };
 
+/**
+ * Where a written answer comes from, which decides how it is drawn: an open answer is the math editor's saved text
+ * (`\$` is a dollar sign, `$…$` a formula), a fill-in blank is the raw text of a plain input. A question answered by
+ * picking has neither: its text is the model's.
+ */
+export type AnswerSource = "math" | "plain";
+export function answerSource(kind: string): AnswerSource | undefined {
+  return kind === "open" ? "math" : kind === "completion" ? "plain" : undefined;
+}
+
 export function blanks(raw: string | undefined): string[] {
   try {
     const value: unknown = JSON.parse(raw ?? "[]");

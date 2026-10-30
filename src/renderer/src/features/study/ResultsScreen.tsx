@@ -5,12 +5,13 @@ import { useTranslation } from "react-i18next";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
+import { TypedAnswer } from "./TypedAnswer";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
-import { stemText, type Citation } from "./quizText";
+import { stemText, type AnswerSource, type Citation } from "./quizText";
 import "./ResultsScreen.css";
 
 /** Where one answer stands: graded (four ways), or still waiting for its grade. */
@@ -31,6 +32,8 @@ export type ResultItem = {
   /** The grade of a partly right answer or of an exercise, next to its word. */
   score?: string;
   answer: string;
+  /** Set when the student wrote the answer, so it shows as written, not as Markdown. See `answerSource`. */
+  typed?: AnswerSource;
   /** Open answers and exercises: Markdown, the two answers one under the other. */
   long: boolean;
   expected?: string;
@@ -583,8 +586,12 @@ function Answer({ id, item }: { id: string; item: ResultItem }) {
   const { t } = useTranslation();
   const right = item.mark === "correct";
   const showExpected = !right && item.expected !== undefined;
-  const text = (value: string) =>
-    item.long ? (
+  const text = (value: string, written?: AnswerSource) =>
+    written ? (
+      <p className="body">
+        <TypedAnswer text={value} source={written} />
+      </p>
+    ) : item.long ? (
       <MarkdownView variant="body">{value}</MarkdownView>
     ) : (
       <p className="body">
@@ -603,7 +610,7 @@ function Answer({ id, item }: { id: string; item: ResultItem }) {
             {t("quiz.yourAnswer")}
           </p>
           {item.answer ? (
-            text(item.answer)
+            text(item.answer, item.typed)
           ) : (
             <p className="body px-res-answer-empty">{t("quiz.noAnswer")}</p>
           )}

@@ -13,7 +13,8 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
 import { i18n } from "../../locales/i18n";
-import { blanks, pairs, questionPoints, stemText, verdict } from "./quizText";
+import { TypedAnswer } from "./TypedAnswer";
+import { answerSource, blanks, pairs, questionPoints, stemText, verdict } from "./quizText";
 import "./QuizPage.css";
 import "./MistakesNotebook.css";
 
@@ -158,6 +159,7 @@ export function MistakesNotebook() {
     const long = entry.kind === "open";
     const state = verdict(entry.score) === "partial" ? "partial" : "wrong";
     const answer = answerText(entry);
+    const written = answerSource(entry.kind);
     const expected = expectedText(entry);
     const source = entry.passageId
       ? { passageId: entry.passageId }
@@ -183,8 +185,10 @@ export function MistakesNotebook() {
                   })
                 : t("quiz.yourAnswer")}
             </p>
-            {long ? (
-              <MarkdownView variant="body">{answer}</MarkdownView>
+            {written ? (
+              <p className="body">
+                <TypedAnswer text={answer} source={written} />
+              </p>
             ) : (
               <p className="body">
                 <InlineMarkdown>{answer}</InlineMarkdown>

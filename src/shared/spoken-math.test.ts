@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spokenText } from "./spoken-math";
+import { plainTitle, spokenText } from "./spoken-math";
 
 describe("spokenText", () => {
   it("drops the dollar signs and the units markup", () => {
@@ -21,7 +21,50 @@ describe("spokenText", () => {
     expect(spokenText("$m\vec{g}\\sin\theta + \frac{a}{b}$")).toBe("mg sin θ + a/b");
   });
 
+  it("reads an accent or a root on a single token without braces, as the same formula with braces", () => {
+    expect(spokenText("$A = |\\vec\\omega| u$")).toBe("A = | ω | u");
+    expect(spokenText("$\\hat u_x$ e $\\frac12$ e $\\sqrt5$")).toBe("u_x e 1/2 e √5");
+    expect(spokenText("$\\textbf{b}$ e $\\dots x$")).toBe("b e … x");
+  });
+
+  it("does not glue a command to the accented letter after it, or leave a space before an index", () => {
+    expect(spokenText("$\\vec a\\cdot\\vec b$")).toBe("a · b");
+    expect(spokenText("$\\vec{a}\\cdot\\vec{b}$")).toBe("a · b");
+    expect(spokenText("$\\sigma_x$ e $\\bar{x}$")).toBe("σ_x e x");
+    expect(spokenText("$A\\,m\\ldots ^3$")).toBe("A m …^3");
+  });
+
   it("leaves no backslash or brace behind", () => {
     expect(spokenText("$\\operatorname{rot}\\mathbf{B}_{\\perp}$")).not.toMatch(/[\\{}]/);
+  });
+});
+
+describe("plainTitle", () => {
+  it("writes the formulas of a selection as readable text, once, with no dollar signs", () => {
+    expect(plainTitle("dove $\\bar{x}$ è il valore, $\\sigma_x$ l'incertezza e $[X]$ l'unità")).toBe(
+      "dove x̄ è il valore, σₓ l'incertezza e [X] l'unità",
+    );
+    expect(plainTitle("la velocità $v^2$ e $a_{12}$ e $x_{q}$")).toBe("la velocità v² e a₁₂ e x_q");
+  });
+
+  it("cuts at a word and drops a formula the caller cut in half", () => {
+    expect(plainTitle("dove $\\bar{x}$ è il valore numerico, $\\sigma_x$ è l'incertezza e $[X]$ è l'unità di misura", 40)).toBe(
+      "dove x̄ è il valore numerico, σₓ è…",
+    );
+    expect(plainTitle("dove $\\bar{x}$ vale e poi $\\sigma_{")).toBe("dove x̄ vale e poi");
+  });
+
+  it("joins every subscript and exponent glyph to the symbol before it", () => {
+    expect(plainTitle("$\\sigma_i$, $\\alpha_j$, $\\omega_r$, $\\mu_u$, $\\nu_v$")).toBe("σᵢ, αⱼ, ωᵣ, μᵤ, νᵥ");
+    expect(plainTitle("$\\sigma^2$ e $\\theta^3$ e $\\pi^n$")).toBe("σ² e θ³ e πⁿ");
+  });
+
+  it("finds a dangling formula in the text it reads, after a book reference changed its length", () => {
+    expect(plainTitle("Leggi {{formula:1}} poi $x$ e $y")).toBe("Leggi eq. 1 poi x e");
+    expect(plainTitle("Leggi {{formula:1}} poi $x$")).toBe("Leggi eq. 1 poi x");
+  });
+
+  it("keeps a price and plain text as they are", () => {
+    expect(plainTitle("Costa $5 e poi $6.50 in tutto")).toBe("Costa $5 e poi $6.50 in tutto");
   });
 });

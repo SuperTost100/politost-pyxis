@@ -20,6 +20,7 @@ import { Composer } from "../../components/Composer";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { ContextBlock } from "../../components/ContextBlock";
+import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
@@ -1195,14 +1196,10 @@ export function AskPage() {
             ))}
           </div>
         ) : null}
-        {thread.data?.context ? (
+        {/* The quote waits in the composer until the first question goes; the tutor keeps reading it after that. */}
+        {thread.data?.context && !conversation ? (
           <ContextBlock
-            excerpt={
-              <>
-                <strong>{thread.data.context.title}</strong>{" "}
-                {thread.data.context.body}
-              </>
-            }
+            excerpt={<InlineMarkdown>{thread.data.context.body}</InlineMarkdown>}
             removeLabel={t("ask.contextRemove")}
             onRemove={() => {
               if (!chatId) return;

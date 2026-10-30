@@ -633,6 +633,17 @@ describe("askTurn", () => {
     expect(system).toContain("Subject: Fisica");
   });
 
+  it("names a chat from a selection with its formulas as readable text, in the list, the header and the pinned line", () => {
+    const db = openDatabase(":memory:");
+    const text = "dove $\\bar{x}$ è il valore numerico, $\\sigma_x$ è l'incertezza e $[X]$ è l'unità di misura. Per";
+    const seeded = seedChat(db, { kind: "passage", title: text.slice(0, 80), body: text });
+    expect(listChats(db)[0]?.title).toBe("dove x̄ è il valore numerico, σₓ è l'incertezza e [X] è l'unità");
+    expect(chatContext(db, seeded.chatId)).toEqual({ kind: "passage", title: listChats(db)[0]?.title, body: text });
+    // A chat saved before this keeps its TeX in the database and still reads as text.
+    db.prepare("UPDATE chats SET title = ? WHERE id = ?").run("vale $\\sigma_x$", seeded.chatId);
+    expect(listChats(db)[0]?.title).toBe("vale σₓ");
+  });
+
   it("pins a wrong answer in the next prompt", async () => {
     const db = openDatabase(":memory:");
     db.prepare(

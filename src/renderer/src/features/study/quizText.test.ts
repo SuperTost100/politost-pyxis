@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { questionPoints, quizBack, quizBackLabel, retryPick, skipOrder, verdict, verdictLine } from "./quizText";
+import { answerSource, questionPoints, quizBack, quizBackLabel, retryPick, skipOrder, verdict, verdictLine } from "./quizText";
 
 describe("where closing a quiz goes", () => {
   it("goes back to the Review page from a Review's questions, to the notebook from a redo, else to the exam", () => {
@@ -75,6 +75,17 @@ describe("verdictLine", () => {
     expect(verdictLine(50, true)).toBe("quiz.verdictGood");
     expect(verdictLine(54, false, 90)).toBe("quiz.verdictGood");
     expect(verdictLine(44, false)).toBe("quiz.verdictLow");
+  });
+});
+
+describe("answerSource", () => {
+  it("reads an open answer as the math editor's text and a fill-in blank as the raw text of a plain input", () => {
+    expect(answerSource("open")).toBe("math");
+    expect(answerSource("completion")).toBe("plain");
+  });
+
+  it("has none for a question answered by picking, whose text is the model's", () => {
+    for (const kind of ["mcq", "tf", "matching", "exercise"]) expect(answerSource(kind)).toBeUndefined();
   });
 });
 

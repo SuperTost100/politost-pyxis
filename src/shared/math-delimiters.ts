@@ -25,14 +25,16 @@ function boldInMath(text: string): string {
 }
 
 /**
- * Book text that names a formula or a place for a reader the app does not have: `{{formula:1.5}}` is the number the book
- * prints, `(1.5)`, and `[text](ref:chapter/1#p2)` or `[text](ref:formula/1.2)` is its text. Code is left alone.
+ * Book text that names a formula or a place for a reader the app does not have. Import already writes a `{{formula:1.5}}`
+ * the book has a formula for as that formula; one it has none for (a book imported before that, or a number the book never
+ * defines) reads "eq. 1.5", a reference in Italian and English alike, never the bare number a student could take for the
+ * formula. `[text](ref:chapter/1#p2)` or `[text](ref:formula/1.2)` is its text. Code is left alone.
  */
 export function resolveBookRefs(input: string): string {
   if (!input.includes("{{formula:") && !input.includes("](ref:")) return input;
   return mapOutsideCode(input, (text) =>
     text
-      .replace(/\{\{formula:([\d.]+)\}\}/g, "($1)")
+      .replace(/\{\{formula:([\d.]+)\}\}/g, "eq. $1")
       .replace(/\[([^\]]+)\]\(ref:(?:formula\/[\d.]+|chapter\/\d+(?:#p\d+)?)\)/g, "$1"),
   );
 }
