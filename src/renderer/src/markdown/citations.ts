@@ -1,7 +1,14 @@
 import { splitCitationGroups } from "../../../shared/smart-text";
 import { mapOutsideCode } from "../../../shared/math-delimiters";
 
-export type CitationResolver = (passageId: number) => string | undefined;
+/**
+ * The label a citation shows. `group` names what its chip stands for when the label alone does not tell, such as two
+ * plain-text sources that both read "text": neighbouring chips with the same group are one chip, the label being the
+ * group when there is none.
+ */
+export type CitationResolver = ((passageId: number) => string | undefined) & {
+  group?: (passageId: number) => string | undefined;
+};
 
 const ENTITY: Record<string, string> = { "[": "&#91;", "]": "&#93;", "\\": "&#92;" };
 
@@ -23,15 +30,16 @@ const CITE_RUN = new RegExp(`${CITE_LINK}(?:[ \\t]*[,;]?[ \\t]*${CITE_LINK})*`, 
  * CHIPS_PER_RUN chips: a reply that leans on one chapter would otherwise end every sentence with a row of identical pills.
  * The chip that stays opens the first passage of the run.
  */
-function thinCitationRuns(text: string): string {
+function thinCitationRuns(text: string, resolver: CitationResolver): string {
   return text.replace(CITE_RUN, (run) => {
     const seen = new Set<string>();
     const kept: Array<{ link: string; separator: string }> = [];
-    for (const [, link, label, separator] of run.matchAll(/(\[([^\]]*)\]\(cite:p\d+\))([ \t]*[,;]?[ \t]*)/g) as Iterable<
-      [string, string, string, string]
+    for (const [, link, label, id, separator] of run.matchAll(/(\[([^\]]*)\]\(cite:p(\d+)\))([ \t]*[,;]?[ \t]*)/g) as Iterable<
+      [string, string, string, string, string]
     >) {
-      if (seen.has(label) || kept.length >= CHIPS_PER_RUN) continue;
-      seen.add(label);
+      const key = resolver.group?.(Number(id)) ?? label;
+      if (seen.has(key) || kept.length >= CHIPS_PER_RUN) continue;
+      seen.add(key);
       kept.push({ link, separator });
     }
     return kept.map((item, index) => (index < kept.length - 1 ? item.link + item.separator : item.link)).join("");
@@ -51,7 +59,7 @@ export function linkCitations(markdown: string, resolver?: CitationResolver): st
       return label === undefined ? literal(`[P${id}]`) : `[${literal(label)}](cite:p${id})`;
     });
     // Without a resolver the page owns the numbered list and every number must stay reachable.
-    return resolver ? thinCitationRuns(linked) : linked;
+    return resolver ? thinCitationRuns(linked, resolver) : linked;
   });
 }
 

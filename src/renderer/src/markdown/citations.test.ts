@@ -28,6 +28,13 @@ describe("linkCitations", () => {
     );
   });
 
+  it("keeps chips of different sources apart even when they share a section name", () => {
+    const resolver = Object.assign((id: number) => "text", {
+      group: (id: number) => (id === 1 || id === 2 ? "source-a|text" : "source-b|text"),
+    });
+    expect(linkCitations("Vale [P1][P2][P3].", resolver)).toBe("Vale [text](cite:p1)[text](cite:p3).");
+  });
+
   it("keeps chips apart when words sit between them", () => {
     expect(linkCitations("Uno [P1], poi due [P2].", () => "Cap. 1")).toBe(
       "Uno [Cap. 1](cite:p1), poi due [Cap. 1](cite:p2).",

@@ -11,8 +11,9 @@ export function selectedText(range: Range): string {
     if (!holder.contains(formula)) continue;
     const tex = formula.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim();
     if (!tex) {
-      // A selection that starts or ends inside a formula carries a piece of it: keep one reading, not both.
-      formula.querySelector(".katex-html")?.remove();
+      // A selection that starts or ends inside a formula carries a piece of it. With the screen-reader copy in it, keep
+      // that one reading; a selection that began past that copy has only the drawn glyphs, which stay.
+      if (formula.querySelector(".katex-mathml")) formula.querySelector(".katex-html")?.remove();
       continue;
     }
     formula.replaceWith(formula.classList.contains("katex-display") ? `$$${tex}$$` : `$${tex}$`);

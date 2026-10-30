@@ -24,6 +24,16 @@ describe("repairLatexEscapes", () => {
     expect(repairLatexEscapes("Riga\n\ttext")).toBe("Riga\n\ttext");
   });
 
+  it("keeps a Windows line end inside display math, even when the next word is a command name", () => {
+    const text = "$$\r\ne = mc^2\r\nu = v\r\n$$";
+    expect(repairLatexEscapes(text)).toBe(text);
+  });
+
+  it("does not take the start of a chunk for the start of a line when told it is not one", () => {
+    expect(repairLatexEscapes("\theta", false)).toBe("\\theta");
+    expect(repairLatexEscapes("\ttext", true)).toBe("\ttext");
+  });
+
   it("keeps real tabs, newlines and Windows line ends", () => {
     const text = "a\tb\nc\r\nd\n\ttext";
     expect(repairLatexEscapes(text)).toBe(text);
@@ -32,6 +42,17 @@ describe("repairLatexEscapes", () => {
   it("leaves a correct string alone", () => {
     const text = "$\\frac{1}{2}\\theta$ e \\(x\\)";
     expect(repairLatexEscapes(text)).toBe(text);
+  });
+});
+
+describe("repairModelStrings and code", () => {
+  it("leaves fenced and inline code as the model wrote it", () => {
+    const code = { prompt: "```\na\times b\n```\ne `c\times d` e $\theta$" };
+    expect(repairModelStrings(code)).toEqual({ prompt: "```\na\times b\n```\ne `c\times d` e $\\theta$" });
+  });
+
+  it("repairs prose that starts in the middle of a line after inline code", () => {
+    expect(repairModelStrings(["`x`\theta"])).toEqual(["`x`\\theta"]);
   });
 });
 

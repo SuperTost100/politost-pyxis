@@ -11,6 +11,17 @@ describe("normalizeMathDelimiters and control characters", () => {
   });
 });
 
+describe("normalizeMathDelimiters and backslash delimiters", () => {
+  it("repairs a command inside \\( … \\) and \\[ … \\] math", () => {
+    expect(normalizeMathDelimiters("\\(a\neq b\\)")).toBe("$a\\neq b$");
+    expect(normalizeMathDelimiters("\\[x\nu\\]")).toBe("\n$$\nx\\nu\n$$\n");
+  });
+
+  it("repairs a command right after inline code, where the chunk starts mid-line", () => {
+    expect(normalizeMathDelimiters("uso `x`\theta qui")).toBe("uso `x`\\theta qui");
+  });
+});
+
 describe("normalizeMathDelimiters", () => {
   it("converts inline \\( \\) to dollar math", () => {
     expect(normalizeMathDelimiters("a \\(x^2\\) b")).toBe("a $x^2$ b");

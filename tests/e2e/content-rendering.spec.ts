@@ -197,6 +197,36 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     });
     expect(chat.context.body).toBe("Un punto $P$ nello spazio.");
 
+    // A selection that starts inside the drawn formula, past its screen-reader copy, keeps what is drawn of it.
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}/lesson/${topicId}`;
+      },
+      { planId, topicId },
+    );
+    const again = page.locator(".px-markdown p", { hasText: "Un punto" });
+    await expect(again).toBeVisible();
+    await again.evaluate((node) => {
+      const glyphs = node.querySelector(".katex-html")!;
+      const first = document.createTreeWalker(glyphs, NodeFilter.SHOW_TEXT).nextNode()!;
+      const last = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      let end = first;
+      for (let next = last.nextNode(); next; next = last.nextNode()) end = next;
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(end, end.textContent!.length);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await expect(menu).toBeVisible();
+    await menu.getByRole("button", { name: "Chiedi al tutor" }).click();
+    await expect(page).toHaveURL(/#\/ask\//);
+    const partial = await invoke<{ context: { body: string } }>("chats.read", {
+      chatId: page.url().split("/").at(-1)!,
+    });
+    expect(partial.context.body).toBe("P nello spazio.");
+
     // The source panel's paragraph regions are named by their text, not "p1" and "p2".
     await page.evaluate((sourceId) => {
       window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { sourceId, chapter: 1 } }));
