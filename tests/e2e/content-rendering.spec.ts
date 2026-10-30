@@ -244,6 +244,57 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
     expect(names[0]).toMatch(/^Misurare significa confrontare/);
     for (const name of names) expect(name).not.toMatch(/^p\d+$|\$|###|ref:/);
+
+    // The menu follows what is on top. A source opened over the flashcard dialog (from a citation in it) has a working
+    // menu, while the lesson text behind the dialog has none.
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".ant-drawer-open")).toHaveCount(0);
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}/lesson/${topicId}`;
+      },
+      { planId, topicId },
+    );
+    // A fresh window, so the dialog is the first overlay opened and the source opened from it lands on top of it.
+    await page.reload();
+    const behind = page.locator("article .px-markdown p", { hasText: "Un punto" });
+    await expect(behind).toBeVisible();
+    await expect(async () => {
+      await behind.evaluate((node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+      await expect(menu).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+    await menu.getByRole("button", { name: "Crea flashcard" }).click();
+    await expect(page.getByRole("dialog", { name: "Crea flashcard" })).toBeVisible();
+    await page.evaluate((sourceId) => {
+      window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { sourceId, chapter: 1 } }));
+    }, sourceId);
+    const viewerText = page.locator(".source-viewer-paragraph p").first();
+    await expect(viewerText).toBeVisible();
+    await expect(async () => {
+      await viewerText.evaluate((node) => {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+      await expect(menu).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+    // And the lesson text under the dialog gets no menu.
+    await behind.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await expect(menu).toHaveCount(0);
   } finally {
     await app.close();
     rmSync(userData, { recursive: true, force: true });
