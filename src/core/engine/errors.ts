@@ -44,20 +44,21 @@ function textKind(
   rawCode: string,
   message: string,
 ): "refused" | "quota" | "model" | "" {
-  const status =
-    httpStatus(message) || (/^[1-5]\d\d$/.test(rawCode) ? Number(rawCode) : 0);
-  if (status === 401) return "refused";
-  if (status === 429) return "quota";
   const text = `${rawCode} ${message}`;
   // A subscription that leaves out the chosen model, which the engine's other models may still have. Cursor says "is
   // not included in your weekly usage. Buy credits or switch to a Grok model". Read before the limits below, because
-  // the same message offers credits.
+  // the same message offers credits, and before the status, because a provider may send it with a 401: the sign-in
+  // works, so the engine must not be marked signed out.
   if (
     /\b(?:not included in your (?:plan|subscription|weekly usage|usage)|upgrade your (?:plan|subscription) to use (?:this|the) model)\b/i.test(
       text,
     )
   )
     return "model";
+  const status =
+    httpStatus(message) || (/^[1-5]\d\d$/.test(rawCode) ? Number(rawCode) : 0);
+  if (status === 401) return "refused";
+  if (status === 429) return "quota";
   if (
     /\b(?:invalid[ _-]api[ _-]key|unauthori[sz]ed|authentication(?:[ _-](?:error|failed|required))?)\b/i.test(
       text,
@@ -172,10 +173,11 @@ export function engineIpcError(err: unknown, provider?: string): unknown {
   }
   if (!isEngineFailure(err)) return err;
   const translated = translateEngineError(err, provider);
+  // The engine travels with the error, so a screen can name it and offer its sign-in.
   return new IpcError(
     translated.code,
     translated.messageKey,
-    {},
+    provider ? { provider } : {},
     err instanceof Error ? err.message : String(err),
   );
 }

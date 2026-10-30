@@ -32,6 +32,33 @@ describe("translateEngineError", () => {
     });
   });
 
+  it("reads a model the plan leaves out as that, even when the provider sends it with a 401", () => {
+    const err = Object.assign(
+      new Error(
+        "HTTP 401: Claude Sonnet 5.5 is not included in your weekly usage. Buy credits or switch to a Grok model.",
+      ),
+      { code: "cli-failed" },
+    );
+    expect(translateEngineError(err, "agent").code).toBe("model-not-included");
+    // A plain 401 is still a refused sign-in.
+    expect(
+      translateEngineError(
+        Object.assign(new Error("HTTP 401 Unauthorized"), { code: "cli-failed" }),
+        "agent",
+      ).code,
+    ).toBe("not-logged-in");
+  });
+
+  it("says which engine failed, so the screen can name it and offer its sign-in", () => {
+    const err = Object.assign(new Error("status 401 Unauthorized"), {
+      code: "cli-failed",
+    });
+    expect(engineIpcError(err, "codex")).toMatchObject({
+      code: "not-logged-in",
+      params: { provider: "codex" },
+    });
+  });
+
   it("treats a refused login on a CLI engine as a lapsed sign-in, not a bad key", () => {
     const err = new Error("Invalid API key · Please run /login");
     expect(translateEngineError(err, "claude").messageKey).toBe(

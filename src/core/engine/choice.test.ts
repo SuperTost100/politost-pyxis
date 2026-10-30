@@ -9,8 +9,10 @@ import {
 } from "./bench";
 import { signOutStore } from "./choice";
 import { generate } from "./generate";
+import type { AutoProvider } from "./auto";
 import { getFunnel, runTurn } from "./funnel";
-import { engineHandlers } from "./handlers";
+import { autoConfigureEngines, engineHandlers } from "./handlers";
+import { fallbackSelection, rememberReady, selectionFor } from "./selection";
 vi.mock("./funnel", async (original) => {
   const actual = await original<typeof import("./funnel")>();
   return { ...actual, getFunnel: vi.fn(actual.getFunnel), runTurn: vi.fn() };
@@ -208,6 +210,53 @@ describe("the engines the student lets Pyxis use", () => {
     });
     await handlers.test({ provider: "codex" });
     expect(handlers.features().default).toBeUndefined();
+    db.close();
+  });
+
+  it("stops a fallback to a left-out engine at once, before the plan is worked out again", () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    useFunnel({ claude: true, codex: true });
+    const engine = (id: string, model: string): AutoProvider => ({
+      id,
+      kind: "cli",
+      effort: true,
+      models: [{ id: model, efforts }],
+    });
+    rememberReady([
+      engine("claude", "claude-sonnet-5"),
+      engine("codex", "gpt-6-luna"),
+    ]);
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('chat', ?, 1)",
+    ).run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5", auto: true }),
+    );
+    const chat = selectionFor(db, "chat");
+    handlers.choose({ allowed: ["claude"] });
+    expect(fallbackSelection(chat, "limit")).toBeUndefined();
+    rememberReady([]);
+    db.close();
+  });
+
+  it("leaves out an engine the student excluded while its models were being read", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    useFunnel({ claude: true, codex: true });
+    const funnel = getFunnel();
+    vi.mocked(getFunnel).mockImplementation(
+      () =>
+        ({
+          ...funnel,
+          models: async (id: "claude" | "codex") => {
+            // The student narrows the choice while this plan is still reading model lists.
+            if (id === "codex") handlers.choose({ allowed: ["claude"] });
+            return funnel.models(id);
+          },
+        }) as unknown as ReturnType<typeof getFunnel>,
+    );
+    const result = await autoConfigureEngines(db);
+    expect(providersIn(result.features)).toEqual(["claude"]);
     db.close();
   });
 

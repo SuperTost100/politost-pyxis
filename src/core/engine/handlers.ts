@@ -32,6 +32,7 @@ import { isAllowed, readAllowed, writeAllowed } from "./choice";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import {
+  keepAllowed,
   rememberReady,
   withoutRefusedModels,
   type StoredSelection,
@@ -264,6 +265,14 @@ export async function autoConfigureEngines(
   }
   const local = await localCandidate(db);
   if (local) listed.push(local);
+  // The student may have narrowed the choice while the model lists were read. A plan begun before must not bring an
+  // engine they left out back. The local model has its own switch and stays.
+  const allowedNow = readAllowed(db);
+  for (let index = listed.length - 1; index >= 0; index -= 1) {
+    const provider = listed[index]!;
+    if (provider.kind !== "local" && !isAllowed(allowedNow, provider.id))
+      listed.splice(index, 1);
+  }
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
@@ -543,6 +552,8 @@ export function engineHandlers(
       )
         throw invalidSelection();
       writeAllowed(db, input.allowed);
+      // A task that fails before the plan is worked out again must not fall back on an engine just left out.
+      keepAllowed(input.allowed);
       if (input.allowed) {
         const left = new Set(input.allowed);
         const rows = db
@@ -788,7 +799,7 @@ export function engineHandlers(
         throw new IpcError(
           translated.code,
           translated.messageKey,
-          {},
+          { provider: input.provider },
           err instanceof Error ? err.message : "",
         );
       } finally {
