@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { engineStatus, type EngineState } from "./engineStatus";
+import {
+  choiceRows,
+  chosenStart,
+  engineStatus,
+  type EngineState,
+} from "./engineStatus";
 
 const cli = (patch: Partial<EngineState>): EngineState => ({
   kind: "cli",
@@ -8,6 +13,44 @@ const cli = (patch: Partial<EngineState>): EngineState => ({
   refused: false,
   disabled: false,
   ...patch,
+});
+
+describe("the engines the student can pick", () => {
+  const row = (id: string, kind: "cli" | "api", patch: Partial<EngineState> = {}) => ({
+    id,
+    ...cli({ kind, ...patch }),
+  });
+
+  it("lists the CLIs and every API provider with a key, never one this build does not offer", () => {
+    const rows = [
+      row("claude", "cli"),
+      row("codex", "cli", { installed: false, loggedIn: false }),
+      row("openai-api", "api"),
+      row("anthropic-api", "api", { loggedIn: false }),
+      row("agent", "cli", { disabled: true }),
+    ];
+    expect(choiceRows(rows, ["openai"]).map((item) => item.id)).toEqual([
+      "claude",
+      "codex",
+      "openai-api",
+    ]);
+  });
+
+  it("starts the student's pick from every ready engine, API providers included", () => {
+    expect(
+      chosenStart([
+        row("claude", "cli", { loggedIn: false }),
+        row("openai-api", "api"),
+      ]),
+    ).toEqual(["openai-api"]);
+    expect(
+      chosenStart([row("claude", "cli"), row("openai-api", "api")]),
+    ).toEqual(["claude", "openai-api"]);
+    // With nothing ready, the installed engines, so ticking starts from what is there.
+    expect(chosenStart([row("claude", "cli", { loggedIn: false })])).toEqual([
+      "claude",
+    ]);
+  });
 });
 
 describe("engineStatus", () => {

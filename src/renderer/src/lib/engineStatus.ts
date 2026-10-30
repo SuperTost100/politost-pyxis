@@ -39,3 +39,32 @@ export function engineStatus(row: EngineState): EngineStatus {
     };
   return { tone: "ok", label: "engines.state.ready", fix: null };
 }
+
+type ChoiceRow = EngineState & { id: string };
+
+/**
+ * The engines the student can tick: every CLI this build offers, installed or not, and each API provider whose key is
+ * saved. `keys` are the saved vendors, such as "openai".
+ */
+export function choiceRows<T extends ChoiceRow>(
+  rows: readonly T[],
+  keys: readonly string[],
+): T[] {
+  return rows.filter(
+    (row) =>
+      !row.disabled &&
+      (row.kind === "cli" ||
+        keys.includes(row.id === "anthropic-api" ? "anthropic" : "openai")),
+  );
+}
+
+/**
+ * Where "I choose" starts: every engine that is ready, API providers included, so nothing changes until a box is
+ * unticked. With none ready, the installed ones.
+ */
+export function chosenStart(rows: readonly ChoiceRow[]): string[] {
+  const ready = rows.filter((row) => row.installed && row.loggedIn);
+  return (ready.length ? ready : rows.filter((row) => row.installed)).map(
+    (row) => row.id,
+  );
+}

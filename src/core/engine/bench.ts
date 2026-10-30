@@ -5,7 +5,23 @@
  * is kept in the workspace when a store is configured, so a restart does not send lessons back to it.
  */
 const limited = new Map<string, number>();
-const signedOut = new Set<string>();
+/** Refused sign-ins, each with the moment on `engineClock` it was marked. */
+const signedOut = new Map<string, number>();
+let clock = 0;
+
+/**
+ * A counter that orders what Pyxis learns about sign-ins: a refusal, and a scan that sees a CLI signed out. A scan's
+ * signed-out report undoes a refusal only when it came later, so an older report cannot clear a newer refusal.
+ */
+export function engineClock(): number {
+  clock += 1;
+  return clock;
+}
+
+/** When the refusal of this engine was marked, on `engineClock`, or undefined when it is not refused. */
+export function signedOutSince(provider: string): number | undefined {
+  return signedOut.get(provider);
+}
 
 /** Where refused sign-ins are kept between launches. */
 export type SignOutStore = {
@@ -23,7 +39,7 @@ export function configureSignOuts(
   store = next;
   onChange = listener;
   signedOut.clear();
-  for (const provider of next?.load() ?? []) signedOut.add(provider);
+  for (const provider of next?.load() ?? []) signedOut.set(provider, engineClock());
 }
 
 /** How long a limit without a reset time keeps an engine out. */
@@ -48,8 +64,10 @@ export function benchEngine(
 
 /** The provider refused the engine's sign-in or key: it stays out until the student signs in again. */
 export function markSignedOut(provider: string): void {
-  if (signedOut.has(provider)) return;
-  signedOut.add(provider);
+  const known = signedOut.has(provider);
+  // A new refusal moves the mark forward, so only a signed-out report after it can undo it.
+  signedOut.set(provider, engineClock());
+  if (known) return;
   store?.save(provider, true);
   onChange?.(provider);
 }

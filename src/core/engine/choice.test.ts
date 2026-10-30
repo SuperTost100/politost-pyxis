@@ -105,6 +105,26 @@ describe("an engine whose sign-in was refused", () => {
     db.close();
   });
 
+  it("stays out when the only signed-out scan came before the refusal", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    const state = { claude: true, codex: false };
+    useFunnel(state);
+    await handlers.overview();
+    // The student signs in in a terminal, then a call is refused before any scan sees the sign-in.
+    state.codex = true;
+    markSignedOut("codex");
+    const codex = (await handlers.overview()).find((row) => row.id === "codex");
+    expect(codex).toMatchObject({ loggedIn: false, refused: true });
+    // A sign-out seen after the refusal, then a sign-in, brings it back.
+    state.codex = false;
+    await handlers.overview();
+    state.codex = true;
+    const back = (await handlers.overview()).find((row) => row.id === "codex");
+    expect(back).toMatchObject({ loggedIn: true, refused: false });
+    db.close();
+  });
+
   it("comes back after a test that answers", async () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);

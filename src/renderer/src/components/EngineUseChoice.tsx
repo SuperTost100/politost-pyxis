@@ -1,13 +1,13 @@
 import { Radio } from "antd";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { chosenStart, type EngineState } from "../lib/engineStatus";
 import "./EngineUseChoice.css";
 
-type Row = { id: string; installed: boolean; loggedIn: boolean };
-
 /**
- * Automatic (every engine that is ready, now or later) or the engines the student ticks. Picking "I choose" starts
- * from the engines that are ready, or the installed ones when none is, so nothing changes until a box is unticked.
+ * Automatic (every engine that is ready, now or later) or the engines the student ticks. `rows` are every engine the
+ * student can tick (see `choiceRows`), API providers included. Picking "I choose" starts from the engines that are
+ * ready, or the installed ones when none is, so nothing changes until a box is unticked.
  */
 export function EngineUseChoice({
   allowed,
@@ -16,16 +16,13 @@ export function EngineUseChoice({
   disabled,
 }: {
   allowed: string[] | null;
-  rows: readonly Row[];
+  rows: ReadonlyArray<EngineState & { id: string }>;
   onChange: (allowed: string[] | null) => void;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const legend = useId();
-  const ready = rows.filter((row) => row.installed && row.loggedIn);
-  const start = (ready.length ? ready : rows.filter((row) => row.installed)).map(
-    (row) => row.id,
-  );
+  const start = chosenStart(rows);
   return (
     <div className="px-engine-choice">
       <h2 className="title-3" id={legend}>

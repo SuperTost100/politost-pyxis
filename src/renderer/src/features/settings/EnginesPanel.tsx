@@ -37,7 +37,7 @@ import {
   type InstallableProvider,
 } from "@shared/installers";
 import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
-import { engineStatus } from "../../lib/engineStatus";
+import { choiceRows, engineStatus } from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
 import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
@@ -301,6 +301,8 @@ export function EnginesPanel() {
         row.id === "anthropic-api" ? "anthropic" : "openai",
       ),
   );
+  // The engines the student can tick, the same list as in first setup: CLIs and API providers with a saved key.
+  const pickable = choiceRows(overview.data ?? [], keys.data?.configured ?? []);
   function refresh() {
     engines.refresh();
     for (const queryKey of [["engine-models"], ["engine-key-status"]])
@@ -673,10 +675,10 @@ export function EnginesPanel() {
           </div>
         </div>
       ) : null}
-      {overview.isSuccess && available.some((row) => !row.disabled) ? (
+      {overview.isSuccess && pickable.length > 0 ? (
         <EngineUseChoice
           allowed={allowed}
-          rows={available.filter((row) => !row.disabled)}
+          rows={pickable}
           disabled={choose.isPending || choice.isPending}
           onChange={(next) => choose.mutate(next)}
         />

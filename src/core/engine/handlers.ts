@@ -27,7 +27,13 @@ import {
   shellPathReady,
   type ProviderId,
 } from "./funnel";
-import { clearSignOut, isSignedOut, markSignedOut } from "./bench";
+import {
+  clearSignOut,
+  engineClock,
+  isSignedOut,
+  markSignedOut,
+  signedOutSince,
+} from "./bench";
 import { isAllowed, readAllowed, writeAllowed } from "./choice";
 import { effortsOf, rememberModels, resolveEffort } from "./efforts";
 import { isInstallable, runInstaller } from "./install";
@@ -160,15 +166,27 @@ function overviewRows(): Promise<OverviewRow[]> {
 
 /** What each CLI's own sign-in check said at the last scan. */
 const reportedSignedIn = new Map<string, boolean>();
+/** When, on `engineClock`, a scan last began that found the CLI signed out. */
+const seenSignedOut = new Map<string, number>();
 
 async function scanProviders(): Promise<OverviewRow[]> {
+  // Stamped before the CLIs are asked, so a refusal that lands while they answer counts as newer than this scan.
+  const started = engineClock();
   const rows = await readProviders();
   return rows.map((row) => {
     // A CLI whose saved sign-in stopped working can go on reporting "signed in", so that alone does not undo a refused
-    // call. Seeing it signed out and then signed in does: the student signed in again, here or in a terminal.
-    if (row.loggedIn && reportedSignedIn.get(row.id) === false)
+    // call. Seeing it signed out and then signed in does (the student signed in again, here or in a terminal), but only
+    // when it was seen signed out after the refusal: an older report says nothing about the sign-in that was refused.
+    const refusedAt = signedOutSince(row.id);
+    if (
+      row.loggedIn &&
+      reportedSignedIn.get(row.id) === false &&
+      refusedAt !== undefined &&
+      (seenSignedOut.get(row.id) ?? -1) > refusedAt
+    )
       clearSignOut(row.id);
     reportedSignedIn.set(row.id, row.loggedIn);
+    if (!row.loggedIn) seenSignedOut.set(row.id, started);
     const refused = row.loggedIn && isSignedOut(row.id);
     return { ...row, loggedIn: row.loggedIn && !refused, refused };
   });

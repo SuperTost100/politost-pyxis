@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -17,7 +17,7 @@ import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
 import { LocalModelCard, useLocalModel } from "../../components/LocalModel";
 import { Notice } from "../../components/Notice";
 import { ProviderSetup } from "../../components/ProviderSetup";
-import { engineStatus } from "../../lib/engineStatus";
+import { choiceRows, engineStatus } from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
 import { useEngineSetup } from "../settings/useEngineSetup";
 import "../settings/EnginesPanel.css";
@@ -70,6 +70,15 @@ export function EnginesStep({
       row.kind === "cli" && isInstallable(row.id),
   );
   const installedCli = cliRows.filter((row) => row.installed);
+  // Every engine the student can tick: the CLIs and each API provider with a saved key (a rerun of setup can have one).
+  const keys = useQuery({
+    queryKey: ["engine-key-status"],
+    queryFn: () => window.pyxis.keys.status(),
+  });
+  const pickable = choiceRows(
+    [...cliRows, ...rows.filter((row) => row.kind === "api")],
+    keys.data?.configured ?? [],
+  );
   // With nothing installed the student first says what they pay for. Otherwise every engine gets its own row.
   const noneInstalled =
     overview.isSuccess && installedCli.length === 0 && readyRows.length === 0;
@@ -183,7 +192,7 @@ export function EnginesStep({
         <>
           <EngineUseChoice
             allowed={allowed}
-            rows={cliRows}
+            rows={pickable}
             disabled={choose.isPending || choice.isPending}
             onChange={(next) => choose.mutate(next)}
           />
@@ -192,7 +201,7 @@ export function EnginesStep({
             role="list"
             aria-label={t("onboarding.engines.listLabel")}
           >
-            {cliRows.map((row) => {
+            {pickable.map((row) => {
               const status = engineStatus(row);
               return (
                 <div role="listitem" key={row.id}>
@@ -214,7 +223,11 @@ export function EnginesStep({
                         : t("engines.signIn")
                     }
                     actionDisabled={engine === row.id}
-                    onAction={status.fix ? () => setPicked(row.id) : undefined}
+                    onAction={
+                      status.fix && isInstallable(row.id)
+                        ? () => setPicked(row.id as InstallableProvider)
+                        : undefined
+                    }
                   />
                 </div>
               );
