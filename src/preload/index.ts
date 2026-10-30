@@ -42,6 +42,7 @@ const replayable = new Set([
   "engines.overview",
   "engines.models",
   "engines.features",
+  "engines.names",
   "engines.capability",
   "study.lesson",
   "study.markdown",

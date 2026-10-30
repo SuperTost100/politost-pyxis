@@ -375,4 +375,35 @@ describe("the engine test", () => {
     });
     db.close();
   });
+
+  it("marks a model the subscription refused, and the engine's row and plan leave it out", async () => {
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    useFunnel({ claude: true, codex: false });
+    vi.mocked(runTurn).mockRejectedValueOnce(
+      Object.assign(
+        new Error("Claude Haiku 4.5 is not included in your plan."),
+        { code: "cli-failed" },
+      ),
+    );
+    await expect(handlers.test({ provider: "claude" })).rejects.toMatchObject({
+      code: "model-not-included",
+      params: { provider: "claude" },
+    });
+    const claude = (await handlers.overview()).find((row) => row.id === "claude");
+    // Still signed in, but no longer plain "Ready": the row knows which model was refused.
+    expect(claude).toMatchObject({ loggedIn: true, refused: false, refusedModels: ["claude-haiku-4-5"] });
+    const { features } = await handlers.autoConfigure({});
+    expect(Object.values(features).map((row) => row.model)).not.toContain("claude-haiku-4-5");
+    // The row's next test asks a model the subscription has not refused.
+    vi.mocked(runTurn).mockResolvedValueOnce({
+      text: "ok",
+      model: "claude-sonnet-5",
+      provider: "claude",
+      inputTokens: 2,
+    });
+    await handlers.test({ provider: "claude" });
+    expect(vi.mocked(runTurn).mock.calls[1]![0].selection.model).not.toBe("claude-haiku-4-5");
+    db.close();
+  });
 });

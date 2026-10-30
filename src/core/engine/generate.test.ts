@@ -427,7 +427,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({
       from: "Claude Code",
-      to: "Claude Code (claude-haiku-5)",
+      to: "Claude Code (Claude Haiku 5)",
       reason: "model",
     });
     db.close();
@@ -573,6 +573,155 @@ describe("switching engines on a usage limit or sign-out", () => {
       }),
     ).rejects.toMatchObject({ messageKey: "engines.errors.quota" });
     expect(calls).toBe(1);
+    db.close();
+  });
+});
+
+describe("a chosen engine whose subscription refuses the model", () => {
+  /** Cursor Agent's models as `agent --list-models` lists them on a plan with Grok included, newest first per family. */
+  const cursor: AutoProvider = {
+    id: "agent",
+    kind: "cli",
+    effort: true,
+    models: [
+      "gpt-5.3-codex",
+      "composer-2.5",
+      "claude-opus-5-thinking",
+      "gpt-5.6-sol",
+      "cursor-grok-4.5",
+      "gemini-3.7-flash",
+      "grok-4.7",
+      "cursor-grok-4.6",
+      "claude-opus-5-5",
+      "claude-opus-5",
+      "claude-opus-4-8",
+      "claude-sonnet-5-5",
+    ].map((id) => ({ id, efforts: [{ id: "low" }, { id: "medium" }, { id: "high" }] })),
+  };
+  /** What Cursor Agent printed in the walkthrough when the plan step ran on Claude Opus 5.5. */
+  const refusal = (model: string, hint = " Buy credits or switch to a Grok model to continue.") =>
+    Object.assign(
+      new Error(
+        `agent exited (1) without a result. ActionRequiredError: ${model} is not included in your weekly usage${hint}`,
+      ),
+      { code: "cli-failed" },
+    );
+
+  /** The plan task on Cursor Agent alone, as "Scelgo io" with only Cursor ticked leaves it. */
+  function cursorOnly() {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
+    ).run(
+      JSON.stringify({ provider: "agent", model: "claude-opus-5-5", effort: "high", auto: true }),
+    );
+    rememberReady([cursor]);
+    return db;
+  }
+
+  afterEach(() => {
+    rememberReady([]);
+    setFallbackListener(undefined);
+    clearBench();
+  });
+
+  it("moves a job's saved selection to the model the refusal points to", async () => {
+    const db = cursorOnly();
+    // A background job keeps its selection in its saved parameters, so it comes back as plain JSON.
+    const saved = JSON.parse(JSON.stringify(selectionFor(db, "plan"))) as ReturnType<
+      typeof selectionFor
+    >;
+    const asked: string[] = [];
+    const output = await generate({
+      selection: saved,
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(input.selection.model);
+        if (!input.selection.model.includes("grok")) throw refusal("Claude Opus 5.5");
+        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+      },
+    });
+    expect(asked).toEqual(["claude-opus-5-5", "grok-4.7"]);
+    expect(output.text).toBe("ciao");
+    expect(output.fallback).toEqual({
+      from: "Cursor Agent",
+      to: "Cursor Agent (Grok 4.7)",
+      reason: "model",
+    });
+    db.close();
+  });
+
+  it("sends the engine only the selection, without Pyxis's own bookkeeping", async () => {
+    const db = cursorOnly();
+    const sent: object[] = [];
+    await generate({
+      selection: selectionFor(db, "plan"),
+      prompt: "hi",
+      run: async (input) => {
+        sent.push(input.selection);
+        return result({ text: "ciao", provider: "agent" });
+      },
+    });
+    expect(sent).toEqual([{ provider: "agent", model: "claude-opus-5-5", effort: "high" }]);
+    db.close();
+  });
+
+  it("tries a few more of the engine's models when the refusal names none", async () => {
+    const db = cursorOnly();
+    const asked: string[] = [];
+    const output = await generate({
+      selection: selectionFor(db, "plan"),
+      prompt: "hi",
+      run: async (input) => {
+        asked.push(input.selection.model);
+        if (input.selection.model.startsWith("claude-opus")) throw refusal("Claude Opus", ".");
+        return result({ text: "ciao", provider: "agent", model: input.selection.model });
+      },
+    });
+    expect(asked).toEqual(["claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "gpt-5.6-sol"]);
+    expect(output.text).toBe("ciao");
+    db.close();
+  });
+
+  it("stops after three more models and names the refusal", async () => {
+    const db = cursorOnly();
+    let calls = 0;
+    await expect(
+      generate({
+        selection: selectionFor(db, "plan"),
+        prompt: "hi",
+        run: async () => {
+          calls += 1;
+          throw refusal("This model", ".");
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "model-not-included",
+      params: { provider: "agent" },
+    });
+    expect(calls).toBe(4);
+    db.close();
+  });
+
+  it("leaves the student's pinned model alone and names the refusal", async () => {
+    const db = cursorOnly();
+    db.prepare("UPDATE feature_engines SET selection_json = ?").run(
+      JSON.stringify({ provider: "agent", model: "claude-opus-5-5" }),
+    );
+    let calls = 0;
+    await expect(
+      generate({
+        selection: JSON.parse(JSON.stringify(selectionFor(db, "plan"))),
+        prompt: "hi",
+        run: async () => {
+          calls += 1;
+          throw refusal("Claude Opus 5.5");
+        },
+      }),
+    ).rejects.toMatchObject({ code: "model-not-included", params: { provider: "agent" } });
+    expect(calls).toBe(1);
+    // The refused model is still marked, so Settings can say the engine is missing it.
+    expect(isModelBenched("agent", "claude-opus-5-5")).toBe(true);
     db.close();
   });
 });

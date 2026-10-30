@@ -57,6 +57,7 @@ import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
 import { useEngineError } from "../../lib/engineError";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
 import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, subjectsQuery } from "../../lib/queries";
@@ -160,6 +161,7 @@ const Reply = memo(function Reply({
   onMakeCards: (row: ChatRow) => void;
 }) {
   const describeEngineError = useEngineError();
+  const engineNames = useEngineNames();
   // A reply the engine cut short because its sign-in was refused names that engine and offers its sign-in.
   const failure = row.error
     ? describeEngineError(row.error, row.provider ?? undefined)
@@ -190,9 +192,7 @@ const Reply = memo(function Reply({
   return (
     <ChatMessage
       engine={
-        row.provider && row.modelId
-          ? `${row.provider} · ${row.modelId}`
-          : (row.modelId ?? row.provider ?? undefined)
+        engineNames.label(row.provider, row.modelId) || undefined
       }
       general={row.grounding === "general"}
       stopped={row.stopped}

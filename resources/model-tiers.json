@@ -111,11 +111,13 @@
       "mid": [
         "^claude-sonnet-\\d+(?:[.-]\\d+)*$",
         "^gpt-\\d+(?:[.-]\\d+)*-terra$",
-        "^gemini-\\d+(?:[.-]\\d+)*-pro$"
+        "^gemini-\\d+(?:[.-]\\d+)*-pro$",
+        "^(?:cursor-)?grok-\\d+(?:[.-]\\d+)*$"
       ],
       "strong": [
         "^claude-opus-\\d+(?:[.-]\\d+)*$",
-        "^gpt-\\d+(?:[.-]\\d+)*-sol$"
+        "^gpt-\\d+(?:[.-]\\d+)*-sol$",
+        "^(?:cursor-)?grok-\\d+(?:[.-]\\d+)*$"
       ]
     },
     "antigravity": {

@@ -2672,7 +2672,9 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: "Photo notes", exact: true })
         .click();
-      await expect(dialog).toContainText("vision-fixture-model");
+      // The model that read the photo is named the way a student reads it, never by its id.
+      await expect(dialog).toContainText("Vision Fixture Model");
+      await expect(dialog).not.toContainText("vision-fixture-model");
       break;
     case "library-details":
       await page.getByRole("button", { name: source }).click();

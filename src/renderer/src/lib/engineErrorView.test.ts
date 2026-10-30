@@ -32,6 +32,21 @@ describe("engineErrorView", () => {
     );
   });
 
+  it("names the engine whose subscription refused the model and offers another model", () => {
+    expect(
+      engineErrorView("engines.errors.model-not-included", "agent", "Cursor Agent"),
+    ).toEqual({
+      key: "engines.errors.modelNotIncludedNamed",
+      params: { name: "Cursor Agent" },
+      chooseModel: true,
+    });
+    // Without the engine it keeps the general message.
+    expect(engineErrorView("engines.errors.model-not-included", undefined)).toEqual({
+      key: "engines.errors.model-not-included",
+      params: {},
+    });
+  });
+
   it("reads the engine an error body carries", () => {
     expect(errorProvider({ params: { provider: "codex" } })).toBe("codex");
     expect(errorProvider({ params: {} })).toBeUndefined();

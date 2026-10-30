@@ -7,6 +7,8 @@ export type QuizAnswer = {
   expected: string;
   explanation: string;
   citations: Citation[];
+  /** The engine and model that graded an open answer. */
+  provider?: string;
   model?: string;
   flagged?: boolean;
 };

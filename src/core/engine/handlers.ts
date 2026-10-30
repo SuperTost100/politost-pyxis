@@ -16,7 +16,7 @@ import {
   providerSeesImages,
   type Need,
 } from "./capabilities";
-import { translateEngineError } from "./errors";
+import { suggestedModel, translateEngineError } from "./errors";
 import {
   acknowledgeProviders,
   endConversations,
@@ -28,15 +28,22 @@ import {
   type ProviderId,
 } from "./funnel";
 import {
+  benchModel,
   clearSignOut,
   clearSignOutBefore,
   engineClock,
   isSignedOut,
   markSignedOut,
+  refusedModelsOf,
   signedOutSince,
 } from "./bench";
 import { isAllowed, readAllowed, writeAllowed } from "./choice";
-import { effortsOf, rememberModels, resolveEffort } from "./efforts";
+import {
+  effortsOf,
+  modelNames,
+  rememberModels,
+  resolveEffort,
+} from "./efforts";
 import { isInstallable, runInstaller } from "./install";
 import {
   keepAllowed,
@@ -556,7 +563,21 @@ export function engineHandlers(
       return rows.map((row) => ({
         ...row,
         allowed: isAllowed(allowed, row.id),
+        // Models its subscription refused today: the engine still works, but not on these.
+        refusedModels: refusedModelsOf(row.id),
       }));
+    },
+    /**
+     * The names a student reads for the engines and for every model listed so far. Read from memory only, so any screen
+     * can ask without starting a CLI.
+     */
+    names() {
+      return {
+        engines: Object.fromEntries(
+          [...providers].map((id) => [id, providerName(id)]),
+        ),
+        models: modelNames(),
+      };
     },
     /** The engines the student lets Pyxis use: null means automatic, every engine that is ready. */
     choice() {
@@ -767,11 +788,13 @@ export function engineHandlers(
       // The student's cancel and the deadline both stop the turn; only the deadline reads as a timeout.
       const deadline = new AbortController();
       const timer = setTimeout(() => deadline.abort(), TEST_DEADLINE_MS);
+      let tested: string | undefined;
       try {
         // The cheapest model is looked up only when the student did not pick one.
         const { model, effort } = input.model
           ? testEffort(input.provider, input.model, input.effort)
           : await cheapestTest(input.provider);
+        tested = model;
         // Closed while the model list was read: no CLI starts.
         signal?.throwIfAborted();
         const result = await runTurn({
@@ -820,6 +843,9 @@ export function engineHandlers(
         // A refused sign-in or key: the engine reads signed out and leaves the automatic plan until it is back.
         if (translated.code === "not-logged-in" || translated.code === "refused")
           markSignedOut(input.provider);
+        // A model the subscription leaves out: the engine works, but the plan and the next test skip that model.
+        if (translated.code === "model-not-included" && tested)
+          benchModel(input.provider, tested, Date.now(), suggestedModel(err));
         throw new IpcError(
           translated.code,
           translated.messageKey,
@@ -1100,15 +1126,15 @@ async function cheapestTest(
 ): Promise<{ model: string; effort?: string }> {
   const models = await getFunnel().models(provider);
   rememberModels(provider, models);
+  const listed: AutoProvider = {
+    id: provider,
+    kind: kindOf(provider),
+    effort: true,
+    models: models.map((row) => ({ id: row.id, efforts: row.efforts })),
+  };
+  // A model the subscription refused today would fail the test again, unless the engine has no other.
+  const [open] = withoutRefusedModels([listed]);
   const model =
-    pickModel(
-      {
-        id: provider,
-        kind: kindOf(provider),
-        effort: true,
-        models: models.map((row) => ({ id: row.id, efforts: row.efforts })),
-      },
-      "fast",
-    )?.id ?? "";
+    pickModel(open!.models.length ? open! : listed, "fast")?.id ?? "";
   return testEffort(provider, model, undefined);
 }

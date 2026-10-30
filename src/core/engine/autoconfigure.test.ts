@@ -85,6 +85,8 @@ describe("automatic engine choice", () => {
       provider: "codex",
       model: "gpt-6-luna",
       effort: "low",
+      // Pyxis chose it, so a refusal may move it, even after a job saved it.
+      chosenFor: "chat",
     });
     // Flashcards are a short job: the fast model at low effort, not the lesson's.
     expect(result.features.cards).toEqual({
@@ -97,6 +99,8 @@ describe("automatic engine choice", () => {
       provider: "codex",
       model: "gpt-6-luna",
       effort: "low",
+      // Pyxis chose it, so a refusal may move it, even after a job saved it.
+      chosenFor: "cards",
     });
     db.close();
   });

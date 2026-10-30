@@ -12,6 +12,7 @@ import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
 import { useEngineError } from "../../lib/engineError";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
@@ -29,6 +30,7 @@ const DRAFT_DELAY_MS = 500;
 
 export function SimulationPage() {
   const { t, i18n } = useTranslation();
+  const engineNames = useEngineNames();
   const grade = useGradeScale();
   const describeEngineError = useEngineError();
   const { planId = "", attemptId } = useParams();
@@ -175,7 +177,7 @@ export function SimulationPage() {
     ...new Set(
       run?.results
         ?.filter((r) => r.provider && r.model)
-        .map((r) => `${r.provider} · ${r.model}`) ?? [],
+        .map((r) => engineNames.label(r.provider, r.model)) ?? [],
     ),
   ].join(", ");
   // A plan file carries that the exam was handed in, not the answers or the grade.
@@ -211,7 +213,7 @@ export function SimulationPage() {
   }
   const generated = run?.generated
     ? t("simulation.generatedWarning", {
-        model: `${run.generated.provider} · ${run.generated.model}`,
+        model: engineNames.label(run.generated.provider, run.generated.model),
       })
     : "";
   // The setup's one action: write the questions first when the material has no exam exercises, then start the clock.
@@ -319,7 +321,7 @@ export function SimulationPage() {
       expectedLabel: t("simulation.reference"),
       explanation: result.feedback,
       missed: result.missed,
-      grader: result.provider && result.model ? `${result.provider} · ${result.model}` : undefined,
+      grader: result.provider && result.model ? engineNames.label(result.provider, result.model) : undefined,
       // The tutor unlocks once the exam is handed in.
       ...(run?.submitted
         ? { onAsk: () => void ask(q.stem, answer || t("simulation.blank"), result.expected, result.feedback) }
@@ -644,7 +646,7 @@ export function SimulationPage() {
           listNote={
             !run.submitted && run.grading?.model
               ? t("results.gradingWith", {
-                  model: [run.grading.provider, run.grading.model].filter(Boolean).join(" · "),
+                  model: engineNames.label(run.grading.provider, run.grading.model),
                 })
               : undefined
           }

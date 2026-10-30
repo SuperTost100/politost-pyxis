@@ -496,6 +496,8 @@ export const requests = {
         acknowledged: z.boolean(),
         /** The student lets Pyxis use this engine (always true in automatic mode). */
         allowed: z.boolean(),
+        /** Models its subscription refused today. The engine still works on its other models. */
+        refusedModels: z.array(z.string()),
         capabilities: z.object({
           effort: z.boolean(),
           fast: z.boolean(),
@@ -573,6 +575,14 @@ export const requests = {
   "engines.features": {
     input: z.object({}),
     output: z.record(z.string(), engineSelection),
+  },
+  /** The names a student reads: each engine's, and each model's that Pyxis has listed, by engine. */
+  "engines.names": {
+    input: z.object({}),
+    output: z.object({
+      engines: z.record(z.string(), z.string()),
+      models: z.record(z.string(), z.record(z.string(), z.string())),
+    }),
   },
   // Tokens each engine used since a moment (the renderer sends the start of the student's week).
   "engines.usage": {
@@ -2822,6 +2832,8 @@ const broadcasts = {
   "engine.auto": z.object({}),
   // A provider refused an engine's sign-in, or the engine is signed in again: its row in Settings changes.
   "engine.status": z.object({ provider: z.string() }),
+  // Core read model names for an engine it could not name before: screens that show a model read `engines.names` again.
+  "engine.names": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
   // The automatic engine hit a usage limit or was signed out, and another engine answered.

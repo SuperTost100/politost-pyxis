@@ -22,6 +22,7 @@ import {
   keyStatus,
   manualChoice,
 } from "../../lib/engineStatus";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { invoke } from "../../lib/ipc";
 import { useEngineSetup } from "../settings/useEngineSetup";
 import "../settings/EnginesPanel.css";
@@ -59,6 +60,7 @@ export function EnginesStep({
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const { overview, features, choice, choose, refresh } = useEngineSetup();
+  const engineNames = useEngineNames();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [picked, setPicked] = useState<InstallableProvider | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -136,14 +138,6 @@ export function EnginesStep({
     }).format(list.map((row) => row.name));
   const nameOf = (id: InstallableProvider) =>
     rows.find((row) => row.id === id)?.name ?? id;
-  /** The models the automatic plan gives an engine, as on the Settings rows. */
-  function modelsOf(provider: string): string {
-    const ids: string[] = [];
-    for (const selection of Object.values(features.data ?? {}))
-      if (selection.provider === provider && !ids.includes(selection.model))
-        ids.push(selection.model);
-    return ids.join(" · ");
-  }
   const notice =
     toAcknowledge.length > 0 ? (
       <ScrollIntoView>
@@ -216,7 +210,12 @@ export function EnginesStep({
                   <EngineRow
                     kind={row.kind}
                     name={row.name}
-                    model={row.allowed ? modelsOf(row.id) : ""}
+                    model={engineNames.modelsLine(
+                      row.id,
+                      features.data,
+                      row.refusedModels,
+                      row.allowed,
+                    )}
                     status={status.tone}
                     statusText={t(status.label)}
                     use={engineBox(

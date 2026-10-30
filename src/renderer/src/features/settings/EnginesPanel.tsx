@@ -27,6 +27,7 @@ import {
   type NoticeEngine,
 } from "../../components/EngineNotice";
 import { EngineRow } from "../../components/EngineRow";
+import { useEngineNames } from "../../lib/useEngineNames";
 import { LocalModelCard, localQueryKey } from "../../components/LocalModel";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
@@ -200,6 +201,7 @@ export function EnginesPanel() {
   }
   const client = useQueryClient();
   const engines = useEngineSetup();
+  const names = useEngineNames();
   const { overview, features, choice, choose } = engines;
   const allowed = choice.data?.allowed ?? null;
   const engineName = (id: string) =>
@@ -251,7 +253,13 @@ export function EnginesPanel() {
         ]
       : []),
   ];
-  const [result, setResult] = useState<string | null>(null);
+  // A Prova that answered is kept as data and worded when shown, so a model name core learns later, or a language
+  // change, reaches the message. Every other result is already a sentence.
+  const [result, setResult] = useState<
+    | string
+    | { provider: string; model: string; ms: number; tokens: number }
+    | null
+  >(null);
   const visionModel =
     features.data?.vision?.model ?? features.data?.default?.model;
   const visionCapability = useQuery({
@@ -328,15 +336,14 @@ export function EnginesPanel() {
     }) => invoke("engines.test", { provider, model, effort, fast }),
     // A refused sign-in turns the engine's row to signed out, so the list is read again either way.
     onError: refresh,
-    onSuccess: (value) => {
+    onSuccess: (value, variables) => {
       refresh();
-      setResult(
-        t("engines.tested", {
-          ms: value.latencyMs,
-          model: value.model,
-          tokens: value.inputTokens,
-        }),
-      );
+      setResult({
+        provider: variables.provider,
+        model: value.model,
+        ms: value.latencyMs,
+        tokens: value.inputTokens,
+      });
     },
   });
   const configure = useMutation({
@@ -500,15 +507,6 @@ export function EnginesPanel() {
       available.includes(row) &&
       (row.installed || (nothingReady && row.kind === "cli")),
   );
-  function modelsUsedBy(provider: string): string {
-    const ids: string[] = [];
-    for (const feature of featureNames) {
-      const selection = features.data?.[feature];
-      if (selection?.provider === provider && !ids.includes(selection.model))
-        ids.push(selection.model);
-    }
-    return ids.join(" · ");
-  }
   const summaryText = engineSummaryText({
     t,
     language: i18n.language,
@@ -533,7 +531,11 @@ export function EnginesPanel() {
         <EngineRow
           kind={row.kind}
           name={row.name}
-          model={modelsUsedBy(row.id) || row.version || row.id}
+          model={
+            names.modelsLine(row.id, features.data, row.refusedModels, row.allowed) ||
+            row.version ||
+            row.id
+          }
           isDefault={
             !simple &&
             defaultPinned &&
@@ -588,7 +590,16 @@ export function EnginesPanel() {
     <>
       {result ? (
         <p className="small engines-result" role="status">
-          {result}
+          {typeof result === "string"
+            ? result
+            : t("engines.tested", {
+                ms: result.ms,
+                // The list Settings already read names the model even before the names query has refreshed.
+                model:
+                  modelsByProvider[result.provider]?.find((row) => row.id === result.model)?.name ??
+                  names.modelName(result.provider, result.model),
+                tokens: result.tokens,
+              })}
         </p>
       ) : null}
       {test.error && tested ? (
@@ -779,7 +790,7 @@ export function EnginesPanel() {
                           ? [
                               {
                                 value,
-                                label: `${overview.data?.find((row) => row.id === selection.provider)?.name ?? selection.provider} · ${selection.model}`,
+                                label: `${engineName(selection.provider)} · ${names.modelName(selection.provider, selection.model)}`,
                               },
                             ]
                           : []),
@@ -804,8 +815,8 @@ export function EnginesPanel() {
                     />
                     {isAuto && selection ? (
                       <p className="small engines-auto-model">
-                        {selection.model}
-                        {selection.effort ? ` · ${selection.effort}` : ""}
+                        {names.modelName(selection.provider, selection.model)}
+                        {selection.effort ? ` · ${levelLabel(selection.effort)}` : ""}
                       </p>
                     ) : null}
                     {feature === "vision" && visionCapability.data?.warning ? (

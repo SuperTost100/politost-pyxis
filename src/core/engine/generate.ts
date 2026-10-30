@@ -13,7 +13,8 @@ import {
   isModelBenched,
   markSignedOut,
 } from "./bench";
-import { engineIpcError, fallbackReason } from "./errors";
+import { modelName } from "./efforts";
+import { engineIpcError, fallbackReason, suggestedModel } from "./errors";
 import {
   endConversation,
   providerName,
@@ -28,7 +29,8 @@ import { reportUsage, withUsageScope, type UsageScope } from "./usage";
 export type GenerateInput = {
   prompt: string;
   system?: string;
-  selection: Omit<Selection, "cwd" | "access">;
+  /** `chosenFor` marks a selection Pyxis chose itself (see `selectionFor`); the engine never receives it. */
+  selection: Omit<Selection, "cwd" | "access"> & { chosenFor?: string };
   schema?: z.ZodType;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
@@ -61,6 +63,13 @@ export type GenerateOutput = EngineResult & {
 };
 
 let onFallback: ((event: EngineFallback) => void) | undefined;
+
+/**
+ * How many more models a call tries after the subscription refused the one it was on. A plan that refuses one model
+ * often refuses its neighbours too (Cursor's weekly usage covers whole families), so one step is not enough, and an
+ * unbounded walk would keep the student waiting through every model the engine lists.
+ */
+export const MODEL_STEPS = 3;
 
 /** Core tells the window which engine answered instead, so the student knows why the reply looks different. */
 export function setFallbackListener(
@@ -121,7 +130,7 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     : isModelBenched(input.selection.provider, input.selection.model)
       ? usableFallback(input, "model")
       : undefined;
-  if (instead) return answerOn(input, instead);
+  if (instead) return moveOn(input, instead);
   // Where this call began among refusals: one that lands while it runs is newer, and its answer must not undo it.
   const startedAt = engineClock();
   try {
@@ -135,10 +144,16 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
         ? fallbackReason(err, input.selection.provider)
         : undefined;
     // An engine Pyxis chose that hit its usage limit, was signed out or refused the model: the next ready engine, or
-    // the same engine's next model after a refusal, answers once instead. Later automatic calls skip it until its limit
-    // resets, it is signed in again or the refused model's day is over.
+    // the same engine's next model after a refusal, answers instead. Later automatic calls skip it until its limit
+    // resets, it is signed in again or the refused model's day is over. A pinned model is marked too, so Settings can
+    // say the engine is missing it.
     if (reason === "model")
-      benchModel(input.selection.provider, input.selection.model);
+      benchModel(
+        input.selection.provider,
+        input.selection.model,
+        Date.now(),
+        suggestedModel(err),
+      );
     // A refused sign-in is marked even when no engine can answer instead, or a pinned engine would keep reading
     // "Ready" in Settings while every call to it fails.
     if (reason === "signed-out") markSignedOut(input.selection.provider);
@@ -152,18 +167,44 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
           ? (err.limit as { resetAt?: string; retryAfterMs?: number })
           : undefined,
       );
+    return moveOn(input, next, reason);
+  }
+}
+
+/**
+ * Answers on `next` instead of the selected engine, and says so when `reason` is given (an engine skipped because it is
+ * already out says nothing). When the subscription refuses that model too, the task moves to the engine's next model,
+ * up to `MODEL_STEPS` times in all.
+ */
+async function moveOn(
+  input: GenerateInput,
+  next: GenerateInput["selection"],
+  reason?: EngineFallback["reason"],
+  step = 1,
+): Promise<GenerateOutput> {
+  try {
+    const output = await answerOn(input, next);
+    if (!reason) return output;
     const fallback = {
       from: providerName(input.selection.provider),
       // The same engine answering on another model is named with that model.
       to:
         next.provider === input.selection.provider
-          ? `${providerName(next.provider)} (${next.model})`
+          ? `${providerName(next.provider)} (${modelName(next.provider, next.model)})`
           : providerName(next.provider),
       reason,
     };
-    const output = await answerOn(input, next);
     onFallback?.(fallback);
     return { ...output, fallback };
+  } catch (err) {
+    if (
+      step >= MODEL_STEPS ||
+      !(err instanceof IpcError && err.code === "model-not-included")
+    )
+      throw err;
+    const further = usableFallback(input, "model");
+    if (!further) throw err;
+    return moveOn(input, further, reason ?? "model", step + 1);
   }
 }
 
@@ -188,13 +229,15 @@ async function answerOn(
     clearSignOutBefore(selection.provider, startedAt);
     return output;
   } catch (err) {
-    // The engine answering instead can refuse its sign-in too, and Settings must stop calling it ready.
-    if (
-      !input.signal?.aborted &&
-      !isAbort(err) &&
-      fallbackReason(err, selection.provider) === "signed-out"
-    )
-      markSignedOut(selection.provider);
+    // The engine answering instead can refuse its sign-in too, and Settings must stop calling it ready. Its model can
+    // be refused as well, and the next step must not pick it again.
+    const reason =
+      !input.signal?.aborted && !isAbort(err)
+        ? fallbackReason(err, selection.provider)
+        : undefined;
+    if (reason === "signed-out") markSignedOut(selection.provider);
+    if (reason === "model")
+      benchModel(selection.provider, selection.model, Date.now(), suggestedModel(err));
     throw engineIpcError(err, selection.provider);
   }
 }
@@ -216,9 +259,12 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
     input.schema && !input.conversation
       ? `generate:${randomUUID()}`
       : undefined;
+  // `chosenFor` is Pyxis's own bookkeeping, not part of the engine's selection.
+  const { chosenFor, ...selection } = input.selection;
+  void chosenFor;
   try {
     let result = await run({
-      selection: input.selection,
+      selection,
       prompt: input.prompt,
       system: input.system,
       responseSchema,
@@ -238,7 +284,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
         input.schema.safeParse(tryJson(result.text)).error?.message ??
         result.text;
       result = await run({
-        selection: input.selection,
+        selection,
         prompt: `${input.prompt}\n\nThe previous answer failed validation.\n${result.text}\n${issues}\nReturn corrected JSON only.`,
         system: input.system,
         responseSchema,

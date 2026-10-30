@@ -1558,6 +1558,7 @@
     "preparingFailed": "Non sono riuscito a preparare l'esame",
     "cancelledTitle": "Creazione annullata",
     "buildFailed": "Un passaggio si è fermato prima che l’esame fosse pronto. Riprova per continuare dall’ultimo passaggio salvato.",
+    "buildResume": "Riprova per continuare dall’ultimo passaggio salvato.",
     "stepSources": "Leggo le fonti",
     "stepSourcesFailed": "Non sono riuscito a leggere le fonti",
     "stepTopicsFailed": "Non sono riuscito a creare gli argomenti",
@@ -2508,7 +2509,8 @@
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
       "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
       "stream-truncated": "Il motore si è fermato prima di finire la risposta.",
-      "signedOutNamed": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa."
+      "signedOutNamed": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa.",
+      "modelNotIncludedNamed": "Il tuo abbonamento a {{name}} non include il modello che serviva qui. Scegli un altro modello o un altro motore nelle Impostazioni."
     },
     "feature": {
       "default": "Motore predefinito",
@@ -2599,6 +2601,7 @@
     },
     "state": {
       "ready": "Pronto",
+      "limited": "Pronto, con limiti",
       "signedOut": "Serve l'accesso",
       "refused": "Accesso scaduto"
     },
@@ -2616,7 +2619,10 @@
       "modelNotIncluded": "Il tuo abbonamento a {{name}} non include il modello scelto. Scegline un altro nei dettagli del motore.",
       "other": "Prova di {{name}}: {{message}}"
     },
-    "signInTo": "Accedi a {{name}}"
+    "signInTo": "Accedi a {{name}}",
+    "chooseModel": "Scegli un altro modello",
+    "notIncluded_one": "{{models}} non è nel tuo abbonamento",
+    "notIncluded_other": "{{models}} non sono nel tuo abbonamento"
   },
   "graph": {
     "title": "Grafico",

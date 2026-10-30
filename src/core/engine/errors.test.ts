@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FunnelError } from "./funnel";
 import { IpcError } from "../../shared/ipc";
-import { engineIpcError, translateEngineError } from "./errors";
+import { engineIpcError, fallbackReason, translateEngineError } from "./errors";
 
 describe("translateEngineError", () => {
   it("keeps funnel codes as message keys", () => {
@@ -110,6 +110,20 @@ describe("translateEngineError", () => {
       "insufficient_quota",
     ])
       expect(translateEngineError(new Error(text)).code).toBe("quota");
+  });
+
+  it("reads a 429 that names a model the plan leaves out as that model's refusal, while a reported limit still wins", () => {
+    const named = Object.assign(
+      new Error("HTTP 429: Claude Opus 5.5 is not included in your weekly usage. Buy credits or switch to a Grok model."),
+      { code: "cli-failed" },
+    );
+    // The wording is about one model: the engine's other models still answer, so it must not leave the whole engine.
+    expect(translateEngineError(named, "agent").code).toBe("model-not-included");
+    expect(fallbackReason(named, "agent")).toBe("model");
+    // A rate limit CLI Funnel attached to the error is firmer than any wording.
+    const limited = Object.assign(named, { limit: { kind: "rate" } });
+    expect(translateEngineError(limited, "agent").code).toBe("quota");
+    expect(fallbackReason(limited, "agent")).toBe("limit");
   });
 
   it("names a model the subscription does not include", () => {

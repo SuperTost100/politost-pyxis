@@ -4,7 +4,8 @@ import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
 import { configureDisclosure } from "../engine/funnel";
-import { configureSignOuts } from "../engine/bench";
+import { configureSignOuts, setModelRefusalListener } from "../engine/bench";
+import { setModelNamesListener } from "../engine/efforts";
 import { signOutStore } from "../engine/choice";
 import { setFallbackListener } from "../engine/generate";
 import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
@@ -229,6 +230,7 @@ const routes = {
   "engines.choose": ["engines", "choose"],
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
+  "engines.names": ["engines", "names", "bare"],
   "engines.usage": ["engines", "usage"],
   "engines.autoConfigure": ["engines", "autoConfigure"],
   "engines.capability": ["engines", "capability"],
@@ -664,13 +666,22 @@ export function bindEngines(
     broadcast("engine.status", { provider });
     void engines?.signInChanged().catch(() => undefined);
   });
+  // A model the subscription refused leaves the automatic choice, so the tasks that used it move now, a job's retry
+  // starts on the next model, and Settings shows the engine without it.
+  // Names read by a test or a model listing reach the screens at once, not only after the next automatic choice.
+  setModelNamesListener((provider) => broadcast("engine.names", { provider }));
+  // A call can walk through several refused models in a row; one recomputation after the last is enough.
+  let refusals: ReturnType<typeof setTimeout> | undefined;
+  setModelRefusalListener((provider) => {
+    broadcast("engine.status", { provider });
+    clearTimeout(refusals);
+    refusals = setTimeout(refreshAutoEngines, 500);
+  });
   setFallbackListener((event) => {
     broadcast("engine.fallback", event);
     // A call a job made: the finished job tells which engine answered.
     const jobId = currentUsageScope()?.jobId;
     if (jobId) jobRunner?.noteFallback(jobId, event);
-    // A refused model leaves the automatic choice, so the tasks that used it move now and Settings shows the new one.
-    if (event.reason === "model") refreshAutoEngines();
   });
   setUsageRecorder((usage, where) => {
     // Counting is bookkeeping: a write that fails must not fail the answer it counts.
