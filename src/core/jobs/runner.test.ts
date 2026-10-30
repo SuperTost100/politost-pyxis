@@ -598,6 +598,47 @@ describe("job runner", () => {
     ]);
   });
 
+  it("lets a step that ends after its database closed finish quietly, without writing or publishing", async () => {
+    const database = db();
+    const seen: string[] = [];
+    const runner = createRunner(database, (job) => seen.push(job.state));
+    let release!: () => void;
+    runner.register("slow", {
+      jobClass: "local",
+      steps: [{ name: "run", label: "run", run: () => new Promise<void>((resolve) => (release = resolve)) }],
+    });
+    runner.register("failing", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            throw new Error("boom");
+          },
+        },
+      ],
+    });
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const slow = runner.start("slow");
+      runner.start("failing");
+      await until(database, slow, ["running"]);
+      const published = seen.length;
+      // Core shuts down, or a test ends, while both steps are still going.
+      database.close();
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(rejections).toEqual([]);
+      expect(seen).toHaveLength(published);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+
   it("keeps a finished mistake analysis when it is cleared from the list, since its row stops a second analysis", () => {
     const database = db();
     const runner = createRunner(database, () => {});

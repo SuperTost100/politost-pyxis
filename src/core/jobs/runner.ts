@@ -186,7 +186,15 @@ export function createRunner(
     };
   }
 
+  /**
+   * A step still running when core closes the database (shutdown, a workspace swap, a test that ends) settles later.
+   * It then writes, publishes and starts nothing: the job stays running in the closed file, and the next start marks
+   * it interrupted like any other job a quit stopped.
+   */
+  const closed = () => !db.open;
+
   function publish(jobId: string): void {
+    if (closed()) return;
     const view = viewOf(jobId);
     if (view) onUpdate(view);
   }
@@ -281,6 +289,7 @@ export function createRunner(
               },
             }),
           );
+          if (closed()) return;
           if (entry.controller.signal.aborted) {
             db.prepare(
               `UPDATE job_steps SET state = 'pending' WHERE id = ?`,
@@ -295,6 +304,7 @@ export function createRunner(
           entry.jobClass = null;
           queueMicrotask(kick);
         } catch (err) {
+          if (closed()) return;
           if (entry.controller.signal.aborted || isAbort(err)) {
             db.prepare(
               `UPDATE job_steps SET state = 'pending' WHERE id = ?`,
@@ -358,7 +368,7 @@ export function createRunner(
   }
 
   function kick(): void {
-    if (!enabled) return;
+    if (!enabled || closed()) return;
     const queued = db
       .prepare(
         `SELECT id, kind FROM jobs WHERE state = 'queued' ORDER BY created_at, rowid`,
@@ -606,7 +616,7 @@ export function createRunner(
           onUpdate({ ...view });
         },
         finish(succeeded) {
-          if (!tracked.delete(id)) return;
+          if (!tracked.delete(id) || closed()) return;
           if (!succeeded) {
             onUpdate({ ...view, state: "cancelled" });
             return;
