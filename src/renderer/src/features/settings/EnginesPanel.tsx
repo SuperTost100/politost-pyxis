@@ -527,7 +527,7 @@ export function EnginesPanel() {
           kind={row.kind}
           name={row.name}
           model={
-            names.modelsLine(row.id, features.data, row.refusedModels) ||
+            names.modelsLine(row.id, features.data, row.refusedModels, row.allowed) ||
             row.version ||
             row.id
           }

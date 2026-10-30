@@ -210,11 +210,12 @@ export function EnginesStep({
                   <EngineRow
                     kind={row.kind}
                     name={row.name}
-                    model={
-                      row.allowed
-                        ? engineNames.modelsLine(row.id, features.data, row.refusedModels)
-                        : ""
-                    }
+                    model={engineNames.modelsLine(
+                      row.id,
+                      features.data,
+                      row.refusedModels,
+                      row.allowed,
+                    )}
                     status={status.tone}
                     statusText={t(status.label)}
                     use={engineBox(

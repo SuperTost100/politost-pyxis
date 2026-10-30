@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { engineLabel, engineName, modelName } from "./engineNames";
+import { engineLabel, engineModelsLine, engineName, modelName } from "./engineNames";
 import { invoke, onBroadcast } from "./ipc";
 
 /** The names core has read so far. Core answers from memory, so any screen may ask. */
@@ -31,26 +31,20 @@ export function useEngineNames() {
       modelName(names, provider, model),
     label: (provider: string | null | undefined, model: string | null | undefined) =>
       engineLabel(names, provider, model),
-    /**
-     * The line under an engine's name in setup and Settings: the models the plan gives it, then the models its
-     * subscription refused, so the row never reads plain "Ready" over a model that fails.
-     */
+    /** The line under an engine's name in setup and Settings; see `engineModelsLine`. */
     modelsLine: (
       provider: string,
       features: Record<string, { provider: string; model: string }> | undefined,
       refused: readonly string[] = [],
-    ) => {
-      const ids: string[] = [];
-      for (const selection of Object.values(features ?? {}))
-        if (selection.provider === provider && !ids.includes(selection.model))
-          ids.push(selection.model);
-      const refusedNames = refused.map((model) => modelName(names, provider, model));
-      return [
-        ...ids.map((model) => modelName(names, provider, model)),
-        ...(refusedNames.length
-          ? [t("engines.notIncluded", { count: refusedNames.length, models: refusedNames.join(", ") })]
-          : []),
-      ].join(" · ");
-    },
+      allowed = true,
+    ) =>
+      engineModelsLine({
+        names,
+        provider,
+        features,
+        refused,
+        allowed,
+        notIncluded: (count, models) => t("engines.notIncluded", { count, models }),
+      }),
   };
 }

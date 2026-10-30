@@ -37,3 +37,31 @@ export function engineLabel(
     .filter(Boolean)
     .join(" · ");
 }
+
+/**
+ * The line under an engine's name in setup and Settings: the models the plan gives it, then the models its
+ * subscription refused, so the row never reads plain "Ready" over a model that fails. An engine the student left out
+ * has no models in the plan, but its refused models still show, because its status still says "with limits".
+ */
+export function engineModelsLine(input: {
+  names: EngineNames | undefined;
+  provider: string;
+  features: Record<string, { provider: string; model: string }> | undefined;
+  refused?: readonly string[];
+  /** False for an engine the student left out: the plan's models are not shown for it. */
+  allowed?: boolean;
+  notIncluded: (count: number, models: string) => string;
+}): string {
+  const used: string[] = [];
+  if (input.allowed !== false)
+    for (const selection of Object.values(input.features ?? {}))
+      if (selection.provider === input.provider && !used.includes(selection.model))
+        used.push(selection.model);
+  const refused = (input.refused ?? []).map((model) =>
+    modelName(input.names, input.provider, model),
+  );
+  return [
+    ...used.map((model) => modelName(input.names, input.provider, model)),
+    ...(refused.length ? [input.notIncluded(refused.length, refused.join(", "))] : []),
+  ].join(" · ");
+}
