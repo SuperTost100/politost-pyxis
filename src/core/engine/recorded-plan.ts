@@ -7,7 +7,7 @@ function recordedStems(questions: unknown[]): RegExp[] {
   return questions.flatMap((question) => {
     const stem = (question as { stem?: unknown } | null)?.stem;
     if (typeof stem !== "string") return [];
-    const parts = stem.split(/\{\{[^}]*\}\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const parts = stem.trim().split(/\{\{[^}]*\}\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     return [new RegExp(`^${parts.join(".*?")}$`, "s")];
   });
 }

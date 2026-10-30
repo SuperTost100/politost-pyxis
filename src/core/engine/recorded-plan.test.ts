@@ -25,6 +25,15 @@ describe("recorded quiz replies", () => {
     expect(await stems(run, 3, [...first, ...second])).toEqual(["H", "I", "J"]);
   });
 
+  it("matches stored stems the quiz trimmed against recorded stems with spaces around them", async () => {
+    const run = recordedPlanRun(
+      JSON.stringify({ quizQuestions: { questions: "ABCDEF".split("").map((stem) => ({ stem: ` ${stem} ` })) } }),
+    );
+    const first = (await stems(run, 3, [])).map((stem) => stem.trim());
+    expect(first).toEqual(["A", "B", "C"]);
+    expect((await stems(run, 3, first)).map((stem) => stem.trim())).toEqual(["D", "E", "F"]);
+  });
+
   it("skips and repeats nothing when the quiz starts with a book exercise", async () => {
     const recorded = Array.from({ length: 10 }, (_, i) => ({
       kind: "tf",
