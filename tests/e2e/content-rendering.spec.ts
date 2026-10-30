@@ -78,7 +78,10 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       })),
     },
   };
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies) } });
+  const app = await launchPyxis({
+    userData,
+    env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies), PYXIS_E2E_REPLY: "Il punto $P$ è una posizione." },
+  });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -134,7 +137,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     );
     await page.getByRole("button", { name: "Mostra la soluzione" }).click();
     const solution = page.locator("li.passage").filter({ hasText: "Calcola il modulo" });
-    await expect(solution).toContainText("Il modulo è (1.5):");
+    // The book defines no formula 1.5, so the mention reads as a reference, never as the bare number a student takes for the formula.
+    await expect(solution).toContainText("Il modulo è eq. 1.5:");
     expect(await solution.innerText()).not.toContain("{{");
 
     // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact.
@@ -145,7 +149,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       { planId, topicId },
     );
     const body = page.locator(".px-markdown").first();
-    await expect(body).toContainText("Il modulo è (1.5)", { timeout: 30000 });
+    await expect(body).toContainText("Il modulo è eq. 1.5", { timeout: 30000 });
     expect(await body.innerText()).not.toMatch(/\{\{|ref:|\[testo\]/);
     const tex = await body.locator('annotation[encoding="application/x-tex"]').allTextContents();
     expect(tex).toContain("m\\vec{g}\\sin\\theta");
@@ -196,6 +200,19 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       chatId: page.url().split("/").at(-1)!,
     });
     expect(chat.context.body).toBe("Un punto $P$ nello spazio.");
+    // The quote waits in the composer once, drawn as math; the chat's name reads as text, not as TeX.
+    const quote = page.locator(".px-context-excerpt");
+    await expect(quote).toContainText("Un punto");
+    await expect(quote.locator(".katex")).toHaveCount(1);
+    expect((await quote.innerText()).match(/Un punto/g)).toHaveLength(1);
+    await expect(page.locator(".ask-bar-name")).toHaveText("Un punto P nello spazio.");
+    const named = await invoke<Array<{ title: string }>>("chats.list", {});
+    expect(named[0]!.title).toBe("Un punto P nello spazio.");
+    // It goes with the first question: the composer is clear after it is sent.
+    await page.getByRole("textbox", { name: "Messaggio" }).fill("Cos'è un punto?");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".px-msg-user")).toHaveCount(1);
+    await expect(quote).toHaveCount(0);
 
     // A selection that starts inside the drawn formula, past its screen-reader copy, keeps what is drawn of it.
     await page.evaluate(

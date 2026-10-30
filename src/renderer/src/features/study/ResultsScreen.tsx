@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
+import { TypedText } from "../../components/TypedText";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
@@ -31,6 +32,8 @@ export type ResultItem = {
   /** The grade of a partly right answer or of an exercise, next to its word. */
   score?: string;
   answer: string;
+  /** The student wrote the answer (open and fill-in-the-blank), so it shows as written, not as Markdown. */
+  typed?: boolean;
   /** Open answers and exercises: Markdown, the two answers one under the other. */
   long: boolean;
   expected?: string;
@@ -580,8 +583,12 @@ function Answer({ id, item }: { id: string; item: ResultItem }) {
   const { t } = useTranslation();
   const right = item.mark === "correct";
   const showExpected = !right && item.expected !== undefined;
-  const text = (value: string) =>
-    item.long ? (
+  const text = (value: string, written = false) =>
+    written ? (
+      <p className="body">
+        <TypedText>{value}</TypedText>
+      </p>
+    ) : item.long ? (
       <MarkdownView variant="body">{value}</MarkdownView>
     ) : (
       <p className="body">
@@ -600,7 +607,7 @@ function Answer({ id, item }: { id: string; item: ResultItem }) {
             {t("quiz.yourAnswer")}
           </p>
           {item.answer ? (
-            text(item.answer)
+            text(item.answer, item.typed)
           ) : (
             <p className="body px-res-answer-empty">{t("quiz.noAnswer")}</p>
           )}

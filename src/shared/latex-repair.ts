@@ -19,6 +19,19 @@ const BY_LETTER: Record<string, string[]> = {
 // A tab or a line break is real text far more often than a form feed, a backspace or a vertical tab is, so these names are
 // repaired only inside a `$` span: "\tto" and "\ntop" can start a word.
 const GUARDED = new Set(["to", "top", "tag", "tan", "tiny", "ne", "ni", "not", "notin", "nu", "neq", "nolimits", "nmid", "ngtr", "nless", "nleq", "ngeq", "nsim", "ncong", "nexists", "nrightarrow", "nleftarrow", "nparallel", "newline", "nonumber", "normalsize", "nabla"]);
+// LaTeX command names a doubled backslash in front of means the backslash was written twice, not a line break `\\` with a
+// word after it. Every name the control-character repair knows, plus the other commands a model writes in a quiz.
+const DOUBLED_OK = new Set([
+  ...Object.values(BY_LETTER).flatMap((names) => names),
+  ...("alpha gamma delta epsilon zeta eta iota kappa lambda mu xi pi sigma phi chi psi omega Gamma Delta Theta Lambda Xi Pi Sigma Phi Psi Omega " +
+    "cdot cdots ldots dots div pm mp leq geq le ge approx equiv sim propto infty to leftarrow Rightarrow Leftrightarrow Leftarrow leftrightarrow " +
+    "sum prod int oint partial circ degree perp parallel angle cup cap subset subseteq supset in setminus emptyset exists " +
+    "sin cos cot sec csc arcsin arccos arctan sinh cosh log ln exp lim max min sup inf det dim ker gcd deg Pr " +
+    "sqrt dfrac hat dot ddot overline underline overrightarrow widehat widetilde mathrm mathbf mathbb mathcal mathit mathsf operatorname " +
+    "left quad qquad hline end limits displaystyle underbrace overbrace choose over atop").split(" "),
+]);
+// What a model's JSON makes of a line break it wrote as `\n` once the string is read: a backslash and an n.
+const AFTER_N = new Set(BY_LETTER.n);
 const CONTROL: Record<string, string> = { b: "\b", f: "\f", n: "\n", r: "\r", t: "\t", v: "\v" };
 
 /**
@@ -50,12 +63,38 @@ const PATTERNS = Object.entries(BY_LETTER).map(([letter, rest]) => ({
 }));
 
 /**
+ * A model told to write each LaTeX backslash twice in JSON does so again in a structured answer that is already decoded,
+ * so `\\vec{A}` arrives as two backslashes, which KaTeX reads as a line break before "vec". In a formula, two
+ * backslashes in front of a known command name go back to one. A real line break (`\\` then a space, a line end, `[2pt]`
+ * or a single letter) is not touched.
+ */
+function undoubled(text: string): string {
+  if (!text.includes("\\\\")) return text;
+  return text.replace(/(?<!\\)\\\\([A-Za-z]{2,})/g, (match, name: string, offset: number, whole: string) =>
+    DOUBLED_OK.has(name) && insideMath(whole, offset) ? `\\${name}` : match,
+  );
+}
+
+/**
+ * The same instruction asks for line breaks as `\n`, which a decoded structured answer keeps as a backslash and an n:
+ * "…−2).\na) Calcolare". It becomes a real line break, except in front of a LaTeX command that starts with n (`\nabla`,
+ * `\neq`, `\nu`) and when the backslash itself is escaped (`\\n`). Outside a formula the one-letter ones are a line break:
+ * a list of options ends with "\ne)", and "\ne" alone is no command there.
+ */
+function literalBreaks(text: string): string {
+  if (!text.includes("\\n")) return text;
+  return text.replace(/(?<!\\)\\n([A-Za-z]*)/g, (match, tail: string, offset: number, whole: string) =>
+    AFTER_N.has(`n${tail}`) && (insideMath(whole, offset) || tail.length > 1) ? match : `\n${tail}`,
+  );
+}
+
+/**
  * Restores `\beta`, `\frac`, `\nu`, `\right`, `\theta` and `\vec` commands turned into control characters. Real tabs and line breaks stay.
  * `atLineStart` says whether the text begins a line; a chunk that follows inline code does not, so its first tab is not indentation.
  */
 export function repairLatexEscapes(text: string, atLineStart = true): string {
-  if (!/[\b\f\n\r\t\v]/.test(text)) return text;
-  let out = text;
+  let out = undoubled(literalBreaks(text));
+  if (!/[\b\f\n\r\t\v]/.test(out)) return out;
   for (const { letter, pattern } of PATTERNS) {
     out = out.replace(pattern, (match, tail: string, offset: number, whole: string) => {
       const name = `${letter}${tail}`;

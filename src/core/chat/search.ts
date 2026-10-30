@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { plainTitle } from "../../shared/spoken-math";
 import { visibleText } from "./visible";
 
 export type ChatSnippet = { text: string; start: number; end: number };
@@ -135,8 +136,9 @@ export function searchChats(
   for (const chat of chats) {
     // One more than the cap tells the student the list was cut.
     if (hits.length > MAX_HITS) break;
-    const hit = { id: chat.id, title: chat.title, updatedAt: chat.updated_at };
-    if (chat.title && find(chat.title, terms)) {
+    const title = chat.title?.includes("$") ? plainTitle(chat.title, 200) : chat.title;
+    const hit = { id: chat.id, title, updatedAt: chat.updated_at };
+    if (title && find(title, terms)) {
       hits.push({ ...hit, snippet: null });
       continue;
     }

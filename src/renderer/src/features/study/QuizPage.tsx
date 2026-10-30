@@ -911,6 +911,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       mark,
       ...(mark === "partial" ? { score: grade.format(row.score) } : {}),
       answer: answerText(row.id),
+      typed: item?.grade.kind === "open" || item?.grade.kind === "completion",
       long,
       expected: expectedText(row),
       expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
@@ -955,6 +956,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           topic: topicTitle(item.id),
           mark,
           answer: answerText(item.id),
+          typed: item.grade.kind === "open" || item.grade.kind === "completion",
           long: item.grade.kind === "open",
           expectedLabel: t("quiz.expected"),
         };

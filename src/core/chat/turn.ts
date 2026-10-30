@@ -29,6 +29,7 @@ import { commitStaged, savedImages, stageFiles, type PreparedFiles, type Skipped
 import { chatListedSources, deleteHiddenSources, removeUnreferencedBlobs } from "./delete";
 import { latestDocument } from "../sources/documents";
 import { contentLanguage, planLanguage, promptProvenance } from "../engine/prompts";
+import { plainTitle } from "../../shared/spoken-math";
 import { oneLine, profileContext } from "../profile/context";
 import { readProfile } from "../profile/profile";
 import {
@@ -509,9 +510,11 @@ export function seedChat(
     throw new IpcError("plan-missing", "errors.internal");
   const now = Date.now();
   const chatId = uuidv7(now);
+  // The name is read in a list and a header, where a formula's TeX would show as source.
+  const title = plainTitle(input.title);
   const context: ChatContext = {
     kind: input.kind,
-    title: input.title,
+    title,
     body: input.body,
   };
   db.prepare(
@@ -519,7 +522,7 @@ export function seedChat(
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     chatId,
-    input.title.slice(0, 80),
+    title,
     JSON.stringify(input.planId ? { planId: input.planId, sourceIds: input.sourceIds ?? [] } : input.sourceIds ?? []),
     input.subject ?? null,
     JSON.stringify(context),
@@ -1167,9 +1170,11 @@ export function deleteChat(db: Database.Database, workspace: string, chatId: str
 }
 
 export function listChats(db: Database.Database) {
-  return db
+  const rows = db
     .prepare(`SELECT id, title, subject, updated_at FROM chats ORDER BY updated_at DESC`)
     .all() as Array<{ id: string; title: string | null; subject: string | null; updated_at: number }>;
+  // Chats named before titles were written as plain text still hold the TeX of a selection.
+  return rows.map((row) => ({ ...row, title: row.title?.includes("$") ? plainTitle(row.title, 200) : row.title }));
 }
 
 export function heldSources(

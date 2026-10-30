@@ -71,7 +71,8 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
         pairs: [
           ["$\\mathbb{N}$", "Numeri della forma $a+ib$ con $a,b \\in \\mathbb{R}$"],
           ["$\\mathbb{Z}$", "Rapporti $p/q$ con $q \\neq 0$"],
-          ["$\\mathbb{Q}$", "Interi senza il segno"],
+          // A structured answer keeps the doubled backslashes the prompt asks for in JSON; KaTeX would break the line at each.
+          ["$\\\\vec{a}\\\\cdot\\\\vec{b}$", "Interi senza il segno"],
         ],
         passageIds: ["{{passage:0}}"],
         explanation: "Ogni insieme supera i limiti del precedente.",
@@ -130,6 +131,9 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
     const rows = page.locator(".px-quiz-matching label");
     await expect(rows).toHaveCount(3);
     await expect(rows.first().locator(".katex")).not.toHaveCount(0);
+    // The formula reaches KaTeX with single backslashes: with two it broke the line before each command ("vec a", "cdot", ...).
+    const dot = rows.nth(2);
+    await expect(dot.locator('annotation[encoding="application/x-tex"]')).toHaveText("\\vec{a}\\cdot\\vec{b}");
     const first = page.getByRole("combobox", { name: "Abbinamento per N" });
     const menu = page.locator(".ant-select-dropdown:visible");
     const options = menu.locator(".ant-select-item-option");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { repairLatexEscapes, repairModelStrings } from "./latex-repair";
+import { repairLatexEscapes, repairLatexOutsideCode, repairModelStrings } from "./latex-repair";
 
 // In these strings "\v", "\t", "\f", "\b", "\r" and "\n" are the control characters a model's single backslash became.
 describe("repairLatexEscapes", () => {
@@ -42,6 +42,61 @@ describe("repairLatexEscapes", () => {
   it("leaves a correct string alone", () => {
     const text = "$\\frac{1}{2}\\theta$ e \\(x\\)";
     expect(repairLatexEscapes(text)).toBe(text);
+  });
+});
+
+describe("a backslash written twice", () => {
+  // A structured answer is already decoded, so the "\\\\vec" the prompt asks for in JSON stays as two backslashes.
+  it("goes back to one before a command inside a formula, so KaTeX does not break the line there", () => {
+    expect(repairLatexEscapes("$\\\\vec{A}\\\\cdot\\\\vec{B} = |\\\\vec{A}||\\\\vec{B}|\\\\cos\\\\theta$")).toBe(
+      "$\\vec{A}\\cdot\\vec{B} = |\\vec{A}||\\vec{B}|\\cos\\theta$",
+    );
+    expect(repairLatexEscapes("$$\\\\sqrt{a_x^2 + a_y^2}\\\\hat{u}$$")).toBe("$$\\sqrt{a_x^2 + a_y^2}\\hat{u}$$");
+  });
+
+  it("keeps a real line break in a formula, with or without a command after it", () => {
+    for (const text of ["$$a = b \\\\ c = d$$", "$$a = b\\\\\n c = d$$", "$$a\\\\\\vec{b}$$", "$a\\\\x$", "$$a\\\\[2pt] b$$"]) {
+      expect(repairLatexEscapes(text)).toBe(text);
+    }
+  });
+
+  it("leaves two backslashes in prose alone", () => {
+    expect(repairLatexEscapes("C:\\\\cdot\\\\file")).toBe("C:\\\\cdot\\\\file");
+  });
+
+  it("is repaired in every string of a structured answer, matching pairs included", () => {
+    const question = { kind: "matching", left: ["$\\\\vec{a}\\\\times\\\\vec{b}$"], pairs: [["$\\\\hat{u}$", "$\\\\sqrt{a}$"]] };
+    expect(repairModelStrings(question)).toEqual({
+      kind: "matching",
+      left: ["$\\vec{a}\\times\\vec{b}$"],
+      pairs: [["$\\hat{u}$", "$\\sqrt{a}$"]],
+    });
+  });
+});
+
+describe("a line break written as \\n", () => {
+  it("becomes a real line break, so a question's parts are on their own lines", () => {
+    expect(repairLatexEscapes("Dati i vettori (1, 2) e (3, −2).\\na) Calcolare il prodotto.\\nb) Il modulo.")).toBe(
+      "Dati i vettori (1, 2) e (3, −2).\na) Calcolare il prodotto.\nb) Il modulo.",
+    );
+    expect(repairLatexEscapes("Prima.\\nNuova riga e poi \\nuovo punto")).toBe("Prima.\nNuova riga e poi \nuovo punto");
+  });
+
+  it("reads \\ne) and \\nu) at the start of a list item as a line break outside a formula", () => {
+    expect(repairLatexEscapes("d) Il lavoro.\\ne) La forza.\\nu) Altro")).toBe("d) Il lavoro.\ne) La forza.\nu) Altro");
+  });
+
+  it("keeps the LaTeX commands that start with n", () => {
+    const text = "$\\nabla f \\neq 0$, $\\nu$ e $a \\ne b$ e $\\not\\in A$";
+    expect(repairLatexEscapes(text)).toBe(text);
+  });
+
+  it("keeps a matrix row break that is followed by an n", () => {
+    expect(repairLatexEscapes("$$a \\\\n$$")).toBe("$$a \\\\n$$");
+  });
+
+  it("leaves code as written", () => {
+    expect(repairLatexOutsideCode("`print('a\\nb')` e\\nfine")).toBe("`print('a\\nb')` e\nfine");
   });
 });
 

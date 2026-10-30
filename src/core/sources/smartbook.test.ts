@@ -49,6 +49,36 @@ describe("importSmartbook", () => {
     expect(retrieve(db, "vettore").hits).toHaveLength(1);
   });
 
+  it("replaces a {{formula:N}} mention with the formula, in any chapter and in exercises, and keeps one the book lacks", () => {
+    const db = openDatabase(":memory:");
+    importSmartbook(
+      db,
+      pack({
+        "smartbook.json": JSON.stringify({
+          id: "mentions",
+          title: "Mentions",
+          access: "public",
+          chapters: [
+            { id: "c1", number: 1, title: "Vettori", file: "01.md" },
+            { id: "c2", number: 2, title: "Moto", file: "02.md" },
+          ],
+        }),
+        "chapters/01.md":
+          '## p1 | Modulo\nIl modulo si calcola così.\n\n:::formula{id="1.5" label="modulo"}\n$$\n|\\vec{v}| = \\sqrt{v_x^2 + v_y^2}\n$$\n:::\n\n:::formula{id="1.6" label="sistema"}\n$$\n\\begin{cases} x = 1 \\\\ y = 2 \\end{cases}\n$$\n:::\n',
+        "chapters/02.md":
+          "## p1 | Velocità\nCome in {{formula:1.5}} la velocità è un vettore; vedi anche {{formula:1.6}} e {{formula:9.9}}.\n",
+        "esercizi.md":
+          ':::exercise{id="e1" chapter="1"}\nCalcola il modulo con {{formula:1.5}}.\n:::solution\nIl modulo è {{formula:1.5}}.\n:::\n:::\n',
+      }),
+    );
+    const speed = db.prepare("SELECT text FROM passages WHERE text LIKE '%Come in%'").get() as { text: string };
+    expect(speed.text).toContain("Come in $|\\vec{v}| = \\sqrt{v_x^2 + v_y^2}$ la velocità");
+    expect(speed.text).toMatch(/vedi anche \n\$\$\n\\begin\{cases\}[^]*\n\$\$\n e \{\{formula:9\.9\}\}\./);
+    const exercise = db.prepare("SELECT prompt, answer FROM exercises").get() as { prompt: string; answer: string };
+    expect(exercise.prompt).toBe("Calcola il modulo con $|\\vec{v}| = \\sqrt{v_x^2 + v_y^2}$.");
+    expect(exercise.answer).toBe("Il modulo è $|\\vec{v}| = \\sqrt{v_x^2 + v_y^2}$.");
+  });
+
   it("drops markup a book generator leaked into chapters and exercises (#35)", () => {
     const db = openDatabase(":memory:");
     const imported = importSmartbook(

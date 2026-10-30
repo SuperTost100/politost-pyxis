@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayMathLines, normalizeMathDelimiters } from "./math-delimiters";
+import { displayMathLines, normalizeMathDelimiters, typedParts } from "./math-delimiters";
 
 describe("normalizeMathDelimiters and control characters", () => {
   it("restores LaTeX commands in prose but leaves code as written", () => {
@@ -128,5 +128,28 @@ describe("bold markers inside math", () => {
       "costa \\$5 e **forte** \\$6",
     ])
       expect(normalizeMathDelimiters(same)).toBe(same);
+  });
+});
+
+describe("typedParts", () => {
+  it("keeps what a student typed as it is, so asterisks are not emphasis", () => {
+    expect(typedParts("a.b = 1*3 + 2*4 = 11")).toEqual([{ math: false, text: "a.b = 1*3 + 2*4 = 11" }]);
+    expect(typedParts("_x_ e `y` e # z\nriga due")).toEqual([{ math: false, text: "_x_ e `y` e # z\nriga due" }]);
+  });
+
+  it("marks the formulas their math field wrote and leaves the text around them untouched", () => {
+    expect(typedParts("vale $\\vec{a}\\cdot\\vec{b}$ = 11 e 2*3")).toEqual([
+      { math: false, text: "vale " },
+      { math: true, text: "$\\vec{a}\\cdot\\vec{b}$" },
+      { math: false, text: " = 11 e 2*3" },
+    ]);
+  });
+
+  it("does not take two prices for a formula", () => {
+    expect(typedParts("costa $5 o $6")).toEqual([{ math: false, text: "costa $5 o $6" }]);
+  });
+
+  it("gives back no pieces for no text", () => {
+    expect(typedParts("")).toEqual([]);
   });
 });

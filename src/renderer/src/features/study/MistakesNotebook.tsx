@@ -10,6 +10,7 @@ import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { openSourceViewer } from "../../components/SourceViewer";
+import { TypedText } from "../../components/TypedText";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
@@ -185,8 +186,10 @@ export function MistakesNotebook() {
                   })
                 : t("quiz.yourAnswer")}
             </p>
-            {long ? (
-              <MarkdownView variant="body">{answer}</MarkdownView>
+            {long || entry.kind === "completion" ? (
+              <p className="body">
+                <TypedText>{answer}</TypedText>
+              </p>
             ) : (
               <p className="body">
                 <InlineMarkdown>{answer}</InlineMarkdown>

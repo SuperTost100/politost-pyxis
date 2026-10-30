@@ -76,13 +76,17 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
   const config = JSON.parse(strFromU8(entries.read(configKey)!)) as SmartbookConfig;
   if (config.access === "licensed") throw new Error("licensed-smartbook");
 
-  const paragraphs: ParsedSmartbook["paragraphs"] = [];
-  for (const chapter of config.chapters) {
+  const chapters = config.chapters.map((chapter) => {
     const raw = entries.read(`${prefix}chapters/${chapter.file}`);
     if (!raw) throw new Error("chapter-missing");
-    const parsed = parseChapterMarkdown(readText(raw), chapter.number);
+    return { chapter, parsed: parseChapterMarkdown(readText(raw), chapter.number) };
+  });
+  // A mention such as {{formula:1.5}} can sit in any chapter or exercise, so the formulas are indexed across the book.
+  const formulas = new Map(chapters.flatMap(({ parsed }) => parsed.formulas.map((formula) => [formula.id, formula.latex] as const)));
+  const paragraphs: ParsedSmartbook["paragraphs"] = [];
+  for (const { chapter, parsed } of chapters) {
     for (const paragraph of parsed.paragraphs) {
-      const text = withFormulas(paragraph.content, parsed.formulas);
+      const text = formulaMentions(withFormulas(paragraph.content, parsed.formulas), formulas);
       if (text)
         for (const chunk of text.length > 2800
           ? chunkText(text)
@@ -104,8 +108,8 @@ export function parseSmartbook(bytes: Uint8Array): ParsedSmartbook {
     const kind = name === "esami.md" ? "esame" : "esercizio";
     for (const exercise of parseExercises(readText(raw), kind)) {
       exercises.push({
-        question: exercise.question,
-        solution: exercise.solution ?? null,
+        question: formulaMentions(exercise.question, formulas),
+        solution: exercise.solution == null ? null : formulaMentions(exercise.solution, formulas),
         chapter: exercise.chapter ?? null,
         id: exercise.id,
         kind,
@@ -330,13 +334,33 @@ function insertBookPassages(
   return parsed.paragraphs.length;
 }
 
-function displayLatex(latex: string): string {
+function formulaBody(latex: string): string {
   let body = latex.trim();
   if (body.startsWith("$$") && body.endsWith("$$"))
     body = body.slice(2, -2).trim();
   else if (body.startsWith("\\[") && body.endsWith("\\]"))
     body = body.slice(2, -2).trim();
-  return `\n$$\n${body}\n$$\n`;
+  return body;
+}
+
+function displayLatex(latex: string): string {
+  return `\n$$\n${formulaBody(latex)}\n$$\n`;
+}
+
+/**
+ * `{{formula:1.5}}` in running text points at a formula the book numbers. The reader the app gives has no hover to show it,
+ * so the mention becomes the formula itself: inline when it fits on a line, a display block for a multi-line one or an environment. A number the
+ * book has no formula for stays as it is, and the renderer reads it as a reference.
+ */
+function formulaMentions(text: string, formulas: Map<string, string>): string {
+  if (!text.includes("{{formula:")) return text;
+  return text.replace(/\{\{formula:([\d.]+)\}\}/g, (mention, id: string) => {
+    const latex = formulas.get(id);
+    if (latex === undefined) return mention;
+    const body = formulaBody(latex);
+    if (body === "") return mention;
+    return /[\n$]|\\begin|\\\\/.test(body) ? displayLatex(latex) : `$${body}$`;
+  });
 }
 
 function withFormulas(

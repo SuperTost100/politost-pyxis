@@ -3,8 +3,8 @@ import { topicTitle } from "./book-text";
 import { resolveBookRefs } from "./math-delimiters";
 
 describe("resolveBookRefs", () => {
-  it("writes a formula reference as the number the book prints", () => {
-    expect(resolveBookRefs("Il modulo è {{formula:1.5}}: |v|")).toBe("Il modulo è (1.5): |v|");
+  it("writes a formula reference the book has no formula for as a reference a student can read, not a bare number", () => {
+    expect(resolveBookRefs("Il modulo è {{formula:1.5}}: |v|")).toBe("Il modulo è eq. 1.5: |v|");
   });
 
   it("keeps the text of a reference link and drops the link", () => {
