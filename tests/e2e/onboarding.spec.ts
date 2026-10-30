@@ -354,7 +354,7 @@ esac
     await expect.poll(choice).toEqual({ allowed: null });
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
