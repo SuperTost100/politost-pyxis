@@ -43,6 +43,17 @@ export type SourceDetails = {
 };
 
 /**
+ * The "sections" of one document, as the Library list and the details panel both say it: the distinct section paths of
+ * its passages, or, for a document whose passages have none, the pages it was read from.
+ */
+export function sectionCount(db: Database.Database, documentId: string): number {
+  const row = db
+    .prepare(`SELECT COUNT(DISTINCT section_path) AS n FROM passages WHERE document_id = ? AND section_path IS NOT NULL`)
+    .get(documentId) as { n: number };
+  return row.n > 0 ? row.n : (pageReads(db, documentId, 0)?.count ?? 0);
+}
+
+/**
  * What the source details panel shows, read from what is stored: passages and their page locators, the pages OCR added,
  * the links from lessons and quizzes to passages, and the exams and topics that use the source. Nothing is estimated;
  * what cannot be read for a source is left out. Null for a missing or removed source.
@@ -124,7 +135,7 @@ export function sourceDetails(db: Database.Database, sourceId: string): SourceDe
     : pageReads(db, source.documentId, source.documentAt ?? 0);
   return {
     addedAt: source.addedAt,
-    sections: sections.length,
+    sections: sectionCount(db, source.documentId),
     ...(pages ? { pages } : {}),
     citations: bySection.reduce((sum, row) => sum + row.count, 0),
     bySection,
