@@ -182,9 +182,19 @@ async function answerOn(
   selection: GenerateInput["selection"],
 ): Promise<GenerateOutput> {
   input.onEngine?.(selection);
+  const startedAt = engineClock();
   try {
-    return await generateOnce({ ...input, selection });
+    const output = await generateOnce({ ...input, selection });
+    clearSignOutBefore(selection.provider, startedAt);
+    return output;
   } catch (err) {
+    // The engine answering instead can refuse its sign-in too, and Settings must stop calling it ready.
+    if (
+      !input.signal?.aborted &&
+      !isAbort(err) &&
+      fallbackReason(err, selection.provider) === "signed-out"
+    )
+      markSignedOut(selection.provider);
     throw engineIpcError(err, selection.provider);
   }
 }

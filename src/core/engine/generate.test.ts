@@ -9,6 +9,7 @@ import {
   DEFAULT_LIMIT_MS,
   isBenched,
   isModelBenched,
+  isSignedOut,
   MODEL_REFUSED_MS,
 } from "./bench";
 import { generate, setFallbackListener } from "./generate";
@@ -461,6 +462,24 @@ describe("switching engines on a usage limit or sign-out", () => {
       },
     });
     expect(output.fallback?.reason).toBe("signed-out");
+    db.close();
+  });
+
+  it("marks the engine it moved to as signed out when that one refuses the sign-in too", async () => {
+    const db = automaticChat();
+    const out = new FunnelError("Please run /login", "not-logged-in");
+    await expect(
+      generate({
+        selection: selectionFor(db, "chat"),
+        prompt: "hi",
+        run: async () => {
+          throw out;
+        },
+      }),
+    ).rejects.toMatchObject({ messageKey: "engines.errors.not-logged-in" });
+    expect(isSignedOut("claude")).toBe(true);
+    // Settings would otherwise keep showing it as ready while every call to it fails.
+    expect(isSignedOut("codex")).toBe(true);
     db.close();
   });
 
