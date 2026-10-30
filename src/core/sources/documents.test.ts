@@ -240,6 +240,29 @@ describe("documents that are partly or wholly scanned", () => {
     expect(listSources(db)[0]?.status).toBe("needs-ocr");
   });
 
+  it("lists the sections of the current version only, not of every saved version", () => {
+    const dir = workspace("pyxis-section-count-");
+    const db = openDatabase(":memory:");
+    const stored = storeExtracted(db, dir, {
+      title: "Dispensa", kind: "text", mime: "text/plain", ext: ".txt",
+      bytes: new Uint8Array([1]),
+      extracted: extractPlain(
+        [
+          "Primo paragrafo sul calore e sul lavoro, abbastanza lungo.",
+          "Secondo paragrafo sull energia interna del sistema.",
+          "Terzo paragrafo sull entropia e sul secondo principio.",
+        ].join("\n\n"),
+        false,
+      ),
+    });
+    expect(listSources(db)[0]?.sections).toBe(3);
+    addDocumentVersion(db, dir, stored.sourceId, {
+      title: "Dispensa", mime: "text/plain", ext: ".txt", bytes: new Uint8Array([2]),
+      extracted: extractPlain("Una versione più breve, con un solo paragrafo.", false),
+    });
+    expect(listSources(db)[0]?.sections).toBe(1);
+  });
+
   it("refuses a replacement with no text and keeps the version in use", () => {
     const dir = workspace("pyxis-scan-replace-");
     const db = openDatabase(":memory:");

@@ -360,7 +360,8 @@ export function listSources(db: Database.Database) {
   return db
     .prepare(
       `SELECT id, title, kind, status, blob_sha AS blobSha, origin_url AS originUrl, fetched_at AS fetchedAt,
-         (SELECT count(*) FROM passages p WHERE p.source_id = sources.id) AS sections,
+         (SELECT count(*) FROM passages p WHERE p.source_id = sources.id
+           AND p.document_id = ${latestDocument("sources.id")}) AS sections,
          (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount
        FROM sources
        WHERE status != 'removed' AND library = 1

@@ -129,6 +129,9 @@ export function pyxisTheme(
         primaryShadow: "none",
         defaultShadow: "none",
         dangerShadow: "none",
+        // The solid danger fill is the light red in the dark theme, where white text fails contrast; onInk is the
+        // text colour that sits on a bright fill in each theme.
+        dangerColor: c.onInk,
         paddingInline: 20,
         paddingInlineLG: 32,
         defaultBorderColor: c.borderControl,

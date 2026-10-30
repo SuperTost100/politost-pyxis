@@ -552,7 +552,7 @@ export function ExamSettingsPage() {
             <Button shape="round" disabled={busy} onClick={() => setDeleteOpen(false)}>
               {t("wizard.cancel")}
             </Button>
-            <Button className="px-delete-confirm" shape="round" type="primary" danger loading={busy} onClick={remove}>
+            <Button shape="round" type="primary" danger loading={busy} onClick={remove}>
               {t("plans.delete")}
             </Button>
           </div>
