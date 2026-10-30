@@ -354,6 +354,33 @@ describe("gap insight (PRO-02, 4.7)", () => {
     expect(sent.mistakes.map((mistake) => mistake.question)).toEqual(["Tried one?", "Tried two?"]);
   });
 
+  it("links the answers the model read to the gap it opens, even when blank ones come first", async () => {
+    const db = fixture();
+    const { runner, jobs, runJob } = fakeRunner(db);
+    registerGapInsightJobs(
+      db,
+      runner,
+      answering(
+        { misconception: "Treats velocity as if it had no direction.", severity: "minor" },
+        { misconception: "Confuses displacement with distance travelled.", severity: "minor" },
+      ),
+      embedding(),
+    );
+    enqueueGapInsights(db, runner, "att");
+    await runJob(jobs()[0]!);
+    const blanks = Array.from({ length: 8 }, (_, n) => ({ id: `b${n}`, stem: `Blank ${n}?`, pick: "" }));
+    addReview(db, "late", NOW + 4000, [
+      ...blanks,
+      { id: "t1", stem: "Tried one?", pick: "0" },
+      { id: "t2", stem: "Tried two?", pick: "0" },
+    ]);
+    enqueueGapInsights(db, runner, "late");
+    await runJob(jobs()[1]!);
+    const opened = openGapsOf(db).find((gap) => gap.misconception === "Confuses displacement with distance travelled.")!;
+    const ids = (db.prepare("SELECT question_id FROM gap_answers WHERE gap_id = ? AND attempt_id = 'late'").pluck().all(opened.id) as string[]).sort();
+    expect(ids).toEqual(expect.arrayContaining(["t1", "t2"]));
+  });
+
   it("analyses a second qualifying attempt on the same gap and merges a close misconception into it", async () => {
     const db = fixture();
     const { runner, jobs, runJob, stored } = fakeRunner(db);

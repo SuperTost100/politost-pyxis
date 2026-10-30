@@ -524,7 +524,7 @@ export function startReview(
       attemptId = startAttempt(db, planId, itemId, now + 1).attemptId;
     }
     const sessionId = uuidv7(now + 2);
-    const session: Session = { cardIds, attemptId, drills, ...(fromMistakes ? { fromAttemptId: options.fromAttemptId } : {}) };
+    const session: Session = { cardIds, attemptId, drills, ...(options.fromAttemptId ? { fromAttemptId: options.fromAttemptId } : {}) };
     db.prepare(
       `INSERT INTO items (id, plan_id, kind, body_json, grounding, created_at)
        VALUES (?, ?, 'review_session', ?, 'sources', ?)`,

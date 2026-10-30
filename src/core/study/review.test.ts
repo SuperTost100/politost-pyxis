@@ -290,7 +290,8 @@ describe("a review of one quiz's mistakes", () => {
     const attemptId = mixedQuiz(fx, topics[0]!, ["m-tf", "m-fill", "m-pairs"]);
     flagTarget(db, "exercise", "m-mcq", "");
     const plain = startReview(db, planId, { fromAttemptId: attemptId });
-    expect(plain.fromAttemptId).toBeUndefined();
+    // The request is remembered, so asking again resumes this review.
+    expect(plain.fromAttemptId).toBe(attemptId);
     expect(storedQuestions(db, plain.attemptId).some((question) => question.id === "m-mcq")).toBe(false);
   });
 
@@ -320,6 +321,15 @@ describe("a review of one quiz's mistakes", () => {
     const session = startReview(db, planId, { fromAttemptId: "sa" });
     const [first] = storedQuestions(db, session.attemptId);
     expect([first?.id, first?.answer.kind]).toEqual(["s1", "open"]);
+  });
+
+  it("resumes a review built for an attempt with nothing missed, when the same attempt asks again", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    openGap(fx, topics[2]!);
+    const attemptId = mixedQuiz(fx, topics[0]!, ["m-mcq", "m-tf", "m-fill", "m-pairs"]);
+    const first = startReview(db, planId, { fromAttemptId: attemptId });
+    expect(startReview(db, planId, { fromAttemptId: attemptId }).sessionId).toBe(first.sessionId);
   });
 
   it("replaces an unfinished review of something else, and resumes its own", () => {

@@ -63,7 +63,9 @@ export function verdict(score: number): "correct" | "partial" | "wrong" {
  * question reads like an exam grade.
  */
 export function questionPoints(score: number, locale: string): string {
-  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(score);
+  // A score under 1 is a partial credit: rounding 0.95 up to "1" would sit beside a "partly correct" mark.
+  const shown = score < 1 ? Math.min(score, 0.9) : score;
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(shown);
 }
 
 /**

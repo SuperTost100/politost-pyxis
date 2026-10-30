@@ -421,7 +421,8 @@ export function registerGapInsightJobs(
             }
             if (next.status === "unchecked") status = "unchecked";
           }
-          const questionIds = linkedWrongs.slice(0, 8).map((wrong) => wrong.id);
+          // The answers the model read come first, so the cap never leaves them on the previous gap behind blank ones.
+          const questionIds = [...wrongs, ...linkedWrongs.filter((wrong) => wrong.dontKnow)].slice(0, 8).map((wrong) => wrong.id);
           const landed = db.transaction(() => {
             const open = openOn(db, params.planId, topicId);
             if (open.length === 0) return undefined;
