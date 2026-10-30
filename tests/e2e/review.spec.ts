@@ -184,6 +184,24 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     // Every review question comes from the frontier topic; none is credited to the other.
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((row) => row.topic_id === plan.topics[0]!.id)).toBe(true);
+
+    // "Review mistakes" on a finished test starts from that test's wrong answers, not from a general review.
+    const diagnostic = await invoke<{ attemptId: string; questions: Array<{ stem: string }> }>("study.diagnosticStart", {
+      planId,
+    });
+    await invoke("study.quizSubmit", { attemptId: diagnostic.attemptId, picks: {} });
+    await goto(`/plans/${planId}/review?from=${diagnostic.attemptId}`);
+    await expect(page.getByText("Riparti dalle domande che hai sbagliato nel quiz.")).toBeVisible();
+    await page.getByRole("button", { name: "Inizia il ripasso" }).click();
+    await expect(page).toHaveURL(/\/review\/questions\?attempt=/);
+    const mistakes = await invoke<{ fromAttemptId?: string; questions: Array<{ stem: string }> }>(
+      "study.reviewSession",
+      { planId },
+    );
+    expect(mistakes.fromAttemptId).toBe(diagnostic.attemptId);
+    expect(mistakes.questions.map((question) => question.stem)).toEqual(
+      diagnostic.questions.map((question) => question.stem),
+    );
   } finally {
     await app.close();
     removeTestFolder(userData);

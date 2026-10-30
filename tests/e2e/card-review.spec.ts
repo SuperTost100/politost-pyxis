@@ -105,6 +105,8 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await expect(front).toHaveText("Unità della forza?");
     await page.getByRole("button", { name: "Undo" }).click();
     await expect(front).toHaveText("Seconda legge di Newton?");
+    // The Undo button can keep focus while the bar is open, and the page's keys ignore a button as their target.
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
 
     // D removes a card Pyxis wrote with Undo at hand.

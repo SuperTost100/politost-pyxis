@@ -577,7 +577,7 @@ test("open answer: checked right away, the check can be cancelled and the answer
     await page.getByRole("button", { name: "Verifica", exact: true }).click();
     const feedback = page.locator(".px-quiz-feedback");
     await expect(feedback).toContainText("Parzialmente corretto", { timeout: 15000 });
-    await expect(feedback).toContainText("18/30");
+    await expect(feedback).toContainText("0,6 su 1");
     await expect(feedback).toContainText("Risposta modello");
     await expect(answer).toBeDisabled();
     await axe(page);

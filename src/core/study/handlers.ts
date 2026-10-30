@@ -318,8 +318,8 @@ export function studyHandlers(
       flagTarget(db, input.targetKind, input.targetId, input.reason ?? "");
       return { ok: true as const };
     },
-    review(input: { planId: string; count?: number }) {
-      return startReview(db, input.planId, { count: input.count, runner });
+    review(input: { planId: string; count?: number; fromAttemptId?: string }) {
+      return startReview(db, input.planId, { count: input.count, runner, fromAttemptId: input.fromAttemptId });
     },
     reviewSession(input: { planId: string }) {
       return readReview(db, input.planId);

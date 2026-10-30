@@ -264,14 +264,14 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     ]);
     const entry = (text: string) =>
       page.getByRole("listitem").filter({ hasText: text });
-    // The answer given and the right one; a partial answer shows its score; math is rendered.
+    // The answer given and the right one; a partial answer shows its points out of one; math is rendered.
     await expect(entry("Che cosa misura il newton?")).toContainText(
       "Your answerIl tempo",
     );
     await expect(entry("Che cosa misura il newton?")).toContainText(
       "Correct answerLa forza",
     );
-    await expect(entry("legge oraria")).toContainText("Your answer · 12/30");
+    await expect(entry("legge oraria")).toContainText("Your answer · 0.4 of 1");
     await expect(entry("legge oraria").locator(".katex").first()).toBeVisible();
     await expect(entry("Il numero atomico")).toContainText("Your answerTrue");
     await expect(entry("Il numero atomico")).toContainText(

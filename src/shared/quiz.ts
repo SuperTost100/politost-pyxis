@@ -15,3 +15,14 @@ export function quizMinutes(kinds: string[]): number {
 export function checkRef(attemptId: string, questionId: string): string {
   return `${attemptId}/${questionId}`;
 }
+
+/**
+ * A model-graded answer at or above this share of the points counts as fully right. A grader that calls an answer
+ * "substantially correct and complete" returns 0.95, and every screen treats a score under 1 as a mistake (the verdict,
+ * the "to review" list, gaps, the notebook), so the score is rounded up where it is written.
+ */
+export const FULL_CREDIT_AT = 0.9;
+
+export function fullCredit(score: number): number {
+  return score >= FULL_CREDIT_AT ? 1 : score;
+}
