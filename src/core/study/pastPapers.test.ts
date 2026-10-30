@@ -476,7 +476,7 @@ describe("simulations that follow past papers", () => {
   }
 
   it("bumps the question prompt and tells it about slots and examples", () => {
-    expect(loadTemplate("simulation.questions").version).toBe("2");
+    expect(loadTemplate("simulation.questions").version).toBe("3");
     expect(loadTemplate("simulation.questions").body).toContain("`slots`");
     expect(loadTemplate("paper.read").version).toBe("1");
   });
@@ -504,7 +504,7 @@ describe("simulations that follow past papers", () => {
       prompt_version: string;
     };
     expect(JSON.parse(item.body_json)).toMatchObject({ styledOn: 1 });
-    expect(item.prompt_version).toBe("2");
+    expect(item.prompt_version).toBe("3");
     db.close();
   });
 
