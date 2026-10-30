@@ -18,11 +18,17 @@ const vendors: Record<EngineProvider, string> = {
 /** An engine that is ready and whose notice has not been read yet. */
 export type NoticeEngine = { id: string; name: string; acknowledged: boolean };
 
+/** Ready engines the student lets Pyxis use and has not confirmed the notice for. One left out never needs it. */
 export function unacknowledged<
-  T extends NoticeEngine & { installed: boolean; loggedIn: boolean },
+  T extends NoticeEngine & {
+    installed: boolean;
+    loggedIn: boolean;
+    allowed?: boolean;
+  },
 >(rows: readonly T[] | undefined): T[] {
   return (rows ?? []).filter(
-    (row) => row.installed && row.loggedIn && !row.acknowledged,
+    (row) =>
+      row.installed && row.loggedIn && row.allowed !== false && !row.acknowledged,
   );
 }
 

@@ -368,7 +368,6 @@ export function ProviderSetup({
               ) : (
                 <div className="px-setup-actions">
                   <Button
-                    type="primary"
                     shape="round"
                     onClick={() => void install.run()}
                   >
@@ -396,7 +395,6 @@ export function ProviderSetup({
               </ol>
               <div className="px-setup-actions">
                 <Button
-                  type="primary"
                   shape="round"
                   onClick={() => void openAntigravity()}
                 >
@@ -415,7 +413,6 @@ export function ProviderSetup({
               <p className="small">{t("setup.signIn.body", { account })}</p>
               <div className="px-setup-actions">
                 <Button
-                  type="primary"
                   shape="round"
                   loading={signIn.waiting}
                   onClick={() => void signIn.start()}

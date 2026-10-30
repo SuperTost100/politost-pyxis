@@ -429,6 +429,8 @@ const LessonOutput = z.object({
   fallback: z.boolean().optional(),
   /** Why the lesson fell back to the book text: an `engines.errors.*` message key. */
   fallbackReason: z.string().startsWith("engines.errors.").optional(),
+  /** The engine that failed, so the page can name it and offer its sign-in. */
+  fallbackProvider: z.string().optional(),
   /** The lesson row its answers belong to. */
   itemId: z.string().optional(),
   wording: z.enum(["simple", "balanced", "technical"]).optional(),
@@ -478,13 +480,18 @@ export const requests = {
         name: z.string(),
         kind: z.enum(["cli", "api"]),
         installed: z.boolean(),
+        /** Signed in, and no call since was refused. */
         loggedIn: z.boolean(),
+        /** The CLI says it is signed in, but the provider refused a call: the sign-in expired. */
+        refused: z.boolean(),
         disabled: z.boolean(),
         version: z.string(),
         path: z.string(),
         withinTestedRange: z.boolean(),
         /** The student has seen what this provider receives. Pyxis sends it nothing until then. */
         acknowledged: z.boolean(),
+        /** The student lets Pyxis use this engine (always true in automatic mode). */
+        allowed: z.boolean(),
         capabilities: z.object({
           effort: z.boolean(),
           fast: z.boolean(),
@@ -509,6 +516,21 @@ export const requests = {
   "engines.acknowledge": {
     input: z.object({
       providers: z.array(z.enum(engineProviders)).min(1).max(engineProviders.length),
+    }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  /** The engines the student lets Pyxis use. Null is automatic: every engine that is ready, now or later. */
+  "engines.choice": {
+    input: z.object({}),
+    output: z.object({ allowed: z.array(z.string()).nullable() }),
+  },
+  "engines.choose": {
+    input: z.object({
+      allowed: z
+        .array(z.enum(engineProviders))
+        .min(1)
+        .max(engineProviders.length)
+        .nullable(),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -2792,6 +2814,8 @@ const broadcasts = {
   "plans.evidence": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
+  // A provider refused an engine's sign-in, or the engine is signed in again: its row in Settings changes.
+  "engine.status": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
   // The automatic engine hit a usage limit or was signed out, and another engine answered.

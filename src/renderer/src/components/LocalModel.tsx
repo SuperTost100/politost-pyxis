@@ -108,6 +108,8 @@ export function LocalModelCard({
   place: "settings" | "onboarding";
 }) {
   const { t, i18n } = useTranslation();
+  // In setup the step's own Continue is the one primary button, so this card's actions are secondary there.
+  const primaryType = place === "onboarding" ? "default" : "primary";
   const client = useQueryClient();
   const headingId = useId();
   const local = useLocalModel();
@@ -308,7 +310,7 @@ export function LocalModelCard({
             </p>
             <div className="px-local-actions">
               <Button
-                type="primary"
+                type={primaryType}
                 shape="round"
                 loading={pull.isPending}
                 onClick={() => pull.mutate()}
@@ -325,7 +327,7 @@ export function LocalModelCard({
           <>
             <p className="small">{t("engines.local.ollamaMissing")}</p>
             <div className="px-local-actions">
-              <Button type="primary" shape="round" onClick={openOllama}>
+              <Button type={primaryType} shape="round" onClick={openOllama}>
                 {t("engines.local.getOllama")}
               </Button>
               <Button

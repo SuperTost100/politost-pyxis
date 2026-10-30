@@ -59,6 +59,26 @@ describe("jobs list groups", () => {
     expect(general).toMatchObject({ kind: "retry", messageKey: "jobs.failedGeneral" });
   });
 
+  it("keeps sign-outs of different engines apart, each with its engine", () => {
+    const groups = groupJobs(
+      [
+        job("a", { error: "not-logged-in [codex]: 401" }),
+        job("b", { error: "not-logged-in [agent]: 401" }),
+        job("c", { error: "not-logged-in [codex]: 401" }),
+      ],
+      [],
+    );
+    expect(
+      groups.problems.map((problem) => [
+        problem.engine,
+        problem.jobs.map((item) => item.id),
+      ]),
+    ).toEqual([
+      ["codex", ["a", "c"]],
+      ["agent", ["b"]],
+    ]);
+  });
+
   it("keeps different reasons apart, even for the same kind of job", () => {
     const groups = groupJobs(
       [job("a", { error: "not-logged-in" }), job("b", { error: "quota" })],

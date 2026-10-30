@@ -21,6 +21,7 @@ import {
 } from "@shared/smart-text";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
+import { errorProvider, useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { createAnswerQueue } from "./answerQueue";
@@ -151,6 +152,15 @@ export function LessonPage() {
   const failedToOpen = lesson.isError && !cancelled && !lesson.data?.fallback;
   const writing = lesson.isFetching;
   const data = lesson.data;
+  const describeEngineError = useEngineError();
+  // The engine whose failure left the lesson on the book text, or kept it from opening, named with its sign-in.
+  const fallbackError = data?.fallbackReason
+    ? describeEngineError(data.fallbackReason, data.fallbackProvider)
+    : undefined;
+  const openError =
+    failedToOpen && lesson.error && typeof lesson.error === "object" && "messageKey" in lesson.error
+      ? describeEngineError(String(lesson.error.messageKey), errorProvider(lesson.error))
+      : undefined;
   const fromLive = showsLiveText({ writing, live, saved: data?.markdown, cancelled });
   // While the lesson is written, the reader gets each section once it is finished and a status for the one in progress,
   // so nothing they are reading changes under them. Text that is stopped or saved shows whole.
@@ -342,10 +352,15 @@ export function LessonPage() {
         <div className="px-reader-note">
           <ErrorState
             action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
-            secondary={{ label: t("engines.title"), onClick: () => navigate("/settings/engines") }}
+            secondary={
+              openError?.action ?? {
+                label: t("engines.title"),
+                onClick: () => navigate("/settings/engines"),
+              }
+            }
             details={errorDetails(lesson.error)}
           >
-            {t("lesson.failed")}
+            {openError?.action ? openError.text : t("lesson.failed")}
           </ErrorState>
         </div>
       ) : lesson.isError || data?.fallback ? (
@@ -354,14 +369,16 @@ export function LessonPage() {
             tone={cancelled ? "info" : "warning"}
             action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
             secondary={
-              (lesson.isError && !cancelled) || data?.fallbackReason
+              // A refused sign-in names its engine and opens its sign-in; any other engine failure opens the engines page.
+              fallbackError?.action ??
+              ((lesson.isError && !cancelled) || data?.fallbackReason
                 ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }
-                : undefined
+                : undefined)
             }
           >
             {data?.fallback
-              ? data.fallbackReason
-                ? `${t("lesson.sourceFallback")} ${t(data.fallbackReason)}`
+              ? fallbackError
+                ? `${t("lesson.sourceFallback")} ${fallbackError.text}`
                 : t("lesson.sourceFallback")
               : t(cancelled ? "lesson.cancelled" : "lesson.failed")}
           </Notice>

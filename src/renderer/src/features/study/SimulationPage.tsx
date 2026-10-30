@@ -11,8 +11,10 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { ExportButton } from "../share/ExportButton";
+import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -28,6 +30,7 @@ const DRAFT_DELAY_MS = 500;
 export function SimulationPage() {
   const { t, i18n } = useTranslation();
   const grade = useGradeScale();
+  const describeEngineError = useEngineError();
   const { planId = "", attemptId } = useParams();
   useActiveTime(planId, null);
   const navigate = useNavigate();
@@ -265,6 +268,11 @@ export function SimulationPage() {
   const gradingStopped =
     Boolean(run && !run.submitted && run.grading) &&
     ["failed", "cancelled", "interrupted"].includes(run?.grading?.state ?? "");
+  // Grading that stopped on a refused sign-in names the engine and offers its sign-in.
+  const gradingError = run?.grading?.error;
+  const gradingFailure = gradingError
+    ? describeEngineError(jobErrorKey(gradingError), jobErrorEngine(gradingError))
+    : undefined;
   const gradedCount = run?.submitted
     ? run.questions.length
     : Math.round((run?.grading?.progress ?? 0) * (run?.questions.length ?? 0));
@@ -552,8 +560,14 @@ export function SimulationPage() {
               ) : null}
               {generated ? <Notice tone="warning">{generated}</Notice> : null}
               {gradingStopped ? (
-                <Notice tone="danger" details={run.grading?.error?.slice(0, 2000)}>
-                  {t("simulation.gradeFailed")}
+                <Notice
+                  tone="danger"
+                  details={run.grading?.error?.slice(0, 2000)}
+                  action={gradingFailure?.action}
+                >
+                  {gradingFailure?.action
+                    ? `${t("simulation.gradeFailed")} ${gradingFailure.text}`
+                    : t("simulation.gradeFailed")}
                 </Notice>
               ) : null}
             </>

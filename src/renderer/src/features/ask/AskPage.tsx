@@ -55,6 +55,7 @@ import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
 import { formatTokens } from "../../lib/tokens";
+import { useEngineError } from "../../lib/engineError";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
 import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, subjectsQuery } from "../../lib/queries";
@@ -157,7 +158,11 @@ const Reply = memo(function Reply({
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
 }) {
-  const { t } = useTranslation();
+  const describeEngineError = useEngineError();
+  // A reply the engine cut short because its sign-in was refused names that engine and offers its sign-in.
+  const failure = row.error
+    ? describeEngineError(row.error, row.provider ?? undefined)
+    : undefined;
   const citationResolver = useMemo(
     () =>
       Object.assign((index: number) => row.citations.find((cite) => cite.index === index)?.label, {
@@ -190,7 +195,8 @@ const Reply = memo(function Reply({
       }
       general={row.grounding === "general"}
       stopped={row.stopped}
-      failure={row.error ? t(row.error) : undefined}
+      failure={failure?.text}
+      failureAction={failure?.action}
       onContinue={last && row.error ? onContinue : undefined}
       checking={row.checking}
       text={replyPlainText(row.body)}
@@ -330,6 +336,15 @@ export function AskPage() {
     setErrorValues(errorParams(err));
     setErrorText(errorDetail(err));
   }
+  const describeEngineError = useEngineError();
+  // A refused sign-in names its engine and offers its sign-in; every other failure keeps its own message.
+  const failure = error
+    ? describeEngineError(
+        error,
+        typeof errorValues.provider === "string" ? errorValues.provider : undefined,
+        errorValues,
+      )
+    : null;
   // Saved photos the last answer did not see, so a shorter context is never silent.
   const [skipped, setSkipped] = useState<Skipped>([]);
 
@@ -1111,9 +1126,13 @@ export function AskPage() {
               </Button>
             }
           />
-        ) : error ? (
-          <Notice tone="danger" details={errorText || undefined}>
-            {t(error, errorValues)}
+        ) : failure ? (
+          <Notice
+            tone="danger"
+            details={errorText || undefined}
+            action={failure.action}
+          >
+            {failure.text}
           </Notice>
         ) : null}
         {(["too-large", "unreadable"] as const).map((reason) => {

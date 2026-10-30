@@ -78,6 +78,11 @@ const button = (page: Page | Locator, name: string | RegExp) =>
 // The stepper says where the student is once, to screen readers; the same text is not printed again on screen.
 const stepper = (page: Page) => page.getByRole("list", { name: "Avanzamento" });
 const currentStep = (page: Page) => page.locator("[aria-current=step]");
+// The visible primary buttons: each state of a step has exactly one.
+const primaryButtons = (page: Page) => page.locator(".ant-btn-primary:visible");
+// The engine rows of setup step 2.
+const engineRows = (page: Page) =>
+  page.getByRole("list", { name: "Motori su questo computer" }).getByRole("listitem");
 // Setup is closed: no section switch and no Settings button until it ends.
 async function noNavigation(page: Page) {
   await expect(page.getByRole("radiogroup", { name: "Sezioni" })).toHaveCount(0);
@@ -125,8 +130,18 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     });
     await expect(notice.getByText("Claude Code li invia ad Anthropic.")).toBeVisible();
     await expect(notice.getByText("Codex li invia ad OpenAI.")).toBeVisible();
-    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toHaveCount(0);
+    // One row per engine with its state in words, and automatic chosen until the student picks.
+    const rows = engineRows(page);
+    await expect(rows).toHaveCount(4);
+    await expect(rows.filter({ hasText: "Claude Code" })).toContainText("Pronto");
+    await expect(rows.filter({ hasText: "Codex" })).toContainText("Pronto");
+    await expect(rows.filter({ hasText: "Cursor Agent" })).toContainText("Non installato");
+    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
+    // Until the notice is confirmed Pyxis plans nothing with them, so no row names a model yet.
+    await expect(rows.locator(".px-engine-model")).toHaveCount(0);
     await expect(button(page, "Continua")).toHaveCount(0);
+    // One primary button per state: while the notice waits, it is "Ho capito", and carrying on later is secondary.
+    await expect(primaryButtons(page)).toHaveText(["Ho capito"]);
     // Crash reports sit next to the notice, off until the student turns them on.
     const crash = page.getByRole("switch", {
       name: "Consenti segnalazioni di crash",
@@ -137,14 +152,15 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     await noAxeViolations(page);
     await notice.getByRole("button", { name: "Ho capito" }).click();
     await expect(notice).toHaveCount(0);
-    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible(
-      {
-        timeout: 30000,
-      },
-    );
-    // With engines ready the subscription question stays out of the way.
+    // The automatic plan shares the work: both ready engines get models.
+    for (const name of ["Claude Code", "Codex"])
+      await expect(
+        rows.filter({ hasText: name }).locator(".px-engine-model"),
+      ).not.toBeEmpty({ timeout: 30000 });
+    // With engines ready the subscription question stays out of the way, and the missing ones offer Install.
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
-    await expect(button(page, "Configura un altro motore")).toBeVisible();
+    await expect(button(page, "Installa Cursor Agent")).toBeVisible();
+    await expect(primaryButtons(page)).toHaveText(["Continua"]);
     expect(
       (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
         .filter((row) => row.id === "claude" || row.id === "codex")
@@ -247,6 +263,101 @@ test("First setup: about you, the engine with its notice and crash reports off, 
   }
 });
 
+test("First setup: each engine shows its real state, an expired sign-in is never Ready, and the student's pick of engines is saved", async () => {
+  test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const { bin, env } = fakeBins({ claude: true, codex: false });
+  // Cursor Agent says it is signed in, but its provider turns every call away with a 401, as Codex did after its token
+  // expired. Antigravity is not installed.
+  const agent = join(bin, "agent");
+  writeFileSync(
+    agent,
+    `#!/bin/sh
+case "$1" in
+  --version) echo "2026.09.28-64d2043";;
+  status) echo '{"isAuthenticated":true}';;
+  about) echo '{}';;
+  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\n';;
+  *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
+esac
+`,
+  );
+  chmodSync(agent, 0o755);
+  const app = await launch(userData, { ...env, CLI_FUNNEL_AGENT_BIN: agent });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await button(page, "Continua").click();
+    const rows = engineRows(page);
+    const row = (name: string) => rows.filter({ hasText: name });
+    await expect(row("Cursor Agent")).toContainText("Pronto", { timeout: 30000 });
+    await expect(row("Claude Code")).toContainText("Pronto");
+    await expect(row("Codex")).toContainText("Serve l'accesso");
+    await expect(button(page, "Accedi Codex")).toBeVisible();
+    await expect(row("Antigravity")).toContainText("Non installato");
+    await expect(button(page, "Installa Antigravity")).toBeVisible();
+    await page
+      .getByRole("region", { name: "Cosa esce da questo computer" })
+      .getByRole("button", { name: "Ho capito" })
+      .click();
+    await expect(row("Cursor Agent").locator(".px-engine-model")).not.toBeEmpty({
+      timeout: 30000,
+    });
+
+    // The provider refuses a call: the row turns to an expired sign-in with Sign in, and the plan stops using it.
+    const refused = await page.evaluate(() =>
+      window.pyxis
+        .invoke("engines.test", { provider: "agent" })
+        .then(() => "answered", (err: { code?: string }) => err.code),
+    );
+    expect(refused).toBe("not-logged-in");
+    await expect(row("Cursor Agent")).toContainText("Accesso scaduto");
+    await expect(button(page, "Accedi Cursor Agent")).toBeVisible();
+    await expect
+      .poll(async () =>
+        Object.values(
+          await page.evaluate(() => window.pyxis.invoke("engines.features", {})),
+        ).map((selection) => selection.provider),
+      )
+      .not.toContain("agent");
+    await noAxeViolations(page);
+
+    // "I choose" starts from the engines that are ready: Claude Code, which cannot be unticked while it is the only one.
+    await page.getByRole("radio", { name: /^Scelgo io/ }).click();
+    await expect(page.getByRole("radio", { name: /^Scelgo io/ })).toBeChecked();
+    const box = (name: string) => page.getByRole("checkbox", { name: `Usa ${name}` });
+    await expect(box("Claude Code")).toBeChecked();
+    await expect(box("Claude Code")).toBeDisabled();
+    await expect(box("Codex")).not.toBeChecked();
+    await box("Codex").click();
+    await expect(box("Codex")).toBeChecked();
+    await expect(box("Claude Code")).toBeEnabled();
+    const choice = () =>
+      page.evaluate(() => window.pyxis.invoke("engines.choice", {}));
+    await expect.poll(choice).toEqual({ allowed: ["claude", "codex"] });
+    await noAxeViolations(page);
+    await row("Cursor Agent").getByRole("button", { name: "Accedi Cursor Agent" }).click();
+    await expect(
+      page.getByRole("region", { name: "Configura Cursor Agent" }),
+    ).toBeVisible();
+
+    // The pick outlasts leaving the step, and Automatic puts every ready engine back.
+    await button(page, "Continua").click();
+    await button(page, "Indietro").click();
+    await expect(page.getByRole("radio", { name: /^Scelgo io/ })).toBeChecked({
+      timeout: 30000,
+    });
+    await expect(box("Codex")).toBeChecked();
+    await page.getByRole("radio", { name: /^Automatico/ }).click();
+    await expect.poll(choice).toEqual({ allowed: null });
+  } finally {
+    await app.close();
+    rmSync(userData, { recursive: true, force: true });
+    rmSync(bin, { recursive: true, force: true });
+  }
+});
+
 test("First setup: a signed-out engine offers sign-in, no engine asks what the student pays for, and I'll do it later continues", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
@@ -259,11 +370,18 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
     await expect(
       page.getByText("Ho trovato Claude Code, ma serve ancora l'accesso."),
     ).toBeVisible({ timeout: 30000 });
-    // The installed engine is offered first: already installed, one sign-in left.
+    // The installed engine is offered first: already installed, one sign-in left. Its row says so and offers Sign in.
+    await expect(
+      engineRows(page).filter({ hasText: "Claude Code" }),
+    ).toContainText("Serve l'accesso");
+    await expect(button(page, "Accedi Claude Code")).toBeVisible();
     const setup = page.getByRole("region", { name: "Configura Claude Code" });
     await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible();
     await expect(button(setup, "Accedi con Claude")).toBeVisible();
-    await expect(page.getByText("Quale di questi paghi già?")).toBeVisible();
+    // The sign-in is secondary: the step's own button is the one primary, here "Lo farò dopo".
+    await expect(primaryButtons(page)).toHaveText(["Lo farò dopo"]);
+    // Every engine has a row, so the subscription question is only for a computer with none installed.
+    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
     await noAxeViolations(page);
     await app.close();
 
@@ -484,9 +602,9 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
       .getByRole("region", { name: "Cosa esce da questo computer" })
       .getByRole("button", { name: "Ho capito" })
       .click();
-    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible(
-      { timeout: 30000 },
-    );
+    await expect(
+      engineRows(page).filter({ hasText: "Codex" }).locator(".px-engine-model"),
+    ).not.toBeEmpty({ timeout: 30000 });
     await page
       .getByRole("switch", { name: "Consenti segnalazioni di crash" })
       .click();
@@ -546,7 +664,11 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
     await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
       { timeout: 30000 },
     );
-    await expect(page.getByText(/^Pyxis usa Codex .* Claude Code/)).toBeVisible();
+    for (const name of ["Claude Code", "Codex"])
+      await expect(engineRows(page).filter({ hasText: name })).toContainText(
+        "Pronto",
+      );
+    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
     // Crash reports show the stored choice (on), not the first-run default.

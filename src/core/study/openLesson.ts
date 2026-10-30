@@ -316,11 +316,26 @@ export type LessonResult = {
   fallback?: boolean;
   /** The engine error's message key when an engine failure caused the fallback. */
   fallbackReason?: string;
+  /** The engine that failed, so the page can name it and offer its sign-in. */
+  fallbackProvider?: string;
   /** Written by an earlier lesson prompt, before smart text; shown until rewritten. */
   earlier?: boolean;
   /** Images of the lesson's figure blocks, by `figureKey`. */
   figures?: Record<string, string>;
 };
+
+/** Why a lesson fell back to the book text, and on which engine, when an engine failure caused it. */
+export function engineReason(
+  error: unknown,
+): Pick<LessonResult, "fallbackReason" | "fallbackProvider"> {
+  if (!(error instanceof IpcError) || !error.messageKey.startsWith("engines.errors."))
+    return {};
+  const provider = error.params.provider;
+  return {
+    fallbackReason: error.messageKey,
+    ...(typeof provider === "string" ? { fallbackProvider: provider } : {}),
+  };
+}
 
 export async function writeLesson(
   db: Database.Database,
@@ -359,11 +374,11 @@ export async function writeLesson(
       ...(cached.grounding === "general" ? { general: true } : {}),
       ...(earlier ? { earlier: true } : {}),
     };
-  const bookFallback = (reason?: string) => ({
+  const bookFallback = (error?: unknown) => ({
     ...openLesson(db, planId, topicId),
     wording,
     fallback: true,
-    ...(reason ? { fallbackReason: reason } : {}),
+    ...engineReason(error),
   });
   if (!run && process.env["PYXIS_LESSON_MODEL"] !== "1") {
     return { ...openLesson(db, planId, topicId), wording };
@@ -374,11 +389,7 @@ export async function writeLesson(
     if (options?.regenerate && cached?.provider)
       throw error instanceof Error ? error : new Error("lesson-invalid");
     // The engine's reason travels with the book text, so the page can say why there is no lesson.
-    return bookFallback(
-      error instanceof IpcError && error.messageKey.startsWith("engines.errors.")
-        ? error.messageKey
-        : undefined,
-    );
+    return bookFallback(error);
   };
   const topic = db
     .prepare("SELECT title FROM topics WHERE id = ?")

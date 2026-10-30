@@ -15,6 +15,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
@@ -35,6 +36,12 @@ import {
   offersPage,
   type InstallableProvider,
 } from "@shared/installers";
+import { EngineUseChoice, engineBox } from "../../components/EngineUseChoice";
+import {
+  engineStatus,
+  keyStatus,
+  manualChoice,
+} from "../../lib/engineStatus";
 import { invoke } from "../../lib/ipc";
 import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
@@ -151,6 +158,19 @@ function messageKey(err: unknown): string {
     return err.messageKey;
   return "engines.testFailed";
 }
+/** Failures whose usual wording sends the student to this page, said here with the engine's name instead. */
+const testErrors: Record<string, string> = {
+  "engines.errors.not-logged-in": "engines.errors.signedOutNamed",
+  "engines.errors.model-not-included": "engines.testErrors.modelNotIncluded",
+};
+
+/** What a failed test says on the engines page: always with the engine's name. */
+function testMessage(t: TFunction, key: string, name: string): string {
+  const own = testErrors[key];
+  return own
+    ? t(own, { name })
+    : t("engines.testErrors.other", { name, message: t(key) });
+}
 function readAdvanced(): boolean {
   try {
     return localStorage.getItem(advancedKey) === "1";
@@ -180,7 +200,11 @@ export function EnginesPanel() {
   }
   const client = useQueryClient();
   const engines = useEngineSetup();
-  const { overview, features } = engines;
+  const { overview, features, choice, choose } = engines;
+  const allowed = choice.data?.allowed ?? null;
+  const engineName = (id: string) =>
+    overview.data?.find((row) => row.id === id)?.name ??
+    (id === "ollama" ? "Ollama" : id);
   const keys = useQuery({
     queryKey: ["engine-key-status"],
     queryFn: () => window.pyxis.keys.status(),
@@ -207,19 +231,22 @@ export function EnginesPanel() {
     queryKey: localQueryKey,
     queryFn: () => invoke("engines.local", {}),
   });
+  // Models of the engines the student lets Pyxis use, each named with its engine as the student knows it.
   const choices = [
-    ...providers.flatMap((provider) =>
-      modelsByProvider[provider]!.map((model) => ({
-        value: JSON.stringify([provider, model.id]),
-        label: `${provider} · ${model.name}`,
-      })),
-    ),
+    ...providers
+      .filter((provider) => allowed === null || allowed.includes(provider))
+      .flatMap((provider) =>
+        modelsByProvider[provider]!.map((model) => ({
+          value: JSON.stringify([provider, model.id]),
+          label: `${engineName(provider)} · ${model.name}`,
+        })),
+      ),
     // The local model can be pinned to a task once its check passed and the student turned it on.
     ...(local.data?.enabled && local.data.model
       ? [
           {
             value: JSON.stringify(["ollama", local.data.model.id]),
-            label: `ollama · ${local.data.model.id}`,
+            label: `Ollama · ${local.data.model.name}`,
           },
         ]
       : []),
@@ -244,8 +271,16 @@ export function EnginesPanel() {
   );
   const [keyValue, setKeyValue] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
-  // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup.
+  // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup. "Sign in to …" on an
+  // engine error elsewhere opens this page with `?signIn=<engine>`, which opens that engine's sign-in at once.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const signInParam = searchParams.get("signIn");
   const [setupFor, setSetupFor] = useState<InstallableProvider | null>(null);
+  useEffect(() => {
+    if (!signInParam) return;
+    if (isInstallable(signInParam)) setSetupFor(signInParam);
+    setSearchParams({}, { replace: true });
+  }, [signInParam, setSearchParams]);
   // The notice for engines that are ready but not acknowledged. `then` runs the action the student was after.
   const [notice, setNotice] = useState<{
     engines: NoticeEngine[];
@@ -270,6 +305,10 @@ export function EnginesPanel() {
         row.id === "anthropic-api" ? "anthropic" : "openai",
       ),
   );
+  // The engines the student can tick, the same list as in first setup: CLIs and API providers with a saved key.
+  // Until the keys are read, "I choose" waits: a pick without the keyed API engines would drop them and their tasks.
+  const manual = manualChoice(overview.data ?? [], keyStatus(keys));
+  const pickable = manual.rows;
   function refresh() {
     engines.refresh();
     for (const queryKey of [["engine-models"], ["engine-key-status"]])
@@ -287,6 +326,8 @@ export function EnginesPanel() {
       effort?: string;
       fast?: boolean;
     }) => invoke("engines.test", { provider, model, effort, fast }),
+    // A refused sign-in turns the engine's row to signed out, so the list is read again either way.
+    onError: refresh,
     onSuccess: (value) => {
       refresh();
       setResult(
@@ -399,19 +440,16 @@ export function EnginesPanel() {
     }
     if (row.loggedIn || row.kind === "api") {
       setResult(null);
-      const selection =
-        features.data?.default?.provider === row.id
-          ? features.data.default
-          : undefined;
-      withNotice(row.id, () =>
-        test.mutate({
-          provider: row.id,
-          model: selection?.model,
-          effort: studentEffort(selection),
-          fast: selection?.fast,
-        }),
-      );
+      // The row's test only checks that the engine answers, so core runs it on the cheapest model. The details drawer
+      // tests the model the student picks there.
+      withNotice(row.id, () => test.mutate({ provider: row.id }));
     }
+  }
+  /** Opens the sign-in for an engine whose test was refused, from the message that says so. */
+  function signInAgain(provider: string) {
+    test.reset();
+    setDrawer(null);
+    if (isInstallable(provider)) setSetupFor(provider);
   }
   async function saveKey(event: React.FormEvent) {
     event.preventDefault();
@@ -451,7 +489,9 @@ export function EnginesPanel() {
   }, [noticeLater, notice, toAcknowledgeKey, overview.isFetching]);
   // A local model the student turned on is an engine too.
   const nothingReady =
-    overview.isSuccess && readyRows.length === 0 && !local.data?.enabled;
+    overview.isSuccess &&
+    !readyRows.some((row) => row.allowed) &&
+    !local.data?.enabled;
   // Simple view: engines that can work, or can with one sign-in. When none is
   // ready the installable CLIs are listed so there is something to act on.
   const simpleRows = (overview.data ?? []).filter(
@@ -483,7 +523,8 @@ export function EnginesPanel() {
     features: features.data,
     nothingReady,
   });
-  function renderRow(row: Engine, simple = false) {
+  function renderRow(row: Engine, simple = false, withBox = true) {
+    const status = engineStatus(row);
     return (
       <div
         key={row.id}
@@ -498,28 +539,26 @@ export function EnginesPanel() {
             defaultPinned &&
             features.data?.default?.provider === row.id
           }
-          status={
-            row.disabled || !row.installed
-              ? "idle"
-              : row.loggedIn
-                ? "ok"
-                : "warn"
-          }
-          statusText={
-            row.disabled
-              ? t("engines.unavailable")
-              : !row.installed
-                ? t("engines.notInstalled")
-                : undefined
+          status={status.tone}
+          statusText={t(status.label)}
+          use={
+            withBox && !row.disabled
+              ? engineBox(
+                  allowed,
+                  row.id,
+                  (next) => choose.mutate(next),
+                  choose.isPending,
+                )
+              : undefined
           }
           onDetails={simple ? undefined : () => openEngine(row)}
           actionDisabled={row.disabled || test.isPending || manage.isPending}
           actionLabel={
-            !row.installed && row.kind === "cli"
+            status.fix === "install"
               ? t("engines.install")
-              : row.loggedIn || row.kind === "api"
-                ? t("engines.test")
-                : t("engines.signIn")
+              : status.fix === "signIn"
+                ? t("engines.signIn")
+                : t("engines.test")
           }
           onAction={() => act(row)}
         />
@@ -540,6 +579,11 @@ export function EnginesPanel() {
       </div>
     );
   }
+  // A failed test names its engine, and a refused sign-in offers to sign in again right here.
+  const tested = overview.data?.find(
+    (row) => row.id === test.variables?.provider,
+  );
+  const testKey = messageKey(test.error);
   const feedback = (
     <>
       {result ? (
@@ -547,7 +591,22 @@ export function EnginesPanel() {
           {result}
         </p>
       ) : null}
-      {test.error || manage.error ? (
+      {test.error && tested ? (
+        <Notice
+          tone="danger"
+          details={detailOf(test.error)}
+          action={
+            testKey === "engines.errors.not-logged-in" && isInstallable(tested.id)
+              ? {
+                  label: t("engines.signInTo", { name: tested.name }),
+                  onClick: () => signInAgain(tested.id),
+                }
+              : undefined
+          }
+        >
+          {testMessage(t, testKey, tested.name)}
+        </Notice>
+      ) : test.error || manage.error ? (
         <Notice tone="danger" details={detailOf(test.error ?? manage.error)}>
           {t(messageKey(test.error ?? manage.error))}
         </Notice>
@@ -622,10 +681,21 @@ export function EnginesPanel() {
           </div>
         </div>
       ) : null}
+      {overview.isSuccess && pickable.length > 0 ? (
+        <EngineUseChoice
+          allowed={allowed}
+          rows={pickable}
+          keys={manual.state}
+          onRetryKeys={() => void keys.refetch()}
+          disabled={choose.isPending || choice.isPending}
+          onChange={(next) => choose.mutate(next)}
+        />
+      ) : null}
       {advanced ? (
         <div className="engines-heading">
           <h2 className="title-3">{t("engines.allEngines")}</h2>
-          <Button type="primary" shape="round" onClick={() => setAdding(true)}>
+          {/* Secondary: the page's one primary action belongs to the local model card below. */}
+          <Button shape="round" onClick={() => setAdding(true)}>
             {t("engines.add")}
           </Button>
         </div>
@@ -830,13 +900,7 @@ export function EnginesPanel() {
                       <td>
                         <code>{row.path || t("engines.notDetected")}</code>
                       </td>
-                      <td>
-                        {row.disabled
-                          ? t("engines.unavailable")
-                          : row.loggedIn
-                            ? t("components.engine.statusOk")
-                            : t("components.engine.statusWarn")}
-                      </td>
+                      <td>{t(engineStatus(row).label)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1032,7 +1096,7 @@ export function EnginesPanel() {
                   {available.some((row) => row.kind === "cli") ? (
                     available
                       .filter((row) => row.kind === "cli")
-                      .map((row) => renderRow(row))
+                      .map((row) => renderRow(row, false, false))
                   ) : (
                     <Notice tone="info">{t("engines.allCliAdded")}</Notice>
                   )}

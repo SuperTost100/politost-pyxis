@@ -12,6 +12,7 @@ import { IpcError, isAbort } from "../../shared/ipc";
 import { smartSections } from "../../shared/smart-text";
 import { cacheKey, loadLesson, saveLesson } from "./lesson";
 import {
+  engineReason,
   lessonSystem,
   lessonText,
   modelContext,
@@ -543,9 +544,7 @@ export async function writeAgentLesson(
       ...openLesson(db, planId, topicId),
       wording: context.wording,
       fallback: true,
-      ...(error instanceof IpcError && error.messageKey.startsWith("engines.errors.")
-        ? { fallbackReason: error.messageKey }
-        : {}),
+      ...engineReason(error),
     };
   }
 }

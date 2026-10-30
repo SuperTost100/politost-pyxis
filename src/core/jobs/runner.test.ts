@@ -297,6 +297,38 @@ describe("job runner", () => {
     expect(error(second)).toBe("engine-missing");
   });
 
+  it("keeps the engine that failed between the code and its text", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, undefined, true);
+    runner.register("signed-out", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async () => {
+            throw new IpcError(
+              "not-logged-in",
+              "engines.errors.not-logged-in",
+              { provider: "codex" },
+              "401 Unauthorized",
+            );
+          },
+        },
+      ],
+    });
+    runner.activate();
+    const id = runner.start("signed-out");
+    await until(database, id, ["failed"]);
+    expect(
+      (
+        database.prepare("SELECT error FROM jobs WHERE id = ?").get(id) as {
+          error: string;
+        }
+      ).error,
+    ).toBe("not-logged-in [codex]: 401 Unauthorized");
+  });
+
   it("reacquires the local limit after two passive steps finish together", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, {

@@ -136,7 +136,9 @@
       "showAll": "Mostra tutti i motori",
       "hideAll": "Nascondi l'elenco",
       "setUp": "Configura",
-      "addAnother": "Configura un altro motore"
+      "listLabel": "Motori su questo computer",
+      "autoHint": "Per ogni attività Pyxis usa il modello più economico che basta e, se un motore si ferma, passa a un altro tra quelli pronti.",
+      "chosenHint": "Per ogni attività Pyxis usa il modello più economico che basta, scegliendo solo tra i motori spuntati e pronti."
     },
     "nameQuestion": "Come ti chiami? (facoltativo)",
     "levelHelp": "Il tutor spiega a questo livello. All'università voti e obiettivi sono su 30, negli altri casi su 100. Li cambi quando vuoi nel profilo.",
@@ -2186,7 +2188,8 @@
       "default": "predefinito",
       "signIn": "Accedi",
       "test": "Testa",
-      "actionFor": "{{action}} {{name}}"
+      "actionFor": "{{action}} {{name}}",
+      "use": "Usa {{name}}"
     },
     "notice": {
       "details": "Dettagli",
@@ -2493,7 +2496,8 @@
       "timeout": "Il motore non ha risposto in tempo. Riprova o scegli un altro motore.",
       "engine-missing": "Scegli e prova un motore nelle Impostazioni prima di continuare.",
       "disclosure-required": "Prima conferma cosa riceve questo motore, nelle Impostazioni, Motori AI.",
-      "stream-truncated": "Il motore si è fermato prima di finire la risposta."
+      "stream-truncated": "Il motore si è fermato prima di finire la risposta.",
+      "signedOutNamed": "{{name}} ha rifiutato l'accesso, che probabilmente è scaduto. Finché non accedi di nuovo, Pyxis non lo usa."
     },
     "feature": {
       "default": "Motore predefinito",
@@ -2581,7 +2585,27 @@
       "pullFailed": "Il download o la verifica si è fermato. Controlla che Ollama sia aperto, poi riprova.",
       "checkFirst": "Prima fai la verifica. Il modello locale si accende quando la supera.",
       "noStructured": "Questo modello non ha superato la verifica del formato, quindi non può creare esami né correggere."
-    }
+    },
+    "state": {
+      "ready": "Pronto",
+      "signedOut": "Serve l'accesso",
+      "refused": "Accesso scaduto"
+    },
+    "choice": {
+      "title": "Quali motori può usare Pyxis",
+      "auto": "Automatico",
+      "autoHint": "Pyxis divide il lavoro tra tutti i motori pronti, compresi quelli a cui accederai più avanti.",
+      "chosen": "Scelgo io",
+      "chosenHint": "Pyxis usa solo i motori che spunti nell'elenco.",
+      "keysLoading": "Leggo le chiavi API salvate, poi puoi scegliere i motori.",
+      "keysFailed": "Non riesco a leggere le chiavi API salvate, quindi per ora non puoi scegliere i motori.",
+      "keysRetry": "Riprova"
+    },
+    "testErrors": {
+      "modelNotIncluded": "Il tuo abbonamento a {{name}} non include il modello scelto. Scegline un altro nei dettagli del motore.",
+      "other": "Prova di {{name}}: {{message}}"
+    },
+    "signInTo": "Accedi a {{name}}"
   },
   "graph": {
     "title": "Grafico",

@@ -4,7 +4,15 @@ import { IpcError, isAbort } from "../../shared/ipc";
 import { repairModelStrings } from "../../shared/latex-repair";
 import { parseLooseJson } from "../../shared/smart-text";
 import { engineSeesImages } from "./capabilities";
-import { benchEngine, benchModel, isBenched, isModelBenched } from "./bench";
+import {
+  benchEngine,
+  benchModel,
+  engineClock,
+  clearSignOutBefore,
+  isBenched,
+  isModelBenched,
+  markSignedOut,
+} from "./bench";
 import { engineIpcError, fallbackReason } from "./errors";
 import {
   endConversation,
@@ -114,8 +122,13 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
       ? usableFallback(input, "model")
       : undefined;
   if (instead) return answerOn(input, instead);
+  // Where this call began among refusals: one that lands while it runs is newer, and its answer must not undo it.
+  const startedAt = engineClock();
   try {
-    return await generateOnce(input);
+    const output = await generateOnce(input);
+    // An engine that answers is signed in, whatever a call refused before this one began said.
+    clearSignOutBefore(input.selection.provider, startedAt);
+    return output;
   } catch (err) {
     const reason =
       !input.signal?.aborted && !isAbort(err)
@@ -126,9 +139,12 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     // resets, it is signed in again or the refused model's day is over.
     if (reason === "model")
       benchModel(input.selection.provider, input.selection.model);
+    // A refused sign-in is marked even when no engine can answer instead, or a pinned engine would keep reading
+    // "Ready" in Settings while every call to it fails.
+    if (reason === "signed-out") markSignedOut(input.selection.provider);
     const next = reason ? usableFallback(input, reason) : undefined;
     if (!reason || !next) throw engineIpcError(err, input.selection.provider);
-    if (reason !== "model")
+    if (reason === "limit")
       benchEngine(
         input.selection.provider,
         reason,
@@ -166,9 +182,19 @@ async function answerOn(
   selection: GenerateInput["selection"],
 ): Promise<GenerateOutput> {
   input.onEngine?.(selection);
+  const startedAt = engineClock();
   try {
-    return await generateOnce({ ...input, selection });
+    const output = await generateOnce({ ...input, selection });
+    clearSignOutBefore(selection.provider, startedAt);
+    return output;
   } catch (err) {
+    // The engine answering instead can refuse its sign-in too, and Settings must stop calling it ready.
+    if (
+      !input.signal?.aborted &&
+      !isAbort(err) &&
+      fallbackReason(err, selection.provider) === "signed-out"
+    )
+      markSignedOut(selection.provider);
     throw engineIpcError(err, selection.provider);
   }
 }

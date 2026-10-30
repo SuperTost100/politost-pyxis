@@ -99,6 +99,17 @@ export function rememberReady(providers: AutoProvider[]): void {
 }
 
 /**
+ * Drops the engines the student just left out from the list a failing task falls back on, before the automatic plan is
+ * worked out again. The local model has its own switch and stays. Null (automatic) leaves the list as it is.
+ */
+export function keepAllowed(allowed: readonly string[] | null): void {
+  if (allowed === null) return;
+  ready = ready.filter(
+    (provider) => provider.kind === "local" || allowed.includes(provider.id),
+  );
+}
+
+/**
  * The engine an automatic selection switches to when its own hit a usage limit, was signed out or refused the model:
  * the choice the automatic plan makes for the same task without that engine, or without that model for a refusal. The result is not automatic itself, so a task switches
  * at most once. A selection the student pinned, or one a background job saved when it was queued, gets none.

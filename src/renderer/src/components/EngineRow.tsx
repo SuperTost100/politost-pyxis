@@ -1,3 +1,4 @@
+import { Checkbox } from "antd";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import type { IconName } from "./Icon";
@@ -13,6 +14,14 @@ const ENG_ICON: Record<string, IconName> = {
   remote: "cloud",
 };
 
+/** Every state has its own icon next to its word, so it never rests on colour alone. */
+const STATUS_ICON: Record<"ok" | "warn" | "error" | "idle", IconName> = {
+  ok: "circle-check",
+  warn: "circle-alert",
+  error: "circle-x",
+  idle: "circle-dashed",
+};
+
 export function EngineRow({
   kind,
   name,
@@ -24,6 +33,7 @@ export function EngineRow({
   actionLabel,
   actionDisabled,
   onDetails,
+  use,
 }: {
   kind: "cli" | "api" | "local" | "remote";
   name: string;
@@ -31,10 +41,13 @@ export function EngineRow({
   status?: "ok" | "warn" | "error" | "idle";
   statusText?: string;
   isDefault?: boolean;
+  /** Without it the row has no button, as in first setup for an engine that is ready. */
   onAction?: () => void;
   actionLabel?: string;
   actionDisabled?: boolean;
   onDetails?: () => void;
+  /** A checkbox that says whether Pyxis may use this engine, when the student picks the engines. */
+  use?: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean };
 }) {
   const { t } = useTranslation();
   const detailsId = useId();
@@ -51,6 +64,15 @@ export function EngineRow({
       : t("components.engine.test"));
   return (
     <div className="px-card px-engine">
+      {use ? (
+        <Checkbox
+          className="px-engine-use"
+          checked={use.checked}
+          disabled={use.disabled}
+          onChange={(event) => use.onChange(event.target.checked)}
+          aria-label={t("components.engine.use", { name })}
+        />
+      ) : null}
       <span className="px-engine-ico">
         <Icon name={ENG_ICON[kind] ?? "cpu"} size={18} />
       </span>
@@ -84,23 +106,25 @@ export function EngineRow({
                 </span>
               ) : null}
             </div>
-            <div className="px-engine-model">{model}</div>
+            {model ? <div className="px-engine-model">{model}</div> : null}
           </>
         )}
       </div>
       <span className={["px-status", `is-${status}`].join(" ")}>
-        <i />
+        <Icon name={STATUS_ICON[status]} size={14} strokeWidth={2} />
         {statusText ?? statusLabels[status]}
       </span>
-      <Button
-        size="sm"
-        variant="secondary"
-        disabled={actionDisabled}
-        onClick={onAction}
-        aria-label={t("components.engine.actionFor", { action, name })}
-      >
-        {action}
-      </Button>
+      {onAction ? (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={actionDisabled}
+          onClick={onAction}
+          aria-label={t("components.engine.actionFor", { action, name })}
+        >
+          {action}
+        </Button>
+      ) : null}
     </div>
   );
 }

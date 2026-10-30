@@ -136,7 +136,9 @@
       "showAll": "Show all engines",
       "hideAll": "Hide the list",
       "setUp": "Set up",
-      "addAnother": "Set up another engine"
+      "listLabel": "Engines on this computer",
+      "autoHint": "For each task Pyxis uses the cheapest model that does the job, and if an engine stops it moves to another ready one.",
+      "chosenHint": "For each task Pyxis uses the cheapest model that does the job, choosing only among the ticked engines that are ready."
     },
     "nameQuestion": "What's your name? (optional)",
     "levelHelp": "The tutor explains at this level. At university, grades and goals are out of 30, otherwise out of 100. You can change both in your profile any time.",
@@ -2186,7 +2188,8 @@
       "default": "default",
       "signIn": "Sign in",
       "test": "Test",
-      "actionFor": "{{action}} {{name}}"
+      "actionFor": "{{action}} {{name}}",
+      "use": "Use {{name}}"
     },
     "notice": {
       "details": "Details",
@@ -2493,7 +2496,8 @@
       "timeout": "The engine did not answer in time. Try again, or pick another engine.",
       "engine-missing": "Choose and test an engine in Settings before continuing.",
       "disclosure-required": "Confirm what this engine receives first, in Settings, AI engines.",
-      "stream-truncated": "The engine stopped before the answer was finished."
+      "stream-truncated": "The engine stopped before the answer was finished.",
+      "signedOutNamed": "{{name}} refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again."
     },
     "feature": {
       "default": "Default engine",
@@ -2581,7 +2585,27 @@
       "pullFailed": "The download or check stopped. Make sure Ollama is open, then try again.",
       "checkFirst": "Run the check first. The local model turns on once it passes.",
       "noStructured": "This model did not pass the format check, so it cannot build exams or grade."
-    }
+    },
+    "state": {
+      "ready": "Ready",
+      "signedOut": "Needs sign-in",
+      "refused": "Sign-in expired"
+    },
+    "choice": {
+      "title": "Which engines Pyxis may use",
+      "auto": "Automatic",
+      "autoHint": "Pyxis shares the work among every ready engine, including ones you sign in to later.",
+      "chosen": "Let me choose",
+      "chosenHint": "Pyxis uses only the engines you tick in the list.",
+      "keysLoading": "Reading your saved API keys, then you can choose the engines.",
+      "keysFailed": "Pyxis can't read your saved API keys, so you can't choose the engines for now.",
+      "keysRetry": "Try again"
+    },
+    "testErrors": {
+      "modelNotIncluded": "Your {{name}} subscription doesn't include the chosen model. Pick another one in the engine's details.",
+      "other": "{{name}} test: {{message}}"
+    },
+    "signInTo": "Sign in to {{name}}"
   },
   "graph": {
     "title": "Graph",

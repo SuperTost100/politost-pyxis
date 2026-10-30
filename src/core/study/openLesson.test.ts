@@ -110,6 +110,8 @@ describe("openLesson", () => {
     const explained = await writeLesson(db, plan.planId, topic.id, refused);
     expect(explained.fallback).toBe(true);
     expect(explained.fallbackReason).toBe("engines.errors.model-not-included");
+    // The engine comes too, so the page can name it and offer its sign-in.
+    expect(explained.fallbackProvider).toBe("claude");
   });
 });
 

@@ -1,7 +1,7 @@
 import type { JobView } from "../../../../shared/ipc";
 import { checkRef } from "../../../../shared/quiz";
 import { isPdfPasswordError } from "../../../../shared/source-errors";
-import { jobErrorKey } from "./jobErrors";
+import { jobErrorEngine, jobErrorKey } from "./jobErrors";
 
 /**
  * Why a stopped job needs the student, which decides the one fix the list offers:
@@ -18,6 +18,8 @@ export type Problem = {
   kind: ProblemKind;
   /** The message key that says why they stopped. */
   messageKey: string;
+  /** The engine an engine failure came from, when the job recorded it. */
+  engine?: string;
   jobs: JobView[];
 };
 
@@ -121,13 +123,16 @@ function problemOf(job: JobView): Omit<Problem, "jobs"> {
   // A password belongs to one file: two locked files are two problems, each with its own field.
   if (isPdfPasswordError(job.error))
     return { key: `locked-pdf:${job.id}`, kind: "locked-pdf", messageKey };
+  // The same failure on two engines is two problems, so each can name its engine and offer its sign-in.
+  const engine = jobErrorEngine(job.error ?? "");
   return {
-    key: `failed:${messageKey}`,
+    key: `failed:${messageKey}${engine ? `:${engine}` : ""}`,
     kind:
       messageKey.startsWith("engines.errors.") && !RETRY_FIRST.has(messageKey)
         ? "engine"
         : "retry",
     messageKey,
+    ...(engine ? { engine } : {}),
   };
 }
 

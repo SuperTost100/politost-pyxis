@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SOURCE_ERROR_MESSAGE_KEYS } from "../../../../shared/source-errors";
-import { jobErrorKey } from "./jobErrors";
+import { jobErrorEngine, jobErrorKey, requestJobError } from "./jobErrors";
 
 describe("job error text", () => {
   it("names why an import stopped instead of a general failure", () => {
@@ -28,6 +28,34 @@ describe("job error text", () => {
     expect(jobErrorKey("not-logged-in: Please run /login")).toBe("engines.errors.not-logged-in");
     expect(jobErrorKey("model-not-included: not in your plan")).toBe("engines.errors.model-not-included");
     expect(jobErrorKey("stream-truncated")).toBe("engines.errors.stream-truncated");
+  });
+
+  it("reads which engine a job's failure came from", () => {
+    expect(jobErrorKey("not-logged-in [codex]: 401 Unauthorized")).toBe(
+      "engines.errors.not-logged-in",
+    );
+    expect(jobErrorEngine("not-logged-in [codex]: 401 Unauthorized")).toBe("codex");
+    expect(jobErrorEngine("not-logged-in: Please run /login")).toBeUndefined();
+    expect(jobErrorEngine("something [codex] else")).toBeUndefined();
+  });
+
+  it("reads a job failure that reached the screen as a request error", () => {
+    // An open answer's check waits for its job and rethrows the job's error, which arrives as the request's detail.
+    expect(
+      requestJobError({
+        code: "internal",
+        messageKey: "errors.internal",
+        detail: "not-logged-in [codex]: 401 Unauthorized",
+      }),
+    ).toEqual({ key: "engines.errors.not-logged-in", engine: "codex" });
+    expect(requestJobError({ detail: "" })).toEqual({
+      key: "jobs.failedGeneral",
+      engine: undefined,
+    });
+    expect(requestJobError(null)).toEqual({
+      key: "jobs.failedGeneral",
+      engine: undefined,
+    });
   });
 
   it("keeps the messages it already had", () => {

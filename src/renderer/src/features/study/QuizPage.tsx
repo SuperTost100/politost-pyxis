@@ -18,6 +18,8 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
+import { errorProvider, useEngineError } from "../../lib/engineError";
+import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { useActiveTime } from "./activeTime";
@@ -164,6 +166,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
   const navigate = useNavigate();
+  const describeEngineError = useEngineError();
   const grade = useGradeScale();
   // Past questions: a quiz of the plan's past exam questions, opened at /plans/:planId/past.
   const past = useLocation().pathname.endsWith("/past");
@@ -354,6 +357,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     check.isError &&
     check.variables?.questionId === question?.id &&
     cancelledCheck.current !== question?.id;
+  // A check that stopped on a refused sign-in names the engine and offers its sign-in next to Try again.
+  const checkJobError = check.isError ? requestJobError(check.error) : undefined;
+  const checkFailure = checkJobError
+    ? describeEngineError(checkJobError.key, checkJobError.engine)
+    : undefined;
   // Answers are corrected one by one; submitting only closes the attempt (and grades anything still unchecked).
   const grading = useQuery({
     queryKey: ["quiz-grading", attemptId],
@@ -401,6 +409,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const gradingStopped = ["failed", "cancelled", "interrupted"].includes(
     gradeState,
   );
+  // Grading that stopped on a refused sign-in names the engine and offers its sign-in.
+  const gradingFailure = grading.data?.error
+    ? describeEngineError(
+        jobErrorKey(grading.data.error),
+        jobErrorEngine(grading.data.error),
+      )
+    : undefined;
   const gradingStarted =
     !finalResult &&
     (submit.isPending || Boolean(submit.data?.jobId) || gradeState !== "none");
@@ -726,6 +741,10 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       : start.error?.message.includes("page-empty")
         ? "quiz.pageEmpty"
         : "quiz.error";
+  // A refused sign-in names its engine and offers its sign-in.
+  const engineFailure = error
+    ? describeEngineError(errorKey, errorProvider(error))
+    : undefined;
   // A mixed review counts its cards and questions as one queue, so the position and bar cover both.
   const wholeReview =
     session.data?.review && reviewQueue.data
@@ -804,9 +823,17 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const wrongMarked = question
     ? (wrongMarks[question.id] ?? false)
     : false;
-  // A failed preparation sits under the step it stopped at, or above the questions that did arrive.
+  // A failed preparation sits under the step it stopped at, or above the questions that did arrive. A refused sign-in
+  // names its engine and offers its sign-in.
+  const buildFailure = session.data?.error
+    ? describeEngineError(
+        jobErrorKey(session.data.error),
+        jobErrorEngine(session.data.error),
+      )
+    : undefined;
   const buildFailed = generationFailed ? (
     <ErrorState
+      secondary={buildFailure?.action}
       action={
         session.data?.jobId
           ? {
@@ -828,6 +855,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           ? "quiz.buildCancelled"
           : "quiz.buildFailed",
       )}
+      {buildFailure?.action ? ` ${buildFailure.text}` : null}
     </ErrorState>
   ) : null;
   // The results screen: the score counts every answer not marked wrong by the student.
@@ -1225,8 +1253,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           notes={
             gradingStopped && !finalResult ? (
               grading.data?.error ? (
-                <Notice tone="danger" details={grading.data.error.slice(0, 2000)}>
-                  {t("quiz.gradingStopped")}
+                <Notice
+                  tone="danger"
+                  details={grading.data.error.slice(0, 2000)}
+                  action={gradingFailure?.action}
+                >
+                  {gradingFailure?.action
+                    ? `${t("quiz.gradingStopped")} ${gradingFailure.text}`
+                    : t("quiz.gradingStopped")}
                 </Notice>
               ) : (
                 <Notice tone="danger">
@@ -1468,8 +1502,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             <Notice
               tone="danger"
               action={{ label: t("quiz.checkRetry"), onClick: retryCheck }}
+              secondary={checkFailure?.action}
             >
-              {t("quiz.checkFailed")}
+              {checkFailure?.action
+                ? `${t("quiz.checkFailed")} ${checkFailure.text}`
+                : t("quiz.checkFailed")}
             </Notice>
           ) : null}
           {!result ? (
@@ -1550,8 +1587,10 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         <p className="small">{t("quiz.empty")}</p>
       )}
       {error ? (
-        <ErrorState details={errorDetails(error)}>
-          {t(errorKey, { defaultValue: t("quiz.error") })}
+        <ErrorState details={errorDetails(error)} action={engineFailure?.action}>
+          {engineFailure?.action
+            ? engineFailure.text
+            : t(errorKey, { defaultValue: t("quiz.error") })}
         </ErrorState>
       ) : null}
     </FocusLayout>

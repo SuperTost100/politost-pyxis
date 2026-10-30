@@ -34,6 +34,12 @@ export const enginesQuery = queryOptions({
   queryFn: () => invoke("engines.overview", {}),
 });
 
+/** The engines the student lets Pyxis use; `allowed: null` is automatic. */
+export const engineChoiceQuery = queryOptions({
+  queryKey: ["engine-choice"],
+  queryFn: () => invoke("engines.choice", {}),
+});
+
 export const engineFeaturesQuery = queryOptions({
   queryKey: ["engine-features"],
   queryFn: () => invoke("engines.features", {}),
