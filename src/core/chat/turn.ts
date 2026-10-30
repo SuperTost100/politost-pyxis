@@ -858,6 +858,13 @@ async function answer(
         input.onDelta?.(streamed.replace(/<followups>[\s\S]*$/, "").trim());
       },
     });
+    // The engine ended the stream without finishing the answer: out of room, or no final event. That is a failure
+    // mid-answer like a dropped connection, so the catch below keeps what arrived marked cut off with Continue, saves
+    // nothing when nothing arrived, and leaves the earlier reply in place when an answer is regenerated.
+    if (result.finishReason === "length" || result.finishReason === "error") {
+      if (streamed === resume && result.text.trim() !== "") streamed = resume + result.text;
+      throw new IpcError("stream-truncated", "engines.errors.stream-truncated");
+    }
   } catch (err) {
     requireTutorAvailable(db);
     const aborted =

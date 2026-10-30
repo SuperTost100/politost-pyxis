@@ -3,6 +3,7 @@ import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
 import { BOOK_VERSION } from "../study/lesson";
 import { putSetting } from "../settings";
+import { topicTitle } from "../../shared/book-text";
 
 const materialKey = (planId: string) => `plan-material:${planId}`;
 const importKey = (planId: string) => `plan-import:${planId}`;
@@ -288,9 +289,10 @@ export function topicTree(raw: string | null) {
   return {
     summary: typeof tree.summary === "string" ? tree.summary : "",
     subtopics: Array.isArray(tree.subtopics)
-      ? tree.subtopics.filter(
-          (value): value is string => typeof value === "string",
-        )
+      ? tree.subtopics
+          .filter((value): value is string => typeof value === "string")
+          // Plans built from a book before its paragraph titles were kept hold "p2 ### raw Markdown…".
+          .map((value) => (/^p\d+\s/.test(value) ? topicTitle(value) : value))
       : [],
   };
 }

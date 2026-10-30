@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { spokenText } from "@shared/spoken-math";
 import { Icon } from "./Icon";
 import "./QuizOption.css";
 
@@ -29,7 +30,7 @@ export function QuizOption({
   shortcut?: string;
   /**
    * The option's Markdown. A screen reader gets nothing from KaTeX inside a button, so an option with `$` math is named
-   * from this text, formulas as written without their `$`.
+   * from this text, formulas spoken as signs and words.
    */
   math?: string;
   disabled?: boolean;
@@ -44,7 +45,7 @@ export function QuizOption({
         : state === "answer"
           ? { icon: "circle-check" as const, word: t("components.quiz.answer") }
           : null;
-  const answer = math?.includes("$") ? math.replaceAll("$", "") : undefined;
+  const answer = math?.includes("$") ? spokenText(math) : undefined;
   return (
     <button
       type="button"

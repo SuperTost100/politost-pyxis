@@ -759,7 +759,7 @@ describe("SymPy in quiz grading", () => {
     expect(done.result!.results[0]!.score).toBe(0.3);
     expect(checkedAnswer(db, attemptId, "a")!.prompt).toEqual({
       template: "quiz.open-grade",
-      version: "2",
+      version: "3",
     });
     db.close();
   });

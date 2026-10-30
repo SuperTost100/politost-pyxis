@@ -41,6 +41,16 @@ describe("plan views and material", () => {
       ),
     ).toEqual({ summary: "", subtopics: ["Velocity"] });
   });
+  it("cleans the subtopics of a plan built before book paragraph titles were kept", () => {
+    expect(
+      topicTree(
+        JSON.stringify({
+          summary: "Misure",
+          subtopics: ["p2 ### Grandezze fisiche [testo](ref:chapter/1#p2) e $P$", "Energia cinetica"],
+        }),
+      ).subtopics,
+    ).toEqual(["Grandezze fisiche testo e $P$", "Energia cinetica"]);
+  });
   it("attaches library material transactionally, then rebuilds newly attached sources", async () => {
     const db = fixture();
     expect(() => attachPlanSources(db, "p", ["s", "unready"])).toThrow(
