@@ -694,8 +694,9 @@ export function bindStudy(
   runner?: Parameters<typeof studyHandlers>[1],
   run?: Parameters<typeof studyHandlers>[2],
   simulationRun?: Parameters<typeof studyHandlers>[3],
+  options?: Parameters<typeof studyHandlers>[4],
 ): void {
-  study = studyHandlers(db, runner, run, simulationRun);
+  study = studyHandlers(db, runner, run, simulationRun, options);
 }
 
 export function bindTools(workspace = "", runner?: Runner): void {
