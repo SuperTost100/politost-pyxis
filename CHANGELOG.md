@@ -48,6 +48,8 @@ Pyxis 0.4.2 is an alpha release that tidies what 0.4.1 left rough. Setup is shor
 
 #### Fixed
 
+- On Codex and with an OpenAI API key, writing quizzes, flashcards and targeted reviews failed every time with a schema error. They work now.
+- An open answer graded through Antigravity could show the grader's raw reply, or a note in English, as its feedback, and the score could disagree with it. Pyxis now asks again when the reply isn't feedback for you.
 - Book text and math from the model show cleanly: no raw formula placeholders, links or markup, and math in quoted selections appears once.
 - Red delete buttons are readable in dark mode.
 - The Library shows the right number of sections for a source.
@@ -101,6 +103,8 @@ Pyxis 0.4.2 è una versione alpha che sistema quello che la 0.4.1 aveva lasciato
 
 #### Corretti
 
+- Con Codex e con una chiave API di OpenAI, scrivere quiz, flashcard e ripassi mirati falliva sempre con un errore di schema. Ora funziona.
+- Una risposta aperta corretta tramite Antigravity poteva mostrare come commento la risposta grezza del correttore, o una nota in inglese, e il punteggio poteva non corrispondere. Ora Pyxis chiede di nuovo quando la risposta non è un commento per te.
 - Il testo dei libri e la matematica scritta dal modello si vedono puliti: niente segnaposto delle formule, link o codice di formattazione, e la matematica nelle selezioni citate compare una volta sola.
 - I pulsanti rossi per eliminare si leggono bene nel tema scuro.
 - La Libreria mostra il numero giusto di sezioni di una fonte.
