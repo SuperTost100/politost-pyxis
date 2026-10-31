@@ -135,6 +135,32 @@ describe("generate with LaTeX in the answer", () => {
 });
 
 describe("generate", () => {
+  it("sends a union of shapes as anyOf, which strict schemas accept", async () => {
+    let sent: unknown;
+    await generate({
+      selection,
+      prompt: "one question",
+      schema: z.object({
+        questions: z.array(
+          z.discriminatedUnion("kind", [
+            z.object({ kind: z.literal("tf"), correct: z.boolean() }),
+            z.object({ kind: z.literal("open"), reference: z.string() }),
+          ]),
+        ),
+      }),
+      run: async (input) => {
+        sent = input.responseSchema?.schema;
+        return result({ structured: { questions: [{ kind: "tf", correct: true }] } });
+      },
+    });
+    // Codex and the OpenAI API answer 400 to a strict schema with oneOf, so every quiz and card batch failed there.
+    expect(JSON.stringify(sent)).not.toContain('"oneOf"');
+    const items = (sent as { properties: { questions: { items: { anyOf: Array<{ additionalProperties: boolean }> } } } })
+      .properties.questions.items;
+    expect(items.anyOf).toHaveLength(2);
+    expect(items.anyOf.every((shape) => shape.additionalProperties === false)).toBe(true);
+  });
+
   it("repairs one bad structured answer", async () => {
     const calls: string[] = [];
     const followUps: Array<string | undefined> = [];

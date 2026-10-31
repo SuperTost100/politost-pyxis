@@ -92,6 +92,12 @@ function lock(node: unknown): void {
   if (!node || typeof node !== "object") return;
   const record = node as Record<string, unknown>;
   if (record.type === "object") record.additionalProperties = false;
+  // zod writes a discriminated union as oneOf, which Codex and the OpenAI API refuse in strict mode. The shapes differ in
+  // their `kind` constant, so at most one can match and anyOf accepts the same answers.
+  if (Array.isArray(record.oneOf)) {
+    record.anyOf = record.oneOf;
+    delete record.oneOf;
+  }
   for (const value of Object.values(record)) {
     if (Array.isArray(value)) value.forEach(lock);
     else lock(value);
