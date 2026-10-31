@@ -2,6 +2,114 @@
 
 Each release lists what changed for students, in English and Italian. The GitHub release page uses the same text.
 
+## 0.4.2
+
+### English
+
+Pyxis 0.4.2 is an alpha release that tidies what 0.4.1 left rough. Setup is shorter and lets you choose your AI engines, the exam page is one path of topics, lessons are shorter and readable while they're written, and quizzes and simulations share one results screen. Pyxis also says which engine and model answered when the one it chose refused, and it can send crash reports if you allow it.
+
+#### Before you update
+
+- The first time you open 0.4.2, Pyxis upgrades your workspace. Pyxis 0.4.1 or older can't open it afterwards, and it can't restore a backup made by 0.4.2 either. If you may want to go back, make a backup first in Settings, under Data.
+
+#### Setup and AI engines
+
+- Setup has four steps: about you, AI engine, exam and material. You can skip the exam step and create the exam later.
+- Setup lists every engine with its real state, and you choose which ones Pyxis uses. An engine that refuses its sign-in now shows as signed out instead of Ready.
+- When your subscription doesn't include the model a task needs, Pyxis tries up to three other models of the same engine, then another engine, and tells you which engine and model answered. An engine that works but refuses some models shows "Ready, with limits".
+- Screens show engine and model names instead of internal IDs.
+- Answers are graded on a mid-tier model and flashcards are written on a fast one, so both come back sooner.
+
+#### Exams
+
+- The exam page is one path of topics, with the next step at the top. Mastery and preparation are whole numbers.
+- Each thing has one home: the mistakes notebook is under Exams, and your study level is in your profile, where changing it applies to new exams. The app says "Esame" everywhere instead of "Piano" or "Prova".
+- At university, grades and goals are out of 30. You can switch to out of 100 in your profile.
+- Exam settings is a page of its own with a save bar. Deleting an exam first shows what will go with it.
+- A source's details show in one panel: pages read, OCR, which exams use it and which pages lessons cite.
+
+#### Studying
+
+- Lessons are shorter, about six sections, and you can read the first section while Pyxis writes the rest.
+- Quizzes and simulations end on the same results screen. From there you can review the quiz's mistakes in a session of their own.
+- Review has its own session with due cards, questions to redo and gap drills.
+- A quiz starts sooner, because Pyxis writes a smaller first batch and shows the count as the rest arrives.
+- An open answer graded 0.9 or more counts as correct, and the results show your answer next to the points it earned.
+- Flashcards appear as they're written, and the flashcard counters agree with each other.
+
+#### Background tasks
+
+- The background tasks list has three groups: running, to fix and done today. Each task names its work, failures with the same cause are merged, and a task that another engine finished says so.
+
+#### Crash reports
+
+- Pyxis can send a report when it crashes, to a server run by the Pyxis maintainer. It's off until you turn it on in setup or in Settings, under Privacy. A report holds the error and, for a native crash, a crash dump that can include fragments of what was on screen. Reports are kept for 90 days.
+- No report is sent while a restore or "Delete all data" replaces your workspace.
+
+#### Fixed
+
+- Book text and math from the model show cleanly: no raw formula placeholders, links or markup, and math in quoted selections appears once.
+- Red delete buttons are readable in dark mode.
+- The Library shows the right number of sections for a source.
+- Labels use one style across the app, and about twenty copy and layout slips from the audit are fixed.
+
+#### Under the hood
+
+- Pyxis runs on Electron 45, with Vite 8, TypeScript 7, pdf.js 6 and cli-funnel 0.6.1.
+
+### Italiano
+
+Pyxis 0.4.2 è una versione alpha che sistema quello che la 0.4.1 aveva lasciato grezzo. La configurazione iniziale è più breve e ti fa scegliere i motori AI, la pagina dell'esame è un unico percorso di argomenti, le lezioni sono più corte e si leggono mentre vengono scritte, e quiz e simulazioni hanno la stessa schermata dei risultati. Pyxis dice anche quale motore e quale modello hanno risposto quando quello scelto ha rifiutato, e può inviare segnalazioni di crash se lo permetti.
+
+#### Prima di aggiornare
+
+- La prima volta che apri la 0.4.2, Pyxis aggiorna il tuo spazio di lavoro. Da quel momento la 0.4.1 o precedenti non riescono più ad aprirlo, né a ripristinare una copia fatta con la 0.4.2. Se pensi di voler tornare indietro, fai prima una copia in Impostazioni, alla voce Dati.
+
+#### Configurazione e motori AI
+
+- La configurazione ha quattro passaggi: su di te, motore AI, esame e materiale. Puoi saltare il passaggio dell'esame e crearlo più tardi.
+- La configurazione mostra ogni motore con il suo stato reale, e sei tu a scegliere quali usa Pyxis. Un motore che rifiuta l'accesso ora risulta disconnesso invece che Pronto.
+- Quando il tuo abbonamento non include il modello che serve a un lavoro, Pyxis prova fino a tre altri modelli dello stesso motore, poi un altro motore, e ti dice quale motore e quale modello hanno risposto. Un motore che funziona ma rifiuta alcuni modelli appare come "Pronto, con limiti".
+- Le schermate mostrano i nomi dei motori e dei modelli invece degli ID interni.
+- Le risposte vengono corrette con un modello di fascia media e le flashcard vengono scritte con uno veloce, quindi arrivano prima.
+
+#### Esami
+
+- La pagina dell'esame è un unico percorso di argomenti, con il passo successivo in cima. Padronanza e preparazione sono numeri interi.
+- Ogni cosa ha un solo posto: il quaderno degli errori è sotto Esami e il tuo livello di studio è nel profilo, dove cambiarlo vale per i nuovi esami. L'app dice "Esame" ovunque invece di "Piano" o "Prova".
+- All'università voti e obiettivi sono in trentesimi. Nel profilo puoi passare ai centesimi.
+- Le impostazioni dell'esame sono una pagina a sé, con una barra per salvare. Prima di eliminare un esame, Pyxis mostra cosa verrà eliminato con lui.
+- I dettagli di una fonte stanno in un unico pannello: pagine lette, OCR, quali esami la usano e quali pagine citano le lezioni.
+
+#### Studiare
+
+- Le lezioni sono più corte, circa sei sezioni, e puoi leggere la prima mentre Pyxis scrive le altre.
+- Quiz e simulazioni finiscono sulla stessa schermata dei risultati, da cui puoi ripassare gli errori del quiz in una sessione dedicata.
+- Il ripasso ha una sessione sua, con le flashcard in scadenza, le domande da rifare e gli esercizi sulle lacune.
+- Un quiz parte prima, perché Pyxis scrive un primo gruppo di domande più piccolo e mostra il conteggio mentre arrivano le altre.
+- Una risposta aperta valutata 0,9 o più conta come corretta, e i risultati mostrano la tua risposta accanto ai punti che ha preso.
+- Le flashcard compaiono mentre vengono scritte, e i contatori delle flashcard ora sono coerenti tra loro.
+
+#### Attività
+
+- L'elenco delle attività ha tre gruppi: in corso, da sistemare e completate oggi. Ogni attività dice cosa sta facendo, gli errori con la stessa causa vengono raggruppati e un'attività completata da un altro motore lo indica.
+
+#### Segnalazioni di crash
+
+- Pyxis può inviare una segnalazione quando si blocca, a un server gestito da chi sviluppa Pyxis. È spento finché non lo attivi nella configurazione o in Impostazioni, alla voce Privacy. Una segnalazione contiene l'errore e, per un crash nativo, un'immagine della memoria che può includere frammenti di ciò che era sullo schermo. Le segnalazioni vengono conservate per 90 giorni.
+- Nessuna segnalazione parte mentre un ripristino o "Cancella tutti i dati" sostituisce il tuo spazio di lavoro.
+
+#### Corretti
+
+- Il testo dei libri e la matematica scritta dal modello si vedono puliti: niente segnaposto delle formule, link o codice di formattazione, e la matematica nelle selezioni citate compare una volta sola.
+- I pulsanti rossi per eliminare si leggono bene nel tema scuro.
+- La Libreria mostra il numero giusto di sezioni di una fonte.
+- Le etichette hanno uno stile unico in tutta l'app, e una ventina di errori di testo e di impaginazione trovati nella revisione sono corretti.
+
+#### Dietro le quinte
+
+- Pyxis usa Electron 45, con Vite 8, TypeScript 7, pdf.js 6 e cli-funnel 0.6.1.
+
 ## 0.4.1
 
 ### English
