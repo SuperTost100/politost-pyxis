@@ -486,7 +486,7 @@ esac`,
     ).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });
@@ -570,7 +570,7 @@ esac`,
     await expect(page.locator(".engines-result")).not.toContainText("grok-4.7");
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
     rmSync(bin, { recursive: true, force: true });
   }
 });

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { seedPlan, seedSource } from "./seed";
 import { saveShot } from "./shots";
+import { removeTestFolder } from "./cleanup";
 
 const sizes = [
   { width: 1280, height: 800 },
@@ -144,7 +145,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
         }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -218,7 +219,7 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
         }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -271,7 +272,7 @@ test("LAYOUT-03 the exam settings save bar leaves the goal slider in view", asyn
         }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -347,7 +348,7 @@ test("LAYOUT-04 the study levels fill their rows in setup and in the profile", a
         }
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
 
@@ -414,6 +415,6 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
     await expect(bar).toBeVisible();
   } finally {
     await app.close();
-    rmSync(userData, { recursive: true, force: true });
+    removeTestFolder(userData);
   }
 });
