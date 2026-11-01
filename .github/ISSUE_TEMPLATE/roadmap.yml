@@ -1,0 +1,22 @@
+name: Roadmap idea
+description: Something for a later version of Pyxis.
+labels: [roadmap]
+projects: ["SuperTost100/3"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What it should do, in a sentence or two.
+    validations:
+      required: true
+  - type: dropdown
+    id: version
+    attributes:
+      label: Target version
+      description: The agent who picks it up sets the matching milestone.
+      options:
+        - "0.4.3"
+        - "0.5.0"
+        - Later
+        - Not sure
