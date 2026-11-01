@@ -10,6 +10,7 @@ import {
   checkedAnswer,
   finalizeAttempt,
   gradeQuizQuestion,
+  graderReply,
   readQuizGrading,
   registerQuizGradingJobs,
   submitQuiz,
@@ -543,7 +544,14 @@ describe("quiz grading job", () => {
       '{"feedback":"Manca il coseno.","score":0.4}',
       // Cut off, as Antigravity returned it.
       '{"score":0,"feedback":"Manca il coseno.","}',
+      '```json\n{"score":0.4,"feedback":"Manca il coseno."}\n```',
     ]) await asksAgain(wrapped);
+  });
+
+  it("keeps feedback that starts with an example object", () => {
+    expect(graderReply('{"name":"Ada"} va bene, ma aggiungi "score": 1.')).toBe(false);
+    expect(graderReply("Il modulo vale $|\\vec{v}|=5$.")).toBe(false);
+    expect(graderReply('{"feedback":"Manca il coseno.","score":0.4}')).toBe(true);
   });
 
   async function asksAgain(wrapped: string) {
