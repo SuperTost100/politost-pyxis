@@ -106,14 +106,15 @@ function needsModel(question: StoredQuestion, pick: string | undefined) {
   return question.answer.kind === "open" && Boolean(pick?.trim());
 }
 type Engine = { signal?: AbortSignal; selection?: StoredSelection };
-/** Whether a text is a grader's JSON reply with a score: in any key order, in a code fence, or cut off. */
+/** Whether a text is a grader's JSON reply: an object with a score in any key order or a code fence, or one cut off. */
 export function graderReply(text: string): boolean {
   const body = text.trim().replace(/^```(?:json)?\s*/i, "");
   if (!body.startsWith("{")) return false;
   const value = parseLooseJson(body);
   if (value !== undefined) return typeof value === "object" && value !== null && "score" in value;
-  // A reply cut off before its closing brace doesn't parse.
-  return /"score"\s*:/.test(body);
+  // A reply cut off before its closing brace doesn't parse, even before it reaches the score; feedback for a student
+  // never opens with a quoted key.
+  return /^\{\s*"[^"]+"\s*:/.test(body);
 }
 /** Model-grade one free/open answer; undefined for other kinds or blank answers. */
 async function gradeOpen(

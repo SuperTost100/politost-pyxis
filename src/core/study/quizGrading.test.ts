@@ -545,6 +545,8 @@ describe("quiz grading job", () => {
       // Cut off, as Antigravity returned it.
       '{"score":0,"feedback":"Manca il coseno.","}',
       '```json\n{"score":0.4,"feedback":"Manca il coseno."}\n```',
+      // Cut off before the score.
+      '{"feedback":"Manca il coseno.',
     ]) await asksAgain(wrapped);
   });
 
