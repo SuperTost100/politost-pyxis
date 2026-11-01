@@ -538,14 +538,20 @@ describe("quiz grading job", () => {
   });
 
   it("asks again when the explanation is the grader's JSON instead of feedback", async () => {
+    for (const wrapped of [
+      '{"score":0.4,"feedback":"Manca il coseno."}',
+      '{"feedback":"Manca il coseno.","score":0.4}',
+      // Cut off, as Antigravity returned it.
+      '{"score":0,"feedback":"Manca il coseno.","}',
+    ]) await asksAgain(wrapped);
+  });
+
+  async function asksAgain(wrapped: string) {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     const runner = createRunner(db, () => {});
     const prompts: string[] = [];
     // Antigravity once returned the model's own reply, with a "feedback" key, as the explanation of a score of 0.
-    const nested = {
-      score: 0,
-      explanation: '{"score":0.4,"feedback":"Manca il coseno."}',
-    };
+    const nested = { score: 0, explanation: wrapped };
     const run: GenerateInput["run"] = async (input) => {
       prompts.push(input.prompt);
       if (prompts.length === 1)
@@ -554,11 +560,11 @@ describe("quiz grading job", () => {
     };
     registerQuizGradingJobs(db, runner, run);
     const checked = await checkQuestion(db, runner, run, attemptId, "a", "una risposta");
-    expect(prompts).toHaveLength(2);
+    expect(prompts, wrapped).toHaveLength(2);
     expect(checked.score).toBe(0.4);
     expect(checked.explanation).toBe("Scored 0.4");
     db.close();
-  });
+  }
 
   it("checks a diagnostic open answer right away, and a cancelled check leaves it editable", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");

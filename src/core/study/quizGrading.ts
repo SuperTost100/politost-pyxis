@@ -127,13 +127,14 @@ async function gradeOpen(
     signal: engine.signal,
     schema: z.object({
       score: z.number().min(0).max(1),
-      // An explanation that is itself a score object means the engine wrapped the model's raw reply, so its score is
-      // a guess; failing here sends the repair round instead of showing JSON to the student.
+      // An explanation that is itself an object with a score, in any key order and even cut off, means the engine
+      // wrapped the model's raw reply, so its score is a guess; failing here sends the repair round instead of showing
+      // JSON to the student.
       explanation: z
         .string()
         .min(1)
         .max(4000)
-        .refine((text) => !/^\s*\{\s*"score"\s*:/.test(text), {
+        .refine((text) => !/^\s*\{[\s\S]*"score"\s*:/.test(text), {
           message: "explanation must be feedback for the student, not a JSON object",
         }),
     }),
