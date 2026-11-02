@@ -251,6 +251,9 @@ export type TurnInput = {
   cache?: boolean;
 };
 
+/** What an engine without working structured output is told before the schema, worded as cli-funnel words it. */
+export const SCHEMA_REPLY = "Reply with only a JSON value that matches this JSON Schema. No prose, no code fences.";
+
 export async function runTurn(input: TurnInput): Promise<EngineResult> {
   disclosure?.ensure(input.selection.provider, input.signal);
   try {
@@ -286,8 +289,16 @@ async function turn(input: TurnInput): Promise<EngineResult> {
     ? conversationFor(input.conversation.key, selection, input.system)
     : undefined;
   const continuing = Boolean(talk?.sessionId);
-  const prompt =
+  // agy 1.4 fills a --json-schema with a report on its own run, not with the answer: Sonnet graded its own work 1 and
+  // narrated it, and Gemini returned nothing. Antigravity gets the schema in the prompt and answers in text, which
+  // `generate` parses and repairs like any other reply.
+  // shortcut: Pyxis works around the adapter here; drop this once cli-funnel's Antigravity provider does the same.
+  const schemaInPrompt = selection.provider === "antigravity" && input.responseSchema;
+  const asked =
     continuing && input.conversation ? input.conversation.followUp : input.prompt;
+  const prompt = schemaInPrompt
+    ? `${asked}\n\n${SCHEMA_REPLY}\n${JSON.stringify(schemaInPrompt.schema)}`
+    : asked;
   const cache =
     input.cache && engine.providers[selection.provider]?.capabilities.cache;
   if (talk) talk.busy = true;
@@ -298,7 +309,7 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       selection,
       prompt,
       system: input.system,
-      responseSchema: input.responseSchema,
+      responseSchema: schemaInPrompt ? undefined : input.responseSchema,
       attachments: input.attachments,
       signal: input.signal,
       ...(continuing ? { sessionId: talk!.sessionId } : {}),
