@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { checkRef, fullCredit } from "../../shared/quiz";
 import { uuidv7 } from "../../shared/ids";
+import { parseLooseJson } from "../../shared/smart-text";
 import { generate, type GenerateInput } from "../engine/generate";
 import { promptProvenance, systemPrompt } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
@@ -105,6 +106,16 @@ function needsModel(question: StoredQuestion, pick: string | undefined) {
   return question.answer.kind === "open" && Boolean(pick?.trim());
 }
 type Engine = { signal?: AbortSignal; selection?: StoredSelection };
+/** Whether a text is a grader's JSON reply: an object with a score in any key order or a code fence, or one cut off. */
+export function graderReply(text: string): boolean {
+  const body = text.trim().replace(/^```(?:json)?\s*/i, "");
+  if (!body.startsWith("{")) return false;
+  const value = parseLooseJson(body);
+  if (value !== undefined) return typeof value === "object" && value !== null && "score" in value;
+  // A malformed or cut-off reply doesn't parse. It opens with one of the grader's keys, or holds a score key where an
+  // object member starts; feedback quoting a broken example of its own does neither.
+  return /^\{\s*"(?:score|explanation|feedback)"\s*:/.test(body) || /[{,]\s*"score"\s*:/.test(body);
+}
 /** Model-grade one free/open answer; undefined for other kinds or blank answers. */
 async function gradeOpen(
   db: Database.Database,
@@ -127,7 +138,15 @@ async function gradeOpen(
     signal: engine.signal,
     schema: z.object({
       score: z.number().min(0).max(1),
-      explanation: z.string().min(1).max(4000),
+      // An explanation that is the grader's own reply means the engine wrapped the model's raw answer, so its score is
+      // a guess; failing here sends the repair round instead of showing JSON to the student.
+      explanation: z
+        .string()
+        .min(1)
+        .max(4000)
+        .refine((text) => !graderReply(text), {
+          message: "explanation must be feedback for the student, not a JSON object",
+        }),
     }),
     system: systemPrompt("quiz.open-grade"),
     prompt: JSON.stringify({

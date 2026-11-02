@@ -10,6 +10,7 @@ import {
   checkedAnswer,
   finalizeAttempt,
   gradeQuizQuestion,
+  graderReply,
   readQuizGrading,
   registerQuizGradingJobs,
   submitQuiz,
@@ -537,6 +538,50 @@ describe("quiz grading job", () => {
     }
   });
 
+  it("asks again when the explanation is the grader's JSON instead of feedback", async () => {
+    for (const wrapped of [
+      '{"score":0.4,"feedback":"Manca il coseno."}',
+      '{"feedback":"Manca il coseno.","score":0.4}',
+      // Cut off, as Antigravity returned it.
+      '{"score":0,"feedback":"Manca il coseno.","}',
+      '```json\n{"score":0.4,"feedback":"Manca il coseno."}\n```',
+      // Cut off before the score.
+      '{"feedback":"Manca il coseno.',
+      // Not JSON, with an unquoted first key.
+      '{feedback: "Manca il coseno.", "score": 0.4}',
+    ]) await asksAgain(wrapped);
+  });
+
+  it("keeps feedback that starts with an example object", () => {
+    expect(graderReply('{"name":"Ada"} va bene, ma aggiungi "score": 1.')).toBe(false);
+    expect(graderReply("Il modulo vale $|\\vec{v}|=5$.")).toBe(false);
+    expect(graderReply('{"feedback":"Manca il coseno.","score":0.4}')).toBe(true);
+    // An example that doesn't parse, with "score" named in prose, is still feedback; a reply cut off in its
+    // explanation is still the grader's.
+    expect(graderReply('{"name": "Ada" manca la virgola, e il campo "score": va tolto.')).toBe(false);
+    expect(graderReply('{"explanation":"Manca il coseno.')).toBe(true);
+  });
+
+  async function asksAgain(wrapped: string) {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    const runner = createRunner(db, () => {});
+    const prompts: string[] = [];
+    // Antigravity once returned the model's own reply, with a "feedback" key, as the explanation of a score of 0.
+    const nested = { score: 0, explanation: wrapped };
+    const run: GenerateInput["run"] = async (input) => {
+      prompts.push(input.prompt);
+      if (prompts.length === 1)
+        return { structured: nested, text: JSON.stringify(nested), provider: "antigravity" as const, model: "claude-sonnet-4-6", inputTokens: 1 };
+      return reply(0.4);
+    };
+    registerQuizGradingJobs(db, runner, run);
+    const checked = await checkQuestion(db, runner, run, attemptId, "a", "una risposta");
+    expect(prompts, wrapped).toHaveLength(2);
+    expect(checked.score).toBe(0.4);
+    expect(checked.explanation).toBe("Scored 0.4");
+    db.close();
+  }
+
   it("checks a diagnostic open answer right away, and a cancelled check leaves it editable", async () => {
     const { db, attemptId } = fixture([open("a")], "diagnostic");
     let hang = true;
@@ -775,7 +820,7 @@ describe("SymPy in quiz grading", () => {
     expect(done.result!.results[0]!.score).toBe(0.3);
     expect(checkedAnswer(db, attemptId, "a")!.prompt).toEqual({
       template: "quiz.open-grade",
-      version: "3",
+      version: "4",
     });
     db.close();
   });
