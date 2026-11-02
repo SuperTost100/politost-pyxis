@@ -100,6 +100,7 @@ const {
   endConversation,
   getFunnel,
   runTurn,
+  SCHEMA_REPLY,
   setApiKeys,
   setScratch,
   CONVERSATION_IDLE_MS,
@@ -130,6 +131,31 @@ describe("runTurn", () => {
       });
     },
   );
+
+  it("asks Antigravity for JSON in the prompt instead of its schema flag", async () => {
+    run.mockResolvedValue({ text: '{"score":0.4,"explanation":"Manca il fattore $2x$."}' });
+    const schema = { type: "object", properties: { score: { type: "number" } }, required: ["score"] };
+    const result = await runTurn({
+      selection: { provider: "antigravity", model: "claude-sonnet-4-6" },
+      prompt: "Grade this.",
+      responseSchema: { name: "response", schema },
+    });
+    // With --json-schema, agy 1.4 fills the schema with a report on its own run: Sonnet graded its own work 1 and
+    // narrated it, and Gemini returned nothing.
+    const sent = run.mock.calls[0]![0] as Request & { responseSchema?: unknown };
+    expect(sent.responseSchema).toBeUndefined();
+    expect(sent.prompt).toBe(`Grade this.\n\n${SCHEMA_REPLY}\n${JSON.stringify(schema)}`);
+    expect(result.text).toBe('{"score":0.4,"explanation":"Manca il fattore $2x$."}');
+    // Every other engine keeps its native structured output.
+    await runTurn({
+      selection: { provider: "claude", model: "m" },
+      prompt: "Grade this.",
+      responseSchema: { name: "response", schema },
+    });
+    const native = run.mock.calls[1]![0] as Request & { responseSchema?: unknown };
+    expect(native.prompt).toBe("Grade this.");
+    expect(native.responseSchema).toEqual({ name: "response", schema });
+  });
 
   it("reports a provider failure raised by cancellation as an abort", async () => {
     const controller = new AbortController();

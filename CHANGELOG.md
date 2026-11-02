@@ -49,7 +49,7 @@ Pyxis 0.4.2 is an alpha release that tidies what 0.4.1 left rough. Setup is shor
 #### Fixed
 
 - On Codex and with an OpenAI API key, writing quizzes, flashcards, targeted reviews, exercises and concept maps failed every time with a schema error. They work now.
-- An open answer graded through Antigravity could show the grader's raw reply, or a note in English, as its feedback, and the score could disagree with it. The grading request now names the fields Pyxis expects, and Pyxis asks again when the feedback it gets back is the grader's raw data.
+- On Antigravity, quizzes, flashcards and the other content Pyxis asks for in a fixed format could fail to be written. An open answer graded there could get the grader's raw reply, or an English note about its own work, as feedback, and be marked correct whatever its score. Pyxis now describes the format in the request itself, and asks again when the feedback is the grader's raw data.
 - Book text and math from the model show cleanly: no raw formula placeholders, links or markup, and math in quoted selections appears once.
 - Red delete buttons are readable in dark mode.
 - The Library shows the right number of sections for a source.
@@ -104,7 +104,7 @@ Pyxis 0.4.2 è una versione alpha che sistema quello che la 0.4.1 aveva lasciato
 #### Corretti
 
 - Con Codex e con una chiave API di OpenAI, scrivere quiz, flashcard, ripassi mirati, esercizi e mappe concettuali falliva sempre con un errore di schema. Ora funziona.
-- Una risposta aperta corretta tramite Antigravity poteva mostrare come commento la risposta grezza del correttore, o una nota in inglese, e il punteggio poteva non corrispondere. Ora la richiesta di correzione indica i campi che Pyxis si aspetta, e Pyxis chiede di nuovo quando il commento ricevuto contiene i dati grezzi del correttore.
+- Con Antigravity, quiz, flashcard e gli altri contenuti che Pyxis chiede in un formato fisso potevano non essere scritti. Una risposta aperta corretta tramite Antigravity poteva ricevere come commento la risposta grezza del correttore, o una nota in inglese sul suo stesso lavoro, ed essere segnata come corretta qualunque fosse il punteggio. Ora Pyxis descrive il formato nella richiesta stessa, e chiede di nuovo quando il commento ricevuto contiene i dati grezzi del correttore.
 - Il testo dei libri e la matematica scritta dal modello si vedono puliti: niente segnaposto delle formule, link o codice di formattazione, e la matematica nelle selezioni citate compare una volta sola.
 - I pulsanti rossi per eliminare si leggono bene nel tema scuro.
 - La Libreria mostra il numero giusto di sezioni di una fonte.
