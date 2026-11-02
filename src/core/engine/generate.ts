@@ -78,20 +78,33 @@ export function setFallbackListener(
   onFallback = listener;
 }
 
-/** The JSON Schema sent with a structured request: unknown object properties are not allowed. */
+/**
+ * The JSON Schema sent with a structured request, in the strict form Codex and the OpenAI API require: unknown object
+ * properties are not allowed, every key is required, and an optional key may be null instead (`parsed` drops it).
+ */
 export function jsonSchema(schema: z.ZodType): Record<string, unknown> {
-  const json = z.toJSONSchema(schema, { target: "draft-7" }) as Record<
-    string,
-    unknown
-  >;
+  const json = plainSchema(schema);
   lock(json);
   return json;
+}
+
+function plainSchema(schema: z.ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema, { target: "draft-7" }) as Record<string, unknown>;
 }
 
 function lock(node: unknown): void {
   if (!node || typeof node !== "object") return;
   const record = node as Record<string, unknown>;
-  if (record.type === "object") record.additionalProperties = false;
+  if (record.type === "object") {
+    record.additionalProperties = false;
+    const properties = record.properties as Record<string, unknown> | undefined;
+    if (properties) {
+      const required = new Set(Array.isArray(record.required) ? record.required : []);
+      for (const [key, value] of Object.entries(properties))
+        if (!required.has(key)) properties[key] = { anyOf: [value, { type: "null" }] };
+      record.required = Object.keys(properties);
+    }
+  }
   // zod writes a discriminated union as oneOf, which Codex and the OpenAI API refuse in strict mode. The shapes differ in
   // their `kind` constant, so at most one can match and anyOf accepts the same answers.
   if (Array.isArray(record.oneOf)) {
@@ -105,10 +118,54 @@ function lock(node: unknown): void {
 }
 
 function parsed(schema: z.ZodType, result: EngineResult): unknown {
-  const candidate =
+  const value =
     result.structured == null ? tryJson(result.text) : repairModelStrings(result.structured);
-  const check = schema.safeParse(candidate);
+  const check = schema.safeParse(withoutOptionalNulls(value, plainSchema(schema)));
   return check.success ? check.data : null;
+}
+
+/**
+ * The value without the nulls a strict schema let the model write for keys it left out. `node` is the schema before
+ * `lock`, where those keys are not required; a null under a required key is a nullable value and stays.
+ */
+function withoutOptionalNulls(value: unknown, node: unknown): unknown {
+  const shapes = branches(node);
+  if (Array.isArray(value))
+    return value.map((item) => withoutOptionalNulls(item, { anyOf: shapes.map((shape) => shape.items) }));
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  // A union's shapes differ in their `kind` constant; only the shapes whose constants the value carries apply to it.
+  const matching = shapes.filter((shape) => {
+    const properties = shape.properties as Record<string, { const?: unknown }> | undefined;
+    return (
+      properties !== undefined &&
+      Object.entries(properties).every(
+        ([key, property]) => property?.const === undefined || record[key] === property.const,
+      )
+    );
+  });
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(record)) {
+    const known = matching.filter((shape) => key in (shape.properties as Record<string, unknown>));
+    const optional =
+      known.length > 0 &&
+      known.every((shape) => !(Array.isArray(shape.required) && shape.required.includes(key)));
+    if (item === null && optional) continue;
+    out[key] = withoutOptionalNulls(item, {
+      anyOf: known.map((shape) => (shape.properties as Record<string, unknown>)[key]),
+    });
+  }
+  return out;
+}
+
+/** The schemas a value may match: the node itself and every shape of its unions. */
+function branches(node: unknown): Array<Record<string, unknown>> {
+  if (!node || typeof node !== "object") return [];
+  const record = node as Record<string, unknown>;
+  const nested = ["anyOf", "oneOf", "allOf"].flatMap((key) =>
+    Array.isArray(record[key]) ? (record[key] as unknown[]).flatMap(branches) : [],
+  );
+  return [record, ...nested];
 }
 
 /**
@@ -287,7 +344,8 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
     for (let repair = 0; data == null && repair < 2; repair += 1) {
       const issues =
         result.structuredError ??
-        input.schema.safeParse(tryJson(result.text)).error?.message ??
+        input.schema.safeParse(withoutOptionalNulls(tryJson(result.text), plainSchema(input.schema))).error
+          ?.message ??
         result.text;
       result = await run({
         selection,
