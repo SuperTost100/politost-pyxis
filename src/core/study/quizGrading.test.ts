@@ -556,6 +556,10 @@ describe("quiz grading job", () => {
     expect(graderReply('{"name":"Ada"} va bene, ma aggiungi "score": 1.')).toBe(false);
     expect(graderReply("Il modulo vale $|\\vec{v}|=5$.")).toBe(false);
     expect(graderReply('{"feedback":"Manca il coseno.","score":0.4}')).toBe(true);
+    // An example that doesn't parse, with "score" named in prose, is still feedback; a reply cut off in its
+    // explanation is still the grader's.
+    expect(graderReply('{"name": "Ada" manca la virgola, e il campo "score": va tolto.')).toBe(false);
+    expect(graderReply('{"explanation":"Manca il coseno.')).toBe(true);
   });
 
   async function asksAgain(wrapped: string) {
