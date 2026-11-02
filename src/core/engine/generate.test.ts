@@ -161,6 +161,57 @@ describe("generate", () => {
     expect(items.anyOf.every((shape) => shape.additionalProperties === false)).toBe(true);
   });
 
+  it("requires every key, sends an optional one as nullable and reads its null as absent", async () => {
+    let sent: unknown;
+    const output = await generate({
+      selection,
+      prompt: "cards",
+      schema: z.object({
+        cards: z.array(
+          z.discriminatedUnion("kind", [
+            z.object({ kind: z.literal("basic"), front: z.string(), hint: z.string().optional() }),
+            z.object({ kind: z.literal("cloze"), text: z.string(), hint: z.string() }),
+          ]),
+        ),
+        skipped: z.array(z.string()).optional(),
+        parent: z.string().nullable(),
+      }),
+      run: async (input) => {
+        sent = input.responseSchema?.schema;
+        return result({
+          structured: {
+            cards: [
+              { kind: "basic", front: "f'(x)", hint: null },
+              { kind: "cloze", text: "(e^x)' = {{e^x}}", hint: "esponenziale" },
+            ],
+            skipped: null,
+            parent: null,
+          },
+        });
+      },
+    });
+    // Codex and the OpenAI API answer 400 to a strict schema whose `required` leaves out a key, so every flashcard
+    // batch failed there on `skipped`.
+    const root = sent as {
+      required: string[];
+      properties: { skipped: { anyOf: unknown[] }; cards: { items: { anyOf: Array<{ required: string[] }> } } };
+    };
+    expect(root.required).toEqual(["cards", "skipped", "parent"]);
+    expect(root.properties.skipped.anyOf).toContainEqual({ type: "null" });
+    expect(root.properties.cards.items.anyOf.map((shape) => shape.required)).toEqual([
+      ["kind", "front", "hint"],
+      ["kind", "text", "hint"],
+    ]);
+    // A null for an optional key means the model left it out; a null for a nullable key stays.
+    expect(output.data).toEqual({
+      cards: [
+        { kind: "basic", front: "f'(x)" },
+        { kind: "cloze", text: "(e^x)' = {{e^x}}", hint: "esponenziale" },
+      ],
+      parent: null,
+    });
+  });
+
   it("repairs one bad structured answer", async () => {
     const calls: string[] = [];
     const followUps: Array<string | undefined> = [];
