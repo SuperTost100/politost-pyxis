@@ -547,6 +547,8 @@ describe("quiz grading job", () => {
       '```json\n{"score":0.4,"feedback":"Manca il coseno."}\n```',
       // Cut off before the score.
       '{"feedback":"Manca il coseno.',
+      // Not JSON, with an unquoted first key.
+      '{feedback: "Manca il coseno.", "score": 0.4}',
     ]) await asksAgain(wrapped);
   });
 

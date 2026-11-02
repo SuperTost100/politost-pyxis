@@ -112,9 +112,9 @@ export function graderReply(text: string): boolean {
   if (!body.startsWith("{")) return false;
   const value = parseLooseJson(body);
   if (value !== undefined) return typeof value === "object" && value !== null && "score" in value;
-  // A reply cut off before its closing brace doesn't parse, even before it reaches the score; feedback for a student
-  // never opens with a quoted key.
-  return /^\{\s*"[^"]+"\s*:/.test(body);
+  // A malformed or cut-off reply doesn't parse. Feedback for a student never opens with a quoted key, and never
+  // holds a score key after an opening brace.
+  return /^\{\s*"[^"]+"\s*:/.test(body) || /"score"\s*:/.test(body);
 }
 /** Model-grade one free/open answer; undefined for other kinds or blank answers. */
 async function gradeOpen(
