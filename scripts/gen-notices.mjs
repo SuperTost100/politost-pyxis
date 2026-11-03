@@ -156,14 +156,16 @@ for (const name of [...(app.bundledByVite ?? [])].sort()) {
   await visit(name, root);
 }
 
-for (const [name, file] of [
-  ["Figtree", "Figtree-OFL.txt"],
-  ["JetBrains Mono", "JetBrainsMono-OFL.txt"],
+for (const [name, file, version] of [
+  ["Figtree", "Figtree-OFL.txt", "Fontsource 5.3.0"],
+  ["JetBrains Mono", "JetBrainsMono-OFL.txt", "Fontsource 5.3.0"],
+  ["Source Serif 4", "SourceSerif4-OFL.txt", "Fontsource 5.3.1"],
+  ["Young Serif", "YoungSerif-OFL.txt", "Fontsource 5.3.0"],
 ]) {
   const folder = join(root, "src/renderer/src/design-system/fonts");
   records.set(`font:${name}`, {
     name,
-    version: "Fontsource 5.3.0",
+    version,
     license: "OFL-1.1",
     texts: [{ file, text: await textFile(join(folder, file), folder) }],
   });
