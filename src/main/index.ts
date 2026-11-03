@@ -548,7 +548,7 @@ function createWindow(route?: string): void {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: theme === "dark" ? "#0d1015" : "#f6f5f1",
+    backgroundColor: theme === "dark" ? "#0d1015" : "#f5f4ef",
     title: "Pyxis",
     // Windows and Linux show the menu bar only while Alt is held.
     autoHideMenuBar: true,
