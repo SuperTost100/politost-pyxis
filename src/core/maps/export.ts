@@ -23,9 +23,9 @@ const labels = {
 
 /** The light theme's colours, since an exported map is read on paper or in another app. */
 const fills: Record<string, string> = {
-  "surface-raised": "#efede7",
-  "primary-soft": "#e5ecfc",
-  "mastery-soft": "#dcf3e9",
+  "surface-raised": "#ebe9e2",
+  "primary-soft": "#e1f0ec",
+  "mastery-soft": "#ecf3e3",
   "star-soft": "#fbf0d6",
   "danger-soft": "#fbe3e3",
 };

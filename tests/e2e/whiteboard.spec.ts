@@ -76,7 +76,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
             ),
           );
         expect(rgba).toEqual(
-          theme === "light" ? [255, 255, 255, 255] : [21, 25, 32, 255],
+          theme === "light" ? [255, 255, 255, 255] : [23, 27, 34, 255],
         );
         await page.keyboard.press("e");
         await expect(

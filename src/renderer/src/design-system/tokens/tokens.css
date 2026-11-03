@@ -21,45 +21,76 @@
   font-style: normal;
   font-display: swap;
 }
+@font-face {
+  font-family: "Young Serif";
+  src: url("../fonts/YoungSerif-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../fonts/SourceSerif4-Variable.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Serif 4";
+  src: url("../fonts/SourceSerif4-Variable-Italic.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: italic;
+  font-display: swap;
+}
 :root,
 [data-theme="dark"] {
   --bg: #0d1015;
-  --surface: #151920;
-  --surface-raised: #1c212a;
-  --surface-overlay: #232935;
-  --border: #262c37;
+  --surface: #171b22;
+  --surface-raised: #232934;
+  --surface-overlay: #171b22;
+  --border: #292f3a;
   --border-control: #6b7385;
-  --ink: #eceef3;
-  --ink-muted: #a4abb8;
-  --ink-subtle: #8a91a0;
+  --ink: #e8eaef;
+  --ink-muted: #a9b0bc;
+  --ink-subtle: #9198a6;
   --on-ink: #0d1015;
-  --primary: #3262db;
-  --primary-hover: #3a6ae4;
-  --primary-active: #2854c4;
+  --primary: #14807a;
+  --primary-hover: #0f726b;
+  --primary-active: #0c635d;
   --on-primary: #ffffff;
-  --primary-text: #7ea2ff;
-  --primary-soft: #1b2744;
+  --primary-text: #5fcfbf;
+  --primary-soft: #10302c;
   --star: #f4b942;
   --star-text: #f4b942;
   --on-star: #1a1206;
   --star-soft: #2d2412;
-  --mastery: #4fd1a1;
-  --mastery-text: #4fd1a1;
-  --mastery-soft: #12291f;
+  --mastery: #9ccf78;
+  --mastery-text: #9ccf78;
+  --mastery-soft: #1c2a18;
   --danger: #f26d6d;
   --danger-soft: #2e1618;
-  --focus-ring: #f4b942;
+  --focus-ring: #5fcfbf;
   --scrim: rgba(5, 7, 10, 0.72);
   --warning: var(--star-text);
   --info: var(--primary-text);
-  --shadow-overlay: 0 16px 40px rgba(0, 0, 0, 0.55);
-  --shadow-card: none;
+  --shadow-overlay:
+    0 0 0 1px rgba(255, 255, 255, 0.06), 0 22px 48px -12px rgba(0, 0, 0, 0.85);
+  --shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.03);
   --glow-star: 0 0 0 1px #f4b942, 0 0 24px rgba(244, 185, 66, 0.35);
+  --surface-sunken: #13161c;
+  --ok: var(--mastery);
+  --ok-soft: var(--mastery-soft);
+  --ring-prep: #8aa8f0;
+  --ring-path: #e6b552;
+  --ring-today: #ec94b4;
+  --ring-track: #252b36;
+  --shadow-raised:
+    0 0 0 1px rgba(255, 255, 255, 0.035), 0 16px 36px -16px rgba(0, 0, 0, 0.8);
 }
 [data-theme="light"] {
-  --bg: #f6f5f1;
+  --bg: #f5f4ef;
   --surface: #ffffff;
-  --surface-raised: #efede7;
+  --surface-raised: #ebe9e2;
   --surface-overlay: #ffffff;
   --border: #e4e2db;
   --border-control: #7e8492;
@@ -67,28 +98,39 @@
   --ink-muted: #50576a;
   --ink-subtle: #5f6675;
   --on-ink: #ffffff;
-  --primary: #3262db;
-  --primary-hover: #2a56c8;
-  --primary-active: #2249b0;
+  --primary: #0f6e66;
+  --primary-hover: #0c5f58;
+  --primary-active: #0a524c;
   --on-primary: #ffffff;
-  --primary-text: #2451c7;
-  --primary-soft: #e5ecfc;
+  --primary-text: #0b665f;
+  --primary-soft: #e1f0ec;
   --star: #b7790c;
   --star-text: #8a5a00;
   --on-star: #1a1206;
   --star-soft: #fbf0d6;
-  --mastery: #1a9165;
-  --mastery-text: #0f7a55;
-  --mastery-soft: #dcf3e9;
+  --mastery: #3b7323;
+  --mastery-text: #3b7323;
+  --mastery-soft: #ecf3e3;
   --danger: #c0343c;
   --danger-soft: #fbe3e3;
-  --focus-ring: #2451c7;
+  --focus-ring: #0b665f;
   --scrim: rgba(21, 24, 30, 0.4);
   --warning: var(--star-text);
   --info: var(--primary-text);
-  --shadow-overlay: 0 12px 32px rgba(21, 24, 30, 0.14);
-  --shadow-card: 0 1px 2px rgba(21, 24, 30, 0.06);
+  --shadow-overlay:
+    0 4px 10px rgba(21, 24, 30, 0.08), 0 22px 44px -14px rgba(21, 24, 30, 0.3);
+  --shadow-card:
+    0 1px 2px rgba(21, 24, 30, 0.06), 0 1px 1px rgba(21, 24, 30, 0.04);
   --glow-star: 0 0 0 1px #b7790c, 0 0 18px rgba(183, 121, 12, 0.25);
+  --surface-sunken: #f9f8f5;
+  --ok: var(--mastery);
+  --ok-soft: var(--mastery-soft);
+  --ring-prep: #3755a8;
+  --ring-path: #8f600b;
+  --ring-today: #a8456b;
+  --ring-track: #e8e6df;
+  --shadow-raised:
+    0 2px 4px rgba(21, 24, 30, 0.05), 0 12px 32px -12px rgba(21, 24, 30, 0.18);
 }
 :root {
   --space-1: 4px;
@@ -101,7 +143,9 @@
   --space-12: 48px;
   --space-16: 64px;
   --radius-sm: 8px;
+  --radius-field: 10px;
   --radius-md: 12px;
+  --radius-card: 14px;
   --radius-lg: 16px;
   --radius-xl: 24px;
   --radius-pill: 999px;
@@ -110,6 +154,8 @@
   --control-lg: 48px;
   --path-node: 80px;
   --content-width: 768px;
+  --font-display: "Young Serif", Georgia, serif;
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
   --font-sans: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
     "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -122,24 +168,24 @@
   letter-spacing: -0.02em;
 }
 .display {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: calc(40px * var(--text-scale, 1));
   line-height: calc(44px * var(--text-scale, 1));
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: -0.015em;
 }
 .title-1 {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: calc(28px * var(--text-scale, 1));
   line-height: calc(34px * var(--text-scale, 1));
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: -0.01em;
 }
 .title-2 {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: calc(22px * var(--text-scale, 1));
   line-height: calc(28px * var(--text-scale, 1));
-  font-weight: 600;
+  font-weight: 400;
 }
 .title-3 {
   font-family: var(--font-sans);

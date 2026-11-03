@@ -22,6 +22,8 @@ async function fixture() {
   await mkdir(fontDir, { recursive: true });
   await writeFile(join(fontDir, "Figtree-OFL.txt"), "Figtree OFL");
   await writeFile(join(fontDir, "JetBrainsMono-OFL.txt"), "JetBrains OFL");
+  await writeFile(join(fontDir, "SourceSerif4-OFL.txt"), "Source Serif OFL");
+  await writeFile(join(fontDir, "YoungSerif-OFL.txt"), "Young Serif OFL");
   await writeFile(join(root, "LICENSE"), "Pyxis MIT");
   await writeFile(
     join(root, "package.json"),
@@ -80,7 +82,7 @@ test("notices follow the installed production, optional and peer closure, retain
       data.some((p) => p.name === "unrelated-dev"),
       false,
     );
-    assert.equal(data.filter((p) => p.license === "OFL-1.1").length, 2);
+    assert.equal(data.filter((p) => p.license === "OFL-1.1").length, 4);
     assert.equal(
       data
         .find((p) => p.name === "first")
