@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# The 0.5.0 redesign is built on next, so its pull requests get the same automatic review as main's.
+reviews:
+  auto_review:
+    base_branches:
+      - next
