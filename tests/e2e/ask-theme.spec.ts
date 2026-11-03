@@ -82,7 +82,7 @@ function paint(page: Page): Promise<Paint> {
 function differences(a: Paint, b: Paint): string[] {
   return (
     Object.keys(a)
-      // The door switch paints its selected pill from a thumb animation that a reload has not run.
+      // A segmented control paints its selected item from a thumb animation that a reload has not run.
       .filter(
         (key) =>
           key in b && a[key] !== b[key] && !key.includes("div.ant-segmented"),
@@ -91,12 +91,12 @@ function differences(a: Paint, b: Paint): string[] {
   );
 }
 
-/** The four colours the issue reported: page, header rule, assistant text and its formula. */
+/** The four colours the issue reported: page, header, assistant text and its formula. */
 function landmarks(page: Page) {
   return page.evaluate(() => {
     const css = (
       selector: string,
-      property: "backgroundColor" | "color" | "borderBottomColor",
+      property: "backgroundColor" | "color",
     ) => {
       const node = document.querySelector(selector);
       if (!node) throw new Error(`missing ${selector}`);
@@ -105,7 +105,7 @@ function landmarks(page: Page) {
     return {
       theme: document.documentElement.dataset["theme"] ?? null,
       page: css("body", "backgroundColor"),
-      headerRule: css("header.ant-layout-header", "borderBottomColor"),
+      header: css("header.px-top .px-nav", "backgroundColor"),
       assistantText: css(".px-msg:not(.px-msg-user) .px-msg-text p", "color"),
       assistantMath: css(".px-msg:not(.px-msg-user) .katex", "color"),
     };
@@ -189,7 +189,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       expect(after.theme).toBe(to);
       for (const key of [
         "page",
-        "headerRule",
+        "header",
         "assistantText",
         "assistantMath",
       ] as const)

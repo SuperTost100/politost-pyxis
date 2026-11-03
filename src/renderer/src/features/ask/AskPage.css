@@ -1,6 +1,6 @@
 /* The Ask page is one column: a bar pinned at the top, messages in between, and the composer docked to the bottom of the viewport. */
 .ask-page {
-  --ask-header: 64px;
+  --ask-header: var(--top-height);
   display: flex;
   flex-direction: column;
   /* AskPage.tsx sets the real height and bottom margin from the space around the page. */

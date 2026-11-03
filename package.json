@@ -44,7 +44,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@ant-design/pro-components": "3.1.15-3",
     "@axe-core/playwright": "^4.14.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
@@ -94,7 +93,6 @@
     }
   },
   "bundledByVite": [
-    "@ant-design/pro-components",
     "@dnd-kit/core",
     "@dnd-kit/sortable",
     "@dnd-kit/utilities",

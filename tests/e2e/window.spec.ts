@@ -325,7 +325,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         );
       }
     }
-    await page.getByTitle("Esami", { exact: true }).click();
+    await page.locator("header nav").getByRole("link", { name: "Esami", exact: true }).click();
     await page
       .getByRole("button", { name: "Nuovo esame", exact: true })
       .click();

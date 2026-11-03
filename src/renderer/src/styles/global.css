@@ -76,60 +76,124 @@ body {
   border: 0;
 }
 
-.ant-pro-layout {
-  min-height: 100%;
-  background: var(--bg);
-}
-
-.ant-pro-global-header-logo h1:empty,
-.ant-pro-top-nav-header-logo h1:empty {
-  display: none;
-}
-
-.ant-pro-global-header,
-.ant-layout-header {
-  -webkit-app-region: drag;
-  border-bottom: 1px solid var(--border) !important;
-}
-
-/* The header spans the window: logo at the far left, actions at the far right, doors centred on the window.
+/* The top bar (pyxis-mockups app/app.css .top): the mark and name, then Chiedi · Esami · Mappe, then the Library,
+   Attività and Settings icons at the right. The bar is the window's drag region; its controls are not.
    macOS keeps the left edge clear of the traffic lights (trafficLightPosition x 16 in src/main/index.ts). */
 :root {
-  --shell-gutter-start: 20px;
-  --shell-gutter-end: 16px;
+  --shell-gutter-start: 18px;
+  --shell-gutter-end: 14px;
+  --top-height: 60px;
 }
 html[data-platform="darwin"] {
   --shell-gutter-start: 80px;
 }
-.ant-pro-top-nav-header-main {
-  padding-inline: var(--shell-gutter-start) var(--shell-gutter-end) !important;
+.px-app {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
 }
-/* Below 768px ProLayout adds a menu button that opens nothing here; setup has no menu to open. */
-.px-in-setup .ant-pro-global-header-collapsed-button {
-  display: none;
+/* ProLayout gave everything inside it border-box sizing, and the shell pages are laid out for it. */
+.px-app,
+.px-app *,
+.px-app *::before,
+.px-app *::after {
+  box-sizing: border-box;
 }
-
-.px-doors-wrap {
-  position: absolute;
-  inset: 0;
+.px-top {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
-  justify-content: center;
-  /* Empty header stays a drag region; only the switch takes clicks. */
-  pointer-events: none;
+  gap: var(--space-1);
+  height: var(--top-height);
+  padding-inline: var(--shell-gutter-start) var(--shell-gutter-end);
+  background: var(--bg);
+  -webkit-app-region: drag;
 }
-.px-doors-wrap .px-doors {
-  pointer-events: auto;
-  line-height: normal;
-}
-
-.ant-pro-global-header button,
-.ant-pro-global-header a,
-.ant-pro-global-header .ant-segmented,
-.ant-layout-header button,
-.ant-layout-header a,
-.ant-layout-header .ant-segmented {
+.px-top button,
+.px-top a {
   -webkit-app-region: no-drag;
+}
+.px-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-right: 22px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.px-brand-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+.px-nav {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-nav a {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 15px;
+  border-radius: var(--radius-sm);
+  font: 500 14px/1 var(--font-sans);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+.px-nav a:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-nav a[aria-current="page"] {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-weight: 650;
+}
+.px-top-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* Plain icons: no border, background or shadow, a fill only on hover, the current one in the accent text colour. */
+.px-top-tool,
+.px-top .ant-btn.px-top-tool {
+  display: inline-grid;
+  place-items: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+.px-top-tool:hover,
+.px-top .ant-btn.px-top-tool:hover {
+  background: var(--surface-raised) !important;
+  color: var(--ink) !important;
+}
+.px-top-tool[aria-current="page"] {
+  color: var(--primary-text);
 }
 
 .px-doors .ant-segmented-item-label {
@@ -164,12 +228,13 @@ html[data-platform="darwin"] {
   background: transparent !important;
 }
 
-/* ProLayout lays its content out as a flex child, where auto margins shrink it to its content. */
+/* The page column under the top bar, padded as ProLayout's PageContainer was (24px sides, 48px top). */
 .px-shell-container {
   box-sizing: border-box;
   width: 100%;
   max-width: var(--content-width);
   margin-inline: auto;
+  padding: 48px 24px 0;
 }
 
 /* Settings is the one page with a sidebar, so it takes a wider column from 960px, where the sidebar appears. */

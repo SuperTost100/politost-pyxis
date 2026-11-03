@@ -1,7 +1,6 @@
 import { UpdateNotice } from "../features/settings/UpdatesPanel";
 import { BackupNotice } from "../features/settings/AutoBackups";
 import { App as AntApp, ConfigProvider } from "antd";
-import { ProConfigProvider } from "@ant-design/pro-components";
 import enUS from "antd/locale/en_US";
 import itIT from "antd/locale/it_IT";
 import { Calendar, ChevronDown, LoaderCircle } from "lucide-react";
@@ -125,22 +124,20 @@ function StudyApp() {
         datePicker={dateIcons}
         button={buttonIcons}
       >
-        <ProConfigProvider dark={appearance.resolved === "dark"} hashed={false}>
-          <AntApp>
-            <JobsSync />
-            <div className="px-corner-notices">
-              <BackupNotice />
-              <UpdateNotice />
-            </div>
-            <CoreNotice />
-            <EngineFallbackNotice />
-            <MenuCommands />
-            <OpenedPlans />
-            <RouterProvider router={router} />
-            <SourceViewer />
-            <MakeCardsDialog />
-          </AntApp>
-        </ProConfigProvider>
+        <AntApp>
+          <JobsSync />
+          <div className="px-corner-notices">
+            <BackupNotice />
+            <UpdateNotice />
+          </div>
+          <CoreNotice />
+          <EngineFallbackNotice />
+          <MenuCommands />
+          <OpenedPlans />
+          <RouterProvider router={router} />
+          <SourceViewer />
+          <MakeCardsDialog />
+        </AntApp>
       </ConfigProvider>
     </AppStateContext.Provider>
   );
