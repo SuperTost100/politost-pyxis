@@ -278,7 +278,8 @@ jobs:
 
   attest:
     name: Attest packaged artifacts
-    needs: package
+    # Waits for the tests and route audits too, so an installer gets provenance only when its whole run passed.
+    needs: [test, audit, package]
     # Only builds from main get provenance. docs/releasing.md verifies it with --source-ref refs/heads/main.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
