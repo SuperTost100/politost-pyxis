@@ -85,6 +85,10 @@ export function pyxisTheme(
       colorErrorActive: DANGER_STATES[mode].active,
       colorInfo: c.primary,
       colorLink: c.primaryText,
+      // Ant Design derives these from colorLink, and its dark algorithm takes them under 4.5:1 on the cards
+      // (link-contrast.test.ts). A hovered link turns to the text colour; a pressed one keeps the link colour.
+      colorLinkHover: c.ink,
+      colorLinkActive: c.primaryText,
       fontFamily: FONT_SANS,
       fontFamilyCode: FONT_MONO,
       fontSize: 15 * textScale,
