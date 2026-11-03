@@ -1,0 +1,297 @@
+name: Full check and package
+
+# Every target: tests, route audits and installers on macOS arm64, macOS x64, Windows x64 and Linux x64. Pull requests
+# get the fast Linux checks in ci.yml instead; this runs by hand (Actions, "Run workflow"), on pull requests that change
+# packaging, dependencies or CI, and on main before every release, which needs its attested installers.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - electron-builder.yml
+      - build/**
+      - .github/workflows/full.yml
+      - .github/actions/**
+      - scripts/package.mjs
+      - scripts/packaged-fuses.mjs
+      - scripts/release-sums.mjs
+      - scripts/prepare-fixtures.ts
+      - resources/pyodide-manifest.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pyxis-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+  PYXIS_E2E_HIDDEN: "1"
+  PYXIS_TEST_E5: .tmp/e5
+  PYXIS_CRASH_DIR: .tmp/ci-crashes
+
+# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent
+# runners, so a pull request starts six macOS jobs; runs on main add the macOS x64 route audit.
+jobs:
+  test:
+    name: test ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    # macOS x64 took 44-48 minutes in October 2026, and two runs were cancelled at the old 50.
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: mac-arm64, runner: macos-15 }
+          - { target: mac-x64, runner: macos-15-intel }
+          - { target: windows-x64, runner: windows-2025 }
+          - { target: linux-x64, runner: ubuntu-24.04 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          fixtures: "true"
+          build: "true"
+      # Type checking does not depend on the platform.
+      - if: runner.os == 'Linux'
+        run: npm run typecheck
+      - name: Markdown formatting
+        if: runner.os == 'Linux'
+        run: npx prettier --check "**/*.md"
+      - name: Script checks
+        if: runner.os == 'Linux'
+        run: npm run test:scripts
+      - name: Unit checks
+        run: npm test -- --maxWorkers=2
+      - name: Recorded Electron end-to-end checks
+        run: |
+          bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:'
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
+        with:
+          name: test-report-${{ matrix.target }}
+          failed: ${{ job.status == 'failure' }}
+      - name: Report Windows application fault modules
+        if: failure() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-WinEvent -FilterHashtable @{LogName='Application'; Id=1000; StartTime=(Get-Date).AddMinutes(-50)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
+            Select-Object -First 5 -ExpandProperty Message
+
+  # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
+  audit:
+    name: route audit ${{ matrix.target }} ${{ matrix.language }}
+    # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
+    runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
+    # macOS arm64 also audits large text and took 35-40 minutes in October 2026, close to the old 45.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [mac-arm64, mac-x64, windows-x64, linux-x64]
+        language: [it, en]
+        # macOS x64 renders with the same Chromium as macOS arm64; pull requests leave its audit to main.
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"}]' || '[]') }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/prepare
+        with:
+          fixtures: "true"
+          build: "true"
+      - name: Route audit
+        run: |
+          for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
+            export PYXIS_UI_COMBO="$combo"
+            export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
+            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
+            if [ "${{ matrix.target }}" = mac-arm64 ]; then
+              export PYXIS_UI_LARGE=1
+              export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
+              bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
+              unset PYXIS_UI_LARGE
+            fi
+          done
+      - name: Preserve route audit records
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}
+          path: ci-audit/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
+        with:
+          name: audit-report-${{ matrix.target }}-${{ matrix.language }}
+          failed: ${{ job.status == 'failure' }}
+
+  package:
+    name: package ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: mac-arm64, runner: macos-15, builder: --mac --arm64 }
+          - { target: mac-x64, runner: macos-15-intel, builder: --mac --x64 }
+          - { target: windows-x64, runner: windows-2025, builder: --win --x64 }
+          - { target: linux-x64, runner: ubuntu-24.04, builder: --linux --x64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The packaged-app checks below read OCR data and the e5 model from the pinned fixtures.
+      - uses: ./.github/actions/prepare
+        with:
+          fixtures: "true"
+      - name: Package without publishing
+        run: npm run dist -- ${{ matrix.builder }} --publish never
+      - name: Convert the disk image to ULMO
+        if: runner.os == 'macOS'
+        run: |
+          # electron-builder writes UDZO, UDBZ or ULFO disk images. ULMO (LZMA) is smaller and opens on macOS 10.15 and
+          # later; Electron needs 12. The blockmap is rebuilt for the new bytes, and the checksums are collected below.
+          for dmg in dist/*.dmg; do
+            hdiutil convert "$dmg" -format ULMO -o "$RUNNER_TEMP/ulmo.dmg"
+            mv -f "$RUNNER_TEMP/ulmo.dmg" "$dmg"
+            hdiutil verify "$dmg"
+            mount="$(mktemp -d)"
+            hdiutil attach "$dmg" -readonly -nobrowse -noautoopen -mountpoint "$mount"
+            codesign --verify --deep --strict "$mount/PoliTost Pyxis.app"
+            hdiutil detach "$mount"
+            if [ -f "$dmg.blockmap" ]; then
+              node -e 'require("app-builder-lib/out/targets/blockmap/blockmap").buildBlockMap(process.argv[1], "gzip", process.argv[1] + ".blockmap")' "$dmg"
+            fi
+            ls -l "$dmg"
+          done
+      - name: Check the packaged application
+        run: |
+          export PYXIS_DIST_APP="$(node --input-type=module <<'JS'
+          import { existsSync } from 'node:fs';
+          import { resolve } from 'node:path';
+          const candidates = process.platform === 'darwin'
+            ? ['dist/mac-arm64/PoliTost Pyxis.app/Contents/MacOS/PoliTost Pyxis', 'dist/mac/PoliTost Pyxis.app/Contents/MacOS/PoliTost Pyxis']
+            : [process.platform === 'win32' ? 'dist/win-unpacked/PoliTost Pyxis.exe' : 'dist/linux-unpacked/politost-pyxis'];
+          const found = candidates.filter(existsSync);
+          if (found.length !== 1) throw new Error('Expected one packaged application');
+          console.log(resolve(found[0]));
+          JS
+          )"
+          # The release loop, the window CSP, the GPU features, OCR, scanned and text PDFs, and e5 indexing. These load
+          # the files the packaging rules thin out, and e5 loads transformers from the packaged node_modules.
+          specs=(tests/e2e/window.spec.ts tests/e2e/ocr-data.spec.ts tests/e2e/scanned-pdf.spec.ts tests/e2e/sources.spec.ts)
+          if [ "$RUNNER_OS" = Linux ]; then
+            if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+              sudo tee /etc/apparmor.d/pyxis-ci-packaged >/dev/null <<EOF
+          profile pyxis-ci-packaged "$PYXIS_DIST_APP" flags=(unconfined) {
+            userns,
+          }
+          EOF
+              sudo apparmor_parser -r /etc/apparmor.d/pyxis-ci-packaged
+            fi
+          elif [ "$RUNNER_OS" = macOS ]; then
+            codesign --verify --deep --strict "$(dirname "$(dirname "$(dirname "$PYXIS_DIST_APP")")")"
+          fi
+          # The installers are already built. This checks the fuses they carry, then turns --inspect back on in this
+          # unpacked copy only, because Playwright attaches through it.
+          node scripts/packaged-fuses.mjs "$PYXIS_DIST_APP" --allow-inspect
+          bash .github/actions/e2e/run.sh "${specs[@]}"
+      - name: Collect installers and SHA-256 checksums
+        run: |
+          node --input-type=module <<'JS'
+          import { readdirSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { join } from 'node:path';
+          const output = 'release-artifacts';
+          mkdirSync(output);
+          const names = readdirSync('dist', { withFileTypes: true })
+            .filter(entry => entry.isFile() && /\.(?:dmg|zip|exe|AppImage|deb|blockmap)$/.test(entry.name))
+            .map(entry => entry.name).sort();
+          if (!names.some(name => /\.(?:dmg|exe|AppImage|deb)$/.test(name))) throw new Error('No installer built');
+          const checksums = names.map(name => {
+            copyFileSync(join('dist', name), join(output, name));
+            return `${createHash('sha256').update(readFileSync(join(output, name))).digest('hex')}  ${name}`;
+          });
+          writeFileSync(join(output, 'SHA256SUMS'), checksums.join('\n') + '\n');
+          JS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pyxis-${{ matrix.target }}
+          path: release-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Report end-to-end results
+        if: always()
+        uses: ./.github/actions/e2e
+        with:
+          name: package-report-${{ matrix.target }}
+          failed: ${{ job.status == 'failure' }}
+
+  # The in-app updater checks a download against the release's SHA256SUMS, by GitHub's asset names.
+  checksums:
+    name: Release checksums
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 26
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: pyxis-*
+          path: artifacts
+      - name: Merge the per-target checksums under GitHub's asset names
+        run: node scripts/release-sums.mjs release-checksums/SHA256SUMS artifacts/pyxis-*
+      # Not named pyxis-*, so the attestation job's download stays the same whichever job finishes first.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-checksums
+          path: release-checksums/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  attest:
+    name: Attest packaged artifacts
+    needs: package
+    # Only builds from main get provenance. docs/releasing.md verifies it with --source-ref refs/heads/main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: pyxis-*
+          path: artifacts
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: artifacts/**/*
