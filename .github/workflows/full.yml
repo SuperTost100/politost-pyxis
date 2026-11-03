@@ -1,8 +1,9 @@
 name: Full check and package
 
 # Every target: tests, route audits and installers on macOS arm64, macOS x64, Windows x64 and Linux x64. Pull requests
-# get the fast Linux checks in ci.yml instead; this runs by hand (Actions, "Run workflow"), on pull requests that change
-# packaging, dependencies or CI, and on main before every release, which needs its attested installers.
+# get the fast Linux checks in ci.yml instead. This runs by hand (Actions, "Run workflow"), on pull requests that change
+# the files below (packaging, dependencies including vendor/, the shared actions, this file), and by hand on main before
+# every release, which needs its attested installers. A push to main doesn't start it.
 on:
   workflow_dispatch:
   pull_request:
@@ -11,6 +12,7 @@ on:
       - package-lock.json
       - electron-builder.yml
       - build/**
+      - vendor/**
       - .github/workflows/full.yml
       - .github/actions/**
       - scripts/package.mjs
