@@ -159,7 +159,7 @@ html[data-platform="darwin"] {
   background: var(--surface-raised);
   color: var(--ink);
 }
-.px-nav a[aria-current="page"] {
+.px-nav a[data-selected] {
   background: var(--primary-soft);
   color: var(--primary-text);
   font-weight: 650;

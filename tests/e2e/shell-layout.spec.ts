@@ -26,19 +26,19 @@ test("doors navigate from settings and every shell page uses the full column", a
     await expect(selected).toHaveText("Chiedi");
 
     // Settings belongs to no door: neither is highlighted and both navigate.
-    await page.getByRole("button", { name: "Impostazioni", exact: true }).click();
+    await page.getByRole("link", { name: "Impostazioni", exact: true }).click();
     await expect(page).toHaveURL(/#\/settings$/);
     await expect(selected).toHaveCount(0);
     await door("Chiedi").click();
     await expect(page).toHaveURL(/#\/ask$/);
 
-    await page.getByRole("button", { name: "Impostazioni", exact: true }).click();
+    await page.getByRole("link", { name: "Impostazioni", exact: true }).click();
     await expect(selected).toHaveCount(0);
     await door("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
 
     // The book icon opens the Library and is marked as the current tool there.
-    const library = page.getByRole("button", { name: "Libreria", exact: true });
+    const library = page.getByRole("link", { name: "Libreria", exact: true });
     await library.click();
     await expect(page).toHaveURL(/#\/exams\/library$/);
     await expect(library).toHaveAttribute("aria-current", "page");
@@ -94,7 +94,7 @@ test("doors navigate from settings and every shell page uses the full column", a
     const header = (await page.locator("header.px-top").boundingBox())!;
     const logo = (await page.locator("header .px-brand").boundingBox())!;
     const doorsBox = (await doors.boundingBox())!;
-    const settings = (await page.getByRole("button", { name: "Impostazioni", exact: true }).boundingBox())!;
+    const settings = (await page.getByRole("link", { name: "Impostazioni", exact: true }).boundingBox())!;
     // macOS leaves room for the traffic lights (80px); elsewhere the logo sits at the edge.
     if (process.platform === "darwin") {
       expect(logo.x).toBeGreaterThanOrEqual(78);

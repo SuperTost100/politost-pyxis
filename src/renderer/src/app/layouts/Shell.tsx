@@ -138,7 +138,9 @@ export function Shell() {
               <Link
                 key={door}
                 to={doorTarget(door, target.pathname)}
-                aria-current={currentDoor === door ? "page" : undefined}
+                // During a simulation Exams stays highlighted, but only the open section is the current page.
+                aria-current={activeDoor === door ? "page" : undefined}
+                data-selected={currentDoor === door ? "" : undefined}
               >
                 {t(`doors.${door}`)}
               </Link>
@@ -147,29 +149,27 @@ export function Shell() {
         )}
         <div className="px-top-tools">
           {inSetup ? null : (
-            <button
-              type="button"
+            <Link
+              to="/exams/library"
               className="px-top-tool"
               aria-label={t("nav.library")}
               title={t("nav.library")}
               aria-current={target.pathname.startsWith("/exams/library") ? "page" : undefined}
-              onClick={() => navigate("/exams/library")}
             >
               <BookOpen size={18} strokeWidth={1.75} aria-hidden />
-            </button>
+            </Link>
           )}
           <JobsButton />
           {inSetup ? null : (
-            <button
-              type="button"
+            <Link
+              to="/settings"
               className="px-top-tool"
               aria-label={t("nav.settings")}
               title={t("nav.settings")}
               aria-current={target.pathname.startsWith("/settings") ? "page" : undefined}
-              onClick={() => navigate("/settings")}
             >
               <Settings size={18} strokeWidth={1.75} aria-hidden />
-            </button>
+            </Link>
           )}
         </div>
       </header>
