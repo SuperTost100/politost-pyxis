@@ -105,7 +105,7 @@ function landmarks(page: Page) {
     return {
       theme: document.documentElement.dataset["theme"] ?? null,
       page: css("body", "backgroundColor"),
-      header: css("header.px-top .px-nav", "backgroundColor"),
+      header: css("header.px-top", "backgroundColor"),
       assistantText: css(".px-msg:not(.px-msg-user) .px-msg-text p", "color"),
       assistantMath: css(".px-msg:not(.px-msg-user) .katex", "color"),
     };
