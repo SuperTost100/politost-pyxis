@@ -1,6 +1,6 @@
 # Release checks
 
-Releases come from https://github.com/SuperTost100/politost-pyxis. Every pull request and push to `main` runs the Linux checks in `.github/workflows/ci.yml`: types, Markdown, scripts, unit tests and the recorded end-to-end tests in six parallel shards. The full matrix in `.github/workflows/full.yml` runs by hand (Actions, Full check and package, Run workflow), on pull requests that change packaging, dependencies or CI, and on `main` before every release, because the release takes its installers and provenance from that run. Packaging never publishes anything. A release is a manual step after the checks below pass.
+Releases come from https://github.com/SuperTost100/politost-pyxis. Every pull request and every push to `main` or `next` runs the Linux checks in `.github/workflows/ci.yml`: types, Markdown, scripts, unit tests and the recorded end-to-end tests in six parallel shards. The full matrix in `.github/workflows/full.yml` runs by hand (Actions, Full check and package, Run workflow), on pull requests that change packaging, dependencies or CI, and by hand on `main` before every release, because the release takes its installers and provenance from that run. A push to `main` doesn't start it. Packaging never publishes anything. A release is a manual step after the checks below pass.
 
 The package homepage points to the repository. Linux maintainer metadata uses the owner SuperTost100 and their GitHub noreply address.
 
