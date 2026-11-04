@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -46,7 +47,7 @@ async function launch(extra: Record<string, string> = {}) {
   const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   return { app, page, userData };
 }
 
@@ -193,7 +194,7 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
       location.hash = "/ask";
     });
     await page.reload();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ciao, Tommaso");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera), Tommaso$/);
     await expect(page.getByRole("button", { name: "Nuova chat" })).toBeVisible();
 
     const question =

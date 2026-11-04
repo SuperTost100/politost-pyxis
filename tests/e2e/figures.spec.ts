@@ -19,6 +19,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const figure = (caption: string, code: string) =>
   ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
@@ -133,7 +134,7 @@ test("figures in a lesson and an Ask answer are drawn in the Python sandbox, and
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const { sourceId } = (await importPickedSource(page, app, book)) as {
       sourceId: string;
     };

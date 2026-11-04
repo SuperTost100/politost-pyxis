@@ -21,6 +21,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const automatic =
   /^pyxis-auto-backup-\d{4}-\d{2}-\d{2}-\d{6}(?:-[0-9a-f]{8})?\.zip$/;
@@ -93,8 +94,8 @@ test("automatic backups: not while empty, then once a day with retention of this
     app = await launch(env);
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so that move cannot override the next page.
+    await fromChiediToExams(page);
     const workspace = await page.evaluate(() => window.pyxis.workspacePath());
     // Two checks or more pass in 5 s. A check that backs up nothing leaves no trace to wait for.
     await page.waitForTimeout(5000);
@@ -266,8 +267,8 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
     await expectNoAxeViolations(page, { include: [".px-backup-notice"] });
     await saveShot(page, "auto-backup-notice.png");
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so that move cannot override the next page.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so that move cannot override the next page.
+    await fromChiediToExams(page);
     await notice
       .getByRole("button", { name: "Impostazioni copie", exact: true })
       .click();
@@ -413,7 +414,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
     });
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     addPlan(await page.evaluate(() => window.pyxis.workspacePath()));
     await expect
       .poll(() => backupsIn(folder), { timeout: 30_000 })
@@ -478,7 +479,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
     );
     await page.reload();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });

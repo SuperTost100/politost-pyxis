@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -239,7 +240,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,

@@ -19,6 +19,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -50,8 +51,8 @@ async function start(
   const page = await app.firstWindow();
   if (firstRun) {
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
   }
   await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
   await page.evaluate((hash) => {

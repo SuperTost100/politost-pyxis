@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /**
  * The native picker is answered by main's real handler, so grants for files and folders go through the same path
@@ -53,8 +54,8 @@ async function start() {
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined } });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
-  // Skipping setup navigates to Exams on its own; wait so it cannot override a later route.
-  await expect(page).toHaveURL(/#\/exams$/);
+  // Skipping setup navigates to Chiedi on its own; wait so it cannot override a later route.
+  await fromChiediToExams(page);
   return { app, page, userData, notes, files };
 }
 

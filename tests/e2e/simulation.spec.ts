@@ -9,6 +9,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -66,8 +67,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const source = (await importPickedSource(page, app, file)) as {
       sourceId: string;
     };

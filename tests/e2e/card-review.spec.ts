@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
@@ -47,7 +48,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
@@ -194,7 +195,7 @@ test("card build: cards show as each batch is stored, and Export waits for the f
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
@@ -240,7 +241,7 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,

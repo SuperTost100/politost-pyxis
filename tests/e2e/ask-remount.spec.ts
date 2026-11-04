@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-remount-"));
@@ -16,7 +17,7 @@ async function launch() {
   const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   return { app, page, userData };
 }
 

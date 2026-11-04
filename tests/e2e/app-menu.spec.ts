@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const mac = process.platform === "darwin";
 
@@ -28,7 +29,7 @@ async function launch(options: { onboarded: boolean }) {
   const page = await app.firstWindow();
   if (options.onboarded) {
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
   }
   return { app, page, userData };
 }

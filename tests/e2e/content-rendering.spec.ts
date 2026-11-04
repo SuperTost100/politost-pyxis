@@ -8,6 +8,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const block = (kind: string, body: unknown) => ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
 
@@ -88,7 +89,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const invoke = <T,>(channel: string, input: unknown) =>
       page.evaluate(({ channel, input }) => window.pyxis.invoke(channel as never, input as never), {
         channel,

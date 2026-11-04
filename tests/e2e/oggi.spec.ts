@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** Two dated exams and one without a date, with one due card in each dated plan. */
 function seed(db: DatabaseSync) {
@@ -29,7 +30,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
     seed(db);

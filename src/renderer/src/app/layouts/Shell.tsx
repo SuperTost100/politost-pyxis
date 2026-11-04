@@ -128,10 +128,19 @@ export function Shell() {
   return (
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>
       <header className="px-top">
-        <span className="px-brand">
-          <PyxisMark />
-          Pyxis
-        </span>
+        {/* The brand opens Home, a new chat, as in the mockup. Setup and a running simulation keep it plain, since
+            neither may be left from here. */}
+        {inSetup || activeSimulation.data ? (
+          <span className="px-brand">
+            <PyxisMark />
+            Pyxis
+          </span>
+        ) : (
+          <Link className="px-brand" to="/ask">
+            <PyxisMark />
+            Pyxis
+          </Link>
+        )}
         {inSetup ? null : (
           <nav className="px-nav" aria-label={t("doors.label")}>
             {doors.map((door) => (

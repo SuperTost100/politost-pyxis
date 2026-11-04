@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** One request the stand-in for the crash Worker received. */
 type Received = { path: string; headers: Record<string, string | string[] | undefined>; body: Buffer };
@@ -64,7 +65,7 @@ async function consent(userData: string): Promise<boolean> {
 
 async function skipSetup(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
 }
 
 test("crash reports: nothing is sent while the switch is off, and a scrubbed error report arrives once it is on", async () => {
@@ -172,7 +173,7 @@ test("crash reports: a native crash uploads a minidump only while the switch is 
     // The next start deletes that dump, and turning the switch on does not bring it back.
     ({ app, page } = await launch(userData, endpoint));
     expect(dumps(userData)).toEqual([]);
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => window.pyxis.invoke("profile.save", { crashReports: true }));
     await expect.poll(() => consent(userData)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 2_000));

@@ -59,31 +59,42 @@
   white-space: nowrap;
 }
 
+/* Home: the greeting and the composer as one group in the middle of the page. The greeting grows from the bottom and
+   the dock from the top, so the space left over splits above and below them. */
 .ask-greeting {
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding-bottom: 8vh;
+  justify-content: flex-end;
+  padding-top: var(--space-8);
+  text-align: center;
 }
 
 .ask-greeting h1 {
   margin: 0;
+  font-size: calc(46px * var(--text-scale));
+  line-height: 1.08;
 }
 
-.ask-greeting p {
-  margin: var(--space-3) 0 0;
-  color: var(--ink-muted);
+.ask-home .ask-dock {
+  position: static;
+  flex: 1 0 auto;
+  justify-content: flex-start;
+  padding: 28px 0 9vh;
 }
 
-/* Starter prompts: a few questions on the plans in progress, one per line so long topic names stay readable. */
+.ask-home .ask-dock::before {
+  content: none;
+}
+
+/* Starter prompts under the composer: a few questions on the plans in progress, centred and wrapping. */
 .ask-starters {
   list-style: none;
-  margin: var(--space-6) 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-2);
 }
 
@@ -93,11 +104,6 @@
   min-height: var(--control-md);
   white-space: normal;
   text-align: left;
-}
-
-.ask-greeting .ask-attach-hint {
-  margin-top: var(--space-6);
-  color: var(--ink-muted);
 }
 
 .ask-thread {

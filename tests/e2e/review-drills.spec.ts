@@ -9,6 +9,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const dbPath = (userData: string) => join(userData, "workspace", "pyxis.db");
 
@@ -85,8 +86,8 @@ const invoke = <T>(page: Page, channel: string, input: object) =>
 /** A plan with three topics whose second and third have an open gap and no questions of their own. */
 async function setupPlan(userData: string, page: Page, app: Awaited<ReturnType<typeof launch>>) {
   await page.getByRole("button", { name: "Salta" }).click();
-  // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-  await expect(page).toHaveURL(/#\/exams$/);
+  // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+  await fromChiediToExams(page);
   const file = join(userData, "fisica.ptsb");
   writeFileSync(file, smartbook());
   const { sourceId } = (await importPickedSource(page, app, file)) as { sourceId: string };

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("slow core bootstrap beyond 3s still connects the renderer", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-core-slow-"));
@@ -104,7 +105,7 @@ test("an undecryptable saved API key does not block startup", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta", exact: true }).click();
-    await expect(page).toHaveURL(/\/exams/);
+    await fromChiediToExams(page);
     expect(await page.evaluate(() => window.pyxis.keys.status())).toMatchObject(
       { configured: [] },
     );

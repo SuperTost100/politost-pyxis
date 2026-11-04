@@ -14,6 +14,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { fromChiediToExams } from "./doors";
 
 test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export modal", async () => {
   const root = mkdtempSync(join(tmpdir(), "pyxis-export-check-"));
@@ -28,8 +29,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
@@ -206,8 +207,8 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     try {
       const freshPage = await fresh.firstWindow();
       await freshPage.getByRole("button", { name: "Salta" }).click();
-      // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-      await expect(freshPage).toHaveURL(/#\/exams$/);
+      // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+      await expect(freshPage).toHaveURL(/#\/ask$/);
       await expect(
         freshPage.evaluate(() => window.pyxis.restoreWorkspace()),
       ).resolves.toBe("restored");

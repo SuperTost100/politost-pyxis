@@ -9,6 +9,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -117,8 +118,8 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const { sourceId } = (await importPickedSource(page, app, book)) as { sourceId: string };
     await expect
       .poll(async () =>
@@ -343,7 +344,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const invoke = <T,>(channel: string, input: unknown) =>
       page.evaluate(
         ({ channel, input }) => window.pyxis.invoke(channel as never, input as never),

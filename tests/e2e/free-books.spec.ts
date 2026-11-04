@@ -11,6 +11,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
@@ -149,7 +150,7 @@ test("Free books: a package that does not match the catalog is refused and nothi
     const page = await app.firstWindow();
     await button(page, "Salta").click();
     // The hash, not the whole URL: a checkout path can contain "exams" too.
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });

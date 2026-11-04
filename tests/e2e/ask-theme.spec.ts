@@ -12,6 +12,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -122,8 +123,8 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     seed(userData);
     await page.evaluate(() => window.pyxis.setAppearance("light"));
     await page.evaluate(() => {

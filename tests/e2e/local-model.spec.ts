@@ -13,6 +13,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const GIB = 1024 ** 3;
 
@@ -65,7 +66,7 @@ async function launch(
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   return { app, page };
 }
 

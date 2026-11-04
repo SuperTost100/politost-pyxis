@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("SET-05 deleting all data removes saved engine keys across a restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-wipe-keys-"));
@@ -11,8 +12,8 @@ test("SET-05 deleting all data removes saved engine keys across a restart", asyn
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await expect.poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {}))).not.toBeNull();
     const status = await page.evaluate(() => window.pyxis.keys.status());
     test.skip(!status.canSave, "This platform has no secure key store.");

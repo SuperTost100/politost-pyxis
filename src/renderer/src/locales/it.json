@@ -95,7 +95,7 @@
     "again": {
       "done": "Salva e torna alle impostazioni"
     },
-    "done": "Vai agli esami",
+    "done": "Inizia a studiare",
     "contentLanguage": "Italian",
     "levels": {
       "primary": "Primaria",
@@ -157,11 +157,16 @@
     }
   },
   "ask": {
-    "greeting": "Ciao",
-    "scopeEmpty": "Nessuna materia o fonte: rispondo con le mie conoscenze.",
-    "scopeReady": "Rispondo solo dal materiale selezionato.",
-    "greetingNamed": "Ciao, {{name}}",
-    "scopeSubject": "Rispondo dal materiale di {{subject}}.",
+    "greeting": {
+      "morning": "Buongiorno",
+      "afternoon": "Buon pomeriggio",
+      "evening": "Buonasera"
+    },
+    "greetingNamed": {
+      "morning": "Buongiorno, {{name}}",
+      "afternoon": "Buon pomeriggio, {{name}}",
+      "evening": "Buonasera, {{name}}"
+    },
     "chatsOpen": "Apri le chat",
     "chatsClose": "Chiudi le chat",
     "searchLabel": "Cerca nelle chat",
@@ -252,7 +257,6 @@
       "quiz": "Fammi 3 domande su {{topic}}",
       "exercise": "Dammi un esercizio su {{topic}}"
     },
-    "attachHint": "Allega appunti, un PDF o una foto con la graffetta, incolla uno screenshot o trascina qui i file.",
     "showEarlier_one": "Mostra {{count}} messaggio precedente",
     "showEarlier_other": "Mostra {{count}} messaggi precedenti",
     "pastedImage": "Immagine incollata",

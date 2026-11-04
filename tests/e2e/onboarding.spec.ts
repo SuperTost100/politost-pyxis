@@ -228,12 +228,13 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     await button(page, "Indietro").click();
     await expect(page.getByLabel("Nome dell'esame", { exact: true })).toHaveValue("Analisi 1");
     await button(page, "Nessun esame per ora").click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/ask$/);
     await expect(
       page.getByRole("navigation", { name: "Sezioni" }),
     ).toBeVisible();
     await expect(page.getByRole("link", { name: "Impostazioni", exact: true })).toBeVisible();
-    await expect(button(page, "Nuovo esame")).toBeVisible();
+    // Setup without an exam ends on Chiedi's Home; Esami can create one later.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)/);
     expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toEqual([]);
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
@@ -545,7 +546,7 @@ test("First setup: skipping leaves crash reports off, and a new profile below un
   try {
     const page = await app.firstWindow();
     await button(page, "Salta").click();
-    await expect(page).toHaveURL(/exams/);
+    await expect(page).toHaveURL(/#\/ask$/);
     expect(await profile(page)).toMatchObject({
       displayName: "",
       crashReports: false,
@@ -611,7 +612,7 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
       .click();
     await button(page, "Continua").click();
     await button(page, "Nessun esame per ora").click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/ask$/);
     const stored = await profile(page);
     expect(stored).toMatchObject({
       displayName: "Ada",
@@ -734,7 +735,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     let page = await app.firstWindow();
     // Skipping setup still shows the notice once on arrival: no task could use these engines without it.
     await button(page, "Salta").click();
-    await expect(page).toHaveURL(/exams/);
+    await expect(page).toHaveURL(/#\/ask$/);
     await expect(notice(page)).toBeVisible({ timeout: 30000 });
     await notice(page).getByRole("button", { name: "Non ora" }).click();
     await expect(notice(page)).toHaveCount(0);
@@ -777,10 +778,8 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     // Acknowledged once, never asked again.
     app = await launch(userData, { ...env, ...reply });
     page = await app.firstWindow();
-    await expect(page).toHaveURL(/exams/);
-    await expect(
-      page.getByRole("heading", { name: "Esami", level: 1 }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)/);
     // The notice would open once the engine check ends. A notice that never opens has no signal, so this is a fixed wait.
     await page.waitForTimeout(2000);
     await expect(notice(page)).toHaveCount(0);
@@ -803,7 +802,7 @@ test("First setup: a new profile starts in the computer's language, and a choice
     await expect(button(page, "Skip")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
     await button(page, "Skip").click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => {
       location.hash = "/settings/language";
     });
@@ -813,7 +812,7 @@ test("First setup: a new profile starts in the computer's language, and a choice
 
     app = await launch(userData, { PYXIS_E2E_SYSTEM_LANGUAGES: "en-US" });
     page = await app.firstWindow();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/ask$/);
     await expect(page.locator("html")).toHaveAttribute("lang", "it");
     await app.close();
   } finally {

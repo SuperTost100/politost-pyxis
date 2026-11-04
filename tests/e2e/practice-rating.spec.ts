@@ -10,6 +10,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 
@@ -56,8 +57,8 @@ test("practice: rate two exercises, change one, finish, and mastery moves by two
     page.on("pageerror", (error) => errors.push(error.message));
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const { sourceId } = (await importPickedSource(page, app, book)) as {
       sourceId: string;
     };

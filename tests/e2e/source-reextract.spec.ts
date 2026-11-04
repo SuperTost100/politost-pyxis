@@ -10,6 +10,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** Reads the workspace database next to the running app; WAL lets a second reader see committed rows. */
 function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
@@ -48,8 +49,8 @@ test("SRC-12 reading a source again asks first, keeps the old reading and its ci
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const invoke = <T>(channel: string, input: object) =>
       page.evaluate(
         ([c, i]) =>

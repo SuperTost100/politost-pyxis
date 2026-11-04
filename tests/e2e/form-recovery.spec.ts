@@ -31,8 +31,8 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
       ).toBeEnabled();
       db.exec("DROP TRIGGER fail_profile;");
       await skip.click();
-      // Anchored to the hash: a checkout path can contain "exams" too.
-      await expect(page).toHaveURL(/#\/exams$/);
+      // Anchored to the hash: a checkout path can contain "ask" too.
+      await expect(page).toHaveURL(/#\/ask$/);
       seedPlan(db, { id: "retry-plan", title: "Fisica" });
       await page.reload();
       const input = page.locator('input[type="file"]').first();

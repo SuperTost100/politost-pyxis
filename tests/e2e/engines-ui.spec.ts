@@ -11,6 +11,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
   test.setTimeout(180000);
@@ -20,8 +21,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     // Whatever engines this computer has, their notice is already confirmed, so no dialog covers the screen.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
@@ -208,10 +209,8 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
-    // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
-    await page.waitForFunction(() => location.hash.startsWith("#/exams"));
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
@@ -338,9 +337,8 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
-    await page.waitForFunction(() => location.hash.startsWith("#/exams"));
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
@@ -407,7 +405,7 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(async () => {
       await window.pyxis.invoke("engines.acknowledge", {
         providers: ["claude", "agent"],
@@ -528,7 +526,7 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(async () => {
       await window.pyxis.invoke("engines.acknowledge", { providers: ["agent"] });
       localStorage.setItem("pyxis.lang", "en");

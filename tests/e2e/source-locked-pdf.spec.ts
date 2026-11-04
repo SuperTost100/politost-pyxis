@@ -10,6 +10,7 @@ import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const PASSWORD = "Carnot-1824";
 
@@ -54,7 +55,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const list = () =>
       page.evaluate(() => window.pyxis.invoke("sources.list", {})) as Promise<
         Array<{ id: string; status: string; error?: string }>

@@ -793,7 +793,7 @@ export function SettingsPage() {
       ) : null}
       {panels[shown]}
       {params.get("setup") === "1" ? (
-        <Button type="primary" shape="round" onClick={() => navigate("/exams")}>
+        <Button type="primary" shape="round" onClick={() => navigate("/ask")}>
           {t("onboarding.done")}
         </Button>
       ) : null}

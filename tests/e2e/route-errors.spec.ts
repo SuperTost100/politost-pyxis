@@ -8,6 +8,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("route failure shows a plain recovery page without stack details", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-route-error-"));
@@ -15,7 +16,7 @@ test("route failure shows a plain recovery page without stack details", async ()
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => { window.location.hash = "/missing-route"; });
     await expect(page.getByRole("heading", { name: "Non è stato possibile aprire questa pagina" })).toBeVisible();
     // The message sits inside the shell's page column, with the sidebar around it.
@@ -48,7 +49,7 @@ test("a plan build the engine's subscription refused names the engine and offers
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     // What the walkthrough's build stopped with when Cursor Agent refused Claude Opus 5.5.
     const reason =
       "model-not-included [agent]: agent exited (1) without a result. ActionRequiredError: Claude Opus 5.5 is not included in your weekly usage Buy credits or switch to a Grok model to continue.";
@@ -86,7 +87,7 @@ test("a failed plan build says so in the title and steps, shows its message unde
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const reason = "invalid-output: the model returned text that is not a topic list";
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
