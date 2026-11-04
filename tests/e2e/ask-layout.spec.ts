@@ -262,18 +262,20 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     await page.reload();
     await page.getByRole("heading", { level: 1 }).waitFor();
     const box = page.getByRole("textbox", { name: "Messaggio" });
-    // The composer sits at the foot of the window on an empty page.
     const foot = async () =>
       page.evaluate(() => {
         const composer = document.querySelector(".px-composer")!.getBoundingClientRect();
         return window.innerHeight - composer.bottom;
       });
+    // Home, the empty chat, has the composer in the middle under the greeting, well clear of the foot of the window.
     // On macOS the layout can settle after the first paint, so wait for it.
-    await expect.poll(foot).toBeLessThan(40);
+    await expect.poll(foot).toBeGreaterThan(120);
 
     await box.fill("Come si risolve un integrale per parti?");
     await box.press("Enter");
     await expect(page.getByRole("button", { name: "Fammi un altro esempio" })).toBeVisible();
+    // Once the chat has a message, the composer docks to the foot of the window.
+    await expect.poll(foot).toBeLessThan(40);
     for (const text of ["Una seconda domanda", "Una terza domanda"]) {
       await box.fill(text);
       await box.press("Enter");
