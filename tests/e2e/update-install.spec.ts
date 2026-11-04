@@ -78,12 +78,12 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click({ timeout: 60000 });
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
-    // Skipping setup lands on Exams; open Settings > Updates after that navigation.
-    await expect(
-      page.getByRole("heading", { name: "Esami", level: 1 }),
-    ).toBeVisible();
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await expect(page).toHaveURL(/#\/ask$/);
+    // Skipping setup lands on Chiedi; open Settings > Updates after that navigation.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      /^(Buongiorno|Buon pomeriggio|Buonasera)$/,
+    );
     await page.evaluate(() => {
       location.hash = "/settings/updates";
     });

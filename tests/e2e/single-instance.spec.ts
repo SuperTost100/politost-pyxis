@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("the running copy holds the single-instance lock for its profile", async () => {
   test.setTimeout(120000);
@@ -12,7 +13,7 @@ test("the running copy holds the single-instance lock for its profile", async ()
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/exams/);
+    await fromChiediToExams(page);
 
     // The running copy holds Electron's single-instance lock, so a second launch on this profile gets none and quits.
     // A second copy is not started here: Playwright's connection to an app that exits at once breaks unpredictably.
@@ -38,7 +39,7 @@ test("answers outside a plan follow the interface language", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/exams/);
+    await fromChiediToExams(page);
     const language = () =>
       page.evaluate(
         async () =>

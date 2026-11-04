@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 // Guided plan loading and failure (PLAN-10 to PLAN-12). The recorded-reply fixture answers every call the
 // same way for a whole launch, so each failing step gets its own launch. No model is called.
@@ -98,8 +99,8 @@ for (const state of Object.keys(FIXTURES) as State[]) {
       page.setDefaultTimeout(15000);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.getByRole("button", { name: "Salta" }).click();
-      // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-      await expect(page).toHaveURL(/#\/exams$/);
+      // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+      await fromChiediToExams(page);
       await page.evaluate((size) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: size }), LARGE ? ("lg" as const) : ("md" as const));
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
@@ -153,8 +154,8 @@ test("PLAN-10 a failed guided call can be retried and answers survive Back", asy
     const page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "md" }));
     await reach(page, "tree");
     await expectState(page, "failed-tree");
@@ -184,8 +185,8 @@ test("PLAN-10 Back while the modules load returns to the period step and the lat
     const page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "md" }));
     await reach(page, "modules");
     await expectState(page, "loading-modules");

@@ -8,6 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { seedPlan, seedSource } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const sizes = [
   { width: 1280, height: 800 },
@@ -71,7 +72,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed(db);
@@ -157,7 +158,7 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed(db);
@@ -231,7 +232,7 @@ test("LAYOUT-03 the exam settings save bar leaves the goal slider in view", asyn
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed(db);
@@ -330,7 +331,7 @@ test("LAYOUT-04 the study levels fill their rows in setup and in the profile", a
           await expectNoAxeViolations(page);
         }
     await page.getByRole("button", { name: /^(Salta|Skip)$/ }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
 
     for (const language of ["it", "en"] as const)
       for (const theme of ["light", "dark"] as const)
@@ -360,7 +361,7 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
     // Skipping setup leaves no exam: one primary action creates the first one.

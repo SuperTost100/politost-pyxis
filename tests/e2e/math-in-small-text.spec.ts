@@ -9,6 +9,7 @@ import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("Ask: a suggested follow-up with math draws the formula, and sends its own text", async () => {
   test.setTimeout(120000);
@@ -23,7 +24,7 @@ test("Ask: a suggested follow-up with math draws the formula, and sends its own 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       location.hash = "/ask";
     });
@@ -87,7 +88,7 @@ test("Quiz: a matching question's menu draws math and picks with the keyboard", 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const source = (await importPickedSource(page, app, file)) as { sourceId: string };
     await expect
       .poll(async () => {

@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 function smartbook() {
   return makeBook({
@@ -48,7 +49,7 @@ async function launch(delay = 0) {
   page.setDefaultTimeout(30000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   return { app, page, userData };
 }
 

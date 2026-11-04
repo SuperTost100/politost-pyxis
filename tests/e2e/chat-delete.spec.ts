@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 for (const libraryCopy of [false, true]) {
   test(`chat deletion after a later document attachment keeps library copy: ${libraryCopy}`, async () => {
@@ -22,8 +23,8 @@ for (const libraryCopy of [false, true]) {
     try {
       const page = await app.firstWindow();
       await page.getByRole("button", { name: "Salta", exact: true }).click();
-      // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-      await expect(page).toHaveURL(/#\/exams$/);
+      // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+      await fromChiediToExams(page);
       const first = await page.evaluate(() =>
         window.pyxis.invoke("chats.ask", {
           text: "Hello",

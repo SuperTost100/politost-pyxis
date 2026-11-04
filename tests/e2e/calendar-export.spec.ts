@@ -13,6 +13,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -46,8 +47,8 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,

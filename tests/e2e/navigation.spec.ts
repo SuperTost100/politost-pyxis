@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("the window stays on the app page and refuses device permissions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
@@ -19,7 +20,7 @@ test("the window stays on the app page and refuses device permissions", async ()
     const page = await app.firstWindow();
     // A workspace without a profile always returns to onboarding, so finish it first.
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const appPage = page.url().split("#")[0];
     const foreign = pathToFileURL(join(userData, "page.html")).href;
     await page.evaluate((url) => {
@@ -56,14 +57,14 @@ test("the window stays on the app page and refuses device permissions", async ()
   }
 });
 
-test("a page opened while the start page still redirects to Exams is not lost", async () => {
+test("a page opened while the start page still redirects to Chiedi is not lost", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-navigation-"));
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
-    // The window's start page sends it on to Exams. Settings, opened right after and not loaded yet, must win, as when
+    await fromChiediToExams(page);
+    // The window's start page sends it on to Chiedi. Settings, opened right after and not loaded yet, must win, as when
     // a plan file or a menu command opens a page while the window starts.
     await page.evaluate(() => {
       location.hash = "#/";

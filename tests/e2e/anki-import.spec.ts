@@ -13,6 +13,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { SHOTS, saveShot } from "./shots";
+import { fromChiediToExams } from "./doors";
 
 
 const DAY = 86_400_000;
@@ -93,7 +94,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,

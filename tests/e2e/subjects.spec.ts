@@ -7,6 +7,7 @@ import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by keyboard, remove", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-subject-check-"));
@@ -14,8 +15,8 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping setup navigates to Exams on its own; wait for it so it cannot override the next route.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping setup navigates to Chiedi on its own; wait for it so it cannot override the next route.
+    await fromChiediToExams(page);
     // Settings no longer lists subjects, and the old address lands on the Exams home.
     await page.evaluate(() => { window.location.hash = "#/settings"; });
     await expect(page.getByRole("heading", { name: "Impostazioni" })).toBeVisible();

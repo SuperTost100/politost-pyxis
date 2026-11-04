@@ -18,6 +18,7 @@ import {
   writeScanPdf,
 } from "./scanned-pdf-fixture";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /*
  * A generated image-only PDF goes through the real path: core's job draws each page with pdf.js and reads it with the
@@ -52,8 +53,8 @@ async function openScan({ data = false } = {}): Promise<Run> {
   const app = await launchPyxis({ userData });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
-  // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-  await expect(page).toHaveURL(/#\/exams$/);
+  // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+  await fromChiediToExams(page);
   if (data) {
     // Consent was given with that download.
     await page.evaluate(() => window.pyxis.invoke("sources.ocrData", { consent: true }));

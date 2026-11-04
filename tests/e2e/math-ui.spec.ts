@@ -14,6 +14,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 async function launch(reply?: string) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -27,7 +28,7 @@ async function launch(reply?: string) {
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/\/exams/);
+  await fromChiediToExams(page);
   return { app, page, userData };
 }
 

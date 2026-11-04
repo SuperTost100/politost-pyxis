@@ -15,6 +15,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 async function draw(page: Page) {
   // A freshly routed board has no layout box yet; measuring it earlier throws "canvas-missing".
@@ -52,7 +53,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     // Hidden windows on Windows and Linux can stall CSS/JS motion mid-way (stuck modal leave, half-faded colors); the app honors this setting.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     for (const language of ["en", "it"] as const)
       for (const theme of ["light", "dark"] as const) {
         await page.evaluate(
@@ -193,7 +194,7 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       sessionStorage.removeItem("pyxis-board");
       location.hash = "/tools/whiteboard";

@@ -8,6 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("PLAN-21 document tree and build resume after cancel and restart", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-plan-check-"));
@@ -52,8 +53,8 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await expect(
       page.getByRole("heading", { name: "Esami", exact: true }),
     ).toBeVisible();
@@ -161,8 +162,8 @@ test("PLAN-21 live Claude builds the owner's smartbook plan", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const imported = (await importPickedSource(
       page,
       app,

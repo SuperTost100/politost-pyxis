@@ -8,6 +8,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("selected source text opens a scoped tutor context and Escape dismisses its actions", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-selection-"));
@@ -19,7 +20,7 @@ test("selected source text opens a scoped tutor context and Escape dismisses its
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const { sourceId } = await importPickedSource(page, app, file) as { sourceId: string };
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("sources.list", {})) as Array<{ id: string; status: string }>).find((row) => row.id === sourceId)?.status).toBe("ready");
     await page.evaluate((sourceId) => window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { sourceId, chapter: 1 } })), sourceId);

@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const REPLY = ["La cinematica descrive il moto: $v = \\frac{dx}{dt}$.", "", "<followups>", "Fammi un esempio", "</followups>"].join(
   "\n",
@@ -27,7 +28,7 @@ async function launch() {
   const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
   return { app, page, userData, db };
 }
@@ -62,14 +63,13 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Fisica");
     await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
 
-    // An empty chat suggests questions on the plan's topics and says how to attach material.
+    // An empty chat suggests questions on the plan's topics, under the composer.
     const starters = page.getByRole("list", { name: "Domande suggerite" });
     await expect(starters.getByRole("button")).toHaveText([
       "Spiegami i concetti chiave di Cinematica",
       "Fammi 3 domande su Dinamica",
       "Dammi un esercizio su Cinematica",
     ]);
-    await expect(page.getByText(/incolla uno screenshot o trascina qui i file/)).toBeVisible();
     // The drawer no longer repeats New chat; the header has the only one.
     await expect(page.getByRole("button", { name: "Nuova chat" })).toHaveCount(1);
 
@@ -163,7 +163,7 @@ test("Ask: a new chat starts on the only subject, and on none once a second subj
     await page.getByRole("button", { name: "Nuova chat" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     // The empty chat's greeting: the composer now belongs to the new chat.
-    await expect(page.getByRole("heading", { level: 1, name: "Ciao" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /^(Buongiorno|Buon pomeriggio|Buonasera)$/ })).toBeVisible();
     await box.fill("Che cos'è l'accelerazione?");
     await box.press("Enter");
     expect(await sentSubject()).toBeNull();

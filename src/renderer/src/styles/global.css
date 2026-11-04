@@ -126,6 +126,13 @@ html[data-platform="darwin"] {
   letter-spacing: -0.01em;
   white-space: nowrap;
   color: var(--ink);
+  text-decoration: none;
+}
+a.px-brand {
+  border-radius: var(--radius-sm);
+}
+a.px-brand:hover {
+  color: var(--ink);
 }
 .px-brand-mark {
   width: 24px;

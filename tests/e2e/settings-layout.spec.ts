@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("settings show a sidebar from 960px and drill down below it", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-layout-"));
@@ -12,7 +13,7 @@ test("settings show a sidebar from 960px and drill down below it", async () => {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping setup opens Exams; a route set before that lands is replaced by it.
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const sidebar = page.getByRole("navigation", { name: "Impostazioni" });
     const back = page.getByRole("button", { name: "Torna alle impostazioni" });
 

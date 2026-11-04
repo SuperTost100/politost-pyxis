@@ -95,7 +95,7 @@
     "again": {
       "done": "Save and back to Settings"
     },
-    "done": "Go to exams",
+    "done": "Start studying",
     "contentLanguage": "English",
     "levels": {
       "primary": "Primary",
@@ -157,11 +157,16 @@
     }
   },
   "ask": {
-    "greeting": "Hi",
-    "scopeEmpty": "No subject or source: I answer from general knowledge.",
-    "scopeReady": "I answer only from the selected material.",
-    "greetingNamed": "Hi, {{name}}",
-    "scopeSubject": "I answer from the material in {{subject}}.",
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "greetingNamed": {
+      "morning": "Good morning, {{name}}",
+      "afternoon": "Good afternoon, {{name}}",
+      "evening": "Good evening, {{name}}"
+    },
     "chatsOpen": "Open chats",
     "chatsClose": "Close chats",
     "searchLabel": "Search chats",
@@ -252,7 +257,6 @@
       "quiz": "Ask me 3 questions on {{topic}}",
       "exercise": "Give me an exercise on {{topic}}"
     },
-    "attachHint": "Attach notes, a PDF or a photo with the paperclip, paste a screenshot, or drop files here.",
     "showEarlier_one": "Show {{count}} earlier message",
     "showEarlier_other": "Show {{count}} earlier messages",
     "pastedImage": "Pasted image",

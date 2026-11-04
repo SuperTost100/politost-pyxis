@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("SRC-07 a dropped file gets a native grant and nothing else does", async () => {
   test.setTimeout(120000);
@@ -16,8 +17,8 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
     // A File built in script has no path on disk, so the drop grants nothing for it.
     const forged = await page.evaluate(() =>

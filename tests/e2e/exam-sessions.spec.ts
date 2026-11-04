@@ -9,6 +9,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** Local noon, `days` from today, as plan settings store an exam date. */
 function noonIn(days: number): Date {
@@ -30,7 +31,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,

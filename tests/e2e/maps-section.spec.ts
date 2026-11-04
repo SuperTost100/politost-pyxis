@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 function graph(labels: string[]) {
   return {
@@ -45,7 +46,7 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
     // The header door opens the section. With no exam yet, the empty state sends the student to create one.

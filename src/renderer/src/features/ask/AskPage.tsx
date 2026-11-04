@@ -55,6 +55,7 @@ import {
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { activePlans, starterPrompts, type Starter } from "./starters";
+import { dayPart } from "./greeting";
 import { formatTokens } from "../../lib/tokens";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
@@ -813,6 +814,9 @@ export function AskPage() {
     : messages;
   const usesSources = hasScope || files.length > 0;
   const name = profile.data?.displayName.trim() ?? "";
+  // Home is a chat with nothing in it yet: the greeting with the composer under it, in the middle of the page.
+  const home = !conversation && !threadLoading && !threadFailed;
+  const part = dayPart(new Date().getHours());
 
   // Where the rendered part of a long chat starts. It is fixed when the chat opens, so new messages add to the end
   // without pushing older ones out, and it moves back as the student scrolls up.
@@ -963,7 +967,7 @@ export function AskPage() {
 
   return (
     <div
-      className="ask-page"
+      className={home ? "ask-page ask-home" : "ask-page"}
       ref={page}
       onDragEnter={(event) => {
         if (!carriesFiles(event)) return;
@@ -1038,27 +1042,10 @@ export function AskPage() {
       ) : !conversation ? (
         <div className="ask-greeting">
           <h1 className="display">
-            {name ? t("ask.greetingNamed", { name }) : t("ask.greeting")}
+            {name
+              ? t(`ask.greetingNamed.${part}`, { name })
+              : t(`ask.greeting.${part}`)}
           </h1>
-          <p className="body">
-            {!hasScope
-              ? t("ask.scopeEmpty")
-              : subject
-                ? t("ask.scopeSubject", { subject })
-                : t("ask.scopeReady")}
-          </p>
-          {starters.length > 0 ? (
-            <ul className="ask-starters" aria-label={t("ask.startersLabel")}>
-              {starters.map((starter) => (
-                <li key={`${starter.kind}-${starter.planId}-${starter.topic}`}>
-                  <Button shape="round" disabled={busy} onClick={() => start(starter)}>
-                    {t(`ask.starter.${starter.kind}`, { topic: starter.topic })}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <p className="small ask-attach-hint">{t("ask.attachHint")}</p>
         </div>
       ) : (
         <div className="ask-thread">
@@ -1312,6 +1299,17 @@ export function AskPage() {
               }, fail);
           }}
         />
+        {home && starters.length > 0 ? (
+          <ul className="ask-starters" aria-label={t("ask.startersLabel")}>
+            {starters.map((starter) => (
+              <li key={`${starter.kind}-${starter.planId}-${starter.topic}`}>
+                <Button shape="round" disabled={busy} onClick={() => start(starter)}>
+                  {t(`ask.starter.${starter.kind}`, { topic: starter.topic })}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   );

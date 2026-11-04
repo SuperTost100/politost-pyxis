@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
@@ -39,7 +40,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     seed(userData);
     await page.evaluate(() => {
       location.hash = "/ask/chat-cut";
@@ -113,7 +114,7 @@ test("Ask: Continue keeps the cut reply's citation chips while it waits for the 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     const now = Date.now();
     seedSource(db, {

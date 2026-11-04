@@ -16,6 +16,7 @@ import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -47,8 +48,8 @@ test("SET-05/06 verified workspace move, failed move recovery and daily release 
     let page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const imported = (await importPickedSource(page, app, sourcePath)) as {
       sourceId: string;
     };
@@ -191,7 +192,7 @@ test("a manual backup saved over the live database is refused and the data stays
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });
@@ -226,7 +227,7 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const imported = (await importPickedSource(page, app, sourcePath)) as { sourceId: string };
     await expect
       .poll(

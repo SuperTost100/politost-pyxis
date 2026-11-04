@@ -145,7 +145,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         disabled={busy}
         onClick={() =>
           void save(true).then((saved) => {
-            if (saved) navigate("/exams");
+            if (saved) navigate("/ask");
           })
         }
       >
@@ -185,8 +185,8 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
     secondary = backButton;
     primary = (
       <>
-        {/* The profile is saved: without an exam to set up, the exams list has the way to create one later. */}
-        <Button shape="round" onClick={() => navigate("/exams")}>
+        {/* The profile is saved: without an exam to set up, setup ends on Chiedi, and Esami can create one later. */}
+        <Button shape="round" onClick={() => navigate("/ask")}>
           {t("onboarding.exam.skip")}
         </Button>
         <Button

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { quitPyxis } from "./app-exit";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("study reminders are off by default; the switch and the time are saved", async () => {
   test.setTimeout(90_000);
@@ -16,7 +17,7 @@ test("study reminders are off by default; the switch and the time are saved", as
     let page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       location.hash = "/settings/reminders";
     });

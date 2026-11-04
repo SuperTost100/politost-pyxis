@@ -6,6 +6,51 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
+
+test("the window opens on Chiedi, with the greeting and the composer in the middle, and the brand goes back to it", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-landing-"));
+  let app = await launchPyxis({ userData });
+  try {
+    let page = await app.firstWindow();
+    // During setup the brand is plain text: setup cannot be left from the top bar.
+    await expect(page.locator(".px-brand")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Pyxis", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+
+    // Home: the greeting, then the composer right under it, the pair near the middle of the window.
+    const greeting = page.getByRole("heading", { level: 1 });
+    await expect(greeting).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)$/);
+    const composer = page.locator(".px-composer");
+    await expect(page.getByRole("textbox", { name: "Messaggio" })).toBeVisible();
+    const heading = (await greeting.boundingBox())!;
+    const box = (await composer.boundingBox())!;
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    expect(box.y).toBeGreaterThan(heading.y + heading.height);
+    expect(box.y - (heading.y + heading.height)).toBeLessThan(48);
+    const middle = (heading.y + box.y + box.height) / 2;
+    expect(middle).toBeGreaterThan(viewport.height * 0.35);
+    expect(middle).toBeLessThan(viewport.height * 0.65);
+    expect(Math.abs(heading.x + heading.width / 2 - viewport.width / 2)).toBeLessThan(40);
+
+    // The brand opens Home from any other page.
+    await page.locator("header nav").getByRole("link", { name: "Esami", exact: true }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await page.getByRole("link", { name: "Pyxis", exact: true }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+
+    // The next start opens on Chiedi too.
+    await app.close();
+    app = await launchPyxis({ userData });
+    page = await app.firstWindow();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
 
 test("doors navigate from settings and every shell page uses the full column", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-layout-"));
@@ -14,7 +59,7 @@ test("doors navigate from settings and every shell page uses the full column", a
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1000, height: 760 });
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
 
     const doors = page.getByRole("navigation", { name: "Sezioni" });
     const door = (name: string) => doors.getByRole("link", { name, exact: true });

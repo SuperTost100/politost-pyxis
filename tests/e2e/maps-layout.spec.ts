@@ -9,6 +9,7 @@ import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -116,8 +117,8 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const source = (await importPickedSource(page, app, file)) as {
       sourceId: string;
     };

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 const ANSWER = [
   "Il calore passa per conduzione: \\(Q=mc\\Delta T\\) [P1].",
@@ -26,7 +27,7 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,
     });

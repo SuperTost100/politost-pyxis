@@ -10,6 +10,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -34,8 +35,8 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     await page.getByText("Fonti", { exact: true }).click();
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     await animationsSettled(page);
@@ -164,7 +165,7 @@ test("the PDF viewer draws a fax-encoded figure", async () => {
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.getByText("Fonti", { exact: true }).click();
     const pdf = join(userData, "figure.pdf");
     writeFileSync(pdf, faxScanPdf("Pendulum figure from the laboratory notes"));
@@ -215,8 +216,8 @@ test("SRC-21 actual e5 inference indexes passages and survives app restart", asy
   try {
     let page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    // Skipping saves the profile, then moves to Exams; wait so a reload or route change cannot land on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
     const source = (await page.evaluate(() =>
       window.pyxis.invoke("sources.paste", {
         title: "Dinamica",

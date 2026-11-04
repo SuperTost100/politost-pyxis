@@ -1,7 +1,7 @@
 import { createHashRouter, isRouteErrorResponse, replace, useNavigate, useRouteError } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useEffect, type ComponentType } from "react";
-import { ExamsHome } from "../features/home/HomePages";
+import { AskPage } from "../features/ask/AskPage";
 import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { reportError } from "../lib/errorReports";
@@ -42,9 +42,9 @@ function RouteError({ standalone }: { standalone?: boolean }) {
   );
 }
 
-// Every page but the exam list loads on its first visit, so the window parses less at startup. Until a route's page
-// has loaded, the router keeps the previous page on screen, so a page with tabs or an optional id is one route: moving
-// between its tabs never waits for a load. Redirects are loaders, not rendered <Navigate>s: a redirect that renders
+// Every page but Chiedi, where the window opens, loads on its first visit, so the window parses less at startup. Until
+// a route's page has loaded, the router keeps the previous page on screen, so a page with tabs or an optional id is one
+// route: moving between its tabs never waits for a load. Redirects are loaders, not rendered <Navigate>s: a redirect that renders
 // late would cancel a navigation started before it, such as one still loading its page.
 function page<K extends string>(
   load: () => Promise<Record<K, ComponentType>>,
@@ -53,6 +53,7 @@ function page<K extends string>(
   return async () => ({ Component: (await load())[name] });
 }
 const plans = () => import("../features/plans/PlanFrames");
+const examsHome = page(() => import("../features/home/HomePages"), "ExamsHome");
 const quiz = page(() => import("../features/study/QuizPage"), "QuizPage");
 const quizRedo = async () => {
   const { QuizPage } = await import("../features/study/QuizPage");
@@ -72,13 +73,13 @@ export const router = createHashRouter([
     path: "/",
     element: <Shell />,
     children: [
-      { index: true, loader: () => replace("/exams") },
+      { index: true, loader: () => replace("/ask") },
       { path: "onboarding", lazy: page(() => import("../features/onboarding/OnboardingPage"), "OnboardingPage") },
-      { path: "ask/:chatId?", lazy: page(() => import("../features/ask/AskPage"), "AskPage") },
-      { path: "exams", element: <ExamsHome /> },
-      { path: "exams/library", element: <ExamsHome /> },
-      { path: "exams/cards", element: <ExamsHome /> },
-      { path: "exams/mistakes", element: <ExamsHome /> },
+      { path: "ask/:chatId?", element: <AskPage /> },
+      { path: "exams", lazy: examsHome },
+      { path: "exams/library", lazy: examsHome },
+      { path: "exams/cards", lazy: examsHome },
+      { path: "exams/mistakes", lazy: examsHome },
       { path: "exams/planner", lazy: page(() => import("../features/home/PlannerPage"), "PlannerPage") },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },

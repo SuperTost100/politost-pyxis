@@ -6,6 +6,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 
 const plan = (title: string, extra: object = {}) =>
@@ -29,7 +30,7 @@ async function start(args: string[]) {
 
 async function skipSetup(page: Page) {
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams/);
+  await fromChiediToExams(page);
 }
 
 async function shoot(page: Page, name: string) {

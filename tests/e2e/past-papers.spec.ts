@@ -8,6 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 
 const paper = {
@@ -82,7 +83,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const plan = (await page.evaluate(() =>
       window.pyxis.invoke("plans.create", {
         title: "Analisi 1",

@@ -12,6 +12,7 @@ import { seedPlan, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -82,7 +83,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
@@ -234,7 +235,7 @@ test("the flashcard browser says when there are no cards", async () => {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile first; a reload before that lands back on setup.
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       location.hash = "#/exams/cards";

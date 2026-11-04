@@ -7,6 +7,7 @@ import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { fromChiediToExams } from "./doors";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
@@ -22,7 +23,7 @@ async function launch(extra: Record<string, string> = {}) {
       violations.push(`request ${request.url()}`);
   });
   await page.getByRole("button", { name: "Salta" }).click();
-  await expect(page).toHaveURL(/#\/exams$/);
+  await fromChiediToExams(page);
   return { app, page, userData, violations };
 }
 
@@ -208,7 +209,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
-    await expect(page).toHaveURL(/#\/exams$/);
+    await fromChiediToExams(page);
     const source = (await importPickedSource(page, app, file)) as { sourceId: string };
     await expect
       .poll(async () => {
