@@ -16,25 +16,35 @@ test("doors navigate from settings and every shell page uses the full column", a
     await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
 
-    const doors = page.locator("header .px-doors");
-    const selected = doors.locator(".ant-segmented-item-selected-text");
-    await expect(selected).toHaveText(/Esami/);
+    const doors = page.getByRole("navigation", { name: "Sezioni" });
+    const door = (name: string) => doors.getByRole("link", { name, exact: true });
+    const selected = doors.locator('[aria-current="page"]');
+    await expect(selected).toHaveText("Esami");
 
-    await doors.getByText("Chiedi", { exact: true }).click();
+    await door("Chiedi").click();
     await expect(page).toHaveURL(/#\/ask$/);
-    await expect(selected).toHaveText(/Chiedi/);
+    await expect(selected).toHaveText("Chiedi");
 
     // Settings belongs to no door: neither is highlighted and both navigate.
-    await page.getByRole("button", { name: "Impostazioni", exact: true }).click();
+    await page.getByRole("link", { name: "Impostazioni", exact: true }).click();
     await expect(page).toHaveURL(/#\/settings$/);
     await expect(selected).toHaveCount(0);
-    await doors.getByText("Chiedi", { exact: true }).click();
+    await door("Chiedi").click();
     await expect(page).toHaveURL(/#\/ask$/);
 
-    await page.getByRole("button", { name: "Impostazioni", exact: true }).click();
+    await page.getByRole("link", { name: "Impostazioni", exact: true }).click();
     await expect(selected).toHaveCount(0);
-    await doors.getByText("Esami", { exact: true }).click();
+    await door("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
+
+    // The book icon opens the Library and is marked as the current tool there.
+    const library = page.getByRole("link", { name: "Libreria", exact: true });
+    await library.click();
+    await expect(page).toHaveURL(/#\/exams\/library$/);
+    await expect(library).toHaveAttribute("aria-current", "page");
+    await door("Esami").click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(library).not.toHaveAttribute("aria-current", "page");
 
     // Exams and Ask share one column width, Settings and its subpages share a wider one for the sidebar, and the logo stays put.
     const widths: number[] = [];
@@ -68,9 +78,7 @@ test("doors navigate from settings and every shell page uses the full column", a
       (hash.startsWith("#/settings") ? settingsWidths : widths).push(
         Math.round((await container.boundingBox())!.width),
       );
-      logoX.push(
-        Math.round((await page.getByRole("img", { name: "Pyxis" }).boundingBox())!.x),
-      );
+      logoX.push(Math.round((await page.locator("header .px-brand").boundingBox())!.x));
     }
     expect(new Set(widths).size).toBe(1);
     expect(widths[0]).toBe(768);
@@ -78,20 +86,22 @@ test("doors navigate from settings and every shell page uses the full column", a
     expect(settingsWidths[0]).toBe(960);
     expect(new Set(logoX).size).toBe(1);
 
-    // The header spans the window: logo at the left edge, actions at the right, doors centred on the window.
+    // The header spans the window: the mark and name at the left edge, the sections right after them, the icons at
+    // the right edge.
     await page.evaluate(() => {
       window.location.hash = "#/exams";
     });
-    const header = (await page.locator("header .ant-pro-top-nav-header").boundingBox())!;
-    const logo = (await page.locator("header").getByRole("img", { name: "Pyxis" }).boundingBox())!;
+    const header = (await page.locator("header.px-top").boundingBox())!;
+    const logo = (await page.locator("header .px-brand").boundingBox())!;
     const doorsBox = (await doors.boundingBox())!;
-    const settings = (await page.getByRole("button", { name: "Impostazioni", exact: true }).boundingBox())!;
+    const settings = (await page.getByRole("link", { name: "Impostazioni", exact: true }).boundingBox())!;
     // macOS leaves room for the traffic lights (80px); elsewhere the logo sits at the edge.
     if (process.platform === "darwin") {
       expect(logo.x).toBeGreaterThanOrEqual(78);
       expect(logo.x).toBeLessThan(90);
     } else expect(logo.x).toBeLessThan(40);
-    expect(Math.abs(doorsBox.x + doorsBox.width / 2 - (header.x + header.width / 2))).toBeLessThanOrEqual(2);
+    expect(doorsBox.x - (logo.x + logo.width)).toBeGreaterThan(0);
+    expect(doorsBox.x - (logo.x + logo.width)).toBeLessThan(40);
     expect(header.x + header.width - (settings.x + settings.width)).toBeLessThan(40);
 
     // A click on the door that is already active goes to that door's root.
@@ -99,7 +109,7 @@ test("doors navigate from settings and every shell page uses the full column", a
       window.location.hash = "#/exams/library";
     });
     await expect(page).toHaveURL(/#\/exams\/library$/);
-    await doors.getByText("Esami", { exact: true }).click();
+    await door("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
 
     // A plan page offers a way back to the exams.
@@ -109,7 +119,7 @@ test("doors navigate from settings and every shell page uses the full column", a
     await page.evaluate(() => {
       window.location.hash = "#/plans/p-1";
     });
-    await page.getByRole("link", { name: "Esami", exact: true }).click();
+    await page.getByRole("main").getByRole("link", { name: "Esami", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
   } finally {
     await app.close();

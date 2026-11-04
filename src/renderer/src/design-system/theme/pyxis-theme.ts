@@ -1,10 +1,9 @@
-// PoliTost Pyxis — Ant Design v6 + Ant Design Pro (ProComponents v3) theme. The colours come from tokens.json.
+// PoliTost Pyxis — Ant Design v6 theme. The colours come from tokens.json.
 // Usage:
 //   import { ConfigProvider, App as AntApp } from 'antd';
 //   import { pyxisTheme } from './pyxis-theme';
 //   <ConfigProvider theme={pyxisTheme(mode)}><AntApp>…</AntApp></ConfigProvider>
 import { theme, type ThemeConfig } from "antd";
-import type { ProTokenType } from "@ant-design/pro-components";
 import { color } from "../tokens/tokens.json";
 
 export type PyxisMode = "dark" | "light";
@@ -86,6 +85,10 @@ export function pyxisTheme(
       colorErrorActive: DANGER_STATES[mode].active,
       colorInfo: c.primary,
       colorLink: c.primaryText,
+      // Ant Design derives these from colorLink, and its dark algorithm takes them under 4.5:1 on the cards
+      // (link-contrast.test.ts). A hovered link turns to the text colour; a pressed one keeps the link colour.
+      colorLinkHover: c.ink,
+      colorLinkActive: c.primaryText,
       fontFamily: FONT_SANS,
       fontFamilyCode: FONT_MONO,
       fontSize: 15 * textScale,
@@ -251,41 +254,6 @@ export function pyxisTheme(
         borderColor: c.border,
         headerColor: c.inkMuted,
       },
-    },
-  };
-}
-
-// ── Ant Design Pro (ProComponents v3) ───────────────────────────────────────
-// ProLayout reads its own `token` prop; the rest of ProComponents (ProForm, StepsForm,
-// ProList, ProTable, ProCard) inherit the antd theme above through ConfigProvider.
-
-export function pyxisProLayoutToken(
-  mode: PyxisMode = "dark",
-): ProTokenType["layout"] {
-  const c = pyxisColors[mode];
-  return {
-    bgLayout: c.bg,
-    colorPrimary: c.primary,
-    header: {
-      colorBgHeader: c.bg,
-      colorBgScrollHeader: c.bg,
-      colorHeaderTitle: c.ink,
-      colorTextMenu: c.inkMuted,
-      colorTextMenuSecondary: c.inkMuted,
-      colorTextMenuSelected: c.primaryText,
-      colorTextMenuActive: c.ink,
-      colorBgMenuItemHover: c.surfaceRaised,
-      colorBgMenuItemSelected: c.primarySoft,
-      colorBgMenuElevated: c.surfaceOverlay,
-      colorTextRightActionsItem: c.inkMuted,
-      colorBgRightActionsItemHover: c.surfaceRaised,
-      heightLayoutHeader: 64,
-    },
-    pageContainer: {
-      colorBgPageContainer: c.bg,
-      colorBgPageContainerFixed: c.bg,
-      paddingInlinePageContainerContent: 24,
-      paddingBlockPageContainerContent: 48,
     },
   };
 }

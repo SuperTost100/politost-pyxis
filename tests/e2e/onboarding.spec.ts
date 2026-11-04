@@ -86,8 +86,8 @@ const engineRows = (page: Page) =>
   page.getByRole("list", { name: "Motori su questo computer" }).getByRole("listitem");
 // Setup is closed: no section switch and no Settings button until it ends.
 async function noNavigation(page: Page) {
-  await expect(page.getByRole("radiogroup", { name: "Sezioni" })).toHaveCount(0);
-  await expect(button(page, "Impostazioni")).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Sezioni" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Impostazioni", exact: true })).toHaveCount(0);
 }
 
 test("First setup: about you, the engine with its notice and crash reports off, the exam with a goal out of 30, the material, then the switch in Settings", async () => {
@@ -230,9 +230,9 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     await button(page, "Nessun esame per ora").click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(
-      page.getByRole("radiogroup", { name: "Sezioni" }),
+      page.getByRole("navigation", { name: "Sezioni" }),
     ).toBeVisible();
-    await expect(button(page, "Impostazioni")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Impostazioni", exact: true })).toBeVisible();
     await expect(button(page, "Nuovo esame")).toBeVisible();
     expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toEqual([]);
 

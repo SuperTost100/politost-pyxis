@@ -275,6 +275,13 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
       }),
     );
     await page.reload();
+    // The test release's update notice sits over the exam toolbar when the window is small, as on the Windows runner's
+    // 1024x720 screen. Close it, as a person would, before using the toolbar.
+    await page
+      .locator(".px-update-notice")
+      .getByRole("button", { name: "Chiudi avviso", exact: true })
+      .click();
+    await expect(page.locator(".px-update-notice")).toHaveCount(0);
     // An open dialog.
     await page.getByRole("button", { name: "Altro", exact: true }).click();
     await page.getByRole("menuitem", { name: "Gestisci materie" }).click();

@@ -1,5 +1,5 @@
 import { Button, Popover } from "antd";
-import { CircleAlert, ListChecks, LoaderCircle } from "lucide-react";
+import { CircleAlert, Clock, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
@@ -80,7 +80,7 @@ export function JobsButton() {
         <Button
           ref={trigger}
           type="text"
-          shape="round"
+          className="px-top-tool px-jobs-button"
           aria-expanded={open}
         >
           {/* The counts are only a picture of this sentence, so a screen reader reads the sentence once. */}
@@ -106,7 +106,7 @@ export function JobsButton() {
               </span>
             ) : null}
             {running.length + problems.length === 0 ? (
-              <ListChecks size={16} strokeWidth={1.75} />
+              <Clock size={18} strokeWidth={1.75} />
             ) : null}
           </span>
         </Button>

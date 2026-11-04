@@ -1,16 +1,11 @@
-import { Button, Segmented } from "antd";
-import { PageContainer, ProLayout } from "@ant-design/pro-components";
-import { GraduationCap, MessageCircle, Network, Settings } from "lucide-react";
+import { Button } from "antd";
+import { BookOpen, Settings } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
-import logoDark from "../../design-system/logo/pyxis-lockup-dark.svg";
-import logoLight from "../../design-system/logo/pyxis-lockup-light.svg";
-import { pyxisProLayoutToken } from "../../design-system/theme/pyxis-theme";
+import { Link, Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
-import { useAppState } from "../app-state";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
 import { profileQuery } from "../../lib/queries";
@@ -69,8 +64,6 @@ export function doorTarget(door: Door, pathname: string): string {
   return readLast()[door];
 }
 
-/** antd's Segmented shows no selection when its value matches no option. */
-const NO_DOOR = "" as Door;
 
 export function Shell() {
   const { t, i18n } = useTranslation();
@@ -80,8 +73,6 @@ export function Shell() {
   // follow the page being opened from the start, so they never depend on how long that takes.
   const target = useNavigation().location ?? location;
   const client = useQueryClient();
-  const { appearance } = useAppState();
-  const mode = appearance.resolved;
   const activeDoor = doorForPath(target.pathname);
   const profile = useQuery({ ...profileQuery, retry: 10, retryDelay: 300 });
 
@@ -107,16 +98,6 @@ export function Shell() {
   }, [activeSimulation.data, location.pathname, navigate]);
 
   useEffect(() => {
-    for (const header of document.querySelectorAll(
-      "header.ant-layout-header",
-    )) {
-      if (header instanceof HTMLElement && header.childElementCount === 0) {
-        header.setAttribute("role", "presentation");
-      }
-    }
-  });
-
-  useEffect(() => {
     if (profile.isSuccess) return;
     return window.pyxis.onPort(() => {
       void client.invalidateQueries({ queryKey: ["profile"] });
@@ -140,85 +121,60 @@ export function Shell() {
       .catch(() => undefined);
   }, [storedLanguage, interfaceLanguage, client]);
 
+  // A running exam simulation hides Ask and keeps Exams current, as the redirect above keeps the student there.
+  const doors: Door[] = activeSimulation.data ? ["exams", "maps"] : ["ask", "exams", "maps"];
+  const currentDoor = activeSimulation.data ? "exams" : activeDoor;
+
   return (
-    <ProLayout
-      layout="top"
-      className={inSetup ? "px-in-setup" : undefined}
-      contentWidth="Fluid"
-      fixedHeader
-      navTheme={mode === "dark" ? "realDark" : "light"}
-      token={pyxisProLayoutToken(mode)}
-      title={false}
-      logo={
-        <img
-          src={mode === "dark" ? logoDark : logoLight}
-          alt="Pyxis"
-          height={28}
-        />
-      }
-      menuRender={false}
-      headerContentRender={inSetup ? false : () => (
-        <div
-          className="px-doors-wrap"
-          onClick={(event) => {
-            // antd fires onChange only for a new selection. A click on the active door lands here instead and goes to that door's root.
-            if (!(event.target instanceof HTMLInputElement) || !activeDoor) return;
-            if (
-              event.target
-                .closest("label")
-                ?.classList.contains("ant-segmented-item-selected")
-            )
-              navigate(doorRoots[activeDoor]);
-          }}
-        >
-          <Segmented<Door>
-            shape="round"
-            className="px-doors"
-            aria-label={t("doors.label")}
-            value={activeSimulation.data ? "exams" : (activeDoor ?? NO_DOOR)}
-            onChange={(value) => navigate(readLast()[value])}
-            options={[
-              ...(!activeSimulation.data
-                ? [
-                    {
-                      value: "ask" as const,
-                      label: t("doors.ask"),
-                      icon: <MessageCircle size={16} strokeWidth={1.75} />,
-                    },
-                  ]
-                : []),
-              {
-                value: "exams",
-                label: t("doors.exams"),
-                icon: <GraduationCap size={16} strokeWidth={1.75} />,
-              },
-              {
-                value: "maps",
-                label: t("doors.maps"),
-                icon: <Network size={16} strokeWidth={1.75} />,
-              },
-            ]}
-          />
+    <div className={inSetup ? "px-app px-in-setup" : "px-app"}>
+      <header className="px-top">
+        <span className="px-brand">
+          <PyxisMark />
+          Pyxis
+        </span>
+        {inSetup ? null : (
+          <nav className="px-nav" aria-label={t("doors.label")}>
+            {doors.map((door) => (
+              <Link
+                key={door}
+                to={doorTarget(door, target.pathname)}
+                // During a simulation Exams stays highlighted, but only the open section is the current page.
+                aria-current={activeDoor === door ? "page" : undefined}
+                data-selected={currentDoor === door ? "" : undefined}
+              >
+                {t(`doors.${door}`)}
+              </Link>
+            ))}
+          </nav>
+        )}
+        <div className="px-top-tools">
+          {inSetup ? null : (
+            <Link
+              to="/exams/library"
+              className="px-top-tool"
+              aria-label={t("nav.library")}
+              title={t("nav.library")}
+              aria-current={target.pathname.startsWith("/exams/library") ? "page" : undefined}
+            >
+              <BookOpen size={18} strokeWidth={1.75} aria-hidden />
+            </Link>
+          )}
+          <JobsButton />
+          {inSetup ? null : (
+            <Link
+              to="/settings"
+              className="px-top-tool"
+              aria-label={t("nav.settings")}
+              title={t("nav.settings")}
+              aria-current={target.pathname.startsWith("/settings") ? "page" : undefined}
+            >
+              <Settings size={18} strokeWidth={1.75} aria-hidden />
+            </Link>
+          )}
         </div>
-      )}
-      actionsRender={() => [
-        <JobsButton key="jobs" />,
-        inSetup ? null : (
-          <Button
-            key="settings"
-            shape="circle"
-            type="text"
-            aria-label={t("nav.settings")}
-            icon={<Settings size={18} strokeWidth={1.75} />}
-            onClick={() => navigate("/settings")}
-          />
-        ),
-      ]}
-      footerRender={false}
-    >
+      </header>
       <LaunchEngineNotice ready={profile.isSuccess && Boolean(profile.data)} />
-      <PageContainer
-        header={{ title: false, breadcrumb: {} }}
+      <main
         className={
           target.pathname.startsWith("/settings")
             ? "px-shell-container px-shell-wide"
@@ -228,7 +184,6 @@ export function Shell() {
         <div className="shell-page">
           {activeSimulation.data ? (
             <Button
-              shape="round"
               onClick={() =>
                 navigate(
                   `/plans/${activeSimulation.data!.planId}/exam/${activeSimulation.data!.attemptId}`,
@@ -240,7 +195,24 @@ export function Shell() {
           ) : null}
           <Outlet />
         </div>
-      </PageContainer>
-    </ProLayout>
+      </main>
+    </div>
+  );
+}
+
+/** The Pyxis mark: three star trails and the star, in the text colour (pyxis-mockups app/index.html, #pyxis-mark). */
+function PyxisMark() {
+  return (
+    <svg className="px-brand-mark" viewBox="6 10 88 88" aria-hidden>
+      <g fill="none" stroke="currentColor" strokeWidth="6.5" strokeLinecap="round">
+        <path d="M34.96,48.53 A16,16 0 1 1 55.47,69.04" />
+        <path d="M25.75,68.00 A28,28 0 1 1 77.57,49.14" opacity=".75" />
+        <path d="M24.29,23.36 A40,40 0 0 1 80.64,79.71" opacity=".55" />
+      </g>
+      <path
+        fill="currentColor"
+        d="M50,45 C51.62,52.38 51.62,52.38 59,54 C51.62,55.62 51.62,55.62 50,63 C48.38,55.62 48.38,55.62 41,54 C48.38,52.38 48.38,52.38 50,45Z"
+      />
+    </svg>
   );
 }

@@ -113,7 +113,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       page.getByRole("textbox", { name: "La tua risposta" }),
     ).toBeVisible();
     expect(
-      await page.getByRole("button", { name: "Chiedi", exact: true }).count(),
+      await page.getByRole("link", { name: "Chiedi", exact: true }).count(),
     ).toBe(0);
     expect(await page.getByText("DOMANDA DI PRATICA").count()).toBe(0);
     const openedAt = Date.now();
