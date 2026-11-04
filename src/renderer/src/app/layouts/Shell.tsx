@@ -129,8 +129,8 @@ export function Shell() {
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>
       <header className="px-top">
         {/* The brand opens Home, a new chat, as in the mockup. Setup and a running simulation keep it plain, since
-            neither may be left from here. */}
-        {inSetup || activeSimulation.data ? (
+            neither may be left from here; so does the moment the simulation check is still out. */}
+        {inSetup || activeSimulation.isLoading || activeSimulation.data ? (
           <span className="px-brand">
             <PyxisMark />
             Pyxis
