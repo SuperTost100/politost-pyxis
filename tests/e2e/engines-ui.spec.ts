@@ -210,7 +210,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
-    await fromChiediToExams(page);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
@@ -338,7 +338,7 @@ esac`,
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
-    await fromChiediToExams(page);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       localStorage.removeItem("pyxis.engines.advanced");
@@ -405,7 +405,7 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await fromChiediToExams(page);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(async () => {
       await window.pyxis.invoke("engines.acknowledge", {
         providers: ["claude", "agent"],
@@ -526,7 +526,7 @@ esac`,
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
-    await fromChiediToExams(page);
+    await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(async () => {
       await window.pyxis.invoke("engines.acknowledge", { providers: ["agent"] });
       localStorage.setItem("pyxis.lang", "en");

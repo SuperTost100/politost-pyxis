@@ -81,9 +81,9 @@ test("update: download and install checks SHA256SUMS, replaces the AppImage, and
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
     await expect(page).toHaveURL(/#\/ask$/);
     // Skipping setup lands on Chiedi; open Settings > Updates after that navigation.
-    await expect(
-      page.getByRole("heading", { name: "Esami", level: 1 }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      /^(Buongiorno|Buon pomeriggio|Buonasera)$/,
+    );
     await page.evaluate(() => {
       location.hash = "/settings/updates";
     });
