@@ -139,6 +139,15 @@ describe("job log", () => {
     expect(await readJobLog(job)).toBeNull();
   });
 
+  it("drops the end of a call that was still running when debug mode went off", async () => {
+    const call = startCall(job, { provider: "claude", model: "m", access: "subscription", prompt: "p" })!;
+    setDebugOn(false);
+    await clearJobLogs();
+    call.end({ text: "a reply after the switch went off" });
+    await flushDebugLog();
+    expect(await readJobLog(job)).toBeNull();
+  });
+
   it("deletes a job's log", async () => {
     startCall(job, { provider: "claude", model: "m", access: "subscription", prompt: "p" })!.end({ text: "" });
     await removeJobLog(job);

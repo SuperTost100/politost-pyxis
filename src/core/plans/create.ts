@@ -503,7 +503,7 @@ export function listSubjects(db: Database.Database) {
         `SELECT s.id, s.name,
            (EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name)) AS used
+             OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used
          FROM subjects s ORDER BY s.position, s.name, s.id`,
       )
       .all() as Array<{ id: string; name: string; used: number }>

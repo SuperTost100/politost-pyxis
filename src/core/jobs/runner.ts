@@ -549,6 +549,8 @@ export function createRunner(
         ["failed", "cancelled", "succeeded", "interrupted"].includes(view.state)
       ) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
+        // The row stays for its own reasons; the student's prompts and replies in the debug log don't.
+        void removeJobLog(jobId);
         publish(jobId);
         return;
       }

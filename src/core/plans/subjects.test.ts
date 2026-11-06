@@ -50,7 +50,8 @@ describe("ASK-01 shared subjects", () => {
     addSubject(db, "Analisi 1");
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(exam.id);
     db.prepare("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('src', 'notes', 'Appunti', 'ready', ?, 1, 1)").run(source.id);
-    db.prepare("INSERT INTO chats (id, subject, created_at, updated_at) VALUES ('chat', 'Storia', 1, 1)").run();
+    // Subjects match without case, as addSubject does.
+    db.prepare("INSERT INTO chats (id, subject, created_at, updated_at) VALUES ('chat', 'storia', 1, 1)").run();
     expect(Object.fromEntries(listSubjects(db).map((row) => [row.name, row.inUse]))).toEqual({
       Fisica: true,
       Chimica: true,

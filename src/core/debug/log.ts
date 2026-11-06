@@ -123,9 +123,11 @@ function cut(text: string): string {
 
 function write(jobId: string, line: LogLine): void {
   const file = fileFor(jobId);
-  if (!file) return;
+  if (!file || !on) return;
   const body = `${JSON.stringify(redactValue(line))}\n`;
   queue = queue.then(async () => {
+    // A call that was already running when debug mode went off writes nothing more, so the cleared folder stays empty.
+    if (!on) return;
     try {
       let size = sizes.get(file);
       if (size === undefined) size = await stat(file).then((info) => info.size, () => 0);

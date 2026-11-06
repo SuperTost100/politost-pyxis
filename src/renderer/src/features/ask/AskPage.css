@@ -93,7 +93,7 @@
   position: static;
   flex: 1 0 auto;
   justify-content: flex-start;
-  padding: 28px 0 9vh;
+  padding: 28px 24px 9vh;
 }
 
 .ask-home .ask-dock::before {
