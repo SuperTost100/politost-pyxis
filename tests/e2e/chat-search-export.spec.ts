@@ -98,6 +98,14 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await expect(search).toHaveAttribute("placeholder", "Cerca chat, esami, mappe e materiale");
     await page.keyboard.press("Escape");
     await expect(finder).toBeHidden();
+    // Esc and Cmd+K at once, as a quick hand does: the search opens again and stays.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    await expect(finder).toBeVisible();
+    await expect(search).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
 
     const exportWith = async (item: string) => {
       await answerNextMenu(app, item);

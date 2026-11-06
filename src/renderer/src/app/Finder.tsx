@@ -237,6 +237,8 @@ export function Finder({
       onCancel={(event) => {
         // Esc in a chat's rename field cancels the rename, not the search.
         if (document.activeElement?.classList.contains("px-rename")) event.preventDefault();
+        // Otherwise the search closes now, before the close event, so a Cmd+K right after opens it again.
+        else done();
       }}
       onMouseDown={(event) => {
         // A press on the dimmed backdrop, outside the card, closes it.
