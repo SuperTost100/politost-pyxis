@@ -22,7 +22,7 @@ These pages are for people who change Pyxis or want to know exactly what it does
 
 ## Interface
 
-- [Design system](design-system/README.md). Tokens, typography, components, the logo and the Ant Design mapping.
+- [Design system](design-system/README.md). Tokens, type, components and the logo.
 
 ## Building and releasing
 

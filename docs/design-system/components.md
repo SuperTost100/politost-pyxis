@@ -1,375 +1,80 @@
-# Pyxis design system — components
-
-Custom components and their rules. The live versions are in `reference/index.html`; `reference/bundle.css` is the styling reference.
-
-## Logo
-
-The Pyxis mark: star trails circling the pole star, the fixed point you steer by. Use it for the app icon, the header and the tutor's avatar.
-
-**Consumer provides** `size` (px), `wordmark` to add "Pyxis" in Figtree 700, `inverse` on a `primary` fill (the app icon).
-
-- The trails are `ink` at 90 / 70 / 50% strength; the star is always `star` gold. Never recolour the star or add a fourth trail.
-- Minimum size 16px; below 32px use the two-trail file `pyxis-app-icon-small.svg`.
-- Clear space: half the mark's height on every side. The wordmark sits right of the mark, never below.
-- In the header use `wordmark` at 28px height. The tutor avatar uses the mark alone at 22px.
-- Files: `src/renderer/src/design-system/logo/` holds the mark (dark, light, mono), lockups with the wordmark outlined, and the app icon (SVG + 1024px PNG).
-
-## Icon
-
-Line icon from the Lucide set, drawn at a 1.75 stroke in `currentColor`.
-
-**Consumer provides** `name` (a Lucide id), optional `size` (default 20), `strokeWidth`, and `label` when the icon stands alone and means something.
-
-- In the app use `lucide-react` directly (`<GraduationCap size={20} strokeWidth={1.75} />`); this component mirrors it for previews.
-- Icons take the colour of their text: `ink` for actions, `ink-muted` for decoration, a status token only next to a status word.
-- Sizes: 16 in chips and small buttons, 18–20 in controls, 32 in study-path nodes. Never mix stroke widths on one screen.
-- Don't use icons as decoration in cards or emoji instead of icons.
-
-## Button
-
-Pill-shaped action button; maps to antd `Button` with `shape="round"`.
-
-**Consumer provides** the label (children), `variant` (`primary` | `secondary` | `ghost` | `danger`), `size` (`sm` 32px | `md` 40px | `lg` 48px), optional `icon`, `block`, and the usual button props.
-
-- One `primary` per view: the next study step (Continua, Genera percorso, Invia). Everything else is `secondary` or `ghost`.
-- `lg` is for the single call to action at the bottom of a flow (the recommended-lesson dock, wizard steps).
-- `danger` only for destructive actions, always behind a confirm (Elimina esame, Elimina chat).
-- Labels are verbs in the interface language, sentence case: "Nuovo esame", not "NUOVO ESAME".
-- antd: `<Button type="primary" shape="round">`, `type="default"` for secondary, `type="text"` for ghost, `danger` for danger.
-
-## IconButton
-
-Circular icon-only button for the header, the composer toolbar and message actions.
-
-**Consumer provides** `icon`, `label` (required: becomes `aria-label` and tooltip), optional `variant` (default `secondary`), `size`.
-
-- Use for well-known actions only (back, close, settings, send, copy). Anything ambiguous gets a text `Button`.
-- The label is always set; screen readers depend on it (NFR-09).
-- antd: `<Button shape="circle" icon={<X/>} aria-label="Chiudi" />`.
-
-## SegmentedTabs
-
-Pill tab switcher with uppercase mono labels.
-
-**Consumer provides** `items` (`{value, label, icon?, badge?}`), `value` or uncontrolled default, `onChange`, and a `label` for the tablist.
-
-- Use for the header doors (Chiedi / Esami), exam pages (Percorso / Fonti / Progressi), the Create lesson groups (Impara / Esercitati / Esame) and Progress tabs.
-- 2–5 items. The active item is an `ink` pill with `on-ink` text in both themes.
-- Labels are written in sentence case in code and uppercased by the style (`label` type style); keep them to one or two words.
-- antd: `<Segmented shape="round" options={…} />` themed through the `Segmented` component token block in `theme/pyxis-theme.ts`.
-
-## TextField
-
-Pill input with an optional leading icon, for search and short single-line entries.
-
-**Consumer provides** `placeholder`, `value`/`onChange` or `defaultValue`, optional `icon`, `size` (`md` | `lg`), `label` when there is no visible label.
-
-- Search fields always carry the `search` icon; wizard fields use `lg`.
-- Multi-line input is the `Composer` or antd `Input.TextArea` with `radius-md`, never a pill.
-- The outline is `border-control`; focus draws the 2px `focus-ring`.
-- antd: `<Input variant="outlined" prefix={<Search/>} />` with `Input.activeBorderColor` set in the theme.
-
-## Chip
-
-Suggested follow-up question shown under a tutor reply (ASK-03).
-
-**Consumer provides** the question text and `onClick` (sends it as the next message).
-
-- At most three, right-aligned under the reply, hidden when the user turns suggestions off.
-- Text only; no emoji. An icon only when the chip triggers a tool (formula, graph).
-- antd: a `Button` with `shape="round"` and `type="default"`, or a `Tag.CheckableTag` if selection is needed.
-
-## Tag
-
-Small mono label that states where content came from or what state it is in.
-
-**Consumer provides** the text and `tone`: `neutral` (AI-generated, imported), `smartbook`, `general` (answer from the model's general knowledge, LES-32), `mastered`, `severe`, `recommended`.
-
-- Origin tags are mandatory on generated items (SB-03, PLAN-11, LES-32): users must always know if content came from their sources.
-- Each tone carries an icon so meaning never relies on colour.
-- Lowercase text, except `recommended`, which is uppercase.
-- antd: `<Tag bordered={false} color=…>` with the colours in `theme/pyxis-theme.ts`.
-
-## CitationChip
-
-Inline source reference that opens the cited smartbook section or PDF page in the viewer (SB-05).
-
-**Consumer provides** the short citation text (`Book · chapter`, `file · page`), `kind` (`smartbook` | `pdf`) and `onClick` to open the viewer.
-
-- Place right after the sentence it supports, inside the reply text.
-- Keep it short: book or file name, then chapter or page. Full details live in the viewer.
-- Every grounded claim gets one; answers without a citation show the `general` Tag instead.
-
-## MasteryBar
-
-Horizontal mastery meter with a gold target marker.
-
-**Consumer provides** `value` (0–100), optional `target` (the plan's target score), `tone` (`mastery` default, `primary` for the preparation header), `showValue`.
-
-- `mastery` mint on plan cards and topic rows; `primary` cobalt only in the big preparation StatTile.
-- The `star` gold tick always means "your target". Nothing else uses a gold tick.
-- Exposed as `role="meter"` with a label.
-- antd: `<Progress percent={23} strokeColor={token.mastery} showInfo={false} />` plus the target tick as an absolutely positioned child.
-
-## PlanCard
-
-A study plan in the home list (PLAN-30): subject, title, mastery against target, days to exam and Continue.
-
-**Consumer provides** `subject`, `title`, `mastery`, `target`, `meta` (a pre-formatted line), `onContinue`, optional `cta` label.
-
-- Two per row in the list at `content-width`; stack on narrow windows.
-- The meta line is `days to exam · topics on track`; never more than one line.
-- The whole card is not a link; only the button acts, so keyboard users hit one target.
-- antd: `<Card>` with `styles.body` padding from the theme, `actions` replaced by the footer row.
-
-## StatTile
-
-The preparation summary at the top of Progress (PRO-01): one big number, target pills, meter and two counts.
-
-**Consumer provides** `label`, `value`, `target`, `pills` (mono data strings), `stats` (two `{value, label}`).
-
-- One per page. The number uses the `stat` style; everything else stays small so the number wins.
-- Pills are data in lowercase mono (`meta` style): "obiettivo 80 %", "+4 % questa settimana".
-- antd: `<Card>` + `<Statistic>` with `valueStyle` bound to the `stat` style.
-
-## LessonTile
-
-Choice tile in the Create lesson sheet (Impara / Esercitati / Esame).
-
-**Consumer provides** `icon`, `label`, optional `recommended` (star badge) and `count` (items waiting, e.g. due cards).
-
-- Grid of two columns, `space-4` gap. One tile at most is `recommended`, chosen by the scheduler.
-- Icons: smart text `book-open`, flashcards `layers`, gaps `target`, map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, simulation `file-pen`.
-- antd: `<Card hoverable>` inside `<Row gutter={16}>`, or `Radio.Group` with custom `Radio.Button` when it is a form choice.
-
-## PathNode
-
-A stop on the vertical study path (PLAN-21, PLAN-22).
-
-**Consumer provides** `icon`, `label`, `state` (`done` | `current` | `available` | `locked`), `unlockHint` for locked nodes, and the click handler.
-
-- Exactly one `current` node, marked by the gold `glow-star`: the student's position.
-- `done` is mint, `locked` is dashed with a lock icon and says what unlocks it.
-- Nodes sit `space-16` apart, joined by 1px `border` connectors that zig-zag; connectors to done nodes use `mastery`.
-- On the plan path, finished steps fold into one line above the suggested step ("6 attività fatte · Mostra"), so the suggestion sits under the plan header. Planned steps show their type and their topic, and the "In programma" label sits on the path's axis.
-- Custom component; antd has no equivalent (Steps is too rigid).
-
-## GapItem
-
-A knowledge gap in Progress (PRO-02): severity, one plain sentence, topic and a fill action.
-
-**Consumer provides** `severity` (`severe` | `minor`), the sentence (children), `topic`, `onFill`.
-
-- The sentence says what is misunderstood, in second person, one line if possible.
-- Severe gaps first. Severity is a dot, a word and a colour together.
-- antd: `<List.Item>` with `actions={[<Button>Colma</Button>]}`.
-
-## Composer
-
-The tutor chat input (ASK-01…05): subject pill, scoped sources, text, attach, whiteboard, formula, Solver/Socratic switch, send.
-
-**Consumer provides** `subject`, `sources` (names of scoped sources), `mode` default, `placeholder`, `streaming` (shows Stop instead of Send), and the handlers.
-
-- Sits at the bottom of the chat column at `content-width`, `radius-xl`. On the Ask page it is docked to the bottom of the viewport with the page background behind it, and notices, the context block and attachments stack directly above it in the same sticky area.
-- The subject chip is the only subject control. `subjectControl` replaces the plain label with a chip that opens a menu (subjects, "Nessuna materia", "Gestisci materie"). `sourcesControl` replaces the source tags with a "Fonti" chip: a count, and a popover to remove sources or add others.
-- `onFormula` handles the Σ button. Without it the button opens the graph tool.
-- No microphone and no voice button: voice is out of v1.
-- Enter sends, Shift+Enter breaks the line, Esc stops a stream.
-- `onPasteImages` takes images pasted without text, such as a screenshot; Ask stages them as attachments. `dropping` marks the card while files are dragged over the Ask page, which attaches what is dropped.
-- antd: `<Sender>` from `@ant-design/x` is the closest; otherwise `Input.TextArea autoSize` inside a styled container.
-
-## ChatMessage
-
-A turn in the tutor chat: student bubble on the right, tutor reply on the left with actions, engine id and suggestions.
-
-**Consumer provides** `role` (`user` | `tutor`), the content (children: text, CitationChips, rendered LaTeX, code), `engine` (provider · versioned model id, ASK-10), optional `suggestions`, `general` when the answer is not from the sources.
-
-- Tutor text uses the `reading` style (17/28) at max 68ch; dyslexia mode raises letter spacing and line height.
-- Actions: copy, thumbs up, thumbs down, regenerate. No read-aloud.
-- The engine id is always visible, in `meta` mono, `ink-subtle`.
-- `ThinkingMessage` is the tutor turn before any text streams: the Pyxis mark and one status line ("Sto pensando…", or "Leggo le tue fonti…" first when the chat uses sources). The mark and line pulse gently unless reduced motion is on, and the streamed text replaces it.
-- antd: `<Bubble>` from `@ant-design/x`, themed with these tokens.
-
-## QuizOption
-
-An answer option in quizzes and true/false (LES-11, LES-12).
-
-**Consumer provides** `letter`, the text, `state` (`idle` | `selected` | `correct` | `wrong` | `answer` | `muted`), the `shortcut` key, `disabled`, `onClick`.
-
-- A fixed letter column, one left edge for the text, and the key hint centred on the row, also for multi-line text and math.
-- The pick can change until Verifica/Check; then the options lock. `correct`, `wrong` and `answer` (the right option not picked) always show an icon and a word, so they work without colour.
-- After the check, the explanation with source chips goes below the options, with "Chiedi al tutor" (LES-14) and "Domanda sbagliata?".
-- Keys 1–4 select options; Enter checks, then moves on.
-- Under the answer, two quiet text buttons: "Non lo so" (key 0) checks an empty answer, scored 0 with the answer shown; "Salta" (key S) moves the question behind the others. A question is skipped once; when it comes back it shows a note and offers only "Non lo so".
-- antd: `Radio.Group` with `optionType="button"` restyled, or custom as here.
-
-## Flashcard
-
-A flashcard review with queue counters and the four review ratings (FC-02…FC-07).
-
-**Consumer provides** `front`, `back`, `source`, `counters` (`{nuove, apprendimento, padroneggiate}`), `flipped`, and a rating handler.
-
-- Click or Space flips; keys 1–4 rate: Da rivedere, Difficile, Bene, Facile. The buttons show the label only, no key and no next date; Bene is the primary button.
-- Ratings appear only after the flip. The back always carries its citation.
-- Custom component.
-
-## EngineRow
-
-An engine in the Engine for AI settings (ENG-10…ENG-17): kind, name, versioned model id, status and one action.
-
-**Consumer provides** `kind` (`cli` | `api` | `local` | `remote`), `name`, `model` (a concrete versioned id, never "latest"), `status` (`ok` | `warn` | `error` | `idle`), optional `statusText`, `isDefault`.
-
-- Status is always a dot and a word. Local engines say that nothing leaves the machine (ENG-21).
-- Errors read as the fix: "Accesso richiesto" with an Accedi button, not a stack trace (NFR-05).
-- antd: `<List.Item>` with `avatar`, `title`, `description` and `extra`.
-
-## ListToolbar
-
-The toolbar above every list on the Exams page: Esami, Fonti and Flashcard (`components/ListToolbar.tsx`).
-
-**Consumer provides** `search` (a `ToolbarSearch`), `filters` (Selects), `menu` (a `ToolbarMenu`) and `primary`; each is optional.
-
-- Always this order: search with the search icon, filters, the secondary menu, the one primary action. No visible field labels; every control has an accessible name.
-- One row when everything fits. Otherwise the filters and actions move together under the search: filters left, actions right.
-- `ToolbarSearch` takes an optional `scope` Select joined to its end, as on Fonti (Titoli or Contenuto).
-- `ToolbarMenu` is a round button with a label and a turning chevron. It is "Altro" on every tab and its items carry the full verb ("Importa da un link").
-- Leave out the filters while the list is empty; the empty state carries the actions then.
-- A Select or DatePicker gets the Lucide chevron or calendar from the app's `ConfigProvider`; don't set `suffixIcon` per control.
-
-## SourceRow
-
-One source in the Library and in a plan's Fonti tab (`components/SourceRow.tsx`), inside a `px-list-surface` list.
-
-**Consumer provides** `source` (title, kind, status, and the sections, size and plan count when known), the menu `actions`, optional `onOpen`, `selected` and `notes`.
-
-- A flexible name column clamped to two lines, a meta line ("Smartbook · 3 sezioni · 0,9 KB"), the status with its icon, and an actions menu.
-- Status is an icon and a word; problems use `warning`.
-
-## FocusBar
-
-The 56px bar of the Focus and Canvas layouts.
-
-**Consumer provides** a title, optional meta, close and back labels, up to three icon actions, and an optional progress value.
-
-- Close or back is the left control. The title is centered. Actions sit on the right.
-- The progress line is optional and uses the primary colour.
-
-## Dock
-
-The recommended-lesson panel, pinned at the bottom of a path.
-
-**Consumer provides** an eyebrow, a title, a reason, and the two action labels.
-
-- One primary action. The second action is ghost.
-- Width 560px, radius-xl, surface.
-
-## Notice
-
-An inline message with an icon, a sentence, an optional action and optional details.
-
-**Consumer provides** `tone` (`info` | `warning` | `danger`), the sentence, an optional action, and optional details.
-
-- `warning` uses star text on star-soft. `danger` uses danger on danger-soft. Each tone has its own icon.
-- Details stay collapsed until the student opens them.
-- An optional `title` adds a heading above the sentence, for a message that stands for the whole page.
-
-## ErrorState
-
-A failed load, build or quiz. One danger Notice, used on every screen that can fail, so a failure looks and behaves the same everywhere.
-
-**Consumer provides** the sentence that says what failed, the action that fixes it (Try again, Back to Exams), an optional second action, an optional `title`, and the technical message as `details`.
-
-- Always inside the page column: the shell's column, or a full-screen page's `FocusLayout` column. The route fallback brings its own column when it replaces a full-screen page.
-- The sentence says what failed in plain words. The technical message only goes behind Details.
-- A progress list that failed tells the failed step in the past tense ("I couldn't read the sources"), and a screen that was "Preparing…" changes its title to say it failed.
-- `LoadError` is this component with Try again as the action.
-
-## StepLines
-
-A vertical list of job steps.
-
-**Consumer provides** steps with a label, a state (`pending` | `running` | `done` | `failed`) and an optional meta fact.
-
-- Pending is a circle, running is a loader, done is a check in mastery, failed is a cross in danger.
-
-## Stepper
-
-Where the student is in a short flow of named steps. First setup and the new plan wizard use it.
-
-**Consumer provides** the step labels and the index of the current step.
-
-- A bar per step: past steps and the current one in `primary`, the rest in a muted line. The current label is bold.
-- On a narrow window only the current label stays.
-- The position is not printed. The current item carries `aria-current="step"` and a visually hidden "Step 2 of 4:" before its label.
-
-## BuildingMark
-
-The plan-building mark. Three trails draw themselves as work finishes, around a star that stays still.
-
-**Consumer provides** `inner`, `middle` and `outer` from 0 to 1, and a `done` flag.
-
-- The star is always gold. Trails use ink. Reduced motion shows the final frame.
-
-## MarkdownView
-
-The one renderer for model output.
-
-**Consumer provides** markdown text, `variant` (`reading` | `body`), and an optional citation resolver.
-
-- Raw HTML stays off. `[P3]` becomes a citation chip. KaTeX, including mhchem, is bundled.
-- `\( \)` and `\[ \]` are normalized to dollar math before rendering. A `$$ … $$` alone on its line becomes a display block.
-- Display formulas are centred, with `space-4` above and below (`space-6` in a lesson).
-- Lessons label citation chips with the cited section path, as Ask does.
-
-## CheckBadge
-
-The result of a SymPy check next to a step.
-
-**Consumer provides** `state` (`verified` | `failed` | `none`), verified and failed labels, an optional unchecked label and, when failed, a reason.
-
-- Verified uses mastery text. Failed uses danger and puts the core reason code in the native `title` tooltip. The failed badge is keyboard focusable, but tooltip display depends on the platform. `none` shows the unchecked label when supplied; otherwise it renders nothing. MarkdownView supplies that label.
-
-## ContextBlock
-
-The quoted card above the composer.
-
-**Consumer provides** an excerpt and a remove label.
-
-- Two lines at most. The remove control is an icon button.
-
-## MathInput and the formula keyboard
-
-A written answer with a sigma button that opens a math field (MathLive) and a four-tab key panel (operations, functions, trigonometry, calculus) inside the layout, under the text. The Composer, quiz open answers, simulation answers and practice answers share it.
-
-**Consumer provides** `value`, `onChange`, `ariaLabel`, and optional `rows` or `autoSize`. The Composer uses the same parts (`FormulaDock`, `MathPreview`, `useFormulaInsert`) around its own textarea.
-
-- "Inserisci" or Enter puts the formula in as `$...$` at the caret and returns focus to the text; Esc closes without inserting. A rendered preview shows while the text holds a closed `$...$` span.
-- Keys are real buttons, so Tab and the arrow keys work: `surface-raised` with `ink`, digits on `surface-overlay`, `radius-md`, the active tab underlined in `primary`. Gold stays out of the panel; keyboard focus uses the system `focus-ring`.
-- MathLive loads on first open (dynamic import). Glyphs use the bundled KaTeX fonts; nothing is fetched and no sounds play, which the CSP requires.
-- Key tooltips and spoken names live under `math.*` in both locale files.
-
-## ActivityIntro
-
-The first screen of a quiz, the diagnostic, a review and a simulation.
-
-**Consumer provides** an eyebrow (the plan), a title, one sentence, `facts` (icon and text: questions, time, topics, when it corrects), optional `options`, the start label and handler, and Back.
-
-- Centred column: eyebrow, `display` title, sentence, the facts between two hairlines, the options panel, then Back and the primary action side by side. Notices and a session to resume go between the options and the actions.
-- `ActivityChoice` is one choice as a row of pills under its label (a duration, a question count, a scope). New options, such as a format switch, are more `ActivityChoice` rows in the same panel.
-- `folded` hides the options behind "Personalizza" when the defaults suit most students (the quiz). The focus bar's X stays the exit; the intro has no Close.
-
-## Lesson end
-
-The end of a lesson or the course introduction: a quiet "Fatto" that marks it done and goes back to the plan, and a primary "Fatto, continua" that marks it done and opens the path's next suggestion. A finished page shows "Torna al percorso" and "Continua".
-
-## Feature layouts added after the initial gallery
-
-- `ExportButton` opens the shared export dialog from plans, lessons, cards, quizzes and simulations. Format selection is keyboard accessible. Progress and original-source inclusion are explicit choices. Native save cancellation leaves the dialog usable.
-- `LessonMap` uses React Flow with tree/radial layouts, map collection selection, pinned node positions, undo and validated model edits. Graph labels and controls retain keyboard access.
-- `ProgressPage` uses Preparation, Simulations and Pace tabs. Mastery/target charts have accessible descriptions and keyboard focus. Gaps lead back to cited source passages and quizzes; heatmaps use five local-calendar weeks.
-- `CardsPage` keeps citation links outside the flip button, preserves a visible focus indicator and uses consistent action/rating rows.
-- `UpdatesPanel` displays the current version, latest check and manual release link. `AppUpdateNotice` is dismissible and bounds long release notes inside a focusable scrolling detail area.
-- `AboutPanel` loads third-party license text on demand. Search and bounded, labeled license regions keep large notices usable by keyboard.
-- Workspace controls expose move progress, cancellation, recovery errors and the exact selected path.
-
-These layouts reuse the existing color, spacing and radius tokens. Error, empty and loading states belong to their feature rather than appearing as decorative status badges.
+# Components
+
+The shared components live in `src/renderer/src/components/`, one `.tsx` file per component with its CSS beside it. Use one of these before writing a new control, and before reaching for Ant Design. Components that belong to one feature live with that feature, for example the chat sidebar in `features/ask/ChatPanel.tsx`.
+
+The doc comment at the top of each file says what it does and why; this page is the index.
+
+## Controls
+
+| Component            | What it's for                                                                                            |
+| -------------------- | -------------------------------------------------------------------------------------------------------- |
+| `Button`             | Every text button: `primary` (one per screen), `secondary`, `ghost` and `danger`, in three sizes         |
+| `IconButton`         | An icon-only button with its label for screen readers; can keep focus in the field being typed in        |
+| `Chip`               | A small rounded choice or filter                                                                         |
+| `SegmentedTabs`      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
+| `ListToolbar`        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
+| `Stepper`            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
+| `MathInput`          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
+| `Composer`           | The message box in Chiedi, with attachments, the whiteboard, formulas, the graph and the subject chip    |
+| `CrashReportsSwitch` | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
+| `EngineUseChoice`    | Automatic, or the AI tools the student ticks                                                             |
+
+Context menus are the system's own, through `window.pyxis.contextMenu` (see `features/ask/ChatPanel.tsx`). Don't build a dropdown menu for actions on a row.
+
+## Status and feedback
+
+| Component      | What it's for                                                                                                   |
+| -------------- | --------------------------------------------------------------------------------------------------------------- |
+| `Notice`       | An inline message with a tone (info, success, warning, danger), an optional action and technical details        |
+| `ErrorState`   | A failed load, build or quiz: one danger notice that says what failed, the fix, and the details behind a toggle |
+| `LoadError`    | A failed load with Try again, so a page never stays empty without a word                                        |
+| `StepLines`    | The steps of a long job, each pending, running, done or failed                                                  |
+| `BuildingMark` | The Pyxis mark drawing its trails while an exam is built                                                        |
+| `Logo`         | The Pyxis mark; with `working` its rings turn, for AI work in progress                                          |
+| `Tag`          | A short label on an item, such as "general knowledge"                                                           |
+| `CheckBadge`   | Whether a figure or a result was checked, failed the check, or can't be checked                                 |
+| `EngineNotice` | The one-time notice for an AI tool that is ready but not yet acknowledged                                       |
+| `ScanNotice`   | What a scanned source needs before it can be read                                                               |
+
+## Study
+
+| Component         | What it's for                                                                    |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `PathNode`        | One step of an exam's path: done, current or ahead                               |
+| `LessonTile`      | A study activity on an exam page, optionally marked Consigliato                  |
+| `PlanCard`        | An exam in the Esami list, with its mastery                                      |
+| `MasteryBar`      | A bar from 0 to 100 with an optional target mark                                 |
+| `StatTile`        | A number with its label and a small bar                                          |
+| `QuizOption`      | One answer of a multiple-choice question, before and after the check             |
+| `GapItem`         | A gap to fill, named after its topic                                             |
+| `CardFaceFields`  | A flashcard's front and back while it is edited                                  |
+| `MakeCardsDialog` | Makes flashcards from a selection or a reply                                     |
+| `SmartText`       | A lesson's text with its inline checks                                           |
+| `SelectionMenu`   | The actions on selected text in lessons and sources: ask, make a flashcard, copy |
+
+## Messages and content
+
+| Component      | What it's for                                                                      |
+| -------------- | ---------------------------------------------------------------------------------- |
+| `ChatMessage`  | A question or an answer in Chiedi, with its actions                                |
+| `MarkdownView` | Markdown with formulas, code and citations, shared by answers, lessons and sources |
+| `CitationChip` | A numbered citation that opens its source at the page                              |
+| `ContextBlock` | A quoted passage the next question refers to, with a way to remove it              |
+| `Figure`       | A figure drawn in the Python sandbox, with its caption                             |
+| `PythonBlock`  | A Python block in an answer that can run                                           |
+
+## Sources and AI tools
+
+| Component       | What it's for                                                                     |
+| --------------- | --------------------------------------------------------------------------------- |
+| `SourceRow`     | One source in a list, with its kind and state                                     |
+| `SourceDetails` | A source's pages, reading state, the exams that use it and the pages lessons cite |
+| `SourceViewer`  | A source opened at a page, beside the screen                                      |
+| `PdfSourcePage` | One PDF page with the cited passage marked, inside the viewer                     |
+| `PdfPassword`   | Asks for the password of a locked PDF and runs its import again                   |
+| `OcrData`       | Consent, progress and recovery for the local OCR language data                    |
+| `FreeBooks`     | The free books and whether a newer version can update the copy in the Library     |
+| `EngineRow`     | One AI tool with its state, each state with its own icon and word                 |
+| `ProviderSetup` | Who makes each AI tool and which account signs in to it                           |
+| `LocalModel`    | The model that runs on this computer: hardware check, download and state          |
+| `Icon`          | A Lucide icon by name, at the stroke and size the system uses                     |
