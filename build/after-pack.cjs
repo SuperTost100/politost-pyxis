@@ -1,5 +1,5 @@
 const { execFileSync } = require("node:child_process");
-const { existsSync, mkdtempSync, readdirSync, rmSync } = require("node:fs");
+const { closeSync, existsSync, lstatSync, mkdtempSync, openSync, readSync, readdirSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 // Comes with electron-builder.
@@ -103,20 +103,23 @@ module.exports = async function afterPack(context) {
   try {
     execFileSync("ditto", ["--norsrc", app, clean]);
     const identity = process.env.PYXIS_MAC_IDENTITY;
-    execFileSync(
-      "codesign",
-      [
-        "--sign",
-        identity || "-",
-        "--force",
-        "--deep",
-        ...(identity ? ["--timestamp", "--options", "runtime"] : ["--timestamp=none"]),
-        "--entitlements",
-        join(context.packager.projectDir, "build/entitlements.mac.plist"),
-        clean,
-      ],
-      { stdio: "inherit" },
-    );
+    const entitlements = join(context.packager.projectDir, "build/entitlements.mac.plist");
+    if (identity) {
+      // Notarization needs every binary signed with the Developer ID, a secure timestamp and the hardened runtime.
+      // codesign --deep misses binaries outside the usual places, such as a framework's Libraries folder or Squirrel's
+      // ShipIt, so each one is signed, deepest first, then the app.
+      for (const target of [...signOrder(clean), clean])
+        execFileSync(
+          "codesign",
+          ["--sign", identity, "--force", "--timestamp", "--options", "runtime", "--entitlements", entitlements, target],
+          { stdio: "inherit" },
+        );
+    } else
+      execFileSync(
+        "codesign",
+        ["--sign", "-", "--force", "--deep", "--timestamp=none", "--entitlements", entitlements, clean],
+        { stdio: "inherit" },
+      );
     execFileSync("codesign", ["--verify", "--deep", "--strict", clean], {
       stdio: "inherit",
     });
@@ -131,6 +134,41 @@ module.exports = async function afterPack(context) {
     rmSync(temporary, { recursive: true, force: true });
   }
 };
+
+const MACH_O = new Set(["feedface", "feedfacf", "cefaedfe", "cffaedfe", "cafebabe", "bebafeca"]);
+
+/** Whether a file is a Mach-O binary or a universal one, by its first four bytes. */
+function isMachO(file) {
+  const fd = openSync(file, "r");
+  try {
+    const head = Buffer.alloc(4);
+    return readSync(fd, head, 0, 4, 0) === 4 && MACH_O.has(head.toString("hex"));
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Everything inside `app` that needs its own signature, in the order to sign it: Mach-O files, then the frameworks and
+ * helper apps that hold them, deepest first, so each bundle is signed after its contents. Symbolic links are skipped:
+ * a framework's links point at files already listed under Versions.
+ */
+function signOrder(app) {
+  const found = [];
+  const walk = (directory, depth) => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name);
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) {
+        walk(path, depth + 1);
+        if (/\.(framework|app)$/.test(name)) found.push({ path, depth: depth + 1 });
+      } else if (entry.isFile() && isMachO(path)) found.push({ path, depth: depth + 1 });
+    }
+  };
+  walk(app, 0);
+  return found.sort((a, b) => b.depth - a.depth).map((target) => target.path);
+}
 
 /**
  * Sends the signed app to Apple's notary service and staples the ticket to it, before electron-builder puts it in the
@@ -157,3 +195,4 @@ function notarize(app, temporary) {
 module.exports.pruneUnpacked = pruneUnpacked;
 module.exports.FUSES = FUSES;
 module.exports.dropSwiftShader = dropSwiftShader;
+module.exports.signOrder = signOrder;
