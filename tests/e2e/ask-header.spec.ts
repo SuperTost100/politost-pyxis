@@ -11,6 +11,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { answerNextMenu } from "./native-menu";
 
 const REPLY = ["La cinematica descrive il moto: $v = \\frac{dx}{dt}$.", "", "<followups>", "Fammi un esempio", "</followups>"].join(
   "\n",
@@ -228,8 +229,13 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
     await expect(finder.getByRole("combobox", { name: "Cerca" })).toHaveAttribute("placeholder", "Cerca nelle chat");
     await expect(finder.getByRole("option")).toHaveCount(7);
     await expect(finder.getByRole("option", { name: "Tutte le chat" })).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    // Deleting from the search closes it first, so the confirmation can be reached.
+    await answerNextMenu(app, "Elimina");
+    await finder.getByRole("option", { name: /^Vettori/ }).click({ button: "right" });
     await expect(finder).toBeHidden();
+    const confirm = page.getByRole("dialog", { name: "Eliminare questa chat?" });
+    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await expect(confirm).toHaveCount(0);
 
     // A long chat opens with its last messages; older ones join when the student scrolls up to them.
     await list.getByRole("link", { name: /^Moto rettilineo/ }).click();

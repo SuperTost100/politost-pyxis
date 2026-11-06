@@ -75,7 +75,8 @@ export function useChatActions() {
     }
   }
 
-  async function openMenu(chat: ChatRef) {
+  /** Opens the chat's menu and acts on the pick, which it returns. */
+  async function openMenu(chat: ChatRef): Promise<string | null> {
     const picked = await window.pyxis.contextMenu([
       { id: "rename", label: t("ask.rename") },
       { id: "markdown", label: t("ask.exportMarkdown") },
@@ -87,6 +88,7 @@ export function useChatActions() {
     if (picked === "markdown" || picked === "pdf") void exportChat(chat.id, picked);
     // Deleting asks first, in Pyxis's own dialog: a system menu can't mark the item red.
     if (picked === "delete") setDeleting({ id: chat.id, title: nameOf(chat) });
+    return picked;
   }
 
   async function confirmDelete() {
