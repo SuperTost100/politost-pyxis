@@ -65,7 +65,7 @@ const PAGES: Array<{ key: PageKey; icon: LucideIcon; sections: string[] }> = [
   { key: "study", icon: GraduationCap, sections: ["tutor", "reading", "flashcards", "reminders"] },
   { key: "appearance", icon: Sun, sections: ["appearance", "language"] },
   { key: "data", icon: Shield, sections: ["data", "privacy"] },
-  { key: "about", icon: Info, sections: ["updates", "about"] },
+  { key: "about", icon: Info, sections: ["updates", "version"] },
 ];
 
 /**
@@ -226,7 +226,7 @@ export function SettingsPage() {
     data: t("settings.data"),
     privacy: t("settings.privacy"),
     updates: t("updates.title"),
-    about: t("settings.aboutBlock"),
+    version: t("settings.aboutBlock"),
   };
   // The profile is the one place for the study level: the tutor and new exams read it from here.
   const levelChoices = (
@@ -704,9 +704,8 @@ export function SettingsPage() {
       </>
     ),
     updates: <UpdatesPanel />,
-    about: (
+    version: (
       <>
-        {" "}
         <AboutPanel
           labels={{
             title: t("settings.aboutBlock"),
@@ -748,8 +747,8 @@ export function SettingsPage() {
       </header>
       {saveError ? <Notice tone="danger">{t("settings.saveFailed")}</Notice> : null}
       {page.sections.map((key) => {
-        // A page of one section is titled by the page; Updates and About title themselves.
-        const titled = page.sections.length > 1 && key !== "updates" && key !== "about";
+        // A page of one section is titled by the page; Updates and the version title themselves.
+        const titled = page.sections.length > 1 && key !== "updates" && key !== "version";
         return (
           <section
             key={key}

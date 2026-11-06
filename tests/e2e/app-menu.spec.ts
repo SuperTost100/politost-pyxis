@@ -168,7 +168,8 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await pick(app, "new-chat");
     await expect(page).toHaveURL(/#\/ask$/);
     await pick(app, "about");
-    await expect(page).toHaveURL(/#\/settings\/about$/);
+    await expect(page).toHaveURL(/#\/settings\/version$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).toBeInViewport();
 
     // The check runs on arrival. Main counts the requests that reach it.
     await app.evaluate(({ ipcMain }) => {
