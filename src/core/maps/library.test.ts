@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { ConceptGraph } from "./graph";
-import { listAllMaps } from "./library";
+import { listAllMaps, mapShape } from "./library";
 import { storeMap } from "./store";
 
 function graph(labels: string[]): ConceptGraph {
@@ -72,6 +72,7 @@ describe("listAllMaps", () => {
       subjectId: "phys",
       subjectName: "Fisica",
       nodeCount: 2,
+      shape: [0],
       grounding: "sources",
     });
     expect(maps[1]!.grounding).toBe("general");
@@ -87,6 +88,21 @@ describe("listAllMaps", () => {
     expect(ids("meccanica cinematica")).toEqual(["m-general"]);
     expect(ids("vecchia")).toEqual([]);
     expect(ids("   ")).toHaveLength(5);
+  });
+
+  it("outlines a map as the concepts on each branch of its root, capped to what the tile draws", () => {
+    const node = (id: string, parent: string | null) => ({ id, label: id, parent, x: 0, y: 0, pinned: false });
+    const branches = ["a", "b", "c", "d", "e", "f", "g"];
+    const nodes = [
+      node("root", null),
+      ...branches.map((id) => node(id, "root")),
+      ...["a1", "a2"].map((id) => node(id, "a")),
+      ...["c1", "c2", "c3", "c4", "c5", "c6"].map((id) => node(id, "c")),
+      node("c1x", "c1"),
+    ];
+    expect(mapShape({ nodes })).toEqual([2, 0, 4, 0, 0, 0]);
+    expect(mapShape({ nodes: [node("only", null)] })).toEqual([]);
+    expect(mapShape({ nodes: [] })).toEqual([]);
   });
 
   it("reads a row saved before collections as one map", () => {

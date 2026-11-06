@@ -892,8 +892,6 @@
     "noSubject": "Nessuna materia",
     "concepts_one": "{{count}} concetto",
     "concepts_other": "{{count}} concetti",
-    "open": "Apri",
-    "openLabel": "Apri la mappa {{title}}",
     "general": "conoscenza generale",
     "emptyTitle": "Ancora nessuna mappa",
     "emptyBody": "Una mappa mostra un argomento di un esame come concetti e collegamenti. Scegli un argomento e Pyxis crea le mappe dalle tue fonti.",

@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import type { MapEntry } from "../../shared/concept-map";
+import { MAP_SHAPE, type MapEntry } from "../../shared/concept-map";
+import type { ConceptGraph } from "./graph";
 import { foldText } from "../study/cardBrowser";
 import { parseCollection } from "./store";
 
@@ -60,10 +61,27 @@ export function listAllMaps(db: Database.Database, query = ""): MapEntry[] {
           subjectId: row.subject_id,
           subjectName: row.subject_name,
           nodeCount: map.graph.nodes.length,
+          shape: mapShape(map.graph),
           grounding:
             map.grounding ?? (map.passageIds.length ? "sources" : "general"),
         },
       ];
     }),
   );
+}
+
+/**
+ * The map's outline for its tile: for each branch of the root, in order, how many concepts hang off it. Only the first
+ * branches and concepts fit the drawing, so both are capped.
+ */
+export function mapShape(graph: Pick<ConceptGraph, "nodes">): number[] {
+  const root = graph.nodes.find((node) => node.parent === null);
+  if (!root) return [];
+  const children = new Map<string, number>();
+  for (const node of graph.nodes)
+    if (node.parent) children.set(node.parent, (children.get(node.parent) ?? 0) + 1);
+  return graph.nodes
+    .filter((node) => node.parent === root.id)
+    .slice(0, MAP_SHAPE.branches)
+    .map((branch) => Math.min(children.get(branch.id) ?? 0, MAP_SHAPE.leaves));
 }

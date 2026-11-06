@@ -128,9 +128,10 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     await search.fill("");
 
     // A map opens full screen, says which exam and topic it belongs to, and closes back to the section.
-    await page
-      .getByRole("button", { name: "Apri la mappa Moto rettilineo" })
-      .click();
+    // Each map is a tile with a drawing of its branches; the whole tile opens it.
+    const tile = page.getByRole("link", { name: /^Moto rettilineo Meccanica · Moto/ });
+    await expect(tile.locator("svg rect")).toHaveCount(3);
+    await tile.click();
     await expect(page).toHaveURL(
       /#\/plans\/p-phys\/map\/t-motion\?from=maps&map=m-motion$/,
     );
