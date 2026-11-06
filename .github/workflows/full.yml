@@ -8,9 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       dev:
-        # A test build for Tost: macOS arm64 only, its tests and its installer, no route audits. Pull requests have
-        # already run the Linux checks and audits. Releases and runs on main leave this off and build all four targets.
-        description: "Test build: macOS arm64 only"
+        # A test build for Tost (fleet precedent test-builds): the two Mac installers, tests on macOS arm64 only, no route
+        # audits. Pull requests have already run the Linux checks and audits, and the agent tested a local Linux build.
+        # Releases and runs on main leave this off and build all four targets.
+        description: "Test build: Mac installers only"
         type: boolean
         default: false
   pull_request:
@@ -154,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"}]' || '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"},{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"},{"target":"linux-x64","runner":"ubuntu-24.04","builder":"--linux --x64"}]') }}
+        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"}]' || '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"},{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"},{"target":"linux-x64","runner":"ubuntu-24.04","builder":"--linux --x64"}]') }}
     defaults:
       run:
         shell: bash
