@@ -228,7 +228,12 @@ jobs:
           for app in dist/mac*/"PoliTost Pyxis.app"; do
             codesign -dvv "$app" 2>&1 | grep "Authority=$PYXIS_MAC_IDENTITY"
             codesign -dvv "$app" 2>&1 | grep "flags=0x10000(runtime)"
-            xcrun stapler validate "$app"
+            # Validating fetches the ticket from Apple's CDN, which can drop the connection, as stapling can.
+            for attempt in 1 2 3 4 5; do
+              xcrun stapler validate "$app" && break
+              [ "$attempt" = 5 ] && exit 1
+              sleep 15
+            done
             spctl --assess --type execute --verbose=4 "$app" 2>&1 | tee /dev/stderr | grep "source=Notarized Developer ID"
           done
       - name: Check the packaged application
