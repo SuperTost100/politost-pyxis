@@ -40,7 +40,6 @@ import {
 } from "./attachments";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
-import { ChatPanel } from "./ChatPanel";
 import { replyPlainText } from "./replyText";
 import {
   addIds,
@@ -297,8 +296,6 @@ export function AskPage() {
   // The subject a question goes out with: set at once when one is chosen, so a question waiting for the scope to settle has it.
   const subjectNow = useRef(subject);
   subjectNow.current = subject;
-  // The chat sidebar starts open and remembers being folded, on this computer only.
-  const [panelOpen, setPanelOpen] = useState(() => readPanelOpen());
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
   );
@@ -901,30 +898,8 @@ export function AskPage() {
   }
   const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes("Files");
 
-  function openChat(id: string) {
-    navigate(`/ask/${id}`);
-  }
-
-  /** A deleted chat's reply stops being written, and its saved draft and files go with it. */
-  function chatDeleted(id: string) {
-    sessionStorage.removeItem(draftKey(id));
-    writePendingFiles(sessionStorage, id, []);
-    const running = turns.get();
-    if (running && runsIn(running, id)) {
-      running.dropped = true;
-      running.stop();
-    }
-  }
-
   return (
     <div className="ask-layout">
-    <ChatPanel
-      open={panelOpen}
-      chatId={chatId}
-      onOpenChat={openChat}
-      onNew={() => navigate("/ask")}
-      onDeleted={chatDeleted}
-    />
     <div
       className={home ? "ask-page ask-home" : "ask-page"}
       ref={page}
@@ -949,15 +924,7 @@ export function AskPage() {
         if (dropped.length > 0) void attachDropped(dropped);
       }}
     >
-      <ChatHeader
-        chatId={chatId}
-        title={title}
-        panelOpen={panelOpen}
-        onTogglePanel={() => {
-          setPanelOpen(!panelOpen);
-          writePanelOpen(!panelOpen);
-        }}
-      />
+      <ChatHeader chatId={chatId} title={title} />
       {threadFailed ? (
         <div className="ask-thread">
           <h1 className="visually-hidden">{t("doors.ask")}</h1>
@@ -1245,23 +1212,4 @@ export function AskPage() {
     </div>
     </div>
   );
-}
-
-const PANEL_KEY = "pyxis.ask.history";
-
-/** Whether the chat sidebar was left open. Storage can be missing or blocked, and then it opens. */
-function readPanelOpen(): boolean {
-  try {
-    return localStorage.getItem(PANEL_KEY) !== "closed";
-  } catch {
-    return true;
-  }
-}
-
-function writePanelOpen(open: boolean): void {
-  try {
-    localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
-  } catch {
-    // The fold still applies until the window closes.
-  }
 }

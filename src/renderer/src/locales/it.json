@@ -65,7 +65,8 @@
       "editCard": "Modifica la flashcard",
       "suspendCard": "Sospendi la flashcard",
       "deleteCard": "Elimina la flashcard",
-      "goMaps": "Vai alle Mappe"
+      "goMaps": "Vai alle Mappe",
+      "search": "Cerca ovunque"
     },
     "keys": {
       "enter": "Invio",
@@ -2096,7 +2097,8 @@
         "api-key": "chiave API",
         "local": "sul computer"
       }
-    }
+    },
+    "none": "Nessuna attività oggi."
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",
@@ -3127,5 +3129,29 @@
     "behind_one": "Con questo ritmo {{title}} arriva all'obiettivo di {{target}} 1 giorno dopo l'esame, e a circa {{atExam}} il giorno dell'esame.",
     "behind_other": "Con questo ritmo {{title}} arriva all'obiettivo di {{target}} {{count}} giorni dopo l'esame, e a circa {{atExam}} il giorno dell'esame.",
     "behindNoTime": "{{title}} non ha ore di studio prima dell'esame, quindi non arriverà all'obiettivo di {{target}}. Aggiungi ore alle settimane prima dell'esame."
+  },
+  "side": {
+    "label": "Barra laterale",
+    "study": "Studio",
+    "recent": "Chat recenti",
+    "allChats": "Tutte le chat",
+    "search": "Cerca",
+    "fold": "Riduci la barra",
+    "unfold": "Espandi la barra",
+    "account": "Il tuo profilo",
+    "profile": "Profilo",
+    "help": "Aiuto e informazioni",
+    "theme": "Aspetto"
+  },
+  "finder": {
+    "label": "Cerca",
+    "placeholder": "Cerca chat, esami, mappe e materiale",
+    "chatsPlaceholder": "Cerca nelle chat",
+    "chats": "Chat",
+    "exams": "Esami",
+    "maps": "Mappe",
+    "material": "Materiale",
+    "none": "Niente con queste parole.",
+    "close": "esc"
   }
 }

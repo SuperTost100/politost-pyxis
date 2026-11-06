@@ -66,7 +66,7 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
 
     // Each chat keeps its own draft and files: a new chat starts empty, and coming back finds them again.
     const here = await page.evaluate(() => location.hash.slice(1));
-    await page.getByRole("button", { name: "Nuova chat" }).first().click();
+    await page.getByRole("link", { name: "Nuova chat" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     await expect(box).toHaveText("");
     await expect(page.getByText("appunti.txt")).toHaveCount(0);

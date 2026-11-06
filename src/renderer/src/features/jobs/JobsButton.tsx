@@ -8,10 +8,11 @@ import { JobsPanel } from "./JobsPanel";
 import { useFinishedJobs, useJobs } from "./queries";
 
 /**
- * The top-bar button of the jobs list: how many jobs are running and how many problems wait, and the list under it.
- * It stays out of the way until a job has run today.
+ * The button of the jobs list: how many jobs are running and how many problems wait, and the list beside it. In the
+ * sidebar ("row") it is the Attività row and always there. As an icon, during setup, it stays out of the way until a
+ * job has run today.
  */
-export function JobsButton() {
+export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
   const { data: done = [], refetch } = useFinishedJobs();
@@ -31,15 +32,15 @@ export function JobsButton() {
   const empty = problems.length + running.length + finished.length === 0;
   // The button leaves with its last job; it should not reopen the list by itself when a job comes back.
   useEffect(() => {
-    if (empty) setOpen(false);
-  }, [empty]);
-  if (empty) return dialog;
+    if (empty && variant === "icon") setOpen(false);
+  }, [empty, variant]);
+  if (empty && variant === "icon") return dialog;
   const label = t("jobs.buttonLabel", {
     parts: [
       running.length > 0 && t("jobs.running", { count: running.length }),
       problems.length > 0 && t("jobs.toFix", { count: problems.length }),
       running.length + problems.length === 0 &&
-        t("jobs.doneToday", { count: finished.length }),
+        (empty ? t("jobs.none") : t("jobs.doneToday", { count: finished.length })),
     ]
       .filter(Boolean)
       .join(", "),
@@ -62,10 +63,13 @@ export function JobsButton() {
         afterOpenChange={(next) => {
           if (next) panel.current?.focus();
         }}
-        placement="bottomRight"
+        placement={variant === "row" ? "rightTop" : "bottomRight"}
         arrow={false}
         rootClassName="px-jobs-popover"
         content={
+          empty ? (
+            <p className="px-jobs-none">{t("jobs.none")}</p>
+          ) : (
           <JobsPanel
             ref={panel}
             groups={groups}
@@ -75,8 +79,35 @@ export function JobsButton() {
             onClose={() => close(false)}
             onEscape={() => close(true)}
           />
+          )
         }
       >
+        {variant === "row" ? (
+          <button
+            ref={trigger}
+            type="button"
+            className="px-jobs-row"
+            data-tip={t("jobs.title")}
+            aria-expanded={open}
+            aria-label={label}
+          >
+            {running.length > 0 ? (
+              <LoaderCircle className="px-spin" size={18} strokeWidth={1.75} aria-hidden />
+            ) : (
+              <Clock size={18} strokeWidth={1.75} aria-hidden />
+            )}
+            <span aria-hidden>{t("jobs.title")}</span>
+            {problems.length > 0 ? (
+              <span className="px-side-count is-problem" aria-hidden>
+                {problems.length}
+              </span>
+            ) : running.length > 0 ? (
+              <span className="px-side-count" aria-hidden>
+                {running.length}
+              </span>
+            ) : null}
+          </button>
+        ) : (
         <Button
           ref={trigger}
           type="text"
@@ -110,6 +141,7 @@ export function JobsButton() {
             ) : null}
           </span>
         </Button>
+        )}
       </Popover>
     </>
   );

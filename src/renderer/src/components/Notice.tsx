@@ -39,7 +39,9 @@ export function Notice({
       className={["px-notice", tones[tone].className].join(" ")}
       role={tone === "danger" ? "alert" : "status"}
     >
-      <Icon size={16} strokeWidth={1.75} aria-hidden />
+      <span className="px-notice-line">
+        <Icon size={16} strokeWidth={1.75} aria-hidden />
+      </span>
       <div className="px-notice-body">
         {title ? <Heading className="px-notice-title">{title}</Heading> : null}
         <p className="px-notice-text">{children}</p>
@@ -63,15 +65,19 @@ export function Notice({
           </pre>
         ) : null}
       </div>
-      {action ? (
-        <Button type="text" size="small" onClick={action.onClick}>
-          {action.label}
-        </Button>
-      ) : null}
-      {secondary ? (
-        <Button type="text" size="small" onClick={secondary.onClick}>
-          {secondary.label}
-        </Button>
+      {action || secondary ? (
+        <span className="px-notice-line px-notice-actions">
+          {action ? (
+            <Button type="text" size="small" onClick={action.onClick}>
+              {action.label}
+            </Button>
+          ) : null}
+          {secondary ? (
+            <Button type="text" size="small" onClick={secondary.onClick}>
+              {secondary.label}
+            </Button>
+          ) : null}
+        </span>
       ) : null}
     </div>
   );

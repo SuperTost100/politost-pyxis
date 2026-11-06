@@ -1,6 +1,5 @@
-/* Chiedi runs edge to edge: the chat sidebar at the window's left edge, and the chat in the rest. As in the mockup, the
-   chat's header spans that whole area, so the button that folds the sidebar sits right beside it, while the greeting,
-   the messages and the composer keep the column every page has, centred. */
+/* Chiedi runs edge to edge beside the app's sidebar: the chat's header spans the whole area, while the greeting, the
+   messages and the composer keep the column every page has, centred. */
 .ask-layout {
   display: flex;
   align-items: flex-start;
@@ -28,7 +27,7 @@
   min-height: 60vh;
 }
 
-/* The header bar: the button that folds the chat sidebar, then the open chat's title. */
+/* The header bar with the open chat's title. */
 .ask-bar {
   position: sticky;
   top: var(--ask-header);

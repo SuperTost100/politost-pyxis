@@ -92,7 +92,7 @@ function differences(a: Paint, b: Paint): string[] {
   );
 }
 
-/** The four colours the issue reported: page, header, assistant text and its formula. */
+/** The four colours the issue reported: page, sidebar (the header before 0.5), assistant text and its formula. */
 function landmarks(page: Page) {
   return page.evaluate(() => {
     const css = (
@@ -106,14 +106,14 @@ function landmarks(page: Page) {
     return {
       theme: document.documentElement.dataset["theme"] ?? null,
       page: css("body", "backgroundColor"),
-      header: css("header.px-top", "backgroundColor"),
+      sidebar: css(".px-side", "backgroundColor"),
       assistantText: css(".px-msg:not(.px-msg-user) .px-msg-text p", "color"),
       assistantMath: css(".px-msg:not(.px-msg-user) .katex", "color"),
     };
   });
 }
 
-test("Ask: a live theme switch repaints the page, header and cited reply like a reload does", async () => {
+test("Ask: a live theme switch repaints the page, sidebar and cited reply like a reload does", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-theme-"));
   const env = {
@@ -190,7 +190,7 @@ test("Ask: a live theme switch repaints the page, header and cited reply like a 
       expect(after.theme).toBe(to);
       for (const key of [
         "page",
-        "header",
+        "sidebar",
         "assistantText",
         "assistantMath",
       ] as const)

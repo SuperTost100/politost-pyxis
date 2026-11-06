@@ -26,14 +26,16 @@
 .px-list-toolbar-rest {
   display: flex;
   flex: 1 0 auto;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   max-width: 100%;
 }
+/* A filter shrinks to 120px, then the actions move to a row of their own rather than squeezing it shut. */
 .px-list-toolbar-rest > .ant-select {
   flex: 0 1 180px;
   width: 180px;
-  min-width: 0;
+  min-width: 120px;
 }
 .px-list-toolbar-actions {
   display: flex;

@@ -1,9 +1,18 @@
+/* The icon and the actions sit on the first line of the text, centred on it, however many lines the text runs to. */
 .px-notice {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: 10px;
   border-radius: var(--radius-md);
-  padding: 10px 12px;
+  padding: 12px 12px 12px 14px;
+  line-height: 1.5;
+}
+.px-notice-line {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1lh;
 }
 
 .px-notice.is-info {
@@ -33,6 +42,7 @@
 
 .px-notice-text {
   margin: 0;
+  line-height: inherit;
 }
 
 .px-notice-details-toggle {

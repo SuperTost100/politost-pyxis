@@ -66,8 +66,8 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     // Home is the greeting and the composer, with no suggested questions.
     await expect(page.locator(".ask-starters")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Cinematica|Dinamica/ })).toHaveCount(0);
-    // The drawer no longer repeats New chat; the header has the only one.
-    await expect(page.getByRole("button", { name: "Nuova chat" })).toHaveCount(1);
+    // The sidebar has the only New chat.
+    await expect(page.getByRole("link", { name: "Nuova chat" })).toHaveCount(1);
 
     // A pasted screenshot is staged as an attachment, with its preview.
     await page.getByRole("textbox", { name: "Messaggio" }).click();
@@ -115,7 +115,7 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     await field.fill("Cinematica di base");
     await field.press("Enter");
     await expect(page.getByRole("button", { name: "Rinomina Cinematica di base" })).toBeVisible();
-    await expect(page.getByRole("list", { name: "Chat" }).getByRole("button", { name: /^Cinematica di base/ })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Cinematica di base/ })).toBeVisible();
   } finally {
     await finish(app, userData, db);
   }
@@ -157,7 +157,7 @@ test("Ask: a new chat starts on the only subject, and on none once a second subj
 
     // A subject added since the list was read counts: the next new chat has two and starts on none.
     await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Chimica" }));
-    await page.getByRole("button", { name: "Nuova chat" }).click();
+    await page.getByRole("link", { name: "Nuova chat" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     // The empty chat's greeting: the composer now belongs to the new chat.
     await expect(page.getByRole("heading", { level: 1, name: /^(Buongiorno|Buon pomeriggio|Buonasera)$/ })).toBeVisible();
@@ -170,7 +170,7 @@ test("Ask: a new chat starts on the only subject, and on none once a second subj
   }
 });
 
-test("Ask: the chat sidebar groups by date with each subject, the search narrows it, and a long chat opens at its end", async () => {
+test("Ask: recent chats show each subject, All chats groups them by date and searches them, and a long chat opens at its end", async () => {
   test.setTimeout(120000);
   const { app, page, userData, db } = await launch();
   try {
@@ -181,7 +181,10 @@ test("Ask: the chat sidebar groups by date with each subject, the search narrows
         ('c-today','Moto rettilineo','Fisica',${now},${now}),
         ('c-an','Limiti notevoli','Analisi',1,2),
         ('c-old','Moto circolare','Fisica',1,1),
-        ('c-free','Domanda libera',NULL,1,1);
+        ('c-free','Domanda libera',NULL,1,1),
+        ('c-x1','Vettori','Fisica',1,1),
+        ('c-x2','Derivate','Analisi',1,1),
+        ('c-x3','Integrali','Analisi',1,1);
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES
         ('m1','c-today','user','Che cos''è il moto rettilineo?',1),
         ('m2','c-an','user','Un limite sul moto di una funzione',1),
@@ -197,22 +200,39 @@ test("Ask: the chat sidebar groups by date with each subject, the search narrows
     });
     await page.reload();
 
+    // The sidebar lists the recent chats, each with its subject under the title; a chat without one shows the title
+    // alone.
     const list = page.getByRole("list", { name: "Chat" });
-    await expect(list.getByRole("heading")).toHaveText(["Oggi", "Prima"]);
-    await expect(list.getByRole("listitem")).toHaveCount(4);
-    // Each row names its subject under the title; a chat without one shows the title alone.
-    await expect(list.getByRole("button", { name: /^Moto rettilineo/ })).toHaveText("Moto rettilineoFisica");
-    await expect(list.getByRole("button", { name: /^Domanda libera/ })).toHaveText("Domanda libera");
+    await expect(list.getByRole("listitem")).toHaveCount(7);
+    await expect(list.getByRole("link", { name: /^Moto rettilineo/ })).toHaveText("Moto rettilineoFisica");
+    await expect(list.getByRole("link", { name: /^Domanda libera/ })).toHaveText("Domanda libera");
 
-    // The search narrows the list by message text.
-    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("circolare");
-    const results = page.getByRole("list", { name: "Risultati della ricerca" });
-    await expect(results.getByRole("listitem")).toHaveCount(1);
-    await expect(results.getByRole("button", { name: /^Moto circolare/ })).toBeVisible();
-    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("");
+    // All chats lists every chat under Today and Earlier, and the search narrows it by message text.
+    await page.getByRole("button", { name: "Tutte le chat" }).click();
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    await expect(finder.locator(".px-finder-label")).toHaveText(["Oggi", "Prima"]);
+    await expect(finder.getByRole("option")).toHaveCount(7);
+    await finder.getByRole("combobox", { name: "Cerca" }).fill("circolare");
+    await expect(finder.getByRole("option")).toHaveCount(1);
+    await expect(finder.getByRole("option", { name: /^Moto circolare/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
+
+    // Searching everything shows six chats, then a row that lists them all, as "Tutte le chat" does where the
+    // sidebar is folded.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    const chatGroup = finder.getByRole("group", { name: "Chat" });
+    await expect(chatGroup.getByRole("option")).toHaveCount(7);
+    await chatGroup.getByRole("option", { name: "Tutte le chat" }).click();
+    await expect(finder).toBeVisible();
+    await expect(finder.getByRole("combobox", { name: "Cerca" })).toHaveAttribute("placeholder", "Cerca nelle chat");
+    await expect(finder.getByRole("option")).toHaveCount(7);
+    await expect(finder.getByRole("option", { name: "Tutte le chat" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
 
     // A long chat opens with its last messages; older ones join when the student scrolls up to them.
-    await list.getByRole("button", { name: /^Moto rettilineo/ }).click();
+    await list.getByRole("link", { name: /^Moto rettilineo/ }).click();
     await expect(page.getByText("Risposta numero 15", { exact: false })).toBeVisible();
     await expect(page.getByText("Domanda numero 1", { exact: true })).toHaveCount(0);
     const earlier = page.getByRole("button", { name: /^Mostra \d+ messaggi precedenti$/ });

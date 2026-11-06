@@ -1,25 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { App, Button, Input } from "antd";
-import { PanelLeft } from "lucide-react";
+import { App, Input } from "antd";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 
 /**
- * The bar above the conversation: the button that folds the chat sidebar, then the open chat's title. A click on the
- * title renames the chat in place; Enter or leaving the field saves, Esc cancels.
+ * The bar above the conversation with the open chat's title. A click on the title renames the chat in place; Enter or
+ * leaving the field saves, Esc cancels.
  */
 export function ChatHeader({
   chatId,
   title,
-  panelOpen,
-  onTogglePanel,
 }: {
   chatId?: string;
   /** The open chat's title, null when it has none yet, undefined while the list loads or for a new chat. */
   title?: string | null;
-  panelOpen: boolean;
-  onTogglePanel: () => void;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -44,14 +39,6 @@ export function ChatHeader({
 
   return (
     <div className="ask-bar">
-      <Button
-        type="text"
-        aria-label={t("ask.yourChats")}
-        title={t("ask.yourChats")}
-        aria-expanded={panelOpen}
-        icon={<PanelLeft size={18} aria-hidden />}
-        onClick={onTogglePanel}
-      />
       <div className="ask-bar-title">
         {chatId && title !== undefined ? (
           editing !== null ? (

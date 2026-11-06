@@ -297,3 +297,11 @@
   height: 16px;
   background: var(--border);
 }
+
+/* The Attività row's list on a day nothing has run. */
+.px-jobs-none {
+  margin: 0;
+  padding: 10px 6px;
+  color: var(--ink-subtle);
+  font-size: calc(13.5px * var(--text-scale, 1));
+}

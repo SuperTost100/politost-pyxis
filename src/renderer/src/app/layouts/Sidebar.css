@@ -1,0 +1,511 @@
+/* The app's sidebar in the Scheda style (pyxis-mockups app/app.css, "Navigation round"): a slightly darker ground than
+   the page, the current row on a white card, hairlines between the groups and a plain profile row at the foot.
+   Its top strip drags the window; on macOS it leaves room for the traffic lights (trafficLightPosition in
+   src/main/index.ts: x 16, y 22, about 52px wide). */
+.px-side {
+  --side-width: 260px;
+  --side-current-shadow: 0 1px 2px rgba(21, 24, 30, 0.08), 0 4px 12px -6px rgba(21, 24, 30, 0.18);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--side-width);
+  height: 100vh;
+  padding: 0 12px 12px;
+  background: color-mix(in srgb, var(--ink) 4.5%, var(--bg));
+  color: var(--ink);
+}
+[data-theme="dark"] .px-side {
+  --side-current-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 4px 12px -6px rgba(0, 0, 0, 0.6);
+}
+.px-side > * {
+  flex: none;
+}
+.px-side-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 48px;
+  margin: 0 -12px;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+}
+html[data-platform="darwin"] .px-side-top {
+  height: 56px;
+}
+.px-side button,
+.px-side a {
+  -webkit-app-region: no-drag;
+}
+.px-side-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.px-side-icon:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-side-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 2px 8px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.px-side-brand:hover {
+  color: var(--ink);
+}
+.px-side-brand .px-brand-mark {
+  width: 26px;
+  height: 26px;
+  flex: none;
+}
+.px-side-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 36px;
+  padding: 0 8px 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--ink-subtle);
+  font: 400 13.5px/1 var(--font-sans);
+  cursor: pointer;
+  transition: border-color 0.15s ease-out;
+}
+.px-side-search:hover {
+  border-color: var(--border-control);
+}
+.px-side-label {
+  margin: 0 0 6px;
+  padding: 16px 10px 0;
+  border-top: 1px solid var(--border);
+  color: var(--ink-subtle);
+  font: 600 12px/1 var(--font-sans);
+}
+.px-side-search + .px-side-label {
+  margin-top: 0;
+  padding-top: 18px;
+  border-top: 0;
+}
+.px-side-brand + .px-side-label {
+  padding-top: 4px;
+  border-top: 0;
+}
+.px-side-nav {
+  display: grid;
+  gap: 2px;
+}
+.px-side-nav > a,
+.px-side-nav > .px-jobs-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 14px/1 var(--font-sans);
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.px-side-nav > a:hover,
+.px-side-nav > .px-jobs-row:hover,
+.px-side-nav > .px-jobs-row[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-side-nav > a[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 650;
+  box-shadow: var(--side-current-shadow);
+}
+.px-side-nav > a[aria-current="page"] svg {
+  color: var(--primary-text);
+}
+.px-side-nav kbd {
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.px-side-nav > a:hover kbd,
+.px-side-nav > a:focus-visible kbd {
+  opacity: 1;
+}
+.px-side-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 20px;
+  padding: 3px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font: 650 11.5px/1 var(--font-sans);
+  justify-content: center;
+}
+.px-side-count.is-problem {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.px-side-recent {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  min-height: 0;
+  margin-top: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.px-side-fill {
+  flex: 1 1 auto;
+}
+.px-side-chats {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-side-chat {
+  position: relative;
+  border-radius: var(--radius-field);
+  transition: background-color 0.15s ease-out;
+}
+.px-side-chat > a {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: inherit;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.px-side-chat:hover {
+  background: var(--surface-raised);
+}
+.px-side-chat:hover > a {
+  color: var(--ink);
+}
+.px-side-chat:has(> a[aria-current="page"]) {
+  background: var(--surface);
+  box-shadow: var(--side-current-shadow);
+}
+.px-side-chat > a[aria-current="page"] {
+  color: var(--ink);
+}
+.px-side-chat.is-editing {
+  padding: 3px 4px;
+}
+/* The row's menu floats over its right end and shows on hover and focus, so titles keep the full width. It stays in
+   the tab order. */
+.px-side-chat-more {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-50%);
+}
+.px-side-chat-more:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-side-chat:hover .px-side-chat-more,
+.px-side-chat:focus-within .px-side-chat-more {
+  opacity: 1;
+}
+.px-side-chat:hover > a,
+.px-side-chat:focus-within > a {
+  padding-right: 34px;
+}
+.px-side-chat-title,
+.px-side-chat-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-side-chat-title {
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.px-side-chat > a[aria-current="page"] .px-side-chat-title {
+  font-weight: 600;
+}
+.px-side-chat-sub {
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale, 1)) / 1.25 var(--font-sans);
+}
+.px-side-empty {
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--ink-subtle);
+  font-size: calc(13px * var(--text-scale, 1));
+}
+.px-side-all {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--primary-text);
+  font: 500 13px/1 var(--font-sans);
+  cursor: pointer;
+}
+.px-side-all:hover {
+  background: var(--surface-raised);
+}
+
+/* The foot: the profile as a plain row, as in the Carta style, with its menu above it. */
+.px-side-foot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+.px-side-me {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.px-side-me:hover,
+.px-side-me[aria-expanded="true"] {
+  background: var(--surface-raised);
+}
+.px-side-me > svg {
+  margin-left: auto;
+  flex: none;
+  color: var(--ink-subtle);
+}
+.px-side-who {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.px-side-who b,
+.px-side-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-side-who b {
+  font: 600 13.5px/1.1 var(--font-sans);
+}
+.px-side-who small {
+  color: var(--ink-subtle);
+  font: 400 12px/1.1 var(--font-sans);
+}
+.px-side-avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font: 650 13px/1 var(--font-sans);
+}
+.px-side-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  gap: 1px;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.px-side-menu > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: 500 13.5px/1 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.px-side-menu > button:hover,
+.px-side-menu > button:focus-visible {
+  background: var(--surface-raised);
+  outline: none;
+}
+.px-side-menu > button svg {
+  color: var(--ink-muted);
+}
+.px-side-theme {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin: 4px 0;
+  padding: 3px;
+  border-radius: var(--radius-field);
+  background: var(--surface-raised);
+}
+.px-side-theme button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 12.5px/1 var(--font-sans);
+  cursor: pointer;
+}
+.px-side-theme button[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+}
+.px-side-theme button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* Folded: a column of icons. Each name shows beside its icon on hover. */
+.px-side[data-folded] {
+  --side-width: 76px;
+  align-items: center;
+  padding: 0 10px 12px;
+}
+.px-side[data-folded] .px-side-top {
+  justify-content: center;
+  align-self: stretch;
+  height: 48px;
+}
+html[data-platform="darwin"] .px-side[data-folded] .px-side-top {
+  align-items: flex-end;
+  height: 76px;
+}
+.px-side[data-folded] .px-side-brand {
+  padding: 14px 0;
+}
+.px-side[data-folded] :is(kbd, .px-side-recent, .px-side-me > svg) {
+  display: none;
+}
+/* The names leave the screen but stay the controls' names for screen readers. */
+.px-side[data-folded] :is(.px-side-brand > span, .px-side-search > span, .px-side-nav span:not(.px-side-count), .px-side-who) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.px-side[data-folded] .px-side-count {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  padding: 2px 4px;
+  min-width: 16px;
+  font-size: 10.5px;
+}
+.px-side[data-folded] .px-side-fill,
+.px-side[data-folded] .px-side-recent + * {
+  margin-top: auto;
+}
+.px-side[data-folded] .px-side-label {
+  width: 40px;
+  height: 1px;
+  margin: 14px 0 8px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: var(--border);
+  color: transparent;
+}
+.px-side[data-folded] .px-side-search,
+.px-side[data-folded] .px-side-nav > a,
+.px-side[data-folded] .px-side-nav > .px-jobs-row {
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+}
+.px-side[data-folded] .px-side-foot {
+  margin-top: auto;
+}
+.px-side[data-folded] .px-side-me {
+  flex: none;
+  padding: 4px;
+}
+.px-side[data-folded] .px-side-menu {
+  left: calc(100% + 8px);
+  right: auto;
+  bottom: 0;
+  width: 240px;
+}
+.px-side[data-folded] [data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  z-index: 30;
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--bg);
+  font: 500 12.5px/1 var(--font-sans);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.px-side[data-folded] [data-tip] {
+  position: relative;
+}
