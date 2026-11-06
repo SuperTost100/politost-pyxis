@@ -39,7 +39,7 @@ async function finish(app: ElectronApplication, userData: string, db: DatabaseSy
   removeTestFolder(userData);
 }
 
-test("Ask: starter prompts from the plans, the title in the header, and a pasted screenshot", async () => {
+test("Ask: Home has no suggested questions, the title in the header, and a pasted screenshot", async () => {
   test.setTimeout(120000);
   const { app, page, userData, db } = await launch();
   try {
@@ -63,13 +63,9 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Fisica");
     await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
 
-    // An empty chat suggests questions on the plan's topics, under the composer.
-    const starters = page.getByRole("list", { name: "Domande suggerite" });
-    await expect(starters.getByRole("button")).toHaveText([
-      "Spiegami i concetti chiave di Cinematica",
-      "Fammi 3 domande su Dinamica",
-      "Dammi un esercizio su Cinematica",
-    ]);
+    // Home is the greeting and the composer, with no suggested questions.
+    await expect(page.locator(".ask-starters")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Cinematica|Dinamica/ })).toHaveCount(0);
     // The drawer no longer repeats New chat; the header has the only one.
     await expect(page.getByRole("button", { name: "Nuova chat" })).toHaveCount(1);
 
@@ -97,10 +93,12 @@ test("Ask: starter prompts from the plans, the title in the header, and a pasted
     });
     await expect(page.getByText(/Alcuni file sono stati saltati/)).toBeVisible();
 
-    // A starter asks at once, with the plan's subject; the pasted image stays for the next message.
-    await starters.getByRole("button", { name: "Spiegami i concetti chiave di Cinematica" }).click();
+    // The image comes off again, and the first question goes with the chat's subject.
+    await page.getByRole("button", { name: "Rimuovi Immagine incollata" }).click();
+    await expect(page.getByAltText("Immagine incollata")).toHaveCount(0);
+    await page.getByRole("textbox", { name: "Messaggio" }).fill("Spiegami i concetti chiave di Cinematica");
+    await page.getByRole("textbox", { name: "Messaggio" }).press("Enter");
     await expect(page.getByText("Fammi un esempio")).toBeVisible({ timeout: 30000 });
-    await expect(page.getByAltText("Immagine incollata")).toBeVisible();
     const chat = await page.evaluate(() =>
       window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
     );

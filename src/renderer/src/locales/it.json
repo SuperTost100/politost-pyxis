@@ -251,12 +251,6 @@
     "loadFailed": "Non è stato possibile aprire la chat.",
     "renameTitle": "Fai clic per rinominare",
     "renameNamed": "Rinomina {{title}}",
-    "startersLabel": "Domande suggerite",
-    "starter": {
-      "explain": "Spiegami i concetti chiave di {{topic}}",
-      "quiz": "Fammi 3 domande su {{topic}}",
-      "exercise": "Dammi un esercizio su {{topic}}"
-    },
     "showEarlier_one": "Mostra {{count}} messaggio precedente",
     "showEarlier_other": "Mostra {{count}} messaggi precedenti",
     "pastedImage": "Immagine incollata",
