@@ -167,8 +167,7 @@
       "afternoon": "Buon pomeriggio, {{name}}",
       "evening": "Buonasera, {{name}}"
     },
-    "chatsOpen": "Apri le chat",
-    "chatsClose": "Chiudi le chat",
+    "yourChats": "Le tue chat",
     "searchLabel": "Cerca nelle chat",
     "searchPlaceholder": "Cerca nelle chat",
     "searchResults": "Risultati della ricerca",
@@ -259,14 +258,9 @@
     "dropTooMany": "Puoi trascinare al massimo {{max}} file alla volta.",
     "dropSkipped": "Alcuni file sono stati saltati. Un messaggio può contenere foto, PDF, Word, PowerPoint, testo e Markdown.",
     "groupToday": "Oggi",
+    "groupYesterday": "Ieri",
     "groupWeek": "Questa settimana",
-    "groupOlder": "Meno recenti",
-    "subjectFilter": "Filtra per materia",
-    "subjectAll": "Tutte le materie",
-    "searchNoneSubject": "Nessuna chat di {{subject}} contiene “{{query}}”.",
-    "usage_one": "{{tokens}} token",
-    "usage_other": "{{tokens}} token",
-    "usageDetail": "Questa chat ha usato {{input}} token inviati, di cui {{cached}} dalla cache, e {{output}} ricevuti."
+    "groupOlder": "Prima"
   },
   "exams": {
     "view": "Mostra",
@@ -653,7 +647,7 @@
     "reviewTitle": "Ripasso",
     "reviewIntro": "Una sessione con le flashcard in scadenza, domande sugli argomenti in cui hai sbagliato e qualche esercizio nuovo dal libro.",
     "reviewBack": "Torna al ripasso",
-    "reviewIntroNoCards":"Domande sugli argomenti in cui hai sbagliato e qualche esercizio nuovo dal libro. Oggi non hai flashcard da ripassare.",
+    "reviewIntroNoCards": "Domande sugli argomenti in cui hai sbagliato e qualche esercizio nuovo dal libro. Oggi non hai flashcard da ripassare.",
     "reviewIntroMistakes": "Riparti dalle domande che hai sbagliato nel quiz. Se ne restano, aggiungo qualche esercizio sugli argomenti in cui hai ancora lacune.",
     "reviewStart": "Inizia il ripasso",
     "reviewEmpty": "Niente da ripassare adesso. Torna quando ci sono flashcard in scadenza o dopo un quiz.",

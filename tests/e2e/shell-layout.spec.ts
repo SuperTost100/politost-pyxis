@@ -32,7 +32,12 @@ test("the window opens on Chiedi, with the greeting and the composer in the midd
     const middle = (heading.y + box.y + box.height) / 2;
     expect(middle).toBeGreaterThan(viewport.height * 0.35);
     expect(middle).toBeLessThan(viewport.height * 0.65);
-    expect(Math.abs(heading.x + heading.width / 2 - viewport.width / 2)).toBeLessThan(40);
+    // Centred in the chat column, which takes the window beside the chat sidebar.
+    const column = (await page.locator(".ask-page").boundingBox())!;
+    expect(Math.abs(heading.x + heading.width / 2 - (column.x + column.width / 2))).toBeLessThan(4);
+    const sidebar = (await page.getByRole("complementary", { name: "Le tue chat" }).boundingBox())!;
+    expect(sidebar.x).toBe(0);
+    expect(column.x).toBeGreaterThanOrEqual(sidebar.width);
 
     // The brand opens Home from any other page.
     await page.locator("header nav").getByRole("link", { name: "Esami", exact: true }).click();
@@ -106,10 +111,23 @@ test("doors navigate from settings and every shell page uses the full column", a
       await page.evaluate((next) => {
         window.location.hash = next;
       }, hash);
+      await expect(page).toHaveURL(new RegExp(`${hash.replaceAll("/", "\\/")}$`));
+      logoX.push(Math.round((await page.locator("header .px-brand").boundingBox())!.x));
+      // Chiedi runs edge to edge: the chat sidebar at the left edge, and the chat page in the rest of the window, as
+      // wide as the other pages' column where it fits.
+      if (hash === "#/ask") {
+        const sidebar = page.getByRole("complementary", { name: "Le tue chat" });
+        await expect(sidebar).toBeVisible();
+        const side = (await sidebar.boundingBox())!;
+        const chat = (await page.locator(".ask-page").boundingBox())!;
+        const room = (await page.locator(".ask-layout").boundingBox())!.width;
+        expect(side.x).toBe(0);
+        expect(Math.round(chat.width)).toBe(Math.min(768, Math.round(room - side.width)));
+        continue;
+      }
       const container = page.locator(".px-shell-container");
       await expect(container).toBeVisible();
       // The column changes width with the route, a moment after the hash: measure once the new page has laid out.
-      await expect(page).toHaveURL(new RegExp(`${hash.replaceAll("/", "\\/")}$`));
       await expect
         .poll(async () => Math.round((await container.boundingBox())!.width))
         .toBe(hash.startsWith("#/settings") ? 960 : 768);
@@ -123,7 +141,6 @@ test("doors navigate from settings and every shell page uses the full column", a
       (hash.startsWith("#/settings") ? settingsWidths : widths).push(
         Math.round((await container.boundingBox())!.width),
       );
-      logoX.push(Math.round((await page.locator("header .px-brand").boundingBox())!.x));
     }
     expect(new Set(widths).size).toBe(1);
     expect(widths[0]).toBe(768);

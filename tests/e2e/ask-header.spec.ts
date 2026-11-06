@@ -115,8 +115,7 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     await field.fill("Cinematica di base");
     await field.press("Enter");
     await expect(page.getByRole("button", { name: "Rinomina Cinematica di base" })).toBeVisible();
-    await page.getByRole("button", { name: "Apri le chat" }).click();
-    await expect(page.getByRole("list", { name: "Chat" }).getByRole("button", { name: "Cinematica di base", exact: true })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Chat" }).getByRole("button", { name: /^Cinematica di base/ })).toBeVisible();
   } finally {
     await finish(app, userData, db);
   }
@@ -171,7 +170,7 @@ test("Ask: a new chat starts on the only subject, and on none once a second subj
   }
 });
 
-test("Ask: the chat list groups by date and filters by subject with the search; a long chat opens at its end", async () => {
+test("Ask: the chat sidebar groups by date with each subject, the search narrows it, and a long chat opens at its end", async () => {
   test.setTimeout(120000);
   const { app, page, userData, db } = await launch();
   try {
@@ -197,26 +196,23 @@ test("Ask: the chat list groups by date and filters by subject with the search; 
       location.hash = "/ask";
     });
     await page.reload();
-    await page.getByRole("button", { name: "Apri le chat" }).click();
 
     const list = page.getByRole("list", { name: "Chat" });
-    await expect(list.getByRole("heading")).toHaveText(["Oggi", "Meno recenti"]);
+    await expect(list.getByRole("heading")).toHaveText(["Oggi", "Prima"]);
     await expect(list.getByRole("listitem")).toHaveCount(4);
+    // Each row names its subject under the title; a chat without one shows the title alone.
+    await expect(list.getByRole("button", { name: /^Moto rettilineo/ })).toHaveText("Moto rettilineoFisica");
+    await expect(list.getByRole("button", { name: /^Domanda libera/ })).toHaveText("Domanda libera");
 
-    // The subject filter narrows the list, and the search within it.
-    const filter = page.getByRole("combobox", { name: "Filtra per materia" });
-    await filter.click();
-    await page.getByRole("option", { name: "Fisica" }).click();
-    await expect(list.getByRole("listitem")).toHaveCount(2);
-    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("moto");
-    await expect(page.getByRole("list", { name: "Risultati della ricerca" }).getByRole("listitem")).toHaveCount(2);
-    await expect(page.getByRole("button", { name: /Limiti notevoli/ })).toHaveCount(0);
-    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("funzione");
-    await expect(page.getByText("Nessuna chat di Fisica contiene “funzione”.")).toBeVisible();
+    // The search narrows the list by message text.
+    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("circolare");
+    const results = page.getByRole("list", { name: "Risultati della ricerca" });
+    await expect(results.getByRole("listitem")).toHaveCount(1);
+    await expect(results.getByRole("button", { name: /^Moto circolare/ })).toBeVisible();
     await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("");
 
     // A long chat opens with its last messages; older ones join when the student scrolls up to them.
-    await list.getByRole("button", { name: "Moto rettilineo", exact: true }).click();
+    await list.getByRole("button", { name: /^Moto rettilineo/ }).click();
     await expect(page.getByText("Risposta numero 15", { exact: false })).toBeVisible();
     await expect(page.getByText("Domanda numero 1", { exact: true })).toHaveCount(0);
     const earlier = page.getByRole("button", { name: /^Mostra \d+ messaggi precedenti$/ });
@@ -234,28 +230,3 @@ test("Ask: the chat list groups by date and filters by subject with the search; 
   }
 });
 
-test("Ask: a capped chat search still finds older chats in the subject the list is filtered to", async () => {
-  test.setTimeout(120000);
-  const { app, page, userData, db } = await launch();
-  try {
-    seedSubjects(db, [{ id: "s-an", name: "Analisi" }, { id: "s-fis", name: "Fisica" }]);
-    const chat = db.prepare("INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES(?,?,?,?,?)");
-    // Two old Fisica chats, then more recent Analisi ones than one search shows.
-    chat.run("c-fis-1", "Derivata della velocità", "Fisica", 1, 1);
-    chat.run("c-fis-2", "Derivata dello spazio", "Fisica", 2, 2);
-    for (let i = 0; i < 55; i += 1) chat.run(`c-an-${i}`, `Derivata ${i}`, "Analisi", 100 + i, 100 + i);
-    await page.evaluate(() => {
-      location.hash = "/ask";
-    });
-    await page.reload();
-    await page.getByRole("button", { name: "Apri le chat" }).click();
-    await page.getByRole("combobox", { name: "Filtra per materia" }).click();
-    await page.getByRole("option", { name: "Fisica" }).click();
-    await page.getByRole("textbox", { name: "Cerca nelle chat" }).fill("derivata");
-    const results = page.getByRole("list", { name: "Risultati della ricerca" }).getByRole("listitem");
-    await expect(results).toHaveCount(2);
-    await expect(page.getByText(/Aggiungi una parola per restringere la ricerca/)).toHaveCount(0);
-  } finally {
-    await finish(app, userData, db);
-  }
-});

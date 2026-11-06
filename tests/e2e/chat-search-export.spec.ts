@@ -63,7 +63,8 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await page.evaluate(() => {
       location.hash = "/ask";
     });
-    await page.getByRole("button", { name: "Apri le chat" }).click();
+    // The chat sidebar is open on arrival.
+    await expect(page.getByRole("complementary", { name: "Le tue chat" })).toBeVisible();
     const list = page.getByRole("list", { name: "Chat" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
 
@@ -90,8 +91,11 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await expect(
       page.getByText("Perché il calore passa dal caldo al freddo?"),
     ).toBeVisible();
-    // Closing the drawer cleared the search.
-    await page.getByRole("button", { name: "Apri le chat" }).click();
+    // The search stays while the chat opens beside it, and folding the sidebar clears it.
+    await expect(search).toHaveValue("PERCHÉ");
+    await page.getByRole("button", { name: "Le tue chat" }).click();
+    await expect(page.getByRole("complementary", { name: "Le tue chat" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Le tue chat" }).click();
     await expect(search).toHaveValue("");
     await expect(list.getByRole("listitem")).toHaveCount(2);
 
@@ -140,7 +144,6 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     // The labels follow the interface language.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     await page.reload();
-    await page.getByRole("button", { name: "Open chats" }).click();
     await page
       .getByRole("button", { name: "Actions for Termodinamica" })
       .click();

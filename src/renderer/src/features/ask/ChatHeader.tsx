@@ -1,30 +1,25 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App, Button, Input } from "antd";
-import { PanelLeft, Plus } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 
 /**
- * The bar above the conversation, as wide as the column: the chat list, the open chat's title, and New chat. A click
- * on the title renames the chat in place; Enter or leaving the field saves, Esc cancels.
+ * The bar above the conversation: the button that folds the chat sidebar, then the open chat's title. A click on the
+ * title renames the chat in place; Enter or leaving the field saves, Esc cancels.
  */
 export function ChatHeader({
   chatId,
   title,
   panelOpen,
-  onOpenPanel,
-  onNew,
-  usage,
+  onTogglePanel,
 }: {
   chatId?: string;
   /** The open chat's title, null when it has none yet, undefined while the list loads or for a new chat. */
   title?: string | null;
   panelOpen: boolean;
-  onOpenPanel: () => void;
-  onNew: () => void;
-  /** The open chat's tokens: a short figure, and the breakdown for hover and screen readers. */
-  usage?: { short: string; detail: string };
+  onTogglePanel: () => void;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -51,10 +46,11 @@ export function ChatHeader({
     <div className="ask-bar">
       <Button
         type="text"
-        aria-label={t("ask.chatsOpen")}
+        aria-label={t("ask.yourChats")}
+        title={t("ask.yourChats")}
         aria-expanded={panelOpen}
         icon={<PanelLeft size={18} aria-hidden />}
-        onClick={onOpenPanel}
+        onClick={onTogglePanel}
       />
       <div className="ask-bar-title">
         {chatId && title !== undefined ? (
@@ -96,15 +92,6 @@ export function ChatHeader({
           )
         ) : null}
       </div>
-      {usage ? (
-        <span className="ask-usage" title={usage.detail}>
-          <span aria-hidden>{usage.short}</span>
-          <span className="visually-hidden">{usage.detail}</span>
-        </span>
-      ) : null}
-      <Button type="text" icon={<Plus size={16} aria-hidden />} onClick={onNew}>
-        {t("ask.new")}
-      </Button>
     </div>
   );
 }

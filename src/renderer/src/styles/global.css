@@ -251,6 +251,15 @@ a.px-brand:hover {
   }
 }
 
+/* Chiedi runs edge to edge, so its chat sidebar can sit at the window's left edge (AskPage.css lays it out). */
+.px-shell-container.px-shell-bleed {
+  max-width: none;
+  padding: 0;
+}
+.px-shell-bleed .shell-page {
+  padding-bottom: 0;
+}
+
 .ant-modal .ant-modal-header {
   margin-bottom: var(--space-4);
 }
