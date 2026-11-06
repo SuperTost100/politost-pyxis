@@ -1,6 +1,6 @@
 # Pyxis design system
 
-Pyxis 0.5 uses a warm paper ground in light and a deep blue-black in dark, a teal action colour, Young Serif for titles and Figtree for everything else. The tokens, fonts, logo and icons ship with the app, so no design asset loads from the network.
+Pyxis 0.5 uses a warm paper ground in light and a deep blue-black in dark, a teal action colour, Young Serif for titles, Figtree for the interface and reading, Source Serif 4 for long reading where a screen asks for it, and JetBrains Mono for values and code. The tokens, fonts, logo and icons ship with the app, so no design asset loads from the network.
 
 - [Foundations](foundations.md): principles, copy, colour, type, spacing, radius, elevation, motion, icons and the logo.
 - [Components](components.md): the shared components in `src/renderer/src/components/` and what each is for.
@@ -22,7 +22,7 @@ The approved look is the 0.5 mockup. Where this folder and a screen built from t
 ## Changing the system
 
 - Add or change a token before writing a new arbitrary value in a screen.
-- `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when they differ.
+- `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when their colours differ. It doesn't compare spacing, radii, sizes or shadows, so check those by hand.
 - `token-contrast.test.ts` and `link-contrast.test.ts` check selected pairs in both themes: the text tokens and links at 4.5:1 on each ground, controls and rings at 3:1, and the soft pairs they list. A new pair of text and ground needs its own line there.
 - Keep visible focus, both themes and both languages. The route audit (`tests/e2e/ui-audit.spec.ts`) checks every route at 1280 and 960 pixels in Italian and English, light and dark.
 - The gallery at `#/dev/gallery` shows the shared states in a development build.
