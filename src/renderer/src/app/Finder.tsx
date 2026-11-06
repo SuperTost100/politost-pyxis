@@ -216,7 +216,10 @@ export function Finder({
             onContextMenu={(event) => {
               if (!row.chat) return;
               event.preventDefault();
-              void actions.openMenu(row.chat);
+              // The search is a modal dialog: the delete confirmation can only be reached once it has closed.
+              void actions.openMenu(row.chat).then((picked) => {
+                if (picked === "delete") done();
+              });
             }}
           >
             <span className="px-finder-title">{row.title}</span>

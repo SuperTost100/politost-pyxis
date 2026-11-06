@@ -1977,8 +1977,12 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "ask-panel":
+      // Below 1100px the sidebar is folded and the chats are in the search.
+      if (await page.getByRole("list", { name: both("Chat", "Chats") }).isVisible())
+        break;
+      await page.getByRole("button", { name: both("Cerca", "Search"), exact: true }).click();
       await expect(
-        page.getByRole("list", { name: both("Chat", "Chats") }),
+        page.getByRole("option", { name: /Seconda legge di Newton/ }),
       ).toBeVisible();
       break;
     case "ask-search":
@@ -2016,11 +2020,19 @@ async function openState(page: Page, name: string) {
       break;
     case "ask-delete":
       await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
-      await page
-        .getByRole("button", {
-          name: /^(Azioni per|Actions for) Seconda legge di Newton/,
-        })
-        .click();
+      // The chat's "…" button in the sidebar, or a right-click on it in the search where the sidebar is folded.
+      if (await page.getByRole("list", { name: both("Chat", "Chats") }).isVisible())
+        await page
+          .getByRole("button", {
+            name: /^(Azioni per|Actions for) Seconda legge di Newton/,
+          })
+          .click();
+      else {
+        await page.getByRole("button", { name: both("Cerca", "Search"), exact: true }).click();
+        await page
+          .getByRole("option", { name: /Seconda legge di Newton/ })
+          .click({ button: "right" });
+      }
       await expect(dialog.last()).toHaveAccessibleName(
         /^(Eliminare questa chat|Delete this chat)\?$/,
       );
