@@ -2,31 +2,25 @@ import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { AutoBackupsSection } from "./AutoBackups";
 import { BackupList } from "./BackupList";
-import { RemindersPanel, useReminders } from "./RemindersPanel";
+import { RemindersPanel } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, Checkbox, Input, InputNumber } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
-  UserRound,
-  Brain,
-  Cpu,
-  Palette,
-  Languages,
-  HardDrive,
-  Shield,
-  RefreshCw,
+  GraduationCap,
   Info,
-  ALargeSmall,
-  Bell,
-  Terminal,
-  Layers,
+  Plug,
+  Shield,
+  Sun,
+  UserRound,
+  type LucideIcon,
 } from "lucide-react";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
@@ -61,6 +55,28 @@ function useTwoPane(): boolean {
     () => window.matchMedia(TWO_PANE).matches,
   );
 }
+
+type PageKey = "profile" | "engines" | "study" | "appearance" | "data" | "about";
+
+/** The six pages (pyxis-mockups app/index.html, "s-settings") and the sections each holds, in order. */
+const PAGES: Array<{ key: PageKey; icon: LucideIcon; sections: string[] }> = [
+  { key: "profile", icon: UserRound, sections: ["profile"] },
+  { key: "engines", icon: Plug, sections: ["engines"] },
+  { key: "study", icon: GraduationCap, sections: ["tutor", "reading", "flashcards", "reminders"] },
+  { key: "appearance", icon: Sun, sections: ["appearance", "language"] },
+  { key: "data", icon: Shield, sections: ["data", "privacy"] },
+  { key: "about", icon: Info, sections: ["updates", "about"] },
+];
+
+/**
+ * The page that holds each section. Links name a section, as /settings/updates does, and open its page scrolled to it.
+ * Engine diagnostics were a second copy of the engines panel, which has them inside.
+ */
+const PAGE_OF: Record<string, PageKey> = {
+  ...Object.fromEntries(PAGES.flatMap((page) => page.sections.map((section) => [section, page.key]))),
+  ...Object.fromEntries(PAGES.map((page) => [page.key, page.key])),
+  diagnostics: "engines",
+};
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -128,7 +144,6 @@ export function SettingsPage() {
     queryFn: () => window.pyxis.autoBackups.status(),
   });
   const backupFolder = backupStatus.data?.folder;
-  const reminders = useReminders();
   const usage = useQuery({
     queryKey: ["plan-usage"],
     queryFn: () => invoke("plans.usage", {}),
@@ -206,13 +221,12 @@ export function SettingsPage() {
     reading: t("settings.reading"),
     flashcards: t("settings.flashcards"),
     reminders: t("settings.reminders.title"),
-    appearance: t("settings.appearance"),
+    appearance: t("settings.theme"),
     language: t("settings.language"),
     data: t("settings.data"),
     privacy: t("settings.privacy"),
     updates: t("updates.title"),
-    about: t("settings.about"),
-    diagnostics: t("settings.diagnostics"),
+    about: t("settings.aboutBlock"),
   };
   // The profile is the one place for the study level: the tutor and new exams read it from here.
   const levelChoices = (
@@ -266,66 +280,6 @@ export function SettingsPage() {
       </p>
     </>
   );
-  // Two groups: how you study, and the app itself. A group of one row only repeats its row.
-  const groups = [
-    {
-      name: t("settings.groups.study"),
-      rows: [
-        {
-          key: "profile",
-          icon: UserRound,
-          value: profile.data?.displayName ?? "",
-        },
-        { key: "engines", icon: Cpu, value: "" },
-        {
-          key: "tutor",
-          icon: Brain,
-          value: t(
-            profile.data?.tutorMode === "socratic"
-              ? "settings.socratic"
-              : "settings.solver",
-          ),
-        },
-        {
-          key: "reading",
-          icon: ALargeSmall,
-          value: t(`settings.text.${profile.data?.textSize ?? "md"}`),
-        },
-        {
-          key: "flashcards",
-          icon: Layers,
-          value: cardSettings.data ? String(cardSettings.data.newPerDay) : "",
-        },
-        {
-          key: "reminders",
-          icon: Bell,
-          value: reminders.data?.enabled
-            ? reminders.data.time
-            : t("settings.reminders.valueOff"),
-        },
-      ],
-    },
-    {
-      name: t("settings.groups.app"),
-      rows: [
-        {
-          key: "appearance",
-          icon: Palette,
-          value: t(`settings.${appearance.source}`),
-        },
-        {
-          key: "language",
-          icon: Languages,
-          value: t(locale === "it" ? "settings.italian" : "settings.english"),
-        },
-        { key: "data", icon: HardDrive, value: "" },
-        { key: "privacy", icon: Shield, value: "" },
-        { key: "updates", icon: RefreshCw, value: "" },
-        { key: "about", icon: Info, value: "" },
-        { key: "diagnostics", icon: Terminal, value: "" },
-      ],
-    },
-  ];
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
@@ -755,7 +709,7 @@ export function SettingsPage() {
         {" "}
         <AboutPanel
           labels={{
-            title: t("settings.about"),
+            title: t("settings.aboutBlock"),
             version: t("about.version"),
             commit: t("about.commit"),
             license: t("about.license"),
@@ -769,107 +723,105 @@ export function SettingsPage() {
         />
       </>
     ),
-    diagnostics: (
-      <>
-        <p className="small ink-muted">{t("settings.diagnosticsHint")}</p>
-        <EnginesPanel />
-      </>
-    ),
   };
-  const active = section && panels[section] ? section : null;
-  // The sidebar always has a section open. Profile comes first in the list.
+  const active = section ? (PAGE_OF[section] ?? null) : null;
+  // Two panes always have a page open. Profile comes first in the list.
   const shown = twoPane ? (active ?? "profile") : active;
-  // Switching sections drops a half-confirmed restore or wipe, like leaving the page does.
+  const page = PAGES.find((item) => item.key === shown);
+  // A link to one section of a page opens the page at that section.
+  useEffect(() => {
+    if (section && section !== active)
+      document.getElementById(`settings-${section}`)?.scrollIntoView({ block: "start" });
+  }, [section, active]);
+  // Switching pages drops a half-confirmed restore or wipe, like leaving the page does.
   function open(key: string) {
-    navigate(`/settings/${key}`);
+    navigate(key ? `/settings/${key}` : "/settings");
     setWipeArmed(false);
     setRestoreArmed(null);
   }
-  const subpage = shown ? (
-    <section className="px-settings-subpage">
-      {twoPane ? (
-        <h2 className="title-2">
-          {labels[shown]}
-        </h2>
-      ) : null}
-      {panels[shown]}
+  const pageName = (key: PageKey) => t(`settings.pages.${key}`);
+  const subpage = page ? (
+    <div className="px-settings-page">
+      <header className="px-settings-head">
+        <h1 className="title-1">{pageName(page.key)}</h1>
+        <p>{t(`settings.pageIntro.${page.key}`)}</p>
+      </header>
+      {saveError ? <Notice tone="danger">{t("settings.saveFailed")}</Notice> : null}
+      {page.sections.map((key) => {
+        // A page of one section is titled by the page; Updates and About title themselves.
+        const titled = page.sections.length > 1 && key !== "updates" && key !== "about";
+        return (
+          <section
+            key={key}
+            id={`settings-${key}`}
+            className="px-settings-subpage"
+            aria-labelledby={titled ? `settings-${key}-title` : undefined}
+          >
+            {titled ? (
+              <h2 className="px-settings-block-title" id={`settings-${key}-title`}>
+                {labels[key]}
+              </h2>
+            ) : null}
+            {panels[key]}
+          </section>
+        );
+      })}
       {params.get("setup") === "1" ? (
-        <Button type="primary" shape="round" onClick={() => navigate("/ask")}>
+        <Button type="primary" shape="round" className="px-settings-done" onClick={() => navigate("/ask")}>
           {t("onboarding.done")}
         </Button>
       ) : null}
-    </section>
+    </div>
   ) : null;
+  const hint = (key: PageKey) =>
+    key === "study" ? t("settings.studyHint") : key === "profile" ? (profile.data?.displayName ?? "") : "";
   return (
-    <div className="px-settings">
-      {!twoPane && active ? (
-        <Button
-          type="text"
-          icon={<ArrowLeft size={18} />}
-          className="px-settings-back"
-          onClick={() => {
-            navigate("/settings");
-            setWipeArmed(false);
-            setRestoreArmed(null);
-          }}
-        >
+    // Both layouts share this wrapper and keep the open page in the same slot. Crossing 960 px then re-lays the page
+    // out without remounting it, so an open drawer or a half-typed field survives.
+    <div className={twoPane ? "px-settings px-settings-panes" : "px-settings"}>
+      {twoPane ? (
+        <nav className="px-settings-nav" aria-label={t("settings.title")}>
+          <h2>{t("settings.title")}</h2>
+          {PAGES.map((item) => (
+            <button
+              type="button"
+              className={item.key === "about" ? "px-settings-nav-item is-foot" : "px-settings-nav-item"}
+              key={item.key}
+              aria-current={shown === item.key ? "page" : undefined}
+              onClick={() => open(item.key)}
+            >
+              <item.icon size={18} strokeWidth={1.75} aria-hidden="true" />
+              <span>{pageName(item.key)}</span>
+              {item.key === "study" ? <small aria-hidden="true">{hint(item.key)}</small> : null}
+            </button>
+          ))}
+        </nav>
+      ) : active ? (
+        <Button type="text" icon={<ArrowLeft size={18} />} className="px-settings-back" onClick={() => open("")}>
           {t("settings.back")}
         </Button>
       ) : null}
-      <h1 className="title-1">
-        {!twoPane && active ? labels[active] : t("settings.title")}
-      </h1>
-      {saveError ? (
-        <Notice tone="danger">{t("settings.saveFailed")}</Notice>
-      ) : null}
-      {/* Both layouts share this wrapper and keep the open section in the same slot. Crossing 960 px then re-lays the
-          page out without remounting the section, so an open drawer or a half-typed field survives. */}
-      <div className={twoPane ? "px-settings-panes" : undefined}>
-        {twoPane ? (
-          <nav className="px-settings-nav" aria-label={t("settings.title")}>
-            {groups.map((group) => (
-              <div className="px-settings-nav-group" key={group.name}>
-                <h2 className="label">{group.name}</h2>
-                {group.rows.map((row) => (
-                  <button
-                    type="button"
-                    className="px-settings-nav-item"
-                    key={row.key}
-                    aria-current={shown === row.key ? "page" : undefined}
-                    onClick={() => open(row.key)}
-                  >
-                    <row.icon size={18} aria-hidden="true" />
-                    <span>{labels[row.key]}</span>
-                  </button>
-                ))}
-              </div>
+      {subpage ?? (
+        <>
+          <h1 className="title-1">{t("settings.title")}</h1>
+          {saveError ? <Notice tone="danger">{t("settings.saveFailed")}</Notice> : null}
+          <div className="px-settings-list">
+            {PAGES.map((item) => (
+              <button
+                type="button"
+                className="px-settings-row"
+                key={item.key}
+                onClick={() => open(item.key)}
+              >
+                <item.icon size={20} strokeWidth={1.75} aria-hidden="true" />
+                <span className="body-strong">{pageName(item.key)}</span>
+                <span className="small px-settings-current">{hint(item.key)}</span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
             ))}
-          </nav>
-        ) : null}
-        {subpage ??
-          (twoPane ? null : (
-            <div className="px-settings-groups">
-              {groups.map((group) => (
-                <section className="px-settings-group" key={group.name}>
-                  <h2 className="label">{group.name}</h2>
-                  {group.rows.map((row) => (
-                    <button
-                      type="button"
-                      className="px-settings-row"
-                      key={row.key}
-                      onClick={() => navigate(`/settings/${row.key}`)}
-                    >
-                      <row.icon size={20} aria-hidden="true" />
-                      <span className="body-strong">{labels[row.key]}</span>
-                      <span className="meta px-settings-current">{row.value}</span>
-                      <ChevronRight size={18} aria-hidden="true" />
-                    </button>
-                  ))}
-                </section>
-              ))}
-            </div>
-          ))}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

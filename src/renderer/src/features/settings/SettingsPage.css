@@ -4,14 +4,9 @@
 .px-settings > h1 {
   margin-bottom: var(--space-8);
 }
-.px-settings-groups {
+.px-settings-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
-}
-.px-settings-group > h2 {
-  color: var(--ink-muted);
-  margin: 0 0 var(--space-2);
 }
 .px-settings-row {
   width: 100%;
@@ -45,64 +40,97 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Two panes: a sidebar of sections and the open section beside it. The sidebar stays in view while a long section scrolls. */
+/* Two panes (pyxis-mockups app/index.html, "s-settings"): the six pages in a column of their own, titled Impostazioni,
+   with Informazioni at its foot, and the open page beside it. The column stays in view while a long page scrolls. */
 .px-settings-panes {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: var(--space-12);
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 36px;
   align-items: start;
 }
 .px-settings-nav {
   position: sticky;
-  top: var(--space-6);
+  top: calc(var(--top-height) + var(--space-6));
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: 2px;
+  height: calc(100vh - var(--top-height) - 96px);
+  min-height: 360px;
 }
-.px-settings-nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-.px-settings-nav-group > h2 {
-  color: var(--ink-muted);
-  margin: 0 0 var(--space-2) var(--space-3);
+.px-settings-nav > h2 {
+  margin: 0;
+  padding: 4px 10px 14px;
+  font: 400 24px/1.1 var(--font-display);
+  letter-spacing: -0.01em;
 }
 .px-settings-nav-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-3);
-  min-height: var(--control-md);
-  padding: 0 var(--space-3);
+  column-gap: 11px;
+  padding: 9px 10px;
   border: 0;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--ink);
-  font: inherit;
+  color: var(--ink-muted);
+  font: 500 14px/1.3 var(--font-sans);
   text-align: left;
   cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
 }
 .px-settings-nav-item > svg {
-  flex: none;
-  color: var(--ink-muted);
+  color: var(--ink-subtle);
 }
 .px-settings-nav-item > span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.px-settings-nav-item > small {
+  grid-column: 2;
+  color: var(--ink-subtle);
+  font-size: 12.5px;
+  font-weight: 400;
+}
 .px-settings-nav-item:hover {
   background: var(--surface);
+  color: var(--ink);
+}
+.px-settings-nav-item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 .px-settings-nav-item[aria-current="page"] {
   background: var(--primary-soft);
   color: var(--primary-text);
-  font-weight: 600;
+  font-weight: 650;
 }
 .px-settings-nav-item[aria-current="page"] > svg {
   color: inherit;
 }
-.px-settings-subpage > h2 {
+.px-settings-nav-item.is-foot {
+  margin-top: auto;
+}
+.px-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  min-width: 0;
+  max-width: 720px;
+}
+.px-settings-head > h1 {
   margin: 0;
+}
+.px-settings-head > p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: 14.5px;
+}
+.px-settings-block-title {
+  margin: 0;
+  font: 650 15.5px/1.3 var(--font-sans);
+}
+.px-settings-done {
+  align-self: flex-start;
 }
 /* Buttons in a row, such as backup and restore. */
 .px-settings-actions {
