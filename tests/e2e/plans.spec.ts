@@ -92,6 +92,8 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
           height: width === 960 ? 640 : 800,
         });
         await page.emulateMedia({ reducedMotion: "reduce" });
+        // A capture taken while the window is still resizing can fail with "Unable to capture screenshot".
+        await page.waitForFunction((wanted) => window.innerWidth === wanted, width);
         await saveShot(page, `m7-building-it-${theme}-${width}.png`, { animations: "disabled" });
       }
     }
