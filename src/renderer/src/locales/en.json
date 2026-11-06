@@ -251,12 +251,6 @@
     "loadFailed": "This chat couldn't be opened.",
     "renameTitle": "Click to rename",
     "renameNamed": "Rename {{title}}",
-    "startersLabel": "Suggested questions",
-    "starter": {
-      "explain": "Explain the key ideas of {{topic}}",
-      "quiz": "Ask me 3 questions on {{topic}}",
-      "exercise": "Give me an exercise on {{topic}}"
-    },
     "showEarlier_one": "Show {{count}} earlier message",
     "showEarlier_other": "Show {{count}} earlier messages",
     "pastedImage": "Pasted image",

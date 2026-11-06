@@ -1,5 +1,5 @@
 import { openSourceViewer } from "../../components/SourceViewer";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Skeleton } from "antd";
 import { RefreshCw, X } from "lucide-react";
 import {
@@ -54,7 +54,6 @@ import {
 } from "./scope";
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
-import { activePlans, starterPrompts, type Starter } from "./starters";
 import { dayPart } from "./greeting";
 import { formatTokens } from "../../lib/tokens";
 import { useEngineError } from "../../lib/engineError";
@@ -469,7 +468,6 @@ export function AskPage() {
     const chat = scope.token();
     const plan = await client.fetchQuery({ ...planQuery(id), staleTime: 15_000 });
     if (!scope.isCurrent(chat)) return;
-    // Set here too, so a message sent right after (a starter prompt) carries the plan's sources.
     pickedNow.current = addIds(
       pickedNow.current,
       plan?.sources.map((source) => source.id) ?? [],
@@ -868,45 +866,6 @@ export function AskPage() {
     );
   });
 
-  // Starter prompts on an empty chat, from the topics of the plans the student is preparing.
-  const starterPlans = activePlans(plans.data ?? []);
-  const starterReads = useQueries({
-    queries: starterPlans.map((plan) => ({
-      ...planQuery(plan.id),
-      enabled: !conversation,
-    })),
-  });
-  const starters = conversation
-    ? []
-    : starterPrompts(
-        starterReads.flatMap((read) =>
-          read.data
-            ? [
-                {
-                  id: read.data.id,
-                  subject: read.data.subject,
-                  topics: [...read.data.topics].sort((a, b) => a.position - b.position),
-                  studied: read.data.steps.flatMap((step) => (step.topicId ? [step.topicId] : [])),
-                },
-              ]
-            : [],
-        ),
-      );
-  /** A starter prompt asks at once, with its plan's material: the plan's subject when it has one, else its sources. */
-  function start(starter: Starter) {
-    if (busy) return;
-    if (starter.subject) {
-      scope.choose();
-      void chooseSubject(starter.subject);
-    }
-    else void scope.track(addPlan(starter.planId));
-    void send(t(`ask.starter.${starter.kind}`, { topic: starter.topic }), {
-      textOnly: true,
-      // Without a subject of its own, the question goes with the chat's subject once the scope settles.
-      subject: starter.subject ?? undefined,
-    });
-  }
-
   const chats = useChats();
   const title = chatId
     ? chats.data?.find((chat) => chat.id === chatId)?.title
@@ -1299,17 +1258,6 @@ export function AskPage() {
               }, fail);
           }}
         />
-        {home && starters.length > 0 ? (
-          <ul className="ask-starters" aria-label={t("ask.startersLabel")}>
-            {starters.map((starter) => (
-              <li key={`${starter.kind}-${starter.planId}-${starter.topic}`}>
-                <Button shape="round" disabled={busy} onClick={() => start(starter)}>
-                  {t(`ask.starter.${starter.kind}`, { topic: starter.topic })}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
       </div>
     </div>
   );
