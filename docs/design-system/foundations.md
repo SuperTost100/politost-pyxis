@@ -22,7 +22,7 @@ Pyxis is a free, open-source study app that runs on the student's own computer. 
 
 ## Colour
 
-Both themes are designed; set `data-theme="dark|light"` on `<html>`. The values live in `tokens.json` and `tokens.css`.
+Both themes are designed; set `data-theme="dark"` or `data-theme="light"` on `<html>`. The values live in `tokens.json` and `tokens.css`.
 
 | Token                                                | Use                                                                                                                                                                                            |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,4 +106,4 @@ The mark is **star trails**: three trails circling the pole star, the fixed poin
 
 - Screens use Pyxis's own components where they exist (see [Components](components.md)), then Ant Design v6 themed by `pyxis-theme.ts`. Ant Design goes away screen by screen during 0.5, and a screen that has moved imports nothing from `antd`.
 - The shell is Pyxis's own top bar (`app/layouts/Shell.tsx`): the brand, the Chiedi · Esami · Mappe doors, then Library, Attività and Settings at the right.
-- Accessibility: every control reachable by keyboard, every icon-only button labelled, state never shown by colour alone, and the contrast the tests above check.
+- Accessibility: every control reachable by keyboard, every icon-only button labelled, state never shown by colour alone, text at 4.5:1 and controls, rings and focus at 3:1. The contrast tests cover the pairs they list, so a new pair of text and ground gets its own line there (see [the README](README.md#changing-the-system)).

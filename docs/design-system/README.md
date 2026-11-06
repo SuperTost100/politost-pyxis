@@ -24,5 +24,5 @@ The approved look is the 0.5 mockup. Where this folder and a screen built from t
 - Add or change a token before writing a new arbitrary value in a screen.
 - `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when their colours differ. It doesn't compare spacing, radii, sizes or shadows, so check those by hand.
 - `token-contrast.test.ts` and `link-contrast.test.ts` check selected pairs in both themes: the text tokens and links at 4.5:1 on each ground, controls and rings at 3:1, and the soft pairs they list. A new pair of text and ground needs its own line there.
-- Keep visible focus, both themes and both languages. The route audit (`tests/e2e/ui-audit.spec.ts`) checks every route at 1280 and 960 pixels in Italian and English, light and dark.
+- Keep visible focus, both themes and both languages. The route audit (`tests/e2e/ui-audit.spec.ts`) checks the states it lists at 1280 and 960 pixels in Italian and English, light and dark. A screen it doesn't list needs a state added there, or a look by hand.
 - The gallery at `#/dev/gallery` shows the shared states in a development build.
