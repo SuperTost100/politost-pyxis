@@ -28,8 +28,9 @@ import "./Sidebar.css";
 /** How many recent chats the sidebar lists; "All chats" opens the rest in the search. */
 const RECENT = 20;
 const FOLD_KEY = "pyxis.side";
-// Below this page width, as at 200% zoom on the smallest window, the sidebar folds by itself so the page keeps room.
-const NARROW = window.matchMedia("(max-width: 899px)");
+// Below this page width the sidebar folds by itself so the page keeps room: the smallest window is 960px, where Settings
+// shows its own list beside each section, and zoom makes the page narrower still.
+const NARROW = window.matchMedia("(max-width: 1099px)");
 const subscribeNarrow = (change: () => void) => {
   NARROW.addEventListener("change", change);
   return () => NARROW.removeEventListener("change", change);
