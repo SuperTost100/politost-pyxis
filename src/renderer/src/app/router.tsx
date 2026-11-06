@@ -5,7 +5,8 @@ import { AskPage } from "../features/ask/AskPage";
 import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { reportError } from "../lib/errorReports";
-import { rememberDoorPath, Shell } from "./layouts/Shell";
+import { rememberDoorPath } from "./doors";
+import { Shell } from "./layouts/Shell";
 
 /**
  * The fallback for a page that failed or does not exist. Inside the shell it sits in the page column; a full-screen

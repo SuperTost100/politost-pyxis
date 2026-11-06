@@ -5,7 +5,7 @@ import { goPages, pageCommands, reportProblemUrl } from "@shared/menu";
 import { menuCommandAllowed } from "./menu-guard";
 import { readMenuContext } from "./menu-state";
 import { router } from "./router";
-import { doorTarget } from "./layouts/Shell";
+import { doorTarget } from "./doors";
 import { checkUpdatesNow } from "../features/settings/UpdatesPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 

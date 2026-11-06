@@ -177,7 +177,7 @@ test("Ask: the composer chip is the only subject control and picks the subject's
       location.hash = "/ask";
     });
     await expect(page.getByRole("button", { name: "Fonti", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /^Come si risolve un integrale per parti\?/ }).click();
+    await page.getByRole("link", { name: /^Come si risolve un integrale per parti\?/ }).click();
     await expect(page.getByRole("button", { name: /^Materia: Fisica/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "3 fonti" })).toBeVisible();
   } finally {
@@ -185,7 +185,7 @@ test("Ask: the composer chip is the only subject control and picks the subject's
   }
 });
 
-test("Ask: panel, automatic titles, rename and delete, greeting and the thinking placeholder", async () => {
+test("Ask: recent chats, automatic titles, rename and delete, greeting and the thinking placeholder", async () => {
   test.setTimeout(120000);
   const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "3000" });
   try {
@@ -195,7 +195,7 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     });
     await page.reload();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera), Tommaso$/);
-    await expect(page.getByRole("button", { name: "Nuova chat" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Nuova chat" })).toBeVisible();
 
     const question =
       "Mi spieghi con calma come si dimostra il teorema fondamentale del calcolo integrale partendo dalla definizione?";
@@ -211,7 +211,7 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
 
     // The chat is named after the first message, cut near 60 characters.
     const list = page.getByRole("list", { name: "Chat" });
-    const title = (await list.getByRole("button", { name: /^Mi spieghi/ }).textContent()) ?? "";
+    const title = (await list.getByRole("link", { name: /^Mi spieghi/ }).textContent()) ?? "";
     expect(title.length).toBeLessThanOrEqual(61);
     expect(title.endsWith("…")).toBe(true);
     await expect(list.getByRole("textbox")).toHaveCount(0);
@@ -219,26 +219,26 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     // Rename on demand: Esc cancels, Enter saves.
     // The row's actions are the system's own context menu, from a right-click or the "…" button.
     await answerNextMenu(app, "Rinomina");
-    await list.getByRole("button", { name: /^Mi spieghi/ }).click({ button: "right" });
+    await list.getByRole("link", { name: /^Mi spieghi/ }).click({ button: "right" });
     await expect
       .poll(() => lastMenuLabels(app))
       .toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
     const field = page.getByRole("textbox", { name: "Nome della chat" });
     await field.fill("Scartato");
     await field.press("Escape");
-    await expect(list.getByRole("button", { name: /^Mi spieghi/ })).toBeVisible();
+    await expect(list.getByRole("link", { name: /^Mi spieghi/ })).toBeVisible();
     await answerNextMenu(app, "Rinomina");
     await list.getByRole("button", { name: /^Azioni per Mi spieghi/ }).click();
     await page.getByRole("textbox", { name: "Nome della chat" }).fill("Teorema fondamentale");
     await page.getByRole("textbox", { name: "Nome della chat" }).press("Enter");
-    await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    await expect(list.getByRole("link", { name: "Teorema fondamentale", exact: true })).toBeVisible();
 
     // Delete asks first.
     await answerNextMenu(app, "Elimina");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
-    await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    await expect(list.getByRole("link", { name: "Teorema fondamentale", exact: true })).toBeVisible();
     // The cancelled dialog is still closing; wait so the next click lands on the row.
     await expect(dialog).toHaveCount(0);
     await animationsSettled(page);
@@ -333,8 +333,8 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     // Scrolled to the top the composer is still in view; opening the chat again lands on the latest message.
     await page.evaluate(() => document.scrollingElement!.scrollTo({ top: 0 }));
     await expect.poll(foot).toBeLessThan(40);
-    await page.getByRole("button", { name: "Nuova chat" }).click();
-    await page.getByRole("list", { name: "Chat" }).getByRole("button").first().click();
+    await page.getByRole("link", { name: "Nuova chat" }).click();
+    await page.getByRole("list", { name: "Chat" }).getByRole("link").first().click();
     await expect(page.getByText("Una domanda fuori materia", { exact: true })).toBeVisible();
     await expect
       .poll(() =>

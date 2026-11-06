@@ -1983,18 +1983,16 @@ async function openState(page: Page, name: string) {
       break;
     case "ask-search":
     case "ask-search-empty": {
+      // The search over the whole app, from the sidebar.
       const empty = name === "ask-search-empty";
+      await page.getByRole("button", { name: both("Cerca", "Search"), exact: true }).click();
       await page
-        .getByRole("textbox", {
-          name: both("Cerca nelle chat", "Search chats"),
-        })
+        .getByRole("combobox", { name: both("Cerca", "Search") })
         .fill(empty ? "zzzz" : "forza");
       await expect(
         empty
-          ? page.getByText(/Nessuna chat contiene|No chat matches/)
-          : page.getByRole("list", {
-              name: both("Risultati della ricerca", "Search results"),
-            }),
+          ? page.getByText(/Niente con queste parole|Nothing matches these words/)
+          : page.getByRole("option", { name: /Seconda legge di Newton/ }),
       ).toBeVisible();
       break;
     }

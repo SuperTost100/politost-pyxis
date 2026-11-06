@@ -65,7 +65,8 @@
       "editCard": "Edit the flashcard",
       "suspendCard": "Suspend the flashcard",
       "deleteCard": "Delete the flashcard",
-      "goMaps": "Go to Maps"
+      "goMaps": "Go to Maps",
+      "search": "Search everywhere"
     },
     "keys": {
       "enter": "Enter",
@@ -2096,7 +2097,8 @@
         "api-key": "API key",
         "local": "on this computer"
       }
-    }
+    },
+    "none": "Nothing has run today."
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",
@@ -3127,5 +3129,29 @@
     "behind_one": "At this pace {{title}} reaches its {{target}} target 1 day after the exam, and about {{atExam}} by the exam.",
     "behind_other": "At this pace {{title}} reaches its {{target}} target {{count}} days after the exam, and about {{atExam}} by the exam.",
     "behindNoTime": "{{title}} has no study time before its exam, so it will not reach its {{target}} target. Add hours to the weeks before it."
+  },
+  "side": {
+    "label": "Sidebar",
+    "study": "Study",
+    "recent": "Recent chats",
+    "allChats": "All chats",
+    "search": "Search",
+    "fold": "Collapse the sidebar",
+    "unfold": "Expand the sidebar",
+    "account": "Your profile",
+    "profile": "Profile",
+    "help": "Help and about",
+    "theme": "Appearance"
+  },
+  "finder": {
+    "label": "Search",
+    "placeholder": "Search chats, exams, maps and material",
+    "chatsPlaceholder": "Search your chats",
+    "chats": "Chats",
+    "exams": "Exams",
+    "maps": "Maps",
+    "material": "Material",
+    "none": "Nothing matches these words.",
+    "close": "esc"
   }
 }

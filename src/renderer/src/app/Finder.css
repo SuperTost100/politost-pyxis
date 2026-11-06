@@ -1,0 +1,131 @@
+/* The search over the whole app (pyxis-mockups app/app.css .finder): a card in the upper middle of the window over a
+   dimmed backdrop. */
+.px-finder {
+  width: min(600px, 92vw);
+  max-height: 66vh;
+  margin: 14vh auto auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  color: var(--ink);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+.px-finder::backdrop {
+  background: var(--scrim);
+}
+.px-finder-card {
+  display: flex;
+  flex-direction: column;
+  max-height: 66vh;
+}
+.px-finder-field {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-subtle);
+}
+.px-finder-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 400 calc(16px * var(--text-scale, 1)) / 1 var(--font-sans);
+  outline: none;
+}
+.px-finder-field kbd,
+.px-side kbd {
+  margin-left: auto;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink-subtle);
+  font: 500 11px/1 var(--font-sans);
+  white-space: nowrap;
+}
+.px-finder-list {
+  display: grid;
+  align-content: start;
+  gap: 1px;
+  padding: 6px 8px 12px;
+  overflow: auto;
+}
+.px-finder-label {
+  margin: 12px 0 6px;
+  padding: 0 10px;
+  color: var(--ink-subtle);
+  font: 600 12px/1 var(--font-sans);
+}
+.px-finder-row {
+  display: grid;
+  gap: 2px;
+  padding: 7px 10px;
+  border-radius: var(--radius-field);
+  color: var(--ink);
+  cursor: pointer;
+}
+.px-finder-row[aria-selected="true"] {
+  background: var(--surface-raised);
+}
+.px-finder-row.is-editing {
+  padding: 3px 4px;
+  cursor: default;
+}
+.px-finder-title,
+.px-finder-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-finder-title {
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.px-finder-sub {
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale, 1)) / 1.25 var(--font-sans);
+}
+.px-finder-snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: calc(12px * var(--text-scale, 1));
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.px-finder-snippet mark {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+.px-finder-none {
+  margin: 0;
+  padding: 14px 10px;
+  color: var(--ink-subtle);
+  font-size: calc(13.5px * var(--text-scale, 1));
+}
+
+/* A chat's name while it is renamed, in the sidebar or the search. */
+.px-rename {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1 var(--font-sans);
+  outline: none;
+}
+.px-rename:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}

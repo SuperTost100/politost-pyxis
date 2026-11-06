@@ -15,6 +15,7 @@ function groups(mac: boolean): Group[] {
       rows: [
         { id: "newExam", keys: ["mod", "N"] },
         { id: "newChat", keys: ["mod", "shift", "N"] },
+        { id: "search", keys: ["mod", "K"] },
         { id: "settings", keys: ["mod", "comma"] },
         { id: "goAsk", keys: ["mod", "1"] },
         { id: "goExams", keys: ["mod", "2"] },

@@ -168,7 +168,7 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog).toBeHidden();
 
-    await page.locator("header nav").getByRole("link", { name: "Esami", exact: true }).click();
+    await page.getByRole("navigation", { name: "Sezioni" }).getByRole("link", { name: "Esami", exact: true }).click();
     await page.getByRole("button", { name: "Nuovo esame", exact: true }).click();
     await page.locator("#plan-title").fill("Fisica");
     await page.getByRole("button", { name: "Non ho ancora la data", exact: true }).click();

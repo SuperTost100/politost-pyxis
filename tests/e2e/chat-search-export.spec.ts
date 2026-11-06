@@ -64,43 +64,40 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await page.evaluate(() => {
       location.hash = "/ask";
     });
-    // The chat sidebar is open on arrival.
-    await expect(page.getByRole("complementary", { name: "Le tue chat" })).toBeVisible();
+    // The recent chats sit in the sidebar.
     const list = page.getByRole("list", { name: "Chat" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
 
-    // The plain spelling finds the accented word; the snippet shows where.
-    const search = page.getByRole("textbox", { name: "Cerca nelle chat" });
+    // "Tutte le chat" opens the search over every chat. The plain spelling finds the accented word; the snippet shows
+    // where.
+    await page.getByRole("button", { name: "Tutte le chat" }).click();
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    const search = finder.getByRole("combobox", { name: "Cerca" });
+    await expect(finder.getByRole("option")).toHaveCount(2);
     await search.fill("perche");
-    const results = page.getByRole("list", { name: "Risultati della ricerca" });
-    await expect(results.getByRole("listitem")).toHaveCount(1);
-    await expect(
-      results.getByRole("button", { name: /^Termodinamica/ }),
-    ).toContainText("Perché il calore passa");
-    await expect(
-      page.getByRole("status").filter({ hasText: "1 chat trovata" }),
-    ).toBeAttached();
+    await expect(finder.getByRole("option")).toHaveCount(1);
+    await expect(finder.getByRole("option", { name: /^Termodinamica/ })).toContainText("Perché il calore passa");
+    await expect(page.getByRole("status").filter({ hasText: "1 chat trovata" })).toBeAttached();
     // Stored followups are not text a student sees.
     await search.fill("nascosto");
-    await expect(
-      page.getByText("Nessuna chat contiene “nascosto”."),
-    ).toBeVisible();
+    await expect(finder.getByText("Niente con queste parole.")).toBeVisible();
 
+    // Enter opens the highlighted chat and closes the search.
     await search.fill("PERCHÉ");
-    await results.getByRole("button", { name: /^Termodinamica/ }).click();
+    await expect(finder.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
     await expect(page).toHaveURL(/#\/ask\/c-termo$/);
-    // The chat opens beside the results; its first message is in the thread, where the snippet in the sidebar can
-    // also show it.
+    await expect(finder).toBeHidden();
     await expect(
       page.locator(".ask-thread").getByText("Perché il calore passa dal caldo al freddo?"),
     ).toBeVisible();
-    // The search stays while the chat opens beside it, and folding the sidebar clears it.
-    await expect(search).toHaveValue("PERCHÉ");
-    await page.getByRole("button", { name: "Le tue chat" }).click();
-    await expect(page.getByRole("complementary", { name: "Le tue chat" })).toHaveCount(0);
-    await page.getByRole("button", { name: "Le tue chat" }).click();
+
+    // Cmd+K (Ctrl+K elsewhere) opens the search over everything, empty again; Esc closes it.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
     await expect(search).toHaveValue("");
-    await expect(list.getByRole("listitem")).toHaveCount(2);
+    await expect(search).toHaveAttribute("placeholder", "Cerca chat, esami, mappe e materiale");
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
 
     const exportWith = async (item: string) => {
       await answerNextMenu(app, item);
@@ -135,8 +132,8 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     const rename = page.getByRole("textbox", { name: "Nome della chat" });
     await rename.fill("Limiti");
     await rename.press("Enter");
-    await expect(list.getByRole("button", { name: /^Limiti/ })).toBeVisible();
-    await expect(list.getByRole("button").first()).toHaveText(/Termodinamica/);
+    await expect(list.getByRole("link", { name: /^Limiti/ })).toBeVisible();
+    await expect(list.getByRole("link").first()).toHaveText(/Termodinamica/);
     const check = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
     expect(
       check

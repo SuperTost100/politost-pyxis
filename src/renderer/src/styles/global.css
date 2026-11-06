@@ -76,20 +76,19 @@ body {
   border: 0;
 }
 
-/* The top bar (pyxis-mockups app/app.css .top): the mark and name, then Chiedi · Esami · Mappe, then the Library,
-   Attività and Settings icons at the right. The bar is the window's drag region; its controls are not.
-   macOS keeps the left edge clear of the traffic lights (trafficLightPosition x 16 in src/main/index.ts). */
+/* The shell (app/layouts/Shell.tsx): the sidebar at the window's left edge (Sidebar.css), the page column beside it.
+   On macOS the window has no title bar, so a strip at the top of the column drags it, and setup's bar leaves room for
+   the traffic lights (trafficLightPosition x 16 in src/main/index.ts). */
 :root {
-  --shell-gutter-start: 18px;
-  --shell-gutter-end: 14px;
-  --top-height: 60px;
+  --top-height: 0px;
 }
-/* The mockup leaves 48px between the last traffic light and the brand: lights from x 16, about 52px wide. */
 html[data-platform="darwin"] {
-  --shell-gutter-start: 116px;
+  --top-height: 28px;
 }
 .px-app {
-  min-height: 100%;
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
   background: var(--bg);
   color: var(--ink);
 }
@@ -100,20 +99,41 @@ html[data-platform="darwin"] {
 .px-app *::after {
   box-sizing: border-box;
 }
-.px-top {
+.px-column {
+  flex: 1;
+  min-width: 0;
+}
+.px-drag {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  height: var(--top-height);
+  background: var(--bg);
+  -webkit-app-region: drag;
+}
+.px-app.px-in-setup {
+  flex-direction: column;
+  align-items: stretch;
+}
+.px-in-setup .px-drag {
+  display: none;
+}
+.px-setup-top {
   position: sticky;
   top: 0;
   z-index: 100;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  height: var(--top-height);
-  padding-inline: var(--shell-gutter-start) var(--shell-gutter-end);
+  justify-content: space-between;
+  height: 60px;
+  padding-inline: 18px 14px;
   background: var(--bg);
   -webkit-app-region: drag;
 }
-.px-top button,
-.px-top a {
+html[data-platform="darwin"] .px-setup-top {
+  padding-left: 96px;
+}
+.px-setup-top button {
   -webkit-app-region: no-drag;
 }
 .px-brand {
@@ -140,47 +160,9 @@ a.px-brand:hover {
   height: 24px;
   flex: none;
 }
-.px-nav {
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
-}
-.px-nav a {
-  display: inline-flex;
-  align-items: center;
-  height: 32px;
-  padding: 0 15px;
-  border-radius: var(--radius-sm);
-  font: 500 14px/1 var(--font-sans);
-  color: var(--ink-muted);
-  white-space: nowrap;
-  text-decoration: none;
-  transition:
-    background-color 0.15s ease-out,
-    color 0.15s ease-out;
-}
-.px-nav a:hover {
-  background: var(--surface-raised);
-  color: var(--ink);
-}
-.px-nav a[data-selected] {
-  background: var(--primary-soft);
-  color: var(--primary-text);
-  font-weight: 650;
-}
-.px-top-tools {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 /* Plain icons: no border, background or shadow, a fill only on hover, the current one in the accent text colour. */
 .px-top-tool,
-.px-top .ant-btn.px-top-tool {
+.px-setup-top .ant-btn.px-top-tool {
   display: inline-grid;
   place-items: center;
   min-width: 36px;
@@ -196,13 +178,14 @@ a.px-brand:hover {
     color 0.15s ease-out;
 }
 .px-top-tool:hover,
-.px-top .ant-btn.px-top-tool:hover {
+.px-setup-top .ant-btn.px-top-tool:hover {
   background: var(--surface-raised) !important;
   color: var(--ink) !important;
 }
 .px-top-tool[aria-current="page"] {
   color: var(--primary-text);
 }
+
 
 .px-doors .ant-segmented-item-label {
   font-family: var(--font-sans);
@@ -252,7 +235,7 @@ a.px-brand:hover {
   }
 }
 
-/* Chiedi runs edge to edge, so its chat sidebar can sit at the window's left edge (AskPage.css lays it out). */
+/* Chiedi runs edge to edge beside the sidebar (AskPage.css lays it out). */
 .px-shell-container.px-shell-bleed {
   max-width: none;
   padding: 0;
