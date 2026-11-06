@@ -6,6 +6,13 @@ name: Full check and package
 # every release, which needs its attested installers. A push to main doesn't start it.
 on:
   workflow_dispatch:
+    inputs:
+      dev:
+        # A test build for Tost: macOS arm64 only, its tests and its installer, no route audits. Pull requests have
+        # already run the Linux checks and audits. Releases and runs on main leave this off and build all four targets.
+        description: "Test build: macOS arm64 only"
+        type: boolean
+        default: false
   pull_request:
     paths:
       - package.json
@@ -45,11 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { target: mac-arm64, runner: macos-15 }
-          - { target: mac-x64, runner: macos-15-intel }
-          - { target: windows-x64, runner: windows-2025 }
-          - { target: linux-x64, runner: ubuntu-24.04 }
+        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"},{"target":"windows-x64","runner":"windows-2025"},{"target":"linux-x64","runner":"ubuntu-24.04"}]') }}
     defaults:
       run:
         shell: bash
@@ -93,6 +96,7 @@ jobs:
   # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
   audit:
     name: route audit ${{ matrix.target }} ${{ matrix.language }}
+    if: ${{ !inputs.dev }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
     # macOS arm64 also audits large text and took 35-40 minutes in October 2026, close to the old 45.
@@ -150,11 +154,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { target: mac-arm64, runner: macos-15, builder: --mac --arm64 }
-          - { target: mac-x64, runner: macos-15-intel, builder: --mac --x64 }
-          - { target: windows-x64, runner: windows-2025, builder: --win --x64 }
-          - { target: linux-x64, runner: ubuntu-24.04, builder: --linux --x64 }
+        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"}]' || '[{"target":"mac-arm64","runner":"macos-15","builder":"--mac --arm64"},{"target":"mac-x64","runner":"macos-15-intel","builder":"--mac --x64"},{"target":"windows-x64","runner":"windows-2025","builder":"--win --x64"},{"target":"linux-x64","runner":"ubuntu-24.04","builder":"--linux --x64"}]') }}
     defaults:
       run:
         shell: bash
