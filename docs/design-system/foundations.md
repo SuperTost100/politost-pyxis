@@ -24,22 +24,22 @@ Pyxis is a free, open-source study app that runs on the student's own computer. 
 
 Both themes are designed; set `data-theme="dark|light"` on `<html>`. The values live in `tokens.json` and `tokens.css`.
 
-| Token                                                | Use                                                                             |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `bg`                                                 | The page ground, the top bar and the chat sidebar                               |
-| `surface`, `surface-overlay`                         | Cards, the composer, the doors card, menus and dialogs                          |
-| `surface-raised`                                     | Hover, the student's messages, soft buttons and the selected chat row           |
-| `surface-sunken`                                     | Wells inside a card                                                             |
-| `ink`, `ink-muted`, `ink-subtle`                     | Content, metadata, placeholders. All three hold 4.5:1 on every surface          |
-| `primary` (`#14807a` dark, `#0f6e66` light)          | The one primary button and the selected option                                  |
-| `primary-text`, `primary-soft`                       | Links and citations; the selected door and tinted notices                       |
-| `star`, `star-text`, `star-soft`                     | Position and ambition only: the target mark, the current path node, Consigliato |
-| `mastery`, `ok` and their `-soft` forms              | Progress fills, done nodes, right answers                                       |
-| `danger`, `danger-soft`                              | Wrong answers and destructive actions, always with a word or an icon            |
-| `ring-prep`, `ring-path`, `ring-today`, `ring-track` | The exam page's three rings                                                     |
-| `border`, `border-control`                           | Hairlines; outlines of anything the student operates (3:1)                      |
-| `focus-ring`                                         | A 2px outline, 2px offset, on every focusable element                           |
-| `scrim`                                              | Behind dialogs and full-screen tools                                            |
+| Token                                                | Use                                                                                                                                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bg`                                                 | The page ground, the top bar and the chat sidebar                                                                                                                                              |
+| `surface`, `surface-overlay`                         | Cards, the composer, the doors card, menus and dialogs                                                                                                                                         |
+| `surface-raised`                                     | Hover, the student's messages, soft buttons and the selected chat row                                                                                                                          |
+| `surface-sunken`                                     | Wells inside a card                                                                                                                                                                            |
+| `ink`, `ink-muted`, `ink-subtle`                     | Content, metadata, placeholders. All three hold 4.5:1 on every surface                                                                                                                         |
+| `primary` (`#14807a` dark, `#0f6e66` light)          | The one primary button and the selected option                                                                                                                                                 |
+| `primary-text`, `primary-soft`                       | Links and citations; the selected door and tinted notices                                                                                                                                      |
+| `star`, `star-text`, `star-soft`                     | Position and ambition only. `star` for marks such as the target tick and the current path node; `star-text` for words such as Consigliato, since `star` is too light for text on light grounds |
+| `mastery`, `ok` and their `-soft` forms              | Progress fills, done nodes, right answers                                                                                                                                                      |
+| `danger`, `danger-soft`                              | Wrong answers and destructive actions, always with a word or an icon                                                                                                                           |
+| `ring-prep`, `ring-path`, `ring-today`, `ring-track` | The exam page's three rings                                                                                                                                                                    |
+| `border`, `border-control`                           | Hairlines; outlines of anything the student operates (3:1)                                                                                                                                     |
+| `focus-ring`                                         | A 2px outline, 2px offset, on every focusable element                                                                                                                                          |
+| `scrim`                                              | Behind dialogs and full-screen tools                                                                                                                                                           |
 
 No gradients. The one glow, `glow-star`, marks the current path node.
 

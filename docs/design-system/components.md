@@ -25,7 +25,7 @@ Context menus are the system's own, through `window.pyxis.contextMenu` (see `fea
 
 | Component      | What it's for                                                                                                   |
 | -------------- | --------------------------------------------------------------------------------------------------------------- |
-| `Notice`       | An inline message with a tone (info, success, warning, danger), an optional action and technical details        |
+| `Notice`       | An inline message with a tone (info, warning or danger), an optional action and technical details               |
 | `ErrorState`   | A failed load, build or quiz: one danger notice that says what failed, the fix, and the details behind a toggle |
 | `LoadError`    | A failed load with Try again, so a page never stays empty without a word                                        |
 | `StepLines`    | The steps of a long job, each pending, running, done or failed                                                  |
@@ -65,16 +65,16 @@ Context menus are the system's own, through `window.pyxis.contextMenu` (see `fea
 
 ## Sources and AI tools
 
-| Component       | What it's for                                                                     |
-| --------------- | --------------------------------------------------------------------------------- |
-| `SourceRow`     | One source in a list, with its kind and state                                     |
-| `SourceDetails` | A source's pages, reading state, the exams that use it and the pages lessons cite |
-| `SourceViewer`  | A source opened at a page, beside the screen                                      |
-| `PdfSourcePage` | One PDF page with the cited passage marked, inside the viewer                     |
-| `PdfPassword`   | Asks for the password of a locked PDF and runs its import again                   |
-| `OcrData`       | Consent, progress and recovery for the local OCR language data                    |
-| `FreeBooks`     | The free books and whether a newer version can update the copy in the Library     |
-| `EngineRow`     | One AI tool with its state, each state with its own icon and word                 |
-| `ProviderSetup` | Who makes each AI tool and which account signs in to it                           |
-| `LocalModel`    | The model that runs on this computer: hardware check, download and state          |
-| `Icon`          | A Lucide icon by name, at the stroke and size the system uses                     |
+| Component                               | What it's for                                                                     |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| `SourceRow`                             | One source in a list, with its kind and state                                     |
+| `SourceDetails`                         | A source's pages, reading state, the exams that use it and the pages lessons cite |
+| `SourceViewer`                          | A source opened at a page, beside the screen                                      |
+| `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                     |
+| `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                   |
+| `OcrDataCard` (`OcrData.tsx`)           | Consent, progress and recovery for the local OCR language data                    |
+| `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library     |
+| `EngineRow`                             | One AI tool with its state, each state with its own icon and word                 |
+| `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                           |
+| `LocalModelCard` (`LocalModel.tsx`)     | The model that runs on this computer: hardware check, download and state          |
+| `Icon`                                  | A Lucide icon by name, at the stroke and size the system uses                     |
