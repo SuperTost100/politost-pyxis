@@ -254,6 +254,8 @@ jobs:
   checksums:
     name: Release checksums
     needs: package
+    # A test build has only the Mac installers, each with its own SHA256SUMS; there are no four to merge.
+    if: ${{ !inputs.dev }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
