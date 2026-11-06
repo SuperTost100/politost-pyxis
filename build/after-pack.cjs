@@ -78,6 +78,10 @@ function dropSwiftShader(app) {
 
 // Finder metadata on macOS can make codesign reject the packaged bundle.
 // Sign a private metadata-free copy, including the app's declared entitlements.
+// A build started by hand in CI sets PYXIS_MAC_IDENTITY to the Developer ID in a keychain the workflow made, and the
+// App Store Connect key in APPLE_API_KEY (a .p8 file), APPLE_API_KEY_ID and APPLE_API_ISSUER. The app is then signed
+// with that identity under the hardened runtime, notarized and stapled, so it opens on the first double-click. Without
+// them, as on pull requests and on devbox, it is signed ad hoc as before.
 module.exports = async function afterPack(context) {
   const arch = ARCHES[context.arch];
   if (arch)
@@ -98,14 +102,15 @@ module.exports = async function afterPack(context) {
   const clean = join(temporary, name);
   try {
     execFileSync("ditto", ["--norsrc", app, clean]);
+    const identity = process.env.PYXIS_MAC_IDENTITY;
     execFileSync(
       "codesign",
       [
         "--sign",
-        "-",
+        identity || "-",
         "--force",
         "--deep",
-        "--timestamp=none",
+        ...(identity ? ["--timestamp", "--options", "runtime"] : ["--timestamp=none"]),
         "--entitlements",
         join(context.packager.projectDir, "build/entitlements.mac.plist"),
         clean,
@@ -121,10 +126,33 @@ module.exports = async function afterPack(context) {
     execFileSync("codesign", ["--verify", "--deep", "--strict", app], {
       stdio: "inherit",
     });
+    if (identity) notarize(app, temporary);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
 };
+
+/**
+ * Sends the signed app to Apple's notary service and staples the ticket to it, before electron-builder puts it in the
+ * disk image. notarytool waits for the verdict; anything but Accepted stops the build, with Apple's log.
+ */
+function notarize(app, temporary) {
+  const { APPLE_API_KEY: key, APPLE_API_KEY_ID: keyId, APPLE_API_ISSUER: issuer } = process.env;
+  if (!key || !keyId || !issuer) throw new Error("Notarization needs APPLE_API_KEY, APPLE_API_KEY_ID and APPLE_API_ISSUER");
+  const zip = join(temporary, "notarize.zip");
+  execFileSync("ditto", ["-c", "-k", "--keepParent", app, zip]);
+  const auth = ["--key", key, "--key-id", keyId, "--issuer", issuer];
+  const result = JSON.parse(
+    execFileSync("xcrun", ["notarytool", "submit", zip, ...auth, "--wait", "--output-format", "json"], {
+      encoding: "utf8",
+    }),
+  );
+  if (result.status !== "Accepted") {
+    if (result.id) execFileSync("xcrun", ["notarytool", "log", result.id, ...auth], { stdio: "inherit" });
+    throw new Error(`Notarization ended as ${result.status}`);
+  }
+  execFileSync("xcrun", ["stapler", "staple", app], { stdio: "inherit" });
+}
 
 module.exports.pruneUnpacked = pruneUnpacked;
 module.exports.FUSES = FUSES;
