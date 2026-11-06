@@ -88,8 +88,10 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await search.fill("PERCHÉ");
     await results.getByRole("button", { name: /^Termodinamica/ }).click();
     await expect(page).toHaveURL(/#\/ask\/c-termo$/);
+    // The chat opens beside the results; its first message is in the thread, where the snippet in the sidebar can
+    // also show it.
     await expect(
-      page.getByText("Perché il calore passa dal caldo al freddo?"),
+      page.locator(".ask-thread").getByText("Perché il calore passa dal caldo al freddo?"),
     ).toBeVisible();
     // The search stays while the chat opens beside it, and folding the sidebar clears it.
     await expect(search).toHaveValue("PERCHÉ");
