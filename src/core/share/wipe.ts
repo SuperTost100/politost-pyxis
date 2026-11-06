@@ -9,8 +9,8 @@ import {
 } from "node:fs";
 import { isAbsolute, join } from "node:path";
 
-const names = ["pyxis.db", "pyxis.db-wal", "pyxis.db-shm", "blobs", "runtimes", "models", "scratch", "exports"];
-const dirs = ["blobs", "runtimes", "models", "scratch", "exports"];
+const names = ["pyxis.db", "pyxis.db-wal", "pyxis.db-shm", "blobs", "runtimes", "models", "scratch", "exports", "logs"];
+const dirs = ["blobs", "runtimes", "models", "scratch", "exports", "logs"];
 
 function holdingDir(workspace: string): string {
   return join(workspace, ".wipe");

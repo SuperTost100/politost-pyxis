@@ -7,6 +7,7 @@ type Request = {
   sessionId?: string;
   cache?: boolean;
   signal?: AbortSignal;
+  verbose?: boolean;
 };
 type Outcome = {
   text?: string;
@@ -105,6 +106,12 @@ const {
   setScratch,
   CONVERSATION_IDLE_MS,
 } = await import("./funnel");
+
+const { readJobLog, setDebugLogRoot, setDebugOn } = await import("../debug/log");
+const { withUsageScope } = await import("./usage");
+const { mkdtempSync, rmSync } = await import("node:fs");
+const { tmpdir } = await import("node:os");
+const { join } = await import("node:path");
 
 beforeEach(() => {
   run.mockReset();
@@ -462,5 +469,52 @@ describe("schema repairs", () => {
         expect(repair.prompt).toContain("name a colour");
       }
     }
+  });
+});
+
+describe("runTurn in debug mode", () => {
+  const job = "0190c8a2-0000-7000-8000-0000000000aa";
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "pyxis-funnel-debug-"));
+    setDebugLogRoot(root);
+  });
+  afterEach(() => {
+    setDebugOn(false);
+    setDebugLogRoot("");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("logs a job's call with the engine's verbose events and its end, and asks cli-funnel for verbose", async () => {
+    setDebugOn(true);
+    run.mockResolvedValueOnce({ text: "risposta", usage: { inputTokens: 12, outputTokens: 3 } });
+    await withUsageScope({ jobId: job, kind: "lesson" }, () =>
+      runTurn({ selection: { provider: "claude", model: "sonnet" }, prompt: "Spiega il moto.", system: "Sei un tutor." }),
+    );
+    expect(run.mock.calls[0]?.[0].verbose).toBe(true);
+    const log = await readJobLog(job);
+    expect(log?.lines.map((line) => line.type)).toEqual(["call", "event", "end"]);
+    expect(log?.lines[0]).toMatchObject({ provider: "claude", model: "sonnet", access: "subscription", kind: "lesson", prompt: "Spiega il moto.", system: "Sei un tutor." });
+    expect(log?.lines[2]).toMatchObject({ text: "risposta", inputTokens: 12, outputTokens: 3, finishReason: "stop" });
+  });
+
+  it("logs a failed call with its error", async () => {
+    setDebugOn(true);
+    run.mockResolvedValueOnce({ error: new Error("limit reached") });
+    await expect(
+      withUsageScope({ jobId: job }, () => runTurn({ selection: { provider: "anthropic-api", model: "haiku" }, prompt: "x" })),
+    ).rejects.toThrow("limit reached");
+    const log = await readJobLog(job);
+    expect(log?.lines[0]).toMatchObject({ access: "api-key" });
+    expect(log?.lines.at(-1)).toMatchObject({ type: "end", error: "limit reached" });
+  });
+
+  it("logs nothing and keeps verbose off when debug mode is off or the call is outside a job", async () => {
+    run.mockResolvedValue({ text: "ok" });
+    await withUsageScope({ jobId: job }, () => runTurn({ selection: { provider: "claude", model: "m" }, prompt: "a" }));
+    setDebugOn(true);
+    await runTurn({ selection: { provider: "claude", model: "m" }, prompt: "b" });
+    expect(run.mock.calls.map((call) => call[0].verbose)).toEqual([undefined, undefined]);
+    expect(await readJobLog(job)).toBeNull();
   });
 });

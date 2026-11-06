@@ -3,9 +3,22 @@ import {
   type RequestInput,
   type RequestOutput,
 } from "../../shared/ipc";
+import type Database from "better-sqlite3";
+import { putSetting } from "../settings";
+import { callsOf, readJobLog, setDebugOn } from "../debug/log";
 import type { Runner } from "./runner";
 
-export function jobHandlers(runner: Runner, dev: boolean) {
+/** Whether debug mode is on, as stored. Off until the student turns it on. */
+export function readDebugSetting(db: Database.Database): boolean {
+  const row = db.prepare("SELECT value_json FROM settings WHERE key = 'debug'").get() as { value_json: string } | undefined;
+  try {
+    return row ? (JSON.parse(row.value_json) as { on?: unknown }).on === true : false;
+  } catch {
+    return false;
+  }
+}
+
+export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database) {
   return {
     list(): RequestOutput<"jobs.list"> {
       return runner.list();
@@ -38,6 +51,20 @@ export function jobHandlers(runner: Runner, dev: boolean) {
     ): RequestOutput<"jobs.dismiss"> {
       runner.dismiss(input.jobId);
       return {};
+    },
+    async log(input: RequestInput<"jobs.log">): Promise<RequestOutput<"jobs.log">> {
+      const log = await readJobLog(input.jobId);
+      if (!log) return null;
+      const { calls, capped } = callsOf(log.lines);
+      return { calls, text: log.text, truncated: log.truncated, capped };
+    },
+    debugGet(): RequestOutput<"debug.get"> {
+      return { on: db ? readDebugSetting(db) : false };
+    },
+    debugSet(input: RequestInput<"debug.set">): RequestOutput<"debug.set"> {
+      if (db) putSetting(db, "debug", { on: input.on });
+      setDebugOn(input.on);
+      return { on: input.on };
     },
   };
 }

@@ -1095,6 +1095,15 @@ function registerIpc(): void {
     broadcastAppearance();
     return next;
   });
+  // Only a job id names a file, and only inside the workspace's debug log folder (core/debug/log.ts).
+  ipcMain.handle(mainChannels.revealJobLog, (event, jobId: unknown) => {
+    requireMainSender(event, "reveal-untrusted-sender");
+    if (typeof jobId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(jobId) || !workspacePath) return false;
+    const file = join(workspacePath, "logs", "jobs", `${jobId}.jsonl`);
+    if (!existsSync(file)) return false;
+    shell.showItemInFolder(file);
+    return true;
+  });
   ipcMain.handle(mainChannels.openExternal, async (event, url: string) => {
     requireMainSender(event, "external-untrusted-sender");
     if (!allowedExternal(url)) throw new Error("blocked-url");

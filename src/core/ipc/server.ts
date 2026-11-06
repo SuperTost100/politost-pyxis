@@ -1,3 +1,4 @@
+import type Database from "better-sqlite3";
 import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
@@ -224,6 +225,9 @@ const routes = {
   "jobs.retry": ["jobs", "retry"],
   "jobs.resume": ["jobs", "resume"],
   "jobs.dismiss": ["jobs", "dismiss"],
+  "jobs.log": ["jobs", "log"],
+  "debug.get": ["jobs", "debugGet", "bare"],
+  "debug.set": ["jobs", "debugSet"],
   "engines.overview": ["engines", "overview", "bare"],
   "engines.acknowledge": ["engines", "acknowledge"],
   "engines.choice": ["engines", "choice", "bare"],
@@ -642,9 +646,9 @@ async function dispatchValidated(
   }
 }
 
-export function bindRunner(runner: Runner, dev: boolean): void {
+export function bindRunner(runner: Runner, dev: boolean, db?: Database.Database): void {
   jobRunner = runner;
-  setJobHandlers(jobHandlers(runner, dev));
+  setJobHandlers(jobHandlers(runner, dev, db));
 }
 
 export function removeEngineSelections(provider: string): void {

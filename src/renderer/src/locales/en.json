@@ -2072,6 +2072,30 @@
       "mapBuild_topic": "Building the map of {{topic}}",
       "simulationBuild": "Preparing the mock exam",
       "simulationGrade": "Grading the mock exam"
+    },
+    "debug": {
+      "title": "Technical details and debug",
+      "loading": "Reading the log…",
+      "failed": "The log couldn't be read.",
+      "none": "No AI calls logged for this job. The log starts once debug mode is on.",
+      "running": "running",
+      "seconds": "{{value}} s",
+      "request": "Request",
+      "reply": "Reply",
+      "events_one": "{{count}} engine event",
+      "events_other": "{{count}} engine events",
+      "moreEvents_one": "…and {{count}} more event, in the full log",
+      "moreEvents_other": "…and {{count}} more events, in the full log",
+      "capped": "The log reached 20 MB, and later lines weren't saved.",
+      "copy": "Copy the log",
+      "copied": "Log copied",
+      "copyFailed": "The log couldn't be copied.",
+      "open": "Open the log",
+      "access": {
+        "subscription": "subscription",
+        "api-key": "API key",
+        "local": "on this computer"
+      }
     }
   },
   "errors": {
@@ -2615,7 +2639,10 @@
     "signInTo": "Sign in to {{name}}",
     "chooseModel": "Choose another model",
     "notIncluded_one": "{{models}} isn't in your subscription",
-    "notIncluded_other": "{{models}} aren't in your subscription"
+    "notIncluded_other": "{{models}} aren't in your subscription",
+    "debug": "Show technical details and debug",
+    "debugHint": "Pyxis keeps a log of every AI call the jobs in Activity make, on this computer: which AI and model, how long it took, the request and the reply. Keys and tokens are hidden, and nothing is sent anywhere.",
+    "debugFailed": "This choice couldn't be saved. Try again."
   },
   "graph": {
     "title": "Graph",
