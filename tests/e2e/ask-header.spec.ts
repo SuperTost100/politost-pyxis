@@ -64,7 +64,8 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
 
     // Home is the greeting and the composer, with no suggested questions.
-    await expect(page.getByRole("list", { name: "Domande suggerite" })).toHaveCount(0);
+    await expect(page.locator(".ask-starters")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Cinematica|Dinamica/ })).toHaveCount(0);
     // The drawer no longer repeats New chat; the header has the only one.
     await expect(page.getByRole("button", { name: "Nuova chat" })).toHaveCount(1);
 
