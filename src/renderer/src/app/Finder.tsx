@@ -254,8 +254,8 @@ export function Finder({
               // Not type="search": Chromium's search field eats the first Esc to clear itself, and Esc should close.
               type="text"
               role="combobox"
-              aria-expanded
-              aria-controls={listId}
+              aria-expanded={rows.length > 0}
+              aria-controls={rows.length > 0 ? listId : undefined}
               aria-activedescendant={rows.length > 0 ? optionId(current) : undefined}
               aria-label={t("finder.label")}
               placeholder={view === "chats" ? t("finder.chatsPlaceholder") : t("finder.placeholder")}
@@ -281,8 +281,13 @@ export function Finder({
             />
             <kbd>{t("finder.close")}</kbd>
           </label>
-          <div className="px-finder-list" id={listId} role="listbox" aria-label={t("finder.label")}>
-            {list}
+          <div className="px-finder-list">
+            {/* The listbox holds options only; the messages about it sit beside it. */}
+            {rows.length > 0 ? (
+              <div id={listId} role="listbox" aria-label={t("finder.label")}>
+                {list}
+              </div>
+            ) : null}
             {rows.length === 0 && asked !== "" && settled ? (
               <p className="px-finder-none">{t("finder.none")}</p>
             ) : rows.length === 0 && asked === "" && view === "chats" && chats.isSuccess ? (

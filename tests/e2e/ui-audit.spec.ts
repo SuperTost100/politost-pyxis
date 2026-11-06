@@ -2159,7 +2159,7 @@ async function openState(page: Page, name: string) {
       break;
     case "jobs-popover":
       await page
-        .getByRole("button", { name: /^(Attività|Background tasks):/ })
+        .getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ })
         .click();
       {
         const list = page.getByRole("region", {
@@ -2309,7 +2309,7 @@ async function openState(page: Page, name: string) {
       break;
     case "ocr-jobs-popover":
       await page
-        .getByRole("button", { name: /^(Attività|Background tasks):/ })
+        .getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ })
         .click();
       await expect(
         page.getByRole("region", { name: /^(Attività|Background tasks)$/ }),
@@ -3096,7 +3096,7 @@ async function keyboardCheck(page: Page, name: string) {
         tag: element?.tagName,
         html: element?.outerHTML.slice(0, 400),
         visible: Boolean(rect && rect.width > 0 && rect.height > 0),
-        modal: Boolean(element?.closest("[role='dialog']")),
+        modal: Boolean(element?.closest("[role='dialog'], dialog[open]")),
       };
     });
   const seen = new Set<number>();

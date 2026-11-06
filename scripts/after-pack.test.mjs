@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 const require = createRequire(import.meta.url);
-const { dropSwiftShader, pruneUnpacked } = require("../build/after-pack.cjs");
+const { dropSwiftShader, pruneUnpacked, signOrder } = require("../build/after-pack.cjs");
 
 // What the unpacked node_modules hold before pruning: every platform's binaries.
 const onnxFiles = {
@@ -125,6 +125,48 @@ test("pruning fails the build when the target's binaries are not there", async (
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  }
+});
+
+test("a Developer ID build signs every Mac binary, each bundle after its contents, and skips links", async () => {
+  const root = await mkdtemp(join(tmpdir(), "pyxis-sign-order-"));
+  const app = join(root, "PoliTost Pyxis.app");
+  const thin = Buffer.from("cffaedfe0000", "hex");
+  const universal = Buffer.from("cafebabe0000", "hex");
+  const files = {
+    "Contents/MacOS/PoliTost Pyxis": thin,
+    "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework": thin,
+    // Where codesign --deep does not look, and notarization found them unsigned.
+    "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib": thin,
+    "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt": thin,
+    "Contents/Frameworks/PoliTost Pyxis Helper.app/Contents/MacOS/PoliTost Pyxis Helper": thin,
+    "Contents/Resources/app.asar.unpacked/node_modules/canvas/skia.node": universal,
+    "Contents/Resources/app.asar": Buffer.from("not a binary"),
+    "Contents/Info.plist": Buffer.from("<plist/>"),
+  };
+  try {
+    for (const [file, bytes] of Object.entries(files)) {
+      await mkdir(dirname(join(app, file)), { recursive: true });
+      await writeFile(join(app, file), bytes);
+    }
+    const framework = join(app, "Contents/Frameworks/Electron Framework.framework");
+    await symlink("A", join(framework, "Versions/Current"));
+    await symlink("Versions/Current/Libraries", join(framework, "Libraries"));
+    const order = signOrder(app).map((path) => relative(app, path));
+    assert.deepEqual(
+      [...order].sort(),
+      [
+        ...Object.keys(files).filter((file) => !/app\.asar$|Info\.plist$/.test(file)),
+        "Contents/Frameworks/Electron Framework.framework",
+        "Contents/Frameworks/Squirrel.framework",
+        "Contents/Frameworks/PoliTost Pyxis Helper.app",
+      ].sort(),
+    );
+    for (const bundle of order.filter((path) => /\.(framework|app)$/.test(path)))
+      for (const inner of order.filter((path) => path.startsWith(`${bundle}/`)))
+        assert.ok(order.indexOf(inner) < order.indexOf(bundle), `${inner} before ${bundle}`);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

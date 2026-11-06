@@ -167,6 +167,39 @@ jobs:
       - uses: ./.github/actions/prepare
         with:
           fixtures: "true"
+      # A build started by hand signs with Tost's Developer ID and is notarized by Apple (build/after-pack.cjs), so it
+      # opens on the first double-click. Pull requests never see the secrets and sign ad hoc.
+      # shortcut: the signing secrets are repository secrets, so a workflow changed on a branch could reach them. Only
+      # Tost and his agents push here. Move them to a "release" environment limited to main once anyone else can push.
+      - name: Load the Developer ID and the notary key
+        if: runner.os == 'macOS' && github.event_name == 'workflow_dispatch'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -n 1)"
+          [ -n "$identity" ] || { echo "::error::CSC_LINK holds no Developer ID Application identity"; exit 1; }
+          echo "PYXIS_MAC_IDENTITY=$identity" >> "$GITHUB_ENV"
+          # notarytool reads the key from a file in the runner's temp folder, wiped after the job. It is rewritten as a
+          # clean PEM, because a key pasted from a browser can carry stray spaces or line breaks. Nothing of it is printed.
+          key="$RUNNER_TEMP/notary.p8"
+          body=$(printf '%s' "$APPLE_API_KEY_P8" | sed -e 's/-----[A-Z ]*-----//g' | tr -d ' \t\r\n')
+          { echo "-----BEGIN PRIVATE KEY-----"; printf '%s\n' "$body" | fold -w 64; echo "-----END PRIVATE KEY-----"; } > "$key"
+          openssl pkey -in "$key" -noout || { echo "::error::APPLE_API_KEY_P8 isn't a readable private key"; exit 1; }
+          { echo "APPLE_API_KEY=$key"; echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"; echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"; } >> "$GITHUB_ENV"
       - name: Package without publishing
         run: npm run dist -- ${{ matrix.builder }} --publish never
       - name: Convert the disk image to ULMO
@@ -186,6 +219,17 @@ jobs:
               node -e 'require("app-builder-lib/out/targets/blockmap/blockmap").buildBlockMap(process.argv[1], "gzip", process.argv[1] + ".blockmap")' "$dmg"
             fi
             ls -l "$dmg"
+          done
+      # A signed build must carry Tost's Developer ID, the hardened runtime and Apple's ticket, or Gatekeeper blocks its
+      # first launch.
+      - name: Check the signature and the notarization
+        if: runner.os == 'macOS' && github.event_name == 'workflow_dispatch'
+        run: |
+          for app in dist/mac*/"PoliTost Pyxis.app"; do
+            codesign -dvv "$app" 2>&1 | grep "Authority=$PYXIS_MAC_IDENTITY"
+            codesign -dvv "$app" 2>&1 | grep "flags=0x10000(runtime)"
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app" 2>&1 | tee /dev/stderr | grep "source=Notarized Developer ID"
           done
       - name: Check the packaged application
         run: |

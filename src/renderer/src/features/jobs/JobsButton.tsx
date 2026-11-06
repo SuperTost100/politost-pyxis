@@ -45,6 +45,17 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
       .filter(Boolean)
       .join(", "),
   });
+  // The Attività row's count: the problems, else the running jobs. Its hidden words drop the number it already shows.
+  const shown = problems.length || running.length;
+  const withoutCount = (text: string) => text.replace(/^\d+\s*/, "");
+  const rowWords = [
+    problems.length > 0
+      ? ` ${withoutCount(t("jobs.toFix", { count: problems.length }))}`
+      : running.length > 0
+        ? ` ${withoutCount(t("jobs.running", { count: running.length }))}`
+        : `: ${empty ? t("jobs.none") : t("jobs.doneToday", { count: finished.length })}`,
+    problems.length > 0 && running.length > 0 ? `, ${t("jobs.running", { count: running.length })}` : "",
+  ].join("");
   const close = (restoreFocus: boolean) => {
     setOpen(false);
     if (restoreFocus) trigger.current?.focus();
@@ -83,29 +94,25 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
         }
       >
         {variant === "row" ? (
+          // The row names itself from what it shows, the word and the count, plus hidden words that say what the
+          // count is: "Attività 4 da sistemare, 1 in corso".
           <button
             ref={trigger}
             type="button"
             className="px-jobs-row"
             data-tip={t("jobs.title")}
             aria-expanded={open}
-            aria-label={label}
           >
             {running.length > 0 ? (
               <LoaderCircle className="px-spin" size={18} strokeWidth={1.75} aria-hidden />
             ) : (
               <Clock size={18} strokeWidth={1.75} aria-hidden />
             )}
-            <span aria-hidden>{t("jobs.title")}</span>
-            {problems.length > 0 ? (
-              <span className="px-side-count is-problem" aria-hidden>
-                {problems.length}
-              </span>
-            ) : running.length > 0 ? (
-              <span className="px-side-count" aria-hidden>
-                {running.length}
-              </span>
+            <span>{t("jobs.title")}</span>
+            {shown > 0 ? (
+              <span className={problems.length > 0 ? "px-side-count is-problem" : "px-side-count"}>{shown}</span>
             ) : null}
+            <span className="visually-hidden">{rowWords}</span>
           </button>
         ) : (
         <Button
