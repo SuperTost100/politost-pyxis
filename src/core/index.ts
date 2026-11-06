@@ -30,7 +30,7 @@ import {
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
 import { readDebugSetting } from "./jobs/handlers";
-import { setDebugLogRoot, setDebugOn } from "./debug/log";
+import { pruneJobLogs, setDebugLogRoot, setDebugOn } from "./debug/log";
 
 import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
@@ -127,6 +127,8 @@ if (!parent) {
     setScratch(join(workspacePath, "scratch"));
     setDebugLogRoot(join(workspacePath, "logs"));
     setDebugOn(readDebugSetting(db));
+    const jobExists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
+    void pruneJobLogs((id) => jobExists.get(id) !== undefined);
     // Explicit recorded fixtures may use a deterministic selection in their
     // private test workspace. Normal launches require a confirmed engine.
     const recordedFixture =

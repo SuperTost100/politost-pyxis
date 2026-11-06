@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { answerNextMenu, lastMenuLabels } from "./native-menu";
 
 const ANSWER = [
   "Il calore passa per conduzione: \\(Q=mc\\Delta T\\) [P1].",
@@ -102,10 +103,10 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     await expect(list.getByRole("listitem")).toHaveCount(2);
 
     const exportWith = async (item: string) => {
+      await answerNextMenu(app, item);
       await page
         .getByRole("button", { name: "Azioni per Termodinamica" })
         .click();
-      await page.getByRole("menuitem", { name: item }).click();
       await expect(page.getByText("File salvato")).toBeVisible();
     };
     await exportWith("Esporta come Markdown");
@@ -125,11 +126,12 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     );
 
     await exportWith("Esporta come PDF");
-    expect(readFileSync(saved).subarray(0, 5).toString()).toBe("%PDF-");
+    // The Markdown export's "File saved" may still be showing, so wait for the file itself.
+    await expect.poll(() => readFileSync(saved).subarray(0, 5).toString()).toBe("%PDF-");
 
     // Renaming an older chat leaves it where it was in the list.
+    await answerNextMenu(app, "Rinomina");
     await page.getByRole("button", { name: "Azioni per Analisi" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
     const rename = page.getByRole("textbox", { name: "Nome della chat" });
     await rename.fill("Limiti");
     await rename.press("Enter");
@@ -146,10 +148,11 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     // The labels follow the interface language.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     await page.reload();
+    await answerNextMenu(app, "Export as Markdown");
     await page
       .getByRole("button", { name: "Actions for Termodinamica" })
       .click();
-    await page.getByRole("menuitem", { name: "Export as Markdown" }).click();
+    await expect.poll(() => lastMenuLabels(app)).toContain("Export as Markdown");
     await expect(page.getByText("File saved")).toBeVisible();
     const english = readFileSync(saved, "utf8");
     expect(english).toContain("## Student");

@@ -271,3 +271,25 @@ export function buildMenuTemplate(
 
   return [...appMenu, file, edit, go, view, ...windowMenu, help];
 }
+
+/**
+ * The items of a context menu the window asked for, or null when the request is not one: at most 20 items, each a
+ * separator (null) or an id and a label of plain text.
+ */
+export function contextMenuItems(raw: unknown): Array<{ id: string; label: string; enabled?: boolean } | null> | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 20) return null;
+  const items: Array<{ id: string; label: string; enabled?: boolean } | null> = [];
+  for (const item of raw) {
+    if (item === null) {
+      items.push(null);
+      continue;
+    }
+    if (typeof item !== "object") return null;
+    const { id, label, enabled } = item as Record<string, unknown>;
+    if (typeof id !== "string" || id.length === 0 || id.length > 64) return null;
+    if (typeof label !== "string" || label.length === 0 || label.length > 120) return null;
+    if (enabled !== undefined && typeof enabled !== "boolean") return null;
+    items.push(enabled === undefined ? { id, label } : { id, label, enabled });
+  }
+  return items;
+}

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -79,6 +79,11 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
       .toEqual([join(folder, `${jobId}.jsonl`)]);
     // A job id that is not one never names a file.
     expect(await page.evaluate(() => window.pyxis.revealJobLog("../../pyxis.db"))).toBe(false);
+
+    // Dismissing the job deletes its log with it.
+    await page.keyboard.press("Escape");
+    await page.evaluate((id) => window.pyxis.invoke("jobs.dismiss", { jobId: id }), jobId);
+    await expect.poll(() => existsSync(join(folder, `${jobId}.jsonl`))).toBe(false);
 
     // Turned off, the details go.
     await page.keyboard.press("Escape");

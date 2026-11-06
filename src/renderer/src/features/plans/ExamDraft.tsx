@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Slider } from "antd";
+import { AutoComplete, Button, Input, Slider } from "antd";
 import dayjs from "dayjs";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -197,25 +197,27 @@ export function ExamStep({ draft }: { draft: ExamDraft }) {
           <label className="label" htmlFor="plan-subject">
             {t("wizard.subject")}
           </label>
-          <Input
-            id="plan-subject"
-            placeholder={t("wizard.subjectPlaceholder")}
-            list="plan-subjects"
+          {/* The app's own list, in its look and theme, of the subjects still in use; a new name is typed in. */}
+          <AutoComplete
             value={draft.subject}
-            aria-describedby="plan-subject-help"
-            onChange={(event) => {
-              const next = event.target.value;
-              // A subject picked from the list names the exam, unless the student already did.
-              if (!draft.title.trim() && (subjects.data ?? []).some((item) => item.name === next))
-                draft.setTitle(next);
-              draft.setSubject(next);
+            options={(subjects.data ?? [])
+              .filter((item) => item.inUse)
+              .map((item) => ({ value: item.name }))}
+            filterOption={(typed, option) =>
+              (option?.value ?? "").toLocaleLowerCase().includes(typed.toLocaleLowerCase())
+            }
+            onChange={draft.setSubject}
+            // A subject picked from the list names the exam, unless the student already did.
+            onSelect={(picked: string) => {
+              if (!draft.title.trim()) draft.setTitle(picked);
             }}
-          />
-          <datalist id="plan-subjects">
-            {(subjects.data ?? []).map((item) => (
-              <option key={item.id} value={item.name} />
-            ))}
-          </datalist>
+          >
+            <Input
+              id="plan-subject"
+              placeholder={t("wizard.subjectPlaceholder")}
+              aria-describedby="plan-subject-help"
+            />
+          </AutoComplete>
           <p id="plan-subject-help" className="small ink-muted">
             {t("wizard.subjectHelp")}
           </p>

@@ -1,4 +1,6 @@
-/* Chiedi runs edge to edge: the chat sidebar at the window's left edge, the chat column centred in the rest. */
+/* Chiedi runs edge to edge: the chat sidebar at the window's left edge, and the chat in the rest. As in the mockup, the
+   chat's header spans that whole area, so the button that folds the sidebar sits right beside it, while the greeting,
+   the messages and the composer keep the column every page has, centred. */
 .ask-layout {
   display: flex;
   align-items: flex-start;
@@ -6,7 +8,12 @@
 .ask-layout > .ask-page {
   flex: 1;
   min-width: 0;
+}
+.ask-page > .ask-greeting,
+.ask-page > .ask-thread,
+.ask-page > .ask-dock {
   box-sizing: border-box;
+  width: 100%;
   max-width: var(--content-width);
   margin-inline: auto;
   padding-inline: 24px;
@@ -21,7 +28,7 @@
   min-height: 60vh;
 }
 
-/* The header bar: the chat list, the open chat's title and New chat, on the column's edges. */
+/* The header bar: the button that folds the chat sidebar, then the open chat's title. */
 .ask-bar {
   position: sticky;
   top: var(--ask-header);
@@ -29,8 +36,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--control-md);
-  padding: var(--space-1) 0;
+  min-height: 46px;
+  padding: 0 10px 0 14px;
   background: var(--bg);
 }
 

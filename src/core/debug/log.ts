@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 /**
@@ -213,7 +213,7 @@ export async function readJobLog(jobId: string): Promise<{ lines: LogLine[]; tex
   return { lines, text, truncated };
 }
 
-/** Deletes a job's log, with the job. */
+/** Deletes a job's log, with the job: dismissing it deletes the row and this file. */
 export async function removeJobLog(jobId: string): Promise<void> {
   const file = fileFor(jobId);
   if (!file) return;
@@ -288,4 +288,23 @@ export function callsOf(lines: LogLine[]): { calls: CallView[]; capped: boolean 
     }
   }
   return { calls: [...calls.values()], capped };
+}
+
+/** Deletes the logs of jobs that are gone, such as an exam's jobs deleted with it. Core runs it at start. */
+export async function pruneJobLogs(exists: (jobId: string) => boolean): Promise<void> {
+  if (!root) return;
+  const folder = join(root, "jobs");
+  const names = await readdir(folder).catch(() => [] as string[]);
+  for (const name of names) {
+    const id = name.endsWith(".jsonl") ? name.slice(0, -".jsonl".length) : "";
+    if (id && !exists(id)) await removeJobLog(id);
+  }
+}
+
+/** Deletes every job log. Turning debug mode off does this, so nothing it kept stays on disk. */
+export async function clearJobLogs(): Promise<void> {
+  if (!root) return;
+  await flushDebugLog();
+  sizes.clear();
+  await rm(join(root, "jobs"), { recursive: true, force: true });
 }

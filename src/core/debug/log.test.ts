@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   callsOf,
+  clearJobLogs,
+  pruneJobLogs,
   EVENTS_SHOWN,
   flushDebugLog,
   JOB_LOG_MAX,
@@ -124,6 +126,17 @@ describe("job log", () => {
     await flushDebugLog();
     const tail = readFileSync(file, "utf8").split("\n").filter(Boolean).slice(1);
     expect(tail.map((line) => JSON.parse(line).type)).toEqual(["log.capped"]);
+  });
+
+  it("prunes the logs of jobs that are gone, and clears them all when debug mode goes off", async () => {
+    const other = "0190c8a2-0000-7000-8000-000000000002";
+    for (const id of [job, other]) startCall(id, { provider: "claude", model: "m", access: "subscription", prompt: "p" })!.end({ text: "" });
+    await flushDebugLog();
+    await pruneJobLogs((id) => id === job);
+    expect(await readJobLog(job)).not.toBeNull();
+    expect(await readJobLog(other)).toBeNull();
+    await clearJobLogs();
+    expect(await readJobLog(job)).toBeNull();
   });
 
   it("deletes a job's log", async () => {

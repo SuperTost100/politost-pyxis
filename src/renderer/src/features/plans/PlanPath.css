@@ -57,6 +57,10 @@
 .px-path {
   padding-bottom: var(--space-16);
 }
+/* The hint about weekly hours sits above the path with room of its own, not against the first row. */
+.px-path > .px-notice {
+  margin-bottom: var(--space-4);
+}
 .px-path-rows {
   padding: 0;
   margin: 0;
