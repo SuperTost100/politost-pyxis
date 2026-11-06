@@ -30,12 +30,16 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
     await expect(debugSwitch).toBeChecked();
     expect(await page.evaluate(() => window.pyxis.invoke("debug.get", {}))).toEqual({ on: true });
 
-    // A job that failed, so Attività lists it, with the log debug mode kept for it in the workspace.
+    // Two jobs that failed, so Attività lists them, each with the log debug mode kept for it in the workspace. The second
+    // one is dismissed later, and the first keeps Attività open for the end of the test.
     const jobId = "0190c8a2-0000-7000-8000-00000000d0b9";
+    const other = "0190c8a2-0000-7000-8000-00000000d0ba";
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    db.prepare(
+    const job = db.prepare(
       "INSERT INTO jobs(id, kind, params_json, state, progress, step_label, error, created_at, updated_at) VALUES (?, 'demo', '{}', 'failed', 0, NULL, 'engine-failed', ?, ?)",
-    ).run(jobId, Date.now(), Date.now());
+    );
+    job.run(jobId, Date.now(), Date.now());
+    job.run(other, Date.now() - 1000, Date.now() - 1000);
     db.close();
     await page.reload();
     const folder = join(userData, "workspace", "logs", "jobs");
@@ -51,12 +55,16 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
         .map((line) => JSON.stringify(line))
         .join("\n") + "\n",
     );
+    writeFileSync(join(folder, `${other}.jsonl`), `${JSON.stringify({ type: "call", at, id: "c2", provider: "codex", model: "gpt-5", access: "subscription", prompt: "Altro" })}\n`);
 
     // Attività shows the job's calls under "Technical details and debug": AI, model, access and time, then the request,
     // the reply and the engine's events.
     await page.getByRole("button", { name: /^Attività/ }).click();
-    const details = page.locator(".px-jobs-debug").first();
-    await details.locator("summary").click();
+    // Each job has its own details; open them all, then follow the job whose log names Claude.
+    const summaries = page.locator(".px-jobs-debug > summary");
+    await expect(summaries).toHaveCount(2);
+    for (const summary of await summaries.all()) await summary.click();
+    const details = page.locator(".px-jobs-debug").filter({ hasText: "Claude" });
     await expect(details).toContainText("Claude");
     await expect(details).toContainText("abbonamento");
     await expect(details).toContainText("2,4 s");
@@ -80,17 +88,19 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
     // A job id that is not one never names a file.
     expect(await page.evaluate(() => window.pyxis.revealJobLog("../../pyxis.db"))).toBe(false);
 
-    // Dismissing the job deletes its log with it.
+    // Dismissing a job deletes its log with it, and only its own.
     await page.keyboard.press("Escape");
-    await page.evaluate((id) => window.pyxis.invoke("jobs.dismiss", { jobId: id }), jobId);
-    await expect.poll(() => existsSync(join(folder, `${jobId}.jsonl`))).toBe(false);
+    await page.evaluate((id) => window.pyxis.invoke("jobs.dismiss", { jobId: id }), other);
+    await expect.poll(() => existsSync(join(folder, `${other}.jsonl`))).toBe(false);
+    expect(existsSync(join(folder, `${jobId}.jsonl`))).toBe(true);
 
-    // Turned off, the details go.
+    // Turned off, the details go, and so do the logs kept so far.
     await page.keyboard.press("Escape");
     await debugSwitch.click();
     await expect(debugSwitch).not.toBeChecked();
     await page.getByRole("button", { name: /^Attività/ }).click();
     await expect(page.locator(".px-jobs-debug")).toHaveCount(0);
+    await expect.poll(() => existsSync(join(folder, `${jobId}.jsonl`))).toBe(false);
   } finally {
     await app.close();
     removeTestFolder(userData);
