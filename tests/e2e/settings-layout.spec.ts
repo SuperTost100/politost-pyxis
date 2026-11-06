@@ -63,6 +63,13 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
       window.location.hash = "#/settings/diagnostics";
     });
     await expect(sidebar.getByRole("button", { name: "Strumenti AI" })).toHaveAttribute("aria-current", "page");
+    // Diagnostics has no section of its own: the page opens at the engines section, wherever the window was scrolled.
+    await expect
+      .poll(() => page.evaluate(() => Math.round(document.getElementById("settings-engines")!.getBoundingClientRect().top)))
+      .toBeLessThan(200);
+    await expect
+      .poll(() => page.evaluate(() => Math.round(document.getElementById("settings-engines")!.getBoundingClientRect().top)))
+      .toBeGreaterThanOrEqual(0);
 
     // The two Data buttons have the standard 12px gap between them.
     await sidebar.getByRole("button", { name: "Dati e privacy" }).click();

@@ -730,7 +730,10 @@ export function SettingsPage() {
   // A link to one section of a page opens the page at that section.
   useEffect(() => {
     if (section && section !== active)
-      document.getElementById(`settings-${section}`)?.scrollIntoView({ block: "start" });
+      // An old name with no section of its own, such as diagnostics, lands on the section its page shows.
+      (
+        document.getElementById(`settings-${section}`) ?? document.getElementById(`settings-${active}`)
+      )?.scrollIntoView({ block: "start" });
   }, [section, active]);
   // Switching pages drops a half-confirmed restore or wipe, like leaving the page does.
   function open(key: string) {
