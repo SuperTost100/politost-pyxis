@@ -2189,7 +2189,7 @@ async function openState(page: Page, name: string) {
           list.getByRole("heading", { name: /^(Attività|Background tasks)$/ }),
         ).toBeVisible();
         await expect(
-          list.getByRole("heading", { name: /^(Da sistemare|To fix) · / }),
+          list.getByRole("heading", { name: /^(Ti serve|Needs you)$/ }),
         ).toBeVisible();
         await expect(
           list.getByText(
@@ -2198,8 +2198,11 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(list.getByText(/troppi pixel|too many pixels/)).toBeVisible();
         await expect(
-          list.getByRole("heading", { name: /^(In corso|Running) · 2$/ }),
+          list.getByRole("heading", { name: /^(In corso|Running)$/ }),
         ).toBeVisible();
+        await expect(
+          list.getByRole("progressbar"),
+        ).toHaveCount(2);
         await expect(
           list.getByRole("progressbar", {
             name: /Scrivo le flashcard|Writing flashcards/,
@@ -2213,7 +2216,7 @@ async function openState(page: Page, name: string) {
         // A lesson the lesson page wrote shows as finished work, named after its topic, with its exam.
         await expect(
           list.locator("li", { hasText: /^(Lezione su Limiti scritta|Lesson on Limiti written)/ }),
-        ).toContainText("Analisi 1 · ");
+        ).toContainText("Analisi 1");
         // Jobs that stopped for one reason are one problem with the count in its title. How many share the reason
         // depends on which states ran before this one (a full run seeds one more), so only the merge is checked.
         await expect(
@@ -2226,7 +2229,7 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         // Finished today, with the engine that answered after another one refused.
         await expect(
-          list.getByRole("heading", { name: /^(Finite oggi|Finished today) · / }),
+          list.getByRole("heading", { name: /^(Finite oggi|Finished today)$/ }),
         ).toBeVisible();
         await expect(
           list.getByText(

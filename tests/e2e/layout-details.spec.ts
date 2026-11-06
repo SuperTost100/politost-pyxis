@@ -419,3 +419,49 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
     removeTestFolder(userData);
   }
 });
+
+test("LAYOUT-06 a long Attività list stays inside the window and leaves the page where it was", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-jobs-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const now = Date.now();
+    const job = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    );
+    job.run("j-failed", "ocr-data-download", "{}", "failed", 0.5, "sources.jobs.ocrData", "ocr-data-offline", now, now);
+    job.run("j-a", "source-import", JSON.stringify({ sourceId: "a" }), "running", 0.4, "sources.jobs.extract", null, now, now);
+    job.run("j-b", "source-import", JSON.stringify({ sourceId: "b" }), "running", 0.7, "sources.jobs.extract", null, now, now);
+    for (const [index, topic] of ["Limiti", "Derivate", "Integrali", "Serie", "Successioni", "Continuità"].entries()) {
+      const at = now - 60_000 * (index + 1);
+      job.run(`j-done-${index}`, "lesson-write", JSON.stringify({ exam: "Analisi 1", topic }), "succeeded", 1, null, null, at, at);
+    }
+    db.close();
+    await page.reload();
+
+    // The list opens beside its sidebar row and is taller than the room below it: it slides up instead of hanging
+    // below the window, which used to grow the page and scroll the sidebar away.
+    const side = page.getByRole("complementary", { name: "Barra laterale" });
+    await side.getByRole("button", { name: /^Attività/ }).click();
+    const list = page.locator(".px-jobs");
+    await expect(list).toBeFocused();
+    await expect(list.getByRole("heading", { level: 2, name: "Attività" })).toBeInViewport();
+    await expect(list.getByRole("heading", { name: "Ti serve" })).toBeVisible();
+    const box = (await list.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(800 - 16 + 1);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    expect((await side.boundingBox())!.y).toBe(0);
+    // A finished job shows its time on its own, beside the exam it belongs to.
+    const done = list.locator("li", { hasText: "Lezione su Limiti scritta" });
+    await expect(done.locator(".px-jobs-sub")).toHaveText("Analisi 1");
+    await expect(done.locator("time")).toHaveText(/^\d{2}:\d{2}$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
