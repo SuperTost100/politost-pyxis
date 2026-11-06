@@ -1,29 +1,27 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Drawer, Dropdown, Input, Modal, Select } from "antd";
-import { Ellipsis, Search } from "lucide-react";
+import { App, Button, Dropdown, Input, Modal } from "antd";
+import { Ellipsis, Search, SquarePen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
-import { chatSubjects, filterBySubject, groupChats, type ChatGroup } from "./chatList";
+import { groupChats, type ChatGroup } from "./chatList";
 import "./ChatPanel.css";
-import { useChats, useSubjects } from "../../lib/queries";
+import { useChats } from "../../lib/queries";
 
 /**
- * The saved chats as a drawer from the left, newest first under Today, This week and Older. A search box narrows them
- * by title and message text, and a subject filter by the subject each chat is filed under; the two combine. Each row
- * opens its chat; a menu renames, exports or deletes it on demand. New chat lives in the page header.
+ * The saved chats as a sidebar at the window's left edge: New chat, a search box over titles and message text, then
+ * the chats newest first under Today, Yesterday, This week and Earlier, each with its subject. Each row opens its
+ * chat; a menu renames, exports or deletes it. The panel button in the chat header folds the sidebar.
  */
 export function ChatPanel({
   open,
-  onClose,
   chatId,
   onOpenChat,
   onNew,
   onDeleted,
 }: {
   open: boolean;
-  onClose: () => void;
   chatId?: string;
   onOpenChat: (id: string) => void;
   onNew: () => void;
@@ -34,12 +32,10 @@ export function ChatPanel({
   const { message } = App.useApp();
   const client = useQueryClient();
   const history = useChats();
-  const subjects = useSubjects();
   const [query, setQuery] = useState("");
-  const [subject, setSubject] = useState("");
   const [asked, setAsked] = useState("");
   const [exporting, setExporting] = useState(false);
-  // Leaving the drawer clears the search, so the next visit starts with the whole list.
+  // Folding the sidebar clears the search, so the next visit starts with the whole list.
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
@@ -64,25 +60,23 @@ export function ChatPanel({
   // Esc unmounts the field, so the blur that follows must not save what Esc just cancelled.
   const cancelled = useRef(false);
   const chats = history.data ?? [];
-  const filed = chatSubjects(chats, subjects.data ?? []);
-  // A filter for a subject no chat uses any more (its last chat was deleted) shows everything again.
-  const filter = filed.includes(subject) ? subject : "";
-  // Core searches within the filter, so its cap on results counts only the subject's chats.
   const found = useQuery({
-    queryKey: ["chats", "search", asked, filter],
-    queryFn: () => invoke("chats.search", { query: asked, subject: filter || undefined }),
+    queryKey: ["chats", "search", asked],
+    queryFn: () => invoke("chats.search", { query: asked }),
     enabled: asked !== "",
     placeholderData: keepPreviousData,
   });
-  const hits = searching ? (found.data?.hits ?? []) : null;
-  const rows = filterBySubject<{
+  const rows: Array<{
     id: string;
     title: string | null;
     updatedAt: number;
     snippet?: { text: string; start: number; end: number } | null;
-  }>(hits ?? chats, filter, chats);
+  }> = searching ? (found.data?.hits ?? []) : chats;
+  // A search hit carries no subject, so each row looks its subject up in the chat list.
+  const subjectOf = new Map(chats.map((chat) => [chat.id, chat.subject]));
   const groupName: Record<ChatGroup, string> = {
     today: t("ask.groupToday"),
+    yesterday: t("ask.groupYesterday"),
     week: t("ask.groupWeek"),
     older: t("ask.groupOlder"),
   };
@@ -152,15 +146,16 @@ export function ChatPanel({
 
   return (
     <>
-      <Drawer
-        open={open}
-        onClose={onClose}
-        placement="left"
-        size={320}
-        title={t("ask.history")}
-        closable={{ "aria-label": t("ask.chatsClose") }}
-        rootClassName="ask-panel"
-      >
+      {open ? (
+      <aside className="ask-panel" aria-label={t("ask.yourChats")}>
+        <Button
+          type="text"
+          className="ask-panel-new"
+          icon={<SquarePen size={16} strokeWidth={1.75} aria-hidden />}
+          onClick={onNew}
+        >
+          {t("ask.new")}
+        </Button>
         <div role="search" className="ask-panel-search">
           <Input
             aria-label={t("ask.searchLabel")}
@@ -171,34 +166,20 @@ export function ChatPanel({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              // Esc clears the search first; only an empty box lets it close the drawer.
+              // Esc clears the search.
               if (event.key === "Escape" && query) {
                 event.stopPropagation();
                 setQuery("");
               }
             }}
           />
-          {filed.length > 0 ? (
-            <Select
-              aria-label={t("ask.subjectFilter")}
-              value={filter}
-              onChange={setSubject}
-              popupMatchSelectWidth={false}
-              options={[
-                { value: "", label: t("ask.subjectAll") },
-                ...filed.map((name) => ({ value: name, label: name })),
-              ]}
-            />
-          ) : null}
         </div>
         <div className="visually-hidden" role="status" aria-live="polite">
           {settled ? t("ask.searchCount", { count: rows.length }) : ""}
         </div>
         {searching && settled && rows.length === 0 ? (
           <p className="small ask-panel-empty">
-            {filter
-              ? t("ask.searchNoneSubject", { query: query.trim(), subject: filter })
-              : t("ask.searchNone", { query: query.trim() })}
+            {t("ask.searchNone", { query: query.trim() })}
           </p>
         ) : !searching && chats.length === 0 ? (
           <p className="small ask-panel-empty">{t("ask.chatsEmpty")}</p>
@@ -215,6 +196,7 @@ export function ChatPanel({
               const title = nameOf(chat.title);
               const editing = renaming?.id === chat.id;
               const snippet = chat.snippet;
+              const filedUnder = subjectOf.get(chat.id);
               return (
                 <li key={chat.id} className="ask-panel-item">
                   {heading ? <h2 className="ask-panel-heading">{groupName[heading]}</h2> : null}
@@ -254,12 +236,10 @@ export function ChatPanel({
                         type="button"
                         className="ask-panel-title"
                         aria-current={chat.id === chatId ? "page" : undefined}
-                        onClick={() => {
-                          onOpenChat(chat.id);
-                          onClose();
-                        }}
+                        onClick={() => onOpenChat(chat.id)}
                       >
                         <span className="ask-panel-name">{title}</span>
+                        {filedUnder ? <span className="ask-panel-subject">{filedUnder}</span> : null}
                         {snippet ? (
                           <span className="ask-panel-snippet">
                             {snippet.text.slice(0, snippet.start)}
@@ -317,7 +297,8 @@ export function ChatPanel({
             {t("ask.searchCapped", { count: found.data.hits.length })}
           </p>
         ) : null}
-      </Drawer>
+      </aside>
+      ) : null}
       <Modal
         open={deleting !== null}
         onCancel={() => setDeleting(null)}

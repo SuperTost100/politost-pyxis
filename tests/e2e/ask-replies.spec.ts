@@ -52,8 +52,6 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     await expect(
       reply.getByText("Il motore si è fermato prima di finire la risposta."),
     ).toBeVisible();
-    // The chat's own tokens sit in the bar: 18,400 sent and 2,100 received.
-    await expect(page.locator(".ask-usage")).toContainText("20,5");
 
     await reply.getByRole("button", { name: "Continua" }).click();
     // Before the engine sends anything, the saved part stays on screen instead of a thinking placeholder.

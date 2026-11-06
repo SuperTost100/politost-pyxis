@@ -1976,18 +1976,12 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "ask-panel":
-      await page
-        .getByRole("button", { name: both("Apri le chat", "Open chats") })
-        .click();
       await expect(
         page.getByRole("list", { name: both("Chat", "Chats") }),
       ).toBeVisible();
       break;
     case "ask-search":
     case "ask-search-empty": {
-      await page
-        .getByRole("button", { name: both("Apri le chat", "Open chats") })
-        .click();
       const empty = name === "ask-search-empty";
       await page
         .getByRole("textbox", {
@@ -2022,9 +2016,6 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "ask-delete":
-      await page
-        .getByRole("button", { name: both("Apri le chat", "Open chats") })
-        .click();
       await page
         .getByRole("button", {
           name: /^(Azioni per|Actions for) Seconda legge di Newton/,

@@ -176,8 +176,7 @@ test("Ask: the composer chip is the only subject control and picks the subject's
       location.hash = "/ask";
     });
     await expect(page.getByRole("button", { name: "Fonti", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Apri le chat" }).click();
-    await page.getByRole("button", { name: "Come si risolve un integrale per parti?", exact: true }).click();
+    await page.getByRole("button", { name: /^Come si risolve un integrale per parti\?/ }).click();
     await expect(page.getByRole("button", { name: /^Materia: Fisica/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "3 fonti" })).toBeVisible();
   } finally {
@@ -210,7 +209,6 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     await expect(page.getByText("Sto pensando…")).toHaveCount(0);
 
     // The chat is named after the first message, cut near 60 characters.
-    await page.getByRole("button", { name: "Apri le chat" }).click();
     const list = page.getByRole("list", { name: "Chat" });
     const title = (await list.getByRole("button", { name: /^Mi spieghi/ }).textContent()) ?? "";
     expect(title.length).toBeLessThanOrEqual(61);
@@ -328,7 +326,6 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     await page.evaluate(() => document.scrollingElement!.scrollTo({ top: 0 }));
     await expect.poll(foot).toBeLessThan(40);
     await page.getByRole("button", { name: "Nuova chat" }).click();
-    await page.getByRole("button", { name: "Apri le chat" }).click();
     await page.getByRole("list", { name: "Chat" }).getByRole("button").first().click();
     await expect(page.getByText("Una domanda fuori materia", { exact: true })).toBeVisible();
     await expect

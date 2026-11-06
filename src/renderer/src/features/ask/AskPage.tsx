@@ -55,7 +55,6 @@ import {
 import { SourcesMenu } from "./SourcesMenu";
 import { SubjectMenu } from "./SubjectMenu";
 import { dayPart } from "./greeting";
-import { formatTokens } from "../../lib/tokens";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
@@ -258,7 +257,7 @@ function StreamingReply({
 }
 
 export function AskPage() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -298,7 +297,8 @@ export function AskPage() {
   // The subject a question goes out with: set at once when one is chosen, so a question waiting for the scope to settle has it.
   const subjectNow = useRef(subject);
   subjectNow.current = subject;
-  const [panelOpen, setPanelOpen] = useState(false);
+  // The chat sidebar starts open and remembers being folded, on this computer only.
+  const [panelOpen, setPanelOpen] = useState(() => readPanelOpen());
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
   );
@@ -481,14 +481,6 @@ export function AskPage() {
   }
 
   const messages = thread.data?.messages ?? [];
-  const usage = chatId ? thread.data?.usage : null;
-  const usageDetail = usage
-    ? t("ask.usageDetail", {
-        input: formatTokens(usage.inputTokens, i18n.language),
-        output: formatTokens(usage.outputTokens, i18n.language),
-        cached: formatTokens(usage.cacheReadTokens, i18n.language),
-      })
-    : "";
   const held = thread.data?.held ?? [];
   // Regenerate and the suggestions belong to the answer that ends the chat. A question left without one gets Try again.
   const lastRow = messages.at(-1);
@@ -925,6 +917,14 @@ export function AskPage() {
   }
 
   return (
+    <div className="ask-layout">
+    <ChatPanel
+      open={panelOpen}
+      chatId={chatId}
+      onOpenChat={openChat}
+      onNew={() => navigate("/ask")}
+      onDeleted={chatDeleted}
+    />
     <div
       className={home ? "ask-page ask-home" : "ask-page"}
       ref={page}
@@ -953,27 +953,10 @@ export function AskPage() {
         chatId={chatId}
         title={title}
         panelOpen={panelOpen}
-        onOpenPanel={() => setPanelOpen(true)}
-        onNew={() => navigate("/ask")}
-        usage={
-          usage
-            ? {
-                short: t("ask.usage", {
-                  count: usage.inputTokens + usage.outputTokens,
-                  tokens: formatTokens(usage.inputTokens + usage.outputTokens, i18n.language, true),
-                }),
-                detail: usageDetail,
-              }
-            : undefined
-        }
-      />
-      <ChatPanel
-        open={panelOpen}
-        onClose={() => setPanelOpen(false)}
-        chatId={chatId}
-        onOpenChat={openChat}
-        onNew={() => navigate("/ask")}
-        onDeleted={chatDeleted}
+        onTogglePanel={() => {
+          setPanelOpen(!panelOpen);
+          writePanelOpen(!panelOpen);
+        }}
       />
       {threadFailed ? (
         <div className="ask-thread">
@@ -1260,5 +1243,25 @@ export function AskPage() {
         />
       </div>
     </div>
+    </div>
   );
+}
+
+const PANEL_KEY = "pyxis.ask.history";
+
+/** Whether the chat sidebar was left open. Storage can be missing or blocked, and then it opens. */
+function readPanelOpen(): boolean {
+  try {
+    return localStorage.getItem(PANEL_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+
+function writePanelOpen(open: boolean): void {
+  try {
+    localStorage.setItem(PANEL_KEY, open ? "open" : "closed");
+  } catch {
+    // The fold still applies until the window closes.
+  }
 }

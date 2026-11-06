@@ -187,7 +187,9 @@ export function Shell() {
         className={
           target.pathname.startsWith("/settings")
             ? "px-shell-container px-shell-wide"
-            : "px-shell-container"
+            : target.pathname.startsWith("/ask")
+              ? "px-shell-container px-shell-bleed"
+              : "px-shell-container"
         }
       >
         <div className="shell-page">
