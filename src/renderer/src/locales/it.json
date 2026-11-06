@@ -2786,6 +2786,7 @@
   },
   "about": {
     "version": "Versione",
+    "commit": "Commit",
     "license": "Licenza del codice Pyxis",
     "notices": "Licenze e avvisi di terze parti",
     "search": "Cerca un pacchetto o una licenza",
