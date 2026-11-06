@@ -27,6 +27,8 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
   const app = await launchPyxis({ userData, env });
   try {
     const page = await app.firstWindow();
+    // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
+    await page.setViewportSize({ width: 1280, height: 832 });
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
