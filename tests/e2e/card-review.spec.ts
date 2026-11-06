@@ -41,7 +41,7 @@ function seed(db: DatabaseSync) {
   `);
 }
 
-test("card review: ratings only in the footer, undo, the card menu and asking the tutor", async () => {
+test("card review: ratings only under the card, undo, the card menu and asking the tutor", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-review-"));
   const app = await launchPyxis({ userData });
@@ -76,15 +76,20 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     await expect(page.getByRole("button", { name: "Mark as done" })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Front" })).toBeHidden();
 
-    // After the flip the foot holds the four ratings and nothing else.
+    // The card shows without turning; Space turns it to the back, with the question above the answer.
+    const card = page.locator("article.px-card");
+    await expect(card).not.toHaveAttribute("data-face");
+    await expect(page.getByText("Or press the space bar.")).toBeVisible();
+    // After the flip, the row under the card holds the four ratings and nothing else.
     await page.keyboard.press("Space");
-    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await expect(card).toHaveAttribute("data-face", "back");
+    await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await expectNoAxeViolations(page);
 
     // A rating can be taken back: the card shows again and its review and event are gone.
     await page.keyboard.press("3");
-    await expect(page.locator(".px-cards-undo")).toContainText("Rated Good.");
+    await expect(page.locator(".px-cards-undo")).toContainText("You picked “Knew it”.");
     await expect(meta).toHaveText("2 of 3");
     await expect(front).toHaveText("Unità della forza?");
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
@@ -122,7 +127,7 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
 
     // Ask the tutor after the flip: a chat seeded with front, back and the source passage.
     await page.keyboard.press("Space");
-    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     const chat = db
@@ -148,12 +153,12 @@ test("card review: ratings only in the footer, undo, the card menu and asking th
     });
     await expect(front).toHaveText("Seconda legge di Newton?");
     await page.keyboard.press("Space");
-    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await page.keyboard.press("3");
     await expect(front).toHaveText("Unità della forza?");
     await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
     await page.keyboard.press("Space");
-    await expect(page.locator(".px-card-foot")).toHaveText("AgainHardGoodEasy");
+    await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     await expect.poll(() => cardSteps().length).toBe(1);
