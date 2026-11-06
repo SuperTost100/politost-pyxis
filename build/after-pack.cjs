@@ -189,7 +189,17 @@ function notarize(app, temporary) {
     if (result.id) execFileSync("xcrun", ["notarytool", "log", result.id, ...auth], { stdio: "inherit" });
     throw new Error(`Notarization ended as ${result.status}`);
   }
-  execFileSync("xcrun", ["stapler", "staple", app], { stdio: "inherit" });
+  // Stapling fetches the ticket from Apple's CDN, which can drop the connection or not have the new ticket yet.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      execFileSync("xcrun", ["stapler", "staple", app], { stdio: "inherit" });
+      return;
+    } catch (error) {
+      if (attempt === 5) throw error;
+      console.log(`Stapling failed, trying again in 15 seconds (${attempt} of 5)`);
+      execFileSync("sleep", ["15"]);
+    }
+  }
 }
 
 module.exports.pruneUnpacked = pruneUnpacked;
