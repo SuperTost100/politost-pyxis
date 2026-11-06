@@ -14,7 +14,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { ThemeSource } from "@shared/bridge";
@@ -28,6 +28,12 @@ import "./Sidebar.css";
 /** How many recent chats the sidebar lists; "All chats" opens the rest in the search. */
 const RECENT = 20;
 const FOLD_KEY = "pyxis.side";
+// Below this page width, as at 200% zoom on the smallest window, the sidebar folds by itself so the page keeps room.
+const NARROW = window.matchMedia("(max-width: 899px)");
+const subscribeNarrow = (change: () => void) => {
+  NARROW.addEventListener("change", change);
+  return () => NARROW.removeEventListener("change", change);
+};
 
 /** Whether the sidebar was left folded, on this computer. Storage can be missing or blocked, and then it opens. */
 function readFolded(): boolean {
@@ -70,7 +76,9 @@ export function Sidebar({
   actions: ChatActions;
 }) {
   const { t } = useTranslation();
-  const [folded, setFolded] = useState(readFolded);
+  const [chosen, setFolded] = useState(readFolded);
+  const narrow = useSyncExternalStore(subscribeNarrow, () => NARROW.matches);
+  const folded = chosen || narrow;
   const chats = useChats();
   const library = pathname.startsWith("/exams/library");
   // The Library has its own row, so Exams never leads back into it.
@@ -115,7 +123,7 @@ export function Sidebar({
   ];
 
   function fold() {
-    const next = !folded;
+    const next = !chosen;
     setFolded(next);
     try {
       localStorage.setItem(FOLD_KEY, next ? "folded" : "open");
@@ -128,6 +136,8 @@ export function Sidebar({
   return (
     <aside className="px-side" data-folded={folded ? "" : undefined} aria-label={t("side.label")}>
       <div className="px-side-top">
+        {/* A narrow page keeps the sidebar folded, so there is nothing to unfold. */}
+        {narrow ? null : (
         <button
           type="button"
           className="px-side-icon"
@@ -138,6 +148,7 @@ export function Sidebar({
         >
           <PanelLeft size={18} strokeWidth={1.75} aria-hidden />
         </button>
+        )}
       </div>
       {simulation ? (
         <span className="px-side-brand">
