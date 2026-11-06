@@ -813,6 +813,9 @@ const untranslatedKey = new RegExp(
 /** Copy that looks like a key: the books site's host name starts with the `books` section. */
 const notKeys = new Set(["books.politost.it"]);
 const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
+/** Whether the app's sidebar is folded to icons, as it is below 1100px. */
+const sidebarFolded = async (page: Page) =>
+  (await page.locator(".px-side").getAttribute("data-folded")) !== null;
 
 async function openAdvancedEngines(page: Page) {
   const toggle = page.getByRole("switch", {
@@ -1978,8 +1981,10 @@ async function openState(page: Page, name: string) {
       break;
     case "ask-panel":
       // Below 1100px the sidebar is folded and the chats are in the search.
-      if (await page.getByRole("list", { name: both("Chat", "Chats") }).isVisible())
+      if (!(await sidebarFolded(page))) {
+        await expect(page.getByRole("list", { name: both("Chat", "Chats") })).toBeVisible();
         break;
+      }
       await page.getByRole("button", { name: both("Cerca", "Search"), exact: true }).click();
       await expect(
         page.getByRole("option", { name: /Seconda legge di Newton/ }),
@@ -2021,7 +2026,7 @@ async function openState(page: Page, name: string) {
     case "ask-delete":
       await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
       // The chat's "…" button in the sidebar, or a right-click on it in the search where the sidebar is folded.
-      if (await page.getByRole("list", { name: both("Chat", "Chats") }).isVisible())
+      if (!(await sidebarFolded(page)))
         await page
           .getByRole("button", {
             name: /^(Azioni per|Actions for) Seconda legge di Newton/,
