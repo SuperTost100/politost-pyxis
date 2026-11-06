@@ -126,7 +126,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     await expect(page.getByRole("group", { name: "Quanto la sapevi?" }).locator(".ant-btn-primary")).toHaveCount(0);
     await page.keyboard.press("Space");
 
-    // Every rating is Again, so a recycling queue would show a card twice.
+    // Every rating is "Non la sapevo", so a recycling queue would show a card twice.
     const seen: string[] = [];
     for (let done = 0; done < 2; done += 1) {
       await expect(front).not.toHaveText("");
