@@ -32,12 +32,15 @@ test("the window opens on Chiedi, with the greeting and the composer in the midd
     const middle = (heading.y + box.y + box.height) / 2;
     expect(middle).toBeGreaterThan(viewport.height * 0.35);
     expect(middle).toBeLessThan(viewport.height * 0.65);
-    // Centred in the chat column, which takes the window beside the chat sidebar.
+    // Centred in the chat area, which takes the window beside the chat sidebar. Its header spans that area, so the
+    // button that folds the sidebar sits right beside it.
     const column = (await page.locator(".ask-page").boundingBox())!;
+    const fold = (await page.getByRole("button", { name: "Le tue chat" }).boundingBox())!;
     expect(Math.abs(heading.x + heading.width / 2 - (column.x + column.width / 2))).toBeLessThan(4);
     const sidebar = (await page.getByRole("complementary", { name: "Le tue chat" }).boundingBox())!;
     expect(sidebar.x).toBe(0);
     expect(column.x).toBeGreaterThanOrEqual(sidebar.width);
+    expect(fold.x - (sidebar.x + sidebar.width)).toBeLessThan(24);
 
     // The brand opens Home from any other page.
     await page.locator("header nav").getByRole("link", { name: "Esami", exact: true }).click();
@@ -119,7 +122,7 @@ test("doors navigate from settings and every shell page uses the full column", a
         const sidebar = page.getByRole("complementary", { name: "Le tue chat" });
         await expect(sidebar).toBeVisible();
         const side = (await sidebar.boundingBox())!;
-        const chat = (await page.locator(".ask-page").boundingBox())!;
+        const chat = (await page.locator(".ask-dock").boundingBox())!;
         const room = (await page.locator(".ask-layout").boundingBox())!.width;
         expect(side.x).toBe(0);
         expect(Math.round(chat.width)).toBe(Math.min(768, Math.round(room - side.width)));
@@ -157,10 +160,11 @@ test("doors navigate from settings and every shell page uses the full column", a
     const logo = (await page.locator("header .px-brand").boundingBox())!;
     const doorsBox = (await doors.boundingBox())!;
     const settings = (await page.getByRole("link", { name: "Impostazioni", exact: true }).boundingBox())!;
-    // macOS leaves room for the traffic lights (80px); elsewhere the logo sits at the edge.
+    // macOS leaves room for the traffic lights and the mockup's 48px after them (116px); elsewhere the logo sits at
+    // the edge.
     if (process.platform === "darwin") {
-      expect(logo.x).toBeGreaterThanOrEqual(78);
-      expect(logo.x).toBeLessThan(90);
+      expect(logo.x).toBeGreaterThanOrEqual(114);
+      expect(logo.x).toBeLessThan(126);
     } else expect(logo.x).toBeLessThan(40);
     expect(doorsBox.x - (logo.x + logo.width)).toBeGreaterThan(0);
     expect(doorsBox.x - (logo.x + logo.width)).toBeLessThan(40);

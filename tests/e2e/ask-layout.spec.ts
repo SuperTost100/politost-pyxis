@@ -13,6 +13,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { answerNextMenu, lastMenuLabels } from "./native-menu";
 
 const REPLY = [
   "Per parti usa $\\int u\\,dv = uv - \\int v\\,du$ [P1].",
@@ -216,30 +217,37 @@ test("Ask: panel, automatic titles, rename and delete, greeting and the thinking
     await expect(list.getByRole("textbox")).toHaveCount(0);
 
     // Rename on demand: Esc cancels, Enter saves.
-    const actions = list.getByRole("button", { name: /^Azioni per Mi spieghi/ });
-    await actions.click();
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    // The row's actions are the system's own context menu, from a right-click or the "…" button.
+    await answerNextMenu(app, "Rinomina");
+    await list.getByRole("button", { name: /^Mi spieghi/ }).click({ button: "right" });
+    await expect
+      .poll(() => lastMenuLabels(app))
+      .toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
     const field = page.getByRole("textbox", { name: "Nome della chat" });
     await field.fill("Scartato");
     await field.press("Escape");
     await expect(list.getByRole("button", { name: /^Mi spieghi/ })).toBeVisible();
+    await answerNextMenu(app, "Rinomina");
     await list.getByRole("button", { name: /^Azioni per Mi spieghi/ }).click();
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
     await page.getByRole("textbox", { name: "Nome della chat" }).fill("Teorema fondamentale");
     await page.getByRole("textbox", { name: "Nome della chat" }).press("Enter");
     await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
 
     // Delete asks first.
+    await answerNextMenu(app, "Elimina");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
-    await page.getByRole("menuitem", { name: "Elimina" }).click();
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(list.getByRole("button", { name: "Teorema fondamentale", exact: true })).toBeVisible();
-    // The cancelled dialog and the first menu are still closing; a click now can land on the menu that is going away.
+    // The cancelled dialog is still closing; wait so the next click lands on the row.
     await expect(dialog).toHaveCount(0);
     await animationsSettled(page);
+    // A menu closed without a pick does nothing.
+    await answerNextMenu(app, null);
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
-    await page.getByRole("menuitem", { name: "Elimina" }).click();
+    await expect(dialog).toHaveCount(0);
+    await answerNextMenu(app, "Elimina");
+    await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     await page.getByRole("button", { name: "Elimina per sempre" }).click();
     await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
     await expect(page).toHaveURL(/#\/ask$/);

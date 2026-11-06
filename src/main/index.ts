@@ -29,7 +29,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { buildMenuTemplate } from "./menu";
+import { buildMenuTemplate, contextMenuItems } from "./menu";
 import {
   isMenuLanguage,
   type MenuCommand,
@@ -99,7 +99,10 @@ import {
   type ThemeSource,
 } from "../shared/bridge";
 
-const isDev = !!process.env["ELECTRON_RENDERER_URL"];
+// The dev server's address comes from electron-vite. An installed app never takes it, so a variable set on launch can't
+// load another page with the bridge.
+const devRendererUrl = app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"];
+const isDev = !!devRendererUrl;
 
 function e2eSeam(): boolean {
   // ponytail: a normal install ignores these paths. The dist test sets PYXIS_E2E=1.
@@ -289,7 +292,7 @@ function allowedExternal(url: string): boolean {
 
 function installCsp(): void {
   const csp = rendererCsp(
-    isDev ? process.env["ELECTRON_RENDERER_URL"] : undefined,
+    devRendererUrl,
   );
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -310,7 +313,7 @@ function installNavigationGuards(): void {
     });
     // Only the app's own page may load. A dropped or linked file would otherwise replace it and get the bridge.
     contents.on("will-navigate", (event, url) => {
-      const devOrigin = process.env["ELECTRON_RENDERER_URL"];
+      const devOrigin = devRendererUrl;
       if (devOrigin && url.startsWith(devOrigin)) return;
       if (url.split("#")[0] === APP_PAGE) return;
       event.preventDefault();
@@ -598,8 +601,8 @@ function createWindow(route?: string): void {
   });
 
   const hash = route ?? process.env["PYXIS_ROUTE"];
-  if (isDev && process.env["ELECTRON_RENDERER_URL"]) {
-    const url = new URL(process.env["ELECTRON_RENDERER_URL"]);
+  if (devRendererUrl) {
+    const url = new URL(devRendererUrl);
     if (hash) url.hash = hash;
     void mainWindow.loadURL(url.toString());
   } else {
@@ -1094,6 +1097,23 @@ function registerIpc(): void {
     const next = applyAppearance(source);
     broadcastAppearance();
     return next;
+  });
+  // The window's context menus are the system's own: the page sends the labels, main shows them and says which was
+  // picked. Labels are plain text; ids are echoed back and mean nothing to main.
+  ipcMain.handle(mainChannels.contextMenu, (event, raw: unknown) => {
+    requireMainSender(event, "menu-untrusted-sender");
+    const items = contextMenuItems(raw);
+    if (!items || !mainWindow) return null;
+    return new Promise<string | null>((resolve) => {
+      let picked: string | null = null;
+      Menu.buildFromTemplate(
+        items.map((item) =>
+          item
+            ? { label: item.label, enabled: item.enabled !== false, click: () => (picked = item.id) }
+            : { type: "separator" as const },
+        ),
+      ).popup({ window: mainWindow!, callback: () => setImmediate(() => resolve(picked)) });
+    });
   });
   // Only a job id names a file, and only inside the workspace's debug log folder (core/debug/log.ts).
   ipcMain.handle(mainChannels.revealJobLog, (event, jobId: unknown) => {

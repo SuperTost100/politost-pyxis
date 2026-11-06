@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupChats } from "./chatList";
+import { groupChats, titleMatches } from "./chatList";
 
 // Thursday 15 October 2026, 15:00 local time. That week starts on Monday the 12th.
 const now = new Date(2026, 9, 15, 15, 0).getTime();
@@ -50,5 +50,14 @@ describe("groupChats", () => {
   it("starts a Sunday's week on the Monday before", () => {
     const sunday = new Date(2026, 9, 18, 10).getTime();
     expect(groupChats([{ id: "a", updatedAt: at(12, 1) }], sunday)[0]?.group).toBe("week");
+  });
+});
+
+describe("titleMatches", () => {
+  it("matches titles without case or accents, and skips chats with no title", () => {
+    const chats = [{ title: "Perché il calore passa" }, { title: "Analisi" }, { title: null }];
+    expect(titleMatches(chats, "perche")).toEqual([{ title: "Perché il calore passa" }]);
+    expect(titleMatches(chats, "ANAL")).toEqual([{ title: "Analisi" }]);
+    expect(titleMatches(chats, "zzz")).toEqual([]);
   });
 });

@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError, isAbort, type JobView } from "../../shared/ipc";
 import { withUsageScope } from "../engine/usage";
+import { removeJobLog } from "../debug/log";
 
 export type JobClass = "model-cli" | "model-api" | "local" | "demo";
 
@@ -548,6 +549,8 @@ export function createRunner(
         ["failed", "cancelled", "succeeded", "interrupted"].includes(view.state)
       ) {
         db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
+        // The row stays for its own reasons; the student's prompts and replies in the debug log don't.
+        void removeJobLog(jobId);
         publish(jobId);
         return;
       }
@@ -558,6 +561,7 @@ export function createRunner(
           `DELETE FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled', 'succeeded', 'interrupted')`,
         )
         .run(jobId);
+      if (changed.changes > 0) void removeJobLog(jobId);
       if (changed.changes > 0 && view) {
         abandoned(unfinished);
         onUpdate({ ...view, state: "cancelled" });

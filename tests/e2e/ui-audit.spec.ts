@@ -26,6 +26,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
+import { answerNextMenu } from "./native-menu";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -2016,13 +2017,11 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "ask-delete":
+      await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
       await page
         .getByRole("button", {
           name: /^(Azioni per|Actions for) Seconda legge di Newton/,
         })
-        .click();
-      await page
-        .getByRole("menuitem", { name: both("Elimina", "Delete") })
         .click();
       await expect(dialog.last()).toHaveAccessibleName(
         /^(Eliminare questa chat|Delete this chat)\?$/,

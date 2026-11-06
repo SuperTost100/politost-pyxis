@@ -53,7 +53,7 @@
 /* A row's menu floats over its right end and shows on hover and focus, so titles keep the full width and the list
    stays calm. It stays in the tab order. */
 .ask-panel-row > .ant-btn { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); opacity: 0; }
-.ask-panel-row:hover > .ant-btn, .ask-panel-row:focus-within > .ant-btn, .ask-panel-row > .ant-btn[aria-expanded="true"] { opacity: 1; }
+.ask-panel-row:hover > .ant-btn, .ask-panel-row:focus-within > .ant-btn { opacity: 1; }
 .ask-panel-row:hover .ask-panel-title, .ask-panel-row:focus-within .ask-panel-title { padding-right: 36px; }
 .ask-panel-search .ant-input-affix-wrapper { height: 34px; }
 .ask-panel-rename { flex: 1; min-width: 0; margin: var(--space-1); }

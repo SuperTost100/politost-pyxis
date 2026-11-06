@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -123,10 +123,10 @@ export function registerArtifactHandlers(
       });
       // Attach the rejection handler before loading the page; a failed load must
       // not leave an unhandled promise while the window is being disposed.
-      const loaded = process.env["ELECTRON_RENDERER_URL"]
-        ? printWindow.loadURL(
-            `${process.env["ELECTRON_RENDERER_URL"]!.split("#")[0]}#/print`,
-          )
+      // As the main window: only an unpackaged build uses the dev server.
+      const dev = app.isPackaged ? undefined : process.env["ELECTRON_RENDERER_URL"];
+      const loaded = dev
+        ? printWindow.loadURL(`${dev.split("#")[0]}#/print`)
         : printWindow.loadURL(`${APP_PAGE}#/print`);
       await Promise.all([loaded, ready]);
       if (timer) clearTimeout(timer);

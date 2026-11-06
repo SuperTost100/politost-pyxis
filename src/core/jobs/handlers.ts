@@ -5,7 +5,7 @@ import {
 } from "../../shared/ipc";
 import type Database from "better-sqlite3";
 import { putSetting } from "../settings";
-import { callsOf, readJobLog, setDebugOn } from "../debug/log";
+import { callsOf, clearJobLogs, readJobLog, setDebugOn } from "../debug/log";
 import type { Runner } from "./runner";
 
 /** Whether debug mode is on, as stored. Off until the student turns it on. */
@@ -64,6 +64,7 @@ export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database
     debugSet(input: RequestInput<"debug.set">): RequestOutput<"debug.set"> {
       if (db) putSetting(db, "debug", { on: input.on });
       setDebugOn(input.on);
+      if (!input.on) void clearJobLogs();
       return { on: input.on };
     },
   };

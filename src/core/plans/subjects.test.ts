@@ -15,7 +15,7 @@ describe("ASK-01 shared subjects", () => {
     expect(() => reorderSubjects(db, [first.id, first.id])).toThrow();
     expect(listSubjects(db)[0]?.id).toBe(second.id);
     removeSubject(db, second.id);
-    expect(listSubjects(db)).toEqual([first]);
+    expect(listSubjects(db)).toEqual([{ ...first, inUse: false }]);
     expect(() => addSubject(db, "  ")).toThrow();
     db.close();
   });
@@ -40,6 +40,24 @@ describe("ASK-01 shared subjects", () => {
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(subject.id);
     removeSubject(db, subject.id);
     expect(db.prepare("SELECT title, subject_id FROM plans WHERE id = 'plan'").get()).toEqual({ title: "Esame", subject_id: null });
+    db.close();
+  });
+  it("marks the subjects an exam, a source or a chat still uses", () => {
+    const db = openDatabase(":memory:");
+    const exam = addSubject(db, "Fisica");
+    const source = addSubject(db, "Chimica");
+    addSubject(db, "Storia");
+    addSubject(db, "Analisi 1");
+    db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(exam.id);
+    db.prepare("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('src', 'notes', 'Appunti', 'ready', ?, 1, 1)").run(source.id);
+    // Subjects match without case, as addSubject does.
+    db.prepare("INSERT INTO chats (id, subject, created_at, updated_at) VALUES ('chat', 'storia', 1, 1)").run();
+    expect(Object.fromEntries(listSubjects(db).map((row) => [row.name, row.inUse]))).toEqual({
+      Fisica: true,
+      Chimica: true,
+      Storia: true,
+      "Analisi 1": false,
+    });
     db.close();
   });
 });

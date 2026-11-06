@@ -82,6 +82,11 @@ export interface PyxisBridge {
   /** Opens the system terminal, running Antigravity when asked so the student can sign in. */
   openTerminal(program?: "antigravity"): Promise<void>;
   openExternal(url: string): Promise<void>;
+  /**
+   * Opens the system's context menu at the pointer with these items, and resolves with the id of the one picked, or
+   * null when the menu closes without a pick. A null item is a separator.
+   */
+  contextMenu(items: Array<ContextMenuItem | null>): Promise<string | null>;
   /** Shows a job's debug log in the file manager. False when the job has no log. */
   revealJobLog(jobId: string): Promise<boolean>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
@@ -183,6 +188,9 @@ export interface PyxisBridge {
   reportError(fields: ErrorFields): void;
 }
 
+/** One item of a context menu the window asks main to show. */
+export type ContextMenuItem = { id: string; label: string; enabled?: boolean };
+
 export const mainChannels = {
   coreUnavailable: "core:unavailable",
   coreRetry: "core:retry",
@@ -191,6 +199,7 @@ export const mainChannels = {
   appearanceChanged: "appearance:changed",
   openExternal: "shell:openExternal",
   revealJobLog: "shell:reveal-job-log",
+  contextMenu: "menu:context",
   openDialog: "dialog:open",
   dropGrant: "dialog:grant-dropped",
   keysSet: "keys:set",

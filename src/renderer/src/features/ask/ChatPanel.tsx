@@ -1,11 +1,11 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Dropdown, Input, Modal } from "antd";
+import { App, Button, Input, Modal } from "antd";
 import { Ellipsis, Search, SquarePen } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
-import { groupChats, type ChatGroup } from "./chatList";
+import { groupChats, titleMatches, type ChatGroup } from "./chatList";
 import "./ChatPanel.css";
 import { useChats } from "../../lib/queries";
 
@@ -33,17 +33,15 @@ export function ChatPanel({
   const client = useQueryClient();
   const history = useChats();
   const [query, setQuery] = useState("");
-  const [asked, setAsked] = useState("");
   const [exporting, setExporting] = useState(false);
   // Folding the sidebar clears the search, so the next visit starts with the whole list.
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
-  useEffect(() => {
-    const timer = setTimeout(() => setAsked(query.trim()), 200);
-    return () => clearTimeout(timer);
-  }, [query]);
-  const searching = query.trim() !== "";
+  // Each key asks at once: core searches its cached text in milliseconds, and the previous results stay on screen
+  // until the new ones come, so nothing waits on a timer.
+  const asked = query.trim();
+  const searching = asked !== "";
   const [renaming, setRenamingState] = useState<{ id: string; title: string } | null>(
     null,
   );
@@ -66,12 +64,13 @@ export function ChatPanel({
     enabled: asked !== "",
     placeholderData: keepPreviousData,
   });
+  // Before core's first answer, the chats whose title matches show at once instead of an empty list.
   const rows: Array<{
     id: string;
     title: string | null;
     updatedAt: number;
     snippet?: { text: string; start: number; end: number } | null;
-  }> = searching ? (found.data?.hits ?? []) : chats;
+  }> = searching ? (found.data?.hits ?? titleMatches(chats, asked)) : chats;
   // A search hit carries no subject, so each row looks its subject up in the chat list.
   const subjectOf = new Map(chats.map((chat) => [chat.id, chat.subject]));
   const groupName: Record<ChatGroup, string> = {
@@ -80,7 +79,7 @@ export function ChatPanel({
     week: t("ask.groupWeek"),
     older: t("ask.groupOlder"),
   };
-  const settled = searching && asked === query.trim() && !found.isFetching && found.data;
+  const settled = searching && !found.isFetching && found.data;
   const nameOf = (title: string | null) => title?.trim() || t("ask.untitled");
 
   async function saveRename() {
@@ -125,6 +124,24 @@ export function ChatPanel({
     } finally {
       setExporting(false);
     }
+  }
+
+  /** A chat's actions in the system's own context menu, from a right-click on the row or its "…" button. */
+  async function openMenu(id: string, stored: string | null, title: string) {
+    const picked = await window.pyxis.contextMenu([
+      { id: "rename", label: t("ask.rename") },
+      { id: "markdown", label: t("ask.exportMarkdown") },
+      { id: "pdf", label: t("ask.exportPdf") },
+      null,
+      { id: "delete", label: t("ask.delete") },
+    ]);
+    if (picked === "rename") {
+      cancelled.current = false;
+      setRenaming({ id, title: stored ?? "" });
+    }
+    if (picked === "markdown" || picked === "pdf") void exportChat(id, picked);
+    // Deleting asks first, in Pyxis's own dialog: a system menu can't mark the item red.
+    if (picked === "delete") setDeleting({ id, title });
   }
 
   async function confirmDelete() {
@@ -206,6 +223,11 @@ export function ChatPanel({
                         ? "ask-panel-row is-current"
                         : "ask-panel-row"
                     }
+                    onContextMenu={(event) => {
+                      if (editing) return;
+                      event.preventDefault();
+                      void openMenu(chat.id, chat.title, title);
+                    }}
                   >
                     {editing ? (
                       <Input
@@ -250,41 +272,14 @@ export function ChatPanel({
                       </button>
                     )}
                     {editing ? null : (
-                      <Dropdown
-                        trigger={["click"]}
-                        placement="bottomRight"
-                        menu={{
-                          items: [
-                            { key: "rename", label: t("ask.rename") },
-                            { key: "markdown", label: t("ask.exportMarkdown") },
-                            { key: "pdf", label: t("ask.exportPdf") },
-                            { type: "divider" },
-                            {
-                              key: "delete",
-                              label: t("ask.delete"),
-                              danger: true,
-                            },
-                          ],
-                          onClick: ({ key }) => {
-                            if (key === "rename") {
-                              cancelled.current = false;
-                              setRenaming({ id: chat.id, title: chat.title ?? "" });
-                            }
-                            if (key === "markdown" || key === "pdf")
-                              void exportChat(chat.id, key);
-                            if (key === "delete")
-                              setDeleting({ id: chat.id, title });
-                          },
-                        }}
-                      >
-                        <Button
-                          type="text"
-                          shape="circle"
-                          size="small"
-                          aria-label={t("ask.chatActions", { title })}
-                          icon={<Ellipsis size={16} aria-hidden />}
-                        />
-                      </Dropdown>
+                      <Button
+                        type="text"
+                        shape="circle"
+                        size="small"
+                        aria-label={t("ask.chatActions", { title })}
+                        icon={<Ellipsis size={16} aria-hidden />}
+                        onClick={() => void openMenu(chat.id, chat.title, title)}
+                      />
                     )}
                   </div>
                 </li>
@@ -315,3 +310,4 @@ export function ChatPanel({
     </>
   );
 }
+

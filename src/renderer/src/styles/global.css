@@ -84,8 +84,9 @@ body {
   --shell-gutter-end: 14px;
   --top-height: 60px;
 }
+/* The mockup leaves 48px between the last traffic light and the brand: lights from x 16, about 52px wide. */
 html[data-platform="darwin"] {
-  --shell-gutter-start: 80px;
+  --shell-gutter-start: 116px;
 }
 .px-app {
   min-height: 100%;

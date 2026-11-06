@@ -28,3 +28,14 @@ export function groupChats<T extends { updatedAt: number }>(
     ].push(chat);
   return ORDER.filter((group) => groups[group].length > 0).map((group) => ({ group, chats: groups[group] }));
 }
+
+/** Folded for matching as core matches: no case, no accents, so "perche" finds "Perché". */
+function fold(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+}
+
+/** The chats whose title holds the search, for the moment before core answers. */
+export function titleMatches<T extends { title: string | null }>(chats: T[], query: string): T[] {
+  const wanted = fold(query);
+  return chats.filter((chat) => chat.title !== null && fold(chat.title).includes(wanted));
+}

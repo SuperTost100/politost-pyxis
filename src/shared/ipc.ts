@@ -1693,7 +1693,8 @@ export const requests = {
   },
   "subjects.list": {
     input: z.object({}),
-    output: z.array(z.object({ id: z.string(), name: z.string() })),
+    /** `inUse`: an exam, a source or a chat still has the subject. */
+    output: z.array(z.object({ id: z.string(), name: z.string(), inUse: z.boolean() })),
   },
   "plans.usage": {
     input: z.object({}),

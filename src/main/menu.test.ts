@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { goPages, isMenuCommand, type MenuCommand } from "../shared/menu";
-import { buildMenuTemplate } from "./menu";
+import { buildMenuTemplate, contextMenuItems } from "./menu";
 
 type Item = MenuItemConstructorOptions;
 
@@ -234,5 +234,23 @@ describe("application menu", () => {
       );
       expect(new Set(accelerators).size).toBe(accelerators.length);
     }
+  });
+});
+
+describe("contextMenuItems", () => {
+  it("keeps ids, labels, the enabled flag and separators", () => {
+    expect(
+      contextMenuItems([{ id: "rename", label: "Rinomina" }, null, { id: "delete", label: "Elimina", enabled: false }]),
+    ).toEqual([{ id: "rename", label: "Rinomina" }, null, { id: "delete", label: "Elimina", enabled: false }]);
+  });
+
+  it("refuses anything that is not a short list of plain items", () => {
+    expect(contextMenuItems("rename")).toBeNull();
+    expect(contextMenuItems([])).toBeNull();
+    expect(contextMenuItems(Array.from({ length: 21 }, (_, i) => ({ id: `${i}`, label: "x" })))).toBeNull();
+    expect(contextMenuItems([{ id: "a", label: "" }])).toBeNull();
+    expect(contextMenuItems([{ id: "", label: "A" }])).toBeNull();
+    expect(contextMenuItems([{ id: "a", label: "A", click: "x", enabled: "yes" }])).toBeNull();
+    expect(contextMenuItems([{ id: "a", label: "x".repeat(121) }])).toBeNull();
   });
 });
