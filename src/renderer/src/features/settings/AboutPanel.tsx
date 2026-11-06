@@ -13,6 +13,7 @@ type Notice = {
 export type AboutLabels = {
   title: string;
   version: string;
+  commit: string;
   license: string;
   notices: string;
   search: string;
@@ -21,6 +22,14 @@ export type AboutLabels = {
   empty: string;
   missingText: string;
 };
+
+// Unit tests run the panel without the build's define.
+const commit = typeof __PYXIS_COMMIT__ === "string" ? __PYXIS_COMMIT__ : "";
+
+/** A version as people read it, the stage after a space: "0.5.0 dev.1" for 0.5.0-dev.1. */
+export function shownVersion(version: string): string {
+  return version.replace("-", " ");
+}
 
 export function AboutPanel({ labels }: { labels: AboutLabels }) {
   const [notices, setNotices] = useState<Notice[] | null>(null);
@@ -52,7 +61,15 @@ export function AboutPanel({ labels }: { labels: AboutLabels }) {
       </h2>
       <dl className="px-about-version">
         <dt>{labels.version}</dt>
-        <dd>{build.version}</dd>
+        <dd>{shownVersion(build.version)}</dd>
+        {commit ? (
+          <>
+            <dt>{labels.commit}</dt>
+            <dd>
+              <code>{commit}</code>
+            </dd>
+          </>
+        ) : null}
       </dl>
       <details className="px-about-license">
         <summary>

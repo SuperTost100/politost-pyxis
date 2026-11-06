@@ -757,6 +757,7 @@ export function SettingsPage() {
           labels={{
             title: t("settings.about"),
             version: t("about.version"),
+            commit: t("about.commit"),
             license: t("about.license"),
             notices: t("about.notices"),
             search: t("about.search"),

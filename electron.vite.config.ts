@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
@@ -6,6 +7,17 @@ import type { Plugin } from "vite";
 import { rendererCsp } from "./src/main/csp";
 
 const root = import.meta.dirname;
+
+/** The commit About names, so Tost can tell which test build he runs: CI's, else the checkout's, else none. */
+function buildCommit(): string {
+  const fromCi = process.env["PYXIS_COMMIT"] ?? process.env["GITHUB_SHA"];
+  if (fromCi) return fromCi.slice(0, 7);
+  try {
+    return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+}
 const parser = resolve(
   root,
   "node_modules/@politost/content-core/src/parser.ts",
@@ -124,6 +136,7 @@ export default defineConfig({
       },
     },
     plugins: [react(), katexWoff2Only(), copySandboxPage(), pdfjsImageDecoders(), cspMeta()],
+    define: { __PYXIS_COMMIT__: JSON.stringify(buildCommit()) },
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "oxc" },
   },

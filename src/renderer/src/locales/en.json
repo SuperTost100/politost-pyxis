@@ -2786,6 +2786,7 @@
   },
   "about": {
     "version": "Version",
+    "commit": "Commit",
     "license": "Pyxis source license",
     "notices": "Third-party licenses and notices",
     "search": "Find a package or license",
