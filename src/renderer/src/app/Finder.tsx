@@ -48,6 +48,9 @@ export function Finder({
   const navigate = useNavigate();
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  // The control that had focus before the search opened. The search gives it back itself, without scrolling: the
+  // dialog's own return of focus scrolls to it, and a control in the sticky sidebar then scrolls the page to the top.
+  const before = useRef<HTMLElement | null>(null);
   const listId = useId();
   const [text, setText] = useState("");
   const [active, setActive] = useState(0);
@@ -61,6 +64,8 @@ export function Finder({
     const node = dialog.current;
     if (!node) return;
     if (open && !node.open) {
+      before.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      before.current?.blur();
       setText("");
       setActive(0);
       setView(scope ?? "all");
@@ -68,6 +73,10 @@ export function Finder({
       input.current?.focus();
     }
     if (!open && node.open) node.close();
+    if (!open) {
+      before.current?.focus({ preventScroll: true });
+      before.current = null;
+    }
   }, [open, scope]);
 
   const chats = useChats();

@@ -334,7 +334,12 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
     await page.evaluate(() => document.scrollingElement!.scrollTo({ top: 0 }));
     await expect.poll(foot).toBeLessThan(40);
     await page.getByRole("link", { name: "Nuova chat" }).click();
-    await page.getByRole("list", { name: "Chat" }).getByRole("link").first().click();
+    // At 960px the sidebar is folded, so the chat opens from the search, the newest first.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    await expect(finder.getByRole("option").first()).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(finder).toBeHidden();
     await expect(page.getByText("Una domanda fuori materia", { exact: true })).toBeVisible();
     await expect
       .poll(() =>
