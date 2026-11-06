@@ -156,13 +156,21 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await page.evaluate(() => {
       window.location.hash = "#/exams";
     });
-    await side.getByRole("button", { name: "Riduci la barra" }).click();
-    await expect.poll(async () => (await side.boundingBox())!.width).toBe(76);
+    // On macOS the column also fits the traffic lights with the same margin on each side.
+    const foldedWidth = process.platform === "darwin" ? 92 : 76;
+    await side.getByRole("button", { name: "Riduci la barra" }).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await side.boundingBox())!.width).toBe(foldedWidth);
+    // The button to unfold sits under the mark, and the focus moved there with it.
+    const unfold = side.getByRole("button", { name: "Espandi la barra" });
+    await expect(unfold).toBeFocused();
+    const mark = (await side.getByRole("link", { name: "Pyxis" }).boundingBox())!;
+    expect((await unfold.boundingBox())!.y).toBeGreaterThan(mark.y + mark.height - 1);
     // Each row is its icon alone, 40px wide.
     expect((await door("Mappe").boundingBox())!.width).toBe(40);
     await expect(door("Esami")).toHaveAttribute("aria-current", "page");
     await page.reload();
-    await expect.poll(async () => (await side.boundingBox())!.width).toBe(76);
+    await expect.poll(async () => (await side.boundingBox())!.width).toBe(foldedWidth);
     await door("Mappe").click();
     await expect(page).toHaveURL(/#\/maps$/);
     await side.getByRole("button", { name: "Espandi la barra" }).click();

@@ -123,8 +123,18 @@ export function Sidebar({
     },
   ];
 
+  // Folded, the button moves under the mark, so a click that moves it brings the focus along.
+  const foldButton = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    foldButton.current?.focus();
+  }, [folded]);
+
   function fold() {
     const next = !chosen;
+    refocus.current = foldButton.current === document.activeElement;
     setFolded(next);
     try {
       localStorage.setItem(FOLD_KEY, next ? "folded" : "open");
@@ -133,24 +143,25 @@ export function Sidebar({
     }
   }
   const foldLabel = folded ? t("side.unfold") : t("side.fold");
+  // A narrow page keeps the sidebar folded, so there is nothing to unfold. Open, the button sits at the top beside the
+  // traffic lights; folded, it sits under the mark.
+  const foldToggle = narrow ? null : (
+    <button
+      ref={foldButton}
+      type="button"
+      className="px-side-icon px-side-fold"
+      data-tip={foldLabel}
+      aria-label={foldLabel}
+      aria-expanded={!folded}
+      onClick={fold}
+    >
+      <PanelLeft size={18} strokeWidth={1.75} aria-hidden />
+    </button>
+  );
 
   return (
     <aside className="px-side" data-folded={folded ? "" : undefined} aria-label={t("side.label")}>
-      <div className="px-side-top">
-        {/* A narrow page keeps the sidebar folded, so there is nothing to unfold. */}
-        {narrow ? null : (
-        <button
-          type="button"
-          className="px-side-icon"
-          data-tip={foldLabel}
-          aria-label={foldLabel}
-          aria-expanded={!folded}
-          onClick={fold}
-        >
-          <PanelLeft size={18} strokeWidth={1.75} aria-hidden />
-        </button>
-        )}
-      </div>
+      <div className="px-side-top">{folded ? null : foldToggle}</div>
       {simulation ? (
         <span className="px-side-brand">
           <PyxisMark />
@@ -162,6 +173,7 @@ export function Sidebar({
           <span>Pyxis</span>
         </Link>
       )}
+      {folded ? foldToggle : null}
       {simulation ? null : (
         <button
           type="button"

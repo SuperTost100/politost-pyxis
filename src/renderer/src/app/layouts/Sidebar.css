@@ -1,7 +1,7 @@
 /* The app's sidebar in the Scheda style (pyxis-mockups app/app.css, "Navigation round"): a slightly darker ground than
    the page, the current row on a white card, hairlines between the groups and a plain profile row at the foot.
    Its top strip drags the window; on macOS it leaves room for the traffic lights (trafficLightPosition in
-   src/main/index.ts: x 16, y 22, about 52px wide). */
+   src/main/index.ts: x 16, y 22; 52px wide up to macOS 15, 60px from macOS 26). */
 .px-side {
   --side-width: 260px;
   --side-current-shadow: 0 1px 2px rgba(21, 24, 30, 0.08), 0 4px 12px -6px rgba(21, 24, 30, 0.18);
@@ -425,17 +425,22 @@ a.px-side-brand:hover {
   align-items: center;
   padding: 0 10px 12px;
 }
+/* On macOS the column is as wide as the traffic lights with 16px on each side, and its top strip holds only them. */
+html[data-platform="darwin"] .px-side[data-folded] {
+  --side-width: 92px;
+}
 .px-side[data-folded] .px-side-top {
-  justify-content: center;
   align-self: stretch;
-  height: 48px;
+  height: 12px;
 }
 html[data-platform="darwin"] .px-side[data-folded] .px-side-top {
-  align-items: flex-end;
-  height: 76px;
+  height: 48px;
 }
 .px-side[data-folded] .px-side-brand {
-  padding: 14px 0;
+  padding: 6px 0 10px;
+}
+.px-side[data-folded] .px-side-fold {
+  margin-bottom: 12px;
 }
 .px-side[data-folded] :is(kbd, .px-side-recent, .px-side-me > svg) {
   display: none;
