@@ -181,7 +181,10 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
         ('c-today','Moto rettilineo','Fisica',${now},${now}),
         ('c-an','Limiti notevoli','Analisi',1,2),
         ('c-old','Moto circolare','Fisica',1,1),
-        ('c-free','Domanda libera',NULL,1,1);
+        ('c-free','Domanda libera',NULL,1,1),
+        ('c-x1','Vettori','Fisica',1,1),
+        ('c-x2','Derivate','Analisi',1,1),
+        ('c-x3','Integrali','Analisi',1,1);
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES
         ('m1','c-today','user','Che cos''è il moto rettilineo?',1),
         ('m2','c-an','user','Un limite sul moto di una funzione',1),
@@ -200,7 +203,7 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
     // The sidebar lists the recent chats, each with its subject under the title; a chat without one shows the title
     // alone.
     const list = page.getByRole("list", { name: "Chat" });
-    await expect(list.getByRole("listitem")).toHaveCount(4);
+    await expect(list.getByRole("listitem")).toHaveCount(7);
     await expect(list.getByRole("link", { name: /^Moto rettilineo/ })).toHaveText("Moto rettilineoFisica");
     await expect(list.getByRole("link", { name: /^Domanda libera/ })).toHaveText("Domanda libera");
 
@@ -208,10 +211,23 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
     await page.getByRole("button", { name: "Tutte le chat" }).click();
     const finder = page.getByRole("dialog", { name: "Cerca" });
     await expect(finder.locator(".px-finder-label")).toHaveText(["Oggi", "Prima"]);
-    await expect(finder.getByRole("option")).toHaveCount(4);
+    await expect(finder.getByRole("option")).toHaveCount(7);
     await finder.getByRole("combobox", { name: "Cerca" }).fill("circolare");
     await expect(finder.getByRole("option")).toHaveCount(1);
     await expect(finder.getByRole("option", { name: /^Moto circolare/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
+
+    // Searching everything shows six chats, then a row that lists them all, as "Tutte le chat" does where the
+    // sidebar is folded.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    const chatGroup = finder.getByRole("group", { name: "Chat" });
+    await expect(chatGroup.getByRole("option")).toHaveCount(7);
+    await chatGroup.getByRole("option", { name: "Tutte le chat" }).click();
+    await expect(finder).toBeVisible();
+    await expect(finder.getByRole("combobox", { name: "Cerca" })).toHaveAttribute("placeholder", "Cerca nelle chat");
+    await expect(finder.getByRole("option")).toHaveCount(7);
+    await expect(finder.getByRole("option", { name: "Tutte le chat" })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(finder).toBeHidden();
 

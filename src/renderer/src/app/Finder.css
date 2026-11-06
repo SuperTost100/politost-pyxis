@@ -73,6 +73,9 @@
 .px-finder-row[aria-selected="true"] {
   background: var(--surface-raised);
 }
+.px-finder-row.is-more {
+  color: var(--primary-text);
+}
 .px-finder-row.is-editing {
   padding: 3px 4px;
   cursor: default;

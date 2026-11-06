@@ -20,6 +20,8 @@ type Row = {
   sub?: string | null;
   snippet?: { text: string; start: number; end: number } | null;
   chat?: { id: string; title: string | null };
+  /** Changes what the search lists instead of leaving it, as "All chats" does. */
+  stay?: boolean;
   go: () => void;
 };
 type Section = { label: string; rows: Row[] };
@@ -49,6 +51,8 @@ export function Finder({
   const listId = useId();
   const [text, setText] = useState("");
   const [active, setActive] = useState(0);
+  // What it lists: the scope it opened with, until "All chats" switches it to every chat.
+  const [view, setView] = useState<FinderScope>("all");
   const open = scope !== null;
   const asked = text.trim();
   const wanted = foldText(asked);
@@ -59,15 +63,16 @@ export function Finder({
     if (open && !node.open) {
       setText("");
       setActive(0);
+      setView(scope ?? "all");
       node.showModal();
       input.current?.focus();
     }
     if (!open && node.open) node.close();
-  }, [open]);
+  }, [open, scope]);
 
   const chats = useChats();
-  const plans = usePlans(open && scope === "all");
-  const sources = useSources(open && scope === "all");
+  const plans = usePlans(open && view === "all");
+  const sources = useSources(open && view === "all");
   const found = useQuery({
     queryKey: ["chats", "search", asked],
     queryFn: () => invoke("chats.search", { query: asked }),
@@ -77,7 +82,7 @@ export function Finder({
   const maps = useQuery({
     queryKey: ["maps-all", asked],
     queryFn: () => invoke("maps.all", asked ? { query: asked } : {}),
-    enabled: open && scope === "all",
+    enabled: open && view === "all",
     placeholderData: keepPreviousData,
   });
 
@@ -104,14 +109,23 @@ export function Finder({
   };
 
   const sections: Section[] = [];
-  if (scope === "chats") {
+  if (view === "chats") {
     for (const { group, chats: grouped } of groupChats(chatHits))
       sections.push({ label: groupName[group], rows: grouped.map(chatRow) });
-  } else if (scope === "all") {
+  } else if (view === "all") {
     const matches = (...parts: Array<string | null | undefined>) =>
       !wanted || parts.some((part) => part && foldText(part).includes(wanted));
     sections.push(
-      { label: t("finder.chats"), rows: chatHits.slice(0, PER_KIND).map(chatRow) },
+      {
+        label: t("finder.chats"),
+        rows: [
+          ...chatHits.slice(0, PER_KIND).map(chatRow),
+          // The rest are one step away, also where the sidebar is folded and has no "All chats".
+          ...(chatHits.length > PER_KIND
+            ? [{ key: "all-chats", title: t("side.allChats"), stay: true, go: () => setView("chats") }]
+            : []),
+        ],
+      },
       {
         label: t("finder.exams"),
         rows: (plans.data ?? [])
@@ -154,7 +168,10 @@ export function Finder({
   const settled = asked !== "" && !found.isFetching && !maps.isFetching;
 
   function pick(row: Row) {
-    done();
+    if (row.stay) {
+      setActive(0);
+      input.current?.focus();
+    } else done();
     row.go();
   }
 
@@ -184,7 +201,7 @@ export function Finder({
             id={optionId(at)}
             role="option"
             aria-selected={at === current}
-            className="px-finder-row"
+            className={row.stay ? "px-finder-row is-more" : "px-finder-row"}
             onMouseMove={() => setActive(at)}
             onClick={() => pick(row)}
             onContextMenu={(event) => {
@@ -213,7 +230,10 @@ export function Finder({
       ref={dialog}
       className="px-finder"
       aria-label={t("finder.label")}
-      onClose={done}
+      onClose={() => {
+        // The close event comes a moment after Esc; a Cmd+K pressed in between has already opened it again.
+        if (!dialog.current?.open) done();
+      }}
       onCancel={(event) => {
         // Esc in a chat's rename field cancels the rename, not the search.
         if (document.activeElement?.classList.contains("px-rename")) event.preventDefault();
@@ -236,7 +256,7 @@ export function Finder({
               aria-controls={listId}
               aria-activedescendant={rows.length > 0 ? optionId(current) : undefined}
               aria-label={t("finder.label")}
-              placeholder={scope === "chats" ? t("finder.chatsPlaceholder") : t("finder.placeholder")}
+              placeholder={view === "chats" ? t("finder.chatsPlaceholder") : t("finder.placeholder")}
               autoComplete="off"
               spellCheck={false}
               maxLength={200}
@@ -263,15 +283,15 @@ export function Finder({
             {list}
             {rows.length === 0 && asked !== "" && settled ? (
               <p className="px-finder-none">{t("finder.none")}</p>
-            ) : rows.length === 0 && asked === "" && scope === "chats" && chats.isSuccess ? (
+            ) : rows.length === 0 && asked === "" && view === "chats" && chats.isSuccess ? (
               <p className="px-finder-none">{t("ask.chatsEmpty")}</p>
             ) : null}
-            {scope === "chats" && settled && found.data?.capped ? (
+            {view === "chats" && settled && found.data?.capped ? (
               <p className="px-finder-none">{t("ask.searchCapped", { count: found.data.hits.length })}</p>
             ) : null}
           </div>
           <div className="visually-hidden" role="status" aria-live="polite">
-            {settled && scope === "chats" ? t("ask.searchCount", { count: rows.length }) : ""}
+            {settled && view === "chats" ? t("ask.searchCount", { count: rows.length }) : ""}
           </div>
         </div>
       ) : null}
