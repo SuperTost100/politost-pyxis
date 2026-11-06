@@ -1,82 +1,109 @@
-# Pyxis design system — foundations
+# Foundations
 
-Pyxis is a free, open-source study tutor that runs on the student's own computer. The interface uses a near-black canvas, one centred column, pill controls and small uppercase mono labels. Its identity comes from the night sky it is named after: **cobalt** for the next step, **star gold** for where you are and where you aim, **aurora mint** for what you have mastered.
+Pyxis is a free, open-source study app that runs on the student's own computer. The 0.5 interface is calm and bookish: a paper or night ground, one centred column, Young Serif titles, teal for the next step, star gold for where you are and where you aim, and green for what you have mastered.
 
 ## Principles
 
-- **One next step.** Every screen has at most one `primary` action, and it moves the student forward (Continua, Genera percorso, Invia).
-- **Show the source.** Anything generated says where it came from: a `CitationChip` for grounded content, a `Tag` for AI-generated or general-knowledge content, the engine id on every reply.
-- **Calm, not gamified.** No streaks, medals, confetti or mascots. Progress is shown as mastery against a target, nothing else.
-- **Local and honest.** Status and errors are plain sentences with the fix. Local engines say that nothing leaves the machine.
+- **One next step.** A screen has at most one `primary` action, and it moves the student forward.
+- **Each element once.** Nothing appears twice on a screen: Home is the greeting and the composer, and the top bar's doors are not repeated below it.
+- **Show the source.** Generated content says where it came from: numbered citations for grounded answers, a tag for general knowledge.
+- **Calm, not gamified.** No streaks, medals, confetti or mascots. Progress is mastery against a target.
+- **Native where it exists.** Context menus, file pickers and dialogs that the system already draws come from Electron. Pyxis draws its own only where the system can't, such as a red Delete button.
+- **Local and honest.** Status and errors are plain sentences with the fix.
 
-## Content fundamentals
+## Copy
 
 - Two interface languages, Italian and English. Write Italian first; it runs about 20% longer, so layouts must allow it.
-- Address the student as **tu** / **you**. Pyxis speaks in the first person only inside tutor replies.
-- Sentence case everywhere: "Nuovo esame", "Crea lezione". UPPERCASE only through the `label` style (tabs, eyebrows, the Consigliato badge).
-- Short, concrete, no hype: "18 giorni all'esame · 0 su 9 argomenti", "Non hai eseguito l'accesso a Codex. Accedi". Never "AI-powered magic".
-- Numbers as data: `meta` mono for percentages, dates and model ids ("obiettivo 80 %", "claude-sonnet-4-6").
-- No emoji in UI copy or suggestions.
+- Address the student as **tu** / **you**.
+- Sentence case everywhere: "Nuova chat", "Inizia a studiare". No uppercase labels.
+- Short and concrete: "Imposta le ore a settimana per vedere quando studierai ogni argomento." Never "AI-powered magic".
+- The word is "flashcard", never "schede". AI tools are named Claude, ChatGPT, Gemini and Cursor in what the student reads.
+- No emoji in UI copy.
 
-## Color
+## Colour
 
-Dark is the primary theme; light is fully designed, on a warm paper ground. Set `data-theme="dark|light"` on `<html>`.
+Both themes are designed; set `data-theme="dark"` or `data-theme="light"` on `<html>`. The values live in `tokens.json` and `tokens.css`.
 
-- Canvas `bg`; cards and the composer on `surface`; tiles, hovers and the student's bubbles on `surface-raised`; menus and modals on `surface-overlay` with `shadow-overlay`.
-- Text: `ink` for content, `ink-muted` for metadata and inactive tabs, `ink-subtle` for placeholders and model ids. All three pass 4.5:1 on every surface in both themes.
-- `primary` (cobalt) fills the one primary button, the selected option and the preparation meter. Its text form is `primary-text` (links, citations). Selected rows use `primary-soft`.
-- `star` gold marks position and ambition only: the target tick, the current path node (`glow-star`), Consigliato badges. `star-text` on `star-soft` for warnings and general-knowledge labels. In light theme gold is never body text.
-- `mastery` mint for progress fills, done nodes and correct answers; `mastery-text` on `mastery-soft` for the words.
-- `danger` for wrong answers, severe gaps and destructive actions, always with an icon or word.
-- Hairlines use `border` (decorative). Anything a user operates (inputs, secondary buttons, chips, quiz options) is outlined in `border-control`, which holds 3:1.
-- Focus: a 2px solid `focus-ring` outline, 2px offset, on every focusable element. Gold on dark, cobalt on light; both 3:1+ on every surface. A text field or a Select that a click also focuses (the Ask composer, antd Select and DatePicker) draws the ring only when focus came from the keyboard, and shows a border change for a click (`lib/focusSource.ts` sets `data-focus-source` on the root).
-- Behind modals, the whiteboard and the plan wizard: `scrim`.
+| Token                                                | Use                                                                                                                                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bg`                                                 | The page ground, the top bar and the chat sidebar                                                                                                                                              |
+| `surface`, `surface-overlay`                         | Cards, the composer, the doors card, menus and dialogs                                                                                                                                         |
+| `surface-raised`                                     | Hover, the student's messages, soft buttons and the selected chat row                                                                                                                          |
+| `surface-sunken`                                     | Wells inside a card                                                                                                                                                                            |
+| `ink`, `ink-muted`, `ink-subtle`                     | Content, metadata, placeholders. All three hold 4.5:1 on every surface                                                                                                                         |
+| `primary` (`#14807a` dark, `#0f6e66` light)          | The one primary button and the selected option                                                                                                                                                 |
+| `primary-text`, `primary-soft`                       | Links and citations; the selected door and tinted notices                                                                                                                                      |
+| `star`, `star-text`, `star-soft`                     | Position and ambition only. `star` for marks such as the target tick and the current path node; `star-text` for words such as Consigliato, since `star` is too light for text on light grounds |
+| `mastery`, `ok` and their `-soft` forms              | Progress fills, done nodes, right answers                                                                                                                                                      |
+| `danger`, `danger-soft`                              | Wrong answers and destructive actions, always with a word or an icon                                                                                                                           |
+| `ring-prep`, `ring-path`, `ring-today`, `ring-track` | The exam page's three rings                                                                                                                                                                    |
+| `border`, `border-control`                           | Hairlines; outlines of anything the student operates (3:1)                                                                                                                                     |
+| `focus-ring`                                         | A 2px outline, 2px offset, on every focusable element                                                                                                                                          |
+| `scrim`                                              | Behind dialogs and full-screen tools                                                                                                                                                           |
 
-No gradients. The only effect is `glow-star`, used on the current path node.
+No gradients. The one glow, `glow-star`, marks the current path node.
 
-## Typography
+## Type
 
-**Figtree** (variable, 300–900) for everything the student reads; **JetBrains Mono** (variable) for labels, data and code. Both are OFL and ship with the app in `fonts/`; nothing loads from the network.
+Four bundled families, all under the OFL: **Young Serif** for titles, **Figtree** for the interface and for reading, **Source Serif 4** for long reading where a screen asks for it, and **JetBrains Mono** for values and code.
 
-- `display` for the home greeting; `title-1` for plan and wizard titles; `title-2` for sections; `title-3` for cards.
-- `reading` (17/28) for tutor replies, smart text and flashcards, max 68ch. `body` (15/22) for UI; `small` (13/18) for metadata.
-- `label` is mono UPPERCASE with 0.08em tracking: tabs, section eyebrows ("PREVISIONE PER L'ESAME"), badges. `meta` is lowercase mono for values. `code` for code blocks.
-- `stat` (56px) is the one big number of a page.
-- Dyslexia-friendly mode (PER-03) adds `letter-spacing: 0.05em`, `word-spacing: 0.16em` and `line-height: 1.8` to chat text, Markdown and source passages. It keeps the selected body text size and font family.
-- LaTeX renders with KaTeX in its default fonts, sized to the surrounding text.
+| Style                 | Font              | Size  | Use                                                              |
+| --------------------- | ----------------- | ----- | ---------------------------------------------------------------- |
+| `display`             | Young Serif 400   | 40/44 | The Home greeting, at 46px on Home                               |
+| `title-1`             | Young Serif 400   | 28/34 | Page titles                                                      |
+| `title-2`             | Young Serif 400   | 22/28 | Sections                                                         |
+| `title-3`             | Figtree 600       | 17/24 | Card titles                                                      |
+| `reading`             | Figtree 400       | 17/28 | Answers, lessons, flashcards; at most about 68 characters a line |
+| `body`, `body-strong` | Figtree 400 / 600 | 15/22 | Interface text                                                   |
+| `small`               | Figtree 400       | 13/18 | Metadata                                                         |
+| `label`               | Figtree 600       | 13    | Field labels and eyebrows, sentence case                         |
+| `stat`                | Figtree 600       | 56/56 | The one big number on a page                                     |
 
-## Spacing, radius, size
+- Every size scales with the student's text size through `--text-scale`.
+- Mono is for values only: grades, dates, durations, model ids and code.
+- The dyslexia-friendly mode adds letter and word spacing and a taller line height to reading text.
+- Formulas render with KaTeX in its own fonts, sized to the surrounding text.
 
-- 4px base: `space-1` … `space-16`. Cards pad `space-6` (compact `space-4`); sections are `space-8` apart; path nodes `space-16` apart.
-- Content lives in one centred column of `content-width` (768px). Settings is the one wider page: from a 960px window it takes a 960px column with a sidebar of sections; below that it is a list of pages with a back button. Header on top: back or wordmark left, doors (SegmentedTabs) centre, settings right.
-- Radii: `radius-pill` for every action and tab; `radius-md` for tiles, options and nodes; `radius-lg` for cards and bubbles; `radius-xl` for large panels (composer, plan header, dock).
-- Heights: `control-sm` 32, `control-md` 40 (default), `control-lg` 48 (bottom call to action).
+## Spacing, radius and size
+
+- A 4px base: `space-1` to `space-16`. Cards pad `space-6` (`space-4` when compact); sections sit `space-8` apart.
+- Content lives in one centred column of `content-width` (768px). Settings takes 960px from a 960px window, for its section list. Chiedi runs edge to edge: the chat sidebar (264px, 232px under 1100px) at the left edge, the chat's header across the rest, and the conversation in the 768px column.
+- The top bar is 60px high. On macOS it leaves 116px at the left for the traffic lights and the 48px after them.
+
+| Radius                     | Value       | Use                                           |
+| -------------------------- | ----------- | --------------------------------------------- |
+| `radius-sm`                | 8px         | Menu items, rows, small icon buttons          |
+| `radius-field`             | 10px        | Buttons, inputs, selects, segmented controls  |
+| `radius-md`                | 12px        | Tiles, options, the doors card                |
+| `radius-card`              | 14px        | Cards and the composer                        |
+| `radius-lg`                | 16px        | Dialogs and side panels                       |
+| `radius-xl`, `radius-pill` | 24px, 999px | Older screens only; new work doesn't use them |
+
+Control heights are `control-sm` 32, `control-md` 40 (the default) and `control-lg` 48.
 
 ## Elevation and motion
 
-- Dark relies on surface steps and `border`; light adds `shadow-card` at rest. Only overlays get `shadow-overlay`.
-- Motion is short and functional: 150ms colour and background transitions; 200ms fade/slide for sheets. No bounce, no celebration. Respect `prefers-reduced-motion`.
-- Long AI tasks show streamed text or step lines ("Analizzo le fonti…", "Creo gli argomenti…"), never a blank spinner.
+- `shadow-raised` lifts the doors card and cards that float on the ground. `shadow-card` is the resting card shadow, `shadow-overlay` the one for menus and dialogs.
+- Motion is short: 150ms for colour and background, 200ms for sheets. No bounce. Everything respects `prefers-reduced-motion`.
+- Long AI work shows the Pyxis mark turning and a line that says what it does, never a blank spinner.
 
-## Iconography
+## Icons
 
-- **Lucide** line icons (ISC), 1.75 stroke, `currentColor`. In the app use `lucide-react`; the `Icon` component here mirrors it. The `Icons` asset group holds the core set as SVG files for docs.
-- One icon per concept: Chiedi `message-circle`, Esami `graduation-cap`, smartbook `book-marked`, smart text `book-open`, flashcards `layers`, gaps `target`, concept map `network`, exercise `pencil-line`, quiz `list-checks`, true/false `square-split-horizontal`, review `repeat`, add to calendar `calendar-plus`, written simulation `file-pen`, locked `lock`, whiteboard `signature`, formula `sigma`, engines `terminal` / `key-round` / `hard-drive` / `cloud`, tutor settings `brain`; the tutor itself is the Pyxis mark (see Logo).
-- No emoji as icons, no filled or duotone icons, no icons from antd's set mixed in.
+- **Lucide** line icons, 1.75 stroke, `currentColor`, through `lucide-react` or the `Icon` component.
+- One icon per concept, the same everywhere: Library `book-open`, Attività `clock`, Settings `settings`, the sidebar fold `panel-left`, New chat `square-pen`.
+- No emoji as icons, no filled icons, and no icons from Ant Design's set.
 
 ## Logo
 
-The mark is **star trails**: three long-exposure trails circling the pole star, the one fixed point you steer by. It says "steady progress around a fixed goal", which is what a study plan is.
+The mark is **star trails**: three trails circling the pole star, the fixed point you steer by.
 
-- Mark: `ink` trails at 90 / 70 / 50% and a `star` gold four-point star. Use `pyxis-mark-dark.svg` on dark grounds, `pyxis-mark-light.svg` on light, `pyxis-mark-mono.svg` for one-colour print.
-- Lockup: mark + "Pyxis" in Figtree 700 (outlined in the files), mark on the left. The header uses the lockup at 28px height.
-- App icon: white trails and gold star on a `primary` rounded square (`pyxis-app-icon.svg`, PNG at 1024 for Electron builders). Below 32px use `pyxis-app-icon-small.svg`, which keeps only two thicker trails.
-- Clear space is half the mark's height. Never recolour the star, add trails, rotate the mark or put it on a photo.
-- The tutor's avatar in chat is the mark at 22px (`Logo` component).
+- The top bar shows the mark at 24px beside "Pyxis" in Young Serif 20px. The brand opens Home.
+- Mark files: `pyxis-mark-dark.svg` on dark grounds, `pyxis-mark-light.svg` on light, `pyxis-mark-mono.svg` for one colour.
+- App icon: white trails and a gold star on a teal (`#14807a`) rounded square, `pyxis-app-icon.svg`. Below 32px use `pyxis-app-icon-small.svg`, which keeps two thicker trails. `build/icon.png` is its 1024px render.
+- Never recolour the star, add trails or rotate the mark.
 
-## Building with this system
+## Building screens
 
-- UI is **Ant Design Pro** on antd v6: `@ant-design/pro-components` v3 in the Electron + Vite app, themed by `theme/pyxis-theme.ts` (`pyxisTheme` for antd, `pyxisProLayoutToken` for ProLayout). No Umi, no Pro admin template. See [Ant Design mapping](ant-design-pro.md).
-- The shell is ProLayout in `top` mode with a fixed 768px content column (`app/layouts/Shell.tsx`): lockup left, Chiedi / Esami doors centred, settings right. No sidebar, except the section list on the Settings page from 960px.
-- Pyxis-specific pieces (Logo, PathNode, MasteryBar, LessonTile, Composer, ChatMessage, QuizOption, GapItem, EngineRow, CitationChip) are custom; the previews and `reference/bundle.css` are their reference.
-- Accessibility (NFR-09): every control reachable by keyboard, every icon-only button labelled, status never by colour alone, and all text pairs in this system at 4.5:1 or better in both themes.
+- Screens use Pyxis's own components where they exist (see [Components](components.md)), then Ant Design v6 themed by `pyxis-theme.ts`. Ant Design goes away screen by screen during 0.5, and a screen that has moved imports nothing from `antd`.
+- The shell is Pyxis's own top bar (`app/layouts/Shell.tsx`): the brand, the Chiedi · Esami · Mappe doors, then Library, Attività and Settings at the right.
+- Accessibility: every control reachable by keyboard, every icon-only button labelled, state never shown by colour alone, text at 4.5:1 and controls, rings and focus at 3:1. The contrast tests cover the pairs they list, so a new pair of text and ground gets its own line there (see [the README](README.md#changing-the-system)).

@@ -1,24 +1,28 @@
 # Pyxis design system
 
-The running app uses Figtree for interface text and JetBrains Mono for technical text, with a cobalt action color, mint mastery and gold position/target accents. It has dark and light token sets. Assets and fonts are bundled; screens do not fetch fonts from a third party.
+Pyxis 0.5 uses a warm paper ground in light and a deep blue-black in dark, a teal action colour, Young Serif for titles, Figtree for the interface and reading, Source Serif 4 for long reading where a screen asks for it, and JetBrains Mono for values and code. The tokens, fonts, logo and icons ship with the app, so no design asset loads from the network.
+
+- [Foundations](foundations.md): principles, copy, colour, type, spacing, radius, elevation, motion, icons and the logo.
+- [Components](components.md): the shared components in `src/renderer/src/components/` and what each is for.
 
 ## Source files
 
-The implementation lives under `src/renderer/src/design-system/`. Tokens are in `tokens/tokens.json` and `tokens/tokens.css`; Ant Design mappings and the app shell are in `theme/`. Custom components live under `src/renderer/src/components/`, with feature-specific layouts next to their feature.
+| What                                       | Where                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Colour tokens read by the Ant Design theme | [`tokens/tokens.json`](../../src/renderer/src/design-system/tokens/tokens.json)     |
+| CSS variables, fonts and type styles       | [`tokens/tokens.css`](../../src/renderer/src/design-system/tokens/tokens.css)       |
+| Ant Design v6 theme                        | [`theme/pyxis-theme.ts`](../../src/renderer/src/design-system/theme/pyxis-theme.ts) |
+| Shared components                          | [`src/renderer/src/components/`](../../src/renderer/src/components/)                |
+| Fonts and their licences                   | [`fonts/README.md`](../../src/renderer/src/design-system/fonts/README.md)           |
+| Logo, mark and app icons                   | [`logo/README.md`](../../src/renderer/src/design-system/logo/README.md)             |
+| Icon sprite                                | [`icons/README.md`](../../src/renderer/src/design-system/icons/README.md)           |
 
-[Foundations](foundations.md) covers colors, typography, spacing and voice. [Components](components.md) describes shared controls. [Ant Design mapping](ant-design-pro.md) explains use of Ant Design v6 and Pro components without the Umi application template. The gallery at `#/dev/gallery` displays reusable states in development.
+The approved look is the 0.5 mockup. Where this folder and a screen built from the mockup disagree, the mockup wins and this folder gets updated.
 
-Change tokens before introducing a new arbitrary value. The Ant Design theme reads its colours from `tokens.json`; mirror each change in `tokens.css` by hand, and `tokens.test.ts` fails when the two differ. Preserve visible focus, readable contrast and English/Italian copy. The UI audit checks routes at 1280 and 960 pixels in both themes and languages; manual screenshot inspection checks composition and text wrapping.
+## Changing the system
 
-## Bundled resources
-
-- [Fonts and licenses](../../src/renderer/src/design-system/fonts/README.md)
-- [Logos and app icons](../../src/renderer/src/design-system/logo/README.md)
-- [Icon sprite](../../src/renderer/src/design-system/icons/README.md)
-- [Runtime tokens](../../src/renderer/src/design-system/tokens/tokens.json) and [CSS variables](../../src/renderer/src/design-system/tokens/tokens.css)
-- [Ant Design theme](../../src/renderer/src/design-system/theme/pyxis-theme.ts)
-- [Offline component reference](reference/index.html), with [component exports](reference/bundle.js), [styles](reference/bundle.css) and [types](reference/index.d.ts)
-
-Open `reference/index.html` from a local checkout to view the original Pyxis prototype without a server. It bundles React 18.3.1 under the [MIT license](reference/React-LICENSE.txt) and uses the repository's local fonts. The icon artwork uses the [Lucide and Feather licenses](../../src/renderer/src/design-system/icons/LICENSE.txt).
-
-The offline reference is a prototype snapshot. Runtime tokens, theme mappings and the development gallery remain authoritative for the current app.
+- Add or change a token before writing a new arbitrary value in a screen.
+- `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when their colours differ. It doesn't compare spacing, radii, sizes or shadows, so check those by hand.
+- `token-contrast.test.ts` and `link-contrast.test.ts` check selected pairs in both themes: the text tokens and links at 4.5:1 on each ground, controls and rings at 3:1, and the soft pairs they list. A new pair of text and ground needs its own line there.
+- Keep visible focus, both themes and both languages. The route audit (`tests/e2e/ui-audit.spec.ts`) checks the states it lists at 1280 and 960 pixels in Italian and English, light and dark. A screen it doesn't list needs a state added there, or a look by hand.
+- The gallery at `#/dev/gallery` shows the shared states in a development build.
