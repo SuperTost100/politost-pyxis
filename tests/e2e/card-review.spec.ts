@@ -83,6 +83,12 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     // After the flip, the row under the card holds the four ratings and nothing else.
     await page.keyboard.press("Space");
     await expect(card).toHaveAttribute("data-face", "back");
+    // The focus moves to the answer, so a screen reader reads it; Space turns back to the front and focus to Gira.
+    await expect(page.locator(".px-card-back")).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("button", { name: "Flip" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".px-card-back")).toBeFocused();
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await expectNoAxeViolations(page);

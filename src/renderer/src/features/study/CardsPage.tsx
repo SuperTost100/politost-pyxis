@@ -65,9 +65,22 @@ export function CardsPage() {
   const [turned, setTurned] = useState(false);
   /** Shows the card's other face. Only the look turns: the face changes at once, so a rating key right after works. */
   function turn() {
+    // The control that turned the card goes away with its face, so the focus moves to the new face: the answer, which a
+    // screen reader then reads, or Gira again. Focus elsewhere on the page stays where it is.
+    const focus = document.activeElement;
+    turnFocus.current = !focus || focus === document.body || Boolean(stage.current?.contains(focus));
     setTurned(true);
     setShowBack((current) => !current);
   }
+  const stage = useRef<HTMLDivElement>(null);
+  const answer = useRef<HTMLDivElement>(null);
+  const flipButton = useRef<HTMLButtonElement>(null);
+  const turnFocus = useRef(false);
+  useEffect(() => {
+    if (!turnFocus.current) return;
+    turnFocus.current = false;
+    (showBack ? answer.current : flipButton.current)?.focus();
+  }, [showBack]);
   const [lastAction, setLastAction] = useState<Undoable | null>(null);
   // A card brought back by Undo shows next, wherever the deck would sort it.
   const [pinned, setPinned] = useState<string | null>(null);
@@ -620,7 +633,7 @@ export function CardsPage() {
             <p className="body">{t("cards.empty")}</p>
           )
         ) : (
-          <div className="px-cards-stage">
+          <div className="px-cards-stage" ref={stage}>
             {sessionTotal > 0 && !reviewing ? (
               <div
                 className="px-cards-progress"
@@ -722,7 +735,7 @@ export function CardsPage() {
                         <MarkdownView>{isCloze(card.front) ? clozeAnswer(card.front) : card.front}</MarkdownView>
                       </div>
                       <hr />
-                      <div className="px-card-back">
+                      <div className="px-card-back" ref={answer} tabIndex={-1}>
                         <MarkdownView>{card.back}</MarkdownView>
                       </div>
                       <div className="px-card-links">
@@ -779,7 +792,7 @@ export function CardsPage() {
             ) : (
               <>
                 <div className="px-cards-flip">
-                  <Button type="primary" size="large" aria-keyshortcuts="Space" onClick={turn}>
+                  <Button ref={flipButton} type="primary" size="large" aria-keyshortcuts="Space" onClick={turn}>
                     {t("cards.flip")}
                   </Button>
                 </div>

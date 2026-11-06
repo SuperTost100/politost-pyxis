@@ -64,7 +64,8 @@
   display: grid;
   align-content: center;
   min-height: 340px;
-  padding: 40px 48px;
+  /* The top leaves room for the card's menu button in the corner. */
+  padding: 52px 48px 40px;
   border-radius: var(--radius-xl);
   background: var(--surface);
   box-shadow: var(--shadow-card);
@@ -132,7 +133,15 @@
 }
 .px-card-back {
   max-width: 34ch;
+  border-radius: var(--radius-sm);
   text-wrap: balance;
+}
+.px-card-back:focus {
+  outline: none;
+}
+.px-card-back:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
 }
 .px-card-back .px-markdown {
   font-size: calc(21px * var(--text-scale, 1));
@@ -174,7 +183,7 @@
 }
 @media (max-width: 560px) {
   .px-cards .px-card {
-    padding: 32px 20px;
+    padding: 52px 20px 32px;
   }
   .px-cards .px-cards-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
