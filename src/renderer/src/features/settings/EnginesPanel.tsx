@@ -48,6 +48,7 @@ import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
 import { useEngineSetup } from "./useEngineSetup";
 import "./EnginesPanel.css";
+import { DebugSwitch } from "./DebugSwitch";
 
 const featureNames = [
   "default",
@@ -731,6 +732,7 @@ export function EnginesPanel() {
       ) : null}
       <LocalModelCard place="settings" />
       <EngineUsage />
+      {advanced ? <DebugSwitch /> : null}
       {advanced ? (
         <>
           <div className="engines-heading">

@@ -2072,6 +2072,30 @@
       "mapBuild_topic": "Creo la mappa di {{topic}}",
       "simulationBuild": "Preparo la simulazione d'esame",
       "simulationGrade": "Correggo la simulazione d'esame"
+    },
+    "debug": {
+      "title": "Dettagli tecnici e debug",
+      "loading": "Lettura del registro…",
+      "failed": "Non è stato possibile leggere il registro.",
+      "none": "Nessuna chiamata all'AI registrata per questo lavoro. Il registro parte quando la modalità debug è attiva.",
+      "running": "in corso",
+      "seconds": "{{value}} s",
+      "request": "Richiesta",
+      "reply": "Risposta",
+      "events_one": "{{count}} evento del motore",
+      "events_other": "{{count}} eventi del motore",
+      "moreEvents_one": "…e {{count}} altro evento, nel registro completo",
+      "moreEvents_other": "…e altri {{count}} eventi, nel registro completo",
+      "capped": "Il registro ha raggiunto 20 MB, e le righe successive non sono state salvate.",
+      "copy": "Copia il registro",
+      "copied": "Registro copiato",
+      "copyFailed": "Non è stato possibile copiare il registro.",
+      "open": "Apri il registro",
+      "access": {
+        "subscription": "abbonamento",
+        "api-key": "chiave API",
+        "local": "sul computer"
+      }
     }
   },
   "errors": {
@@ -2615,7 +2639,10 @@
     "signInTo": "Accedi a {{name}}",
     "chooseModel": "Scegli un altro modello",
     "notIncluded_one": "{{models}} non è nel tuo abbonamento",
-    "notIncluded_other": "{{models}} non sono nel tuo abbonamento"
+    "notIncluded_other": "{{models}} non sono nel tuo abbonamento",
+    "debug": "Mostra dettagli tecnici e debug",
+    "debugHint": "Pyxis tiene su questo computer il registro di ogni chiamata all'AI dei lavori in Attività: quale AI e modello, quanto è durata, la richiesta e la risposta. Chiavi e token sono nascosti, e niente viene inviato.",
+    "debugFailed": "Non è stato possibile salvare questa scelta. Riprova."
   },
   "graph": {
     "title": "Grafico",

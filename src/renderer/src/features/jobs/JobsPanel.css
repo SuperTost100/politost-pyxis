@@ -184,6 +184,47 @@
   background: var(--surface-raised);
 }
 
+/* Debug mode's details under a job: each AI call, then its request, reply and events, folded. */
+.px-jobs-debug {
+  margin-top: var(--space-2);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink-muted);
+}
+.px-jobs-debug summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.px-jobs-calls {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.px-jobs-call-head,
+.px-jobs-call-error {
+  margin: 0 0 var(--space-1);
+  overflow-wrap: anywhere;
+}
+.px-jobs-call-error {
+  color: var(--danger);
+}
+.px-jobs-debug pre {
+  margin: var(--space-1) 0 var(--space-2);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+.px-jobs-debug .px-jobs-acts {
+  margin-top: var(--space-2);
+}
+
 /* A running or finished job. */
 .px-jobs-row {
   display: grid;

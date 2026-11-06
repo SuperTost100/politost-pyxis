@@ -10,12 +10,19 @@ import {
   type Provider,
   type ProviderId,
   type Selection,
+  redact,
 } from "cli-funnel";
 
 export type { ProviderId, Selection };
 export { FunnelError };
 import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
+import { setRedact, startCall } from "../debug/log";
+import { currentUsageScope } from "./usage";
+
+// Debug mode's log masks every line with cli-funnel's redact before it writes it.
+setRedact(redact);
+export { redact };
 export { loadShellPath, shellPathReady } from "./shell-path";
 
 export type EngineResult = {
@@ -304,6 +311,18 @@ async function turn(input: TurnInput): Promise<EngineResult> {
   if (talk) talk.busy = true;
   let sessionId: string | undefined;
   let finished = false;
+  // Debug mode records the call in its job's log, with the engine's own lines (cli-funnel's `verbose`).
+  const scope = currentUsageScope();
+  const log = startCall(scope?.jobId, {
+    provider: selection.provider,
+    model: selection.model,
+    access: selection.provider === "ollama" ? "local" : selection.provider.endsWith("-api") ? "api-key" : "subscription",
+    ...(scope?.kind ? { kind: scope.kind } : {}),
+    prompt,
+    ...(input.system ? { system: input.system } : {}),
+  });
+  let text = "";
+  let ended = false;
   try {
     const stream = engine.stream({
       selection,
@@ -314,9 +333,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       signal: input.signal,
       ...(continuing ? { sessionId: talk!.sessionId } : {}),
       ...(cache ? { cache: true } : {}),
+      ...(log ? { verbose: true } : {}),
     });
-    let text = "";
     for await (const event of stream) {
+      log?.event(event);
       if (event.type === "session") sessionId = event.sessionId;
       if (event.type !== "text.delta") continue;
       text += event.text;
@@ -328,6 +348,13 @@ async function turn(input: TurnInput): Promise<EngineResult> {
     if (result.finishReason === "cancelled" || input.signal?.aborted)
       throw new DOMException("Engine turn cancelled", "AbortError");
     finished = true;
+    ended = true;
+    log?.end({
+      text: result.text || text,
+      ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
+    });
     if (talk && finished) {
       talk.sessionId = result.sessionId ?? sessionId ?? talk.sessionId;
       talk.chars += prompt.length + (result.text || text).length;
@@ -345,6 +372,10 @@ async function turn(input: TurnInput): Promise<EngineResult> {
       structuredError: result.structuredError,
       finishReason: result.finishReason,
     };
+  } catch (err) {
+    if (!ended)
+      log?.end({ text, error: input.signal?.aborted ? "cancelled" : err instanceof Error ? err.message : String(err) });
+    throw err;
   } finally {
     if (talk) {
       talk.busy = false;

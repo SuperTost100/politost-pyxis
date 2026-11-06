@@ -82,6 +82,8 @@ export interface PyxisBridge {
   /** Opens the system terminal, running Antigravity when asked so the student can sign in. */
   openTerminal(program?: "antigravity"): Promise<void>;
   openExternal(url: string): Promise<void>;
+  /** Shows a job's debug log in the file manager. False when the job has no log. */
+  revealJobLog(jobId: string): Promise<boolean>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
   /** Grants dropped files to core and returns their paths. Only real `File` objects from a drop name a path. */
   grantDroppedFiles(files: File[]): Promise<{ paths: string[]; skipped: number }>;
@@ -188,6 +190,7 @@ export const mainChannels = {
   appearanceSet: "appearance:set",
   appearanceChanged: "appearance:changed",
   openExternal: "shell:openExternal",
+  revealJobLog: "shell:reveal-job-log",
   openDialog: "dialog:open",
   dropGrant: "dialog:grant-dropped",
   keysSet: "keys:set",

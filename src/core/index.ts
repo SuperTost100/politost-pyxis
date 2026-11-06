@@ -29,6 +29,8 @@ import {
 } from "./ipc/server";
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
+import { readDebugSetting } from "./jobs/handlers";
+import { setDebugLogRoot, setDebugOn } from "./debug/log";
 
 import { setSourceWorkerDirectory } from "./sources/worker-client";
 import { markStoppedImport } from "./sources/jobs";
@@ -123,6 +125,8 @@ if (!parent) {
       });
     });
     setScratch(join(workspacePath, "scratch"));
+    setDebugLogRoot(join(workspacePath, "logs"));
+    setDebugOn(readDebugSetting(db));
     // Explicit recorded fixtures may use a deterministic selection in their
     // private test workspace. Normal launches require a confirmed engine.
     const recordedFixture =
@@ -220,7 +224,7 @@ if (!parent) {
       { agentLesson: unpackaged && process.env["PYXIS_AGENT_LESSON"] === "1" },
     );
     runner.register("demo", demoJob);
-    bindRunner(runner, dev);
+    bindRunner(runner, dev, db);
     // Nothing here looks for engines: main sends the keys right after this, and the one provider scan runs then.
     console.log("pyxis-core ready");
     // Healthy-ready handshake: main waits for this before sending keys/ports.

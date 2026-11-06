@@ -476,6 +476,42 @@ export const requests = {
     input: z.object({ jobId: z.string() }),
     output: z.object({}),
   },
+  /** Debug mode's record of a job's AI calls, masked, or null when it has none (debug mode was off, or no AI ran). */
+  "jobs.log": {
+    input: z.object({ jobId: z.string() }),
+    output: z
+      .object({
+        calls: z.array(
+          z.object({
+            id: z.string(),
+            at: z.string(),
+            provider: z.string(),
+            model: z.string(),
+            access: z.enum(["subscription", "api-key", "local"]),
+            kind: z.string().optional(),
+            prompt: z.string(),
+            system: z.string().optional(),
+            ms: z.number().nullable(),
+            text: z.string().nullable(),
+            textLength: z.number().nullable(),
+            finishReason: z.string().optional(),
+            error: z.string().optional(),
+            inputTokens: z.number().optional(),
+            outputTokens: z.number().optional(),
+            events: z.array(z.object({ at: z.string(), event: z.unknown() })),
+            eventCount: z.number(),
+          }),
+        ),
+        /** The log file's text, for "Copy log": the newest part when the file is past the read limit. */
+        text: z.string(),
+        truncated: z.boolean(),
+        capped: z.boolean(),
+      })
+      .nullable(),
+  },
+  /** "Show technical details and debug" in AI tools, Advanced. Off by default. */
+  "debug.get": { input: z.object({}), output: z.object({ on: z.boolean() }) },
+  "debug.set": { input: z.object({ on: z.boolean() }), output: z.object({ on: z.boolean() }) },
   "engines.overview": {
     input: z.object({}),
     output: z.array(

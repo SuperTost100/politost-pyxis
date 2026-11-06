@@ -19,6 +19,7 @@ import {
   type Problem,
   type ProblemKind,
 } from "./jobGroups";
+import { JobDebug } from "./JobDebug";
 import "./JobsPanel.css";
 
 type Act = (
@@ -196,6 +197,9 @@ function ProblemCard({
           ))}
         </ul>
       ) : null}
+      {jobs.slice(0, 3).map((job) => (
+        <JobDebug key={job.id} jobId={job.id} running={false} />
+      ))}
       {raw.length > 0 ? (
         <details className="px-jobs-tech">
           <summary>{t("jobs.technical")}</summary>
@@ -236,6 +240,7 @@ function RunningRow({ job, act }: { job: JobView; act: Act }) {
           size="small"
           strokeColor="var(--primary)"
         />
+        <JobDebug jobId={job.id} running={job.state === "running"} />
       </div>
       {/* Work a page does itself stops on that page. */}
       {job.inPage ? null : (
@@ -284,6 +289,7 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
             </span>
           </p>
         ) : null}
+        <JobDebug jobId={job.id} running={false} />
       </div>
       <IconButton
         icon="x"
