@@ -692,12 +692,15 @@
     "askSource": "Source: {{section}}",
     "askFailed": "The tutor chat could not open. Try again.",
     "sessionProgress": "{{done}} of {{total}}",
-    "dailyLimit_one": "That's today's {{count}} new flashcard for this exam. The rest start tomorrow. You can change the limit in Settings.",
-    "dailyLimit_other": "That's today's {{count}} new flashcards for this exam. The rest start tomorrow. You can change the limit in Settings.",
+    "dailyLimit_zero": "The limit for new flashcards is 0, so none start today.",
+    "dailyLimit_one": "That's today's {{count}} new flashcard for this exam. The rest start tomorrow.",
+    "dailyLimit_other": "That's today's {{count}} new flashcards for this exam. The rest start tomorrow.",
     "progressLabel": "Flashcards in this session",
     "rateLabel": "How well did you know it?",
     "rateHint": "How well did you know it? Your answer decides whether the flashcard comes back sooner or later.",
-    "flipHint": "Or press the space bar."
+    "flipHint": "Or press the space bar.",
+    "changeLimit": "Change",
+    "writingFirst": "Writing the first flashcard…"
   },
   "cardImport": {
     "open": "Import from Anki",
@@ -1919,7 +1922,7 @@
     "crashKept": "Reports are deleted after 90 days, and you can take your consent back at any time.",
     "crashKeptSetup": "Reports are deleted after 90 days, and you can take your consent back at any time in Settings, under Privacy.",
     "flashcards": "Flashcards",
-    "newPerDay": "New flashcards per day",
+    "newPerDay": "New flashcards a day, for each exam",
     "newPerDayHint": "For each exam. Flashcards you have started come back when they are due, whatever the limit. With 0 no new ones start.",
     "levelHelp": "The tutor explains at this level in chats and in the exams you create from now on.",
     "gradeScale": "Grades and goals",
