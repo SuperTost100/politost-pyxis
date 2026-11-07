@@ -280,7 +280,8 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
         requestAnimationFrame(tick);
       })`)) as Centre[];
       await expect(page.locator(".react-flow__node")).toHaveCount(before);
-      await page.waitForTimeout(600);
+      // The canvas marks itself while the map moves, restarts included; read the end once it no longer does.
+      await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
       const settled = (await page.evaluate(`(${centres.toString()})()`)) as Centre[];
       const parent = settled.find((node) => node.id === "n1")!;
       const away = (node: Centre) => Math.hypot(node.x - parent.x, node.y - parent.y);

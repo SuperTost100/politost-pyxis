@@ -360,12 +360,17 @@ export function MapPage() {
             }))
           : []),
       ]);
+      // The canvas says while the map moves, for anything that waits for it to settle.
+      canvas.current?.toggleAttribute("data-moving", progress < 1);
       if (progress < 1) motion.current.frame = requestAnimationFrame(step);
       else motion.current.origin = undefined;
     };
     // The first frame now, so no frame shows the old layout; the rest on the screen's frames.
     step(start);
-    return () => cancelAnimationFrame(motion.current.frame);
+    return () => {
+      cancelAnimationFrame(motion.current.frame);
+      canvas.current?.removeAttribute("data-moving");
+    };
   }, [spots, shown, heights, selected, folded, parents, toggle]);
   useEffect(() => {
     setSelected(undefined);
