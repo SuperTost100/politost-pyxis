@@ -42,8 +42,10 @@ export function StudyBar({
           <span className="px-studybar-sep" aria-hidden />
         </>
       ) : null}
-      <div className="px-studybar-title" aria-hidden={heading ? undefined : true}>
-        {heading ? <h1>{title}</h1> : <b>{title}</b>}
+      <div className="px-studybar-title">
+        {/* On a reading screen the page's own heading names it, so only the bar's copy of the title is hidden; the
+            line under it is the one place that names the exam. */}
+        {heading ? <h1>{title}</h1> : <b aria-hidden>{title}</b>}
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
       {actions ? <div className="px-studybar-actions">{actions}</div> : null}

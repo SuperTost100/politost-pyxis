@@ -269,6 +269,10 @@ test("new flashcard: a form grown from the bar adds to the deck, closes on Esc a
     const form = page.getByRole("dialog", { name: "New flashcard" });
     await expect(form).toBeVisible();
     await expect(open).toHaveAttribute("aria-expanded", "true");
+    // The bar's other card actions wait, so the card editor can't open behind the form.
+    const bar = page.getByRole("banner");
+    await expect(bar.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
+    await expect(bar.getByRole("button", { name: "Undo last", exact: true })).toBeDisabled();
     const frontField = form.getByRole("textbox", { name: "Front", exact: true });
     const backField = form.getByRole("textbox", { name: "Back", exact: true });
     await expect(frontField).toBeFocused();

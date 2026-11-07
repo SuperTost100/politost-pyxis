@@ -608,7 +608,7 @@ export function CardsPage() {
             type="text"
             className="px-studybar-action"
             icon={<Undo2 size={16} strokeWidth={1.75} aria-hidden />}
-            disabled={!lastAction || ratingPending}
+            disabled={!lastAction || adding || ratingPending}
             aria-keyshortcuts="U"
             onClick={() => void undo()}
           >
@@ -618,7 +618,7 @@ export function CardsPage() {
             type="text"
             className="px-studybar-action"
             icon={<Pencil size={16} strokeWidth={1.75} aria-hidden />}
-            disabled={!card || !cardTopicId || editing || ratingPending}
+            disabled={!card || !cardTopicId || editing || adding || ratingPending}
             aria-keyshortcuts={MENU_KEYS.edit.toUpperCase()}
             onClick={startEdit}
           >
