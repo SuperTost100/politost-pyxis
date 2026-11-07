@@ -44,7 +44,8 @@ export function RadioRows<T extends string>({
   label: string;
   value: T;
   options: Array<{ value: T; title: ReactNode; description?: ReactNode }>;
-  onChange: (value: T) => void;
+  /** May return the save; once it settles, the row shows the stored value again, so a failed save doesn't stay picked. */
+  onChange: (value: T) => void | Promise<unknown>;
 }) {
   const name = useId();
   // A pick shows at once, while the setting it changes catches up (a theme or a language applies a moment later).
@@ -60,8 +61,11 @@ export function RadioRows<T extends string>({
               name={name}
               checked={shown === option.value}
               onChange={() => {
-                setPicked({ from: value, to: option.value });
-                onChange(option.value);
+                const pick = { from: value, to: option.value };
+                setPicked(pick);
+                void Promise.resolve(onChange(option.value))
+                  .catch(() => undefined)
+                  .finally(() => setPicked((current) => (current === pick ? null : current)));
               }}
             />
             <RowText title={option.title} description={option.description} />

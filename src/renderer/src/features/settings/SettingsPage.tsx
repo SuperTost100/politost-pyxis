@@ -302,7 +302,7 @@ export function SettingsPage() {
           label="settings-appearance-title"
           value={appearance.source}
           options={(["system", "light", "dark"] as const).map((value) => ({ value, title: t(`settings.${value}`) }))}
-          onChange={(value) => void setTheme(value)}
+          onChange={(value) => setTheme(value)}
         />
         {appearance.source === "system" ? <p className="small section-hint">{t("settings.themeHint")}</p> : null}
       </>
@@ -317,7 +317,7 @@ export function SettingsPage() {
             { value: "solver", title: t("settings.how.solver"), description: t("settings.how.solverHint") },
             { value: "socratic", title: t("settings.how.socratic"), description: t("settings.how.socraticHint") },
           ]}
-          onChange={(tutorMode) => void patch({ tutorMode })}
+          onChange={(tutorMode) => patch({ tutorMode })}
         />
         <ControlList>
           <SwitchRow
