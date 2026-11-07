@@ -47,6 +47,9 @@ export function RadioRows<T extends string>({
   onChange: (value: T) => void;
 }) {
   const name = useId();
+  // A pick shows at once, while the setting it changes catches up (a theme or a language applies a moment later).
+  const [picked, setPicked] = useState<{ from: T; to: T } | null>(null);
+  const shown = picked && picked.from === value ? picked.to : value;
   return (
     <ul className="px-ctl" role="radiogroup" aria-labelledby={label}>
       {options.map((option) => (
@@ -55,8 +58,11 @@ export function RadioRows<T extends string>({
             <input
               type="radio"
               name={name}
-              checked={value === option.value}
-              onChange={() => onChange(option.value)}
+              checked={shown === option.value}
+              onChange={() => {
+                setPicked({ from: value, to: option.value });
+                onChange(option.value);
+              }}
             />
             <RowText title={option.title} description={option.description} />
           </label>
@@ -183,11 +189,14 @@ export function Stepper({
   step = 1,
   decreaseLabel,
   increaseLabel,
+  disabled = false,
   onChange,
 }: {
   /** The id of the text that names the number. */
   label: string;
   value: number;
+  /** Until the stored number has loaded, so a step can't start from a guess. */
+  disabled?: boolean;
   min: number;
   max: number;
   step?: number;
@@ -204,12 +213,13 @@ export function Stepper({
   };
   return (
     <div className="px-ctl-stepper" role="group" aria-labelledby={label}>
-      <button type="button" aria-label={decreaseLabel} disabled={value <= min} onClick={() => commit(clamp(value - step))}>
+      <button type="button" aria-label={decreaseLabel} disabled={disabled || value <= min} onClick={() => commit(clamp(value - step))}>
         <Minus size={16} strokeWidth={1.75} aria-hidden />
       </button>
       <input
         inputMode="numeric"
         aria-labelledby={label}
+        disabled={disabled}
         value={draft ?? String(value)}
         onChange={(event) => setDraft(event.target.value.replace(/[^\d]/g, "").slice(0, 3))}
         onBlur={() => {
@@ -225,7 +235,7 @@ export function Stepper({
           }
         }}
       />
-      <button type="button" aria-label={increaseLabel} disabled={value >= max} onClick={() => commit(clamp(value + step))}>
+      <button type="button" aria-label={increaseLabel} disabled={disabled || value >= max} onClick={() => commit(clamp(value + step))}>
         <Plus size={16} strokeWidth={1.75} aria-hidden />
       </button>
     </div>

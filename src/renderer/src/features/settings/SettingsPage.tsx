@@ -21,7 +21,7 @@ import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
@@ -147,6 +147,7 @@ export function SettingsPage() {
     queryFn: () => invoke("plans.usage", {}),
   });
 
+  const profileSaves = useRef({ chain: Promise.resolve(), pending: 0, failed: false });
   async function patch(input: {
     displayName?: string;
     educationLevel?: (typeof levels)[number];
@@ -163,18 +164,30 @@ export function SettingsPage() {
     gradeScale?: GradeScale | null;
   }) {
     setSaveError(false);
-    // The control shows the choice at once; a failed save puts the stored profile back.
-    const before = client.getQueryData(["profile"]);
-    if (before) client.setQueryData(["profile"], { ...before, ...input });
-    try {
-      const saved = await invoke("profile.save", input);
-      client.setQueryData(["profile"], saved);
-      document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
-      document.documentElement.dataset.text = saved.textSize;
-    } catch {
-      if (before) client.setQueryData(["profile"], before);
-      setSaveError(true);
-    }
+    // The control shows the choice at once. Saves run one after another; the stored profile replaces the shown one only
+    // once none is left, so a quick second change doesn't flicker back, and a failure reloads what is stored.
+    const shown = client.getQueryData<Record<string, unknown>>(["profile"]);
+    if (shown) client.setQueryData(["profile"], { ...shown, ...input });
+    profileSaves.current.pending += 1;
+    const run = profileSaves.current.chain.then(async () => {
+      try {
+        const saved = await invoke("profile.save", input);
+        document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
+        document.documentElement.dataset.text = saved.textSize;
+        if (profileSaves.current.pending === 1) client.setQueryData(["profile"], saved);
+      } catch {
+        setSaveError(true);
+        profileSaves.current.failed = true;
+      } finally {
+        profileSaves.current.pending -= 1;
+        if (profileSaves.current.pending === 0 && profileSaves.current.failed) {
+          profileSaves.current.failed = false;
+          await client.invalidateQueries({ queryKey: ["profile"] });
+        }
+      }
+    });
+    profileSaves.current.chain = run;
+    await run;
   }
   /** Restores from a file the student picks, or from the listed backup `name`. */
   function restore(name?: string) {
@@ -429,6 +442,7 @@ export function SettingsPage() {
             step={5}
             decreaseLabel={t("settings.fewer")}
             increaseLabel={t("settings.more")}
+            disabled={!cardSettings.data}
             onChange={(value) => void saveNewPerDay(value)}
           />
         </ControlRow>

@@ -207,11 +207,11 @@ test("Ask: a live theme switch repaints the page, sidebar and cited reply like a
         location.hash = "/settings/appearance";
       });
       await page
-        .getByRole("button", {
+        .getByRole("radio", {
           name: to === "dark" ? "Scuro" : "Chiaro",
           exact: true,
         })
-        .click();
+        .check();
       await expect(page.locator("html")).toHaveAttribute("data-theme", to);
       await open();
       await settle();
