@@ -134,10 +134,11 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
     )) as { topics: Array<{ id: string }> };
     const topic = plan.topics[0]!.id;
 
-    // The X of Cards, Practice and Review goes where Back goes: the plan.
+    // The study bar of Cards, Practice and Review has no X; its way back, named after the exam, goes to the plan.
     for (const route of [`cards/${topic}`, `practice/${topic}`, "review"]) {
       await goto(page, `/plans/${planId}/${route}`);
-      await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Chiudi", exact: true }), route).toHaveCount(0);
+      await page.getByRole("button", { name: /^Torna all'esame: / }).click();
       await expect(page, route).toHaveURL(new RegExp(`#/plans/${planId}$`));
     }
   } finally {

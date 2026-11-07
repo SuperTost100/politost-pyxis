@@ -543,8 +543,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     await shoot(page, `plan-path/cards-review-it-light.png`);
-    // The focus bar's X is the only way out of a card session.
-    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+    // The study bar's way back to the exam is the only way out of a card session.
+    await expect(page.getByRole("button", { name: "Chiudi", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Torna all'esame: / }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect(cardJobs()).toBe(0);
     expect((await read()).steps).toEqual(withCards);

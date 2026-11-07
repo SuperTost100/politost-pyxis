@@ -4,7 +4,6 @@ import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { useMenuLock } from "../../app/menu-state";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -21,6 +20,7 @@ import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem } from "./ResultsScreen";
+import { StudyLayout } from "./StudyBar";
 import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
@@ -329,14 +329,20 @@ export function SimulationPage() {
     };
   });
   return (
-    <FocusLayout
-      title={
-        run
-          ? (plan.data?.title ?? t("simulation.title"))
-          : t("simulation.title")
+    <StudyLayout
+      // A running exam has no way out until it is handed in, as in the exam room.
+      back={
+        !run || run.submitted || locked
+          ? {
+              text: plan.data?.title ?? t("lesson.back"),
+              label: plan.data ? t("lesson.back") : undefined,
+              onClick: () => navigate(`/plans/${planId}`),
+            }
+          : undefined
       }
-      closable={!run || run.submitted || locked}
-      headerRight={
+      title={t("simulation.title")}
+      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+      actions={
         // The clock and Submit belong to the exam; once it is being graded the results screen takes over.
         run && !run.submitted && !run.grading ? (
           <div className="px-sim-header-actions">
@@ -713,7 +719,7 @@ export function SimulationPage() {
       >
         <p className="body">{t("simulation.confirm", { count: unanswered })}</p>
       </Modal>
-    </FocusLayout>
+    </StudyLayout>
   );
 }
 

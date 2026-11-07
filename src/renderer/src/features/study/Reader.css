@@ -6,38 +6,17 @@
   color: var(--ink);
 }
 
-.px-reader-bar {
+/* The study bar stays at the top while the sheet scrolls, with a line under it once the heading has gone. */
+.px-studybar.px-reader-bar {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: var(--bg);
   border-bottom: 1px solid transparent;
   transition: border-color 160ms ease-out;
 }
 
-.px-reader-bar.is-scrolled {
+.px-studybar.px-reader-bar.is-scrolled {
   border-bottom-color: var(--border);
-}
-
-.px-reader-bar-title {
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity 160ms ease-out;
-}
-
-.px-reader-bar.is-scrolled .px-reader-bar-title {
-  opacity: 1;
-}
-
-.px-reader-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  -webkit-app-region: no-drag;
 }
 
 .px-reader-level {
@@ -48,57 +27,6 @@
 
 .px-reader-level .ink-muted {
   font-weight: 400;
-}
-
-/* With a title in the bar (pyxis-mockups "s-lesson"): the exam beside the back arrow, then the page's name over the
-   exam it belongs to, always shown. */
-.px-reader-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-muted);
-  font: 500 14px/1 var(--font-sans);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-}
-.px-reader-back:hover {
-  background: var(--surface-raised);
-  color: var(--ink);
-}
-.px-reader-back-text {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.focus-bar.px-reader-bar.has-title {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-.px-reader-bar.has-title .px-reader-bar-title {
-  display: grid;
-  min-width: 0;
-  padding-left: 14px;
-  border-left: 1px solid var(--border);
-  opacity: 1;
-  line-height: 1.3;
-}
-.px-reader-bar-title b {
-  overflow: hidden;
-  font: 600 14px/1.3 var(--font-sans);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.px-reader-bar-title span {
-  overflow: hidden;
-  color: var(--ink-subtle);
-  font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The page under the bar: the outline in its own column on the left, the sheet in the middle. */
@@ -413,8 +341,7 @@
     animation: none;
   }
 
-  .px-reader-bar,
-  .px-reader-bar-title,
+  .px-studybar.px-reader-bar,
   .px-reader-sources summary::after {
     transition: none;
   }

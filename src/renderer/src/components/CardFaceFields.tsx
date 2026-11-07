@@ -1,11 +1,12 @@
 import { Input } from "antd";
 import { useTranslation } from "react-i18next";
 
-/** A card's front and back while it is edited, on the flashcards page and in the card browser. */
+/** A card's front and back while it is written or edited, on the flashcards page and in the card browser. */
 export function CardFaceFields({
   idPrefix,
   front,
   back,
+  placeholders,
   onFront,
   onBack,
 }: {
@@ -13,6 +14,7 @@ export function CardFaceFields({
   idPrefix: string;
   front: string;
   back: string;
+  placeholders?: { front: string; back: string };
   onFront: (value: string) => void;
   onBack: (value: string) => void;
 }) {
@@ -26,6 +28,7 @@ export function CardFaceFields({
         id={`${idPrefix}-front`}
         autoSize={{ minRows: 2, maxRows: 8 }}
         value={front}
+        placeholder={placeholders?.front}
         onChange={(event) => onFront(event.target.value)}
       />
       <label className="label" htmlFor={`${idPrefix}-back`}>
@@ -35,6 +38,7 @@ export function CardFaceFields({
         id={`${idPrefix}-back`}
         autoSize={{ minRows: 2, maxRows: 8 }}
         value={back}
+        placeholder={placeholders?.back}
         onChange={(event) => onBack(event.target.value)}
       />
     </>

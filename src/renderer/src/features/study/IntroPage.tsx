@@ -67,6 +67,9 @@ export function IntroPage() {
       eyebrow={t("plans.intro")}
       title={plan.data?.title ?? t("plans.intro")}
       backLabel={t("lesson.back")}
+      backText={plan.data?.title}
+      barTitle={t("plans.intro")}
+      barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
       onBack={() => navigate(`/plans/${planId}`)}
     >
       {intro.isPending ? <ReaderProgress label={t("lesson.loading")} empty /> : null}

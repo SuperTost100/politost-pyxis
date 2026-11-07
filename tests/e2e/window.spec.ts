@@ -420,15 +420,15 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
           { timeout: 120000 },
         )
         .toBe("succeeded");
-    // Adding a card sits in a disclosure, closed by default.
-    await page.getByText("Aggiungi una flashcard", { exact: true }).click();
-    await page
-      .getByRole("textbox", { name: "Davanti", exact: true })
-      .fill("What is velocity?");
-    await page
-      .getByRole("textbox", { name: "Dietro", exact: true })
-      .fill("Displacement divided by elapsed time.");
-    await page.getByRole("button", { name: "Salva", exact: true }).click();
+    // Adding a card opens a small form from the study bar.
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const newCard = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await newCard.getByRole("textbox", { name: "Fronte", exact: true }).fill("What is velocity?");
+    await newCard.getByRole("textbox", { name: "Retro", exact: true }).fill("Displacement divided by elapsed time.");
+    await newCard.getByRole("button", { name: "Aggiungi", exact: true }).click();
+    await expect(newCard.getByRole("status")).toHaveText("Aggiunta. Puoi scriverne un'altra.");
+    await page.keyboard.press("Escape");
+    await expect(newCard).toHaveCount(0);
     await page.getByRole("button", { name: /^Gira\b/ }).click();
     await page.getByRole("button", { name: "La sapevo", exact: true }).click();
     await expect

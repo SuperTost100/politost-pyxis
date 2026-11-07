@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { ArrowLeft, ArrowRight, Check, CircleCheck, LoaderCircle } from "lucide-react";
+import { ArrowRight, Check, CircleCheck, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { JobsButton } from "../jobs/JobsButton";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
+import { StudyBar } from "./StudyBar";
 import { recommendQuery } from "../../lib/queries";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
@@ -18,8 +19,8 @@ const WORDS_PER_MINUTE = 200;
 type Part = { id: string; title: string; words: number };
 
 /**
- * The reading page shared by lessons and the course introduction (pyxis-mockups app/study.html, "s-lesson"): a bar with
- * the way back, the page's name and its actions, over one white sheet about 87 characters a line. With `outline`, the
+ * The reading page shared by lessons and the course introduction (pyxis-mockups app/study.html, "s-lesson"): the study
+ * bar with the way back, the page's name and its actions, over one white sheet about 87 characters a line. With `outline`, the
  * sheet's sections are listed beside it, with what has been read ticked, the current one marked and the time left.
  */
 export function ReaderLayout({
@@ -38,10 +39,10 @@ export function ReaderLayout({
   title: string;
   /** The back button's name. With `backText` it is read before that text. */
   backLabel: string;
-  /** Shown beside the back arrow, as the exam's name. */
+  /** Shown beside the back arrow, as the exam's name; until it is known the arrow shows `backLabel`. */
   backText?: string;
-  /** Always shown in the bar; without it the bar shows the title once the heading has scrolled away. */
-  barTitle?: string;
+  /** The page's name in the bar, over `barSubtitle`. */
+  barTitle: string;
   barSubtitle?: string;
   onBack: () => void;
   actions?: ReactNode;
@@ -123,41 +124,20 @@ export function ReaderLayout({
   const showOutline = outline && parts.length > 1;
   return (
     <div className="px-reader">
-      <header
-        className={`focus-bar px-reader-bar${scrolled ? " is-scrolled" : ""}${barTitle ? " has-title" : ""}`}
-      >
-        {backText ? (
-          <button type="button" className="px-reader-back" onClick={onBack}>
-            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
-            <span className="visually-hidden">{backLabel}: </span>
-            <span className="px-reader-back-text">{backText}</span>
-          </button>
-        ) : (
-          <Button
-            shape="circle"
-            type="text"
-            aria-label={backLabel}
-            title={backLabel}
-            icon={<ArrowLeft size={18} strokeWidth={1.75} />}
-            onClick={onBack}
-          />
-        )}
-        {barTitle ? (
-          <div className="px-reader-bar-title" aria-hidden>
-            <b>{barTitle}</b>
-            {barSubtitle ? <span>{barSubtitle}</span> : null}
-          </div>
-        ) : (
-          <p className="title-3 px-reader-bar-title" aria-hidden>
-            {title}
-          </p>
-        )}
-        {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
-        <div className="px-reader-actions">
-          <JobsButton />
-          {actions}
-        </div>
-      </header>
+      <StudyBar
+        className={`px-reader-bar${scrolled ? " is-scrolled" : ""}`}
+        heading={false}
+        back={backText ? { text: backText, label: backLabel, onClick: onBack } : { text: backLabel, onClick: onBack }}
+        title={barTitle}
+        subtitle={barSubtitle}
+        actions={
+          <>
+            {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
+            <JobsButton />
+            {actions}
+          </>
+        }
+      />
       <main className={showOutline ? "px-reader-main has-outline" : "px-reader-main"}>
         {showOutline ? (
           <nav className="px-reader-outline" aria-label={t("lesson.outline")}>

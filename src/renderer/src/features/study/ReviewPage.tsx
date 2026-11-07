@@ -3,12 +3,12 @@ import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { cardOffer } from "./reviewOffer";
+import { StudyLayout } from "./StudyBar";
 import { usePlan, useRecommend } from "../../lib/queries";
 
 const COUNTS = [5, 10, 20];
@@ -117,7 +117,15 @@ export function ReviewPage() {
           : []),
       ];
   return (
-    <FocusLayout title={t("cards.reviewTitle")} onClose={() => navigate(`/plans/${planId}`)}>
+    <StudyLayout
+      back={{
+        text: plan.data?.title ?? t("lesson.back"),
+        label: plan.data ? t("lesson.back") : undefined,
+        onClick: () => navigate(`/plans/${planId}`),
+      }}
+      title={t("cards.reviewTitle")}
+      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+    >
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
         title={t("cards.reviewTitle")}
@@ -192,6 +200,6 @@ export function ReviewPage() {
           );
         })}
       </ActivityIntro>
-    </FocusLayout>
+    </StudyLayout>
   );
 }
