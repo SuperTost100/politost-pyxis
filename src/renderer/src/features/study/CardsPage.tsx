@@ -61,6 +61,26 @@ export function CardsPage() {
     request.then(then, () => setActionFailed(true));
   };
   const [showBack, setShowBack] = useState(false);
+  // Set by the first turn, so a card that just appeared shows without turning.
+  const [turned, setTurned] = useState(false);
+  /** Shows the card's other face. Only the look turns: the face changes at once, so a rating key right after works. */
+  function turn() {
+    // The control that turned the card goes away with its face, so the focus moves to the new face: the answer, which a
+    // screen reader then reads, or Gira again. Focus elsewhere on the page stays where it is.
+    const focus = document.activeElement;
+    turnFocus.current = !focus || focus === document.body || Boolean(stage.current?.contains(focus));
+    setTurned(true);
+    setShowBack((current) => !current);
+  }
+  const stage = useRef<HTMLDivElement>(null);
+  const answer = useRef<HTMLDivElement>(null);
+  const flipButton = useRef<HTMLButtonElement>(null);
+  const turnFocus = useRef(false);
+  useEffect(() => {
+    if (!turnFocus.current) return;
+    turnFocus.current = false;
+    (showBack ? answer.current : flipButton.current)?.focus();
+  }, [showBack]);
   const [lastAction, setLastAction] = useState<Undoable | null>(null);
   // A card brought back by Undo shows next, wherever the deck would sort it.
   const [pinned, setPinned] = useState<string | null>(null);
@@ -264,6 +284,7 @@ export function CardsPage() {
   useEffect(() => {
     setEditing(false);
     setShowBack(false);
+    setTurned(false);
   }, [card?.id]);
   const counts = { again: 0, hard: 0, good: 0, easy: 0 };
   for (const rating of seen) counts[rating] += 1;
@@ -296,6 +317,7 @@ export function CardsPage() {
       });
       setPinned(null);
       setShowBack(false);
+      setTurned(false);
       setSeen((current) => [...current, rating]);
       if (everywhere && cardPlanId && card.topicId)
         setRatedIn((current) => [
@@ -359,6 +381,7 @@ export function CardsPage() {
       setLastAction({ kind: "suspend", cardId });
       setPinned(null);
       setShowBack(false);
+      setTurned(false);
       void refresh();
     });
   }
@@ -372,6 +395,7 @@ export function CardsPage() {
         setLastAction(card.handMade ? null : { kind: "delete", cardId });
         setPinned(null);
         setShowBack(false);
+        setTurned(false);
         void refresh();
       });
     if (!card.handMade) return run();
@@ -457,7 +481,7 @@ export function CardsPage() {
       if (!card) return;
       if (event.code === "Space") {
         event.preventDefault();
-        setShowBack((current) => !current);
+        turn();
       } else if (showBack && /^[1-4]$/.test(event.key)) {
         event.preventDefault();
         void rate(RATINGS[Number(event.key) - 1]!);
@@ -609,159 +633,177 @@ export function CardsPage() {
             <p className="body">{t("cards.empty")}</p>
           )
         ) : (
-          <article className="px-card" aria-label={t("cards.card")}>
-            <div className="px-card-top">
-              <Dropdown
-                trigger={["click"]}
-                disabled={ratingPending || editing}
-                menu={{
-                  items: [
-                    {
-                      key: "edit",
-                      label: t("cards.edit"),
-                      disabled: !cardTopicId,
-                      extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
-                    },
-                    {
-                      key: "suspend",
-                      label: t("cards.suspend"),
-                      extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
-                    },
-                    {
-                      key: "delete",
-                      label: t("cards.delete"),
-                      danger: true,
-                      extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
-                    },
-                  ],
-                  onClick: ({ key }) =>
-                    key === "edit"
-                      ? startEdit()
-                      : key === "suspend"
-                        ? suspend()
-                        : remove(),
-                }}
+          <div className="px-cards-stage" ref={stage}>
+            {sessionTotal > 0 && !reviewing ? (
+              <div
+                className="px-cards-progress"
+                role="progressbar"
+                aria-label={t("cards.progressLabel")}
+                aria-valuemin={0}
+                aria-valuemax={sessionTotal}
+                aria-valuenow={sessionDone}
               >
-                <Button
-                  type="text"
-                  shape="circle"
-                  aria-label={t("cards.more")}
-                  icon={<Ellipsis size={18} strokeWidth={1.75} aria-hidden />}
-                />
-              </Dropdown>
-            </div>
-            {editing ? (
-              <div className="px-card-edit">
-                <CardFaceFields
-                  idPrefix="card"
-                  front={draftFront}
-                  back={draftBack}
-                  onFront={setDraftFront}
-                  onBack={setDraftBack}
-                />
-                <div className="px-card-edit-actions">
-                  <Button
-                    type="primary"
-                    shape="round"
-                    onClick={() => {
-                      if (!cardPlanId || !cardTopicId) return;
-                      act(
-                        invoke("study.save", {
-                          planId: cardPlanId,
-                          topicId: cardTopicId,
-                          cardId: card.id,
-                          front: draftFront,
-                          back: draftBack,
-                        }),
-                        () => {
-                          setEditing(false);
-                          refresh();
-                        },
-                      );
-                    }}
-                    disabled={!draftFront.trim() || !draftBack.trim()}
-                  >
-                    {t("cards.save")}
-                  </Button>
-                  <Button shape="round" onClick={() => setEditing(false)}>
-                    {t("cardBrowser.cancel")}
-                  </Button>
-                </div>
+                <i style={{ width: `${(100 * sessionDone) / sessionTotal}%` }} />
               </div>
-            ) : (
-              <div className="px-card-face">
-                <div className="px-card-front">
-                  <MarkdownView>
-                    {isCloze(card.front)
-                      ? (showBack ? clozeAnswer : clozeQuestion)(card.front)
-                      : card.front}
-                  </MarkdownView>
+            ) : null}
+            {/* The card turns over when it shows its other face; face is unset until the first turn, so it doesn't
+                turn as it first appears. */}
+            <article className="px-card" aria-label={t("cards.card")} data-face={turned ? (showBack ? "back" : "front") : undefined}>
+              <div className="px-card-top">
+                <Dropdown
+                  trigger={["click"]}
+                  disabled={ratingPending || editing}
+                  menu={{
+                    items: [
+                      {
+                        key: "edit",
+                        label: t("cards.edit"),
+                        disabled: !cardTopicId,
+                        extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
+                      },
+                      {
+                        key: "suspend",
+                        label: t("cards.suspend"),
+                        extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
+                      },
+                      {
+                        key: "delete",
+                        label: t("cards.delete"),
+                        danger: true,
+                        extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
+                      },
+                    ],
+                    onClick: ({ key }) =>
+                      key === "edit"
+                        ? startEdit()
+                        : key === "suspend"
+                          ? suspend()
+                          : remove(),
+                  }}
+                >
+                  <Button
+                    type="text"
+                    shape="circle"
+                    aria-label={t("cards.more")}
+                    icon={<Ellipsis size={18} strokeWidth={1.75} aria-hidden />}
+                  />
+                </Dropdown>
+              </div>
+              {editing ? (
+                <div className="px-card-edit">
+                  <CardFaceFields
+                    idPrefix="card"
+                    front={draftFront}
+                    back={draftBack}
+                    onFront={setDraftFront}
+                    onBack={setDraftBack}
+                  />
+                  <div className="px-card-edit-actions">
+                    <Button
+                      type="primary"
+                      shape="round"
+                      onClick={() => {
+                        if (!cardPlanId || !cardTopicId) return;
+                        act(
+                          invoke("study.save", {
+                            planId: cardPlanId,
+                            topicId: cardTopicId,
+                            cardId: card.id,
+                            front: draftFront,
+                            back: draftBack,
+                          }),
+                          () => {
+                            setEditing(false);
+                            refresh();
+                          },
+                        );
+                      }}
+                      disabled={!draftFront.trim() || !draftBack.trim()}
+                    >
+                      {t("cards.save")}
+                    </Button>
+                    <Button shape="round" onClick={() => setEditing(false)}>
+                      {t("cardBrowser.cancel")}
+                    </Button>
+                  </div>
                 </div>
-                {showBack ? (
-                  <div className="px-card-back">
-                    <MarkdownView>{card.back}</MarkdownView>
-                    <div className="px-card-links">
-                      {card.sectionPath && card.passageId && card.sourceId ? (
-                        <CitationChip
-                          onClick={() =>
-                            openSourceViewer({
-                              passageId: card.passageId ?? undefined,
-                              sourceId: card.sourceId ?? undefined,
-                            })
-                          }
+              ) : (
+                <div className="px-card-face">
+                  {showBack ? (
+                    <>
+                      {/* The focus lands here after a turn: the question with a cloze card's answer filled in, then the
+                          back, so a screen reader reads both. */}
+                      <div className="px-card-reveal" ref={answer} tabIndex={-1}>
+                        <div className="px-card-asked">
+                          <MarkdownView>{isCloze(card.front) ? clozeAnswer(card.front) : card.front}</MarkdownView>
+                        </div>
+                        <hr />
+                        <div className="px-card-back">
+                          <MarkdownView>{card.back}</MarkdownView>
+                        </div>
+                      </div>
+                      <div className="px-card-links">
+                        {card.sectionPath && card.passageId && card.sourceId ? (
+                          <CitationChip
+                            onClick={() =>
+                              openSourceViewer({
+                                passageId: card.passageId ?? undefined,
+                                sourceId: card.sourceId ?? undefined,
+                              })
+                            }
+                          >
+                            {card.sectionPath}
+                          </CitationChip>
+                        ) : null}
+                        <Button
+                          type="text"
+                          shape="round"
+                          size="small"
+                          icon={<MessageCircleQuestion size={16} strokeWidth={1.75} aria-hidden />}
+                          onClick={() => void askTutor()}
                         >
-                          {card.sectionPath}
-                        </CitationChip>
-                      ) : null}
-                      <Button
-                        type="text"
-                        shape="round"
-                        size="small"
-                        icon={
-                          <MessageCircleQuestion
-                            size={16}
-                            strokeWidth={1.75}
-                            aria-hidden
-                          />
-                        }
-                        onClick={() => void askTutor()}
-                      >
-                        {t("cards.askTutor")}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            )}
-            {editing ? null : (
-              <div className="px-card-foot">
-                {showBack ? (
-                  <div className="px-cards-actions">
-                    {RATINGS.map((rating, index) => (
-                      <Button
-                        key={rating}
-                        shape="round"
-                        type={rating === "good" ? "primary" : "default"}
-                        disabled={ratingPending}
-                        aria-keyshortcuts={String(index + 1)}
-                        onClick={() => void rate(rating)}
-                      >
-                        {t(`cards.${rating}`)}
-                      </Button>
-                    ))}
-                  </div>
-                ) : (
-                  <Button
-                    type="primary"
-                    shape="round"
-                    onClick={() => setShowBack(true)}
-                  >
-                    {t("cards.flip")} <kbd>{t("cards.spaceKey")}</kbd>
+                          {t("cards.askTutor")}
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {card.sectionPath ? <p className="px-card-kicker">{card.sectionPath}</p> : null}
+                      <div className="px-card-front">
+                        <MarkdownView>{isCloze(card.front) ? clozeQuestion(card.front) : card.front}</MarkdownView>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </article>
+            {editing ? null : showBack ? (
+              <>
+                <div className="px-cards-actions" role="group" aria-label={t("cards.rateLabel")}>
+                  {RATINGS.map((rating, index) => (
+                    <Button
+                      key={rating}
+                      disabled={ratingPending}
+                      aria-keyshortcuts={String(index + 1)}
+                      onClick={() => void rate(rating)}
+                    >
+                      {t(`cards.${rating}`)}
+                    </Button>
+                  ))}
+                </div>
+                <p className="px-cards-hint">{t("cards.rateHint")}</p>
+              </>
+            ) : (
+              <>
+                <div className="px-cards-flip">
+                  <Button ref={flipButton} type="primary" size="large" aria-keyshortcuts="Space" onClick={turn}>
+                    {t("cards.flip")}
                   </Button>
-                )}
-              </div>
+                </div>
+                <p className="px-cards-hint">{t("cards.flipHint")}</p>
+              </>
             )}
-          </article>
+          </div>
         )}
         {lastAction ? (
           <div className="px-cards-undo">

@@ -37,53 +37,121 @@
   gap: var(--space-2);
   margin-left: auto;
 }
-/* The card fills the screen below the toolbar: the text in the middle, the ratings at its foot. */
+/* The card (pyxis-mockups app/study.html, "s-cards"): one white card in the middle of the screen with the text centred,
+   a thin progress line above it, and Gira or the four ratings below it. */
+.px-cards-stage {
+  display: grid;
+  gap: 20px;
+  width: min(620px, 100%);
+  margin: var(--space-4) auto 0;
+  perspective: 1600px;
+}
+.px-cards-progress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border);
+}
+.px-cards-progress > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary-text);
+  transition: width 0.2s ease-out;
+}
 .px-cards .px-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-height: max(360px, calc(100vh - 300px));
-  padding: var(--space-4) var(--space-6) var(--space-6);
-  border: 1px solid var(--border);
+  position: relative;
+  display: grid;
+  align-content: center;
+  min-height: 340px;
+  /* The top leaves room for the card's menu button in the corner. */
+  padding: 52px 48px 40px;
   border-radius: var(--radius-xl);
   background: var(--surface);
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+/* Each face turns in from the side; the two names restart the animation on every turn. */
+@media (prefers-reduced-motion: no-preference) {
+  .px-cards .px-card[data-face="back"] {
+    animation: px-card-turn-a 0.18s ease-out;
+  }
+  .px-cards .px-card[data-face="front"] {
+    animation: px-card-turn-b 0.18s ease-out;
+  }
+}
+@keyframes px-card-turn-a {
+  from {
+    transform: rotateY(-90deg);
+  }
+}
+@keyframes px-card-turn-b {
+  from {
+    transform: rotateY(-90deg);
+  }
 }
 .px-card-top {
-  display: flex;
-  justify-content: flex-end;
-  margin-right: calc(var(--space-3) * -1);
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
-/* The front keeps its place when the back appears below it, so the flip does not move the question. */
 .px-card-face {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  padding-top: clamp(var(--space-4), 10vh, var(--space-16));
+  display: grid;
+  justify-items: center;
+  gap: 16px;
   overflow-wrap: anywhere;
 }
-.px-card-front .px-markdown {
-  font-size: calc(20px * var(--text-scale, 1));
-  line-height: calc(30px * var(--text-scale, 1));
-  font-weight: 500;
+.px-card-kicker {
+  margin: 0;
+  color: var(--ink-subtle);
+  font: 600 12.5px/1.3 var(--font-sans);
 }
-.px-card-back {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding-top: var(--space-5);
+.px-card-front {
+  max-width: 30ch;
+  text-wrap: balance;
+}
+.px-card-front .px-markdown {
+  font-size: calc(24px * var(--text-scale, 1));
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.px-card-asked {
+  max-width: 46ch;
+  color: var(--ink-muted);
+  text-wrap: balance;
+}
+.px-card-asked .px-markdown {
+  font-size: calc(14.5px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+.px-card-reveal {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  border-radius: var(--radius-sm);
+}
+.px-card-reveal:focus {
+  outline: none;
+}
+.px-card-reveal:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 6px;
+}
+.px-card-reveal > hr {
+  width: 48px;
+  margin: 0;
+  border: 0;
   border-top: 1px solid var(--border);
 }
-@media (prefers-reduced-motion: no-preference) {
-  .px-card-back {
-    animation: px-card-reveal 180ms ease-out;
-  }
+.px-card-back {
+  max-width: 34ch;
+  text-wrap: balance;
 }
-@keyframes px-card-reveal {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
+.px-card-back .px-markdown {
+  font-size: calc(21px * var(--text-scale, 1));
+  line-height: 1.5;
+  font-weight: 500;
 }
 .px-cards .px-card .px-markdown > :last-child {
   margin-bottom: 0;
@@ -91,35 +159,43 @@
 .px-card-links {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: var(--space-2);
 }
-.px-card-foot {
+.px-cards-flip {
   display: flex;
   justify-content: center;
 }
-.px-card-foot > .ant-btn {
-  min-width: 160px;
+.px-cards-flip > .ant-btn {
+  min-width: 220px;
 }
 .px-cards .px-cards-actions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-2);
-  width: 100%;
+  gap: 8px;
 }
 .px-cards .px-cards-actions .ant-btn {
+  height: 46px;
+  font-size: 14px;
   white-space: nowrap;
+}
+.px-cards .px-cards-hint {
+  margin: -6px 0 0;
+  color: var(--ink-subtle);
+  font-size: 13px;
+  text-align: center;
 }
 @media (max-width: 560px) {
   .px-cards .px-card {
-    padding-inline: var(--space-4);
+    padding: 52px 20px 32px;
   }
   .px-cards .px-cards-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 .px-card-edit {
-  flex: 1;
+  text-align: left;
   display: grid;
   align-content: start;
   gap: var(--space-2);

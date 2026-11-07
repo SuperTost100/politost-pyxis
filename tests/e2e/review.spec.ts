@@ -115,18 +115,18 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     const questions = total - 5;
     expect(questions).toBeGreaterThan(0);
 
-    // The rating buttons carry a label only: no key, no next review time. Bene is the primary one.
+    // The rating buttons carry a label only: no key, no next review time, and none stands out from the others.
     // Space does nothing until the first card has loaded, and the progress line can show before it.
     await expect(page.getByRole("button", { name: /^Gira/ })).toBeVisible();
     await page.keyboard.press("Space");
-    const labels = ["Da rivedere", "Difficile", "Bene", "Facile"];
+    const labels = ["Non la sapevo", "Difficile", "La sapevo", "Facile"];
     for (const name of labels)
       await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
-    await expect(page.locator(".px-cards-actions").first()).toHaveText(labels.join(""));
-    await expect(page.getByRole("button", { name: "Bene", exact: true })).toHaveClass(/ant-btn-primary/);
+    await expect(page.getByRole("group", { name: "Quanto la sapevi?" })).toHaveText(labels.join(""));
+    await expect(page.getByRole("group", { name: "Quanto la sapevi?" }).locator(".ant-btn-primary")).toHaveCount(0);
     await page.keyboard.press("Space");
 
-    // Every rating is Again, so a recycling queue would show a card twice.
+    // Every rating is "Non la sapevo", so a recycling queue would show a card twice.
     const seen: string[] = [];
     for (let done = 0; done < 2; done += 1) {
       await expect(front).not.toHaveText("");

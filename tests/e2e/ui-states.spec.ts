@@ -257,7 +257,7 @@ test("UI-03 the cards page announces the next card, names parked cards, and show
       }).observe(document.body, { subtree: true, childList: true, characterData: true });
     });
     await page.getByRole("button", { name: /^Gira/ }).click();
-    await page.getByRole("button", { name: "Bene", exact: true }).click();
+    await page.getByRole("button", { name: "La sapevo", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Flashcard successiva:" })).toHaveText(
       `Flashcard successiva: ${next}`,
     );
