@@ -82,6 +82,8 @@ export function BackupsGroup({
 
   /** Restores from a file the student picks, or from the listed backup `name`. */
   function restore(name?: string) {
+    // A backup or a move started after the confirmation opened still holds the workspace.
+    if (busy) return;
     setArmed(null);
     setResult(null);
     setArchiving("restore");
@@ -123,7 +125,7 @@ export function BackupsGroup({
     <Reveal className="px-ctl-confirm">
       <p role="alert">{t("settings.restoreConfirm", { workspace: workspaceName })}</p>
       <div className="px-ctl-confirm-acts">
-        <Button size="small" type="primary" danger onClick={() => restore(name)}>
+        <Button size="small" type="primary" danger disabled={busy} onClick={() => restore(name)}>
           {t("settings.restoreReplace", { workspace: workspaceName })}
         </Button>
         <Button size="small" type="text" onClick={() => setArmed(null)}>

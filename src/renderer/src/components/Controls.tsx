@@ -220,6 +220,8 @@ export function TextRow({
             if (next !== value) onSave(next);
           }}
           onKeyDown={(event) => {
+            // The Enter that ends an input method's composition only picks the characters.
+            if (event.nativeEvent.isComposing) return;
             if (event.key === "Enter") event.currentTarget.blur();
             if (event.key === "Escape") {
               event.currentTarget.value = value;
@@ -261,24 +263,32 @@ export function TagsField({
   // Tags added here grow in place; the ones already stored are simply there.
   const [added, setAdded] = useState<ReadonlySet<string>>(() => new Set());
   const input = useRef<HTMLInputElement>(null);
-  const full = values.length >= max;
-  const commit = (text: string) => {
-    const next = addTags(values, text, { max, maxLength });
-    setDraft("");
-    if (next.length === values.length) return;
-    setAdded(new Set(next.slice(values.length)));
+  // The list as last changed here, until the stored one catches up: a tag added before the save of the previous one
+  // comes back must build on that list, not on the stored one, or it would drop the tag before it.
+  const [sent, setSent] = useState<{ base: readonly string[]; list: string[] } | null>(null);
+  const shown = sent && sent.base === values ? sent.list : values;
+  const change = (next: string[]) => {
+    setSent({ base: values, list: next });
     onChange(next);
+  };
+  const full = shown.length >= max;
+  const commit = (text: string) => {
+    const next = addTags(shown, text, { max, maxLength });
+    setDraft("");
+    if (next.length === shown.length) return;
+    setAdded(new Set(next.slice(shown.length)));
+    change(next);
   };
   return (
     <div className="px-ctl-tags" onClick={(event) => event.target === event.currentTarget && input.current?.focus()}>
-      {values.map((value, index) => (
+      {shown.map((value, index) => (
         <span key={`${index}-${value}`} className={added.has(value) ? "px-ctl-tag is-new" : "px-ctl-tag"}>
           {value}
           <button
             type="button"
             aria-label={removeLabel(value)}
             onClick={() => {
-              onChange(values.filter((_, at) => at !== index));
+              change(shown.filter((_, at) => at !== index));
               input.current?.focus();
             }}
           >
@@ -306,7 +316,7 @@ export function TagsField({
           }
         }}
         onKeyDown={(event) => {
-          if (event.key !== "Enter") return;
+          if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
           event.preventDefault();
           commit(draft);
         }}

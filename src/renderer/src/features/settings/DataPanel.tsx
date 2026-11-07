@@ -146,7 +146,7 @@ export function DataPanel({
                 size="small"
                 aria-label={t("settings.move")}
                 loading={moving}
-                disabled={moving}
+                disabled={moving || archiving !== null}
                 onClick={() => void move()}
               >
                 {t("settings.moveShort")}
@@ -217,7 +217,7 @@ export function DataPanel({
                       type="primary"
                       danger
                       loading={wiping}
-                      disabled={moving || wiping}
+                      disabled={moving || wiping || archiving !== null}
                       onClick={wipe}
                     >
                       {t("settings.wipeConfirm")}
@@ -235,7 +235,7 @@ export function DataPanel({
               className="px-ctl-danger"
               aria-label={t("settings.wipe")}
               aria-expanded={wipeArmed}
-              disabled={moving || wiping}
+              disabled={moving || wiping || archiving !== null}
               onClick={() => {
                 if (!wipeArmed) setWipeBackups(true);
                 setWipeArmed(!wipeArmed);
