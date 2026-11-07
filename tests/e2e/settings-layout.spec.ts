@@ -54,6 +54,14 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     });
     await expect(sidebar.getByRole("button", { name: "Informazioni" })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 2, name: "Aggiornamenti" })).toBeInViewport();
+    // A section that fits in the window opens without scrolling the page's titles away, even in a short window.
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/version";
+    });
+    await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).toBeInViewport();
+    await expect(page.getByRole("heading", { level: 1, name: "Informazioni" })).toBeInViewport({ ratio: 1 });
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {
       window.location.hash = "#/settings/reminders";
     });
