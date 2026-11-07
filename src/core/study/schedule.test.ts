@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   examMaxInterval,
@@ -5,6 +6,7 @@ import {
   newCard,
   retrievability,
   review,
+  type RatingName,
   type ScheduleState,
 } from "./schedule";
 
@@ -117,8 +119,79 @@ describe("exam date", () => {
   it("counts whole local days to the exam, at least one", () => {
     const morning = new Date(2026, 5, 10, 8, 0).getTime();
     expect(examMaxInterval(null, morning)).toBeNull();
-    expect(examMaxInterval(new Date(2026, 5, 9, 9, 0).getTime(), morning)).toBeNull();
-    expect(examMaxInterval(new Date(2026, 5, 10, 20, 0).getTime(), morning)).toBe(1);
-    expect(examMaxInterval(new Date(2026, 5, 13, 0, 0).getTime(), morning)).toBe(3);
+    expect(
+      examMaxInterval(new Date(2026, 5, 9, 9, 0).getTime(), morning),
+    ).toBeNull();
+    expect(
+      examMaxInterval(new Date(2026, 5, 10, 20, 0).getTime(), morning),
+    ).toBe(1);
+    expect(
+      examMaxInterval(new Date(2026, 5, 13, 0, 0).getTime(), morning),
+    ).toBe(3);
   });
+});
+
+// Review histories replayed through ts-fsrs 5.4.2 before the move to 6.0.0, with the state each review stored. Each
+// row is [rating, reviewed at, exam at, then the stored FSRS card, then retrievability two days later]. The histories
+// are hand-written edge cases plus seeded random ones: same-session, late and very late reviews, Hard on a learning
+// step, lapses and exam caps.
+type ReplayRow = [
+  RatingName,
+  number,
+  number | null,
+  string,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  number,
+  string,
+  number,
+];
+const replay = JSON.parse(
+  readFileSync("tests/fixtures/fsrs-5.4.2-replay.json", "utf8"),
+) as { name: string; reviews: ReplayRow[] }[];
+
+describe("schedules recorded with ts-fsrs 5.4.2", () => {
+  it.each(replay.map((history) => [history.name, history.reviews] as const))(
+    "%s keeps every due date and state",
+    (_name, reviews) => {
+      let state = newCard(reviews[0]![1]);
+      for (const [
+        rating,
+        at,
+        examAt,
+        due,
+        stability,
+        difficulty,
+        elapsed,
+        scheduled,
+        steps,
+        reps,
+        lapses,
+        fsrsState,
+        last,
+        recall,
+      ] of reviews) {
+        state = review(state, rating, at, examAt);
+        expect(state.fsrs).toEqual({
+          due,
+          stability,
+          difficulty,
+          elapsed_days: elapsed,
+          scheduled_days: scheduled,
+          learning_steps: steps,
+          reps,
+          lapses,
+          state: fsrsState,
+          last_review: last,
+        });
+        expect(state.dueAt).toBe(Date.parse(due));
+        expect(retrievability(state, at + 2 * MS_PER_DAY, rating)).toBe(recall);
+      }
+    },
+  );
 });
