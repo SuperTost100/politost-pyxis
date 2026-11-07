@@ -179,7 +179,7 @@ export function MapPage() {
   nodesRef.current = nodes;
   // Unfolding or folding a node moves the map in one motion instead of a cut: children slide out of the node they hang
   // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
-  const motion = useRef<{ origin?: { x: number; y: number }; frame: number }>({ frame: 0 });
+  const motion = useRef<{ origin?: string; frame: number }>({ frame: 0 });
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
   const [ready, setReady] = useState<string>();
@@ -267,7 +267,7 @@ export function MapPage() {
   foldedRef.current = folded;
   const toggle = useCallback(
     (id: string) => {
-      motion.current.origin = nodesRef.current.find((node) => node.id === id)?.position;
+      motion.current.origin = id;
       const ids = new Set(foldedRef.current);
       if (!ids.delete(id)) ids.add(id);
       setFold({ mapId: activeId, ids });
@@ -321,18 +321,23 @@ export function MapPage() {
           },
         };
       });
-    const origin = motion.current.origin;
+    const originId = motion.current.origin;
+    const from = nodesRef.current.find((node) => node.id === originId)?.position;
     cancelAnimationFrame(motion.current.frame);
-    if (!origin || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       motion.current.origin = undefined;
       setNodes(target);
       return;
     }
-    // From where each node is now to where the layout puts it. A node that appears starts at the folded node; one that
-    // goes slides into it and fades.
-    const now = new Map(nodesRef.current.map((node) => [node.id, node.position]));
+    // From where each node is now to where the layout puts it. A node that appears starts where the folded node is now;
+    // one that goes slides into where the folded node ends up, and fades. The map redraws mid-move when the click also
+    // selects the node or a new node gets measured: each node then carries on from where it is, so one already on its
+    // way out keeps going instead of vanishing.
+    const into = target.find((node) => node.id === originId)?.position ?? from;
+    const now = new Map(nodesRef.current.map((node) => [node.id, node]));
     const ids = new Set(target.map((node) => node.id));
-    const leaving = nodesRef.current.filter((node) => !ids.has(node.id) && !node.data.leaving);
+    const leaving = nodesRef.current.filter((node) => !ids.has(node.id));
+    const shownAt = (node?: FlowNode) => Number(node?.style?.opacity ?? 1);
     const start = performance.now();
     const step = (time: number) => {
       const progress = Math.min(1, (time - start) / MOTION_MS);
@@ -343,20 +348,21 @@ export function MapPage() {
       });
       setNodes([
         ...target.map((node) => {
-          const from = now.get(node.id);
+          const was = now.get(node.id);
+          const opacity = was ? shownAt(was) : 0;
           return {
             ...node,
-            position: between(from ?? origin, node.position),
-            style: from ? node.style : { ...node.style, opacity: eased },
+            position: between(was?.position ?? from, node.position),
+            style: opacity < 1 ? { ...node.style, opacity: opacity + (1 - opacity) * eased } : node.style,
           };
         }),
         ...(progress < 1
           ? leaving.map((node) => ({
               ...node,
-              position: between(node.position, origin),
+              position: between(node.position, into),
               selectable: false,
               data: { ...node.data, leaving: true },
-              style: { ...node.style, opacity: 1 - eased },
+              style: { ...node.style, opacity: shownAt(node) * (1 - eased) },
             }))
           : []),
       ]);
