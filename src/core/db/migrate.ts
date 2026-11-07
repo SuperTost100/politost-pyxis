@@ -195,6 +195,47 @@ ALTER TABLE plans ADD COLUMN archived_at INTEGER;`,
     version: 23,
     sql: `ALTER TABLE jobs ADD COLUMN fallback_json TEXT CHECK (fallback_json IS NULL OR json_valid(fallback_json));`,
   },
+  // Linked folders, read in place. A folder is one of the student's own folders: in `root` mode each subfolder is a
+  // subject, in `subject` mode the folder is one. `linked_subfolders` maps a first-level subfolder ('' for the folder
+  // itself) to its subject, or marks it skipped. `linked_files` is one file Pyxis read from there, with the size, time
+  // and SHA-256 (`content_hash`, which names no stored blob) it had then, and the source that holds its text. Its
+  // source_id turns NULL when the source is deleted, so the file is not read again. Only new tables: nothing that
+  // existed before changes.
+  {
+    version: 24,
+    sql: `CREATE TABLE linked_folders (
+  id TEXT PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  mode TEXT NOT NULL CHECK (mode IN ('root', 'subject')),
+  detection TEXT CHECK (detection IS NULL OR detection IN ('ai', 'names')),
+  cut_json TEXT CHECK (cut_json IS NULL OR json_valid(cut_json)),
+  confirmed_at INTEGER,
+  synced_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE linked_subfolders (
+  folder_id TEXT NOT NULL REFERENCES linked_folders(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL,
+  suggested TEXT,
+  kinds_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(kinds_json)),
+  skipped INTEGER NOT NULL DEFAULT 0 CHECK (skipped IN (0, 1)),
+  PRIMARY KEY (folder_id, name)
+);
+CREATE INDEX linked_subfolders_subject ON linked_subfolders(subject_id);
+CREATE TABLE linked_files (
+  folder_id TEXT NOT NULL REFERENCES linked_folders(id) ON DELETE CASCADE,
+  rel_path TEXT NOT NULL,
+  subfolder TEXT NOT NULL,
+  source_id TEXT REFERENCES sources(id) ON DELETE SET NULL,
+  size INTEGER NOT NULL,
+  mtime_ms INTEGER NOT NULL,
+  content_hash TEXT,
+  missing_at INTEGER,
+  PRIMARY KEY (folder_id, rel_path)
+);
+CREATE UNIQUE INDEX linked_files_source ON linked_files(source_id) WHERE source_id IS NOT NULL;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

@@ -136,6 +136,17 @@ async function dispatch(
     }
     return dispatchValidated(name, parsed, signal, emit);
   }
+  // A folder to link must be one main's picker or a drop granted, as for a folder import. The handler then refuses one
+  // inside the workspace or the app's data.
+  if (name === "sources.linkFolders") {
+    const parsed = requests["sources.linkFolders"].input.parse(input);
+    try {
+      parsed.paths = parsed.paths.map((path) => fileGrants.directory(path));
+    } catch {
+      throw new IpcError("file-access-denied", "errors.fileAccessDenied");
+    }
+    return dispatchValidated(name, parsed, signal, emit);
+  }
   let parsed: { path?: string; files?: string[] } | undefined;
   if (
     name === "sources.import" ||
@@ -366,6 +377,9 @@ const routes = {
   "sources.importBook": ["sources", "importBook", "signal"],
   "sources.updateBook": ["sources", "updateBook", "signal"],
   "sources.scanFolder": ["sources", "scanFolder", "signal"],
+  "sources.linkFolders": ["sources", "linkFolders", "signal"],
+  "sources.confirmFolders": ["sources", "confirmFolders"],
+  "sources.linkedFolders": ["sources", "linkedFolders", "bare"],
   "sources.preview": ["sources", "preview", "signal"],
   "sources.rename": ["sources", "rename"],
   "sources.replace": ["sources", "replace"],
@@ -759,6 +773,8 @@ export function bindSources(
   workspace: string,
   runner: Runner,
   booksTransport?: BooksTransport,
+  /** The app's own data folder, which a linked folder may not lie in. */
+  userData?: string,
 ): void {
   fileScratch = join(workspace, "scratch");
   sources = sourceHandlers(
@@ -768,5 +784,6 @@ export function bindSources(
     (path) => fileGrants.file(path),
     undefined,
     booksTransport,
+    { userData, onChange: () => broadcast("sources.changed", {}) },
   );
 }

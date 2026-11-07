@@ -8,6 +8,7 @@ import type { JobSpec, Runner } from "../jobs/runner";
 import {
   addDocumentVersion,
   addExtractionVersion,
+  addLinkedVersion,
   kindFor,
   mimeFor,
   storeExtracted,
@@ -29,7 +30,8 @@ import { isAbort, type JobView } from "../../shared/ipc";
 import { fetchSnapshot } from "./link";
 import { IMPORT_EXTENSIONS } from "./folder";
 import { extForMime, plansUsing } from "./manage";
-import { base64 } from "./quality";
+import { base64, hashFiles } from "./quality";
+import { readableLinkedPath } from "./linked-file";
 
 
 type ImportParams = {
@@ -53,6 +55,11 @@ type ImportParams = {
    * is still this, `indexing` or `doneStatus`, so a scan read by OCR in the meantime keeps what OCR gave it.
    */
   passagesStatus?: string;
+  /**
+   * A file in a linked folder, read from where it is: the source has no stored copy and `sha` stays empty. Its hash is
+   * taken as the extract step reads it and kept on its `linked_files` row.
+   */
+  linked?: boolean;
   /** The step `runner.resumeLocal` resumed this job at after a restart, if it did. */
   autoResumedAt?: string;
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
@@ -153,6 +160,8 @@ type Deps = {
   ) => Promise<VisionImage>;
   /** A file that turned out to be a scan without text, so its reading can start. */
   onScan?: (sourceId: string) => void;
+  /** Hashes a linked file without holding it: the extract worker in the app. */
+  hash?: (paths: string[], maxBytes: number, signal: AbortSignal) => Promise<Array<string | null>>;
 };
 
 export function registerSourceJobs(
@@ -214,9 +223,17 @@ export function registerSourceJobs(
           // A password is used for one read, whatever its outcome. A wrong one asks again.
           const password = pdfPasswords.get(passwordKey(input));
           pdfPasswords.delete(passwordKey(input));
+          let path: string;
+          if (input.linked) {
+            // The student's own file, read where it is. Its hash lets a later look tell a moved or touched file apart.
+            path = readableLinkedPath(db, input.sourceId);
+            const [sha] = await (deps.hash ?? hashFiles)([path], maxSourceBytes(input.ext), ctx.signal);
+            if (!sha) throw new Error("source-too-big");
+            db.prepare(`UPDATE linked_files SET content_hash = ? WHERE source_id = ?`).run(sha, input.sourceId);
+          } else path = readBlob(workspace, input.sha).file;
           const value = await extract(
             {
-              path: readBlob(workspace, input.sha).file,
+              path,
               ext: input.ext,
               tess: join(workspace, "runtimes", "tesseract"),
               ...(password ? { password } : {}),
@@ -247,7 +264,7 @@ export function registerSourceJobs(
           ) as Extraction;
           ctx.signal.throwIfAborted();
           // The original was stored under `input.sha` when the job was queued, so it is not read back into core.
-          if (!value.book && !input.reextract && !hasBlob(workspace, input.sha))
+          if (!value.book && !input.reextract && !input.linked && !hasBlob(workspace, input.sha))
             throw new Error("source-file-missing");
           db.transaction(() => {
             const source = db
@@ -270,6 +287,18 @@ export function registerSourceJobs(
                 });
               else if (value.book)
                 storeSmartbook(db, value.book, Date.now(), input.sourceId);
+              else if (value.document && input.linked && input.version > 1)
+                addLinkedVersion(db, input.sourceId, value.document);
+              else if (value.document && input.linked)
+                storeExtracted(db, workspace, {
+                  sourceId: input.sourceId,
+                  title: input.title,
+                  kind: isImageExt(input.ext) ? "image" : kindFor(input.ext),
+                  mime: isImageExt(input.ext) ? imageMime(input.ext) : mimeFor(input.ext),
+                  ext: input.ext,
+                  linked: true,
+                  extracted: value.document,
+                });
               else if (value.document && input.reextract)
                 addExtractionVersion(
                   db,

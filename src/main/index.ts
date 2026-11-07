@@ -808,6 +808,8 @@ function startCore(strict = false): Promise<void> {
   child.postMessage({
     type: "bootstrap",
     workspacePath,
+    // A linked study folder may not lie inside the app's own data.
+    userDataPath: app.getPath("userData"),
     grants: [...pickedGrants.values()],
     dev: e2eSeam(),
     // Seams that run code, such as the installer stand-in, stay off in a packaged app even with PYXIS_E2E=1.

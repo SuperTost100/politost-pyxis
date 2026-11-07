@@ -1,3 +1,4 @@
+import { linkedFile, readableLinkedPath } from "./linked-file";
 import type Database from "better-sqlite3";
 import type { Runner } from "../jobs/runner";
 import { hasBlob, readBlob } from "../blobs";
@@ -73,9 +74,11 @@ export function registerOcrJob(
           const mine = currentOcrRun(db, sourceId)!;
           try {
             if (row.kind !== "pdf") throw new Error("ocr-not-scan");
-            if (!row.blob_sha || !hasBlob(workspace, row.blob_sha)) throw new Error("source-file-missing");
+            // A scan in a linked folder is read where it is; any other from its stored copy.
+            const linked = linkedFile(db, sourceId) !== null;
+            if (!linked && (!row.blob_sha || !hasBlob(workspace, row.blob_sha))) throw new Error("source-file-missing");
             await deps.requireData();
-            const file = readBlob(workspace, row.blob_sha).file;
+            const file = linked ? readableLinkedPath(db, sourceId) : readBlob(workspace, row.blob_sha!).file;
             let count: number | null = null;
             let next = 1;
             let progressed = false;
@@ -156,7 +159,9 @@ export function waitingScans(db: Database.Database): string[] {
   return (
     db
       .prepare(
-        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind = 'pdf' AND blob_sha IS NOT NULL
+        `SELECT id FROM sources WHERE status = 'needs-ocr' AND kind = 'pdf'
+         AND (blob_sha IS NOT NULL
+           OR id IN (SELECT source_id FROM linked_files WHERE missing_at IS NULL AND source_id IS NOT NULL))
          ORDER BY created_at, rowid`,
       )
       .all() as Array<{ id: string }>

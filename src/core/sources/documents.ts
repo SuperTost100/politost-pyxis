@@ -267,9 +267,14 @@ function textSections(
  * The original file of a document being stored: its bytes, or the hash it is already stored under. A job passes the
  * hash, so a large file is not read back into core and hashed again.
  */
-type Original = { bytes: Uint8Array; sha?: undefined } | { sha: string; bytes?: undefined };
+type Original =
+  | { bytes: Uint8Array; sha?: undefined; linked?: undefined }
+  | { sha: string; bytes?: undefined; linked?: undefined }
+  /** A file in a linked folder: Pyxis keeps no copy, so the source has no stored original. */
+  | { linked: true; sha?: undefined; bytes?: undefined };
 
-function storeOriginal(workspace: string, original: Original, mime: string, ext: string): string {
+function storeOriginal(workspace: string, original: Original, mime: string, ext: string): string | null {
+  if (original.linked) return null;
   return original.sha !== undefined
     ? original.sha
     : putBlob(workspace, original.bytes, mime, ext.replace(/^\./, ""));
@@ -349,7 +354,7 @@ function insertPages(
   version: number,
   pages: ExtractedPage[],
   now: number,
-  blobSha: string,
+  blobSha: string | null,
   kind: string,
   extractor?: Extractor,
 ): void {
@@ -362,7 +367,7 @@ function insertPages(
     version,
     JSON.stringify({
       pages: pages.length,
-      blobSha,
+      ...(blobSha ? { blobSha } : {}),
       kind,
       ...(extractor ? { extractor } : {}),
     }),
@@ -411,7 +416,7 @@ function keptPages(extracted: ExtractedDocument): ExtractedPage[] {
 function appendVersion(
   db: Database.Database,
   sourceId: string,
-  sha: string,
+  sha: string | null,
   kind: string,
   pages: ExtractedPage[],
   extractor: Extractor | undefined,
@@ -529,6 +534,28 @@ export function addExtractionVersion(
     passages: kept.length,
     exercises: 0,
   };
+}
+
+/**
+ * The next version of a source read from a linked folder, after its file changed there. As for a re-read, older
+ * passages stay for the items that cite them, which are marked stale, and a run with no text is refused
+ * (`reextract-no-text`) so the text in use stays. Pyxis keeps no copy of the file, so the version names none.
+ */
+export function addLinkedVersion(
+  db: Database.Database,
+  sourceId: string,
+  extracted: ExtractedDocument,
+): StoredSource {
+  const source = db
+    .prepare(`SELECT title, kind FROM sources WHERE id = ? AND status != 'removed'`)
+    .get(sourceId) as { title: string; kind: string } | undefined;
+  if (!source) throw new Error("source-missing");
+  const kept = keptPages(extracted);
+  if (kept.length === 0) throw new Error("reextract-no-text");
+  appendVersion(db, sourceId, null, source.kind, kept, extracted.extractor, (now) => {
+    db.prepare(`UPDATE sources SET status = 'ready', updated_at = ? WHERE id = ?`).run(now, sourceId);
+  });
+  return { sourceId, title: source.title, chapters: 0, passages: kept.length, exercises: 0 };
 }
 
 export async function extractByExt(

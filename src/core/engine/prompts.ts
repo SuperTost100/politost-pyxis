@@ -24,6 +24,7 @@ import quizBatch from "../../../resources/prompts/quiz.batch.md?raw";
 import quizOpenGrade from "../../../resources/prompts/quiz.open-grade.md?raw";
 import simulationGrade from "../../../resources/prompts/simulation.grade.md?raw";
 import simulationQuestions from "../../../resources/prompts/simulation.questions.md?raw";
+import foldersSubjects from "../../../resources/prompts/folders.subjects.md?raw";
 import citationPartial from "../../../resources/prompts/partials/citation.md?raw";
 import type Database from "better-sqlite3";
 
@@ -61,6 +62,7 @@ export const TEMPLATE_SOURCES = {
   "quiz.open-grade": quizOpenGrade,
   "simulation.grade": simulationGrade,
   "simulation.questions": simulationQuestions,
+  "folders.subjects": foldersSubjects,
 } as const;
 
 export type TemplateId = keyof typeof TEMPLATE_SOURCES;

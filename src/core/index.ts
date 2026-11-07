@@ -4,6 +4,7 @@ import { recordedPlanRun } from "./engine/recorded-plan";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { closeDatabase, openDatabase } from "./db/connection";
+import { closeLinkedWatches } from "./sources/linked";
 import {
   closeFunnel,
   loadShellPath,
@@ -57,6 +58,7 @@ type ParentEvent = {
   data?: {
     type?: string;
     workspacePath?: string;
+    userDataPath?: string;
     grants?: FileGrant[];
     dev?: boolean;
     unpackaged?: boolean;
@@ -108,6 +110,7 @@ if (!parent) {
     workspacePath: string,
     dev: boolean,
     unpackaged: boolean,
+    userDataPath?: string,
   ): void {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
@@ -169,6 +172,7 @@ if (!parent) {
       workspacePath,
       runner,
       booksFixture ? folderTransport(booksFixture) : undefined,
+      userDataPath,
     );
     // Recorded replies require the explicit dev/test seam; packaged launches only enable it with PYXIS_E2E=1.
     bindChat(
@@ -276,7 +280,7 @@ if (!parent) {
       void (async () => {
         if (delay > 0) await new Promise((r) => setTimeout(r, delay));
         try {
-          bootstrap(workspacePath, dev, data.unpackaged === true);
+          bootstrap(workspacePath, dev, data.unpackaged === true, data.userDataPath);
         } catch (err) {
           failBootstrap(err);
         }
@@ -301,8 +305,9 @@ if (!parent) {
       })();
     }
     if (data?.type === "shutdown") {
-      // Chats' live CLI processes stop with the app.
+      // Chats' live CLI processes stop with the app, and so do the watches on linked folders.
       closeFunnel();
+      closeLinkedWatches();
       // Fold the WAL into pyxis.db and close it first, so the workspace main copies or leaves behind is complete.
       try {
         if (database) closeDatabase(database);

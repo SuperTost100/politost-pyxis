@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
+  realpathSync,
+  symlinkSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -17,8 +19,11 @@ const importFile = vi.hoisted(() =>
     snapshot: path,
   })),
 );
+const linkFolders = vi.hoisted(() =>
+  vi.fn(async ({ paths }: { paths: string[] }) => ({ folders: paths })),
+);
 vi.mock("../sources/handlers", () => ({
-  sourceHandlers: () => ({ importFile }),
+  sourceHandlers: () => ({ importFile, linkFolders }),
 }));
 import {
   addFileGrants,
@@ -108,4 +113,48 @@ it("renderer requests cannot mint grants and authorized imports use private temp
     expect(refused.error).toMatchObject({ code: "source-too-big", messageKey: "sources.tooBig" });
   }
   expect(importFile).not.toHaveBeenCalled();
+});
+
+it("links only folders a picker or a drop granted, by their real path", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pyxis-boundary-"));
+  roots.push(root);
+  mkdirSync(join(root, "scratch"));
+  const study = join(root, "Università");
+  mkdirSync(join(study, "Fisica"), { recursive: true });
+  writeFileSync(join(study, "orario.txt"), "x");
+  const elsewhere = join(root, "elsewhere");
+  mkdirSync(elsewhere);
+  symlinkSync(elsewhere, join(study, "shortcut"));
+  bindSources(null as never, root, null as never);
+  setJobHandlers({} as never);
+  let receive: (event: { data: unknown }) => void = () => {};
+  let settle: (response: any) => void = () => {};
+  attachRendererPort({
+    on: (_event, listener) => {
+      receive = listener;
+    },
+    postMessage: (message) => settle(message),
+    start() {},
+    close() {},
+  });
+  const request = (input: unknown): Promise<any> =>
+    new Promise((resolve) => {
+      settle = resolve;
+      receive({ data: { kind: "req", name: "sources.linkFolders", input, id: "link" } });
+    });
+  linkFolders.mockClear();
+  expect((await request({ paths: [study], mode: "root" })).error.code).toBe("file-access-denied");
+  addFileGrants([pickedFileGrant(study)]);
+  // A subfolder of a granted folder is allowed, a file is not a folder, and a link inside it cannot reach elsewhere.
+  const allowed = await request({ paths: [join(study, "Fisica")], mode: "subject" });
+  expect(allowed.ok).toBe(true);
+  expect(allowed.value.folders).toEqual([realpathSync(join(study, "Fisica"))]);
+  for (const path of [join(study, "orario.txt"), join(study, "shortcut"), "Università"]) {
+    const refused = await request({ paths: [path], mode: "subject" });
+    expect(refused.error.code, path).toBe("file-access-denied");
+  }
+  // One refused path refuses the whole request.
+  expect((await request({ paths: [study, elsewhere], mode: "subject" })).ok).toBe(false);
+  expect((await request({ paths: [], mode: "root" })).ok).toBe(false);
+  expect(linkFolders).toHaveBeenCalledTimes(1);
 });

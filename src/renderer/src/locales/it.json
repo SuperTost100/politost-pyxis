@@ -647,6 +647,14 @@
       "uncitedPages_other": "{{count}} pagine non sono mai citate.",
       "addToFirstExam": "Aggiungi a un esame",
       "gone": "Questa fonte non è più nella libreria."
+    },
+    "linked": {
+      "errors": {
+        "missing": "Non trovo più questa cartella. Controlla che ci sia ancora e riprova.",
+        "insideData": "Questa cartella è tra i dati di Pyxis. Scegli la cartella dove tieni il materiale.",
+        "overlap": "Questa cartella è dentro una cartella già collegata, oppure ne contiene una.",
+        "failed": "Non sono riuscito a leggere la cartella. Riprova."
+      }
     }
   },
   "cards": {

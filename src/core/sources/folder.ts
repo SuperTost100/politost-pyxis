@@ -27,7 +27,12 @@ export type FolderListing = {
  * folder) cannot hold the core thread, and says when it was cut. Folders are read a few entries at a time, so even
  * one folder with a million files stops at the cap.
  */
-export function listImportable(root: string, maxEntries = MAX_FOLDER_ENTRIES): FolderListing {
+export function listImportable(
+  root: string,
+  maxEntries = MAX_FOLDER_ENTRIES,
+  /** Folders never walked into, such as the workspace when the student links a folder that holds it. */
+  exclude: readonly string[] = [],
+): FolderListing {
   const found: string[] = [];
   let cappedFiles = false;
   let cappedDepth = false;
@@ -55,6 +60,7 @@ export function listImportable(root: string, maxEntries = MAX_FOLDER_ENTRIES): F
         if (entry.name.startsWith(".")) continue;
         const full = join(dir, entry.name);
         if (entry.isDirectory()) {
+          if (exclude.includes(full)) continue;
           if (depth >= MAX_FOLDER_DEPTH) cappedDepth = true;
           else walk(full, depth + 1);
         } else if (

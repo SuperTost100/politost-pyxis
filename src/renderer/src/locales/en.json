@@ -647,6 +647,14 @@
       "uncitedPages_other": "{{count}} pages are never cited.",
       "addToFirstExam": "Add to an exam",
       "gone": "This source is no longer in the library."
+    },
+    "linked": {
+      "errors": {
+        "missing": "This folder can't be found any more. Check that it's still there and try again.",
+        "insideData": "This folder is part of Pyxis's own data. Choose the folder where you keep your material.",
+        "overlap": "This folder is inside a folder that's already linked, or contains one.",
+        "failed": "The folder couldn't be read. Try again."
+      }
     }
   },
   "cards": {
