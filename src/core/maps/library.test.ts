@@ -90,7 +90,7 @@ describe("listAllMaps", () => {
     expect(ids("   ")).toHaveLength(5);
   });
 
-  it("outlines a map as the concepts on each branch of its root, capped to what the tile draws", () => {
+  it("outlines a map as the concepts under each branch of its root, capped to what the tile draws", () => {
     const node = (id: string, parent: string | null) => ({ id, label: id, parent, x: 0, y: 0, pinned: false });
     const branches = ["a", "b", "c", "d", "e", "f", "g"];
     const nodes = [
@@ -99,8 +99,12 @@ describe("listAllMaps", () => {
       ...["a1", "a2"].map((id) => node(id, "a")),
       ...["c1", "c2", "c3", "c4", "c5", "c6"].map((id) => node(id, "c")),
       node("c1x", "c1"),
+      // A chain under b counts at every depth.
+      node("b1", "b"),
+      node("b2", "b1"),
+      node("b3", "b2"),
     ];
-    expect(mapShape({ nodes })).toEqual([2, 0, 4, 0, 0, 0]);
+    expect(mapShape({ nodes })).toEqual([2, 3, 4, 0, 0, 0]);
     expect(mapShape({ nodes: [node("only", null)] })).toEqual([]);
     expect(mapShape({ nodes: [] })).toEqual([]);
   });

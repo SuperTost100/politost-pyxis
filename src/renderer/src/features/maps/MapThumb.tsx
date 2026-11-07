@@ -16,8 +16,8 @@ const HEIGHT = 150;
 
 /**
  * A small drawing of a map for its tile (pyxis-mockups app/index.html, the Mappe tiles): the root on the left, its
- * branches, and the concepts on each branch, laid out left to right as the tree layout draws them. `shape` holds how
- * many concepts hang off each branch.
+ * branches, and the concepts under each branch, laid out left to right as the tree layout draws them. `shape` holds
+ * how many concepts sit under each branch.
  */
 export function MapThumb({ shape }: { shape: number[] }) {
   const rows = shape.reduce((sum, leaves) => sum + Math.max(1, leaves), 0);
@@ -32,11 +32,12 @@ export function MapThumb({ shape }: { shape: number[] }) {
     y += ys.length * rowHeight;
     const middle = (ys[0]! + ys.at(-1)!) / 2;
     paths.push(elbow(82, HEIGHT / 2, 112, middle));
-    boxes.push({ x: 112, y: middle, width: 52, height: 12 });
+    // Boxes shrink when rows are close, so neighbours never overlap.
+    boxes.push({ x: 112, y: middle, width: 52, height: Math.min(12, rowHeight - 2) });
     for (let leaf = 0; leaf < leaves; leaf += 1) {
       paths.push(elbow(164, middle, 194, ys[leaf]!));
       // Widths vary a little, as labels do, but the same map always draws the same.
-      boxes.push({ x: 194, y: ys[leaf]!, width: 52 + ((branch * 31 + leaf * 17) % 31), height: 10 });
+      boxes.push({ x: 194, y: ys[leaf]!, width: 52 + ((branch * 31 + leaf * 17) % 31), height: Math.min(10, rowHeight - 2) });
     }
   });
   // As wide as what it draws, so a map without concepts on its branches sits in the middle of the tile too.

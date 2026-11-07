@@ -86,7 +86,7 @@ export const mapEntrySchema = z.object({
   subjectId: z.string().nullable(),
   subjectName: z.string().nullable(),
   nodeCount: z.number().int().nonnegative(),
-  /** How many concepts hang off each branch of the root, for the tile's small drawing of the map. */
+  /** How many concepts sit under each branch of the root, for the tile's small drawing of the map. */
   shape: z.array(z.number().int().nonnegative().max(MAP_SHAPE.leaves)).max(MAP_SHAPE.branches),
   grounding: z.enum(["sources", "general"]),
 });

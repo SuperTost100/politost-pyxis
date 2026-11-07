@@ -71,17 +71,27 @@ export function listAllMaps(db: Database.Database, query = ""): MapEntry[] {
 }
 
 /**
- * The map's outline for its tile: for each branch of the root, in order, how many concepts hang off it. Only the first
- * branches and concepts fit the drawing, so both are capped.
+ * The map's outline for its tile: for each branch of the root, in order, how many concepts sit under it at any depth.
+ * Only the first branches and concepts fit the drawing, so both are capped.
  */
 export function mapShape(graph: Pick<ConceptGraph, "nodes">): number[] {
   const root = graph.nodes.find((node) => node.parent === null);
   if (!root) return [];
-  const children = new Map<string, number>();
+  const children = new Map<string, string[]>();
   for (const node of graph.nodes)
-    if (node.parent) children.set(node.parent, (children.get(node.parent) ?? 0) + 1);
+    if (node.parent) children.set(node.parent, [...(children.get(node.parent) ?? []), node.id]);
+  // Counts what hangs under a branch, stopping once the drawing is full; `seen` guards against a cycle in saved data.
+  const under = (id: string, seen: Set<string>): number => {
+    let count = 0;
+    for (const child of children.get(id) ?? []) {
+      if (seen.has(child) || count >= MAP_SHAPE.leaves) continue;
+      seen.add(child);
+      count += 1 + under(child, seen);
+    }
+    return count;
+  };
   return graph.nodes
     .filter((node) => node.parent === root.id)
     .slice(0, MAP_SHAPE.branches)
-    .map((branch) => Math.min(children.get(branch.id) ?? 0, MAP_SHAPE.leaves));
+    .map((branch) => Math.min(under(branch.id, new Set([root.id, branch.id])), MAP_SHAPE.leaves));
 }
