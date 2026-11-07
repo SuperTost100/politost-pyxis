@@ -284,7 +284,9 @@ export function Finder({
             />
             <kbd>{t("finder.close")}</kbd>
           </label>
-          <div className="px-finder-list">
+          {/* A long list scrolls, so Tab can stop on it and the arrow keys and Page Down scroll it, as in Safari, where
+              a scrolling area without anything focusable can't be reached from the keyboard. */}
+          <div className="px-finder-list" role="group" tabIndex={0} aria-label={t("finder.label")}>
             {/* The listbox holds options only; the messages about it sit beside it. */}
             {rows.length > 0 ? (
               <div id={listId} role="listbox" aria-label={t("finder.label")}>

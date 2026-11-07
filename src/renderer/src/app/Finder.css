@@ -56,6 +56,10 @@
   padding: 6px 8px 12px;
   overflow: auto;
 }
+.px-finder-list:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
 .px-finder-label {
   margin: 12px 0 6px;
   padding: 0 10px;
