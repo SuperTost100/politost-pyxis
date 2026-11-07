@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -161,7 +161,11 @@ describe("reading a linked folder", () => {
     const root = studyTree();
     const workspace = tempDir("pyxis-linked-ws-");
     mkdirSync(join(workspace, "blobs"));
-    expect(checkLinkPath(root, [workspace])).toBe(root);
+    expect(checkLinkPath(root, [workspace])).toBe(realpathSync.native(root));
+    // Resolve aliases on every platform, including macOS /var and Windows short temp paths.
+    const alias = join(tempDir("pyxis-linked-alias-"), "study");
+    symlinkSync(root, alias, process.platform === "win32" ? "junction" : "dir");
+    expect(checkLinkPath(alias, [workspace])).toBe(realpathSync.native(root));
     expect(() => checkLinkPath("Università", [workspace])).toThrow("folder-missing");
     expect(() => checkLinkPath(join(root, "orario.txt"), [workspace])).toThrow("folder-missing");
     expect(() => checkLinkPath(join(root, "nowhere"), [workspace])).toThrow("folder-missing");

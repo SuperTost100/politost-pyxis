@@ -284,7 +284,7 @@ export function Finder({
             />
             <kbd>{t("finder.close")}</kbd>
           </label>
-          <div className="px-finder-list">
+          <div className="px-finder-list" tabIndex={0} role="region" aria-label={t("finder.label")}>
             {/* The listbox holds options only; the messages about it sit beside it. */}
             {rows.length > 0 ? (
               <div id={listId} role="listbox" aria-label={t("finder.label")}>
