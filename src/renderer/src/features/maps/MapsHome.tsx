@@ -13,7 +13,7 @@ import { MapThumb } from "./MapThumb";
 import "./MapsHome.css";
 import { usePlan, usePlans } from "../../lib/queries";
 
-/** Where a map opens full screen; its close button comes back here. */
+/** Where a map opens, inside the shell under Mappe. */
 export const mapPath = (map: {
   planId: string;
   topicId: string;

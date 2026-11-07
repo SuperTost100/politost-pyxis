@@ -376,6 +376,7 @@ const routes = {
   "sources.remove": ["sources", "remove"],
   "sources.promote": ["sources", "promote"],
   "sources.ocrDataState": ["sources", "ocrDataState", "bare"],
+  "sources.ocrDataAuto": ["sources", "ocrDataAuto", "bare"],
   "sources.ocrData": ["sources", "ocrData"],
   "sources.embedState": ["sources", "embedState", "bare"],
   "sources.embed": ["sources", "embed"],

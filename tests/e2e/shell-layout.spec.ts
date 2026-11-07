@@ -7,6 +7,8 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { animationsSettled } from "./settled";
+import { saveShot } from "./shots";
 
 test("the window opens on Chiedi, with the greeting and the composer in the middle, and the brand goes back to it", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-landing-"));
@@ -195,6 +197,67 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     });
     await page.getByRole("main").getByRole("link", { name: "Esami", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a notice opens in the page column, under the drag strip and Attività, no wider than its text", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-notice-"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_SAVE: join(userData, "exam.ics") } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const examAt = Date.now() + 10 * 86_400_000;
+    seedPlan(db, { id: "p-notice", title: "Analisi 1", examAt });
+    db.prepare("INSERT INTO plan_sessions (id,plan_id,date,created_at) VALUES (?,?,?,1)").run("p-notice", "p-notice", examAt);
+    db.close();
+
+    // Each combination the route audit checks first: Italian dark at 960, English light at 1280.
+    for (const [language, theme, width] of [
+      ["it", "dark", 960],
+      ["en", "light", 1280],
+    ] as const) {
+      await page.evaluate(
+        async ({ language, theme }) => {
+          localStorage.setItem("pyxis.lang", language);
+          await window.pyxis.setAppearance(theme);
+          location.hash = "/plans/p-notice";
+        },
+        { language, theme },
+      );
+      await page.setViewportSize({ width, height: 800 });
+      await page.reload();
+      await page
+        .locator(".px-plan-header-actions")
+        .getByRole("button", { name: /^(Aggiungi al calendario|Add to calendar)$/ })
+        .click();
+      const notice = page.locator(".ant-message-notice", {
+        hasText: /File del calendario salvato|Calendar file saved/,
+      });
+      await expect(notice).toBeVisible();
+      await animationsSettled(page);
+      const box = (await notice.boundingBox())!;
+      const strip = (await page.locator(".px-drag").boundingBox())!;
+      const tools = (await page.locator(".px-corner-tools").boundingBox())!;
+      const side = (await page.getByRole("complementary", { name: /^(Barra laterale|Sidebar)$/ }).boundingBox())!;
+      const column = (await page.locator(".px-column").boundingBox())!;
+      // Below the strip that drags the window and below Attività, so it covers neither nor the traffic lights.
+      expect(box.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+      expect(box.y).toBeGreaterThanOrEqual(tools.y + tools.height);
+      // In the page column, centred on it, beside the sidebar.
+      expect(box.x).toBeGreaterThanOrEqual(side.x + side.width);
+      expect(Math.abs(box.x + box.width / 2 - (column.x + column.width / 2))).toBeLessThan(2);
+      // As wide as its text, up to 560px, and a longer text wraps instead of spanning the window.
+      expect(box.width).toBeLessThan(560);
+      expect(await notice.evaluate((element) => getComputedStyle(element).maxWidth)).toBe("560px");
+      await saveShot(page, `notice-${language}-${theme}-${width}.png`, { animations: "disabled" });
+      await expect(notice).toHaveCount(0, { timeout: 10000 });
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);

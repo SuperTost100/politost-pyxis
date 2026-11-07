@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Progress } from "antd";
 import { ChevronRight } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useJobs } from "../features/jobs/queries";
 import { invoke } from "../lib/ipc";
@@ -19,7 +19,11 @@ function languageList(codes: string[], locale: string): string {
   );
 }
 
-/** The OCR data on disk, its download job, and starting the download again (replacing a job that stopped). */
+/**
+ * The OCR data on disk, its download job, and starting the download again (replacing a job that stopped). Pyxis
+ * downloads the data by itself: data that is missing, with no download under way or stopped, starts downloading when
+ * a screen showing it opens.
+ */
 function useOcrData() {
   const client = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -28,7 +32,8 @@ function useOcrData() {
     queryKey: ["ocr-data"],
     queryFn: () => invoke("sources.ocrDataState", {}),
   });
-  const { data: jobs = [] } = useJobs();
+  const jobsQuery = useJobs();
+  const jobs = jobsQuery.data ?? [];
   const mine = jobs.filter((job) => job.kind === "ocr-data-download");
   const active = mine.find(
     (job) => job.state === "queued" || job.state === "running",
@@ -37,6 +42,22 @@ function useOcrData() {
     ["failed", "cancelled", "interrupted"].includes(job.state),
   );
   const last = stopped.at(-1);
+  // The first time a screen needs the data and nothing is downloading it, it starts here. A download that stopped waits
+  // for Try again, so a cancel is not undone behind the student's back.
+  const autoStarted = useRef(false);
+  const idle =
+    jobsQuery.isSuccess && state.data && state.data.state !== "ready" && !state.data.jobId && !active && !last;
+  useEffect(() => {
+    if (!idle || autoStarted.current) return;
+    autoStarted.current = true;
+    void invoke("sources.ocrDataAuto", {})
+      .then(() => {
+        void client.invalidateQueries({ queryKey: ["ocr-data"] });
+        void client.invalidateQueries({ queryKey: ["jobs"] });
+      })
+      // The screen keeps its Download button, so a start that failed here is one press away.
+      .catch(() => undefined);
+  }, [idle, client]);
 
   async function start() {
     setBusy(true);
@@ -61,7 +82,8 @@ function useOcrData() {
 /**
  * Settings > Data: the OCR data as one row of the "Dove sono i tuoi dati" card (pyxis-mockups app/index.html,
  * "s-settings-data"). Pyxis downloads it by itself, so the row only reports: ready, downloading with its progress, or
- * stopped with a small way to start it again. What the download is and where it comes from is folded under it.
+ * neither (a download that failed, was cancelled or could not start) with a small way to start it again. What the
+ * download is and where it comes from is folded under it.
  */
 export function OcrDataRow() {
   const { t, i18n } = useTranslation();
@@ -89,7 +111,7 @@ export function OcrDataRow() {
             ? t(`sources.ocrData.${last.state}`)
             : damaged
               ? t("sources.ocrDataIntegrity")
-              : t("settings.ocrRow.missing");
+              : t("sources.ocrData.title");
   const label = active?.stepLabel ? t(active.stepLabel) : t("sources.jobs.ocrData");
   return (
     <li>
@@ -141,9 +163,9 @@ export function OcrDataRow() {
 }
 
 /**
- * Progress and recovery for the local OCR language data in a refused flow. It shows disk truth from core, as Settings'
- * row does. A refused action is never run again for the student: `readyAction` is the button they press once the data
- * is ready.
+ * Progress and recovery for the local OCR language data in a refused flow, which Pyxis downloads by itself. It shows
+ * disk truth from core, as Settings' row does. A refused action is never run again for the student: `readyAction` is the
+ * button they press once the data is ready.
  */
 export function OcrDataCard({
   refusal,

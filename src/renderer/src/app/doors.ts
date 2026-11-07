@@ -25,9 +25,15 @@ function readLast(): Record<Door, string> {
   }
 }
 
+/** A map's page, `/plans/:planId/map/:topicId`, which belongs to Maps although its address starts with the exam's. */
+export function isMapPath(pathname: string): boolean {
+  return /^\/plans\/[^/]+\/map\//.test(pathname);
+}
+
 /** Settings and dev pages belong to no door, so neither door is selected there. */
 function doorForPath(pathname: string): Door | null {
   if (pathname.startsWith("/ask")) return "ask";
+  if (isMapPath(pathname)) return "maps";
   if (pathname.startsWith("/exams") || pathname.startsWith("/plans"))
     return "exams";
   if (pathname.startsWith("/maps")) return "maps";

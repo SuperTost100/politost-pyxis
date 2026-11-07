@@ -21,7 +21,7 @@ import type { ThemeSource } from "@shared/bridge";
 import { RenameField, type ChatActions } from "../../features/ask/chatActions";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
-import { doorTarget } from "../doors";
+import { doorTarget, isMapPath } from "../doors";
 import "./Sidebar.css";
 
 /** How many recent chats the sidebar lists; "All chats" opens the rest in the search. */
@@ -81,6 +81,7 @@ export function Sidebar({
   const folded = chosen || narrow;
   const chats = useChats();
   const library = pathname.startsWith("/exams/library");
+  const map = isMapPath(pathname);
   // The Library has its own row, so Exams never leads back into it.
   const examsTo = doorTarget("exams", pathname);
   const items: Item[] = [
@@ -102,7 +103,7 @@ export function Sidebar({
       icon: GraduationCap,
       label: t("doors.exams"),
       accelerator: "CmdOrCtrl+2",
-      current: simulation || (!library && (pathname.startsWith("/exams") || pathname.startsWith("/plans"))),
+      current: simulation || (!library && !map && (pathname.startsWith("/exams") || pathname.startsWith("/plans"))),
     },
     {
       key: "maps",
@@ -110,7 +111,7 @@ export function Sidebar({
       icon: Network,
       label: t("doors.maps"),
       accelerator: "CmdOrCtrl+5",
-      current: pathname.startsWith("/maps"),
+      current: map || pathname.startsWith("/maps"),
     },
     {
       key: "library",

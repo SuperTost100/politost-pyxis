@@ -85,6 +85,8 @@ export const router = createHashRouter([
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "plans/:planId/settings", lazy: page(plans, "ExamSettingsPage") },
+      // A map belongs to Maps and opens inside the shell; its address keeps the exam and topic, as links expect.
+      { path: "plans/:planId/map/:topicId", lazy: page(() => import("../features/maps/MapPage"), "MapPage") },
       { path: "plans/:planId/:view?", lazy: page(plans, "PlanPage") },
       { path: "settings/subjects", loader: () => replace("/exams") },
       { path: "settings/:section?", lazy: page(() => import("../features/settings/SettingsPage"), "SettingsPage") },
@@ -108,7 +110,6 @@ export const router = createHashRouter([
   { path: "/cards/due", lazy: cards },
   { path: "/plans/:planId/simulation", lazy: simulation },
   { path: "/plans/:planId/exam/:attemptId", lazy: simulation },
-  { path: "/plans/:planId/map/:topicId", lazy: page(() => import("../features/maps/MapPage"), "MapPage") },
   { path: "/tools/whiteboard", lazy: page(() => import("../features/tools/WhiteboardPage"), "WhiteboardPage") },
   { path: "/tools/graph", lazy: page(() => import("../features/tools/GraphPage"), "GraphPage") },
   { path: "/tools/python", lazy: page(() => import("../features/tools/PythonPage"), "PythonPage") },
@@ -120,7 +121,7 @@ export const router = createHashRouter([
 })));
 
 // The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
-// such as a lesson or a map, are not where a door was left.
+// such as a lesson or a quiz, are not where a door was left.
 function remember(state: typeof router.state) {
   if (state.matches.some((match) => match.route.id === "shell"))
     rememberDoorPath(state.location.pathname);

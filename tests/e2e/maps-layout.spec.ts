@@ -262,7 +262,8 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     // motion it enters where it ends.
     type Spot = { x: number; y: number };
     const spotOf = (node: Element): Spot => {
-      const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec((node as HTMLElement).style.transform)!;
+      // A spot near 0 can read as 1e-14px, so the number may carry an exponent.
+      const match = /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)/.exec((node as HTMLElement).style.transform)!;
       return { x: Number(match[1]), y: Number(match[2]) };
     };
     const unfold = async () => {
@@ -292,21 +293,47 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await page.emulateMedia({ reducedMotion: "no-preference" });
     for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
     // Folding with a real click, which also selects n1 and so redraws the map mid-move: each node of the branch stays in
-    // sight while it slides into n1, and is closest to n1 the last time it shows. Every node is sampled every few milliseconds.
+    // sight while it slides into n1, and is closest to n1 the last time it shows. Every change the map makes to a node is
+    // recorded as it happens, without page timers, which a hidden test window may hold back for seconds. The record ends
+    // once the map has stopped moving and the folded nodes are gone.
     const sampling = page.evaluate(`new Promise((done) => {
       const spot = ${spotOf.toString()};
+      const canvas = document.querySelector(".px-map-canvas");
+      const count = () => document.querySelectorAll(".react-flow__node").length;
+      const before = count();
       const track = {};
       const start = performance.now();
-      const sample = () => {
+      const record = () => {
         const at = performance.now() - start;
         for (const node of document.querySelectorAll(".react-flow__node")) (track[node.dataset.id] ??= []).push({ ...spot(node), at });
-        if (at < 1200) setTimeout(sample, 8);
-        else done(track);
       };
-      sample();
+      record();
+      let moved = false;
+      window.__foldRecord = { moved: () => moved, nodes: count, before, stop: () => watch.disconnect() };
+      const watch = new MutationObserver(() => {
+        record();
+        if (canvas.hasAttribute("data-moving")) moved = true;
+        else if (moved && count() < before) {
+          watch.disconnect();
+          done(track);
+        }
+      });
+      watch.observe(canvas, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "data-moving"] });
     })`) as Promise<Record<string, Array<Spot & { at: number }>>>;
     await page.locator('.react-flow__node[data-id="n1"] .px-concept-fold').click({ timeout: 10_000 });
-    const track = await sampling;
+    // The record ends with the map's own signals, so a fold that never settles must still fail here, saying which
+    // signal never came, rather than at the test's time limit. The limit runs in the test, where timers aren't held back.
+    let limit: ReturnType<typeof setTimeout> | undefined;
+    const track = await Promise.race([
+      sampling,
+      new Promise<never>((_, fail) => {
+        limit = setTimeout(() => {
+          void page
+            .evaluate(`(() => { const r = window.__foldRecord; r.stop(); return { moved: r.moved(), nodes: r.nodes(), before: r.before, moving: !!document.querySelector(".px-map-canvas[data-moving]") }; })()`)
+            .then((state) => fail(new Error(`The fold never settled within 10 s: ${JSON.stringify(state)}`)), fail);
+        }, 10_000);
+      }),
+    ]).finally(() => clearTimeout(limit));
     await expect(fold).toHaveAttribute("aria-expanded", "false");
     const n1 = track["n1"]!.at(-1)!;
     const last = track["n1"]!.at(-1)!.at;

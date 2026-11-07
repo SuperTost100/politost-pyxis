@@ -209,7 +209,18 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       )
       .toBe(true);
     const pinned = (await graph()).nodes.find((n) => n.id === nodeId)!;
-    await page.getByText("Radiale", { exact: true }).click();
+    // The layout sits in the "…" menu, which Esc closes, giving focus back to its button.
+    const more = page.getByRole("button", { name: "Altro", exact: true });
+    await more.click();
+    await expect(
+      page.getByRole("menuitemradio", { name: "Albero" }),
+    ).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(more).toBeFocused();
+    await more.click();
+    await page.getByRole("menuitemradio", { name: "Radiale" }).click();
+    await expect(page.getByRole("menu")).toHaveCount(0);
     await expect.poll(async () => (await graph()).layout).toBe("radial");
     expect((await graph()).nodes.find((n) => n.id === nodeId)).toMatchObject({
       x: pinned.x,
@@ -220,6 +231,53 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await expect(page.locator(".react-flow__node")).toHaveCount(
       initial.nodes.length,
     );
+    // The map opens inside the shell, under Mappe, with no close button of its own.
+    await expect(page.getByRole("link", { name: /^Mappe/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(page.getByRole("button", { name: "Chiudi" })).toHaveCount(0);
+    // Under the map, nothing selected gives a hint; a concept gives its sources, Chiedi and the edit buttons.
+    const foot = page.locator(".px-map-foot");
+    await expect(foot).toContainText(
+      "Clicca un concetto per vedere le sue fonti e modificarlo.",
+    );
+    await expect(foot.getByRole("toolbar")).toHaveCount(0);
+    await page.locator('.react-flow__node[data-id="n4"]').click();
+    await expect(foot.locator(".px-map-node-label")).toHaveText(
+      "Regola del prodotto",
+    );
+    const tools = foot.getByRole("toolbar", { name: "Strumenti della mappa" });
+    for (const tool of [
+      "Aggiungi un ramo",
+      "Rinomina nodo",
+      "Collega nodi",
+      "Colore del nodo",
+      "Elimina ramo",
+    ])
+      await expect(tools.getByRole("button", { name: tool })).toBeEnabled();
+    await saveShot(page, "m10-map-selected.png");
+    await foot.getByRole("button", { name: "Analisi", exact: true }).click();
+    await expect(page).toHaveURL(/#\/exams\/library\?passage=/);
+    await page.goBack();
+    await page.locator('.react-flow__node[data-id="n4"]').click();
+    await foot.getByRole("button", { name: "Chiedi", exact: true }).click();
+    await expect(page).toHaveURL(/#\/ask\/[^/?]+$/);
+    await page.goBack();
+    await expect(page.locator(".react-flow__node")).toHaveCount(
+      initial.nodes.length,
+    );
+    // Flashcards from the map start from its outline, under the map's exam and topic.
+    await page
+      .getByRole("button", { name: "Crea flashcard da questa mappa" })
+      .click();
+    const cards = page.getByRole("dialog", { name: "Crea flashcard" });
+    await expect(cards.getByText("Dalla mappa")).toBeVisible();
+    await expect(cards.locator(".px-mc-source p")).toContainText(
+      "Derivate - Tasso di variazione",
+    );
+    await cards.getByRole("button", { name: "Annulla" }).click();
+    await expect(cards).toHaveCount(0);
     await page
       .locator(".px-map-composer input")
       .fill("aggiungi un ramo sulla regola della catena");
@@ -228,7 +286,15 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await expect
       .poll(async () => (await graph()).nodes.length, { timeout: 90_000 })
       .toBeGreaterThan(before.nodes.length);
-    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    // The last AI change stays under the map with its own Annulla until something else changes the map.
+    const change = page.locator(".px-map-change");
+    if (!process.env.PYXIS_LIVE_MAP)
+      await expect(change).toContainText(
+        "Ho modificato la mappa come hai chiesto.",
+      );
+    await saveShot(page, "m10-map-change.png");
+    await change.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(change).toHaveCount(0);
     await expect.poll(async () => (await graph()).nodes).toEqual(before.nodes);
     await expect(page.locator(".px-map-composer input")).toBeEnabled();
     await expect(page.locator(".react-flow__node")).toHaveCount(
@@ -287,8 +353,11 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
           item.setSavePath(path),
         );
       }, output);
+      await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
       await page
-        .getByRole("button", { name: /Esporta PNG|Export PNG/, exact: true })
+        .getByRole("menuitem", {
+          name: /^(Vista sullo schermo|On-screen view) \(PNG\)$/,
+        })
         .click();
       await expect
         .poll(() => existsSync(output), { timeout: 20000 })

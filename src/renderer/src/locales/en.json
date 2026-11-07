@@ -376,8 +376,8 @@
     "ocrDataIntegrity": "The scan-reading data on this computer is damaged or incomplete, so Pyxis did not use it.",
     "ocrDataOffline": "Pyxis could not reach GitHub to download the scan-reading data. Check your connection, then try again.",
     "ocrData": {
-      "title": "Reading scans needs a one-time download",
-      "body": "Pyxis downloads the {{languages}} reading data, {{size}}, from raw.githubusercontent.com, the official Tesseract project on GitHub. Your files are not sent anywhere. Once the data is here, a photo or scan that Pyxis reads itself is read on this computer, with no connection and no AI engine.",
+      "title": "The scan-reading data is not on this computer yet",
+      "body": "Pyxis downloads it by itself: it is the {{languages}} data, {{size}}, from the official Tesseract project on raw.githubusercontent.com, and your files are not sent anywhere. With it, Pyxis reads photos and scans on this computer, with no connection and no AI engine.",
       "integrityBody": "Downloading it again replaces the files with the official ones, {{size}}, from raw.githubusercontent.com. Your files are not sent anywhere.",
       "download": "Download {{size}}",
       "downloadAgain": "Download again, {{size}}",
@@ -401,7 +401,7 @@
         "offline": "Pyxis could not reach raw.githubusercontent.com. Check your connection, then try again.",
         "download": "GitHub answered with an error. Try again in a few minutes.",
         "too-big": "A file was larger than expected, so Pyxis threw it away. Try again.",
-        "declined": "The download did not start because you have not agreed to it. Choose Download to agree.",
+        "declined": "The download was turned off. Choose Download to start it.",
         "integrity": "A downloaded file did not match its checksum, so Pyxis threw it away. Try again."
       }
     },
@@ -882,7 +882,7 @@
     "radial": "Radial",
     "undo": "Undo",
     "add": "Add a branch",
-    "png": "Export PNG",
+    "png": "On-screen view (PNG)",
     "layout": "Layout",
     "choose": "Choose a map",
     "tools": "Map tools",
@@ -891,10 +891,9 @@
     "delete": "Delete branch",
     "recolor": "Node color",
     "fit": "Fit map",
-    "instruction": "Edit with AI",
-    "instructionPlaceholder": "Describe a change, such as a branch to add…",
-    "apply": "Apply changes",
-    "applied": "Changes applied. Undo restores the previous map.",
+    "instruction": "Ask for a change to the map",
+    "instructionPlaceholder": "Ask for a change, for example “add relative motion”",
+    "apply": "Send",
     "editFailed": "The map could not be changed. Try again.",
     "editConflict": "The map changed while Pyxis was editing it, and that edit no longer fits. Your changes are kept. Try the request again.",
     "loadFailed": "The map could not be loaded.",
@@ -904,7 +903,6 @@
     "emptyBody": "Your sources become focused maps that you can edit and keep offline.",
     "generate": "Build maps",
     "building": "Building your maps…",
-    "keyboard": "Tab selects a node · Enter renames · Delete or Backspace removes a branch · Arrow keys move",
     "save": "Save",
     "cancel": "Cancel",
     "target": "Connect to",
@@ -928,7 +926,26 @@
     "exportSvg": "Whole map (SVG)",
     "exportPdf": "Map and outline (PDF)",
     "exporting": "Exporting…",
-    "openExam": "Open the exam {{title}}"
+    "openExam": "Open the exam {{title}}",
+    "hint": "click a concept to see where it comes from",
+    "makeCards": "Make flashcards from this map",
+    "more": "More",
+    "shortcuts": "Shortcuts",
+    "keys": {
+      "select": "Select a concept",
+      "rename": "Rename",
+      "delete": "Delete the branch",
+      "deleteKey": "Delete",
+      "move": "Move the concept"
+    },
+    "pickHint": "Click a concept to see its sources and edit it.",
+    "ask": "Ask",
+    "askFailed": "The chat about this concept could not be opened. Try again.",
+    "sourcePage": "{{title}}, p. {{page}}",
+    "sourceSlide": "{{title}}, slide {{slide}}",
+    "lastAdded": "I added “{{label}}” under {{parent}}.",
+    "lastChanged": "I changed the map as you asked.",
+    "editing": "Changing the map…"
   },
   "maps": {
     "title": "Maps",
@@ -2046,7 +2063,6 @@
     "ocrRow": {
       "title": "Reading scans",
       "ready": "Ready. The data, {{size}}, is on this computer.",
-      "missing": "The data for reading scans is not on this computer yet.",
       "download": "Download ({{size}})",
       "downloadAgain": "Download again ({{size}})",
       "more": "What it downloads"
@@ -2670,11 +2686,8 @@
     "installHelp": "Pyxis needs an AI engine to answer. Press Install next to the AI you already pay for, then sign in. Pyxis picks the model.",
     "auto": {
       "title": "Automatic choice",
-      "summary": "Pyxis uses {{parts}}.",
-      "part": "{{name}} for {{tasks}}",
-      "split": "Pyxis splits the work across {{count}} engines:",
-      "single": "Pyxis uses {{name}} for everything.",
-      "cheap": "It picks the cheapest model that is good enough.",
+      "summary": "Pyxis picks the right tool for each job by itself, out of {{names}}, and uses the cheapest model that is good enough.",
+      "single": "Pyxis uses {{name}} for everything, with the cheapest model that is good enough.",
       "none": "No engine is ready.",
       "pinned_one": "{{count}} feature is pinned by hand in the advanced options.",
       "pinned_other": "{{count}} features are pinned by hand in the advanced options."
@@ -3166,6 +3179,7 @@
     "action": "Make flashcards",
     "fromReply": "From the answer",
     "fromSelection": "From your selection",
+    "fromMap": "From the map",
     "plan": "Exam",
     "topic": "Topic",
     "planPlaceholder": "Choose an exam",

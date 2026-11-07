@@ -52,6 +52,15 @@ import {
   TrendingDown,
   TrendingUp,
   X,
+  Ellipsis,
+  Link,
+  Trash2,
+  Palette,
+  Scan,
+  Undo2,
+  Redo2,
+  Download,
+  Pencil,
 } from "lucide-react";
 
 export type IconName =
@@ -106,7 +115,16 @@ export type IconName =
   | "chevron-down"
   | "info"
   | "trending-up"
-  | "trending-down";
+  | "trending-down"
+  | "ellipsis"
+  | "link"
+  | "trash-2"
+  | "palette"
+  | "scan"
+  | "undo-2"
+  | "redo-2"
+  | "download"
+  | "pencil";
 
 export const ICON_MAP: Record<IconName, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -161,4 +179,13 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   info: Info,
   "trending-up": TrendingUp,
   "trending-down": TrendingDown,
+  ellipsis: Ellipsis,
+  link: Link,
+  "trash-2": Trash2,
+  palette: Palette,
+  scan: Scan,
+  "undo-2": Undo2,
+  "redo-2": Redo2,
+  download: Download,
+  pencil: Pencil,
 };

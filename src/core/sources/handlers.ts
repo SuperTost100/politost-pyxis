@@ -72,6 +72,8 @@ import {
 
 /** How long a catalog read answers the Library's checks before books.politost.it is asked again. */
 const CATALOG_FRESH_MS = 5 * 60_000;
+/** Where an end-to-end run's OCR data comes from: a local server standing in for GitHub. Unset outside those runs. */
+const e2eOcrBase = () => (process.env.PYXIS_E2E === "1" ? process.env.PYXIS_E2E_OCR_BASE : undefined);
 
 function sourceError(err: unknown): never {
   const message = err instanceof Error ? err.message : "";
@@ -154,7 +156,7 @@ export function sourceHandlers(
       label: "sources.jobs.ocrData",
       async run(ctx: { signal: AbortSignal }) {
         if (!ocrConsent(db)) throw new Error("ocr-data-declined");
-        await downloadOcrLanguage(tess, lang, ctx.signal);
+        await downloadOcrLanguage(tess, lang, ctx.signal, { base: e2eOcrBase() });
         // The last language makes the data ready: scans that waited for it start now, without another press.
         await autoScan(waitingScans(db));
         return { lang };
@@ -577,6 +579,23 @@ export function sourceHandlers(
       const { state, totalBytes } = await ocrDataStatus(tess);
       const jobId = activeOcrDownload();
       return { consent: ocrConsent(db), state, totalBytes, languages: OCR_LANGUAGES, ...(jobId ? { jobId } : {}) };
+    },
+    /**
+     * Installs the OCR data without asking: the window calls this once setup is done, and when a screen needs the data.
+     * Starts the download job, or joins the one running, unless the data is ready or the student turned it off. A
+     * download that stopped earlier is dismissed first, so Attività keeps one row for it.
+     */
+    async ocrDataAuto() {
+      if (!ocrConsent(db)) return { state: "off" as const };
+      if ((await ocrDataStatus(tess)).state === "ready") return { state: "ready" as const };
+      const running = activeOcrDownload();
+      if (running) return { state: "missing" as const, jobId: running };
+      // End-to-end runs download only from the local server a spec names, never from GitHub.
+      if (process.env.PYXIS_E2E === "1" && !e2eOcrBase()) return { state: "missing" as const };
+      for (const job of runner.list())
+        if (job.kind === "ocr-data-download" && ["failed", "cancelled", "interrupted"].includes(job.state))
+          runner.dismiss(job.id);
+      return { state: "missing" as const, jobId: runner.start("ocr-data-download") };
     },
     /** Saves the answer. Agreeing starts, or re-attaches to, the one download job. Declining is only saved. */
     async ocrData(input: { consent: boolean }) {

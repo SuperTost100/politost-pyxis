@@ -55,15 +55,54 @@ const job = (runner: ReturnType<typeof createRunner>, id: string) =>
 const state = (runner: ReturnType<typeof createRunner>, id: string) => () =>
   job(runner, id)?.state;
 
-describe("SRC-04 / ASK-04 local OCR data: consent, job, and clear refusals", () => {
-  it("reports disk truth and the saved answer, and never downloads on its own", async () => {
+describe("SRC-04 / ASK-04 local OCR data: installed by default, job, and clear refusals", () => {
+  it("reports disk truth and the saved answer, on by default, and asking for the state downloads nothing", async () => {
     const { handlers, fetchSpy } = setup();
     expect(await handlers.ocrDataState()).toEqual({
-      consent: false,
+      consent: true,
       state: "missing",
       totalBytes,
       languages: ["eng", "ita"],
     });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("installs on its own: one download job without a saved answer, joined while it runs, replacing a stopped one", async () => {
+    const { handlers, runner, fetchSpy } = setup();
+    fetchSpy.mockImplementation(
+      (async (_url: string, init: RequestInit) =>
+        new Response(
+          new ReadableStream({
+            start(stream) {
+              stream.enqueue(new Uint8Array(10));
+              init.signal?.addEventListener("abort", () => stream.error(init.signal?.reason));
+            },
+          }),
+        )) as never,
+    );
+    const first = await handlers.ocrDataAuto();
+    expect(first).toMatchObject({ state: "missing" });
+    expect(job(runner, first.jobId!)?.kind).toBe("ocr-data-download");
+    await expect.poll(() => fetchSpy.mock.calls.length).toBeGreaterThan(0);
+    // A second call while it runs joins it.
+    expect((await handlers.ocrDataAuto()).jobId).toBe(first.jobId);
+    // A download that stopped is replaced by the next one, so Attività keeps a single row for it.
+    runner.cancel(first.jobId!);
+    await expect.poll(state(runner, first.jobId!)).toBe("cancelled");
+    const second = await handlers.ocrDataAuto();
+    expect(second.jobId).not.toBe(first.jobId);
+    expect(runner.list().filter((item) => item.kind === "ocr-data-download").map((item) => item.id)).toEqual([
+      second.jobId,
+    ]);
+    runner.cancel(second.jobId!);
+    await expect.poll(state(runner, second.jobId!)).toBe("cancelled");
+  });
+
+  it("does not install when the student turned it off", async () => {
+    const { handlers, runner, fetchSpy } = setup();
+    await handlers.ocrData({ consent: false });
+    expect(await handlers.ocrDataAuto()).toEqual({ state: "off" });
+    expect(runner.list()).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
