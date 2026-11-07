@@ -731,10 +731,12 @@ export function SettingsPage() {
   useEffect(() => {
     if (!section || section === active) return;
     const target = document.getElementById(`settings-${section}`);
-    // "nearest" scrolls only as far as the section needs, so one already in view leaves the page's titles in place. An
+    // A section that fits the window scrolls only as far as it needs, so one already in view leaves the page's titles in
+    // place. A taller one brings its heading to the top: "nearest" would do nothing while the window sits inside it. An
     // old name with no section of its own, such as diagnostics, opens its page at the top.
-    if (target) target.scrollIntoView({ block: "nearest" });
-    else window.scrollTo({ top: 0 });
+    if (!target) window.scrollTo({ top: 0 });
+    else if (target.getBoundingClientRect().height <= window.innerHeight) target.scrollIntoView({ block: "nearest" });
+    else (target.querySelector("h2") ?? target).scrollIntoView({ block: "start" });
   }, [section, active]);
   // Switching pages drops a half-confirmed restore or wipe, like leaving the page does.
   function open(key: string) {

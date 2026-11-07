@@ -61,6 +61,24 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     });
     await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).toBeInViewport();
     await expect(page.getByRole("heading", { level: 1, name: "Informazioni" })).toBeInViewport({ ratio: 1 });
+    // With the licences open the version section is taller than the window. From the page's own link, scrolled into the
+    // middle of that section, the version link brings its heading back.
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/about";
+    });
+    await page.locator(".px-about-notices > summary").click();
+    const version = page.locator("#settings-version");
+    await expect.poll(async () => (await version.boundingBox())!.height).toBeGreaterThan(1200);
+    await page.evaluate(() => {
+      const top = document.getElementById("settings-version")!.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: top + 400 });
+    });
+    await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).not.toBeInViewport();
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/version";
+    });
+    await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).toBeInViewport();
+    await page.locator(".px-about-notices > summary").click();
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {
       window.location.hash = "#/settings/reminders";
