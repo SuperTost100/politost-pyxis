@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { expectNoAxeViolations } from "./axe";
+import { saveShot } from "./shots";
 
 test("settings show six pages in a sidebar from 960px and drill down below it", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-layout-"));
@@ -120,11 +122,17 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
       .poll(() => page.evaluate(() => Math.round(document.getElementById("settings-engines")!.getBoundingClientRect().top)))
       .toBeGreaterThanOrEqual(0);
 
-    // The two Data buttons have the standard 12px gap between them.
+    // The buttons under the backups have the mockup's 8px gap between them.
     await sidebar.getByRole("button", { name: "Dati e privacy" }).click();
-    const backup = (await page.getByRole("button", { name: "Copia di sicurezza", exact: true }).boundingBox())!;
-    const restore = (await page.getByRole("button", { name: "Ripristina", exact: true }).boundingBox())!;
-    expect(Math.round(restore.x - (backup.x + backup.width))).toBe(12);
+    const backup = (await page.getByRole("button", { name: "Salva una copia in un file…", exact: true }).boundingBox())!;
+    const restore = (await page.getByRole("button", { name: "Ripristina da un file…", exact: true }).boundingBox())!;
+    expect(Math.round(restore.x - (backup.x + backup.width))).toBe(8);
+    // A link to a group of the Data page opens the page at that group.
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/privacy";
+    });
+    await expect(sidebar.getByRole("button", { name: "Dati e privacy" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { level: 2, name: "Privacy" })).toBeInViewport();
 
     // Crossing 960px re-lays the page out without remounting the open section, so an open drawer stays open.
     await page.evaluate(() =>
@@ -214,6 +222,81 @@ test("Studio: one choice is radio rows, on or off a switch, the text size a segm
       expect.objectContaining({ newPerDay: 7 }),
     );
     await expect(page.getByText(/^Con 7 e tre esami, ogni giorno ne iniziano fino a 21\./)).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Profile: text rows save on leaving, the year is a stepper, the level a dropdown and the interests tags", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-profile-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/profile";
+    });
+    const profile = () =>
+      page.evaluate(() => window.pyxis.invoke("profile.get", {} as never)) as Promise<{
+        displayName: string;
+        school: string;
+        year: string;
+        interests: string[];
+        interestsOn: boolean;
+      }>;
+    // The old grid of level buttons is gone.
+    await expect(page.locator(".choice")).toHaveCount(0);
+
+    // A name is saved when the field is left, and the head row shows it with its monogram.
+    const name = page.getByRole("textbox", { name: "Nome", exact: true });
+    await name.fill("  Ada  ");
+    await name.press("Tab");
+    await expect.poll(async () => (await profile()).displayName).toBe("Ada");
+    await expect(page.locator(".px-settings-who")).toContainText("Ada");
+    await expect(page.locator(".px-settings-avatar")).toHaveText("A");
+    // Escape puts the stored value back and saves nothing.
+    const school = page.getByRole("textbox", { name: "Scuola", exact: true });
+    await school.fill("Liceo");
+    await school.press("Escape");
+    await expect(school).toHaveValue("");
+    expect((await profile()).school).toBe("");
+
+    // The year starts empty; + starts at 1 and steps by one, and the head names the year.
+    const year = page.getByRole("textbox", { name: "Anno", exact: true });
+    await expect(year).toHaveValue("");
+    const more = page.getByRole("group", { name: "Anno" }).getByRole("button", { name: "Più" });
+    await more.click();
+    await more.click();
+    await expect(year).toHaveValue("2");
+    await expect.poll(async () => (await profile()).year).toBe("2");
+    await expect(page.locator(".px-settings-who")).toContainText("Università · 2° anno");
+
+    // Interests: Enter and a comma add a tag, a repeat is skipped, × removes one, and each change is saved.
+    const add = page.getByRole("textbox", { name: "Aggiungi un interesse" });
+    await add.fill("cinema");
+    await add.press("Enter");
+    await add.pressSequentially("chitarra,");
+    await add.fill("Cinema");
+    await add.press("Enter");
+    await expect.poll(async () => (await profile()).interests).toEqual(["cinema", "chitarra"]);
+    await saveShot(page.locator("#settings-profile"), "settings-profile-tags.png");
+    await expectNoAxeViolations(page, { include: ["#settings-profile"] });
+    await page.getByRole("button", { name: "Togli cinema" }).click();
+    await expect.poll(async () => (await profile()).interests).toEqual(["chitarra"]);
+    await expect(add).toBeFocused();
+    // Text left in the field is added when the field is left.
+    await add.fill("Formula 1");
+    await add.blur();
+    await expect.poll(async () => (await profile()).interests).toEqual(["chitarra", "Formula 1"]);
+    // Off hides the tags but keeps them.
+    await page.getByRole("switch", { name: "Usa i miei interessi negli esempi" }).click();
+    await expect(add).toHaveCount(0);
+    await expect.poll(async () => (await profile()).interestsOn).toBe(false);
+    expect((await profile()).interests).toEqual(["chitarra", "Formula 1"]);
   } finally {
     await app.close();
     removeTestFolder(userData);

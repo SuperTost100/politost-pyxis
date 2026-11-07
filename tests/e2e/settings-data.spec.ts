@@ -197,7 +197,7 @@ test("a manual backup saved over the live database is refused and the data stays
       location.hash = "/settings/data";
     });
     await page
-      .getByRole("button", { name: "Copia di sicurezza", exact: true })
+      .getByRole("button", { name: "Salva una copia in un file…", exact: true })
       .click();
     await expect(
       page.getByText(
@@ -272,6 +272,47 @@ test("Free up space removes a file nothing uses, keeps a source's file and says 
       await saveShot(page, `free-space-${theme}.png`);
       await expectNoAxeViolations(page, { include: [".px-settings-subpage"] });
     }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Open shows the Pyxis folder in the file manager, and says so when the system can't", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-open-folder-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    // Stands in for the file manager: records the path, or fails the way shell.openPath does, with a message.
+    const stubOpen = (failure: string) =>
+      app.evaluate(({ shell }, failure) => {
+        const record = globalThis as unknown as { opened: string[] };
+        record.opened = [];
+        Object.assign(shell, {
+          openPath: async (path: string) => {
+            record.opened.push(path);
+            return failure;
+          },
+        });
+      }, failure);
+    const opened = () => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened);
+    await page.evaluate(() => {
+      location.hash = "/settings/data";
+    });
+    const open = page.getByRole("button", { name: "Apri la cartella di Pyxis", exact: true });
+    const failed = page.getByText("Pyxis non è riuscito ad aprire la cartella. Controlla che esista ancora.", {
+      exact: true,
+    });
+    await stubOpen("");
+    await open.click();
+    const workspace = await page.evaluate(() => window.pyxis.workspacePath());
+    await expect.poll(opened).toEqual([workspace]);
+    await expect(failed).toHaveCount(0);
+    await stubOpen("No application is registered");
+    await open.click();
+    await expect(failed).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

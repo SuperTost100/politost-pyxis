@@ -285,10 +285,12 @@ test("First setup: you with crash reports off, the AI with its notice, files int
       location.hash = "/settings/privacy";
     });
     const saved = page.getByRole("switch", {
-      name: "Consenti segnalazioni di crash",
+      name: "Segnalazioni di crash",
     });
     await expect(saved).not.toBeChecked();
-    // Already on Privacy, the page does not send the student to Privacy.
+    // The explanation is folded under the switch. Already on Privacy, the page does not send the student to Privacy.
+    await expect(page.getByText("I rapporti vengono cancellati dopo 90 giorni")).toBeHidden();
+    await page.getByText("Cosa contiene un rapporto", { exact: true }).click();
     await expect(page.getByText("I rapporti vengono cancellati dopo 90 giorni")).toBeVisible();
     await expect(page.getByText("alla voce Privacy", { exact: false })).toHaveCount(0);
     await noAxeViolations(page);
@@ -299,7 +301,7 @@ test("First setup: you with crash reports off, the AI with its notice, files int
       .toBe(true);
     await page.reload();
     await expect(
-      page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
+      page.getByRole("switch", { name: "Segnalazioni di crash" }),
     ).toBeChecked();
   } finally {
     await app.close();
@@ -745,17 +747,21 @@ test("Run setup again: Settings reopens you and the AI filled in, without Skip, 
     ).toEqual(featuresBefore);
 
     // The scale: Superiore shows out of 100. A pick holds until the study level changes, which brings that level's scale back.
-    const pressed = (name: string) => button(page, name).and(page.locator("[aria-pressed=true]"));
-    await expect(pressed("Su 100")).toBeVisible();
-    await button(page, "Su 30").click();
-    await expect(pressed("Su 30")).toBeVisible();
+    const scale = page.getByRole("radiogroup", { name: "Voti" });
+    const picked = (name: string) => scale.getByRole("radio", { name, exact: true });
+    await expect(picked("Su 100")).toHaveAttribute("aria-checked", "true");
+    await picked("Su 30").click();
+    await expect(picked("Su 30")).toHaveAttribute("aria-checked", "true");
     await expect.poll(async () => (await profile(page))?.gradeScale).toBe(30);
-    await button(page, "Tecnico").click();
-    await expect(pressed("Su 100")).toBeVisible();
+    const level = page.getByRole("combobox", { name: "Livello di studio" });
+    await expect(level).toHaveValue("upper-secondary");
+    await level.selectOption({ label: "Tecnico" });
+    await expect(picked("Su 100")).toHaveAttribute("aria-checked", "true");
     await expect.poll(async () => (await profile(page))?.gradeScale).toBeNull();
+    await expect.poll(async () => (await profile(page))?.educationLevel).toBe("technical");
     await expect(
       page.getByText(
-        "Vale per voti, obiettivi e preparazione in tutta l'app. Se cambi livello di studio torna alla scala di quel livello: su 30 all'università, su 100 negli altri casi.",
+        "Per voti, obiettivi e preparazione in tutta l'app. Se cambi livello, torna a quella del livello.",
         { exact: true },
       ),
     ).toBeVisible();

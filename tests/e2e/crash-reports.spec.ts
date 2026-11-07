@@ -85,11 +85,13 @@ test("crash reports: nothing is sent while the switch is off, and a scrubbed err
     await page.evaluate(() => {
       location.hash = "/settings/privacy";
     });
-    const toggle = page.getByRole("switch", { name: "Consenti segnalazioni di crash" });
+    const toggle = page.getByRole("switch", { name: "Segnalazioni di crash" });
     await expect(toggle).not.toBeChecked();
+    await expect(toggle).toHaveAccessibleDescription(
+      "Se Pyxis va in errore, invia un rapporto tecnico. Mai i tuoi file, le chat o le chiavi.",
+    );
     await toggle.click();
     await expect(toggle).toBeChecked();
-    await expect(page.getByText("Consentite: se Pyxis va in errore, invia da solo un rapporto tecnico.")).toBeVisible();
     await expect.poll(() => consent(userData)).toBe(true);
 
     await throwInWindow(page, `created while on: ${STUDENT} '${userData}/workspace/scratch/tesi.pdf' sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789`);

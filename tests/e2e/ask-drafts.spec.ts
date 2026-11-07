@@ -137,11 +137,11 @@ test("R14-4 deleting all data and restoring a backup clear the session before th
     await page.evaluate(() => {
       location.hash = "/settings/data";
     });
-    await page.getByRole("button", { name: "Copia di sicurezza", exact: true }).click();
+    await page.getByRole("button", { name: "Salva una copia in un file…", exact: true }).click();
     await expect(page.getByText("La copia è pronta.")).toBeVisible();
 
     await seed(page);
-    await page.getByRole("button", { name: "Ripristina", exact: true }).click();
+    await page.getByRole("button", { name: "Ripristina da un file…", exact: true }).click();
     await page.getByRole("button", { name: /^Sostituisci/ }).click();
     await cleared(page);
 

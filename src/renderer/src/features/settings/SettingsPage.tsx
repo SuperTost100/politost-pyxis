@@ -1,10 +1,10 @@
 import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
-import { AutoBackupsSection } from "./AutoBackups";
-import { BackupList } from "./BackupList";
+import { DataPanel } from "./DataPanel";
+import { ProfilePanel, type ProfilePatch } from "./ProfilePanel";
 import { RemindersPanel } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox, Input } from "antd";
+import { Button } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
@@ -17,31 +17,16 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ControlList, ControlRow, RadioRows, Segmented, Stepper, SwitchRow } from "../../components/Controls";
-import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
-import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
-import { PROFILE_LIMITS } from "@shared/limits";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
-import { formatBytes } from "@shared/format-bytes";
 import { useProfile } from "../../lib/queries";
-import { gradeScaleOf, gradeScales, type GradeScale } from "../../lib/grade";
-
-const levels = [
-  "primary",
-  "lower-secondary",
-  "upper-secondary",
-  "technical",
-  "vocational",
-  "university",
-  "other",
-] as const;
 
 /** From this window width the sections sit in a sidebar; below it each one is a page of its own. */
 const TWO_PANE = "(min-width: 960px)";
@@ -65,7 +50,8 @@ const PAGES: Array<{ key: PageKey; icon: LucideIcon; sections: string[] }> = [
   { key: "engines", icon: Plug, sections: ["engines"] },
   { key: "study", icon: GraduationCap, sections: ["tutor", "reading", "flashcards", "reminders"] },
   { key: "appearance", icon: Sun, sections: ["appearance", "language"] },
-  { key: "data", icon: Shield, sections: ["data", "privacy"] },
+  // Data draws its four groups itself (backups, privacy and wipe have their own ids), so a link to one still lands there.
+  { key: "data", icon: Shield, sections: ["data"] },
   { key: "about", icon: Info, sections: ["updates", "version"] },
 ];
 
@@ -77,6 +63,9 @@ const PAGE_OF: Record<string, PageKey> = {
   ...Object.fromEntries(PAGES.flatMap((page) => page.sections.map((section) => [section, page.key]))),
   ...Object.fromEntries(PAGES.map((page) => [page.key, page.key])),
   diagnostics: "engines",
+  backups: "data",
+  privacy: "data",
+  wipe: "data",
 };
 
 export function SettingsPage() {
@@ -118,51 +107,8 @@ export function SettingsPage() {
   }
 
   const [saveError, setSaveError] = useState(false);
-  const [draftInterests, setDraftInterests] = useState<string | null>(null);
-  const [dataNote, setDataNote] = useState<string | null>(null);
-  const [wipeArmed, setWipeArmed] = useState(false);
-  const [wipeBackups, setWipeBackups] = useState(true);
-  // From the confirming click until main answers: a second click would start another wipe.
-  const [wiping, setWiping] = useState(false);
-  const { modal } = App.useApp();
-  // What the next click on a Restore button replaces the data with: "file" asks for a file, a name is a listed backup.
-  const [restoreArmed, setRestoreArmed] = useState<string | null>(null);
-  const [moving, setMoving] = useState(false);
-  const [archiving, setArchiving] = useState<"backup" | "restore" | null>(null);
-  const [freeing, setFreeing] = useState(false);
-  const [freeNote, setFreeNote] = useState<string | null>(null);
-  const [restoring, setRestoring] = useState<string | null>(null);
-  const place = useQuery({
-    queryKey: ["workspace-path"],
-    queryFn: () => window.pyxis.workspacePath(),
-  });
-  // The same query as the automatic backups section, which keeps it current.
-  const backupStatus = useQuery({
-    queryKey: ["auto-backups"],
-    queryFn: () => window.pyxis.autoBackups.status(),
-  });
-  const backupFolder = backupStatus.data?.folder;
-  const usage = useQuery({
-    queryKey: ["plan-usage"],
-    queryFn: () => invoke("plans.usage", {}),
-  });
-
   const profileSaves = useRef({ chain: Promise.resolve(), pending: 0, failed: false });
-  async function patch(input: {
-    displayName?: string;
-    educationLevel?: (typeof levels)[number];
-    year?: string;
-    followups?: boolean;
-    school?: string;
-    course?: string;
-    dyslexia?: boolean;
-    textSize?: "sm" | "md" | "lg";
-    tutorMode?: "solver" | "socratic";
-    interests?: string[];
-    interestsOn?: boolean;
-    crashReports?: boolean;
-    gradeScale?: GradeScale | null;
-  }) {
+  async function patch(input: ProfilePatch) {
     setSaveError(false);
     // The control shows the choice at once. Saves run one after another; the stored profile replaces the shown one only
     // once none is left, so a quick second change doesn't flicker back, and a failure reloads what is stored.
@@ -189,48 +135,7 @@ export function SettingsPage() {
     profileSaves.current.chain = run;
     await run;
   }
-  /** Restores from a file the student picks, or from the listed backup `name`. */
-  function restore(name?: string) {
-    setRestoreArmed(null);
-    setDataNote(null);
-    setArchiving("restore");
-    setRestoring(name ?? "file");
-    void window.pyxis
-      .restoreWorkspace(name)
-      .then((status) => {
-        if (status === "restored") {
-          // Drafts, board strokes and staged files belong to the replaced workspace.
-          sessionStorage.clear();
-          window.location.reload();
-        }
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "";
-        const rolledBack = message.includes("restore-rolled-back");
-        setDataNote(
-          t(
-            rolledBack
-              ? "settings.restoreRolledBack"
-              : message.includes("restore-recovery-required")
-                ? "settings.restoreRecoveryRequired"
-                : "settings.restoreFailed",
-          ),
-        );
-        // Core ran on the restored copy for a moment; what the pages read from it is gone again.
-        if (rolledBack) void client.invalidateQueries();
-        // The file may be gone or no longer pass its check.
-        void client.invalidateQueries({ queryKey: ["auto-backup-list"] });
-      })
-      .finally(() => {
-        setArchiving(null);
-        setRestoring(null);
-      });
-  }
-  const workspaceName =
-    place.data?.split(/[\\/]/).filter(Boolean).at(-1) ??
-    t("settings.workspaceThis");
   const labels: Record<string, string> = {
-    profile: t("settings.profile"),
     engines: t("settings.enginesTitle"),
     tutor: t("settings.tutor"),
     reading: t("settings.reading"),
@@ -238,63 +143,9 @@ export function SettingsPage() {
     reminders: t("settings.reminders.title"),
     appearance: t("settings.theme"),
     language: t("settings.language"),
-    data: t("settings.data"),
-    privacy: t("settings.privacy"),
     updates: t("updates.title"),
     version: t("settings.aboutBlock"),
   };
-  // The profile is the one place for the study level: the tutor and new exams read it from here.
-  const levelChoices = (
-    <>
-      <div className="label section-label" id="settings-level">
-        {t("settings.level")}
-      </div>
-      <div
-        className="choice-list px-profile-levels"
-        role="group"
-        aria-labelledby="settings-level"
-        aria-describedby="settings-level-help"
-      >
-        {levels.map((item) => (
-          <Choice
-            key={item}
-            label={t(`onboarding.levels.${item}`)}
-            selected={(profile.data?.educationLevel ?? "university") === item}
-            onClick={() => void patch({ educationLevel: item })}
-          />
-        ))}
-      </div>
-      <p className="small section-hint" id="settings-level-help">
-        {t("settings.levelHelp")}
-      </p>
-    </>
-  );
-  const scale = gradeScaleOf(profile.data);
-  const scaleChoices = (
-    <>
-      <div className="label section-label" id="settings-scale">
-        {t("settings.gradeScale")}
-      </div>
-      <div
-        className="choice-list px-settings-scale"
-        role="group"
-        aria-labelledby="settings-scale"
-        aria-describedby="settings-scale-help"
-      >
-        {gradeScales.map((item) => (
-          <Choice
-            key={item}
-            label={t("settings.gradeScaleOn", { scale: item })}
-            selected={scale === item}
-            onClick={() => void patch({ gradeScale: item })}
-          />
-        ))}
-      </div>
-      <p className="small section-hint" id="settings-scale-help">
-        {t("settings.gradeScaleHelp")}
-      </p>
-    </>
-  );
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
@@ -329,77 +180,7 @@ export function SettingsPage() {
         </ControlList>
       </>
     ),
-    profile: (
-      <>
-        <div className="px-settings-profile-fields">
-          {(["displayName", "year", "school", "course"] as const).map((field) => (
-            <label className="px-form-field" key={field}>
-              <span className="label">
-                {t(
-                  field === "displayName"
-                    ? "onboarding.name"
-                    : `onboarding.${field}`,
-                )}
-              </span>
-              <Input
-                key={profile.data?.[field] ?? ""}
-                maxLength={PROFILE_LIMITS[field]}
-                placeholder={t(`settings.fieldPlaceholder.${field}`)}
-                defaultValue={profile.data?.[field] ?? ""}
-                onBlur={(event) =>
-                  void patch({ [field]: event.target.value.trim() })
-                }
-              />
-            </label>
-          ))}
-        </div>
-        {levelChoices}
-        {scaleChoices}
-        <div className="label section-label">{t("settings.interests")}</div>
-        <ControlList>
-          <SwitchRow
-            title={t("settings.interestsOn")}
-            checked={profile.data?.interestsOn !== false}
-            onChange={(interestsOn) => void patch({ interestsOn })}
-          />
-        </ControlList>
-        <Input
-          className="px-settings-interests"
-          aria-label={t("settings.interests")}
-          placeholder={t("settings.fieldPlaceholder.interests")}
-          maxLength={PROFILE_LIMITS.interests * (PROFILE_LIMITS.interest + 2)}
-          value={draftInterests ?? (profile.data?.interests ?? []).join(", ")}
-          onChange={(event) => setDraftInterests(event.target.value)}
-          onBlur={() => {
-            if (draftInterests == null) return;
-            const items = draftInterests
-              .split(",")
-              .map((item) => item.trim().slice(0, PROFILE_LIMITS.interest))
-              .filter(Boolean)
-              .slice(0, PROFILE_LIMITS.interests);
-            void patch({ interests: items });
-            setDraftInterests(null);
-          }}
-        />
-        <div className="px-settings-setup">
-          <Button
-            shape="round"
-            onClick={() => navigate("/onboarding?again=1")}
-          >
-            {t("settings.runSetup")}
-          </Button>
-          <p className="small section-hint">{t("settings.runSetupHint")}</p>
-        </div>
-      </>
-    ),
-    privacy: (
-      <>
-        <CrashReportsSwitch
-          checked={profile.data?.crashReports === true}
-          onChange={(value) => void patch({ crashReports: value })}
-        />
-      </>
-    ),
+    profile: <ProfilePanel profile={profile.data} patch={patch} />,
     reading: (
       <>
         <ControlList>
@@ -450,241 +231,10 @@ export function SettingsPage() {
     ),
     reminders: <RemindersPanel />,
     data: (
-      <>
-        {place.data ? <p className="small section-hint">{place.data}</p> : null}
-        <Button
-          shape="round"
-          loading={moving}
-          disabled={moving}
-          onClick={async () => {
-            setDataNote(null);
-            setMoving(true);
-            try {
-              const result = await window.pyxis.moveWorkspace();
-              if (result.status === "moved") {
-                client.setQueryData(["workspace-path"], result.path);
-                void client.invalidateQueries({ queryKey: ["plan-usage"] });
-                void client.invalidateQueries({ queryKey: ["jobs"] });
-                setDataNote(
-                  t(
-                    result.cleanupPending
-                      ? "settings.moveCleanup"
-                      : "settings.moveSaved",
-                    { path: place.data ?? "" },
-                  ),
-                );
-              }
-            } catch (error) {
-              const message = error instanceof Error ? error.message : "";
-              const key = message.includes("workspace-move-destination-exists")
-                ? "settings.moveExists"
-                : message.includes("workspace-move-path-overlap")
-                  ? "settings.moveOverlap"
-                  : message.includes("workspace-move-symlink")
-                    ? "settings.moveSymlink"
-                    : message.includes("workspace-move-recovery-unavailable")
-                      ? "settings.moveRecovery"
-                      : "settings.moveFailed";
-              setDataNote(t(key));
-            } finally {
-              setMoving(false);
-            }
-          }}
-        >
-          {t("settings.move")}
-        </Button>
-        <p className="small section-hint">{t("settings.moveHint")}</p>
-        <div className="label section-label">{t("settings.ocr")}</div>
-        <OcrDataCard />
-        <ul className="choice-list">
-          {(usage.data ?? []).map((plan) => (
-            <li key={plan.id} className="small">
-              {t("settings.planSize", {
-                title: plan.title,
-                size: formatBytes(plan.bytes, i18n.language),
-              })}
-            </li>
-          ))}
-        </ul>
-        <div className="px-settings-actions">
-          <Button
-            shape="round"
-            loading={freeing}
-            disabled={moving || archiving !== null}
-            onClick={() => {
-              if (freeing) return;
-              setFreeing(true);
-              setFreeNote(null);
-              void invoke("plans.freeSpace", {})
-                .then(({ bytes }) => {
-                  void client.invalidateQueries({ queryKey: ["plan-usage"] });
-                  setFreeNote(
-                    bytes > 0
-                      ? t("settings.freeSpaceDone", { size: formatBytes(bytes, i18n.language) })
-                      : t("settings.freeSpaceNothing"),
-                  );
-                })
-                .catch(() => setFreeNote(t("settings.freeSpaceFailed")))
-                .finally(() => setFreeing(false));
-            }}
-          >
-            {t("settings.freeSpace")}
-          </Button>
-        </div>
-        <p className="small section-hint" role="status">
-          {freeNote ?? t("settings.freeSpaceHint")}
-        </p>
-        <div className="px-settings-actions">
-          <Button
-            disabled={moving || (archiving !== null && archiving !== "backup")}
-            loading={archiving === "backup"}
-            onClick={() => {
-              // A second click while the first backup runs used to fail as "workspace busy" and say the backup failed.
-              if (archiving) return;
-              setArchiving("backup");
-              setDataNote(null);
-              void window.pyxis
-                .backupWorkspace()
-                .then((status) => {
-                  if (status === "saved")
-                    setDataNote(t("settings.backupSaved"));
-                })
-                .catch((error: unknown) => {
-                  setDataNote(backupError(error, locale, t));
-                })
-                .finally(() => setArchiving(null));
-            }}
-          >
-            {t("settings.backup")}
-          </Button>
-          <Button
-            disabled={moving || (archiving !== null && archiving !== "restore")}
-            loading={restoring === "file"}
-            danger={restoreArmed === "file"}
-            onClick={() => {
-              if (archiving) return;
-              if (restoreArmed !== "file") {
-                setRestoreArmed("file");
-                return;
-              }
-              restore();
-            }}
-          >
-            {restoreArmed === "file"
-              ? t("settings.restoreReplace", { workspace: workspaceName })
-              : t("settings.restore")}
-          </Button>
-          {restoreArmed === "file" ? (
-            <Button type="text" onClick={() => setRestoreArmed(null)}>
-              {t("wizard.cancel")}
-            </Button>
-          ) : null}
-        </div>
-        {/* The confirmation and the hint sit under the backup buttons they explain. */}
-        {restoreArmed === "file" ? (
-          <p className="small section-hint" role="alert">
-            {t("settings.restoreConfirm", { workspace: workspaceName })}
-          </p>
-        ) : (
-          <p className="small section-hint">{t("settings.dataHint")}</p>
-        )}
-        <div className="label section-label">
-          {t("settings.autoBackup.title")}
-        </div>
-        <AutoBackupsSection
-          formatSize={(bytes) => formatBytes(bytes, i18n.language)}
-        />
-        <BackupList
-          formatSize={(bytes) => formatBytes(bytes, i18n.language)}
-          workspaceName={workspaceName}
-          armed={restoreArmed !== "file" ? restoreArmed : null}
-          restoring={restoring !== "file" ? restoring : null}
-          disabled={moving || archiving !== null}
-          onArm={setRestoreArmed}
-          onRestore={restore}
-        />
-        <div className="px-settings-danger">
-          <p className="small ink-muted">{t("settings.wipeHint")}</p>
-          {wipeArmed ? (
-            <div className="px-settings-wipe-backups">
-              <Checkbox
-                checked={wipeBackups}
-                disabled={wiping}
-                onChange={(event) => setWipeBackups(event.target.checked)}
-              >
-                {t("settings.wipeBackups")}
-              </Checkbox>
-              <p className="small ink-muted" role="alert">
-                {wipeBackups
-                  ? backupFolder
-                    ? t("settings.wipeBackupsFolder", { folder: backupFolder })
-                    : null
-                  : t("settings.wipeConfirmHint")}
-              </p>
-            </div>
-          ) : null}
-          <Button
-            disabled={moving || wiping}
-            loading={wiping}
-            danger
-            onClick={() => {
-              if (wiping) return;
-              if (!wipeArmed) {
-                setWipeBackups(true);
-                setWipeArmed(true);
-                return;
-              }
-              setDataNote(null);
-              setWiping(true);
-              void window.pyxis
-                .wipeWorkspace({ backups: wipeBackups })
-                .then((result) => {
-                  // The reload keeps sessionStorage, so clear drafts, board data and last paths of the deleted workspace first.
-                  sessionStorage.clear();
-                  if (result === "wiped") {
-                    window.location.reload();
-                    return;
-                  }
-                  // The reload lands on setup, so say what was left before it.
-                  modal.warning({
-                    title: t("settings.wipeBackupsLeftTitle"),
-                    content: t("settings.wipeBackupsLeft", { folder: backupFolder ?? "" }),
-                    afterClose: () => window.location.reload(),
-                  });
-                })
-                .catch((error: unknown) => {
-                  setWiping(false);
-                  setWipeArmed(false);
-                  // Main tags the failure that came after the engine keys were cleared. Any other failure left them in place.
-                  setDataNote(
-                    t(
-                      error instanceof Error &&
-                        error.message.includes("wipe-after-keys")
-                        ? "settings.wipeKeysCleared"
-                        : "settings.wipeFailed",
-                    ),
-                  );
-                });
-            }}
-          >
-            {wipeArmed ? t("settings.wipeConfirm") : t("settings.wipe")}
-          </Button>
-          {wipeArmed ? (
-            <Button
-              type="text"
-              disabled={wiping}
-              onClick={() => setWipeArmed(false)}
-            >
-              {t("wizard.cancel")}
-            </Button>
-          ) : null}
-        </div>
-        {dataNote ? (
-          <p className="small section-hint" role="status">
-            {dataNote}
-          </p>
-        ) : null}
-      </>
+      <DataPanel
+        crashReports={profile.data?.crashReports === true}
+        onCrashReports={(crashReports) => void patch({ crashReports })}
+      />
     ),
     language: (
       <RadioRows
@@ -732,11 +282,9 @@ export function SettingsPage() {
     else if (target.getBoundingClientRect().height <= window.innerHeight) target.scrollIntoView({ block: "nearest" });
     else (target.querySelector("h2") ?? target).scrollIntoView({ block: "start" });
   }, [section, active]);
-  // Switching pages drops a half-confirmed restore or wipe, like leaving the page does.
+  // Switching pages unmounts the page, so a half-confirmed restore or wipe goes with it, like leaving Settings does.
   function open(key: string) {
     navigate(key ? `/settings/${key}` : "/settings");
-    setWipeArmed(false);
-    setRestoreArmed(null);
   }
   const pageName = (key: PageKey) => t(`settings.pages.${key}`);
   const subpage = page ? (
@@ -822,44 +370,5 @@ export function SettingsPage() {
         </>
       )}
     </div>
-  );
-}
-
-const GIB = 1024 ** 3;
-/** Names the size and the limit when the workspace is too big for one backup. */
-function backupError(
-  error: unknown,
-  locale: Locale,
-  t: (key: string, params?: Record<string, string>) => string,
-): string {
-  const message = error instanceof Error ? error.message : "";
-  if (message.includes("backup-too-many-files"))
-    return t("settings.backupTooManyFiles");
-  if (message.includes("backup-destination-inside-data"))
-    return t("settings.backupInsideData");
-  const size = /backup-too-large:(\d+)/.exec(message)?.[1];
-  if (!size) return t("settings.backupFailed");
-  const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
-  return t("settings.backupTooLarge", {
-    // Rounded up, so a workspace just over the limit never reads as equal to it.
-    size: number.format(Math.ceil((Number(size) / GIB) * 10) / 10),
-    limit: number.format(2),
-  });
-}
-
-function Choice(props: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={props.selected ? "choice is-selected" : "choice"}
-      aria-pressed={props.selected}
-      onClick={props.onClick}
-    >
-      <span className="body-strong">{props.label}</span>
-    </button>
   );
 }
