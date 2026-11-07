@@ -29,7 +29,10 @@ const totalBytes = Object.values(OCR_DATA_FILES).reduce(
 const tessDir = (userData: string) =>
   ocrDataDir(join(userData, "workspace", "runtimes", "tesseract"));
 const download = /^Scarica [\d.,]+ MB$/;
-const downloadAgain = /^Scarica di nuovo, [\d.,]+ MB$/;
+// Settings shows the data as one row, with a small button only while the data is neither here nor downloading.
+const downloadRow = /^Scarica \([\d.,]+ MB\)$/;
+const downloadAgainRow = /^Scarica di nuovo \([\d.,]+ MB\)$/;
+const readyRow = /^Pronta\. I dati, [\d.,]+ MB, sono su questo computer\.$/;
 
 async function launch(
   userData: string,
@@ -176,9 +179,9 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
     app = await launch(userData);
     page = await start(app, "/settings/data");
     await expect(
-      page.getByText("La lettura delle scansioni è pronta"),
+      page.getByText(readyRow),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: download })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Scarica/ })).toHaveCount(0);
     expect(await invoke(page, "sources.ocrDataState")).toMatchObject({
       consent: true,
       state: "ready",
@@ -192,9 +195,9 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
     expect(await invoke(page, "sources.ocrDataState")).toMatchObject({
       state: "integrity",
     });
-    await page.getByRole("button", { name: downloadAgain }).click();
+    await page.getByRole("button", { name: downloadAgainRow }).click();
     await expect(
-      page.getByText("La lettura delle scansioni è pronta"),
+      page.getByText(readyRow),
     ).toBeVisible({ timeout: 120000 });
     expectPinned(userData);
   } finally {
@@ -224,9 +227,9 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
   try {
     let page = await start(app, "/settings/data", true);
     await expect(
-      page.getByText("Leggere le scansioni richiede un download una tantum"),
+      page.getByText("I dati per leggere le scansioni non sono ancora su questo computer.", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: download }).click();
+    await page.getByRole("button", { name: downloadRow }).click();
     const progress = page.getByRole("progressbar", {
       name: "Scarico i dati di lettura delle scansioni",
     });
@@ -240,7 +243,7 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
     expect(existsSync(tessDir(userData))).toBe(false);
 
     mode = "drop";
-    await page.getByRole("button", { name: downloadAgain }).click();
+    await page.getByRole("button", { name: downloadAgainRow }).click();
     await expect(
       page.getByText(
         /Pyxis non è riuscito a raggiungere raw\.githubusercontent\.com/,
@@ -264,7 +267,7 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
     ).toBeVisible();
     await page.getByRole("button", { name: "Riprova" }).click();
     await expect(
-      page.getByText("La lettura delle scansioni è pronta"),
+      page.getByText(readyRow),
     ).toBeVisible({ timeout: 120000 });
     expectPinned(userData);
     expect(await ocrJobs(page)).toHaveLength(0);

@@ -1862,7 +1862,7 @@
     "workspaceThis": "questo spazio di lavoro",
     "planSize": "{{title}}: {{size}} di file",
     "freeSpace": "Libera spazio",
-    "freeSpaceHint": "Elimina i file salvati che nessun esame, fonte o chat usa più, come le copie lasciate dagli esami eliminati.",
+    "freeSpaceHint": "Elimina i file salvati che nessun esame, fonte o chat usa più.",
     "freeSpaceDone": "Liberati {{size}}.",
     "freeSpaceNothing": "Niente da liberare. Tutti i file salvati sono ancora in uso.",
     "freeSpaceFailed": "Impossibile liberare spazio. Riprova.",
@@ -2030,9 +2030,8 @@
       "folder": "Cartella di Pyxis",
       "open": "Apri la cartella di Pyxis",
       "openFailed": "Pyxis non è riuscito ad aprire la cartella. Controlla che esista ancora.",
-      "examsSize": "Spazio usato dai file degli esami",
-      "unused": "File che nessuno usa più",
-      "examSize": "{{title}}: {{size}}"
+      "examsSize": "Spazio usato dagli esami: {{size}}",
+      "examsSizeLoading": "Spazio usato dagli esami"
     },
     "openShort": "Apri",
     "moveShort": "Sposta",
@@ -2043,7 +2042,15 @@
     "crashMore": "Cosa contiene un rapporto",
     "wipeShort": "Cancella…",
     "wipeLine": "Esami, fonti, chat e chiavi su questo computer. Prima ti chiede se cancellare anche le copie.",
-    "wipeKeys": "Le chiavi dei motori vengono cancellate per prime, quindi dopo dovrai aggiungerle di nuovo."
+    "wipeKeys": "Le chiavi dei motori vengono cancellate per prime, quindi dopo dovrai aggiungerle di nuovo.",
+    "ocrRow": {
+      "title": "Lettura delle scansioni",
+      "ready": "Pronta. I dati, {{size}}, sono su questo computer.",
+      "missing": "I dati per leggere le scansioni non sono ancora su questo computer.",
+      "download": "Scarica ({{size}})",
+      "downloadAgain": "Scarica di nuovo ({{size}})",
+      "more": "Cosa scarica"
+    }
   },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",

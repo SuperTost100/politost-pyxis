@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Progress } from "antd";
+import { ChevronRight } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useJobs } from "../features/jobs/queries";
@@ -18,25 +19,9 @@ function languageList(codes: string[], locale: string): string {
   );
 }
 
-/**
- * First-use consent, progress and recovery for the local OCR language data. It shows disk truth from core, so it reads
- * the same in Settings and in a refused flow. Nothing is downloaded until the student presses Download, and a refused
- * action is never run again for them: `readyAction` is the button they press once the data is ready.
- */
-export function OcrDataCard({
-  refusal,
-  readyAction,
-  onLater,
-}: {
-  /** Message key of the refusal that brought the student here. Without it the card is a plain status. */
-  refusal?: string;
-  readyAction?: ReactNode;
-  /** Leaves the refused action pending. */
-  onLater?: () => void;
-}) {
-  const { t, i18n } = useTranslation();
+/** The OCR data on disk, its download job, and starting the download again (replacing a job that stopped). */
+function useOcrData() {
   const client = useQueryClient();
-  const headingId = useId();
   const [busy, setBusy] = useState(false);
   const [startFailed, setStartFailed] = useState(false);
   const state = useQuery({
@@ -52,10 +37,6 @@ export function OcrDataCard({
     ["failed", "cancelled", "interrupted"].includes(job.state),
   );
   const last = stopped.at(-1);
-  if (!state.data) return null;
-
-  const size = formatBytes(state.data.totalBytes, i18n.language);
-  const languages = languageList(state.data.languages, i18n.language);
 
   async function start() {
     setBusy(true);
@@ -74,6 +55,114 @@ export function OcrDataCard({
       void client.invalidateQueries({ queryKey: ["jobs"] });
     }
   }
+  return { state, active, last, busy, startFailed, start };
+}
+
+/**
+ * Settings > Data: the OCR data as one row of the "Dove sono i tuoi dati" card (pyxis-mockups app/index.html,
+ * "s-settings-data"). Pyxis downloads it by itself, so the row only reports: ready, downloading with its progress, or
+ * stopped with a small way to start it again. What the download is and where it comes from is folded under it.
+ */
+export function OcrDataRow() {
+  const { t, i18n } = useTranslation();
+  const id = useId();
+  const { state, active, last, busy, startFailed, start } = useOcrData();
+  if (!state.data) return null;
+  const size = formatBytes(state.data.totalBytes, i18n.language);
+  const languages = languageList(state.data.languages, i18n.language);
+  const ready = state.data.state === "ready";
+  const damaged = state.data.state === "integrity";
+  const percent = active ? Math.round(active.progress * 100) : 0;
+  const failure =
+    last?.state === "failed"
+      ? (ocrErrorKey(last.error ?? "") ?? "jobs.failedGeneral")
+      : null;
+  const line = startFailed
+    ? t("sources.ocrData.startFailed")
+    : active
+      ? t("sources.ocrData.progress", { percent })
+      : ready
+        ? t("settings.ocrRow.ready", { size })
+        : failure
+          ? t(failure)
+          : last
+            ? t(`sources.ocrData.${last.state}`)
+            : damaged
+              ? t("sources.ocrDataIntegrity")
+              : t("settings.ocrRow.missing");
+  const label = active?.stepLabel ? t(active.stepLabel) : t("sources.jobs.ocrData");
+  return (
+    <li>
+      <div className="px-ctl-row">
+        <div className="px-ctl-text">
+          <span className="px-ctl-title" id={id}>
+            {t("settings.ocrRow.title")}
+          </span>
+          <span className="px-ctl-description" role="status">
+            {line}
+          </span>
+        </div>
+        {active ? (
+          <div className="px-ctl-acts px-ocr-row-progress">
+            <Progress
+              percent={percent}
+              showInfo={false}
+              aria-label={label}
+              size="small"
+              strokeColor="var(--primary)"
+            />
+            <Button
+              size="small"
+              type="text"
+              onClick={() => void invoke("jobs.cancel", { jobId: active.id })}
+            >
+              {t("sources.ocrData.cancel")}
+            </Button>
+          </div>
+        ) : ready ? null : (
+          <Button size="small" loading={busy} onClick={() => void start()}>
+            {failure
+              ? t("sources.ocrData.retry")
+              : t(last || damaged ? "settings.ocrRow.downloadAgain" : "settings.ocrRow.download", { size })}
+          </Button>
+        )}
+      </div>
+      <details className="px-ctl-why">
+        <summary>
+          <ChevronRight size={14} strokeWidth={2} aria-hidden />
+          {t("settings.ocrRow.more")}
+        </summary>
+        <div className="px-ctl-why-body">
+          <p>{t("sources.ocrData.body", { size, languages })}</p>
+        </div>
+      </details>
+    </li>
+  );
+}
+
+/**
+ * Progress and recovery for the local OCR language data in a refused flow. It shows disk truth from core, as Settings'
+ * row does. A refused action is never run again for the student: `readyAction` is the button they press once the data
+ * is ready.
+ */
+export function OcrDataCard({
+  refusal,
+  readyAction,
+  onLater,
+}: {
+  /** Message key of the refusal that brought the student here. Without it the card is a plain status. */
+  refusal?: string;
+  readyAction?: ReactNode;
+  /** Leaves the refused action pending. */
+  onLater?: () => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const headingId = useId();
+  const { state, active, last, busy, startFailed, start } = useOcrData();
+  if (!state.data) return null;
+
+  const size = formatBytes(state.data.totalBytes, i18n.language);
+  const languages = languageList(state.data.languages, i18n.language);
 
   if (active) {
     const percent = Math.round(active.progress * 100);

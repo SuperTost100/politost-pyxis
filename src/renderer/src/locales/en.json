@@ -1862,7 +1862,7 @@
     "workspaceThis": "this workspace",
     "planSize": "{{title}}: {{size}} of source files",
     "freeSpace": "Free up space",
-    "freeSpaceHint": "Deletes stored files that no exam, source or chat uses any more, such as copies left by deleted exams.",
+    "freeSpaceHint": "Deletes stored files that no exam, source or chat uses any more.",
     "freeSpaceDone": "Freed {{size}}.",
     "freeSpaceNothing": "Nothing to free up. Every stored file is still in use.",
     "freeSpaceFailed": "Could not free up space. Try again.",
@@ -2030,9 +2030,8 @@
       "folder": "Pyxis folder",
       "open": "Open the Pyxis folder",
       "openFailed": "Pyxis could not open the folder. Check that it is still there.",
-      "examsSize": "Space used by exam files",
-      "unused": "Files nothing uses any more",
-      "examSize": "{{title}}: {{size}}"
+      "examsSize": "Space used by exams: {{size}}",
+      "examsSizeLoading": "Space used by exams"
     },
     "openShort": "Open",
     "moveShort": "Move",
@@ -2043,7 +2042,15 @@
     "crashMore": "What a report contains",
     "wipeShort": "Delete…",
     "wipeLine": "Exams, sources, chats and keys on this computer. It asks first whether to delete the backups too.",
-    "wipeKeys": "Engine keys are deleted first, so you will need to add them again afterwards."
+    "wipeKeys": "Engine keys are deleted first, so you will need to add them again afterwards.",
+    "ocrRow": {
+      "title": "Reading scans",
+      "ready": "Ready. The data, {{size}}, is on this computer.",
+      "missing": "The data for reading scans is not on this computer yet.",
+      "download": "Download ({{size}})",
+      "downloadAgain": "Download again ({{size}})",
+      "more": "What it downloads"
+    }
   },
   "jobs": {
     "topicsMore_one": "{{first}} and one more topic",

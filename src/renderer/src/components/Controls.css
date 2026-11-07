@@ -339,6 +339,67 @@ select.px-ctl-field {
   outline: none;
 }
 
+/* An explanation folded under a row, opening downwards from its summary, as "Cosa contiene un rapporto". */
+.px-ctl-why {
+  margin: -4px 16px 14px;
+}
+.px-ctl-why > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+  color: var(--primary-text);
+  font: 600 13px/1.3 var(--font-sans);
+  list-style: none;
+  cursor: pointer;
+}
+.px-ctl-why > summary::-webkit-details-marker {
+  display: none;
+}
+.px-ctl-why > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-ctl-why > summary > svg {
+  transition: transform 0.2s ease-out;
+}
+.px-ctl-why[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.px-ctl-why-body {
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+  padding-top: 8px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.px-ctl-why-body > p,
+.px-ctl-why-body > ul {
+  margin: 0;
+}
+.px-ctl-why-body > ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 18px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-ctl-why {
+    interpolate-size: allow-keywords;
+  }
+  .px-ctl-why::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size 0.2s ease-out,
+      content-visibility 0.2s ease-out allow-discrete;
+  }
+  .px-ctl-why[open]::details-content {
+    block-size: auto;
+  }
+}
+
 /* A confirmation under the row or the buttons that opened it. */
 .px-ctl-confirm > div {
   display: grid;
@@ -367,13 +428,6 @@ select.px-ctl-field {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 2px;
-}
-/* A block of its own in a row's place, such as the scan-reading data with its progress and actions. */
-.px-ctl-block {
-  padding: 13px 16px;
-}
-.px-ctl-block:empty {
-  display: none;
 }
 
 /* What opens under a control grows out of it, the height first, from nothing. */

@@ -216,19 +216,3 @@
   color: var(--ink-subtle);
   font-size: 13.5px;
 }
-/* The scan-reading data sits in the Data card as one of its rows. */
-.px-ctl-block > .px-ocr {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  gap: 6px;
-}
-.px-ctl-block > .px-ocr > .body-strong {
-  font: 600 14.5px/1.35 var(--font-sans);
-}
-.px-ctl-block > .px-ocr > .small {
-  color: var(--ink-subtle);
-  font-size: 13px;
-}

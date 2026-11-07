@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { formatBytes } from "@shared/format-bytes";
 import { ControlGroup, ControlList, ControlRow, Reveal } from "../../components/Controls";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
-import { OcrDataCard } from "../../components/OcrData";
+import { OcrDataRow } from "../../components/OcrData";
 import { invoke } from "../../lib/ipc";
 import { BackupsGroup, useAutoBackups, type Archiving } from "./AutoBackups";
 
@@ -24,7 +24,7 @@ export function DataPanel({
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const { modal } = App.useApp();
-  const ids = { folder: useId(), exams: useId(), unused: useId(), wipe: useId() };
+  const ids = { folder: useId(), space: useId(), wipe: useId() };
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<Archiving>(null);
   const [freeing, setFreeing] = useState(false);
@@ -125,7 +125,6 @@ export function DataPanel({
       });
   }
 
-  const plans = usage.data ?? [];
   return (
     <div className="px-settings-groups">
       <ControlGroup title={t("settings.where.title")}>
@@ -154,27 +153,20 @@ export function DataPanel({
               </Button>
             </div>
           </ControlRow>
-          {plans.length > 0 ? (
-            <ControlRow
-              id={ids.exams}
-              title={t("settings.where.examsSize")}
-              description={plans
-                .map((plan) => t("settings.where.examSize", { title: plan.title, size: size(plan.bytes) }))
-                .join(" · ")}
-            />
-          ) : null}
           <ControlRow
-            id={ids.unused}
-            title={t("settings.where.unused")}
+            id={ids.space}
+            title={
+              usage.data
+                ? t("settings.where.examsSize", { size: size(usage.data.reduce((sum, plan) => sum + plan.bytes, 0)) })
+                : t("settings.where.examsSizeLoading")
+            }
             description={<span role="status">{freeNote ?? t("settings.freeSpaceHint")}</span>}
           >
             <Button size="small" loading={freeing} disabled={moving || archiving !== null} onClick={freeSpace}>
               {t("settings.freeSpace")}
             </Button>
           </ControlRow>
-          <li className="px-ctl-block">
-            <OcrDataCard />
-          </li>
+          <OcrDataRow />
         </ControlList>
         {whereNote ? (
           <p className="px-ctl-note" role="status">

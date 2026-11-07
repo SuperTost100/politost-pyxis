@@ -2244,11 +2244,13 @@ async function openState(page: Page, name: string) {
       break;
     case "ocr-settings-missing":
       await expect(
-        page.getByText(/Leggere le scansioni richiede|Reading scans needs/),
+        page.getByText(/^(I dati per leggere le scansioni non sono|The data for reading scans is not)/),
       ).toBeVisible();
+      // Where the data comes from is folded under the row; opened, it names the server.
+      await page.getByText(both("Cosa scarica", "What it downloads")).click();
       await expect(page.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /^(Scarica|Download) [\d.,]+ MB$/ }),
+        page.getByRole("button", { name: /^(Scarica|Download) \([\d.,]+ MB\)$/ }),
       ).toBeVisible();
       break;
     case "ocr-settings-integrity":
@@ -2257,15 +2259,13 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       await expect(
         page.getByRole("button", {
-          name: /^(Scarica di nuovo|Download again)/,
+          name: /^(Scarica di nuovo|Download again) \([\d.,]+ MB\)$/,
         }),
       ).toBeVisible();
       break;
     case "ocr-settings-ready":
       await expect(
-        page.getByText(
-          /La lettura delle scansioni è pronta|Scan reading is ready/,
-        ),
+        page.getByText(/^(Pronta\. I dati|Ready\. The data), [\d.,]+ MB, (sono su questo computer|is on this computer)\.$/),
       ).toBeVisible();
       await expect(
         page.getByRole("button", { name: /Scarica|Download/ }),
