@@ -10,7 +10,7 @@
 .px-ctl + .px-ctl {
   margin-top: 12px;
 }
-.px-ctl > li + li {
+.px-ctl > :is(li, .px-ctl-item) + :is(li, .px-ctl-item) {
   border-top: 1px solid var(--border);
 }
 .px-ctl-row {

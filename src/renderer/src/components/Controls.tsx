@@ -52,9 +52,10 @@ export function RadioRows<T extends string>({
   const [picked, setPicked] = useState<{ from: T; to: T } | null>(null);
   const shown = picked && picked.from === value ? picked.to : value;
   return (
-    <ul className="px-ctl" role="radiogroup" aria-labelledby={label}>
+    // A radio group, not a list: its rows are plain blocks, so the group's role doesn't leave list items without a list.
+    <div className="px-ctl" role="radiogroup" aria-labelledby={label}>
       {options.map((option) => (
-        <li key={option.value}>
+        <div key={option.value} className="px-ctl-item">
           <label className="px-ctl-row is-choice">
             <input
               type="radio"
@@ -70,9 +71,9 @@ export function RadioRows<T extends string>({
             />
             <RowText title={option.title} description={option.description} />
           </label>
-        </li>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
 
