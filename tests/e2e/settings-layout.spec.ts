@@ -92,9 +92,14 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     });
     const headingTop = () =>
       page.evaluate(() => Math.round(document.querySelector("#settings-version h2")!.getBoundingClientRect().top));
-    // Wait for the scroll to land near the top, then check it stopped below the strip.
-    await expect.poll(headingTop).toBeLessThan(120);
-    expect(await headingTop()).toBeGreaterThanOrEqual(28);
+    // The scroll lands near the top, below the strip. Before it, the heading sits above the window, so both bounds are
+    // checked together.
+    await expect
+      .poll(async () => {
+        const top = await headingTop();
+        return top >= 28 && top < 120;
+      })
+      .toBe(true);
     await page.evaluate(() => (document.documentElement.dataset.platform = "linux"));
     await page.locator(".px-about-notices > summary").click();
     await page.setViewportSize({ width: 1280, height: 800 });
