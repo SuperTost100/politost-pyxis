@@ -104,7 +104,11 @@ async function tessdataServer() {
   return {
     base: `http://127.0.0.1:${(server.address() as { port: number }).port}/`,
     requests,
-    close: () => server.close(),
+    close: () => {
+      // Chromium keeps connections alive, and close() alone would wait for them.
+      server.closeAllConnections();
+      server.close();
+    },
   };
 }
 

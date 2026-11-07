@@ -119,7 +119,7 @@ Setup has four steps. Skip, on the first one, jumps past all of them:
 3. **The exam.** Its name, subject, date and goal on one screen. "No exam for now" saves your profile and opens the exams list, where you can create one later.
 4. **Material.** Your files, your library or a free PoliTost book. Pyxis then shows the build steps and the topics it found as it prepares the exam.
 
-Pyxis offers the OCR data for scans (about 7 MB) when you add your first scan, or in Settings → Data.
+Pyxis downloads the OCR data for scans (about 7 MB) by itself once setup is done. Settings → Data shows it and can download it again.
 
 To go through it again, open Settings → Profile and choose "Run setup again". The first two steps open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
 
