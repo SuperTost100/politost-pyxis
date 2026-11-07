@@ -309,6 +309,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       };
       record();
       let moved = false;
+      window.__foldRecord = { moved: () => moved, nodes: count, before, stop: () => watch.disconnect() };
       const watch = new MutationObserver(() => {
         record();
         if (canvas.hasAttribute("data-moving")) moved = true;
@@ -320,7 +321,19 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       watch.observe(canvas, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "data-moving"] });
     })`) as Promise<Record<string, Array<Spot & { at: number }>>>;
     await page.locator('.react-flow__node[data-id="n1"] .px-concept-fold').click({ timeout: 10_000 });
-    const track = await sampling;
+    // The record ends with the map's own signals, so a fold that never settles must still fail here, saying which
+    // signal never came, rather than at the test's time limit. The limit runs in the test, where timers aren't held back.
+    let limit: ReturnType<typeof setTimeout> | undefined;
+    const track = await Promise.race([
+      sampling,
+      new Promise<never>((_, fail) => {
+        limit = setTimeout(() => {
+          void page
+            .evaluate(`(() => { const r = window.__foldRecord; r.stop(); return { moved: r.moved(), nodes: r.nodes(), before: r.before, moving: !!document.querySelector(".px-map-canvas[data-moving]") }; })()`)
+            .then((state) => fail(new Error(`The fold never settled within 10 s: ${JSON.stringify(state)}`)), fail);
+        }, 10_000);
+      }),
+    ]).finally(() => clearTimeout(limit));
     await expect(fold).toHaveAttribute("aria-expanded", "false");
     const n1 = track["n1"]!.at(-1)!;
     const last = track["n1"]!.at(-1)!.at;
