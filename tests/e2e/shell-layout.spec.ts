@@ -161,11 +161,21 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await side.getByRole("button", { name: "Riduci la barra" }).focus();
     await page.keyboard.press("Enter");
     await expect.poll(async () => (await side.boundingBox())!.width).toBe(foldedWidth);
-    // The button to unfold sits under the mark, and the focus moved there with it.
+    // Folded, the mark itself unfolds the sidebar, as in Tost Work: there is no second button, and the focus moved to it.
     const unfold = side.getByRole("button", { name: "Espandi la barra" });
     await expect(unfold).toBeFocused();
-    const mark = (await side.getByRole("link", { name: "Pyxis" }).boundingBox())!;
-    expect((await unfold.boundingBox())!.y).toBeGreaterThan(mark.y + mark.height - 1);
+    await expect(side.getByRole("link", { name: "Pyxis" })).toHaveCount(0);
+    await expect(side.locator(".px-side-fold")).toHaveCount(0);
+    // At rest it shows the mark; on hover the sidebar icon takes its place.
+    const showing = () =>
+      unfold.evaluate((button) =>
+        [".px-brand-mark", ".px-side-unfold-icon"].map((part) => getComputedStyle(button.querySelector(part)!).opacity),
+      );
+    await page.mouse.move(900, 400);
+    await unfold.blur();
+    await expect.poll(showing).toEqual(["1", "0"]);
+    await unfold.hover();
+    await expect.poll(showing).toEqual(["0", "1"]);
     // Each row is its icon alone, 40px wide.
     expect((await door("Mappe").boundingBox())!.width).toBe(40);
     await expect(door("Esami")).toHaveAttribute("aria-current", "page");

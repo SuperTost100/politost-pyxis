@@ -123,7 +123,7 @@ export function Sidebar({
     },
   ];
 
-  // Folded, the button moves under the mark, so a click that moves it brings the focus along.
+  // Folding swaps the button for the mark and back, so a click that swaps them brings the focus along.
   const foldButton = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   useEffect(() => {
@@ -143,37 +143,53 @@ export function Sidebar({
     }
   }
   const foldLabel = folded ? t("side.unfold") : t("side.fold");
-  // A narrow page keeps the sidebar folded, so there is nothing to unfold. Open, the button sits at the top beside the
-  // traffic lights; folded, it sits under the mark.
-  const foldToggle = narrow ? null : (
-    <button
-      ref={foldButton}
-      type="button"
-      className="px-side-icon px-side-fold"
-      data-tip={foldLabel}
-      aria-label={foldLabel}
-      aria-expanded={!folded}
-      onClick={fold}
-    >
-      <PanelLeft size={18} strokeWidth={1.75} aria-hidden />
-    </button>
-  );
+  // Open, the fold button sits at the top beside the traffic lights. Folded, the mark itself unfolds the sidebar: it
+  // turns into the sidebar icon on hover, as in Tost Work. A narrow page keeps the sidebar folded, so there it stays the
+  // way back to Chiedi.
+  const brand =
+    folded && !narrow ? (
+      <button
+        ref={foldButton}
+        type="button"
+        className="px-side-brand px-side-unfold"
+        data-tip={foldLabel}
+        aria-label={foldLabel}
+        aria-expanded={false}
+        onClick={fold}
+      >
+        <PyxisMark />
+        <PanelLeft className="px-side-unfold-icon" size={18} strokeWidth={1.75} aria-hidden />
+      </button>
+    ) : simulation ? (
+      <span className="px-side-brand">
+        <PyxisMark />
+        <span>Pyxis</span>
+      </span>
+    ) : (
+      <Link className="px-side-brand" to="/ask" aria-label="Pyxis">
+        <PyxisMark />
+        <span>Pyxis</span>
+      </Link>
+    );
 
   return (
     <aside className="px-side" data-folded={folded ? "" : undefined} aria-label={t("side.label")}>
-      <div className="px-side-top">{folded ? null : foldToggle}</div>
-      {simulation ? (
-        <span className="px-side-brand">
-          <PyxisMark />
-          <span>Pyxis</span>
-        </span>
-      ) : (
-        <Link className="px-side-brand" to="/ask" aria-label="Pyxis">
-          <PyxisMark />
-          <span>Pyxis</span>
-        </Link>
-      )}
-      {folded ? foldToggle : null}
+      <div className="px-side-top">
+        {folded || narrow ? null : (
+          <button
+            ref={foldButton}
+            type="button"
+            className="px-side-icon px-side-fold"
+            data-tip={foldLabel}
+            aria-label={foldLabel}
+            aria-expanded
+            onClick={fold}
+          >
+            <PanelLeft size={18} strokeWidth={1.75} aria-hidden />
+          </button>
+        )}
+      </div>
+      {brand}
       {simulation ? null : (
         <button
           type="button"
