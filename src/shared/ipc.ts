@@ -2937,6 +2937,8 @@ const broadcasts = {
   "job.updated": JobView,
   // A write changed the evidence mastery is computed from (an answer, a card rating, a flag).
   "plans.evidence": z.object({}),
+  /** The Library changed without a job: a linked file went missing, came back or moved. */
+  "sources.changed": z.object({}),
   // Background recomputation of automatic engine choices finished.
   "engine.auto": z.object({}),
   // A provider refused an engine's sign-in, or the engine is signed in again: its row in Settings changes.

@@ -30,6 +30,11 @@ export type LinkedDeps = {
   run?: GenerateInput["run"];
   /** Starts a watch on a folder. Tests pass a fake, or nothing to leave folders unwatched. */
   watch?: typeof watchFolder | null;
+  /**
+   * A look changed what the Library shows without a job: a file went missing or came back, or moved. Jobs announce
+   * their own changes.
+   */
+  onChange?: () => void;
 };
 
 /** What a walk left out, so the student is told: the same caps as a folder import. */
@@ -273,6 +278,7 @@ export function linkedFolders(deps: LinkedDeps) {
     const folder = folderRow(folderId);
     if (!folder) return;
     const now = Date.now();
+    let changes = 0;
     const markMissing = db.prepare(
       `UPDATE linked_files SET missing_at = ? WHERE folder_id = ? AND rel_path = ? AND missing_at IS NULL`,
     );
@@ -283,7 +289,8 @@ export function linkedFolders(deps: LinkedDeps) {
     } catch {
       // The folder itself is gone, renamed or on a drive that is not plugged in: every file in it is missing until
       // it is back. Nothing is removed.
-      db.prepare(`UPDATE linked_files SET missing_at = ? WHERE folder_id = ? AND missing_at IS NULL`).run(now, folderId);
+      if (db.prepare(`UPDATE linked_files SET missing_at = ? WHERE folder_id = ? AND missing_at IS NULL`).run(now, folderId).changes)
+        deps.onChange?.();
       return;
     }
     const subfolders = new Map(subfolderRows(folderId).map((row) => [row.name, row]));
@@ -328,10 +335,9 @@ export function linkedFolders(deps: LinkedDeps) {
       else if (row.source_id === null || row.removed) continue;
       else if (row.size === size && row.mtime_ms === mtime) {
         if (row.missing_at !== null)
-          db.prepare(`UPDATE linked_files SET missing_at = NULL WHERE folder_id = ? AND rel_path = ?`).run(
-            folderId,
-            file.rel,
-          );
+          changes += db
+            .prepare(`UPDATE linked_files SET missing_at = NULL WHERE folder_id = ? AND rel_path = ?`)
+            .run(folderId, file.rel).changes;
       } else changed.push({ row, size, mtime, path: file.path });
     }
     // A cut walk cannot tell a file that is gone from one it did not reach, so it marks nothing missing.
@@ -387,12 +393,13 @@ export function linkedFolders(deps: LinkedDeps) {
         })();
         // A look at another folder took that file first: this one is a new file after all.
         if (!moved) return;
+        changes += 1;
         fresh.splice(fresh.indexOf(file), 1);
         const vanishedAt = vanished.findIndex((row) => row === match);
         if (vanishedAt >= 0) vanished.splice(vanishedAt, 1);
       });
     }
-    for (const row of vanished) markMissing.run(now, folderId, row.rel_path);
+    for (const row of vanished) changes += markMissing.run(now, folderId, row.rel_path).changes;
     for (const item of changed) {
       signal?.throwIfAborted();
       const [sha] = await deps.hash([item.path], maxSourceBytes(extname(item.path).toLowerCase()), signal);
@@ -401,6 +408,7 @@ export function linkedFolders(deps: LinkedDeps) {
         db.prepare(
           `UPDATE linked_files SET size = ?, mtime_ms = ?, missing_at = NULL WHERE folder_id = ? AND rel_path = ?`,
         ).run(item.size, item.mtime, folderId, item.row.rel_path);
+        if (item.row.missing_at !== null) changes += 1;
         continue;
       }
       // A reading still going (or stopped, waiting for the student) is left alone. The next look reads the file again.
@@ -421,6 +429,7 @@ export function linkedFolders(deps: LinkedDeps) {
       JSON.stringify(listing.cut),
       folderId,
     );
+    if (changes) deps.onChange?.();
   }
 
   // One look at a time per folder. A request during a look runs one more look after it, never several.

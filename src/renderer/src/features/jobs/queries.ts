@@ -36,6 +36,10 @@ export function JobsSync() {
       for (const key of ["plans", "plan", "series"])
         void client.invalidateQueries({ queryKey: [key], refetchType: "none" });
     });
+    // A linked folder changed without a job, such as a file moved or deleted there: the Library reads its list again.
+    const offSources = onBroadcast("sources.changed", () => {
+      void client.invalidateQueries({ queryKey: ["sources"] });
+    });
     const offPort = window.pyxis.onPort(() => {
       void client.invalidateQueries({ queryKey: ["jobs"] });
     });
@@ -43,6 +47,7 @@ export function JobsSync() {
       offJob();
       stale.cancel();
       offEvidence();
+      offSources();
       offPort();
     };
   }, [client]);

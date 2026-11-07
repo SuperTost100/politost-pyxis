@@ -784,6 +784,6 @@ export function bindSources(
     (path) => fileGrants.file(path),
     undefined,
     booksTransport,
-    { userData },
+    { userData, onChange: () => broadcast("sources.changed", {}) },
   );
 }

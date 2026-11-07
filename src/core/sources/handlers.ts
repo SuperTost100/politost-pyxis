@@ -119,6 +119,8 @@ export function sourceHandlers(
     run?: GenerateInput["run"];
     /** Folder watches. Tests pass null so nothing is watched. */
     watch?: typeof watchFolder | null;
+    /** Tells the window the Library changed without a job, as when a linked file went missing. */
+    onChange?: () => void;
   } = {},
 ) {
   const modelDir = join(workspace, "models", "e5");
@@ -158,6 +160,7 @@ export function sourceHandlers(
     ocrReady: async () => (await ocrDataStatus(tess)).state === "ready",
     run: linkOptions.run,
     watch: linkOptions.watch === undefined ? watchFolder : linkOptions.watch,
+    onChange: linkOptions.onChange,
   });
   registerOcrJob(db, workspace, runner, {
     readPages: (path, pages, signal) =>

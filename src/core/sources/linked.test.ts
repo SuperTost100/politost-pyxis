@@ -46,6 +46,7 @@ const tidy = answer([
 ]);
 
 function setup(options: { run?: Run; engine?: boolean; watch?: Parameters<typeof linkedFolders>[0]["watch"] } = {}) {
+  const changes = { count: 0 };
   const db = openDatabase(":memory:");
   if (options.engine !== false)
     db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
@@ -73,6 +74,9 @@ function setup(options: { run?: Run; engine?: boolean; watch?: Parameters<typeof
     ocrReady: async () => false,
     run: options.run ?? tidy,
     watch: options.watch ?? null,
+    onChange: () => {
+      changes.count += 1;
+    },
   });
   const settled = () =>
     expect
@@ -91,7 +95,7 @@ function setup(options: { run?: Run; engine?: boolean; watch?: Parameters<typeof
       | undefined;
   const subjectName = (id: string | null) =>
     id ? (db.prepare(`SELECT name FROM subjects WHERE id = ?`).pluck().get(id) as string) : null;
-  return { db, workspace, runner, linked, settled, source, subjectName, reads };
+  return { db, workspace, runner, linked, settled, source, subjectName, reads, changes };
 }
 
 /** Every entry under `root` with its type, size and modification time, to show nothing was written there. */
@@ -275,9 +279,14 @@ describe("linked folders", () => {
     const before = passages();
 
     // Deleted while Pyxis was closed: the next look marks it, and nothing of it is removed.
+    const told = app.changes.count;
     rmSync(join(root, "GAL", "appunti.txt"));
     await app.linked.sync(folder!.id);
     expect(app.source("appunti")!.missingAt).not.toBeNull();
+    // No job announces it, so the look tells the window itself, and only when something changed.
+    expect(app.changes.count).toBe(told + 1);
+    await app.linked.sync(folder!.id);
+    expect(app.changes.count).toBe(told + 1);
     expect(passages()).toBe(before);
     expect(listSources(app.db).find((source) => source.id === appunti.id)!.linked).toMatchObject({ missing: true });
 
