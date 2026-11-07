@@ -291,6 +291,39 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     };
     await page.emulateMedia({ reducedMotion: "no-preference" });
     for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
+    // Folding with a real click, which also selects n1 and so redraws the map mid-move: each node of the branch stays in
+    // sight while it slides into n1, and is closest to n1 the last time it shows. Every node is sampled every few milliseconds.
+    const sampling = page.evaluate(`new Promise((done) => {
+      const spot = ${spotOf.toString()};
+      const track = {};
+      const start = performance.now();
+      const sample = () => {
+        const at = performance.now() - start;
+        for (const node of document.querySelectorAll(".react-flow__node")) (track[node.dataset.id] ??= []).push({ ...spot(node), at });
+        if (at < 1200) setTimeout(sample, 8);
+        else done(track);
+      };
+      sample();
+    })`) as Promise<Record<string, Array<Spot & { at: number }>>>;
+    await page.locator('.react-flow__node[data-id="n1"] .px-concept-fold').click({ timeout: 10_000 });
+    const track = await sampling;
+    await expect(fold).toHaveAttribute("aria-expanded", "false");
+    const n1 = track["n1"]!.at(-1)!;
+    const last = track["n1"]!.at(-1)!.at;
+    const gone = Object.entries(track).filter(([, spots]) => spots.at(-1)!.at < last);
+    expect(gone.length).toBeGreaterThan(0);
+    for (const [id, spots] of gone) {
+      const moved = spots.findIndex((spot) => spot.x !== spots[0]!.x || spot.y !== spots[0]!.y);
+      expect(moved, `${id} moves before it leaves`).toBeGreaterThan(0);
+      expect(spots.at(-1)!.at - spots[moved]!.at, `${id} stays while it slides`).toBeGreaterThan(150);
+      const away = (spot: Spot) => Math.hypot(spot.x - n1.x, spot.y - n1.y);
+      expect(away(spots.at(-1)!), `${id} ends where n1 ends`).toBeLessThan(24);
+    }
+    await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
+    await fold.dispatchEvent("click");
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(before);
+    await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await fold.dispatchEvent("click");
     await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
