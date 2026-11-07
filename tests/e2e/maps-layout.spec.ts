@@ -255,9 +255,46 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await expect(fold).toHaveAttribute("aria-expanded", "true");
     await fold.dispatchEvent("click");
     await expect(fold).toHaveAttribute("aria-expanded", "false");
-    expect((await boxes()).length).toBeLessThan(before);
+    // The branch slides back into n1 and fades before it leaves the map.
+    await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
+    // Unfolding slides the branch out of n1 instead of cutting to it. Each new node is recorded the moment it enters the
+    // page, from its own transform, so no frame timing is involved: it enters at n1 and ends farther out. With reduced
+    // motion it enters where it ends.
+    type Spot = { x: number; y: number };
+    const spotOf = (node: Element): Spot => {
+      const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec((node as HTMLElement).style.transform)!;
+      return { x: Number(match[1]), y: Number(match[2]) };
+    };
+    const unfold = async () => {
+      const entered = (await page.evaluate(`new Promise((done) => {
+        const spot = ${spotOf.toString()};
+        const layer = document.querySelector(".react-flow__nodes");
+        const seen = {};
+        const watch = new MutationObserver((records) => {
+          for (const record of records)
+            for (const node of record.addedNodes)
+              if (node instanceof HTMLElement && node.dataset.id && !(node.dataset.id in seen)) seen[node.dataset.id] = spot(node);
+        });
+        watch.observe(layer, { childList: true });
+        document.querySelector('.react-flow__node[data-id="n1"] .px-concept-fold').click();
+        setTimeout(() => { watch.disconnect(); done(seen); }, 100);
+      })`)) as Record<string, Spot>;
+      await expect(page.locator(".react-flow__node")).toHaveCount(before);
+      // The canvas marks itself while the map moves, restarts included; then two frames let the last move draw.
+      await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const end = (await page.evaluate(`Object.fromEntries([...document.querySelectorAll(".react-flow__node")].map((node) => [node.dataset.id, (${spotOf.toString()})(node)]))`)) as Record<string, Spot>;
+      const parent = end["n1"]!;
+      const away = (spot: Spot) => Math.hypot(spot.x - parent.x, spot.y - parent.y);
+      expect(Object.keys(entered).length).toBeGreaterThan(0);
+      return Object.entries(entered).map(([id, spot]) => ({ first: away(spot), end: away(end[id]!) }));
+    };
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await fold.dispatchEvent("click");
-    await expect(page.locator(".react-flow__node")).toHaveCount(before);
+    await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
+    for (const { first, end } of await unfold()) expect(Math.abs(first - end)).toBeLessThan(1);
     for (const [language, theme] of [
       ["it", "dark"],
       ["it", "light"],
