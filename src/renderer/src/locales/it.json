@@ -1944,9 +1944,9 @@
     "doneToday_one": "{{count}} finita oggi",
     "doneToday_other": "{{count}} finite oggi",
     "group": {
-      "toFix": "Da sistemare · {{count}}",
-      "running": "In corso · {{count}}",
-      "done": "Finite oggi · {{count}}"
+      "toFix": "Ti serve",
+      "running": "In corso",
+      "done": "Finite oggi"
     },
     "clearDone": "Chiudi le finite",
     "actionOn": "{{action}}: {{name}}",
@@ -2098,7 +2098,8 @@
         "local": "sul computer"
       }
     },
-    "none": "Nessuna attività oggi."
+    "none": "Nessuna attività oggi.",
+    "intro": "Quello che Pyxis prepara mentre studi."
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",

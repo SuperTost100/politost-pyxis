@@ -1944,9 +1944,9 @@
     "doneToday_one": "{{count}} finished today",
     "doneToday_other": "{{count}} finished today",
     "group": {
-      "toFix": "To fix · {{count}}",
-      "running": "Running · {{count}}",
-      "done": "Finished today · {{count}}"
+      "toFix": "Needs you",
+      "running": "Running",
+      "done": "Finished today"
     },
     "clearDone": "Clear finished",
     "actionOn": "{{action}}: {{name}}",
@@ -2098,7 +2098,8 @@
         "local": "on this computer"
       }
     },
-    "none": "Nothing has run today."
+    "none": "Nothing has run today.",
+    "intro": "What Pyxis prepares while you study."
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",

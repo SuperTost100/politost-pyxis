@@ -75,6 +75,9 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
           if (next) panel.current?.focus();
         }}
         placement={variant === "row" ? "rightTop" : "bottomRight"}
+        // Beside the sidebar row, a tall list slides up to stay inside the window instead of hanging below it, which
+        // made the page grow and scroll the sidebar away.
+        align={variant === "row" ? { overflow: { adjustX: true, shiftX: true, adjustY: false, shiftY: true } } : undefined}
         arrow={false}
         rootClassName="px-jobs-popover"
         content={

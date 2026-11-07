@@ -274,10 +274,7 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
       <Icon name="circle-check" size={20} className="px-jobs-mark is-done" />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
-        <p className="px-jobs-sub">
-          {where ? `${where} · ` : ""}
-          <time dateTime={at.toISOString()}>{time}</time>
-        </p>
+        {where ? <p className="px-jobs-sub">{where}</p> : null}
         {job.fallback ? (
           <p className="px-jobs-note">
             <Info size={16} strokeWidth={1.75} aria-hidden />
@@ -291,6 +288,9 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
         ) : null}
         <JobDebug jobId={job.id} running={false} />
       </div>
+      <time className="px-jobs-when" dateTime={at.toISOString()}>
+        {time}
+      </time>
       <IconButton
         icon="x"
         size="sm"
@@ -350,7 +350,10 @@ export const JobsPanel = forwardRef<
       }}
     >
       <header className="px-jobs-head">
-        <h2 id={headId}>{t("jobs.title")}</h2>
+        <div className="px-jobs-title">
+          <h2 id={headId}>{t("jobs.title")}</h2>
+          <p>{t("jobs.intro")}</p>
+        </div>
         {finished.length > 0 ? (
           <Button
             size="sm"
@@ -362,7 +365,7 @@ export const JobsPanel = forwardRef<
         ) : null}
       </header>
       {problems.length > 0 ? (
-        <GroupSection title={t("jobs.group.toFix", { count: problems.length })}>
+        <GroupSection title={t("jobs.group.toFix")} needs>
           {problems.map((problem) => (
             <ProblemCard
               key={problem.key}
@@ -378,14 +381,14 @@ export const JobsPanel = forwardRef<
         </GroupSection>
       ) : null}
       {running.length > 0 ? (
-        <GroupSection title={t("jobs.group.running", { count: running.length })}>
+        <GroupSection title={t("jobs.group.running")}>
           {running.map((job) => (
             <RunningRow key={job.id} job={job} act={act} />
           ))}
         </GroupSection>
       ) : null}
       {finished.length > 0 ? (
-        <GroupSection title={t("jobs.group.done", { count: finished.length })}>
+        <GroupSection title={t("jobs.group.done")}>
           {finished.map((job) => (
             <FinishedRow key={job.id} job={job} act={act} />
           ))}
@@ -397,14 +400,17 @@ export const JobsPanel = forwardRef<
 
 function GroupSection({
   title,
+  needs = false,
   children,
 }: {
   title: string;
+  /** What waits for the student, titled in full ink. */
+  needs?: boolean;
   children: ReactNode;
 }) {
   const id = useId();
   return (
-    <section className="px-jobs-group" aria-labelledby={id}>
+    <section className={needs ? "px-jobs-group is-needs" : "px-jobs-group"} aria-labelledby={id}>
       <h3 className="label" id={id}>
         {title}
       </h3>
