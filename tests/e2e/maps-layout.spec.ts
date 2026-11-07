@@ -255,9 +255,45 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await expect(fold).toHaveAttribute("aria-expanded", "true");
     await fold.dispatchEvent("click");
     await expect(fold).toHaveAttribute("aria-expanded", "false");
-    expect((await boxes()).length).toBeLessThan(before);
+    // The branch slides back into n1 and fades before it leaves the map.
+    await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
+    // Unfolding slides the branch out of n1 instead of cutting to it: a frame after the click its nodes sit near n1,
+    // and they end at their places farther out. With reduced motion they are there at once.
+    const centres = () =>
+      [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((node) => {
+        const box = node.getBoundingClientRect();
+        return { id: node.dataset.id!, x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      });
+    type Centre = { id: string; x: number; y: number };
+    const unfold = async () => {
+      const shownBefore = new Set(((await page.evaluate(`(${centres.toString()})()`)) as Centre[]).map((n) => n.id));
+      // The first frame the branch is on screen, read frame by frame after the click.
+      const firstFrame = (await page.evaluate(`new Promise((done) => {
+        const read = ${centres.toString()};
+        document.querySelector('.react-flow__node[data-id="n1"] .px-concept-fold').click();
+        let frames = 0;
+        const tick = () => {
+          const now = read();
+          if (now.length >= ${before} || ++frames > 30) done(now);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      })`)) as Centre[];
+      await expect(page.locator(".react-flow__node")).toHaveCount(before);
+      await page.waitForTimeout(600);
+      const settled = (await page.evaluate(`(${centres.toString()})()`)) as Centre[];
+      const parent = settled.find((node) => node.id === "n1")!;
+      const away = (node: Centre) => Math.hypot(node.x - parent.x, node.y - parent.y);
+      const arrived = firstFrame.filter((node) => !shownBefore.has(node.id));
+      expect(arrived.length).toBeGreaterThan(0);
+      return arrived.map((node) => ({ first: away(node), end: away(settled.find((n) => n.id === node.id)!) }));
+    };
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await fold.dispatchEvent("click");
-    await expect(page.locator(".react-flow__node")).toHaveCount(before);
+    await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
+    for (const { first, end } of await unfold()) expect(Math.abs(first - end)).toBeLessThan(1);
     for (const [language, theme] of [
       ["it", "dark"],
       ["it", "light"],

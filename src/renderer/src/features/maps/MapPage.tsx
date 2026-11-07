@@ -62,9 +62,13 @@ type FlowNode = Node<
     hidden: number;
     hasChildren: boolean;
     toggle: (id: string) => void;
+    /** Sliding back into the node that was folded, on its way out. */
+    leaving?: boolean;
   },
   "concept"
 >;
+/** How long a fold or an unfold moves the map. */
+const MOTION_MS = 300;
 type FlowEdge = Edge<{ label?: string; active: boolean }, "cross">;
 function ConceptNode({ id, data }: NodeProps<FlowNode>) {
   const { t } = useTranslation();
@@ -171,6 +175,11 @@ export function MapPage() {
   const [target, setTarget] = useState<string>();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [nodes, setNodes] = useState<FlowNode[]>([]);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  // Unfolding or folding a node moves the map in one motion instead of a cut: children slide out of the node they hang
+  // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
+  const motion = useRef<{ origin?: { x: number; y: number }; frame: number }>({ frame: 0 });
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
   const [ready, setReady] = useState<string>();
@@ -258,6 +267,7 @@ export function MapPage() {
   foldedRef.current = folded;
   const toggle = useCallback(
     (id: string) => {
+      motion.current.origin = nodesRef.current.find((node) => node.id === id)?.position;
       const ids = new Set(foldedRef.current);
       if (!ids.delete(id)) ids.add(id);
       setFold({ mapId: activeId, ids });
@@ -283,7 +293,7 @@ export function MapPage() {
     [shown, places],
   );
   useEffect(() => {
-    setNodes(
+    const target: FlowNode[] = 
       spots.map(({ node: n, at }) => {
         const height = heights.get(n.id);
         return {
@@ -310,8 +320,52 @@ export function MapPage() {
                   : "surface-raised",
           },
         };
-      }),
-    );
+      });
+    const origin = motion.current.origin;
+    cancelAnimationFrame(motion.current.frame);
+    if (!origin || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      motion.current.origin = undefined;
+      setNodes(target);
+      return;
+    }
+    // From where each node is now to where the layout puts it. A node that appears starts at the folded node; one that
+    // goes slides into it and fades.
+    const now = new Map(nodesRef.current.map((node) => [node.id, node.position]));
+    const ids = new Set(target.map((node) => node.id));
+    const leaving = nodesRef.current.filter((node) => !ids.has(node.id) && !node.data.leaving);
+    const start = performance.now();
+    const step = (time: number) => {
+      const progress = Math.min(1, (time - start) / MOTION_MS);
+      const eased = 1 - (1 - progress) ** 3;
+      const between = (from: { x: number; y: number }, to: { x: number; y: number }) => ({
+        x: from.x + (to.x - from.x) * eased,
+        y: from.y + (to.y - from.y) * eased,
+      });
+      setNodes([
+        ...target.map((node) => {
+          const from = now.get(node.id);
+          return {
+            ...node,
+            position: between(from ?? origin, node.position),
+            style: from ? node.style : { ...node.style, opacity: eased },
+          };
+        }),
+        ...(progress < 1
+          ? leaving.map((node) => ({
+              ...node,
+              position: between(node.position, origin),
+              selectable: false,
+              data: { ...node.data, leaving: true },
+              style: { ...node.style, opacity: 1 - eased },
+            }))
+          : []),
+      ]);
+      if (progress < 1) motion.current.frame = requestAnimationFrame(step);
+      else motion.current.origin = undefined;
+    };
+    // The first frame now, so no frame shows the old layout; the rest on the screen's frames.
+    step(start);
+    return () => cancelAnimationFrame(motion.current.frame);
   }, [spots, shown, heights, selected, folded, parents, toggle]);
   useEffect(() => {
     setSelected(undefined);
