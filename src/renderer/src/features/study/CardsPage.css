@@ -131,12 +131,9 @@
   gap: 16px;
   border-radius: var(--radius-sm);
 }
+/* It takes the focus only so a screen reader reads it after a turn; Tab never reaches it, so it draws no ring. */
 .px-card-reveal:focus {
   outline: none;
-}
-.px-card-reveal:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 6px;
 }
 .px-card-reveal > hr {
   width: 48px;
