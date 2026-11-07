@@ -345,7 +345,7 @@ export function LessonPage() {
       title={topic?.title ?? t("lesson.title")}
       backLabel={t("lesson.back")}
       backText={plan.data?.title}
-      barTitle={`${t("lesson.title")} · ${topic?.title ?? ""}`}
+      barTitle={[t("lesson.title"), topic?.title].filter(Boolean).join(" · ")}
       barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
       outline
       onBack={() => navigate(`/plans/${planId}`)}
