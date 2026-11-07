@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Input, Switch } from "antd";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isReminderTime } from "@shared/reminder";
+import { ControlList, SwitchRow } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import "./AutoBackups.css";
 
@@ -22,7 +22,6 @@ export function RemindersPanel() {
   const client = useQueryClient();
   const { data } = useReminders();
   const [failed, setFailed] = useState(false);
-  const id = useId();
   if (!data) return null;
   const save = (next: { enabled: boolean; time: string }) => {
     setFailed(false);
@@ -37,42 +36,31 @@ export function RemindersPanel() {
   };
   return (
     <div className="px-autobackup">
-      <div className="px-card px-autobackup-row">
-        <div className="px-autobackup-text">
-          <label className="body-strong" htmlFor={id}>
-            {t("settings.reminders.switch")}
-          </label>
-          <p className="small" id={`${id}-hint`}>
-            {t(data.enabled ? "settings.reminders.on" : "settings.reminders.off")}
-          </p>
-        </div>
-        <Switch
-          id={id}
+      <ControlList>
+        <SwitchRow
+          title={t("settings.reminders.switch")}
+          description={t(data.enabled ? "settings.reminders.on" : "settings.reminders.off")}
           checked={data.enabled}
-          aria-describedby={`${id}-hint`}
           onChange={(enabled) => save({ enabled, time: data.time })}
-        />
-      </div>
-      {data.enabled ? (
-        <>
-          <label className="px-reminder-time">
-            <span className="label">{t("settings.reminders.time")}</span>
-            <Input
+        >
+          {data.enabled ? (
+            <input
               // The field holds what is typed until the time is complete; a clock that is cleared keeps the saved one.
               key={data.time}
+              className="px-reminder-time"
               type="time"
+              aria-label={t("settings.reminders.time")}
               defaultValue={data.time}
               onBlur={(event) => {
                 const time = event.target.value;
-                if (isReminderTime(time) && time !== data.time)
-                  save({ enabled: true, time });
+                if (isReminderTime(time) && time !== data.time) save({ enabled: true, time });
                 else event.target.value = data.time;
               }}
             />
-          </label>
-          <p className="small section-hint">{t("settings.reminders.quiet")}</p>
-        </>
-      ) : null}
+          ) : null}
+        </SwitchRow>
+      </ControlList>
+      {data.enabled ? <p className="small section-hint">{t("settings.reminders.quiet")}</p> : null}
       {!data.supported ? (
         <Notice tone="warning">{t("settings.reminders.unsupported")}</Notice>
       ) : null}

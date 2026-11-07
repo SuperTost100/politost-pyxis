@@ -4,7 +4,7 @@ import { AutoBackupsSection } from "./AutoBackups";
 import { BackupList } from "./BackupList";
 import { RemindersPanel } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox, Input, InputNumber } from "antd";
+import { App, Button, Checkbox, Input } from "antd";
 import {
   ArrowLeft,
   ChevronRight,
@@ -16,11 +16,12 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
+import { ControlList, ControlRow, RadioRows, Segmented, Stepper, SwitchRow } from "../../components/Controls";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
 import "./SettingsPage.css";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
@@ -97,11 +98,8 @@ export function SettingsPage() {
     queryKey: ["card-settings"],
     queryFn: () => invoke("study.cardSettings", {}),
   });
-  const [draftNewPerDay, setDraftNewPerDay] = useState<number | null>(null);
-  async function saveNewPerDay() {
-    const value = draftNewPerDay;
-    setDraftNewPerDay(null);
-    if (value == null || value === cardSettings.data?.newPerDay) return;
+  async function saveNewPerDay(value: number) {
+    if (value === cardSettings.data?.newPerDay) return;
     setSaveError(false);
     try {
       client.setQueryData(
@@ -149,6 +147,7 @@ export function SettingsPage() {
     queryFn: () => invoke("plans.usage", {}),
   });
 
+  const profileSaves = useRef({ chain: Promise.resolve(), pending: 0, failed: false });
   async function patch(input: {
     displayName?: string;
     educationLevel?: (typeof levels)[number];
@@ -165,14 +164,30 @@ export function SettingsPage() {
     gradeScale?: GradeScale | null;
   }) {
     setSaveError(false);
-    try {
-      const saved = await invoke("profile.save", input);
-      client.setQueryData(["profile"], saved);
-      document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
-      document.documentElement.dataset.text = saved.textSize;
-    } catch {
-      setSaveError(true);
-    }
+    // The control shows the choice at once. Saves run one after another; the stored profile replaces the shown one only
+    // once none is left, so a quick second change doesn't flicker back, and a failure reloads what is stored.
+    const shown = client.getQueryData<Record<string, unknown>>(["profile"]);
+    if (shown) client.setQueryData(["profile"], { ...shown, ...input });
+    profileSaves.current.pending += 1;
+    const run = profileSaves.current.chain.then(async () => {
+      try {
+        const saved = await invoke("profile.save", input);
+        document.documentElement.dataset.dyslexia = saved.dyslexia ? "on" : "off";
+        document.documentElement.dataset.text = saved.textSize;
+        if (profileSaves.current.pending === 1) client.setQueryData(["profile"], saved);
+      } catch {
+        setSaveError(true);
+        profileSaves.current.failed = true;
+      } finally {
+        profileSaves.current.pending -= 1;
+        if (profileSaves.current.pending === 0 && profileSaves.current.failed) {
+          profileSaves.current.failed = false;
+          await client.invalidateQueries({ queryKey: ["profile"] });
+        }
+      }
+    });
+    profileSaves.current.chain = run;
+    await run;
   }
   /** Restores from a file the student picks, or from the listed backup `name`. */
   function restore(name?: string) {
@@ -283,52 +298,35 @@ export function SettingsPage() {
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.system")}
-            selected={appearance.source === "system"}
-            onClick={() => void setTheme("system")}
-          />
-          <Choice
-            label={t("settings.dark")}
-            selected={appearance.source === "dark"}
-            onClick={() => void setTheme("dark")}
-          />
-          <Choice
-            label={t("settings.light")}
-            selected={appearance.source === "light"}
-            onClick={() => void setTheme("light")}
-          />
-        </div>
-        {appearance.source === "system" ? (
-          <p className="small section-hint">{t("settings.themeHint")}</p>
-        ) : null}
+        <RadioRows
+          label="settings-appearance-title"
+          value={appearance.source}
+          options={(["system", "light", "dark"] as const).map((value) => ({ value, title: t(`settings.${value}`) }))}
+          onChange={(value) => setTheme(value)}
+        />
+        {appearance.source === "system" ? <p className="small section-hint">{t("settings.themeHint")}</p> : null}
       </>
     ),
     engines: <EnginesPanel />,
     tutor: (
       <>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.solver")}
-            selected={(profile.data?.tutorMode ?? "solver") === "solver"}
-            onClick={() => void patch({ tutorMode: "solver" })}
+        <RadioRows
+          label="settings-tutor-title"
+          value={profile.data?.tutorMode ?? "solver"}
+          options={[
+            { value: "solver", title: t("settings.how.solver"), description: t("settings.how.solverHint") },
+            { value: "socratic", title: t("settings.how.socratic"), description: t("settings.how.socraticHint") },
+          ]}
+          onChange={(tutorMode) => patch({ tutorMode })}
+        />
+        <ControlList>
+          <SwitchRow
+            title={t("settings.how.followups")}
+            description={t("settings.how.followupsHint")}
+            checked={profile.data?.followups !== false}
+            onChange={(followups) => void patch({ followups })}
           />
-          <Choice
-            label={t("settings.socratic")}
-            selected={profile.data?.tutorMode === "socratic"}
-            onClick={() => void patch({ tutorMode: "socratic" })}
-          />
-        </div>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.followups")}
-            selected={profile.data?.followups !== false}
-            onClick={() =>
-              void patch({ followups: profile.data?.followups === false })
-            }
-          />
-        </div>
+        </ControlList>
       </>
     ),
     profile: (
@@ -358,15 +356,13 @@ export function SettingsPage() {
         {levelChoices}
         {scaleChoices}
         <div className="label section-label">{t("settings.interests")}</div>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.interestsOn")}
-            selected={profile.data?.interestsOn !== false}
-            onClick={() =>
-              void patch({ interestsOn: profile.data?.interestsOn === false })
-            }
+        <ControlList>
+          <SwitchRow
+            title={t("settings.interestsOn")}
+            checked={profile.data?.interestsOn !== false}
+            onChange={(interestsOn) => void patch({ interestsOn })}
           />
-        </div>
+        </ControlList>
         <Input
           className="px-settings-interests"
           aria-label={t("settings.interests")}
@@ -406,48 +402,51 @@ export function SettingsPage() {
     ),
     reading: (
       <>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.dyslexia")}
-            selected={profile.data?.dyslexia === true}
-            onClick={() =>
-              void patch({ dyslexia: profile.data?.dyslexia !== true })
-            }
-          />
-          {(["sm", "md", "lg"] as const).map((size) => (
-            <Choice
-              key={size}
-              label={t(`settings.text.${size}`)}
-              selected={(profile.data?.textSize ?? "md") === size}
-              onClick={() => void patch({ textSize: size })}
+        <ControlList>
+          <ControlRow id="settings-text-size" title={t("settings.textSize")}>
+            <Segmented
+              label="settings-text-size"
+              value={profile.data?.textSize ?? "md"}
+              options={(["sm", "md", "lg"] as const).map((value) => ({ value, label: t(`settings.size.${value}`) }))}
+              onChange={(textSize) => void patch({ textSize })}
             />
-          ))}
-        </div>
-        <div className="px-settings-reading-sample reading">
-          <p>{t("settings.readingSample")}</p>
+          </ControlRow>
+          <SwitchRow
+            title={t("settings.dyslexia")}
+            description={t("settings.dyslexiaHint")}
+            checked={profile.data?.dyslexia === true}
+            onChange={(dyslexia) => void patch({ dyslexia })}
+          />
+        </ControlList>
+        <div className="px-settings-preview">
+          <span className="label">{t("settings.preview")}</span>
+          <p className="reading">{t("settings.readingSample")}</p>
         </div>
       </>
     ),
     flashcards: (
-      <div className="px-form-field px-settings-cards">
-        <label className="label" htmlFor="settings-new-per-day">
-          {t("settings.newPerDay")}
-        </label>
-        <InputNumber
+      <ControlList>
+        <ControlRow
           id="settings-new-per-day"
-          min={0}
-          max={999}
-          precision={0}
-          value={draftNewPerDay ?? cardSettings.data?.newPerDay ?? 20}
-          onChange={(value) => setDraftNewPerDay(value ?? null)}
-          onBlur={() => void saveNewPerDay()}
-          onPressEnter={() => void saveNewPerDay()}
-          aria-describedby="settings-new-per-day-hint"
-        />
-        <p className="small section-hint" id="settings-new-per-day-hint">
-          {t("settings.newPerDayHint")}
-        </p>
-      </div>
+          title={t("settings.newPerDay")}
+          description={t("settings.newPerDayExample", {
+            count: cardSettings.data?.newPerDay ?? 20,
+            total: (cardSettings.data?.newPerDay ?? 20) * 3,
+          })}
+        >
+          <Stepper
+            label="settings-new-per-day"
+            value={cardSettings.data?.newPerDay ?? 20}
+            min={0}
+            max={999}
+            step={5}
+            decreaseLabel={t("settings.fewer")}
+            increaseLabel={t("settings.more")}
+            disabled={!cardSettings.data}
+            onChange={(value) => void saveNewPerDay(value)}
+          />
+        </ControlRow>
+      </ControlList>
     ),
     reminders: <RemindersPanel />,
     data: (
@@ -688,20 +687,15 @@ export function SettingsPage() {
       </>
     ),
     language: (
-      <>
-        <div className="choice-list">
-          <Choice
-            label={t("settings.italian")}
-            selected={locale === "it"}
-            onClick={() => setLanguage("it")}
-          />
-          <Choice
-            label={t("settings.english")}
-            selected={locale === "en"}
-            onClick={() => setLanguage("en")}
-          />
-        </div>
-      </>
+      <RadioRows
+        label="settings-language-title"
+        value={locale}
+        options={[
+          { value: "it", title: t("settings.italian") },
+          { value: "en", title: t("settings.english") },
+        ]}
+        onChange={(value) => setLanguage(value)}
+      />
     ),
     updates: <UpdatesPanel />,
     version: (

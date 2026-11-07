@@ -53,7 +53,7 @@ test("answers outside a plan follow the interface language", async () => {
     await page.evaluate(() => {
       location.hash = "/settings/language";
     });
-    await page.getByRole("button", { name: "English", exact: true }).click();
+    await page.getByRole("radio", { name: "English", exact: true }).check();
     await expect.poll(language).toBe("English");
   } finally {
     await app.close();

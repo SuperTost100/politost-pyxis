@@ -103,7 +103,7 @@ test("the menu follows the interface language and hides its bar on Windows and L
       .getByRole("button", { name: "Chiudi avviso", exact: true })
       .click();
     await expect(page.locator(".px-update-notice")).toHaveCount(0);
-    await page.getByRole("button", { name: "English", exact: true }).click();
+    await page.getByRole("radio", { name: "English", exact: true }).check();
     await expect.poll(() => topLevel(app)).toEqual(withApp(english));
     const labels = await app.evaluate(
       ({ Menu }) =>
@@ -112,7 +112,7 @@ test("the menu follows the interface language and hides its bar on Windows and L
     expect(labels).toBe("New exam");
 
     // A reload reports the language again, and Italian comes back the same way.
-    await page.getByRole("button", { name: "Italiano", exact: true }).click();
+    await page.getByRole("radio", { name: "Italiano", exact: true }).check();
     await expect.poll(() => topLevel(app)).toEqual(withApp(italian));
     await page.reload();
     await expect.poll(() => topLevel(app)).toEqual(withApp(italian));

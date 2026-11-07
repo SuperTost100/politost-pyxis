@@ -175,12 +175,20 @@
 .px-settings-cards .section-hint {
   margin-top: 0;
 }
-.px-settings-reading-sample {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  margin-top: var(--space-4);
+/* The reading preview: plain text with a rule on its left, so it can't pass for a button. */
+.px-settings-preview {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0 0 2px;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid var(--border-control);
+}
+.px-settings-preview > .label {
+  color: var(--ink-subtle);
+}
+.px-settings-preview > p {
+  max-width: 62ch;
+  margin: 0;
 }
 .px-settings-danger {
   border-top: 1px solid var(--border);

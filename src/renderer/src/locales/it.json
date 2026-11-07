@@ -1789,7 +1789,7 @@
     "italian": "Italiano",
     "english": "English",
     "themeHint": "Finché non scegli, Pyxis segue il tema del sistema.",
-    "tutor": "Tutor",
+    "tutor": "Come ti spiega",
     "solver": "Risolve",
     "socratic": "Fa domande",
     "interests": "Interessi",
@@ -1953,7 +1953,27 @@
     },
     "studyHint": "spiegazioni, lettura, flashcard, promemoria",
     "theme": "Tema",
-    "aboutBlock": "Versione e licenze"
+    "aboutBlock": "Versione e licenze",
+    "how": {
+      "solver": "Passo per passo, fino alla soluzione",
+      "solverHint": "Ti mostra ogni passaggio e arriva al risultato.",
+      "socratic": "Con domande, finché ci arrivi tu",
+      "socraticHint": "Ti dà un indizio alla volta e ti chiede il passo successivo.",
+      "followups": "Proponi domande per approfondire",
+      "followupsHint": "Dopo ogni risposta, due o tre domande da cui continuare."
+    },
+    "textSize": "Dimensione del testo",
+    "size": {
+      "sm": "Piccolo",
+      "md": "Normale",
+      "lg": "Grande"
+    },
+    "dyslexiaHint": "Più spazio tra lettere, parole e righe.",
+    "preview": "Anteprima",
+    "newPerDayExample_one": "Con {{count}} e tre esami, ogni giorno ne iniziano fino a {{total}}. Quelle già iniziate tornano comunque quando scadono. Con 0 non ne iniziano di nuove.",
+    "newPerDayExample_other": "Con {{count}} e tre esami, ogni giorno ne iniziano fino a {{total}}. Quelle già iniziate tornano comunque quando scadono. Con 0 non ne iniziano di nuove.",
+    "fewer": "Meno",
+    "more": "Più"
   },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",

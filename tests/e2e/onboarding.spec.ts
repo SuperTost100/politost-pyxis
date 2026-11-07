@@ -806,7 +806,7 @@ test("First setup: a new profile starts in the computer's language, and a choice
     await page.evaluate(() => {
       location.hash = "/settings/language";
     });
-    await button(page, "Italiano").click();
+    await page.getByRole("radio", { name: "Italiano", exact: true }).check();
     await expect(page.locator("html")).toHaveAttribute("lang", "it");
     await app.close();
 
