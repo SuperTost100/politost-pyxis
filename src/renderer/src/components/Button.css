@@ -39,13 +39,13 @@
 .px-btn-primary:active {
   background: var(--primary-active);
 }
+/* Secondary buttons are a soft fill with no outline (design-spec.md, Buttons), like antd's default ones. */
 .px-btn-secondary {
-  background: transparent;
+  background: var(--surface-raised);
   color: var(--ink);
-  border-color: var(--border-control);
 }
 .px-btn-secondary:hover {
-  background: var(--surface-raised);
+  background: var(--border);
 }
 .px-btn-ghost {
   background: transparent;
