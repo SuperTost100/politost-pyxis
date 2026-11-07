@@ -8,11 +8,11 @@ import { JobsPanel } from "./JobsPanel";
 import { useFinishedJobs, useJobs } from "./queries";
 
 /**
- * The button of the jobs list: how many jobs are running and how many problems wait, and the list beside it. In the
- * sidebar ("row") it is the Attività row and always there. As an icon, during setup, it stays out of the way until a
- * job has run today.
+ * The button of the jobs list, in a page's top-right corner: how many jobs are running and how many problems wait, and
+ * the list that opens under it. `keep` shows it even before anything has run today, as the app's pages do; during setup
+ * it stays out of the way until a job has run.
  */
-export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
+export function JobsButton({ keep = false }: { keep?: boolean }) {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
   const { data: done = [], refetch } = useFinishedJobs();
@@ -32,9 +32,9 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
   const empty = problems.length + running.length + finished.length === 0;
   // The button leaves with its last job; it should not reopen the list by itself when a job comes back.
   useEffect(() => {
-    if (empty && variant === "icon") setOpen(false);
-  }, [empty, variant]);
-  if (empty && variant === "icon") return dialog;
+    if (empty && !keep) setOpen(false);
+  }, [empty, keep]);
+  if (empty && !keep) return dialog;
   const label = t("jobs.buttonLabel", {
     parts: [
       running.length > 0 && t("jobs.running", { count: running.length }),
@@ -45,17 +45,6 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
       .filter(Boolean)
       .join(", "),
   });
-  // The Attività row's count: the problems, else the running jobs. Its hidden words drop the number it already shows.
-  const shown = problems.length || running.length;
-  const withoutCount = (text: string) => text.replace(/^\d+\s*/, "");
-  const rowWords = [
-    problems.length > 0
-      ? ` ${withoutCount(t("jobs.toFix", { count: problems.length }))}`
-      : running.length > 0
-        ? ` ${withoutCount(t("jobs.running", { count: running.length }))}`
-        : `: ${empty ? t("jobs.none") : t("jobs.doneToday", { count: finished.length })}`,
-    problems.length > 0 && running.length > 0 ? `, ${t("jobs.running", { count: running.length })}` : "",
-  ].join("");
   const close = (restoreFocus: boolean) => {
     setOpen(false);
     if (restoreFocus) trigger.current?.focus();
@@ -74,10 +63,9 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
         afterOpenChange={(next) => {
           if (next) panel.current?.focus();
         }}
-        placement={variant === "row" ? "rightTop" : "bottomRight"}
-        // Beside the sidebar row, a tall list slides up to stay inside the window instead of hanging below it, which
-        // made the page grow and scroll the sidebar away.
-        align={variant === "row" ? { overflow: { adjustX: true, shiftX: true, adjustY: false, shiftY: true } } : undefined}
+        placement="bottomRight"
+        // A tall list slides up to stay inside the window instead of hanging below it, which made the page grow.
+        align={{ overflow: { adjustX: true, shiftX: true, adjustY: false, shiftY: true } }}
         arrow={false}
         rootClassName="px-jobs-popover"
         content={
@@ -96,28 +84,6 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
           )
         }
       >
-        {variant === "row" ? (
-          // The row names itself from what it shows, the word and the count, plus hidden words that say what the
-          // count is: "Attività 4 da sistemare, 1 in corso".
-          <button
-            ref={trigger}
-            type="button"
-            className="px-jobs-row"
-            data-tip={t("jobs.title")}
-            aria-expanded={open}
-          >
-            {running.length > 0 ? (
-              <LoaderCircle className="px-spin" size={18} strokeWidth={1.75} aria-hidden />
-            ) : (
-              <Clock size={18} strokeWidth={1.75} aria-hidden />
-            )}
-            <span>{t("jobs.title")}</span>
-            {shown > 0 ? (
-              <span className={problems.length > 0 ? "px-side-count is-problem" : "px-side-count"}>{shown}</span>
-            ) : null}
-            <span className="visually-hidden">{rowWords}</span>
-          </button>
-        ) : (
         <Button
           ref={trigger}
           type="text"
@@ -151,7 +117,6 @@ export function JobsButton({ variant = "icon" }: { variant?: "row" | "icon" }) {
             ) : null}
           </span>
         </Button>
-        )}
       </Popover>
     </>
   );

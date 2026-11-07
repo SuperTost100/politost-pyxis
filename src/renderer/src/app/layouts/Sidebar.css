@@ -115,8 +115,7 @@ a.px-side-brand:hover {
   display: grid;
   gap: 2px;
 }
-.px-side-nav > a,
-.px-side-nav > .px-jobs-row {
+.px-side-nav > a {
   position: relative;
   display: flex;
   align-items: center;
@@ -135,9 +134,7 @@ a.px-side-brand:hover {
   cursor: pointer;
   transition: background-color 0.15s ease-out, color 0.15s ease-out, box-shadow 0.15s ease-out;
 }
-.px-side-nav > a:hover,
-.px-side-nav > .px-jobs-row:hover,
-.px-side-nav > .px-jobs-row[aria-expanded="true"] {
+.px-side-nav > a:hover {
   background: var(--surface-raised);
   color: var(--ink);
 }
@@ -157,23 +154,6 @@ a.px-side-brand:hover {
 .px-side-nav > a:hover kbd,
 .px-side-nav > a:focus-visible kbd {
   opacity: 1;
-}
-.px-side-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  min-width: 20px;
-  padding: 3px 6px;
-  border-radius: var(--radius-pill);
-  background: var(--primary-soft);
-  color: var(--primary-text);
-  font: 650 11.5px/1 var(--font-sans);
-  justify-content: center;
-}
-.px-side-count.is-problem {
-  background: var(--danger-soft);
-  color: var(--danger);
 }
 .px-side-recent {
   flex: 1 1 auto;
@@ -446,21 +426,13 @@ html[data-platform="darwin"] .px-side[data-folded] .px-side-top {
   display: none;
 }
 /* The names leave the screen but stay the controls' names for screen readers. */
-.px-side[data-folded] :is(.px-side-brand > span, .px-side-search > span, .px-side-nav span:not(.px-side-count), .px-side-who) {
+.px-side[data-folded] :is(.px-side-brand > span, .px-side-search > span, .px-side-nav span, .px-side-who) {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-.px-side[data-folded] .px-side-count {
-  position: absolute;
-  top: 2px;
-  right: 0;
-  padding: 2px 4px;
-  min-width: 16px;
-  font-size: 10.5px;
 }
 .px-side[data-folded] .px-side-fill,
 .px-side[data-folded] .px-side-recent + * {
@@ -477,8 +449,7 @@ html[data-platform="darwin"] .px-side[data-folded] .px-side-top {
   color: transparent;
 }
 .px-side[data-folded] .px-side-search,
-.px-side[data-folded] .px-side-nav > a,
-.px-side[data-folded] .px-side-nav > .px-jobs-row {
+.px-side[data-folded] .px-side-nav > a {
   justify-content: center;
   width: 40px;
   padding: 0;

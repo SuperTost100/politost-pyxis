@@ -19,7 +19,6 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { ThemeSource } from "@shared/bridge";
 import { RenameField, type ChatActions } from "../../features/ask/chatActions";
-import { JobsButton } from "../../features/jobs/JobsButton";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
 import { doorTarget } from "../doors";
@@ -201,7 +200,6 @@ export function Sidebar({
             <kbd aria-hidden>{keyLabel(item.accelerator)}</kbd>
           </Link>
         ))}
-        <JobsButton variant="row" />
       </nav>
       {simulation ? (
         <div className="px-side-fill" />

@@ -420,7 +420,7 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
   }
 });
 
-test("LAYOUT-06 a long Attività list stays inside the window and leaves the page where it was", async () => {
+test("LAYOUT-06 Attività sits in the top-right corner, and a long list stays inside the window", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-jobs-"));
   const app = await launchPyxis({ userData });
   try {
@@ -443,10 +443,15 @@ test("LAYOUT-06 a long Attività list stays inside the window and leaves the pag
     db.close();
     await page.reload();
 
-    // The list opens beside its sidebar row and is taller than the room below it: it slides up instead of hanging
-    // below the window, which used to grow the page and scroll the sidebar away.
+    // Attività sits in the page's top-right corner, outside the sidebar, and its list opens under it. The list is taller
+    // than the window: it stays inside it instead of hanging below, which used to grow the page and scroll the sidebar.
     const side = page.getByRole("complementary", { name: "Barra laterale" });
-    await side.getByRole("button", { name: /^Attività/ }).click();
+    await expect(side.getByRole("button", { name: /^Attività/ })).toHaveCount(0);
+    const corner = page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ });
+    const icon = (await corner.boundingBox())!;
+    expect(icon.x + icon.width).toBeGreaterThan(1280 - 60);
+    expect(icon.y).toBeLessThan(60);
+    await corner.click();
     const list = page.locator(".px-jobs");
     await expect(list).toBeFocused();
     await expect(list.getByRole("heading", { level: 2, name: "Attività" })).toBeInViewport();
