@@ -19235,7 +19235,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
---- selectors 0.41.0: LICENSE (MPL-2.0) ---
+--- selectors 0.41.0: LICENSE (MPL-2.0, source: https://static.crates.io/crates/selectors/selectors-0.41.0.crate) ---
 Source: https://raw.githubusercontent.com/servo/servo/b38cfe35e652ff74f3c567c992b73f7eca1ef0d7/LICENSE
 SHA-256: 1af2d2b02d9c86030d29ed77117ca7a1b0e4b6ff35bcf8eeb124867d0f5cb59e
 

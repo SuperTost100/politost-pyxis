@@ -101,7 +101,9 @@ async function crateTexts(component) {
   }
   if (texts.length) return texts;
   const pinned = crateLicense[component.name];
-  if (pinned) return [text(`${component.name} ${component.version}: LICENSE (MPL-2.0)`, pinned, await download(pinned))];
+  // MPL-2.0 asks that recipients learn where the source is, so the label names the crate archive.
+  if (pinned)
+    return [text(`${component.name} ${component.version}: LICENSE (MPL-2.0, source: ${source})`, pinned, await download(pinned))];
   // Some crates publish without their repository's license file. cargo records the commit it packaged from, so the
   // file comes from the repository root at that commit.
   const vcs = files.get(`${top}.cargo_vcs_info.json`);
@@ -181,8 +183,12 @@ for (const platform of platforms) {
     .sort((a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en"));
   for (const component of components) {
     // Local crates: the addon's own crate and skia-fontations, whose source is Skia's src/ports/fontations. Their
-    // licenses are the package and Skia LICENSE texts above.
-    if (component.properties?.some((p) => p.name === "cdx:rust:source" && p.value === "local")) continue;
+    // licenses are the package and Skia LICENSE texts above. Any other local crate stops the script until its license
+    // is accounted for.
+    if (component.properties?.some((p) => p.name === "cdx:rust:source" && p.value === "local")) {
+      if (component.name === "canvas" || component.name === "skia-fontations") continue;
+      throw new Error(`Unknown local crate ${component.name}`);
+    }
     const key = component.purl;
     if (!cache.has(key)) {
       const found = key.startsWith("pkg:cargo/") ? await crateTexts(component) : await vendoredTexts(component);
