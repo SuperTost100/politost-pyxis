@@ -27,6 +27,8 @@ export type SourceRowData = {
   bytes?: number | null;
   sections?: number;
   planCount?: number;
+  /** The subject the source belongs to, such as one found from a linked folder. */
+  subject?: string | null;
   /** The job reading this scan, whose progress the row shows. */
   scanJobId?: string;
 };
@@ -57,6 +59,7 @@ export function SourceRow(props: {
   const { source } = props;
   const meta = [
     t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),
+    source.subject ?? null,
     source.sections == null
       ? null
       : t("sources.sectionCount", { count: source.sections }),

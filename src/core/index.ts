@@ -173,6 +173,10 @@ if (!parent) {
       runner,
       booksFixture ? folderTransport(booksFixture) : undefined,
       userDataPath,
+      // The subjects of a linked folder come from the same recorded replies as plans, in end-to-end runs.
+      dev && process.env["PYXIS_E2E_PLAN_REPLIES"]
+        ? recordedPlanRun(process.env["PYXIS_E2E_PLAN_REPLIES"], 0)
+        : undefined,
     );
     // Recorded replies require the explicit dev/test seam; packaged launches only enable it with PYXIS_E2E=1.
     bindChat(

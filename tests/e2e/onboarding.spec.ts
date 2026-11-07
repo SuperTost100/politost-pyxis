@@ -58,17 +58,6 @@ async function launch(
   return launchPyxis({ userData, env: extra });
 }
 
-/** Main answers the next file picker with `paths`, as if the student had chosen them. */
-async function answerPicker(app: ElectronApplication, paths: string[]) {
-  await app.evaluate(({ dialog }, answer) => {
-    delete process.env["PYXIS_E2E_FILE"];
-    dialog.showOpenDialog = (async () => ({
-      canceled: false,
-      filePaths: answer,
-    })) as typeof dialog.showOpenDialog;
-  }, paths);
-}
-
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in can measure as low contrast, so wait for finite animations to end first.
   await animationsSettled(page);
@@ -120,17 +109,12 @@ async function noNavigation(page: Page) {
   await expect(page.getByRole("link", { name: "Impostazioni", exact: true })).toHaveCount(0);
 }
 
-test("First setup: you with crash reports off, the AI with its notice, files into the Library, then the switch in Settings", async () => {
+test("First setup: you with crash reports off, the AI with its notice, the two ways to keep material, then the switch in Settings", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const { bin, env } = fakeBins({ claude: true, codex: true });
-  const notes = join(bin, "Appunti di cinematica.txt");
-  writeFileSync(
-    notes,
-    "La velocità media è lo spostamento diviso il tempo impiegato a percorrerlo.\n".repeat(20),
-  );
   const app = await launch(userData, env);
   try {
     const page = await app.firstWindow();
@@ -220,7 +204,7 @@ test("First setup: you with crash reports off, the AI with its notice, files int
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     await button(page, "Continua").click();
     await expect(
-      page.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
+      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
     ).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -235,49 +219,39 @@ test("First setup: you with crash reports off, the AI with its notice, files int
       gradeScale: null,
     });
     await noNavigation(page);
-    // The import copies the files, so the step says the originals stay where they are.
+    // Folders are read in place, so the step says nothing in them changes. The free books are no longer offered here.
     await expect(
-      page.getByText("i tuoi file restano dove sono", { exact: false }),
+      page.getByText("Pyxis legge soltanto: non sposta, non rinomina e non cancella niente nelle tue cartelle."),
     ).toBeVisible();
-    await expect(button(page, "Libri PoliTost gratuiti")).toBeVisible();
-    // Nothing added yet: no primary action, and "later" ends setup.
+    await expect(button(page, "Libri PoliTost gratuiti")).toHaveCount(0);
+    // Two ways to keep material, no primary action yet, and "later" ends setup.
+    await expect(button(page, "Una cartella con tutto lo studio")).toBeVisible();
     await expect(primaryButtons(page)).toHaveCount(0);
     await expect(button(page, "Lo faccio dopo")).toBeVisible();
     await noAxeViolations(page);
     await saveShot(page, "onboarding/3-material.png");
 
-    // A folder opens the Library's import on its folder tab.
-    await button(page, "Una cartella").click();
-    const dialog = page.getByRole("dialog", { name: "Aggiungi fonti" });
+    // One folder per subject asks for the folders, and Back returns to the choice with the heading focused.
+    await button(page, "Una cartella per ogni materia").click();
     await expect(
-      dialog.getByRole("button", { name: "Aggiungi una cartella" }),
-    ).toBeVisible();
-    await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
-    await expect(dialog).toHaveCount(0);
-    // Files go in with the Library's own import, and no exam is made.
-    await answerPicker(app, [notes]);
-    await button(page, "Alcuni file").click();
-    await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
-    await expect(dialog).toBeHidden({ timeout: 30000 });
-    const added = page.getByRole("region", {
-      name: "Nella Libreria: 1 fonte aggiunta",
-    });
-    await expect(added.getByText("Appunti di cinematica")).toBeVisible();
-    await expect(primaryButtons(page)).toHaveText(["Inizia a studiare"]);
+      page.getByRole("heading", { name: "Dove sono le cartelle delle materie?" }),
+    ).toBeFocused();
+    await expect(button(page, "Scegli le cartelle")).toBeVisible();
+    await expect(page.getByText("Quando aggiungi un file, lo legge da solo.", { exact: false })).toBeVisible();
     await noAxeViolations(page);
-    await saveShot(page, "onboarding/3-material-added.png");
-    await button(page, "Inizia a studiare").click();
+    await button(page, "Indietro").click();
+    await expect(
+      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+    ).toBeFocused();
+    await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/ask$/);
     await expect(
       page.getByRole("navigation", { name: "Sezioni" }),
     ).toBeVisible();
     await expect(page.locator(".px-side-me")).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)/);
-    expect(
-      (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).map(
-        (source) => source.title,
-      ),
-    ).toEqual(["Appunti di cinematica"]);
+    // Nothing was linked or imported, and setup makes no exam.
+    expect(await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).toEqual([]);
     expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toEqual([]);
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
@@ -474,7 +448,7 @@ test("First setup: a signed-out tool offers sign-in first, with none installed n
     // Nothing is ready, so the footer carries on and says it will be done later.
     await button(page, "Lo faccio dopo").click();
     await expect(
-      page.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
+      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
     ).toBeVisible();
     await button(page, "Indietro").click();
     await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
@@ -612,7 +586,7 @@ test("First setup: skipping leaves crash reports off, and a new profile at schoo
       await button(second, "Continua").click();
       await button(second, "Lo faccio dopo").click();
       await expect(
-        second.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
+        second.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
       ).toBeVisible();
       expect(await profile(second)).toMatchObject({
         educationLevel: "upper-secondary",

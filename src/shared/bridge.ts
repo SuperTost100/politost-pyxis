@@ -92,6 +92,8 @@ export interface PyxisBridge {
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
   /** Grants dropped files to core and returns their paths. Only real `File` objects from a drop name a path. */
   grantDroppedFiles(files: File[]): Promise<{ paths: string[]; skipped: number }>;
+  /** Grants dropped folders to core, to be linked, and returns their paths. Files and anything unreadable are skipped. */
+  grantDroppedFolders(files: File[]): Promise<{ paths: string[]; skipped: number }>;
   keys: {
     set(provider: string, key: string): Promise<void>;
     status(): Promise<KeyStatus>;
@@ -202,6 +204,7 @@ export const mainChannels = {
   contextMenu: "menu:context",
   openDialog: "dialog:open",
   dropGrant: "dialog:grant-dropped",
+  dropFolderGrant: "dialog:grant-dropped-folders",
   keysSet: "keys:set",
   keysStatus: "keys:status",
   keysRemove: "keys:remove",

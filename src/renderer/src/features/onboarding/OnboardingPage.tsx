@@ -31,8 +31,9 @@ import { profileQuery } from "../../lib/queries";
 
 /**
  * First setup is three steps: you, the AI, the material. The profile is saved when the AI step ends, so "Later" on the
- * material step lands the student on Chiedi with the profile kept. Exams are made later, from Esami. A rerun has the
- * first two steps.
+ * material step lands the student on Chiedi with the profile kept. The material step links the student's folders and
+ * names their subjects; it draws its own three screens. Exams are made later, from Esami. A rerun has the first two
+ * steps.
  */
 const firstSteps = ["profile", "engines", "material"] as const;
 const rerunSteps = ["profile", "engines"] as const;
@@ -76,8 +77,6 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
     connected: [],
   });
   const onEngines = useCallback((state: EnginesState) => setEngines(state), []);
-  // The sources the material step added, so the page can offer to start studying.
-  const [added, setAdded] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -199,23 +198,6 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         )}
       </Button>
     );
-  } else {
-    secondary = backButton;
-    // The profile is saved: with or without material, setup ends on Chiedi, and Esami makes exams later.
-    primary = added.length ? (
-      <Button
-        type="primary"
-        shape="round"
-        size="large"
-        onClick={() => navigate("/ask")}
-      >
-        {t("onboarding.done")}
-      </Button>
-    ) : (
-      <Button type="text" shape="round" onClick={() => navigate("/ask")}>
-        {t("onboarding.later")}
-      </Button>
-    );
   }
 
   return (
@@ -235,12 +217,17 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
           current={index}
         />
       </div>
-      <div className="px-onboarding-title">
-        <h1 className="display" tabIndex={-1} ref={heading}>
-          {title}
-        </h1>
-        <p className="body">{body}</p>
-      </div>
+      {/* The material step draws its own title and footer: each of its screens has its own. */}
+      {id === "material" ? (
+        <MaterialStep heading={heading} onBack={back} onLeave={() => navigate("/ask")} />
+      ) : (
+        <div className="px-onboarding-title">
+          <h1 className="display" tabIndex={-1} ref={heading}>
+            {title}
+          </h1>
+          <p className="body">{body}</p>
+        </div>
+      )}
 
       {id === "profile" ? (
         <>
@@ -259,25 +246,16 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       {id === "engines" ? (
         <EnginesStep onState={onEngines} again={again} />
       ) : null}
-      {id === "material" ? (
-        <MaterialStep
-          added={added}
-          onAdded={(ids) =>
-            setAdded((current) => [
-              ...current,
-              ...ids.filter((item) => !current.includes(item)),
-            ])
-          }
-        />
-      ) : null}
 
       {failed ? (
         <Notice tone="danger">{t("onboarding.saveFailed")}</Notice>
       ) : null}
-      <div className="px-onboarding-actions">
-        <span>{secondary}</span>
-        <span className="px-onboarding-primary">{primary}</span>
-      </div>
+      {id === "material" ? null : (
+        <div className="px-onboarding-actions">
+          <span>{secondary}</span>
+          <span className="px-onboarding-primary">{primary}</span>
+        </div>
+      )}
     </div>
   );
 }

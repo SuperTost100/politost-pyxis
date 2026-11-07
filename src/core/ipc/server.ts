@@ -775,6 +775,8 @@ export function bindSources(
   booksTransport?: BooksTransport,
   /** The app's own data folder, which a linked folder may not lie in. */
   userData?: string,
+  /** Recorded replies for naming a linked folder's subjects, in end-to-end runs. */
+  run?: NonNullable<Parameters<typeof sourceHandlers>[6]>["run"],
 ): void {
   fileScratch = join(workspace, "scratch");
   sources = sourceHandlers(
@@ -784,6 +786,6 @@ export function bindSources(
     (path) => fileGrants.file(path),
     undefined,
     booksTransport,
-    { userData, onChange: () => broadcast("sources.changed", {}) },
+    { userData, run, onChange: () => broadcast("sources.changed", {}) },
   );
 }

@@ -1173,6 +1173,11 @@ const LibraryRow = memo(function LibraryRow({
   const { t } = useTranslation();
   const notes = (
     <>
+      {source.linked?.missing ? (
+        <p className="small px-library-flag">
+          {t("sources.linked.missing", { folder: source.linked.folder })}
+        </p>
+      ) : null}
       {source.syllabusOff ? (
         <p className="small px-library-flag">
           {t("sources.offSyllabusListed", { count: source.syllabusOff })}
@@ -1232,7 +1237,8 @@ const LibraryRow = memo(function LibraryRow({
     items: [
       { key: "details", label: t("sources.details") },
       { key: "rename", label: t("sources.rename") },
-      { key: "replace", label: t("sources.replace") },
+      // A file read in place from a linked folder changes there, and Pyxis reads it again by itself.
+      { key: "replace", label: t("sources.replace"), disabled: source.linked !== null },
       {
         key: "reextract",
         label: t("sources.reextract"),
