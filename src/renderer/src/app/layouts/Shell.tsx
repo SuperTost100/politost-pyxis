@@ -6,6 +6,7 @@ import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { useChatActions } from "../../features/ask/chatActions";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
+import { isMapPath } from "../doors";
 import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
@@ -116,7 +117,7 @@ export function Shell() {
         className={
           target.pathname.startsWith("/settings")
             ? "px-shell-container px-shell-wide"
-            : target.pathname.startsWith("/ask")
+            : target.pathname.startsWith("/ask") || isMapPath(target.pathname)
               ? "px-shell-container px-shell-bleed"
               : "px-shell-container"
         }

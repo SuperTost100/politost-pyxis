@@ -2659,10 +2659,12 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "map-export":
+      // The map's "…" menu holds the layout, the build, the exports, undo and the shortcuts.
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      await page
-        .getByRole("button", { name: both("Esporta", "Export") })
-        .click();
+      await page.getByRole("button", { name: both("Altro", "More") }).click();
+      await expect(
+        page.getByRole("menuitemradio", { name: both("Albero", "Tree") }),
+      ).toBeVisible();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
     case "exams-import-menu":

@@ -1,28 +1,26 @@
-import { App, Button, Dropdown } from "antd";
-import { ChevronDown } from "lucide-react";
+import { App } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
 
-type Format = "markdown" | "svg" | "pdf";
+export type MapExportFormat = "markdown" | "svg" | "pdf";
 
 /**
  * Exports the whole saved map, whatever the screen shows: core writes the outline and draws the full-size SVG, and the
  * PDF prints both. `settle` waits for edits still on their way to core, so the file has the last drag.
  */
-export function MapExport(props: {
+export function useMapExport(props: {
   planId: string;
   topicId: string;
   mapId?: string;
-  disabled: boolean;
   settle: () => Promise<unknown>;
 }) {
   const { t, i18n } = useTranslation();
   const { message } = App.useApp();
   const [busy, setBusy] = useState(false);
 
-  async function save(format: Format) {
+  async function save(format: MapExportFormat) {
     if (busy) return;
     setBusy(true);
     const key = "map-export";
@@ -68,35 +66,5 @@ export function MapExport(props: {
     }
   }
 
-  return (
-    <Dropdown
-      trigger={["click"]}
-      disabled={props.disabled || busy}
-      // The menu opens outside the page's landmarks; a named region keeps it in one.
-      popupRender={(menu) => (
-        <div role="region" aria-label={t("map.export")}>
-          {menu}
-        </div>
-      )}
-      menu={{
-        items: [
-          { key: "markdown", label: t("map.exportMarkdown") },
-          { key: "svg", label: t("map.exportSvg") },
-          { key: "pdf", label: t("map.exportPdf") },
-        ],
-        onClick: ({ key }) => void save(key as Format),
-      }}
-    >
-      <Button
-        shape="round"
-        disabled={props.disabled || busy}
-        aria-haspopup="menu"
-      >
-        <span className="px-map-export">
-          {t("map.export")}
-          <ChevronDown size={16} strokeWidth={1.75} aria-hidden />
-        </span>
-      </Button>
-    </Dropdown>
-  );
+  return { busy, save };
 }
