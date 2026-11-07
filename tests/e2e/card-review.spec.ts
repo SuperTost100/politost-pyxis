@@ -306,7 +306,7 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
   }
 });
 
-test("card limit: past today's new cards, the message links to the setting", async () => {
+test("card limit: past today's new cards, the message links to the setting, after recording the session", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-limit-"));
   const app = await launchPyxis({ userData });
   try {
@@ -317,16 +317,28 @@ test("card limit: past today's new cards, the message links to the setting", asy
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
     seed(db);
     db.close();
-    // With no new cards a day, the deck's new cards wait for tomorrow.
+    // One new card a day: rate it, and the rest wait for tomorrow.
+    await page.evaluate(() => window.pyxis.invoke("study.saveCardSettings", { newPerDay: 1 }));
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Flip", exact: true }).click();
+    await page.getByRole("button", { name: "Easy", exact: true }).click();
+    await expect(page.getByText("That's today's 1 new flashcard for this exam. The rest start tomorrow.")).toBeVisible();
+    // The session is recorded when it ends, which is when the limit shows; Change then opens the setting.
+    await page.getByRole("link", { name: "Change", exact: true }).click();
+    await expect(page).toHaveURL(/#\/settings\/flashcards$/);
+    const steps = await page.evaluate(() => window.pyxis.invoke("plans.read", { planId: "p" }));
+    expect((steps as { steps: Array<{ activity: string }> }).steps.some((step) => step.activity === "cards")).toBe(true);
+    await expect(page.getByLabel("New flashcards a day, for each exam")).toBeVisible();
+    // With no new cards a day, the message says so in its own words.
     await page.evaluate(() => window.pyxis.invoke("study.saveCardSettings", { newPerDay: 0 }));
     await page.evaluate(() => {
       location.hash = "#/plans/p/cards/t";
     });
     await page.reload();
     await expect(page.getByText("The limit for new flashcards is 0, so none start today.")).toBeVisible();
-    await page.getByRole("link", { name: "Change", exact: true }).click();
-    await expect(page).toHaveURL(/#\/settings\/flashcards$/);
-    await expect(page.getByLabel("New flashcards a day, for each exam")).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -483,12 +483,14 @@ export function CardsPage() {
     }
   }
 
-  /** The only way out: a session with ratings is recorded on the path first. */
+  /** Every way out: a session with ratings is recorded on the path first, and a failure keeps the student here. */
+  function leaveTo(path: string) {
+    if (reviewing || seen.length === 0 || recorded) return navigate(path);
+    void finishSession().then((ok) => ok && navigate(path));
+  }
   function close() {
     // Oggi's session has no plan to go back to; it ends on the exams list.
-    const home = everywhere ? "/exams" : `/plans/${planId ?? ""}`;
-    if (reviewing || seen.length === 0 || recorded) return navigate(home);
-    void finishSession().then((ok) => ok && navigate(home));
+    leaveTo(everywhere ? "/exams" : `/plans/${planId ?? ""}`);
   }
 
   useEffect(() => {
@@ -673,7 +675,15 @@ export function CardsPage() {
           ) : capped ? (
             <p className="body">
               {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}{" "}
-              <Link to="/settings/flashcards">{t("cards.changeLimit")}</Link>
+              <Link
+                to="/settings/flashcards"
+                onClick={(event) => {
+                  event.preventDefault();
+                  leaveTo("/settings/flashcards");
+                }}
+              >
+                {t("cards.changeLimit")}
+              </Link>
             </p>
           ) : (
             <p className="body">{t("cards.empty")}</p>
