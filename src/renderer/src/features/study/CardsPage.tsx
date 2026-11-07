@@ -731,12 +731,16 @@ export function CardsPage() {
                 <div className="px-card-face">
                   {showBack ? (
                     <>
-                      <div className="px-card-asked">
-                        <MarkdownView>{isCloze(card.front) ? clozeAnswer(card.front) : card.front}</MarkdownView>
-                      </div>
-                      <hr />
-                      <div className="px-card-back" ref={answer} tabIndex={-1}>
-                        <MarkdownView>{card.back}</MarkdownView>
+                      {/* The focus lands here after a turn: the question with a cloze card's answer filled in, then the
+                          back, so a screen reader reads both. */}
+                      <div className="px-card-reveal" ref={answer} tabIndex={-1}>
+                        <div className="px-card-asked">
+                          <MarkdownView>{isCloze(card.front) ? clozeAnswer(card.front) : card.front}</MarkdownView>
+                        </div>
+                        <hr />
+                        <div className="px-card-back">
+                          <MarkdownView>{card.back}</MarkdownView>
+                        </div>
                       </div>
                       <div className="px-card-links">
                         {card.sectionPath && card.passageId && card.sourceId ? (

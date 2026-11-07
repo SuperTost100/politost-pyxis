@@ -125,7 +125,20 @@
   font-size: calc(14.5px * var(--text-scale, 1));
   line-height: 1.5;
 }
-.px-card-face > hr {
+.px-card-reveal {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  border-radius: var(--radius-sm);
+}
+.px-card-reveal:focus {
+  outline: none;
+}
+.px-card-reveal:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 6px;
+}
+.px-card-reveal > hr {
   width: 48px;
   margin: 0;
   border: 0;
@@ -133,15 +146,7 @@
 }
 .px-card-back {
   max-width: 34ch;
-  border-radius: var(--radius-sm);
   text-wrap: balance;
-}
-.px-card-back:focus {
-  outline: none;
-}
-.px-card-back:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 4px;
 }
 .px-card-back .px-markdown {
   font-size: calc(21px * var(--text-scale, 1));

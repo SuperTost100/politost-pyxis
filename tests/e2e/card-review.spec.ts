@@ -84,11 +84,15 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await page.keyboard.press("Space");
     await expect(card).toHaveAttribute("data-face", "back");
     // The focus moves to the answer, so a screen reader reads it; Space turns back to the front and focus to Gira.
-    await expect(page.locator(".px-card-back")).toBeFocused();
+    // It holds the question too, where a cloze card shows its filled-in answer.
+    const reveal = page.locator(".px-card-reveal");
+    await expect(reveal).toBeFocused();
+    await expect(reveal.locator(".px-card-asked")).not.toBeEmpty();
+    await expect(reveal.locator(".px-card-back")).not.toBeEmpty();
     await page.keyboard.press("Space");
     await expect(page.getByRole("button", { name: "Flip" })).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.locator(".px-card-back")).toBeFocused();
+    await expect(reveal).toBeFocused();
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know itHardKnew itEasy");
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await expectNoAxeViolations(page);
