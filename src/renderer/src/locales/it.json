@@ -128,32 +128,62 @@
       "body": "Serve a Pyxis per scegliere esempi e linguaggio adatti a te. Puoi cambiarlo quando vuoi nelle impostazioni."
     },
     "material": {
-      "title": "Aggiungi il tuo materiale",
-      "body": "Libri, slide, appunti e temi d'esame. Pyxis li legge e cita le loro pagine quando ti spiega qualcosa.",
-      "files": {
-        "title": "Alcuni file",
-        "body": "Scegli i file dal computer, o trascinali qui.",
-        "example": {
-          "one": "Fisica 1, il libro.pdf",
-          "two": "Slide lezione 3.pptx",
-          "three": "Appunti di analisi.docx",
-          "four": "Temi d'esame 2025.pdf"
-        }
+      "title": "Come tieni il materiale per studiare?",
+      "body": "Libri, slide, appunti e temi d'esame. Pyxis legge i file e trova da solo quello che serve.",
+      "reading": "Sto ancora leggendo alcuni file, ma puoi già iniziare: finisco mentre studi.",
+      "root": {
+        "title": "Una cartella con tutto lo studio",
+        "body": "Trovo io le materie e poi te le mostro, così correggi quello che ho sbagliato."
       },
-      "folder": {
-        "title": "Una cartella",
-        "body": "Ti mostro i file che contiene e scegli tu quali aggiungere.",
-        "example": {
-          "folder": "Fisica 1",
-          "one": "Libro.pdf",
-          "two": "Slide.pptx",
-          "three": "Appunti.docx"
-        }
+      "subject": {
+        "title": "Una cartella per ogni materia",
+        "body": "Il nome di ogni cartella diventa il nome della materia."
       },
-      "copy": "Pyxis ne tiene una copia nella Libreria: i tuoi file restano dove sono, e non li sposta, non li rinomina e non li cancella.",
-      "added_one": "Nella Libreria: {{count}} fonte aggiunta",
-      "added_other": "Nella Libreria: {{count}} fonti aggiunte",
-      "reading": "Sto ancora leggendo alcuni file, ma puoi già iniziare: finisco mentre studi."
+      "example": {
+        "study": "Università",
+        "one": "Fisica 1",
+        "two": "Analisi 2",
+        "three": "Chimica",
+        "four": "Informatica",
+        "more": "e le altre"
+      },
+      "readOnly": "Pyxis legge soltanto: non sposta, non rinomina e non cancella niente nelle tue cartelle.",
+      "readOnlyNew": "Pyxis legge soltanto: non sposta, non rinomina e non cancella niente nelle tue cartelle. Quando aggiungi un file, lo legge da solo.",
+      "pick": {
+        "root": {
+          "title": "Dov'è la cartella con tutto lo studio?",
+          "body": "Quella che contiene le cartelle delle materie.",
+          "drop": "Trascinala qui",
+          "or": "Oppure cercala tra le cartelle del computer.",
+          "choose": "Scegli la cartella"
+        },
+        "subject": {
+          "title": "Dove sono le cartelle delle materie?",
+          "body": "Puoi sceglierne più di una insieme, o aggiungerle una alla volta.",
+          "drop": "Trascinale qui",
+          "or": "Oppure cercale tra le cartelle del computer.",
+          "choose": "Scegli le cartelle"
+        },
+        "dropActive": "Lasciala qui",
+        "reading": "Leggo la cartella e cerco le materie…"
+      },
+      "found": {
+        "title_one": "Ho trovato una materia",
+        "title_other": "Ho trovato {{count}} materie",
+        "none": "Non ho trovato materie",
+        "label": "Materie trovate",
+        "body_one": "Nella cartella {{folder}}. Correggi i nomi se vuoi: i file restano dove sono.",
+        "body_other": "Nelle cartelle {{folder}}. Correggi i nomi se vuoi: i file restano dove sono.",
+        "empty": "Nella cartella {{folder}} non ci sono file che Pyxis sa leggere: PDF, Word, PowerPoint, testi e foto.",
+        "nameLabel": "Nome della materia della cartella {{folder}}",
+        "nameEmpty": "Scrivi il nome della materia.",
+        "from": "dalla cartella {{folder}}",
+        "skip": "La cartella {{folder}} non sembra materiale di studio, quindi la salto.",
+        "isSubject": "È una materia",
+        "isSubjectNamed": "{{folder}} è una materia",
+        "addFolder": "Aggiungi un'altra cartella",
+        "cut": "La cartella è molto grande: Pyxis legge i primi {{files}} file, fino a {{depth}} livelli di sottocartelle."
+      }
     },
     "optional": "(se vuoi)",
     "studies": {
@@ -654,7 +684,17 @@
         "insideData": "Questa cartella è tra i dati di Pyxis. Scegli la cartella dove tieni il materiale.",
         "overlap": "Questa cartella è dentro una cartella già collegata, oppure ne contiene una.",
         "failed": "Non sono riuscito a leggere la cartella. Riprova."
-      }
+      },
+      "dropNotFolder": "Trascina una cartella, non dei file.",
+      "kinds": {
+        "book": "libro",
+        "slides": "slide",
+        "exams": "temi d'esame",
+        "notes": "appunti",
+        "exercises": "esercizi",
+        "handouts": "dispense"
+      },
+      "missing": "Spostato o cancellato dalla cartella {{folder}}. Le citazioni restano."
     }
   },
   "cards": {

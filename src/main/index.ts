@@ -3,11 +3,13 @@ import { writeKeyStore } from "./key-store";
 import { randomUUID } from "node:crypto";
 import {
   droppedFileGrant,
+  droppedFolderGrant,
   keepGrant,
   pickedFileGrant,
   type FileGrant,
 } from "../core/ipc/file-grants";
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
+import { MAX_LINK_PATHS } from "../shared/linked-folders";
 import { fetchPlanText } from "./plan-fetch";
 import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
@@ -1168,6 +1170,28 @@ function registerIpc(): void {
         grants.push(droppedFileGrant(path, extensions));
       } catch {
         // Counted below. Folders, unsupported types and unreadable paths are reported, not imported.
+      }
+    }
+    if (grants.length) await grantFiles(grants);
+    return {
+      paths: grants.map((grant) => grant.selectedPath),
+      skipped: paths.length - grants.length,
+    };
+  });
+  ipcMain.handle(mainChannels.dropFolderGrant, async (event, paths: unknown) => {
+    requireMainSender(event, "picker-untrusted-sender");
+    if (
+      !Array.isArray(paths) ||
+      paths.length > MAX_LINK_PATHS ||
+      paths.some((path) => typeof path !== "string")
+    )
+      throw new Error("drop-invalid");
+    const grants: FileGrant[] = [];
+    for (const path of paths as string[]) {
+      try {
+        grants.push(droppedFolderGrant(path));
+      } catch {
+        // Counted below: a file or an unreadable path is not a folder to link.
       }
     }
     if (grants.length) await grantFiles(grants);

@@ -55,6 +55,18 @@ export function droppedFileGrant(
 }
 
 /**
+ * A folder the student dropped on setup's folder step, to be linked. As for a dropped file, preload reads the path from
+ * the real `File`, so only a drop can name one. The ceiling is a directory: linking then reads only the files Pyxis
+ * imports, and core refuses one inside the workspace or the app's data.
+ */
+export function droppedFolderGrant(path: string): FileGrant {
+  if (!path || !isAbsolute(path)) throw new Error("file-access-denied");
+  const grant = pickedFileGrant(path);
+  if (!grant.directory) throw new Error("file-access-denied");
+  return grant;
+}
+
+/**
  * The most grants kept. Every pick and drop adds one, and main sends them all to each new core, so a long session would
  * otherwise keep every path it ever saw. The cap is far above one pick or drop, so files waiting to import keep
  * theirs. The oldest goes first, and picking a path again makes it the newest.

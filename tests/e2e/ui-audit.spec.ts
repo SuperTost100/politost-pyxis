@@ -37,6 +37,10 @@ const routes = [
   // the student picking the engines.
   ["onboarding-engines", "/onboarding"],
   ["onboarding-engines-chosen", "/onboarding"],
+  // Setup step 3: how the material is kept, where the folder is, and the subjects found in a linked study folder.
+  ["onboarding-material", "/onboarding"],
+  ["onboarding-material-folder", "/onboarding"],
+  ["onboarding-material-subjects", "/onboarding"],
   ["ask-new", "/ask"],
   ["ask-thread", "/ask/audit-chat"],
   ["exams", "/exams"],
@@ -858,6 +862,8 @@ async function openExport(page: Page) {
 let auditUserData = "";
 let auditApp: ElectronApplication | undefined;
 let auditPicked = "";
+/** A study folder with subject folders and a holiday folder, linked by setup's material step. */
+let auditStudy = "";
 
 /** A newer fake release served from disk by the e2e seam, installed into a stand-in AppImage. */
 const packageVersion = JSON.parse(
@@ -1711,6 +1717,36 @@ async function openState(page: Page, name: string) {
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
+    case "onboarding-material":
+    case "onboarding-material-folder":
+    case "onboarding-material-subjects": {
+      const title = page.getByRole("heading", { level: 1 });
+      await page.getByRole("button", { name: both("Continua", "Continue") }).click();
+      // The engines are signed out here, so the AI step's footer says it is done later.
+      await page.getByRole("button", { name: /^(Lo faccio dopo|Continua|I'll do it later|Continue)$/ }).click();
+      await expect(title).toHaveText(/^(Come tieni il materiale per studiare\?|How do you keep your study material\?)$/);
+      if (name === "onboarding-material") break;
+      await page
+        .getByRole("button", { name: both("Una cartella con tutto lo studio", "One folder with all my studies") })
+        .click();
+      await expect(title).toHaveText(
+        /^(Dov'è la cartella con tutto lo studio\?|Where's the folder with all your studies\?)$/,
+      );
+      if (name === "onboarding-material-folder") break;
+      // The picker answers with the study folder for this state only.
+      await auditApp!.evaluate((_electron, path) => {
+        process.env["PYXIS_E2E_FILE"] = path;
+      }, auditStudy);
+      try {
+        await page.getByRole("button", { name: both("Scegli la cartella", "Choose the folder") }).click();
+        await expect(title).toHaveText(both("Ho trovato 3 materie", "I found 3 subjects"), { timeout: 30000 });
+      } finally {
+        await auditApp!.evaluate((_electron, path) => {
+          process.env["PYXIS_E2E_FILE"] = path;
+        }, auditPicked);
+      }
+      break;
+    }
     case "onboarding-engines":
     case "onboarding-engines-chosen": {
       await page
@@ -3274,6 +3310,17 @@ test("M14 every application route in both languages, themes and supported widths
   );
   mkdirSync(deep, { recursive: true });
   writeFileSync(join(deep, "profondo.txt"), "Troppo in fondo.");
+  // The study folder setup links: three subjects and a folder of holiday paperwork the recorded reply skips.
+  auditStudy = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-study-")), "Università");
+  for (const [folder, file, text] of [
+    ["Fisica 1", "Mazzoldi cap 2.txt", "La velocità è la derivata della posizione."],
+    ["Analisi 2", "appunti integrali.md", "# Integrali doppi\n\nSi calcolano per fili."],
+    ["GAL", "dispense matrici.txt", "Una matrice quadrata è invertibile se il determinante non è nullo."],
+    ["Erasmus", "learning agreement.txt", "Learning agreement."],
+  ]) {
+    mkdirSync(join(auditStudy, folder!), { recursive: true });
+    writeFileSync(join(auditStudy, folder!, file!), text!);
+  }
   // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
   const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
   writeFileSync(
@@ -3320,6 +3367,14 @@ test("M14 every application route in both languages, themes and supported widths
       },
       markdown: {
         markdown: "# La dinamica\n\nLa seconda legge di Newton è $F=ma$ [P1].",
+      },
+      folders: {
+        folders: [
+          { folder: "Fisica 1", subject: "Fisica I", study: true, kinds: ["book"] },
+          { folder: "Analisi 2", subject: "Analisi matematica II", study: true, kinds: ["notes"] },
+          { folder: "GAL", subject: "Geometria e algebra lineare", study: true, kinds: ["handouts"] },
+          { folder: "Erasmus", subject: "Erasmus", study: false, kinds: [] },
+        ],
       },
     }),
   };
@@ -3555,6 +3610,7 @@ test("M14 every application route in both languages, themes and supported widths
     await app.close();
     removeTestFolder(userData);
     rmSync(importFolder, { recursive: true, force: true });
+    rmSync(dirname(auditStudy), { recursive: true, force: true });
     rmSync(booksSite, { recursive: true, force: true });
     rmSync(updateFolder, { recursive: true, force: true });
     rmSync(auditEngines, { recursive: true, force: true });

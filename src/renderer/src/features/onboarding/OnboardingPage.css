@@ -135,8 +135,7 @@
 }
 .px-onboarding-seg button:focus-visible,
 .px-onboarding-chip:focus-visible,
-.px-tool-plans:focus-visible,
-.px-material-books-link:focus-visible {
+.px-tool-plans:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
@@ -486,46 +485,133 @@
 .px-material-copy svg {
   flex: none;
 }
-.px-material-books-link {
+.px-material-tree > span.is-more {
+  padding-left: 24px;
+  color: var(--ink-subtle);
+}
+.px-material-reading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+}
+.px-material-reading svg {
+  flex: none;
+  color: var(--ink-subtle);
+}
+
+/* Step 3, the folder: a drop zone with the folder picker in it. */
+.px-material-drop {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 40px 28px 36px;
+  border: 1.5px dashed var(--border-control);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+  transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+.px-material-drop.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.px-material-drop .px-material-tree {
+  min-width: 230px;
+  margin-bottom: 6px;
+  text-align: left;
+}
+.px-material-drop-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.15;
+}
+.px-material-drop-body {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: 500 14px/1.3 var(--font-sans);
-  color: var(--primary-text);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 14.5px;
 }
-.px-material-added {
-  display: grid;
-  gap: var(--space-3);
-  padding: var(--space-5);
+.px-material-drop .ant-btn {
+  margin-top: 6px;
+}
+
+/* Step 3, the subjects found: one row per subject, with its name to correct. */
+.px-found {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
 }
-.px-material-added ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.px-found li {
   display: grid;
-  gap: var(--space-2);
+  /* Wide enough for "Geometria e algebra lineare" at the large text size, so a long name is not cut. */
+  grid-template-columns: 260px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 18px;
 }
-.px-material-added li {
-  display: flex;
+.px-found li + li {
+  border-top: 1px solid var(--border);
+}
+.px-found-name {
+  display: grid;
+  gap: 4px;
+}
+.px-found-name .ant-input {
+  font-weight: 600;
+}
+.px-found-error {
+  color: var(--danger);
+}
+.px-found-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--ink-subtle);
+}
+.px-found-from svg {
+  flex: none;
+}
+.px-found-from span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.px-found-kinds {
+  color: var(--ink-muted);
+  text-align: right;
+}
+.px-found li.is-skip {
+  grid-template-columns: minmax(0, 1fr) auto;
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+.px-found-skip {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
 }
-.px-material-added li span {
-  overflow-wrap: anywhere;
-}
-.px-material-added li svg {
+.px-found-skip svg {
   flex: none;
-  color: var(--primary-text);
+  color: var(--ink-subtle);
+}
+.px-found-strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+@media (max-width: 640px) {
+  .px-found li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .px-found-kinds {
+    text-align: left;
+  }
 }
 
 .px-onboarding-actions {

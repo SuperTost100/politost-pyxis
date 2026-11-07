@@ -128,32 +128,62 @@
       "body": "Pyxis uses it to pick examples and wording that suit you. You can change it any time in Settings."
     },
     "material": {
-      "title": "Add your study material",
-      "body": "Books, slides, notes and past exams. Pyxis reads them and cites their pages when it explains something to you.",
-      "files": {
-        "title": "Some files",
-        "body": "Pick files from your computer, or drop them here.",
-        "example": {
-          "one": "Physics 1, the textbook.pdf",
-          "two": "Lecture 3 slides.pptx",
-          "three": "Calculus notes.docx",
-          "four": "Past exams 2025.pdf"
-        }
+      "title": "How do you keep your study material?",
+      "body": "Books, slides, notes and past exams. Pyxis reads the files and finds what it needs on its own.",
+      "reading": "I'm still reading some files, but you can start now: I'll finish while you study.",
+      "root": {
+        "title": "One folder with all my studies",
+        "body": "I find the subjects and show them to you, so you can fix what I got wrong."
       },
-      "folder": {
-        "title": "A folder",
-        "body": "I'll list the files inside, and you choose which ones to add.",
-        "example": {
-          "folder": "Physics 1",
-          "one": "Textbook.pdf",
-          "two": "Slides.pptx",
-          "three": "Notes.docx"
-        }
+      "subject": {
+        "title": "One folder for each subject",
+        "body": "Each folder's name becomes the subject's name."
       },
-      "copy": "Pyxis keeps a copy in its Library: your files stay where they are, and it doesn't move, rename or delete them.",
-      "added_one": "{{count}} source added to your Library",
-      "added_other": "{{count}} sources added to your Library",
-      "reading": "I'm still reading some files, but you can start now: I'll finish while you study."
+      "example": {
+        "study": "University",
+        "one": "Physics 1",
+        "two": "Calculus 2",
+        "three": "Chemistry",
+        "four": "Computer science",
+        "more": "and the rest"
+      },
+      "readOnly": "Pyxis only reads: it doesn't move, rename or delete anything in your folders.",
+      "readOnlyNew": "Pyxis only reads: it doesn't move, rename or delete anything in your folders. When you add a file, it reads it on its own.",
+      "pick": {
+        "root": {
+          "title": "Where's the folder with all your studies?",
+          "body": "The one that holds your subject folders.",
+          "drop": "Drag it here",
+          "or": "Or find it among the folders on your computer.",
+          "choose": "Choose the folder"
+        },
+        "subject": {
+          "title": "Where are your subject folders?",
+          "body": "You can choose several at once, or add them one at a time.",
+          "drop": "Drag them here",
+          "or": "Or find them among the folders on your computer.",
+          "choose": "Choose the folders"
+        },
+        "dropActive": "Drop it here",
+        "reading": "Reading the folder and looking for subjects…"
+      },
+      "found": {
+        "title_one": "I found one subject",
+        "title_other": "I found {{count}} subjects",
+        "none": "I didn't find any subjects",
+        "label": "Subjects found",
+        "body_one": "In the folder {{folder}}. Fix the names if you like: the files stay where they are.",
+        "body_other": "In the folders {{folder}}. Fix the names if you like: the files stay where they are.",
+        "empty": "The folder {{folder}} has no files Pyxis can read: PDF, Word, PowerPoint, text and photos.",
+        "nameLabel": "Subject name for the folder {{folder}}",
+        "nameEmpty": "Write the subject's name.",
+        "from": "from the folder {{folder}}",
+        "skip": "The folder {{folder}} doesn't look like study material, so I'm skipping it.",
+        "isSubject": "It's a subject",
+        "isSubjectNamed": "{{folder}}: it's a subject",
+        "addFolder": "Add another folder",
+        "cut": "This folder is very large: Pyxis reads its first {{files}} files, down to {{depth}} levels of subfolders."
+      }
     },
     "optional": "(optional)",
     "studies": {
@@ -654,7 +684,17 @@
         "insideData": "This folder is part of Pyxis's own data. Choose the folder where you keep your material.",
         "overlap": "This folder is inside a folder that's already linked, or contains one.",
         "failed": "The folder couldn't be read. Try again."
-      }
+      },
+      "dropNotFolder": "Drag a folder, not files.",
+      "kinds": {
+        "book": "book",
+        "slides": "slides",
+        "exams": "past exams",
+        "notes": "notes",
+        "exercises": "exercises",
+        "handouts": "lecture notes"
+      },
+      "missing": "Moved or deleted from the folder {{folder}}. Its quotes stay."
     }
   },
   "cards": {

@@ -431,6 +431,25 @@ describe("linked folders", () => {
     expect(app.linked.view(folder!.id).subjects).toMatchObject([{ key: "", folder: "Chimica organica", name: "Chimica organica" }]);
   });
 
+  it("cuts a long subfolder name to a subject name, so confirming never fails", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    // A subfolder with a name longer than a subject holds gets its first file before setup is confirmed.
+    const long = `Appunti ${"di analisi ".repeat(14)}`.trim();
+    expect(long.length).toBeGreaterThan(120);
+    mkdirSync(join(root, long));
+    writeFileSync(join(root, long, "limiti.txt"), "Il limite di una funzione in un punto.");
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(app.linked.view(folder!.id).subjects.find((subject) => subject.key === long)!.name).toBe(
+      long.slice(0, 120).trim(),
+    );
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    expect(app.subjectName(app.source("limiti")!.subjectId)).toBe(long.slice(0, 120).trim());
+  });
+
   it("writes nothing inside the linked folder", async () => {
     const root = studyTree();
     const before = snapshot(root);

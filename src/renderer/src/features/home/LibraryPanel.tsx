@@ -1121,7 +1121,8 @@ export function LibraryPanel({
         <ScanNotice
           key={source.id}
           source={source}
-          onReplace={() => void replace(source.id).catch(fail)}
+          // A linked file is replaced in its folder, where Pyxis reads it again, never with a copy.
+          onReplace={source.linked ? undefined : () => void replace(source.id).catch(fail)}
         />
       ))}
       <SourceDetails
@@ -1173,6 +1174,11 @@ const LibraryRow = memo(function LibraryRow({
   const { t } = useTranslation();
   const notes = (
     <>
+      {source.linked?.missing ? (
+        <p className="small px-library-flag">
+          {t("sources.linked.missing", { folder: source.linked.folder })}
+        </p>
+      ) : null}
       {source.syllabusOff ? (
         <p className="small px-library-flag">
           {t("sources.offSyllabusListed", { count: source.syllabusOff })}
@@ -1232,7 +1238,8 @@ const LibraryRow = memo(function LibraryRow({
     items: [
       { key: "details", label: t("sources.details") },
       { key: "rename", label: t("sources.rename") },
-      { key: "replace", label: t("sources.replace") },
+      // A file read in place from a linked folder changes there, and Pyxis reads it again by itself.
+      { key: "replace", label: t("sources.replace"), disabled: source.linked !== null },
       {
         key: "reextract",
         label: t("sources.reextract"),

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  realpathSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   droppedFileGrant,
+  droppedFolderGrant,
   type FileGrant,
   FileGrants,
   keepGrant,
@@ -149,6 +151,16 @@ describe("SRC-07 dropped file grants", () => {
     expect(() => droppedFileGrant(f.folder, supported)).toThrow(
       "file-access-denied",
     );
+  });
+  it("grants a dropped folder to link, and nothing but a folder", () => {
+    const f = fixture();
+    f.grants.add(droppedFolderGrant(f.folder));
+    expect(f.grants.directory(f.folder)).toBe(realpathSync(f.folder));
+    expect(f.grants.read(f.chosen).toString()).toBe("chosen");
+    expect(() => f.grants.read(f.secret)).toThrow("file-access-denied");
+    expect(() => droppedFolderGrant(f.chosen)).toThrow("file-access-denied");
+    expect(() => droppedFolderGrant("")).toThrow("file-access-denied");
+    expect(() => droppedFolderGrant("selected")).toThrow("file-access-denied");
   });
   it("refuses a file type the library cannot import", () => {
     const f = fixture();

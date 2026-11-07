@@ -8,6 +8,7 @@ import { invoke } from "../lib/ipc";
 import { Notice } from "./Notice";
 import { OcrDataCard } from "./OcrData";
 import { isOcrRefusal } from "./ocrErrors";
+import { hasScanFile } from "./scanFile";
 import "./OcrData.css";
 
 /** What the scan notice needs to know about a source. */
@@ -18,6 +19,8 @@ export type ScanSource = {
   status: string;
   sections: number;
   blobSha: string | null;
+  /** A file read in place from a linked folder, which has no stored copy. */
+  linked?: { missing: boolean } | null;
   scanJobId?: string;
 };
 
@@ -30,7 +33,7 @@ export function scanFoundNothing(source: Omit<ScanSource, "title"> & { error?: s
     source.status === "failed" &&
     source.kind === "pdf" &&
     source.sections === 0 &&
-    !!source.blobSha &&
+    hasScanFile(source) &&
     !source.error
   );
 }
@@ -98,7 +101,7 @@ export function ScanNotice({
     }
   }
 
-  if (!source.blobSha)
+  if (!hasScanFile(source))
     return (
       <Notice
         tone="warning"
