@@ -733,6 +733,12 @@ export function EnginesPanel() {
       ) : null}
       <LocalModelCard place="settings" />
       <EngineUsage />
+      {/* In either view and outside the closed section: "Use as default" in an engine's drawer fails here too. */}
+      {configure.error || automatic.error || setEffortFor.error ? (
+        <Notice tone="danger">
+          {t(messageKey(configure.error ?? automatic.error ?? setEffortFor.error))}
+        </Notice>
+      ) : null}
       {advanced ? <DebugSwitch /> : null}
       {advanced ? (
         <>
@@ -887,15 +893,6 @@ export function EnginesPanel() {
           </div>
           <p className="small engines-hint">{t("engines.modelAdvice")}</p>
           <p className="small engines-hint">{t("engines.effortAdvice")}</p>
-          {configure.error || automatic.error || setEffortFor.error ? (
-            <Notice tone="danger">
-              {t(
-                messageKey(
-                  configure.error ?? automatic.error ?? setEffortFor.error,
-                ),
-              )}
-            </Notice>
-          ) : null}
           </details>
           <details className="engines-diagnostics">
             <summary>{t("engines.diagnostics")}</summary>
