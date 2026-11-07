@@ -2636,11 +2636,8 @@
     "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Premi Installa accanto all'AI che paghi già, poi accedi. Il modello lo sceglie Pyxis.",
     "auto": {
       "title": "Scelta automatica",
-      "summary": "Pyxis usa {{parts}}.",
-      "part": "{{name}} per {{tasks}}",
-      "split": "Pyxis divide il lavoro tra {{count}} motori:",
-      "single": "Pyxis usa {{name}} per tutto.",
-      "cheap": "Sceglie il modello più economico che basta.",
+      "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
+      "single": "Pyxis usa {{name}} per tutto, con il modello più economico che basta.",
       "none": "Nessun motore è pronto.",
       "pinned_one": "{{count}} funzione è fissata a mano nelle opzioni avanzate.",
       "pinned_other": "{{count}} funzioni sono fissate a mano nelle opzioni avanzate."

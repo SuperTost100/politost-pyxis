@@ -2636,11 +2636,8 @@
     "installHelp": "Pyxis needs an AI engine to answer. Press Install next to the AI you already pay for, then sign in. Pyxis picks the model.",
     "auto": {
       "title": "Automatic choice",
-      "summary": "Pyxis uses {{parts}}.",
-      "part": "{{name}} for {{tasks}}",
-      "split": "Pyxis splits the work across {{count}} engines:",
-      "single": "Pyxis uses {{name}} for everything.",
-      "cheap": "It picks the cheapest model that is good enough.",
+      "summary": "Pyxis picks the right tool for each job by itself, out of {{names}}, and uses the cheapest model that is good enough.",
+      "single": "Pyxis uses {{name}} for everything, with the cheapest model that is good enough.",
       "none": "No engine is ready.",
       "pinned_one": "{{count}} feature is pinned by hand in the advanced options.",
       "pinned_other": "{{count}} features are pinned by hand in the advanced options."
