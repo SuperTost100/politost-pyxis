@@ -32,6 +32,11 @@ import {
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
 import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
+import { checkLinkPath, linkedFolders } from "./linked";
+import { linkedFile } from "./linked-file";
+import { watchFolder } from "./linked-watch";
+import type { LinkMode } from "../../shared/linked-folders";
+import type { GenerateInput } from "../engine/generate";
 import {
   extForMime,
   plansUsing,
@@ -83,6 +88,21 @@ function sourceError(err: unknown): never {
   throw new IpcError("invalid-output", sourceErrorKey(message) ?? "sources.importFailed", {}, message);
 }
 
+const LINK_ERRORS: Record<string, string> = {
+  "folder-missing": "sources.linked.errors.missing",
+  "folder-inside-data": "sources.linked.errors.insideData",
+  "folder-overlap": "sources.linked.errors.overlap",
+  "linked-folder-missing": "sources.linked.errors.missing",
+};
+
+function linkError(err: unknown): never {
+  if (err instanceof IpcError) throw err;
+  const message = err instanceof Error ? err.message : "";
+  const key = LINK_ERRORS[message];
+  if (key) throw new IpcError("invalid", key, {}, message);
+  throw new IpcError("invalid-output", "sources.linked.errors.failed", {}, message);
+}
+
 export function sourceHandlers(
   db: Database.Database,
   workspace: string,
@@ -92,6 +112,14 @@ export function sourceHandlers(
   work: typeof runSourceWorker = runSourceWorker,
   /** Where the free PoliTost books come from. Tests read them from a folder. */
   booksTransport: BooksTransport = httpsTransport,
+  linkOptions: {
+    /** The app's own data folder, which a linked folder may not lie in. The workspace is always protected. */
+    userData?: string;
+    /** Stands in for the engine that names subjects, in tests. */
+    run?: GenerateInput["run"];
+    /** Folder watches. Tests pass null so nothing is watched. */
+    watch?: typeof watchFolder | null;
+  } = {},
 ) {
   const modelDir = join(workspace, "models", "e5");
   const tess = join(workspace, "runtimes", "tesseract");
@@ -114,8 +142,22 @@ export function sourceHandlers(
       }
     }
   };
+  // Linked files are hashed in the extract worker, as a folder scan is, so core never holds their bytes.
+  const hashInWorker = (paths: string[], maxBytes: number, signal?: AbortSignal) =>
+    work<Array<string | null>>("extract-worker", { mode: "hash", paths, maxBytes }, signal);
   registerSourceJobs(db, workspace, runner, undefined, {
     onScan: (sourceId) => void autoScan([sourceId]),
+    hash: hashInWorker,
+  });
+  const protectedPaths = [workspace, ...(linkOptions.userData ? [linkOptions.userData] : [])];
+  const linked = linkedFolders({
+    db,
+    runner,
+    protectedPaths,
+    hash: hashInWorker,
+    ocrReady: async () => (await ocrDataStatus(tess)).state === "ready",
+    run: linkOptions.run,
+    watch: linkOptions.watch === undefined ? watchFolder : linkOptions.watch,
   });
   registerOcrJob(db, workspace, runner, {
     readPages: (path, pages, signal) =>
@@ -157,8 +199,10 @@ export function sourceHandlers(
       async run(ctx: { signal: AbortSignal }) {
         if (!ocrConsent(db)) throw new Error("ocr-data-declined");
         await downloadOcrLanguage(tess, lang, ctx.signal, { base: e2eOcrBase() });
-        // The last language makes the data ready: scans that waited for it start now, without another press.
+        // The last language makes the data ready: scans that waited for it start now, without another press, and the
+        // photos in linked folders, left unread until now, are read.
         await autoScan(waitingScans(db));
+        if ((await ocrDataStatus(tess)).state === "ready") void linked.syncAll();
         return { lang };
       },
     })),
@@ -202,6 +246,11 @@ export function sourceHandlers(
     "source-ocr",
   ]);
   markInterruptedImports(db);
+  // Linked folders are looked at again once core is up, after the jobs above are back in place, and watched while
+  // Pyxis runs. The walks wait for the next turn so they never hold core's start.
+  setImmediate(() => {
+    if (db.open) void linked.start();
+  });
   // A download cancelled because consent was withdrawn can still say running while its cancel unwinds. Agreeing again
   // in that moment must start a new download instead of joining the one that is stopping.
   const withdrawn = new Set<string>();
@@ -429,6 +478,32 @@ export function sourceHandlers(
       } catch (err) {
         sourceError(err);
       }
+    },
+    /**
+     * Links folders the student picked, read in place from now on, and names their subjects (see `linked.ts`). The
+     * paths passed the folder grant at the IPC boundary; here they must also lie outside the workspace and the app's
+     * data. Errors: `folder-missing`, `folder-inside-data`, `folder-overlap`.
+     */
+    async linkFolders(input: { paths: string[]; mode: LinkMode }, signal?: AbortSignal) {
+      try {
+        const paths = input.paths.map((path) => checkLinkPath(path, protectedPaths));
+        return { folders: await linked.link({ paths, mode: input.mode }, signal) };
+      } catch (err) {
+        if (signal?.aborted || isAbort(err)) throw err;
+        linkError(err);
+      }
+    },
+    async confirmFolders(input: {
+      folders: Array<{ folderId: string; subjects: Array<{ key: string; name: string; skipped: boolean }> }>;
+    }) {
+      try {
+        return await linked.confirm(input);
+      } catch (err) {
+        linkError(err);
+      }
+    },
+    linkedFolders() {
+      return linked.list();
     },
     async scanFolder(input: { path: string }, signal?: AbortSignal) {
       signal?.throwIfAborted();
@@ -672,10 +747,12 @@ export function sourceHandlers(
      * reading. A second press joins the run already going and resumes an interrupted one.
      */
     async ocr(input: { sourceId: string }) {
-      // Pages come from the stored file. A source without one has nothing to read, so it is refused before it is queued.
+      // Pages come from the stored file, or the linked one. A source without either has nothing to read, so it is
+      // refused before it is queued.
       const stored = db.prepare(`SELECT blob_sha FROM sources WHERE id = ?`).get(input.sourceId) as
         { blob_sha: string | null } | undefined;
-      if (stored && !stored.blob_sha) sourceError(new Error("source-file-missing"));
+      const file = linkedFile(db, input.sourceId);
+      if (stored && !stored.blob_sha && (!file || file.missing)) sourceError(new Error("source-file-missing"));
       // A missing language file is reported now, with the download card, rather than as a failed job.
       try {
         await requireOcrData();

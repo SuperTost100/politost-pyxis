@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import type Database from "better-sqlite3";
 import { strFromU8 } from "fflate";
 import { openZip } from "./zip-bounded";
@@ -391,12 +392,16 @@ export type { PassageHit };
 export function listSources(db: Database.Database) {
   const rows = db
     .prepare(
-      `SELECT id, title, kind, status, blob_sha AS blobSha, origin_url AS originUrl, fetched_at AS fetchedAt,
+      `SELECT sources.id, title, kind, status, blob_sha AS blobSha, origin_url AS originUrl, fetched_at AS fetchedAt,
          ${latestDocument("sources.id")} AS documentId,
-         (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount
+         (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount,
+         (SELECT name FROM subjects WHERE subjects.id = sources.subject_id) AS subject,
+         lf.folder_id AS linkedFolderId, lf.missing_at AS linkedMissingAt, f.path AS linkedRoot
        FROM sources
+       LEFT JOIN linked_files lf ON lf.source_id = sources.id
+       LEFT JOIN linked_folders f ON f.id = lf.folder_id
        WHERE status != 'removed' AND library = 1
-       ORDER BY created_at DESC`,
+       ORDER BY sources.created_at DESC`,
     )
     .all() as Array<{
     id: string;
@@ -408,11 +413,20 @@ export function listSources(db: Database.Database) {
     fetchedAt: number | null;
     documentId: string | null;
     planCount: number;
+    subject: string | null;
+    linkedFolderId: string | null;
+    linkedMissingAt: number | null;
+    linkedRoot: string | null;
   }>;
   // The figure is the one the source panel shows for the current version, not a count of passages or of saved versions.
-  return rows.map(({ documentId, ...source }) => ({
+  return rows.map(({ documentId, linkedFolderId, linkedMissingAt, linkedRoot, ...source }) => ({
     ...source,
     sections: documentId ? sectionCount(db, documentId) : 0,
+    // A file read in place from a linked folder, and whether the last look found it there.
+    linked:
+      linkedFolderId && linkedRoot
+        ? { folderId: linkedFolderId, folder: basename(linkedRoot), missing: linkedMissingAt !== null }
+        : null,
   }));
 }
 

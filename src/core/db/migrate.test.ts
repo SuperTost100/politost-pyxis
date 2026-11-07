@@ -32,8 +32,14 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migration 21 adds. */
+/** Removes what migration 24 adds: the linked-folder tables. */
+function undoLinked(db: Database.Database) {
+  db.exec("DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders;");
+}
+
+/** Removes what migration 21 adds, and migration 24 after it, so the version can go back past both. */
 function undoUsage(db: Database.Database) {
+  undoLinked(db);
   db.exec(
     "DROP TABLE engine_usage; ALTER TABLE messages DROP COLUMN error; ALTER TABLE messages DROP COLUMN passages_json;",
   );
@@ -103,10 +109,13 @@ describe("migrate", () => {
       "jobs",
       "job_steps",
       "engine_usage",
+      "linked_folders",
+      "linked_subfolders",
+      "linked_files",
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(23);
+    expect(db.pragma("user_version", { simple: true })).toBe(24);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -121,7 +130,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(23);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -138,7 +147,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(23);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
     expect(
       again
         .prepare(
@@ -168,7 +177,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(23);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -196,7 +205,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(23);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -233,6 +242,35 @@ describe("migrate", () => {
   });
 });
 
+describe("linked folders", () => {
+  it("adds the linked-folder tables and leaves every source as it was", () => {
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
+    const db = openDatabase(file);
+    undoLinked(db);
+    db.pragma("user_version = 23");
+    db.prepare(
+      "INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at) VALUES ('s', 'pdf', 'Dispense', 'abc', 'application/pdf', 'ready', 1, 2)",
+    ).run();
+    const before = db.prepare("SELECT * FROM sources").all();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.prepare("SELECT * FROM sources").all()).toEqual(before);
+    expect(again.prepare("SELECT COUNT(*) AS n FROM linked_files").get()).toEqual({ n: 0 });
+    again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
+    again.prepare(
+      "INSERT INTO linked_files (folder_id, rel_path, subfolder, source_id, size, mtime_ms) VALUES ('f', 'a.pdf', '', 's', 1, 1)",
+    ).run();
+    // Deleting a source keeps its file recorded, with no source, so it is not read again.
+    again.prepare("DELETE FROM sources WHERE id = 's'").run();
+    expect(again.prepare("SELECT source_id FROM linked_files").get()).toEqual({ source_id: null });
+    expect(() =>
+      again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('g', '/other', 'drive', 1)").run(),
+    ).toThrow();
+  });
+});
+
 describe("past paper role", () => {
   it("keeps every existing plan source as study material", () => {
     const file = join(tempDir("pyxis-db-"), "pyxis.db");
@@ -252,7 +290,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(23);
+    expect(again.pragma("user_version", { simple: true })).toBe(24);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,

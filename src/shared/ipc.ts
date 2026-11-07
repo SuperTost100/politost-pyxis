@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LINK_MODES, MATERIAL_KINDS, MAX_LINK_PATHS, MAX_SUBJECT_NAME } from "./linked-folders";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
@@ -450,6 +451,26 @@ const LessonOutput = z.object({
   sources: LessonSources,
   /** The label of each [Pn] chip, by passage order, as Ask labels its citations. */
   citations: z.array(z.string()),
+});
+
+const linkedFolderSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  name: z.string(),
+  mode: z.enum(LINK_MODES),
+  /** `names`: no model named the subjects, so they are the folder names. */
+  detection: z.enum(["ai", "names"]),
+  /** What the walk left out, with the same caps as a folder import. */
+  cut: z.object({ files: z.boolean(), depth: z.boolean(), entries: z.boolean(), unreadable: z.boolean() }),
+  subjects: z.array(
+    z.object({
+      key: z.string(),
+      folder: z.string(),
+      name: z.string(),
+      kinds: z.array(z.enum(MATERIAL_KINDS)),
+      skipped: z.boolean(),
+    }),
+  ),
 });
 
 export const requests = {
@@ -2344,6 +2365,9 @@ export const requests = {
         /** The address a source imported from a link came from, and when its saved copy was fetched. */
         originUrl: z.string().nullable(),
         fetchedAt: z.number().nullable(),
+        subject: z.string().nullable(),
+        /** A file read in place from a linked folder: the folder's name, and whether the file was moved or deleted. */
+        linked: z.object({ folderId: z.string(), folder: z.string(), missing: z.boolean() }).nullable(),
       }),
     ),
   },
@@ -2709,6 +2733,43 @@ export const requests = {
       unreadable: z.boolean(),
       limit: z.number(),
     }),
+  },
+  /**
+   * Links folders the student picked, read in place from now on. In `root` mode each subfolder is a subject, in
+   * `subject` mode each folder is one. Returns each folder with the subjects setup offers; reading has started.
+   */
+  "sources.linkFolders": {
+    input: z.object({
+      paths: z.array(z.string().min(1).max(4096)).min(1).max(MAX_LINK_PATHS),
+      mode: z.enum(LINK_MODES),
+    }),
+    output: z.object({ folders: z.array(linkedFolderSchema) }),
+  },
+  /** Saves the subject names the student confirmed, and reads a subfolder marked as a subject after it was skipped. */
+  "sources.confirmFolders": {
+    input: z.object({
+      folders: z
+        .array(
+          z.object({
+            folderId: z.string().max(64),
+            subjects: z
+              .array(
+                z.object({
+                  key: z.string().max(1024),
+                  name: z.string().trim().min(1).max(MAX_SUBJECT_NAME),
+                  skipped: z.boolean(),
+                }),
+              )
+              .max(1000),
+          }),
+        )
+        .max(100),
+    }),
+    output: z.object({ subjects: z.array(z.object({ id: z.string(), name: z.string() })) }),
+  },
+  "sources.linkedFolders": {
+    input: z.object({}),
+    output: z.array(linkedFolderSchema),
   },
   "sources.preview": {
     input: z.object({ path: z.string() }),
