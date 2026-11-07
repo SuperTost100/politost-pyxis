@@ -338,7 +338,7 @@ export function SourceDetails({
     void client.invalidateQueries({ queryKey: ["plan"] });
     void client.invalidateQueries({ queryKey: ["plans"] });
   }, [gone, client]);
-  const pending = source ? scanPending({ ...source, sections: source.sections ?? 0, blobSha: listed?.blobSha ?? null }) : false;
+  const pending = source ? scanPending({ ...source, sections: source.sections ?? 0, blobSha: listed?.blobSha ?? null, linked: listed?.linked ?? null }) : false;
   const pages = data?.pages && !pending ? data.pages : undefined;
   // A scan still being read, or a PDF whose pages OCR read, gets the scan icon.
   const scan = source?.kind === "pdf" && (pending || (!!pages && pages.ocr.length > 0));

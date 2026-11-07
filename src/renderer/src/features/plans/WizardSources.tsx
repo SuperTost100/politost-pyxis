@@ -14,6 +14,8 @@ export type WizardSource = {
   /** From the library list. A scan waiting for text shows how to read it here, without going to the Library. */
   sections?: number;
   blobSha?: string | null;
+  /** A file read in place from a linked folder: it has no stored copy, and its scan is read from the folder. */
+  linked?: { missing: boolean } | null;
   scanJobId?: string;
   error?: string;
 };
