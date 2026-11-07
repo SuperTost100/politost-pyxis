@@ -131,12 +131,14 @@
   gap: 16px;
   border-radius: var(--radius-sm);
 }
+/* It takes the focus after a turn so a screen reader reads it. A box around the text looked like a control, so the
+   keyboard sees the whole card softly ringed instead. */
 .px-card-reveal:focus {
   outline: none;
 }
-.px-card-reveal:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 6px;
+.px-cards .px-card:has(.px-card-reveal:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--focus-ring) 50%, transparent);
+  outline-offset: 3px;
 }
 .px-card-reveal > hr {
   width: 48px;
