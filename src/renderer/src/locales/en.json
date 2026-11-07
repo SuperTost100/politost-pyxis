@@ -151,8 +151,8 @@
         }
       },
       "copy": "Pyxis keeps a copy in its Library: your files stay where they are, and it doesn't move, rename or delete them.",
-      "added_one": "{{count}} new file in your Library",
-      "added_other": "{{count}} new files in your Library",
+      "added_one": "{{count}} source added to your Library",
+      "added_other": "{{count}} sources added to your Library",
       "reading": "I'm still reading some files, but you can start now: I'll finish while you study."
     },
     "optional": "(optional)",

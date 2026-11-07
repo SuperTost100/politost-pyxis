@@ -260,7 +260,7 @@ test("First setup: you with crash reports off, the AI with its notice, files int
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog).toBeHidden({ timeout: 30000 });
     const added = page.getByRole("region", {
-      name: "Nella Libreria c'è 1 file nuovo",
+      name: "Nella Libreria: 1 fonte aggiunta",
     });
     await expect(added.getByText("Appunti di cinematica")).toBeVisible();
     await expect(primaryButtons(page)).toHaveText(["Inizia a studiare"]);

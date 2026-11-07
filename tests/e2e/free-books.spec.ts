@@ -94,7 +94,7 @@ test("Free books: the material step of setup puts a book into the Library, a new
     // The book is listed in the step, and the main button now starts studying.
     await expect(
       page
-        .getByRole("region", { name: "Nella Libreria c'è 1 file nuovo" })
+        .getByRole("region", { name: "Nella Libreria: 1 fonte aggiunta" })
         .getByText("Fisica di prova"),
     ).toBeVisible();
     await expect(button(page, "Inizia a studiare")).toBeVisible();

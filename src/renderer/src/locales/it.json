@@ -151,8 +151,8 @@
         }
       },
       "copy": "Pyxis ne tiene una copia nella Libreria: i tuoi file restano dove sono, e non li sposta, non li rinomina e non li cancella.",
-      "added_one": "Nella Libreria c'è {{count}} file nuovo",
-      "added_other": "Nella Libreria ci sono {{count}} file nuovi",
+      "added_one": "Nella Libreria: {{count}} fonte aggiunta",
+      "added_other": "Nella Libreria: {{count}} fonti aggiunte",
       "reading": "Sto ancora leggendo alcuni file, ma puoi già iniziare: finisco mentre studi."
     },
     "optional": "(se vuoi)",
