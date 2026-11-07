@@ -2661,7 +2661,8 @@
     "notIncluded_other": "{{models}} non sono nel tuo abbonamento",
     "debug": "Mostra dettagli tecnici e debug",
     "debugHint": "Pyxis tiene su questo computer il registro di ogni chiamata all'AI dei lavori in Attività: quale AI e modello, quanto è durata, la richiesta e la risposta. Chiavi e token sono nascosti, e niente viene inviato.",
-    "debugFailed": "Non è stato possibile salvare questa scelta. Riprova."
+    "debugFailed": "Non è stato possibile salvare questa scelta. Riprova.",
+    "perFeatureHint": "Pyxis sceglie da solo il motore e il livello di ragionamento per ogni funzione. Qui puoi cambiarli una per una."
   },
   "graph": {
     "title": "Grafico",

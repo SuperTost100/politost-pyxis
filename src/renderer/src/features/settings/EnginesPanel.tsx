@@ -14,6 +14,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -735,8 +736,14 @@ export function EnginesPanel() {
       {advanced ? <DebugSwitch /> : null}
       {advanced ? (
         <>
+          {/* Closed until opened: the engine and effort for each function are for students who want to tune them. */}
+          <details className="engines-section">
+            <summary>
+              <ChevronRight className="engines-section-caret" size={16} strokeWidth={1.75} aria-hidden />
+              <h2 className="title-3">{t("engines.perFeature")}</h2>
+            </summary>
           <div className="engines-heading">
-            <h2 className="title-3">{t("engines.perFeature")}</h2>
+            <span className="small ink-muted">{t("engines.perFeatureHint")}</span>
             <Button
               shape="round"
               disabled={automatic.isPending || !customised}
@@ -889,6 +896,7 @@ export function EnginesPanel() {
               )}
             </Notice>
           ) : null}
+          </details>
           <details className="engines-diagnostics">
             <summary>{t("engines.diagnostics")}</summary>
             <div

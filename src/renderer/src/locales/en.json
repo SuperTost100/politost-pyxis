@@ -2661,7 +2661,8 @@
     "notIncluded_other": "{{models}} aren't in your subscription",
     "debug": "Show technical details and debug",
     "debugHint": "Pyxis keeps a log of every AI call the jobs in Activity make, on this computer: which AI and model, how long it took, the request and the reply. Keys and tokens are hidden, and nothing is sent anywhere.",
-    "debugFailed": "This choice couldn't be saved. Try again."
+    "debugFailed": "This choice couldn't be saved. Try again.",
+    "perFeatureHint": "Pyxis picks the engine and reasoning level for each function by itself. Here you can change them one by one."
   },
   "graph": {
     "title": "Graph",
