@@ -231,8 +231,10 @@ describe("OCR language data", () => {
     ).rejects.toThrow("ocr-language-unsupported");
   });
 
-  it("keeps the student's answer in settings, off by default", () => {
+  it("keeps the student's answer in settings, on by default", () => {
     const db = openDatabase(":memory:");
+    expect(ocrConsent(db)).toBe(true);
+    setOcrConsent(db, false);
     expect(ocrConsent(db)).toBe(false);
     setOcrConsent(db, true);
     expect(ocrConsent(db)).toBe(true);

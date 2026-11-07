@@ -119,7 +119,7 @@ Setup has four steps. Skip, on the first one, jumps past all of them:
 3. **The exam.** Its name, subject, date and goal on one screen. "No exam for now" saves your profile and opens the exams list, where you can create one later.
 4. **Material.** Your files, your library or a free PoliTost book. Pyxis then shows the build steps and the topics it found as it prepares the exam.
 
-Pyxis offers the OCR data for scans (about 7 MB) when you add your first scan, or in Settings → Data.
+Pyxis downloads the OCR data for scans (about 7 MB) by itself once setup is done. Settings → Data shows it and can download it again.
 
 To go through it again, open Settings → Profile and choose "Run setup again". The first two steps open with your current answers filled in and have no Skip. Your engines stay as they are unless you set one up. At the end you return to Settings → Profile.
 
@@ -144,7 +144,7 @@ These actions send data off your computer:
 - **Importing a link.** Pyxis fetches the page from that site.
 - **Installing an engine.** Setup downloads the maker's install script from claude.ai, chatgpt.com, cursor.com or antigravity.google and runs it. Signing in happens in your browser with that maker.
 - **Free PoliTost books.** Opening the list asks books.politost.it for its catalog, and adding a book downloads it from there. While the Sources page is open and holds a smartbook, Pyxis reads the catalog too, to offer a newer version, which Update downloads in place. Each book is checked against the catalog's SHA-256.
-- **Optional downloads.** The search model, the Python runtime and the OCR language files are fetched once, after you agree, and checked against pinned SHA-256 hashes.
+- **Downloads.** The search model and the Python runtime are fetched once, after you agree. The OCR language files download by themselves once setup is done. All of them are checked against pinned SHA-256 hashes.
 - **Update check.** Pyxis asks GitHub for the latest release tag, at most once a day, or again after 15 minutes if the check failed. **Check for updates** asks again at once, at most once a minute. It sends no workspace content.
 - **Installing an update.** Only after you press Download and install, Pyxis downloads the installer for your system and `SHA256SUMS` from that GitHub release.
 - **Crash reports.** Only while the switch in Settings → Privacy is on. When Pyxis hits an error, it sends a report to PoliTost's crash server, which keeps it for 90 days. A report holds versions, the system and where the error happened, and Pyxis removes folder paths from the error message. After a sudden close, the report is a native crash dump that Pyxis sends unchanged: it holds part of Pyxis's memory, which can contain fragments of what was on screen, and paths of the program's files, which can include your account name. [Crash reports](docs/crash-reports.md) lists exactly what is sent.

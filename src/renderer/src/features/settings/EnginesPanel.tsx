@@ -49,7 +49,7 @@ import { disclosureText } from "./disclosure";
 import { EngineUsage } from "./EngineUsage";
 import { useEngineSetup } from "./useEngineSetup";
 import "./EnginesPanel.css";
-import { DebugSwitch } from "./DebugSwitch";
+import { DebugSwitch, debugQuery } from "./DebugSwitch";
 
 const featureNames = [
   "default",
@@ -86,67 +86,27 @@ type SummaryInput = {
   nothingReady: boolean;
 };
 
-function summaryParts(input: SummaryInput) {
-  const { t, overview, features } = input;
-  const tasksByEngine = new Map<string, string[]>();
-  for (const task of summaryTasks) {
-    const selection = features?.[task];
-    if (!selection) continue;
-    tasksByEngine.set(selection.provider, [
-      ...(tasksByEngine.get(selection.provider) ?? []),
-      t(`engines.task.${task}`),
-    ]);
-  }
-  const listFormat = new Intl.ListFormat(
-    input.language.startsWith("it") ? "it" : "en-GB",
-    { style: "long", type: "conjunction" },
-  );
-  const engineName = (id: string) =>
-    overview?.find((row) => row.id === id)?.name ??
-    (id === "ollama" ? "Ollama" : id);
-  return { tasksByEngine, listFormat, engineName };
-}
-
 /**
- * With three or more engines the summary reads better as one line each, for example "Antigravity: chat and maps".
- */
-export function engineSummaryLines(
-  input: SummaryInput,
-): Array<{ id: string; name: string; tasks: string }> {
-  if (input.nothingReady) return [];
-  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
-  if (tasksByEngine.size <= 2) return [];
-  return [...tasksByEngine].map(([id, tasks]) => ({
-    id,
-    name: engineName(id),
-    tasks: listFormat.format(tasks),
-  }));
-}
-
-/**
- * The plain-words sentence for the automatic choice, for example "Pyxis uses Codex for chat and maps and Claude Code
- * for plans". Shared with first setup so both screens say the same thing.
+ * The plain-words sentence for the automatic choice: the engines Pyxis picks from, by the names the student sees on the
+ * page, for example "Pyxis picks the right tool for each job by itself, out of Codex and Claude Code, …". Which engine
+ * does which job is left to the advanced options.
  */
 export function engineSummaryText(input: SummaryInput): string | null {
-  const { t } = input;
+  const { t, overview, features } = input;
   if (input.nothingReady) return t("engines.auto.none");
-  const { tasksByEngine, listFormat, engineName } = summaryParts(input);
-  if (tasksByEngine.size > 2)
-    return t("engines.auto.split", { count: tasksByEngine.size });
-  if (tasksByEngine.size === 1)
-    return t("engines.auto.single", {
-      name: engineName([...tasksByEngine.keys()][0]!),
-    });
-  if (tasksByEngine.size > 1)
+  const engines = [
+    ...new Set(summaryTasks.flatMap((task) => features?.[task]?.provider ?? [])),
+  ];
+  const name = (id: string) =>
+    overview?.find((row) => row.id === id)?.name ??
+    (id === "ollama" ? "Ollama" : id);
+  if (engines.length === 1) return t("engines.auto.single", { name: name(engines[0]!) });
+  if (engines.length > 1)
     return t("engines.auto.summary", {
-      parts: listFormat.format(
-        [...tasksByEngine].map(([id, tasks]) =>
-          t("engines.auto.part", {
-            name: engineName(id),
-            tasks: listFormat.format(tasks),
-          }),
-        ),
-      ),
+      names: new Intl.ListFormat(input.language.startsWith("it") ? "it" : "en-GB", {
+        style: "long",
+        type: "conjunction",
+      }).format(engines.map(name)),
     });
   return null;
 }
@@ -193,6 +153,7 @@ function detailOf(err: unknown): string {
 export function EnginesPanel() {
   const { t, i18n } = useTranslation();
   const [advanced, setAdvancedState] = useState(readAdvanced);
+  const debug = useQuery(debugQuery);
   function setAdvanced(value: boolean) {
     setAdvancedState(value);
     try {
@@ -516,13 +477,6 @@ export function EnginesPanel() {
     features: features.data,
     nothingReady,
   });
-  const summaryLines = engineSummaryLines({
-    t,
-    language: i18n.language,
-    overview: overview.data,
-    features: features.data,
-    nothingReady,
-  });
   function renderRow(row: Engine, simple = false, withBox = true) {
     const status = engineStatus(row);
     return (
@@ -673,19 +627,6 @@ export function EnginesPanel() {
           <div className="engines-summary-body">
             <h3 className="engines-summary-title">{t("engines.auto.title")}</h3>
             <p>{summaryText}</p>
-            {summaryLines.length ? (
-              <ul className="engines-summary-split">
-                {summaryLines.map((line) => (
-                  <li key={line.id}>
-                    <span className="body-strong">{line.name}</span>:{" "}
-                    {line.tasks}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {!nothingReady ? (
-              <p className="small engines-hint">{t("engines.auto.cheap")}</p>
-            ) : null}
             {pinnedCount > 0 ? (
               <p className="small engines-hint">
                 {t("engines.auto.pinned", { count: pinnedCount })}
@@ -694,7 +635,8 @@ export function EnginesPanel() {
           </div>
         </div>
       ) : null}
-      {overview.isSuccess && pickable.length > 0 ? (
+      {/* Which engines Pyxis may use is for students who want to tune it, like the rest of the advanced options. */}
+      {advanced && overview.isSuccess && pickable.length > 0 ? (
         <EngineUseChoice
           allowed={allowed}
           rows={pickable}
@@ -732,7 +674,8 @@ export function EnginesPanel() {
         </Notice>
       ) : null}
       <LocalModelCard place="settings" />
-      <EngineUsage />
+      {/* The week's tokens are a technical detail, shown in debug mode. */}
+      {debug.data?.on ? <EngineUsage /> : null}
       {/* In either view and outside the closed section: "Use as default" in an engine's drawer fails here too. */}
       {configure.error || automatic.error || setEffortFor.error ? (
         <Notice tone="danger">

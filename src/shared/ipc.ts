@@ -2779,8 +2779,8 @@ export const requests = {
   /** Stops a scan the renderer cannot finish. The source goes back to `needs-ocr`, its pages kept. Never throws for a source that is not queued. */
   /**
    * Local OCR language data (English and Italian, one pinned download). Disk truth: `ready` only when every file matches
-   * its pinned hash, `integrity` when a file is there but altered or cut short, `missing` otherwise. `consent` is the
-   * student's saved answer to the download; nothing is fetched without it.
+   * its pinned hash, `integrity` when a file is there but altered or cut short, `missing` otherwise. `consent` says
+   * whether Pyxis may download the data: on unless the student turned it off.
    */
   "sources.ocrDataState": {
     input: z.object({}),
@@ -2790,6 +2790,17 @@ export const requests = {
       totalBytes: z.number(),
       languages: z.array(z.string()),
       /** The download job while it is queued or running, so a reopened screen can show its progress. */
+      jobId: z.string().optional(),
+    }),
+  },
+  /**
+   * Installs the OCR data without asking, once setup is done: starts or joins the `ocr-data-download` job unless the
+   * data is ready or the student turned the download off. A stopped download is dismissed and replaced.
+   */
+  "sources.ocrDataAuto": {
+    input: z.object({}),
+    output: z.object({
+      state: z.enum(["off", "ready", "missing"]),
       jobId: z.string().optional(),
     }),
   },

@@ -376,8 +376,8 @@
     "ocrDataIntegrity": "I dati di lettura delle scansioni su questo computer sono danneggiati o incompleti, quindi Pyxis non li ha usati.",
     "ocrDataOffline": "Pyxis non è riuscito a raggiungere GitHub per scaricare i dati di lettura delle scansioni. Controlla la connessione e riprova.",
     "ocrData": {
-      "title": "Leggere le scansioni richiede un download una tantum",
-      "body": "Pyxis scarica i dati di lettura per {{languages}}, {{size}}, da raw.githubusercontent.com, il progetto ufficiale Tesseract su GitHub. I tuoi file non vengono inviati da nessuna parte. Quando i dati sono qui, una foto o una scansione che Pyxis legge da sé viene letta su questo computer, senza connessione e senza motore AI.",
+      "title": "I dati per leggere le scansioni non sono ancora su questo computer",
+      "body": "Pyxis li scarica da solo: sono i dati per {{languages}}, {{size}}, del progetto ufficiale Tesseract su raw.githubusercontent.com, e i tuoi file non vengono inviati da nessuna parte. Con questi dati Pyxis legge foto e scansioni su questo computer, senza connessione e senza motore AI.",
       "integrityBody": "Scaricarli di nuovo sostituisce i file con quelli ufficiali, {{size}}, da raw.githubusercontent.com. I tuoi file non vengono inviati da nessuna parte.",
       "download": "Scarica {{size}}",
       "downloadAgain": "Scarica di nuovo, {{size}}",
@@ -401,7 +401,7 @@
         "offline": "Pyxis non è riuscito a raggiungere raw.githubusercontent.com. Controlla la connessione e riprova.",
         "download": "GitHub ha risposto con un errore. Riprova tra qualche minuto.",
         "too-big": "Un file era più grande del previsto, quindi Pyxis lo ha scartato. Riprova.",
-        "declined": "Il download non è partito perché non hai dato il consenso. Scegli Scarica per acconsentire.",
+        "declined": "Il download era stato disattivato. Scegli Scarica per farlo partire.",
         "integrity": "Un file scaricato non corrispondeva al suo checksum, quindi Pyxis lo ha scartato. Riprova."
       }
     },
@@ -2653,11 +2653,8 @@
     "installHelp": "Pyxis ha bisogno di un motore AI per rispondere. Premi Installa accanto all'AI che paghi già, poi accedi. Il modello lo sceglie Pyxis.",
     "auto": {
       "title": "Scelta automatica",
-      "summary": "Pyxis usa {{parts}}.",
-      "part": "{{name}} per {{tasks}}",
-      "split": "Pyxis divide il lavoro tra {{count}} motori:",
-      "single": "Pyxis usa {{name}} per tutto.",
-      "cheap": "Sceglie il modello più economico che basta.",
+      "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
+      "single": "Pyxis usa {{name}} per tutto, con il modello più economico che basta.",
       "none": "Nessun motore è pronto.",
       "pinned_one": "{{count}} funzione è fissata a mano nelle opzioni avanzate.",
       "pinned_other": "{{count}} funzioni sono fissate a mano nelle opzioni avanzate."

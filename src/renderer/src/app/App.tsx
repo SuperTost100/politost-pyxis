@@ -53,6 +53,16 @@ const buttonIcons = {
   loadingIcon: <LoaderCircle size={16} strokeWidth={1.75} aria-hidden className="px-spin" />,
 };
 
+/**
+ * Notices open in the page column, under the strip that drags the window and under Attività: Shell keeps a host for
+ * them at the top of the column. Before the shell is up they open in the body, at the same height. Their look and
+ * width are in global.css.
+ */
+const messageConfig = {
+  getContainer: () => document.querySelector<HTMLElement>(".px-message-host") ?? document.body,
+  top: "var(--px-message-top)",
+};
+
 function StudyApp() {
   const { i18n } = useTranslation();
   const locale: Locale = i18n.language === "en" ? "en" : "it";
@@ -124,7 +134,7 @@ function StudyApp() {
         datePicker={dateIcons}
         button={buttonIcons}
       >
-        <AntApp>
+        <AntApp message={messageConfig}>
           <JobsSync />
           <div className="px-corner-notices">
             <BackupNotice />

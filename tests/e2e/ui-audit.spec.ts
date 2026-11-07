@@ -78,6 +78,9 @@ const routes = [
     "about",
     "diagnostics",
   ].map((section) => [`settings-${section}`, `/settings/${section}`] as const),
+  // AI tools with the advanced options open (which engines Pyxis may use), then in debug mode (the week's tokens).
+  ["settings-engines-advanced", "/settings/engines"],
+  ["settings-engines-debug", "/settings/engines"],
   ["gallery", "/dev/gallery"],
   ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
   ["plan", "/plans/audit-plan"],
@@ -1069,6 +1072,13 @@ function prepareEngines(name: string) {
   if (engines) writeFileSync(on, "");
   else rmSync(on, { force: true });
   withDb((db) => {
+    // Debug mode only for its own state, so no other page shows its details.
+    db.exec("DELETE FROM settings WHERE key = 'debug'");
+    if (name === "settings-engines-debug")
+      db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('debug',?,?)").run(
+        JSON.stringify({ on: true }),
+        Date.now(),
+      );
     db.exec(`DELETE FROM feature_engines WHERE json_extract(selection_json, '$.auto') = 1;
       DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%' OR key = 'engines.allowed';`);
     if (name === "onboarding-engines-chosen")
@@ -1731,6 +1741,22 @@ async function openState(page: Page, name: string) {
         ).toBeChecked();
       break;
     }
+    // The plain page has the advanced options closed, whatever a state before it left open.
+    case "settings-engines": {
+      const toggle = page.getByRole("switch", { name: /^(Opzioni avanzate|Advanced options)$/ });
+      await expect(toggle).toBeVisible();
+      if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
+      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toHaveCount(0);
+      break;
+    }
+    case "settings-engines-advanced":
+      await openAdvancedEngines(page);
+      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toBeVisible();
+      break;
+    case "settings-engines-debug":
+      await openAdvancedEngines(page);
+      await expect(page.getByRole("region", { name: both("Questa settimana", "This week") })).toBeVisible();
+      break;
     // The download state lives in main and outlasts a reload, so the plain route starts from no download.
     case "settings-updates":
       await page.evaluate(() => window.pyxis.cancelUpdate());
@@ -2244,7 +2270,9 @@ async function openState(page: Page, name: string) {
       break;
     case "ocr-settings-missing":
       await expect(
-        page.getByText(/Leggere le scansioni richiede|Reading scans needs/),
+        page.getByText(
+          /I dati per leggere le scansioni non sono ancora|The scan-reading data is not on this computer yet/,
+        ),
       ).toBeVisible();
       await expect(page.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
       await expect(

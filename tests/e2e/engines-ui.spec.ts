@@ -182,7 +182,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
   }
 });
 
-test("Automatic engines: simple view names who does what, and advanced can pin and return to automatic", async () => {
+test("Automatic engines: simple view says it in one sentence, and advanced can pin and return to automatic", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
@@ -229,14 +229,32 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await expect(page.locator(".engines-summary")).toHaveCount(0);
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
-    await expect(page.locator(".engines-summary")).toContainText(
-      "Pyxis uses Codex for chat, maps, flashcards and grading and Claude Code for exams, lessons and photos.",
+    // One plain sentence, with the engines' names and no list of which does what.
+    await expect(page.locator(".engines-summary-body")).toHaveText(
+      "Automatic choicePyxis picks the right tool for each job by itself, out of Codex and Claude Code, and uses the cheapest model that is good enough.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
     await expect(page.locator(".engines-feature-row")).toHaveCount(0);
+    // Which engines Pyxis may use waits under Advanced options, and the week's tokens under debug mode.
+    const choice = page.getByRole("radiogroup", { name: "Which engines Pyxis may use" });
+    const week = page.getByRole("region", { name: "This week" });
+    await expect(choice).toHaveCount(0);
+    await expect(week).toHaveCount(0);
+    await saveShot(page, "engines-simple-en.png", { fullPage: true });
     await page.getByRole("switch", { name: "Advanced options" }).click();
     await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+    await expect(choice).toBeVisible();
+    await expect(choice.getByRole("radio", { name: /^Automatic/ })).toBeChecked();
+    await expect(week).toHaveCount(0);
+    await page.getByRole("switch", { name: "Show technical details and debug" }).click();
+    await expect(week).toBeVisible();
+    await saveShot(page, "engines-debug-en.png", { fullPage: true });
+    // Debug mode alone keeps the table, with the advanced options closed.
+    await page.getByRole("switch", { name: "Advanced options" }).click();
+    await expect(choice).toHaveCount(0);
+    await expect(week).toBeVisible();
+    await page.getByRole("switch", { name: "Advanced options" }).click();
     // The table sits in a section that starts closed.
     await page.locator(".engines-section > summary").click();
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
@@ -299,7 +317,7 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
   }
 });
 
-test("Automatic engines: with all four CLIs ready, the summary gives each engine its own line", async () => {
+test("Automatic engines: with all four CLIs ready, the summary names each engine in one sentence", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
@@ -356,17 +374,14 @@ esac`,
     await expect(notice).toBeVisible({ timeout: 30000 });
     await notice.getByRole("button", { name: "I understand" }).click();
     const summary = page.locator(".engines-summary");
-    await expect(summary).toContainText(
-      "Pyxis splits the work across 4 engines:",
-      { timeout: 30000 },
-    );
-    const lines = summary.locator(".engines-summary-split li");
-    await expect(lines).toHaveCount(4);
+    await expect(summary).toContainText("Pyxis picks the right tool for each job by itself, out of ", {
+      timeout: 30000,
+    });
+    // Four engines still make one sentence that names each of them, with no line per engine.
     for (const name of ["Claude Code", "Codex", "Cursor Agent", "Antigravity"])
-      await expect(lines.filter({ hasText: name })).toHaveCount(1);
-    await expect(lines.filter({ hasText: "Antigravity" })).toContainText(
-      "chat",
-    );
+      await expect(summary).toContainText(name);
+    await expect(summary.locator("li")).toHaveCount(0);
+    await expect(summary).not.toContainText("chat");
     await saveShot(page, "engines-four-en.png");
   } finally {
     await app.close();

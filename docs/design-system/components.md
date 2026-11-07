@@ -72,7 +72,7 @@ Context menus are the system's own, through `window.pyxis.contextMenu` (see `fea
 | `SourceViewer`                          | A source opened at a page, beside the screen                                      |
 | `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                     |
 | `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                   |
-| `OcrDataCard` (`OcrData.tsx`)           | Consent, progress and recovery for the local OCR language data                    |
+| `OcrDataCard` (`OcrData.tsx`)           | Progress and recovery for the local OCR language data                             |
 | `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library     |
 | `EngineRow`                             | One AI tool with its state, each state with its own icon and word                 |
 | `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                           |

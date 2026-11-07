@@ -86,7 +86,9 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     ).toHaveText(CONTINUATION.trim(), { timeout: 30000 });
     await expect(page.locator(".px-msg:not(.px-msg-user)")).toHaveCount(1);
 
-    await page.evaluate(() => {
+    // The week's tokens are a technical detail: Settings shows them in debug mode.
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("debug.set", { on: true });
       location.hash = "/settings/engines";
     });
     const week = page.getByRole("region", { name: "Questa settimana" });

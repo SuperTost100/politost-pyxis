@@ -10,8 +10,9 @@ import { putSetting } from "../settings";
 /**
  * Local OCR language data (SRC-04, ASK-04). Pyxis never lets tesseract.js fetch it: the files are the Apache-2.0
  * `tessdata_fast` models of the official tesseract-ocr project, pinned to one commit. They are downloaded only by
- * the explicit `ocr-data-download` job after the student agrees, and every OCR run reads them back and checks them
- * against these hashes first. Sizes and hashes were taken from that commit's git tree and the downloaded bytes.
+ * the `ocr-data-download` job, which Pyxis starts by itself once setup is done unless the student turned it off, and
+ * every OCR run reads them back and checks them against these hashes first. Sizes and hashes were taken from that
+ * commit's git tree and the downloaded bytes.
  */
 const OCR_DATA_REVISION = "87416418657359cb625c412a48b6e1d6d41c29bd";
 export const OCR_DATA_BASE = `https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/${OCR_DATA_REVISION}/`;
@@ -94,11 +95,12 @@ export function setOcrConsent(db: Database.Database, accepted: boolean): void {
   putSetting(db, CONSENT_KEY, accepted);
 }
 
+/** Whether Pyxis may download the OCR data. On unless the student turned it off. */
 export function ocrConsent(db: Database.Database): boolean {
   const row = db
     .prepare(`SELECT value_json FROM settings WHERE key = ?`)
     .get(CONSENT_KEY) as { value_json: string } | undefined;
-  return row ? JSON.parse(row.value_json) === true : false;
+  return row ? JSON.parse(row.value_json) !== false : true;
 }
 
 type Problem = "missing" | "integrity";
