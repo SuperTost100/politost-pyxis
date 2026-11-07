@@ -161,6 +161,8 @@ export function subjectCandidates(root: string, mode: LinkMode, found: Found[]):
   return groups;
 }
 
+/** A folder name as a subject name: trimmed and cut to what `subjects` holds, so `addSubject` never refuses it. */
+const subjectNameOf = (folder: string) => folder.trim().slice(0, MAX_SUBJECT_NAME).trim();
 const isComplete = (cut: FolderCut) => !cut.files && !cut.depth && !cut.entries && !cut.unreadable;
 const noCut: FolderCut = { files: false, depth: false, entries: false, unreadable: false };
 const mtimeOf = (stat: { mtimeMs: number }) => Math.floor(stat.mtimeMs);
@@ -314,13 +316,12 @@ export function linkedFolders(deps: LinkedDeps) {
         if (!sub && !(folder.mode === "root" && file.subfolder === "")) {
           // A subfolder added after the folder was linked is a new subject, named as the folder is, once setup is over.
           // The first file in a subject folder that was empty when linked makes the folder itself the subject.
-          const offered = file.subfolder || basename(folder.path);
-          const name = offered.trim().slice(0, MAX_SUBJECT_NAME);
+          const name = subjectNameOf(file.subfolder || basename(folder.path));
           const subjectId = folder.confirmed_at && name ? addSubject(db, name).id : null;
           db.prepare(
             `INSERT OR IGNORE INTO linked_subfolders (folder_id, name, subject_id, suggested) VALUES (?, ?, ?, ?)`,
-          ).run(folderId, file.subfolder, subjectId, offered);
-          sub = { name: file.subfolder, subject_id: subjectId, suggested: offered, kinds_json: "[]", skipped: 0 };
+          ).run(folderId, file.subfolder, subjectId, name || null);
+          sub = { name: file.subfolder, subject_id: subjectId, suggested: name || null, kinds_json: "[]", skipped: 0 };
           subfolders.set(file.subfolder, sub);
         }
         if (sub?.skipped) continue;
@@ -469,7 +470,9 @@ export function linkedFolders(deps: LinkedDeps) {
       for (const row of subfolderRows(folderId)) {
         if (row.skipped || row.subject_id) continue;
         const folder = folderRow(folderId)!;
-        assignSubject(folderId, row.name, addSubject(db, row.suggested || row.name || basename(folder.path)).id);
+        // A name made only of spaces names no subject: the folder's files stay without one rather than fail the start.
+        const name = subjectNameOf(row.suggested || row.name || basename(folder.path));
+        if (name) assignSubject(folderId, row.name, addSubject(db, name).id);
       }
       db.prepare(`UPDATE linked_folders SET confirmed_at = ? WHERE id = ?`).run(Date.now(), folderId);
     })();
