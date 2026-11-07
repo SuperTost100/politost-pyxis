@@ -729,11 +729,14 @@ export function SettingsPage() {
   const page = PAGES.find((item) => item.key === shown);
   // A link to one section of a page opens the page at that section.
   useEffect(() => {
-    if (section && section !== active)
-      // An old name with no section of its own, such as diagnostics, lands on the section its page shows.
-      (
-        document.getElementById(`settings-${section}`) ?? document.getElementById(`settings-${active}`)
-      )?.scrollIntoView({ block: "start" });
+    if (!section || section === active) return;
+    const target = document.getElementById(`settings-${section}`);
+    // A section that fits the window scrolls only as far as it needs, so one already in view leaves the page's titles in
+    // place. A taller one brings its heading to the top: "nearest" would do nothing while the window sits inside it. An
+    // old name with no section of its own, such as diagnostics, opens its page at the top.
+    if (!target) window.scrollTo({ top: 0 });
+    else if (target.getBoundingClientRect().height <= window.innerHeight) target.scrollIntoView({ block: "nearest" });
+    else (target.querySelector("h2") ?? target).scrollIntoView({ block: "start" });
   }, [section, active]);
   // Switching pages drops a half-confirmed restore or wipe, like leaving the page does.
   function open(key: string) {
