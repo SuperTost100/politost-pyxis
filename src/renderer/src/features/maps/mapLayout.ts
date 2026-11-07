@@ -61,8 +61,6 @@ export function visibleNodes<T extends Item>(
 
 type Box = { x: number; y: number; width: number; height: number };
 const VIEW_PAD = 40;
-// The tool rail floats over the left edge of the canvas.
-const VIEW_PAD_LEFT = 88;
 
 /**
  * Opening view: the whole map when it fits at MIN_START_ZOOM or more (never zoomed in
@@ -78,7 +76,7 @@ export function startViewport(
   const top = Math.min(...boxes.map((box) => box.y));
   const bottom = Math.max(...boxes.map((box) => box.y + box.height));
   const room = {
-    width: size.width - VIEW_PAD_LEFT - VIEW_PAD,
+    width: size.width - 2 * VIEW_PAD,
     height: size.height - 2 * VIEW_PAD,
   };
   const fit = Math.min(
@@ -89,12 +87,12 @@ export function startViewport(
   if (fit >= MIN_START_ZOOM)
     return {
       zoom: fit,
-      x: VIEW_PAD_LEFT + (room.width - (right - left) * fit) / 2 - left * fit,
+      x: VIEW_PAD + (room.width - (right - left) * fit) / 2 - left * fit,
       y: VIEW_PAD + (room.height - (bottom - top) * fit) / 2 - top * fit,
     };
   return {
     zoom: MIN_START_ZOOM,
-    x: VIEW_PAD_LEFT - root.x * MIN_START_ZOOM,
+    x: VIEW_PAD - root.x * MIN_START_ZOOM,
     y: size.height / 2 - (root.y + root.height / 2) * MIN_START_ZOOM,
   };
 }

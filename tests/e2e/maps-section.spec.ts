@@ -32,7 +32,7 @@ function graph(labels: string[]) {
   };
 }
 
-test("the Maps section lists maps by subject, searches, opens one full screen and exports it", async () => {
+test("the Maps section lists maps by subject, searches, opens one in the shell and exports it", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-section-"));
   const saved = join(userData, "export.bin");
@@ -127,7 +127,7 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     await expect(page.getByText("Nessuna mappa corrisponde.")).toBeVisible();
     await search.fill("");
 
-    // A map opens full screen, says which exam and topic it belongs to, and closes back to the section.
+    // A map opens inside the shell under Mappe, says which exam it belongs to, and Mappe leads back to the section.
     // Each map is a tile with a drawing of its branches; the whole tile opens it.
     const tile = page.getByRole("link", { name: /^Moto rettilineo Meccanica · Moto/ });
     await expect(tile.locator("svg rect")).toHaveCount(3);
@@ -145,7 +145,7 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
 
     const exportAs = async (item: string) => {
       rmSync(saved, { force: true });
-      await page.getByRole("button", { name: "Esporta", exact: true }).click();
+      await page.getByRole("button", { name: "Altro", exact: true }).click();
       await page.getByRole("menuitem", { name: item }).click();
       // The notice from the previous export may still show, so wait for the file itself.
       await expect
@@ -185,7 +185,9 @@ test("the Maps section lists maps by subject, searches, opens one full screen an
     );
     expect(boxes.size).toBeGreaterThanOrEqual(2);
 
-    await page.getByRole("button", { name: "Chiudi" }).click();
+    const mapsDoor = page.getByRole("link", { name: /^Mappe/ });
+    await expect(mapsDoor).toHaveAttribute("aria-current", "page");
+    await mapsDoor.click();
     await expect(page).toHaveURL(/#\/maps$/);
 
     // A new map starts from an exam and a topic, and opens that topic's map page.

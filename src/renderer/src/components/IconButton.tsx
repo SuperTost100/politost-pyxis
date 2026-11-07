@@ -10,6 +10,8 @@ export function IconButton({
   onClick,
   disabled,
   pressed,
+  expanded,
+  menu,
   keepFocus,
 }: {
   icon: IconName;
@@ -19,6 +21,9 @@ export function IconButton({
   onClick?: () => void;
   disabled?: boolean;
   pressed?: boolean;
+  /** For a button that opens a menu: whether the menu is open. */
+  expanded?: boolean;
+  menu?: boolean;
   /** A click leaves focus where it was, for buttons that act on the field being typed in. */
   keepFocus?: boolean;
 }) {
@@ -44,6 +49,8 @@ export function IconButton({
         .join(" ")}
       aria-label={label}
       aria-pressed={pressed}
+      aria-expanded={expanded}
+      aria-haspopup={menu ? "menu" : undefined}
       title={label}
       onClick={onClick}
       onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}

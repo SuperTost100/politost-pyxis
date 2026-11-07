@@ -20,7 +20,7 @@ const MathText = lazy(() =>
 /** The text to make flashcards from, and what is known about where they belong. */
 export type CardSource = {
   text: string;
-  origin: "reply" | "selection";
+  origin: "reply" | "selection" | "map";
   /** The lesson's plan and topic, or the chat's plan. */
   planId?: string;
   topicId?: string;
@@ -272,7 +272,9 @@ export function MakeCardsDialog() {
               {t(
                 source.origin === "reply"
                   ? "makeCards.fromReply"
-                  : "makeCards.fromSelection",
+                  : source.origin === "map"
+                    ? "makeCards.fromMap"
+                    : "makeCards.fromSelection",
               )}
             </figcaption>
             <p>

@@ -1,58 +1,249 @@
-.px-map-editor {
+/* The map page inside the shell (pyxis-mockups app/index.html, "s-map"): a head, then one card with the canvas and,
+   under it, the selected concept and the edit box. */
+.px-map-page {
+  --map-canvas: var(--bg);
+  --map-node: var(--surface-raised);
+  --map-node-shadow: none;
+  --map-ease: cubic-bezier(0.23, 1, 0.32, 1);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  height: calc(100vh - 112px);
-  min-height: 500px;
+  height: calc(100vh - var(--top-height));
+  min-height: 520px;
+  padding: 52px var(--space-4) var(--space-4);
 }
-.px-map-topbar {
+[data-theme="light"] .px-map-page {
+  --map-canvas: var(--surface-sunken);
+  --map-node: var(--surface);
+  --map-node-shadow: var(--shadow-raised);
+}
+
+.px-map-head {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 2px var(--space-1) 0 10px;
 }
-.px-map-top-spacer {
+.px-map-title {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
   flex: 1;
 }
-.px-map-picker {
-  min-width: 200px;
-  max-width: 320px;
+.px-map-title h1 {
+  margin: 0;
+  /* Whole-pixel line heights keep the canvas a whole number of pixels tall, which the PNG export copies. */
+  font: 400 calc(28px * var(--text-scale, 1)) / calc(34px * var(--text-scale, 1))
+    var(--font-display);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.px-map-title p {
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-map-title a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 3px;
+}
+.px-map-title a:hover {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+.px-map-title a svg {
+  vertical-align: -2px;
+}
+.px-map-notice {
+  margin: 0;
+  padding-inline: 10px;
+}
+
+/* The "…" menu grows out of its button. */
+.px-map-more {
+  position: relative;
+}
+.px-map-more-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: var(--space-1);
+  width: 264px;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  transform-origin: top right;
+  animation: px-map-grow 0.18s var(--map-ease);
+}
+.px-map-more-group {
+  display: grid;
+  gap: 1px;
+}
+.px-map-more-group + .px-map-more-group,
+.px-map-keys {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.px-map-more-label {
+  padding: 6px 10px 4px;
+  font: 600 calc(11.5px * var(--text-scale, 1)) / 1.2 var(--font-sans);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+}
+.px-map-more-group button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font: 500 calc(13.5px * var(--text-scale, 1)) / 1.2 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.px-map-more-group button:hover:not(:disabled),
+.px-map-more-group button:focus-visible {
+  background: var(--surface-raised);
+  outline: none;
+}
+.px-map-more-group button:disabled {
+  color: var(--ink-subtle);
+  cursor: default;
+}
+.px-map-more-group button svg {
+  flex: none;
+  color: var(--ink-muted);
+}
+.px-map-more-check {
+  display: inline-flex;
+  width: 15px;
+  flex: none;
+}
+.px-map-keys dl {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 10px 6px;
+}
+.px-map-keys dl > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 26px;
+  font-size: calc(13px * var(--text-scale, 1));
+}
+.px-map-keys dt {
+  color: var(--ink-muted);
+}
+.px-map-keys dd {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+}
+.px-map-keys kbd {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 400 11.5px/1 var(--font-mono);
+}
+
+.px-map-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  overflow: hidden;
 }
 .px-map-canvas {
   position: relative;
   flex: 1;
-  min-height: 320px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  min-height: 220px;
+  background: var(--map-canvas);
 }
+.px-map-fit {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 5;
+}
+.px-map-fit .px-btn-secondary {
+  background: var(--surface);
+}
+
+/* Concepts: compact pills, the root in the display face, the selected one in the accent's soft colour. */
 .px-concept-node {
   position: relative;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-md);
   box-sizing: border-box;
-  width: 240px;
-  min-height: 64px;
-  padding: var(--space-3) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
+  width: max-content;
+  max-width: 240px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--node-fill, var(--map-node));
+  box-shadow: var(--map-node-shadow);
   color: var(--ink);
+  transition: background-color 0.15s ease-out;
 }
 .px-concept-node .px-markdown {
-  font: 400 calc(15px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  font: 500 calc(14px * var(--text-scale, 1)) / 1.35 var(--font-sans);
 }
 .px-concept-node .px-markdown p {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.px-concept-node.is-root {
-  border-width: 2px;
+.px-concept-node.is-level-0 {
+  padding: 12px 14px;
 }
-.px-concept-node.is-root .px-markdown {
-  font-size: calc(17px * var(--text-scale, 1));
-  font-weight: 600;
+.px-concept-node.is-level-0 .px-markdown {
+  font: 400 calc(17px * var(--text-scale, 1)) / 1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+.px-concept-node.is-level-1 .px-markdown {
+  font-weight: 650;
+}
+@media (hover: hover) and (pointer: fine) {
+  .px-map-canvas .react-flow__node:hover .px-concept-node {
+    background: color-mix(in srgb, var(--ink) 5%, var(--node-fill, var(--map-node)));
+  }
+}
+.px-map-canvas .react-flow__node.selected .px-concept-node {
+  background: var(--primary-soft);
+  box-shadow: none;
+  color: var(--primary-text);
+}
+.px-map-canvas .react-flow__node.selected .px-concept-node .px-markdown {
+  font-weight: 650;
+}
+.px-map-canvas .react-flow__node:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
 }
 .px-concept-fold {
   position: absolute;
@@ -81,8 +272,26 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+/* Handles to draw a link from show only on the concept under the pointer and while a link is drawn. */
+.px-map-canvas .react-flow__handle {
+  background: var(--border-control);
+  border-color: var(--surface);
+  width: 7px;
+  height: 7px;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+.px-map-canvas .react-flow__node:hover .react-flow__handle,
+.px-map-canvas .react-flow__handle.connectingfrom,
+.px-map-canvas .react-flow__handle.connectingto {
+  opacity: 1;
+}
 .px-map-canvas .react-flow__edge-path {
   stroke-linecap: round;
+}
+.px-map-canvas .px-tree-edge .react-flow__edge-path {
+  stroke: var(--border-control);
+  stroke-width: 1.5;
 }
 .px-cross-edge .react-flow__edge-path {
   stroke: var(--border-control);
@@ -106,41 +315,72 @@
   font: 400 calc(13px * var(--text-scale, 1)) / 1.35 var(--font-sans);
   pointer-events: none;
 }
-.px-map-canvas .react-flow__node.selected,
-.px-map-canvas .react-flow__node:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 3px;
-  border-radius: var(--radius-md);
+
+/* Under the canvas: the selected concept with its sources and edit buttons, then the last AI change and the edit box. */
+.px-map-foot {
+  flex: none;
+  display: grid;
+  gap: 10px;
+  padding: var(--space-3) var(--space-4) 14px;
+  border-top: 1px solid var(--border);
 }
-.px-map-canvas .react-flow__handle {
-  background: var(--border-control);
-  border-color: var(--surface);
-  width: 7px;
-  height: 7px;
-}
-.px-map-rail {
-  position: absolute;
-  top: 50%;
-  left: var(--space-3);
-  transform: translateY(-50%);
+.px-map-node {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: var(--control-sm);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  animation: px-map-swap 0.18s var(--map-ease);
+}
+.px-map-node-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.px-map-node-sources {
+  display: flex;
+  align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.px-map-node-sources .px-btn {
+  min-width: 0;
+  max-width: 280px;
+}
+.px-map-node-sources .px-btn > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.px-map-node-hint {
+  color: var(--ink-subtle);
+}
+.px-map-tools {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
 }
 .px-map-palette {
   position: absolute;
-  left: calc(100% + 8px);
-  bottom: 12px;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 10;
   display: flex;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  transform-origin: bottom right;
+  animation: px-map-grow 0.18s var(--map-ease);
 }
 .px-map-palette button {
   width: 28px;
@@ -149,24 +389,36 @@
   border-radius: 50%;
   cursor: pointer;
 }
-.px-map-composer {
+.px-map-palette button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-map-lower {
   display: flex;
-  width: min(100%, 720px);
-  align-self: center;
   align-items: center;
-  gap: var(--space-3);
+  gap: 14px;
+}
+.px-map-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+  animation: px-map-swap 0.18s var(--map-ease);
+}
+.px-map-composer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--space-2);
 }
 .px-map-composer .ant-input {
   flex: 1;
   min-width: 0;
 }
-.px-map-composer .ant-btn {
-  white-space: nowrap;
-}
-.px-map-help {
-  text-align: center;
-  margin: 0;
-}
+
 .px-map-empty {
   flex: 1;
   display: flex;
@@ -175,47 +427,45 @@
   align-items: center;
   text-align: center;
   gap: var(--space-4);
+  padding: var(--space-8);
+  background: var(--map-canvas);
 }
 .px-map-empty h2,
-.px-map-empty p,
-.px-map-notice {
+.px-map-empty p {
   margin: 0;
 }
+
 @media (max-width: 1000px) {
-  .px-map-topbar {
-    gap: var(--space-2);
+  .px-map-lower {
+    flex-wrap: wrap;
   }
-  .px-map-picker {
-    max-width: 240px;
+  .px-map-change {
+    flex-basis: 100%;
   }
 }
 
-.px-map-topbar {
-  padding: var(--space-3) var(--space-3) 0;
+@keyframes px-map-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
-
-/* What the map belongs to, under its title. */
-.px-map-origin {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+@keyframes px-map-swap {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
 }
-.px-map-origin a {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--border-control);
-  text-underline-offset: 3px;
+@keyframes px-map-fade {
+  from {
+    opacity: 0;
+  }
 }
-.px-map-origin a:hover {
-  color: var(--ink);
-  text-decoration-color: currentColor;
-}
-.px-map-export {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
+@media (prefers-reduced-motion: reduce) {
+  .px-map-more-panel,
+  .px-map-palette,
+  .px-map-node,
+  .px-map-change {
+    animation: px-map-fade 0.12s ease-out;
+  }
 }

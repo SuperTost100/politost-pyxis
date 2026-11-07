@@ -1,26 +1,23 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Segmented, Select } from "antd";
+import { Input, Modal, Select } from "antd";
+import { ChevronLeft, ChevronRight, GraduationCap } from "lucide-react";
 import {
-  Plus,
-  Link,
-  Trash2,
-  Palette,
-  Scan,
-  Undo2,
-  Redo2,
-  Download,
-  Pencil,
-  ChevronLeft,
-  ChevronRight,
-  GraduationCap,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { Link as RouterLink, useParams, useSearchParams } from "react-router";
+import {
+  Link as RouterLink,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router";
 import {
   ReactFlow,
-  Background,
-  BackgroundVariant,
   BaseEdge,
   EdgeLabelRenderer,
   Handle,
@@ -34,10 +31,13 @@ import {
   type ReactFlowInstance,
   type NodeChange,
 } from "@xyflow/react";
-import { toPng, toSvg } from "html-to-image";
-import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { toPng } from "html-to-image";
+import { Button } from "../../components/Button";
+import { IconButton } from "../../components/IconButton";
 import { LoadError } from "../../components/LoadError";
 import { MarkdownView } from "../../components/MarkdownView";
+import { openMakeCards } from "../../components/MakeCardsDialog";
+import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
 import { mapColors as fills, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
@@ -49,15 +49,20 @@ import {
   startViewport,
   visibleNodes,
 } from "./mapLayout";
-import { MapExport } from "./MapExport";
+import { describeChange } from "./mapChange";
+import { useMapExport } from "./MapExport";
+import { MapMenu, type MapMenuGroup } from "./MapMenu";
+import { useNodeSources } from "./nodeSources";
 import "./MapPage.css";
 import { usePlan } from "../../lib/queries";
 
 type FlowNode = Node<
   {
     label: string;
-    color: string;
-    root: boolean;
+    /** A fill the student picked, as a token name or a hex colour; none keeps the plain node. */
+    color?: string;
+    /** 0 for the root, 1 for its branches, 2 for anything deeper. */
+    level: 0 | 1 | 2;
     folded: boolean;
     hidden: number;
     hasChildren: boolean;
@@ -75,12 +80,16 @@ function ConceptNode({ id, data }: NodeProps<FlowNode>) {
   const Chevron = data.folded ? ChevronRight : ChevronLeft;
   return (
     <div
-      className={`px-concept-node${data.root ? " is-root" : ""}`}
-      style={{
-        background: data.color.startsWith("#")
-          ? data.color
-          : `var(--${data.color})`,
-      }}
+      className={`px-concept-node is-level-${data.level}`}
+      style={
+        data.color
+          ? ({
+              "--node-fill": data.color.startsWith("#")
+                ? data.color
+                : `var(--${data.color})`,
+            } as CSSProperties)
+          : undefined
+      }
     >
       <Handle id="in-l" type="target" position={Position.Left} />
       <Handle id="in-r" type="target" position={Position.Right} />
@@ -161,7 +170,7 @@ export function MapPage() {
   // The Maps section opens one map by id and expects its close button to lead back there.
   const [search, setSearch] = useSearchParams();
   const openMap = search.get("map") ?? undefined;
-  const fromMaps = search.get("from") === "maps";
+  const navigate = useNavigate();
   const client = useQueryClient();
   const [selected, setSelected] = useState<string>();
   const [instruction, setInstruction] = useState("");
@@ -174,6 +183,13 @@ export function MapPage() {
   const [label, setLabel] = useState("");
   const [target, setTarget] = useState<string>();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The last change the AI made, for the line under the map with its Annulla. Any other edit replaces what Annulla
+  // would undo, so it clears this.
+  const [editing, setEditing] = useState(false);
+  const [lastChange, setLastChange] = useState<{
+    mapId?: string;
+    text: string;
+  }>();
   const [nodes, setNodes] = useState<FlowNode[]>([]);
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
@@ -224,9 +240,9 @@ export function MapPage() {
     setJobId(undefined);
     setNotice("");
     setInstruction("");
+    setLastChange(undefined);
   }, [planId, topicId, openMap]);
   const plan = usePlan(planId);
-  const topic = plan.data?.topics.find((item) => item.id === topicId);
   const mapKey = ["map", planId, topicId, activeId];
   const map = useQuery({
     queryKey: mapKey,
@@ -236,6 +252,9 @@ export function MapPage() {
   const graph = map.data;
   const selectedNode = graph?.nodes.find((n) => n.id === selected);
   const root = graph?.nodes.find((n) => n.parent === null);
+  const nodeSources = useNodeSources(selectedNode?.sources ?? []);
+  const title =
+    list.data?.find((m) => m.id === activeId)?.title ?? t("map.title");
   const job = build.data;
   const building = Boolean(job && ["queued", "running"].includes(job.state));
   useEffect(() => {
@@ -283,6 +302,14 @@ export function MapPage() {
     [radial, shown, heights],
   );
   const parents = useMemo(() => parentIds(graph?.nodes ?? []), [graph]);
+  const levels = useMemo(() => {
+    const byId = new Map((graph?.nodes ?? []).map((n) => [n.id, n]));
+    const level = (id: string | null): 0 | 1 | 2 => {
+      const parent = id ? byId.get(id)?.parent : null;
+      return parent == null ? 0 : byId.get(parent)?.parent == null ? 1 : 2;
+    };
+    return new Map((graph?.nodes ?? []).map((n) => [n.id, level(n.id)]));
+  }, [graph]);
   // Dragged nodes keep the spot they were dropped on; the rest follow the layout.
   const spots = useMemo(
     () =>
@@ -306,18 +333,18 @@ export function MapPage() {
           ...(height ? { measured: { width: NODE_WIDTH, height } } : {}),
           data: {
             label: n.label,
-            root: n.parent === null,
+            level: levels.get(n.id) ?? 2,
             folded: folded.has(n.id),
             hidden: shown.hidden.get(n.id) ?? 0,
             hasChildren: parents.has(n.id),
             toggle,
+            // Neutro is the plain node, which differs between the themes.
             color:
-              fills.some((color) => color === n.color) ||
-              /^#[0-9a-f]{6}$/i.test(n.color ?? "")
-                ? n.color!
-                : n.parent === null
-                  ? "surface-overlay"
-                  : "surface-raised",
+              n.color !== "surface-raised" &&
+              (fills.some((color) => color === n.color) ||
+                /^#[0-9a-f]{6}$/i.test(n.color ?? ""))
+                ? n.color
+                : undefined,
           },
         };
       });
@@ -377,7 +404,7 @@ export function MapPage() {
       cancelAnimationFrame(motion.current.frame);
       canvas.current?.removeAttribute("data-moving");
     };
-  }, [spots, shown, heights, selected, folded, parents, toggle]);
+  }, [spots, shown, heights, selected, folded, parents, levels, toggle]);
   useEffect(() => {
     setSelected(undefined);
     setPaletteOpen(false);
@@ -410,8 +437,11 @@ export function MapPage() {
         tree
           ? {
               ...base,
-              type: "default",
-              style: { stroke: "var(--border-control)", strokeWidth: 1.5 },
+              // Right-angled connectors with rounded elbows in the tree; the radial layout keeps its curves.
+              ...(radial
+                ? { type: "default" }
+                : { type: "smoothstep", pathOptions: { borderRadius: 9 } }),
+              className: "px-tree-edge",
             }
           : {
               ...base,
@@ -424,7 +454,7 @@ export function MapPage() {
       );
     }
     return result;
-  }, [graph, nodes, selected]);
+  }, [graph, nodes, selected, radial]);
   function startView() {
     const size = canvas.current?.getBoundingClientRect();
     if (!size || !spots.length) return;
@@ -447,7 +477,10 @@ export function MapPage() {
     startView();
   }, [ready, spots, heights, activeId, graph?.layout]);
 
-  async function commit(action: () => Promise<NonNullable<typeof graph>>) {
+  async function commit(
+    action: () => Promise<NonNullable<typeof graph>>,
+    { keepChange = false } = {},
+  ) {
     if (disabled) return;
     setBusy(true);
     setNotice("");
@@ -455,6 +488,7 @@ export function MapPage() {
       await moves.current.catch(() => undefined);
       const result = await action();
       client.setQueryData(mapKey, result);
+      if (!keepChange) setLastChange(undefined);
     } catch (err) {
       setNotice(
         (err as { messageKey?: unknown } | null)?.messageKey ===
@@ -494,6 +528,7 @@ export function MapPage() {
         )
           continue;
         const { x, y } = change.position;
+        setLastChange(undefined);
         moves.current = moves.current
           .catch(() => undefined)
           .then(() =>
@@ -528,27 +563,26 @@ export function MapPage() {
       setBusy(false);
     }
   }
-  async function exportMap(format: "png" | "svg") {
+  // The view on screen as a picture, without the fit button over it.
+  async function exportPng() {
     if (!canvas.current) return;
     setBusy(true);
     setNotice("");
     try {
       await document.fonts.ready;
-      const url = await (format === "png" ? toPng : toSvg)(canvas.current, {
-        backgroundColor: getComputedStyle(document.documentElement)
-          .getPropertyValue("--bg")
-          .trim(),
+      const url = await toPng(canvas.current, {
+        backgroundColor: getComputedStyle(canvas.current).backgroundColor,
         pixelRatio: 2,
         filter: (el) =>
           !(
             el instanceof HTMLElement &&
-            (el.classList.contains("px-map-rail") ||
+            (el.classList.contains("px-map-fit") ||
               el.classList.contains("react-flow__attribution"))
           ),
       });
       const link = document.createElement("a");
       link.href = url;
-      link.download = `map.${format}`;
+      link.download = "map.png";
       link.click();
     } catch {
       setNotice(t("map.exportFailed"));
@@ -562,153 +596,298 @@ export function MapPage() {
       setDialog("rename");
     }
   }
-  return (
-    <CanvasLayout
-      title={list.data?.find((m) => m.id === activeId)?.title ?? t("map.title")}
-      meta={
-        plan.data && topic ? (
-          <span className="px-map-origin">
-            <RouterLink
-              to={`/plans/${planId}`}
-              aria-label={t("map.openExam", { title: plan.data.title })}
-            >
-              <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
-              <span>{plan.data.title}</span>
-            </RouterLink>
-            {/* The dot stays with the topic when the line wraps. */}
-            <span>
-              <span aria-hidden>· </span>
-              {topic.title}
-            </span>
-          </span>
-        ) : undefined
-      }
-      closeTo={fromMaps ? "/maps" : `/plans/${planId}`}
-    >
-      <div className="px-map-editor">
-        <div className="px-map-topbar">
-          {graph && (
-            <Segmented
-              aria-label={t("map.layout")}
-              disabled={disabled}
-              value={graph?.layout ?? "tree"}
-              options={[
-                { label: t("map.tree"), value: "tree" },
-                { label: t("map.radial"), value: "radial" },
-              ]}
-              onChange={(layout) =>
+  /** The map as an indented outline, the text the flashcards are written from. */
+  function outline() {
+    const nodes = graph?.nodes ?? [];
+    const lines: string[] = [];
+    const walk = (id: string, depth: number) => {
+      const node = nodes.find((n) => n.id === id);
+      if (!node) return;
+      lines.push(`${"  ".repeat(depth)}${depth ? "- " : ""}${node.label}`);
+      for (const child of nodes.filter((n) => n.parent === id))
+        walk(child.id, depth + 1);
+    };
+    if (root) walk(root.id, 0);
+    return lines.join("\n");
+  }
+  function makeCards() {
+    if (!graph) return;
+    openMakeCards({
+      text: outline(),
+      origin: "map",
+      planId,
+      topicId,
+      subject: plan.data?.subject ?? undefined,
+      passageIds: [
+        ...new Set(graph.nodes.flatMap((n) => n.sources ?? [])),
+      ].slice(0, 1000),
+    });
+  }
+  // Chiedi opens a new chat about the concept, with its place in the map and its sources as context.
+  async function askAbout() {
+    if (!selectedNode || !graph) return;
+    const path: string[] = [];
+    for (
+      let node: typeof selectedNode | undefined = selectedNode;
+      node && path.length <= graph.nodes.length;
+      node = graph.nodes.find((n) => n.id === node!.parent)
+    )
+      path.unshift(node.label);
+    setNotice("");
+    try {
+      const { chatId } = await invoke("chats.seed", {
+        kind: "passage",
+        title: selectedNode.label.slice(0, 120),
+        body: path.join(" › ").slice(0, 20_000),
+        sourceIds: nodeSources.length
+          ? nodeSources.map((source) => source.sourceId)
+          : undefined,
+        planId,
+        subject: plan.data?.subject ?? undefined,
+      });
+      navigate(`/ask/${chatId}`);
+    } catch {
+      setNotice(t("map.askFailed"));
+    }
+  }
+  function aiEdit() {
+    const asked = instruction.trim();
+    if (!asked || !graph) return;
+    const before = graph.nodes;
+    void commit(
+      async () => {
+        setEditing(true);
+        const result = await invoke("maps.edit", {
+          planId,
+          topicId,
+          mapId: activeId,
+          instruction: asked,
+        }).finally(() => setEditing(false));
+        setInstruction("");
+        const change = describeChange(before, result.nodes);
+        setLastChange({
+          mapId: activeId,
+          text:
+            change.kind === "added"
+              ? t("map.lastAdded", {
+                  label: change.label,
+                  parent: change.parent,
+                })
+              : t("map.lastChanged"),
+        });
+        return result;
+      },
+      { keepChange: true },
+    );
+  }
+  const undo = () =>
+    void commit(() =>
+      invoke("maps.undo", { planId, topicId, mapId: activeId }),
+    );
+  const redo = () =>
+    void commit(() =>
+      invoke("maps.redo", { planId, topicId, mapId: activeId }),
+    );
+  const mapExport = useMapExport({
+    planId,
+    topicId,
+    mapId: activeId,
+    settle: () => moves.current.catch(() => undefined),
+  });
+  const menu: MapMenuGroup[] = graph
+    ? [
+        {
+          key: "layout",
+          label: t("map.layout"),
+          items: (["tree", "radial"] as const).map((layout) => ({
+            key: layout,
+            label: t(`map.${layout}`),
+            checked: (graph.layout ?? "tree") === layout,
+            disabled,
+            onSelect: () => {
+              if ((graph.layout ?? "tree") !== layout)
                 void commit(() =>
                   invoke("maps.layout", {
                     planId,
                     topicId,
                     mapId: activeId,
-                    layout: layout as "tree" | "radial",
+                    layout,
                   }),
-                )
-              }
-            />
-          )}
-          {list.data && list.data.length > 1 && (
-            <Select
-              aria-label={t("map.choose")}
-              className="px-map-picker"
-              value={activeId}
-              disabled={disabled}
-              options={list.data.map((m) => ({ label: m.title, value: m.id }))}
-              onChange={pickMap}
-            />
-          )}
-          <span className="px-map-top-spacer" />
-          {graph && (
-            <>
-              {(!list.data?.some((m) => m.provider) ||
-                (job &&
-                  ["failed", "cancelled", "interrupted"].includes(
-                    job.state,
-                  ))) && (
-                <Button
-                  shape="round"
-                  disabled={disabled}
-                  onClick={() => void generateMaps()}
+                );
+            },
+          })),
+        },
+        ...(list.data && list.data.length > 1
+          ? [
+              {
+                key: "maps",
+                label: t("map.choose"),
+                items: list.data.map((m) => ({
+                  key: m.id,
+                  label: m.title,
+                  checked: m.id === activeId,
+                  disabled,
+                  onSelect: () => pickMap(m.id),
+                })),
+              },
+            ]
+          : []),
+        {
+          key: "edit",
+          items: [
+            // Offered while no map came from a model yet, or after the last build stopped.
+            ...(!list.data?.some((m) => m.provider) ||
+            (job && ["failed", "cancelled", "interrupted"].includes(job.state))
+              ? [
+                  {
+                    key: "build",
+                    label: t("map.buildSources"),
+                    icon: "refresh-cw" as const,
+                    disabled,
+                    onSelect: () => void generateMaps(),
+                  },
+                ]
+              : []),
+            {
+              key: "undo",
+              label: t("map.undo"),
+              icon: "undo-2" as const,
+              disabled: disabled || !graph.undo,
+              onSelect: undo,
+            },
+            {
+              key: "redo",
+              label: t("map.redo"),
+              icon: "redo-2" as const,
+              disabled: disabled || !graph.redo,
+              onSelect: redo,
+            },
+          ],
+        },
+        {
+          key: "export",
+          label: t("map.export"),
+          items: [
+            ...(["markdown", "svg", "pdf"] as const).map((format) => ({
+              key: format,
+              label: t(
+                format === "markdown"
+                  ? "map.exportMarkdown"
+                  : format === "svg"
+                    ? "map.exportSvg"
+                    : "map.exportPdf",
+              ),
+              icon: "download" as const,
+              disabled: disabled || mapExport.busy,
+              onSelect: () => void mapExport.save(format),
+            })),
+            {
+              key: "png",
+              label: t("map.png"),
+              icon: "image" as const,
+              disabled,
+              onSelect: () => void exportPng(),
+            },
+          ],
+        },
+      ]
+    : [];
+  const shortcuts = (
+    <section className="px-map-keys" aria-label={t("map.shortcuts")}>
+      <div className="px-map-more-label" aria-hidden>
+        {t("map.shortcuts")}
+      </div>
+      <dl>
+        {(
+          [
+            ["select", ["Tab"]],
+            ["rename", [t("shortcuts.keys.enter")]],
+            ["delete", [t("map.keys.deleteKey"), "⌫"]],
+            ["move", ["← ↑ → ↓"]],
+          ] as const
+        ).map(([action, keys]) => (
+          <div key={action}>
+            <dt>{t(`map.keys.${action}`)}</dt>
+            <dd>
+              {keys.map((key) => (
+                <kbd key={key}>{key}</kbd>
+              ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+  const change =
+    lastChange && lastChange.mapId === activeId && graph?.undo
+      ? lastChange
+      : undefined;
+  return (
+    <div className="px-map-page">
+      <header className="px-map-head">
+        <div className="px-map-title">
+          <h1>{title}</h1>
+          <p>
+            {plan.data ? (
+              <>
+                <RouterLink
+                  to={`/plans/${planId}`}
+                  aria-label={t("map.openExam", { title: plan.data.title })}
                 >
-                  {t("map.buildSources")}
-                </Button>
-              )}
-              <Button
-                shape="circle"
-                aria-label={t("map.undo")}
-                disabled={disabled || !graph.undo}
-                icon={<Undo2 size={18} />}
-                onClick={() =>
-                  void commit(() =>
-                    invoke("maps.undo", { planId, topicId, mapId: activeId }),
-                  )
-                }
-              />
-              <Button
-                shape="circle"
-                aria-label={t("map.redo")}
-                disabled={disabled || !graph.redo}
-                icon={<Redo2 size={18} />}
-                onClick={() =>
-                  void commit(() =>
-                    invoke("maps.redo", { planId, topicId, mapId: activeId }),
-                  )
-                }
-              />
-              <MapExport
-                planId={planId}
-                topicId={topicId}
-                mapId={activeId}
-                disabled={disabled}
-                settle={() => moves.current.catch(() => undefined)}
-              />
-              <Button
-                shape="round"
-                disabled={disabled}
-                icon={<Download size={18} />}
-                onClick={() => void exportMap("png")}
-              >
-                {t("map.png")}
-              </Button>
-            </>
-          )}
+                  <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
+                  {plan.data.title}
+                </RouterLink>
+                <span aria-hidden> · </span>
+              </>
+            ) : null}
+            {graph ? t("map.hint") : null}
+          </p>
         </div>
-        {building && (
-          <p className="meta px-map-notice" role="status">
-            {t("map.building")}
-          </p>
-        )}
-        {notice && (
-          <p className="small px-map-notice" role="status">
-            {notice}
-          </p>
-        )}
-        {(map.isError || list.isError) && (
-          <LoadError
-            onRetry={() => {
-              if (list.isError) void list.refetch();
-              if (map.isError) void map.refetch();
-            }}
-          >
-            {t("map.loadFailed")}
-          </LoadError>
-        )}
-        {list.data?.find((m) => m.id === activeId)?.grounding === "general" && (
-          <p className="meta px-map-notice">{t("map.general")}</p>
-        )}
+        {graph ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="layers"
+              onClick={makeCards}
+            >
+              {t("map.makeCards")}
+            </Button>
+            <MapMenu label={t("map.more")} groups={menu} footer={shortcuts} />
+          </>
+        ) : null}
+      </header>
+      {building && graph ? (
+        <p className="meta px-map-notice" role="status">
+          {t("map.building")}
+        </p>
+      ) : null}
+      {notice ? (
+        <p className="small px-map-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+      {map.isError || list.isError ? (
+        <LoadError
+          onRetry={() => {
+            if (list.isError) void list.refetch();
+            if (map.isError) void map.refetch();
+          }}
+        >
+          {t("map.loadFailed")}
+        </LoadError>
+      ) : null}
+      {list.data?.find((m) => m.id === activeId)?.grounding === "general" ? (
+        <p className="meta px-map-notice">{t("map.general")}</p>
+      ) : null}
+      <div className="px-map-card">
         {!graph ? (
           <div className="px-map-empty">
             <h2 className="title-2">
               {t(building ? "map.building" : "map.empty")}
             </h2>
             <p className="small">{t("map.emptyBody")}</p>
-            <Button
-              type="primary"
-              shape="round"
-              loading={disabled}
-              onClick={() => void generateMaps()}
-            >
+            <Button disabled={disabled} onClick={() => void generateMaps()}>
               {t("map.generate")}
             </Button>
           </div>
@@ -786,133 +965,190 @@ export function MapPage() {
                     void patch([{ op: "delete", id: selectedNode.id }]);
                   }
                 }}
-              >
-                <Background
-                  variant={BackgroundVariant.Dots}
-                  gap={24}
-                  size={1}
-                  color="var(--border)"
-                />
-              </ReactFlow>
-              <div
-                className="px-map-rail"
-                role="toolbar"
-                aria-label={t("map.tools")}
-              >
-                <Button
-                  type="text"
-                  shape="circle"
-                  disabled={disabled}
-                  aria-label={t("map.add")}
-                  icon={<Plus size={18} />}
-                  onClick={() => {
-                    setLabel("");
-                    setDialog("add");
-                  }}
-                />
-                <Button
-                  type="text"
-                  shape="circle"
-                  disabled={disabled || !selectedNode}
-                  aria-label={t("map.rename")}
-                  icon={<Pencil size={18} />}
-                  onClick={rename}
-                />
-                <Button
-                  type="text"
-                  shape="circle"
-                  disabled={disabled || !selectedNode}
-                  aria-label={t("map.connect")}
-                  icon={<Link size={18} />}
-                  onClick={() => {
-                    setTarget(undefined);
-                    setDialog("connect");
-                  }}
-                />
-                <Button
-                  type="text"
-                  shape="circle"
-                  disabled={disabled || !selectedNode?.parent}
-                  aria-label={t("map.delete")}
-                  icon={<Trash2 size={18} />}
-                  onClick={() =>
-                    selected && void patch([{ op: "delete", id: selected }])
-                  }
-                />
-                <Button
-                  type="text"
-                  shape="circle"
-                  disabled={disabled || !selectedNode}
-                  aria-label={t("map.recolor")}
-                  icon={<Palette size={18} />}
-                  onClick={() => setPaletteOpen((v) => !v)}
-                />
-                <Button
-                  type="text"
-                  shape="circle"
-                  aria-label={t("map.fit")}
-                  icon={<Scan size={18} />}
+              />
+              <div className="px-map-fit">
+                <IconButton
+                  icon="scan"
+                  size="sm"
+                  label={t("map.fit")}
                   onClick={startView}
                 />
-                {paletteOpen && selected && (
-                  <div
-                    className="px-map-palette"
-                    role="group"
-                    aria-label={t("map.recolor")}
-                  >
-                    {fills.map((color) => (
-                      <button
-                        key={color}
-                        disabled={disabled}
-                        aria-label={t(`map.colors.${color}`)}
-                        style={{ background: `var(--${color})` }}
-                        onClick={() => {
-                          void patch([{ op: "recolor", id: selected, color }]);
-                          setPaletteOpen(false);
-                        }}
-                      />
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
-            <form
-              className="px-map-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (instruction.trim())
-                  void commit(async () => {
-                    const result = await invoke("maps.edit", {
-                      planId,
-                      topicId,
-                      mapId: activeId,
-                      instruction: instruction.trim(),
-                    });
-                    setInstruction("");
-                    setNotice(t("map.applied"));
-                    return result;
-                  });
-              }}
-            >
-              <Input
-                aria-label={t("map.instruction")}
-                placeholder={t("map.instructionPlaceholder")}
-                value={instruction}
-                maxLength={2000}
-                disabled={disabled}
-                onChange={(event) => setInstruction(event.target.value)}
-              />
-              <Button
-                htmlType="submit"
-                type="primary"
-                shape="round"
-                loading={busy}
-                disabled={disabled || !instruction.trim()}
-              >
-                {t("map.apply")}
-              </Button>
-            </form>
-            <p className="meta px-map-help">{t("map.keyboard")}</p>
+            <footer className="px-map-foot">
+              <div className="px-map-node" key={selectedNode?.id ?? ""}>
+                {selectedNode ? (
+                  <>
+                    <b className="px-map-node-label">
+                      <MathText text={selectedNode.label} />
+                    </b>
+                    <span className="px-map-node-sources">
+                      {nodeSources.slice(0, 2).map((source) => (
+                        <Button
+                          key={source.sourceId}
+                          variant="secondary"
+                          size="sm"
+                          icon="book-open"
+                          onClick={() =>
+                            navigate(
+                              `/exams/library?passage=${encodeURIComponent(source.passageId)}`,
+                            )
+                          }
+                        >
+                          {source.page != null
+                            ? t("map.sourcePage", {
+                                title: source.title,
+                                page: source.page,
+                              })
+                            : source.slide != null
+                              ? t("map.sourceSlide", {
+                                  title: source.title,
+                                  slide: source.slide,
+                                })
+                              : source.title}
+                        </Button>
+                      ))}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon="message-circle"
+                        onClick={() => void askAbout()}
+                      >
+                        {t("map.ask")}
+                      </Button>
+                    </span>
+                    <div
+                      className="px-map-tools"
+                      role="toolbar"
+                      aria-label={t("map.tools")}
+                    >
+                      <IconButton
+                        icon="plus"
+                        size="sm"
+                        variant="ghost"
+                        label={t("map.add")}
+                        disabled={disabled}
+                        onClick={() => {
+                          setLabel("");
+                          setDialog("add");
+                        }}
+                      />
+                      <IconButton
+                        icon="pencil"
+                        size="sm"
+                        variant="ghost"
+                        label={t("map.rename")}
+                        disabled={disabled}
+                        onClick={rename}
+                      />
+                      <IconButton
+                        icon="link"
+                        size="sm"
+                        variant="ghost"
+                        label={t("map.connect")}
+                        disabled={disabled}
+                        onClick={() => {
+                          setTarget(undefined);
+                          setDialog("connect");
+                        }}
+                      />
+                      <IconButton
+                        icon="palette"
+                        size="sm"
+                        variant="ghost"
+                        label={t("map.recolor")}
+                        disabled={disabled}
+                        expanded={paletteOpen}
+                        onClick={() => setPaletteOpen((v) => !v)}
+                      />
+                      <IconButton
+                        icon="trash-2"
+                        size="sm"
+                        variant="ghost"
+                        label={t("map.delete")}
+                        disabled={disabled || !selectedNode.parent}
+                        onClick={() =>
+                          void patch([{ op: "delete", id: selectedNode.id }])
+                        }
+                      />
+                      {paletteOpen ? (
+                        <div
+                          className="px-map-palette"
+                          role="group"
+                          aria-label={t("map.recolor")}
+                        >
+                          {fills.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              disabled={disabled}
+                              aria-label={t(`map.colors.${color}`)}
+                              title={t(`map.colors.${color}`)}
+                              style={{
+                                background: `var(--${color === "surface-raised" ? "map-node" : color})`,
+                              }}
+                              onClick={() => {
+                                void patch([
+                                  { op: "recolor", id: selectedNode.id, color },
+                                ]);
+                                setPaletteOpen(false);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <span className="px-map-node-hint">{t("map.pickHint")}</span>
+                )}
+              </div>
+              <div className="px-map-lower">
+                {editing ? (
+                  <span className="px-map-change" role="status">
+                    {t("map.editing")}
+                  </span>
+                ) : change ? (
+                  <span className="px-map-change" role="status">
+                    {change.text}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="undo-2"
+                      disabled={disabled}
+                      onClick={() => {
+                        setLastChange(undefined);
+                        undo();
+                      }}
+                    >
+                      {t("map.undo")}
+                    </Button>
+                  </span>
+                ) : null}
+                <form
+                  className="px-map-composer"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    aiEdit();
+                  }}
+                >
+                  <Input
+                    aria-label={t("map.instruction")}
+                    placeholder={t("map.instructionPlaceholder")}
+                    value={instruction}
+                    maxLength={2000}
+                    disabled={disabled}
+                    onChange={(event) => setInstruction(event.target.value)}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={disabled || !instruction.trim()}
+                  >
+                    {t("map.apply")}
+                  </Button>
+                </form>
+              </div>
+            </footer>
           </>
         )}
       </div>
@@ -971,6 +1207,6 @@ export function MapPage() {
           />
         )}
       </Modal>
-    </CanvasLayout>
+    </div>
   );
 }
