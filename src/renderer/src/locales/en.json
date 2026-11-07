@@ -892,8 +892,6 @@
     "noSubject": "No subject",
     "concepts_one": "{{count}} concept",
     "concepts_other": "{{count}} concepts",
-    "open": "Open",
-    "openLabel": "Open the map {{title}}",
     "general": "general knowledge",
     "emptyTitle": "No maps yet",
     "emptyBody": "A map lays out one topic of an exam as concepts and the links between them. Pick a topic and Pyxis builds its maps from your sources.",

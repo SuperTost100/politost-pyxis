@@ -73,6 +73,9 @@ export type ConceptGraph = z.infer<typeof conceptGraphSchema>;
 export type MapOp = z.infer<typeof mapOpSchema>;
 export type MapSummary = z.infer<typeof mapSummarySchema>;
 /** A map in the Maps section, with the exam, topic and subject it belongs to. */
+/** The most branches, and concepts on a branch, that a map's tile draws. */
+export const MAP_SHAPE = { branches: 6, leaves: 4 } as const;
+
 export const mapEntrySchema = z.object({
   id,
   title: z.string(),
@@ -83,6 +86,8 @@ export const mapEntrySchema = z.object({
   subjectId: z.string().nullable(),
   subjectName: z.string().nullable(),
   nodeCount: z.number().int().nonnegative(),
+  /** How many concepts sit under each branch of the root, for the tile's small drawing of the map. */
+  shape: z.array(z.number().int().nonnegative().max(MAP_SHAPE.leaves)).max(MAP_SHAPE.branches),
   grounding: z.enum(["sources", "general"]),
 });
 export type MapEntry = z.infer<typeof mapEntrySchema>;

@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Button, Input, Modal, Select } from "antd";
-import { GraduationCap, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
@@ -9,6 +9,7 @@ import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
+import { MapThumb } from "./MapThumb";
 import "./MapsHome.css";
 import { usePlan, usePlans } from "../../lib/queries";
 
@@ -170,45 +171,25 @@ function groups(maps: MapEntry[]) {
   return result;
 }
 
+/** A map's tile: a small drawing of the map, its title and where it belongs. The whole tile opens the map. */
 function MapCard({ map }: { map: MapEntry }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   return (
-    <article className="px-card px-maps-card">
-      <div className="px-maps-card-top">
+    <Link className="px-maps-tile" to={mapPath(map)}>
+      <span className="px-maps-thumb">
+        <MapThumb shape={map.shape} />
+      </span>
+      <div className="px-maps-cap">
         <h3 className="px-maps-card-title">{map.title}</h3>
-        <p className="small px-maps-card-origin">
-          <Link
-            to={`/plans/${map.planId}`}
-            aria-label={t("map.openExam", { title: map.planTitle })}
-          >
-            <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
-            <span>{map.planTitle}</span>
-          </Link>
-          {/* The dot stays with the topic when the line wraps. */}
-          <span>
-            <span aria-hidden>· </span>
-            {map.topicTitle}
-          </span>
+        <p className="px-maps-card-origin">
+          {map.planTitle} · {map.topicTitle}
+        </p>
+        <p className="px-maps-card-meta">
+          {t("maps.concepts", { count: map.nodeCount })}
+          {map.grounding === "general" ? <Tag tone="general">{t("maps.general")}</Tag> : null}
         </p>
       </div>
-      <div className="px-maps-card-foot">
-        <span className="px-maps-card-meta">
-          {t("maps.concepts", { count: map.nodeCount })}
-          {map.grounding === "general" ? (
-            <Tag tone="general">{t("maps.general")}</Tag>
-          ) : null}
-        </span>
-        <Button
-          shape="round"
-          size="small"
-          aria-label={t("maps.openLabel", { title: map.title })}
-          onClick={() => navigate(mapPath(map))}
-        >
-          {t("maps.open")}
-        </Button>
-      </div>
-    </article>
+    </Link>
   );
 }
 
