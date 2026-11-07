@@ -193,8 +193,10 @@
   bottom: var(--space-3);
   z-index: 5;
 }
+/* It floats over the map, so it keeps a card's shadow where other secondary buttons sit flat. */
 .px-map-fit .px-btn-secondary {
   background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 /* Concepts: compact pills, the root in the display face, the selected one in the accent's soft colour. */
