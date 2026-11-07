@@ -1770,7 +1770,6 @@
   },
   "settings": {
     "title": "Settings",
-    "appearance": "Appearance",
     "language": "Language",
     "system": "System",
     "dark": "Dark",
@@ -1893,7 +1892,6 @@
     "restoreFailed": "That file is not a valid backup.",
     "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",
     "restoreRecoveryRequired": "Pyxis could neither finish the restore nor undo it, so it stopped to keep your data safe. Quit Pyxis and open it again to get back the data you had before the restore.",
-    "about": "About",
     "move": "Move workspace",
     "moveHint": "Choose a folder. Pyxis creates a subfolder and verifies the data before switching.",
     "ocr": "Photos and scans",
@@ -1908,15 +1906,9 @@
     "runSetup": "Run setup again",
     "runSetupHint": "Go through the first setup again with your answers filled in. Your profile is saved when you reach the end.",
     "enginesTitle": "AI engines",
-    "diagnostics": "Engine diagnostics",
-    "diagnosticsHint": "Check an engine's connection and model here. Results stay in this app.",
     "back": "Back to settings",
     "saveFailed": "The setting could not be saved. Try again.",
     "readingSample": "Velocity tells us how displacement changes over time. Read this paragraph while choosing the size and spacing that suit you.",
-    "groups": {
-      "study": "Study",
-      "app": "App"
-    },
     "crashOn": "Allowed: when Pyxis hits an error, it sends a technical report on its own.",
     "crashOff": "Not allowed: no report leaves this computer.",
     "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them. They don't slow Pyxis down, and a report goes only after an error.",
@@ -1930,7 +1922,26 @@
     "levelHelp": "The tutor explains at this level in chats and in the exams you create from now on.",
     "gradeScale": "Grades and goals",
     "gradeScaleOn": "Out of {{scale}}",
-    "gradeScaleHelp": "Applies to grades, goals and preparation everywhere in the app. Changing your study level sets it back to that level's scale: out of 30 at university, out of 100 at other levels."
+    "gradeScaleHelp": "Applies to grades, goals and preparation everywhere in the app. Changing your study level sets it back to that level's scale: out of 30 at university, out of 100 at other levels.",
+    "pages": {
+      "profile": "Profile",
+      "engines": "AI tools",
+      "study": "Study",
+      "appearance": "Appearance and language",
+      "data": "Data and privacy",
+      "about": "About"
+    },
+    "pageIntro": {
+      "profile": "Pyxis fits explanations, quizzes and exams to what you write here.",
+      "engines": "The AI tools Pyxis uses to write lessons, quizzes and answers.",
+      "study": "How it explains, how text looks, new flashcards each day and reminders.",
+      "appearance": "The app's theme and language.",
+      "data": "Where your data lives, backups and what leaves your computer.",
+      "about": "Pyxis's version, updates and licences."
+    },
+    "studyHint": "explanations, reading, flashcards, reminders",
+    "theme": "Theme",
+    "aboutBlock": "Version and licences"
   },
   "jobs": {
     "topicsMore_one": "{{first}} and one more topic",

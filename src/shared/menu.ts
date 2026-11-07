@@ -17,7 +17,8 @@ export const pageCommands = {
   "new-exam": "/plans/new",
   "new-chat": "/ask",
   settings: "/settings",
-  about: "/settings/about",
+  // The version and licences, inside Informazioni.
+  about: "/settings/version",
   "check-updates": "/settings/updates",
 } as const;
 

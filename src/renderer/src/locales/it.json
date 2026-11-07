@@ -1770,7 +1770,6 @@
   },
   "settings": {
     "title": "Impostazioni",
-    "appearance": "Aspetto",
     "language": "Lingua",
     "system": "Sistema",
     "dark": "Scuro",
@@ -1893,7 +1892,6 @@
     "restoreFailed": "Il file non è una copia valida.",
     "restoreRolledBack": "Il ripristino non è riuscito a finire, quindi Pyxis è tornato ai dati che avevi prima. Della copia non è stato tenuto nulla.",
     "restoreRecoveryRequired": "Pyxis non è riuscito né a finire né ad annullare il ripristino, quindi si è fermato per non mettere a rischio i tuoi dati. Esci da Pyxis e riaprilo per riavere i dati che avevi prima del ripristino.",
-    "about": "Informazioni",
     "move": "Sposta lo spazio di lavoro",
     "moveHint": "Scegli una cartella. Pyxis crea una sottocartella e verifica i dati prima di spostarli.",
     "ocr": "Foto e scansioni",
@@ -1908,15 +1906,9 @@
     "runSetup": "Rifai la configurazione",
     "runSetupHint": "Ripassa la configurazione iniziale con le tue risposte già inserite. Il profilo si salva quando arrivi in fondo.",
     "enginesTitle": "Motori AI",
-    "diagnostics": "Diagnostica dei motori",
-    "diagnosticsHint": "Controlla qui la connessione e il modello di un motore. I risultati restano nell'app.",
     "back": "Torna alle impostazioni",
     "saveFailed": "L’impostazione non è stata salvata. Riprova.",
     "readingSample": "La velocità descrive come cambia lo spostamento nel tempo. Leggi questo paragrafo mentre scegli la dimensione e la spaziatura più adatte a te.",
-    "groups": {
-      "study": "Studio",
-      "app": "App"
-    },
     "crashOn": "Consentite: se Pyxis va in errore, invia da solo un rapporto tecnico.",
     "crashOff": "Non consentite: nessun rapporto lascia questo computer.",
     "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli. Non rallentano Pyxis, e un rapporto parte solo dopo un errore.",
@@ -1930,7 +1922,26 @@
     "levelHelp": "Il tutor spiega a questo livello nelle chat e negli esami che crei da qui in poi.",
     "gradeScale": "Voti e obiettivi",
     "gradeScaleOn": "Su {{scale}}",
-    "gradeScaleHelp": "Vale per voti, obiettivi e preparazione in tutta l'app. Se cambi livello di studio torna alla scala di quel livello: su 30 all'università, su 100 negli altri casi."
+    "gradeScaleHelp": "Vale per voti, obiettivi e preparazione in tutta l'app. Se cambi livello di studio torna alla scala di quel livello: su 30 all'università, su 100 negli altri casi.",
+    "pages": {
+      "profile": "Profilo",
+      "engines": "Strumenti AI",
+      "study": "Studio",
+      "appearance": "Aspetto e lingua",
+      "data": "Dati e privacy",
+      "about": "Informazioni"
+    },
+    "pageIntro": {
+      "profile": "Pyxis adatta spiegazioni, quiz ed esami a quello che scrivi qui.",
+      "engines": "Gli strumenti AI con cui Pyxis scrive lezioni, quiz e risposte.",
+      "study": "Come ti spiega, come mostra il testo, le flashcard nuove di ogni giorno e i promemoria.",
+      "appearance": "Il tema e la lingua dell'app.",
+      "data": "Dove sono i tuoi dati, le copie di sicurezza e cosa lascia il computer.",
+      "about": "La versione di Pyxis, gli aggiornamenti e le licenze."
+    },
+    "studyHint": "spiegazioni, lettura, flashcard, promemoria",
+    "theme": "Tema",
+    "aboutBlock": "Versione e licenze"
   },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",
