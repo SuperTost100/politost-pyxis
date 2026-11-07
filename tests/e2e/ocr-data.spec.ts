@@ -11,6 +11,7 @@ import {
   readFileSync,
   truncateSync,
 } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,32 +86,66 @@ function expectPinned(userData: string) {
   }
 }
 
+/**
+ * A local server standing in for GitHub, so no test downloads from it: it serves the pinned files the fixtures task
+ * downloaded once (`npm run test:fixtures`) and records each request.
+ */
+async function tessdataServer() {
+  const dir = process.env.PYXIS_TESSDATA_DIR ?? join(process.cwd(), ".tmp", "tessdata-fast");
+  const requests: string[] = [];
+  const server = createHttpServer((request, response) => {
+    const path = request.url ?? "";
+    requests.push(path);
+    const name = /^\/(eng|ita)\.traineddata$/.exec(path)?.[0].slice(1);
+    if (!name || !existsSync(join(dir, name))) return void response.writeHead(404).end();
+    response.writeHead(200, { "content-type": "application/octet-stream" }).end(readFileSync(join(dir, name)));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    base: `http://127.0.0.1:${(server.address() as { port: number }).port}/`,
+    requests,
+    close: () => server.close(),
+  };
+}
+
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in has translucent text, which axe reports as low contrast.
   await animationsSettled(page);
   await expectNoAxeViolations(page);
 }
 
-test("OCR data: a refused photo asks first, the app downloads the pinned files on consent, and the choice survives a restart", async () => {
+test("OCR data: once setup is done Pyxis downloads the pinned files by itself, reads a photo with them, and repairs an altered file", async () => {
   test.setTimeout(300000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ocr-data-"));
-  let app = await launch(userData);
+  const files = await tessdataServer();
+  let app = await launch(userData, { PYXIS_E2E_OCR_BASE: files.base });
   try {
-    let page = await start(app, "/exams/library", true);
-    const first = await invoke<{
-      consent: boolean;
-      state: string;
-      totalBytes: number;
-      languages: string[];
-    }>(page, "sources.ocrDataState");
-    expect(first).toMatchObject({
-      consent: false,
+    // Setup downloads nothing.
+    let page = await app.firstWindow();
+    await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
+    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({
+      consent: true,
       state: "missing",
       totalBytes,
       languages: ["eng", "ita"],
     });
+    expect(await ocrJobs(page)).toHaveLength(0);
+    expect(files.requests).toEqual([]);
+    page = await start(app, "/exams/library", true);
+    // Once it ends, the download runs on its own as a job in Attività, with nothing to press.
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "sources.ocrDataState")).state, { timeout: 120000 })
+      .toBe("ready");
+    expectPinned(userData);
+    expect(files.requests).toEqual(["/eng.traineddata", "/ita.traineddata"]);
+    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({ consent: true, state: "ready" });
+    // A finished download leaves the jobs list for the finished ones.
+    expect(await ocrJobs(page)).toHaveLength(0);
+    expect(
+      (await invoke<Job[]>(page, "jobs.finished")).filter((job) => job.kind === "ocr-data-download"),
+    ).toMatchObject([{ state: "succeeded" }]);
 
-    // A HEIC photo is refused before any row exists, and nothing is fetched until the student agrees.
+    // A HEIC photo is read with the data straight away, with no question first.
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -119,41 +154,6 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
       process.env.PYXIS_E2E_FILE = path;
     }, HEIC);
     await dialog.getByRole("button", { name: "Scegli i file" }).click();
-    await expect(
-      dialog.getByText(/Per leggere questo file Pyxis ha bisogno/),
-    ).toBeVisible();
-    await expect(dialog.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
-    await expect(dialog.getByRole("button", { name: download })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Non ora" })).toBeVisible();
-    await noAxeViolations(page);
-    expect(await invoke<unknown[]>(page, "sources.list")).toHaveLength(0);
-    expect(await ocrJobs(page)).toHaveLength(0);
-    expect(existsSync(tessDir(userData))).toBe(false);
-    expect(
-      (await invoke<{ consent: boolean }>(page, "sources.ocrDataState"))
-        .consent,
-    ).toBe(false);
-
-    // Agreeing downloads the pinned files. The refused import is not run for the student: they press it again.
-    await dialog.getByRole("button", { name: download }).click();
-    const again = dialog.getByRole("button", {
-      name: "Aggiungi di nuovo il file",
-    });
-    await expect(again).toBeVisible({ timeout: 120000 });
-    await expect(
-      dialog.getByText("La lettura delle scansioni è pronta"),
-    ).toBeVisible();
-    expectPinned(userData);
-    // A finished download leaves the jobs list; the disk and the state request are what show it is done.
-    expect(await ocrJobs(page)).toHaveLength(0);
-    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({
-      consent: true,
-      state: "ready",
-    });
-    expect(await invoke<unknown[]>(page, "sources.list")).toHaveLength(0);
-    await noAxeViolations(page);
-
-    await again.click();
     await expect
       .poll(
         async () =>
@@ -171,9 +171,9 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
       )
       .toBe("failed");
 
-    // The consent and the files outlive a restart.
+    // The files outlive a restart, and nothing is downloaded again.
     await app.close();
-    app = await launch(userData);
+    app = await launch(userData, { PYXIS_E2E_OCR_BASE: files.base });
     page = await start(app, "/settings/data");
     await expect(
       page.getByText("La lettura delle scansioni è pronta"),
@@ -183,27 +183,26 @@ test("OCR data: a refused photo asks first, the app downloads the pinned files o
       consent: true,
       state: "ready",
     });
+    expect(files.requests).toHaveLength(2);
+    expect(await ocrJobs(page)).toHaveLength(0);
     await noAxeViolations(page);
 
-    // An altered file is reported as damaged, and downloading again replaces it with the pinned bytes.
+    // An altered file is replaced with the pinned bytes by itself, and only that file is fetched.
     truncateSync(join(tessDir(userData), "eng.traineddata"), 1000);
     await page.reload();
-    await expect(page.getByText(/danneggiati o incompleti/)).toBeVisible();
-    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({
-      state: "integrity",
-    });
-    await page.getByRole("button", { name: downloadAgain }).click();
     await expect(
       page.getByText("La lettura delle scansioni è pronta"),
     ).toBeVisible({ timeout: 120000 });
     expectPinned(userData);
+    expect(files.requests.slice(2)).toEqual(["/eng.traineddata"]);
   } finally {
     await app.close();
+    files.close();
     removeTestFolder(userData);
   }
 });
 
-test("OCR data: cancel and a failed connection leave a clear way back, and Try again finishes the download", async () => {
+test("OCR data: cancel and a failed connection leave a clear way back, and the next start finishes the download", async () => {
   test.setTimeout(300000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ocr-data-"));
   // A local proxy stands in for the network: it holds the connection open, then drops it. Nothing reaches GitHub.
@@ -216,6 +215,7 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
   });
   await new Promise<void>((resolve) => proxy.listen(0, "127.0.0.1", resolve));
   const url = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
+  const files = await tessdataServer();
   let app = await launch(userData, {
     NODE_USE_ENV_PROXY: "1",
     HTTPS_PROXY: url,
@@ -223,8 +223,9 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
   });
   try {
     let page = await start(app, "/settings/data", true);
+    // End-to-end runs never download from GitHub on their own, so the card offers the download.
     await expect(
-      page.getByText("Leggere le scansioni richiede un download una tantum"),
+      page.getByText("I dati per leggere le scansioni non sono ancora su questo computer"),
     ).toBeVisible();
     await page.getByRole("button", { name: download }).click();
     const progress = page.getByRole("progressbar", {
@@ -253,16 +254,10 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
     ]);
     await noAxeViolations(page);
 
-    // After a restart with a working connection, Try again fetches the files and clears the failure.
+    // After a restart with a working connection, Pyxis replaces the failed download with a new one by itself.
     await app.close();
-    app = await launch(userData);
+    app = await launch(userData, { PYXIS_E2E_OCR_BASE: files.base });
     page = await start(app, "/settings/data");
-    await expect(
-      page.getByText(
-        /Pyxis non è riuscito a raggiungere raw\.githubusercontent\.com/,
-      ),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Riprova" }).click();
     await expect(
       page.getByText("La lettura delle scansioni è pronta"),
     ).toBeVisible({ timeout: 120000 });
@@ -271,6 +266,7 @@ test("OCR data: cancel and a failed connection leave a clear way back, and Try a
   } finally {
     await app.close();
     proxy.close();
+    files.close();
     removeTestFolder(userData);
   }
 });

@@ -69,6 +69,20 @@ export function Shell() {
       .catch(() => undefined);
   }, [storedLanguage, interfaceLanguage, client]);
 
+  // Once setup is done, core downloads the scan-reading data in the background, as a job in Attività. It asks nothing,
+  // skips data that is already here, and retries a download that stopped in an earlier session.
+  const setUp = !inSetup && Boolean(profile.data);
+  useEffect(() => {
+    if (!setUp) return;
+    void invoke("sources.ocrDataAuto", {})
+      .then(() => {
+        void client.invalidateQueries({ queryKey: ["ocr-data"] });
+        void client.invalidateQueries({ queryKey: ["jobs"] });
+      })
+      // Nothing to show: a screen that needs the data starts the download again, or offers it.
+      .catch(() => undefined);
+  }, [setUp, client]);
+
   // A running exam simulation hides Chiedi, as the redirect above keeps the student out of it; so does the moment the
   // simulation check is still out.
   const simulation = activeSimulation.isLoading || Boolean(activeSimulation.data);

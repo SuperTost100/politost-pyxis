@@ -2270,7 +2270,9 @@ async function openState(page: Page, name: string) {
       break;
     case "ocr-settings-missing":
       await expect(
-        page.getByText(/Leggere le scansioni richiede|Reading scans needs/),
+        page.getByText(
+          /I dati per leggere le scansioni non sono ancora|The scan-reading data is not on this computer yet/,
+        ),
       ).toBeVisible();
       await expect(page.getByText(/raw\.githubusercontent\.com/)).toBeVisible();
       await expect(

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Progress } from "antd";
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useJobs } from "../features/jobs/queries";
 import { invoke } from "../lib/ipc";
@@ -19,9 +19,10 @@ function languageList(codes: string[], locale: string): string {
 }
 
 /**
- * First-use consent, progress and recovery for the local OCR language data. It shows disk truth from core, so it reads
- * the same in Settings and in a refused flow. Nothing is downloaded until the student presses Download, and a refused
- * action is never run again for them: `readyAction` is the button they press once the data is ready.
+ * Progress and recovery for the local OCR language data, which Pyxis downloads by itself. It shows disk truth from core,
+ * so it reads the same in Settings and in a refused flow. Data that is missing, with no download under way or stopped,
+ * starts downloading when the card opens. A refused action is never run again for the student: `readyAction` is the
+ * button they press once the data is ready.
  */
 export function OcrDataCard({
   refusal,
@@ -43,7 +44,8 @@ export function OcrDataCard({
     queryKey: ["ocr-data"],
     queryFn: () => invoke("sources.ocrDataState", {}),
   });
-  const { data: jobs = [] } = useJobs();
+  const jobsQuery = useJobs();
+  const jobs = jobsQuery.data ?? [];
   const mine = jobs.filter((job) => job.kind === "ocr-data-download");
   const active = mine.find(
     (job) => job.state === "queued" || job.state === "running",
@@ -52,6 +54,22 @@ export function OcrDataCard({
     ["failed", "cancelled", "interrupted"].includes(job.state),
   );
   const last = stopped.at(-1);
+  // The first time a screen needs the data and nothing is downloading it, it starts here. A download that stopped waits
+  // for Try again, so a cancel is not undone behind the student's back.
+  const autoStarted = useRef(false);
+  const idle =
+    jobsQuery.isSuccess && state.data && state.data.state !== "ready" && !state.data.jobId && !active && !last;
+  useEffect(() => {
+    if (!idle || autoStarted.current) return;
+    autoStarted.current = true;
+    void invoke("sources.ocrDataAuto", {})
+      .then(() => {
+        void client.invalidateQueries({ queryKey: ["ocr-data"] });
+        void client.invalidateQueries({ queryKey: ["jobs"] });
+      })
+      // The card keeps its Download button, so a start that failed here is one press away.
+      .catch(() => undefined);
+  }, [idle, client]);
   if (!state.data) return null;
 
   const size = formatBytes(state.data.totalBytes, i18n.language);
