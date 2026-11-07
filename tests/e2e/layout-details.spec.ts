@@ -277,45 +277,29 @@ test("LAYOUT-03 the exam settings save bar leaves the goal slider in view", asyn
   }
 });
 
-test("LAYOUT-04 setup offers the kinds of school, and the study levels fill their rows in the profile", async () => {
+test("LAYOUT-04 setup offers the kinds of school, and the profile picks the level from a dropdown that fits its row", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-details-"));
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const rows = (target: Page) =>
-      target.evaluate(() => {
-        const grid = document.querySelector(".px-profile-levels")!;
-        const box = grid.getBoundingClientRect();
-        const lines = new Map<number, Array<{ left: number; right: number }>>();
-        for (const item of Array.from(grid.children)) {
-          const rect = item.getBoundingClientRect();
-          const line = lines.get(Math.round(rect.top)) ?? [];
-          line.push({ left: rect.left, right: rect.right });
-          lines.set(Math.round(rect.top), line);
-        }
-        return {
-          left: box.left,
-          right: box.right,
-          lines: [...lines.values()].map((line) => ({
-            count: line.length,
-            left: Math.min(...line.map((item) => item.left)),
-            right: Math.max(...line.map((item) => item.right)),
-          })),
-        };
-      });
-    const balanced = async (target: Page) => {
-      const found = await rows(target);
-      expect(found.lines.length).toBeGreaterThan(1);
-      for (const line of found.lines) {
-        // No row holds a single option, and every row runs the full width of the grid.
-        expect(line.count).toBeGreaterThan(1);
-        expect(Math.abs(line.left - found.left)).toBeLessThan(1);
-        expect(Math.abs(line.right - found.right)).toBeLessThan(1);
-      }
-      const counts = found.lines.map((line) => line.count);
-      expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    // The profile picks the level from a dropdown in its row: the whole field sits inside the card, beside the row's text.
+    const fits = async (target: Page) => {
+      const field = target.getByRole("combobox", { name: /^(Livello di studio|Education level)$/ });
+      await expect(field).toBeVisible();
+      const [box, card, title] = await Promise.all([
+        field.boundingBox(),
+        field.locator("xpath=ancestor::ul[1]").boundingBox(),
+        target.getByText(/^(Livello di studio|Education level)$/).boundingBox(),
+      ]);
+      expect(box!.x).toBeGreaterThanOrEqual(card!.x);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(card!.x + card!.width);
+      expect(box!.y).toBeGreaterThanOrEqual(card!.y);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(card!.y + card!.height);
+      // At 960 px and wider the field shares the row with its name instead of wrapping under it.
+      expect(box!.y).toBeLessThan(title!.y + title!.height);
+      await expect(field.locator("option")).toHaveCount(7);
     };
 
     for (const language of ["it", "en"] as const)
@@ -343,8 +327,7 @@ test("LAYOUT-04 setup offers the kinds of school, and the study levels fill thei
           await page.evaluate(() => {
             location.hash = "/settings/profile";
           });
-          await expect(page.locator(".px-profile-levels")).toBeVisible();
-          await balanced(page);
+          await fits(page);
           await saveShot(page, `layout-details/profile-levels-${key}.png`, { fullPage: true });
           await expectNoAxeViolations(page);
         }

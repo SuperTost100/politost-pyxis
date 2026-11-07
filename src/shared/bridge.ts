@@ -113,6 +113,8 @@ export interface PyxisBridge {
   /** Without a name, asks for a backup file. With the name of an automatic backup from `autoBackups.list`, restores that one. */
   restoreWorkspace(backup?: string): Promise<"restored" | "cancelled">;
   workspacePath(): Promise<string>;
+  /** Opens the workspace folder in the system's file manager. Rejects with `workspace-open-failed`. */
+  openWorkspace(): Promise<void>;
   moveWorkspace(): Promise<
     | { status: "cancelled" }
     | { status: "moved"; path: string; cleanupPending: boolean }
@@ -209,6 +211,7 @@ export const mainChannels = {
   workspaceBackup: "workspace:backup",
   workspaceRestore: "workspace:restore",
   workspacePath: "workspace:path",
+  workspaceOpen: "workspace:open",
   workspaceMove: "workspace:move",
   workspaceWipe: "workspace:wipe",
   autoBackupStatus: "auto-backup:status",

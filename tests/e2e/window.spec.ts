@@ -505,7 +505,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       process.env.PYXIS_E2E_SAVE = path;
     }, backup);
     await page
-      .getByRole("button", { name: "Copia di sicurezza", exact: true })
+      .getByRole("button", { name: "Salva una copia in un file…", exact: true })
       .click();
     // A full backup of the workspace passed 5 s on the hosted Windows runner.
     await expect(
@@ -522,7 +522,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       await page.evaluate(() => window.pyxis.invoke("plans.list", {})),
     ).toHaveLength(0);
     console.log("release: restore");
-    await page.getByRole("button", { name: "Ripristina", exact: true }).click();
+    await page.getByRole("button", { name: "Ripristina da un file…", exact: true }).click();
     await Promise.all([
       page.waitForEvent("load"),
       page.getByRole("button", { name: /^Sostituisci / }).click(),

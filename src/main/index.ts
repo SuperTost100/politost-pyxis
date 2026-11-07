@@ -1522,6 +1522,11 @@ function registerIpc(): void {
     requireMainSender(event, "main-untrusted-sender");
     return workspacePath;
   });
+  ipcMain.handle(mainChannels.workspaceOpen, async (event) => {
+    requireMainSender(event, "workspace-untrusted-sender");
+    const failure = await shell.openPath(workspacePath);
+    if (failure) throw new Error("workspace-open-failed");
+  });
   ipcMain.handle(mainChannels.workspaceWipe, async (event, options: unknown) => {
     requireMainSender(event, "workspace-untrusted-sender");
     // Deleting backups needs an explicit true; anything else keeps them.

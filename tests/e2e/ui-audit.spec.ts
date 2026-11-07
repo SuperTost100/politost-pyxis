@@ -2295,12 +2295,12 @@ async function openState(page: Page, name: string) {
     case "backup-settings-off": {
       const on = name === "backup-settings-on";
       const toggle = page.getByRole("switch", {
-        name: both("Copia di sicurezza automatica", "Back up automatically"),
+        name: both("Copia automatica ogni giorno", "Back up every day"),
       });
       if (on) await expect(toggle).toBeChecked();
       else await expect(toggle).not.toBeChecked();
       await expect(
-        page.getByText(on ? /^(Una volta al giorno|Once a day)/ : /^(Spenta|Off)\./),
+        page.getByText(on ? /^(Mentre Pyxis è aperto|While Pyxis is open)\./ : /^(Spenta|Off)\./),
       ).toBeVisible();
       await expect(
         page.getByText(/^(Ultima copia|Last backup): .+\.$/),
@@ -2317,10 +2317,12 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       await expect(
-        page.getByText(/^(Cartella|Folder): \/Volumes\/CHIAVETTA\/Pyxis$/),
+        page.getByText("/Volumes/CHIAVETTA/Pyxis", { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: both("Cambia cartella", "Change folder") }),
+        page.getByRole("button", {
+          name: both("Cambia la cartella delle copie", "Change the backup folder"),
+        }),
       ).toBeVisible();
       break;
     case "ocr-download-cancelled":

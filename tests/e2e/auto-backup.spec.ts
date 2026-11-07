@@ -117,7 +117,7 @@ test("automatic backups: not while empty, then once a day with retention of this
     });
     await expect(page.getByText(/^Ultima copia: .+\.$/)).toBeVisible();
     await expect(
-      page.getByText(`Cartella: ${folder}`, { exact: true }),
+      page.getByText(folder, { exact: true }),
     ).toBeVisible();
     await quitPyxis(app);
 
@@ -279,18 +279,18 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
       ),
     ).toBeVisible();
     await expect(
-      page.getByText(`Cartella: ${usb}`, { exact: true }),
+      page.getByText(usb, { exact: true }),
     ).toBeVisible();
 
     // A folder inside Pyxis's own data is refused and the saved folder stays.
     await page
-      .getByRole("button", { name: "Cambia cartella", exact: true })
+      .getByRole("button", { name: "Cambia la cartella delle copie", exact: true })
       .click();
     await expect(
       page.getByText(/^Quella cartella è dentro i dati di Pyxis/),
     ).toBeVisible();
     await expect(
-      page.getByText(`Cartella: ${usb}`, { exact: true }),
+      page.getByText(usb, { exact: true }),
     ).toBeVisible();
 
     // Plugging the drive back in is enough: Back up now writes there and the notice goes.
@@ -302,7 +302,7 @@ test("a missing backup folder shows a notice with the fix, and choosing another 
 
     // Turned off, the switch says so and the setting is saved.
     await page
-      .getByRole("switch", { name: "Copia di sicurezza automatica" })
+      .getByRole("switch", { name: "Copia automatica ogni giorno" })
       .click();
     await expect(page.getByText(/^Spenta\./)).toBeVisible();
     expect(
