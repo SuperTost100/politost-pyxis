@@ -439,8 +439,43 @@ html[data-platform="darwin"] .px-side[data-folded] .px-side-top {
 .px-side[data-folded] .px-side-brand {
   padding: 6px 0 10px;
 }
-.px-side[data-folded] .px-side-fold {
-  margin-bottom: 12px;
+/* Folded, the mark is the button that unfolds the sidebar: on hover or keyboard focus it shows the sidebar icon on a
+   soft square in its place. */
+.px-side-unfold {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background-color 0.15s ease-out;
+}
+.px-side-unfold > * {
+  grid-area: 1 / 1;
+}
+.px-side-unfold .px-side-unfold-icon {
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.px-side-unfold .px-brand-mark {
+  transition: opacity 0.12s ease-out;
+}
+.px-side-unfold:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+}
+.px-side-unfold:is(:hover, :focus-visible) .px-side-unfold-icon {
+  opacity: 1;
+}
+.px-side-unfold:is(:hover, :focus-visible) .px-brand-mark {
+  opacity: 0;
+}
+.px-side[data-folded] .px-side-unfold {
+  margin: 6px 0 10px;
+  padding: 0;
 }
 .px-side[data-folded] :is(kbd, .px-side-recent, .px-side-me > svg) {
   display: none;
