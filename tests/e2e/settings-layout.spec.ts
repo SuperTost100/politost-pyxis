@@ -78,6 +78,24 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
       window.location.hash = "#/settings/version";
     });
     await expect(page.getByRole("heading", { level: 2, name: "Versione e licenze" })).toBeInViewport();
+    // It stops below the strip that drags the window on macOS, here forced on, not behind it.
+    await page.evaluate(() => (document.documentElement.dataset.platform = "darwin"));
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/updates";
+    });
+    await page.evaluate(() => {
+      const top = document.getElementById("settings-version")!.getBoundingClientRect().top + window.scrollY;
+      window.scrollTo({ top: top + 400 });
+    });
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/version";
+    });
+    const headingTop = () =>
+      page.evaluate(() => Math.round(document.querySelector("#settings-version h2")!.getBoundingClientRect().top));
+    // Wait for the scroll to land near the top, then check it stopped below the strip.
+    await expect.poll(headingTop).toBeLessThan(120);
+    expect(await headingTop()).toBeGreaterThanOrEqual(28);
+    await page.evaluate(() => (document.documentElement.dataset.platform = "linux"));
     await page.locator(".px-about-notices > summary").click();
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {

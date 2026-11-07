@@ -81,6 +81,8 @@ body {
    the traffic lights (trafficLightPosition x 16 in src/main/index.ts). */
 :root {
   --top-height: 0px;
+  /* Whatever scrolls to the top of the page stops below the drag strip, with a little air. */
+  scroll-padding-top: calc(var(--top-height) + 16px);
 }
 html[data-platform="darwin"] {
   --top-height: 28px;
