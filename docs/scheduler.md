@@ -1,6 +1,6 @@
 # Card scheduler
 
-`src/core/study/schedule.ts` uses `ts-fsrs` with default parameters, target retention `0.9` and fuzz disabled. A new card is due at once, within the daily limit below. Each review revives the stored FSRS card, calculates the selected next state and persists the complete result.
+`src/core/study/schedule.ts` uses `ts-fsrs` with default parameters, target retention `0.9` and fuzz disabled. It uses the FSRS-6 model through ts-fsrs 6's legacy `fsrs()` scheduler, since every stored card was scheduled with FSRS-6. ts-fsrs 6 keeps learning steps to the second, but Pyxis rounds a step to whole minutes as ts-fsrs 5 did, so Hard on the first learning step stays 6 minutes. `schedule.test.ts` replays `tests/fixtures/fsrs-5.4.2-replay.json`, review histories recorded with ts-fsrs 5.4.2, and checks that every stored state is the same. A new card is due at once, within the daily limit below. Each review revives the stored FSRS card, calculates the selected next state and persists the complete result.
 
 A plan with an exam date caps the interval at the whole local days from today to the exam day, at least 1, so no card's next review lands after the exam. `ts-fsrs` keeps Hard, Good and Easy at least a day apart even above its `maximum_interval`, so `review()` applies the cap to the chosen card: `scheduled_days` and `due` shrink, stability and difficulty stay. A plan without a date, or whose exam is past, keeps the default maximum. `plans.exam_at` is the date read.
 

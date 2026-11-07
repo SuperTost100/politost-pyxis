@@ -27,6 +27,11 @@ const extraFiles = {
   freetype: ["docs/FTL.TXT"],
   "libjpeg-turbo": ["README.ijg"],
 };
+// Crates whose archive and repository both lack a license file. selectors (servo/stylo, MPL-2.0) has none in either,
+// so its license text comes from Servo's main repository at a pinned commit.
+const crateLicense = {
+  selectors: "https://raw.githubusercontent.com/servo/servo/b38cfe35e652ff74f3c567c992b73f7eca1ef0d7/LICENSE",
+};
 
 async function download(url) {
   const response = await fetch(url);
@@ -95,6 +100,10 @@ async function crateTexts(component) {
     texts.push(text(`${component.name} ${component.version}: ${inner}`, `${source}#${inner}`, data, hash));
   }
   if (texts.length) return texts;
+  const pinned = crateLicense[component.name];
+  // MPL-2.0 asks that recipients learn where the source is, so the label names the crate archive.
+  if (pinned)
+    return [text(`${component.name} ${component.version}: LICENSE (MPL-2.0, source: ${source})`, pinned, await download(pinned))];
   // Some crates publish without their repository's license file. cargo records the commit it packaged from, so the
   // file comes from the repository root at that commit.
   const vcs = files.get(`${top}.cargo_vcs_info.json`);
@@ -173,8 +182,13 @@ for (const platform of platforms) {
     .filter((component) => component.type === "library")
     .sort((a, b) => a.name.localeCompare(b.name, "en") || a.version.localeCompare(b.version, "en"));
   for (const component of components) {
-    // The addon's own crate; its license is the package LICENSE above.
-    if (component.name === "canvas" && !component.hashes) continue;
+    // Local crates: the addon's own crate and skia-fontations, whose source is Skia's src/ports/fontations. Their
+    // licenses are the package and Skia LICENSE texts above. Any other local crate stops the script until its license
+    // is accounted for.
+    if (component.properties?.some((p) => p.name === "cdx:rust:source" && p.value === "local")) {
+      if (component.name === "canvas" || component.name === "skia-fontations") continue;
+      throw new Error(`Unknown local crate ${component.name}`);
+    }
     const key = component.purl;
     if (!cache.has(key)) {
       const found = key.startsWith("pkg:cargo/") ? await crateTexts(component) : await vendoredTexts(component);
