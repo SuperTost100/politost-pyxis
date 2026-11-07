@@ -269,25 +269,18 @@ function SetupStep({
 }
 
 /**
- * Install and sign-in for one CLI engine, as two numbered steps. The install runs the vendor's own script and shows
- * the command first; sign-in starts by itself once the install finishes, except for Antigravity, which needs the
- * student in a terminal.
+ * The install and sign-in state of one CLI engine, for a screen that lays them out itself: `ProviderSetup` below, and
+ * the AI step of first setup. The install runs the vendor's own script; sign-in starts by itself once the install
+ * finishes, except for Antigravity, which needs the student in a terminal. `name` replaces the engine's own name in
+ * the copy, as first setup names the tools after the account the student has.
  */
-export function ProviderSetup({
-  provider,
-  row,
-  onChanged,
-  titled = true,
-}: {
-  provider: InstallableProvider;
-  row: Engine | undefined;
-  /** Something changed on disk or in the account: refresh the engine list. */
-  onChanged: () => void;
-  /** False inside a dialog that already shows the same title. */
-  titled?: boolean;
-}) {
+export function useProviderSetup(
+  provider: InstallableProvider,
+  row: Engine | undefined,
+  onChanged: () => void,
+  name = row?.name ?? fallbackNames[provider],
+) {
   const { t } = useTranslation();
-  const name = row?.name ?? fallbackNames[provider];
   const { vendor, account } = makers[provider];
   const installed = !!row?.installed;
   const signedIn = installed && !!row?.loggedIn;
@@ -309,6 +302,47 @@ export function ProviderSetup({
       setTerminalNote(t("setup.signIn.terminalUnavailable"));
     }
   }
+  return {
+    name,
+    vendor,
+    account,
+    installed,
+    signedIn,
+    signIn,
+    install,
+    terminalNote,
+    terminalSignIn,
+    openAntigravity,
+  };
+}
+
+/** Install and sign-in for one CLI engine, as two numbered steps. The install shows the command before it runs. */
+export function ProviderSetup({
+  provider,
+  row,
+  onChanged,
+  titled = true,
+}: {
+  provider: InstallableProvider;
+  row: Engine | undefined;
+  /** Something changed on disk or in the account: refresh the engine list. */
+  onChanged: () => void;
+  /** False inside a dialog that already shows the same title. */
+  titled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const {
+    name,
+    vendor,
+    account,
+    installed,
+    signedIn,
+    signIn,
+    install,
+    terminalNote,
+    terminalSignIn,
+    openAntigravity,
+  } = useProviderSetup(provider, row, onChanged);
 
   return (
     <section className="px-setup" aria-labelledby={`setup-${provider}`}>

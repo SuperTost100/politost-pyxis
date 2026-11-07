@@ -22,6 +22,20 @@
 .px-crash-row .ant-switch {
   flex: none;
 }
+.px-crash-setup {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-6);
+}
+.px-crash-setup .ant-switch {
+  flex: none;
+  margin-top: 1px;
+}
+.px-crash-setup p {
+  max-width: 68ch;
+  line-height: 1.5;
+}
 .px-crash-facts {
   display: grid;
   gap: var(--space-1);

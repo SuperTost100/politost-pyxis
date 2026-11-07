@@ -69,10 +69,13 @@ export function LibraryPanel({
   droppedFiles,
   onClose,
   onImported,
+  tab = "file",
 }: {
   importOnly?: boolean;
   /** Files dropped on a zone outside the panel: it imports them as soon as it opens. */
   droppedFiles?: File[];
+  /** The way of adding the dialog opens on, such as "folder" when the student chose a folder. */
+  tab?: "file" | "folder";
   onClose?: () => void;
   /** Called with the ids of the sources an import just created, so a caller can use them right away. */
   onImported?: (sourceIds: string[]) => void;
@@ -83,7 +86,7 @@ export function LibraryPanel({
   const list = useSources();
   const [addOpen, setAddOpen] = useState(importOnly);
   const [booksOpen, setBooksOpen] = useState(false);
-  const [addTab, setAddTab] = useState("file");
+  const [addTab, setAddTab] = useState<string>(tab);
   // One field searches titles or, with the Content scope, the passages inside the sources.
   const [searchText, setSearchText] = useState("");
   const [scope, setScope] = useState<"titles" | "content">("titles");

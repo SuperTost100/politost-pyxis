@@ -23,6 +23,28 @@ export function CrashReportsSwitch({
 }) {
   const { t } = useTranslation();
   const id = useId();
+  // Setup draws it as the mockup's card: the switch first, then what a report is, in one paragraph. The facts are the
+  // same as on the Privacy page, said shorter.
+  if (setup)
+    return (
+      <div className="px-card px-crash-setup">
+        <Switch
+          id={id}
+          checked={checked}
+          disabled={disabled}
+          aria-describedby={`${id}-why`}
+          onChange={onChange}
+        />
+        <div className="px-crash-text">
+          <label className="body-strong" htmlFor={id}>
+            {t("settings.crashReports")}
+          </label>
+          <p className="small" id={`${id}-why`}>
+            {t("settings.crashSetup")} {t("settings.crashKeptSetup")}
+          </p>
+        </div>
+      </div>
+    );
   return (
     <div className="px-crash">
       <div className="px-card px-crash-row">

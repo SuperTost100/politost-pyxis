@@ -10,7 +10,7 @@ import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
 import { profileQuery } from "../../lib/queries";
-import { PyxisMark, Sidebar } from "./Sidebar";
+import { Sidebar } from "./Sidebar";
 
 export function Shell() {
   const { t, i18n } = useTranslation();
@@ -90,12 +90,9 @@ export function Shell() {
   return (
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>
       {inSetup ? (
-        // Setup is one closed flow: the mark, and the jobs its material starts, with no way out of it.
+        // Setup is one closed flow: the jobs its material starts, and no way out of it. The page shows the mark beside
+        // its steps.
         <header className="px-setup-top">
-          <span className="px-brand">
-            <PyxisMark />
-            Pyxis
-          </span>
           <JobsButton />
         </header>
       ) : (

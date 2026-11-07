@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
+import { saveShot } from "./shots";
 
 // Stand-ins for the two engine CLIs. They report a version and a sign-in state, nothing more, so no model is called.
 function fakeBins(options: { claude: boolean | null; codex: boolean | null }) {
@@ -57,6 +58,17 @@ async function launch(
   return launchPyxis({ userData, env: extra });
 }
 
+/** Main answers the next file picker with `paths`, as if the student had chosen them. */
+async function answerPicker(app: ElectronApplication, paths: string[]) {
+  await app.evaluate(({ dialog }, answer) => {
+    delete process.env["PYXIS_E2E_FILE"];
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: answer,
+    })) as typeof dialog.showOpenDialog;
+  }, paths);
+}
+
 async function noAxeViolations(page: Page) {
   // A dialog that is still fading in can measure as low contrast, so wait for finite animations to end first.
   await animationsSettled(page);
@@ -81,86 +93,117 @@ const stepper = (page: Page) => page.getByRole("list", { name: "Avanzamento" });
 const currentStep = (page: Page) => page.locator("[aria-current=step]");
 // The visible primary buttons: each state of a step has exactly one.
 const primaryButtons = (page: Page) => page.locator(".ant-btn-primary:visible");
-// The engine rows of setup step 2.
-const engineRows = (page: Page) =>
-  page.getByRole("list", { name: "Motori su questo computer" }).getByRole("listitem");
+// The AI step's cards, one per tool, found by the tool's name.
+const card = (page: Page, name: string) =>
+  page
+    .getByRole("list", { name: "Le AI che Pyxis può usare" })
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name, exact: true }) });
+const cardState = (page: Page, name: string) =>
+  card(page, name).locator(".px-tool-state");
+// The engine rows under Advanced, found by the engine's name alone (a row's models can name another vendor).
+const engineRow = (page: Page, name: string) =>
+  page
+    .getByRole("list", { name: "Motori su questo computer" })
+    .getByRole("listitem")
+    .filter({
+      has: page.locator(".px-engine-name", { hasText: new RegExp(`^${name}$`) }),
+    });
+const advanced = (page: Page) =>
+  button(page, "Avanzate: modello sul computer o chiave API");
+// What the AI step found, said once to screen readers.
+const found = (page: Page, text: string) =>
+  page.getByRole("status").filter({ hasText: text });
 // Setup is closed: no sidebar, so no sections and no Settings, until it ends.
 async function noNavigation(page: Page) {
   await expect(page.getByRole("navigation", { name: "Sezioni" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Impostazioni", exact: true })).toHaveCount(0);
 }
 
-test("First setup: about you, the engine with its notice and crash reports off, the exam with a goal out of 30, the material, then the switch in Settings", async () => {
+test("First setup: you with crash reports off, the AI with its notice, files into the Library, then the switch in Settings", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const { bin, env } = fakeBins({ claude: true, codex: true });
+  const notes = join(bin, "Appunti di cinematica.txt");
+  writeFileSync(
+    notes,
+    "La velocità media è lo spostamento diviso il tempo impiegato a percorrerlo.\n".repeat(20),
+  );
   const app = await launch(userData, env);
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
-    // Step 1: what Pyxis is, and the profile, on one screen.
+    // Step 1: the name, what the student studies and the crash reports, on one screen.
     await expect(
-      page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
+      page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?" }),
     ).toBeVisible();
-    await expect(stepper(page).getByRole("listitem")).toHaveCount(4);
-    await expect(currentStep(page)).toHaveText("Passo 1 di 4: Su di te");
-    await expect(page.getByText("Passo 1 di 4")).not.toBeInViewport();
-    await expect(
-      button(page, "Università").and(page.locator("[aria-pressed=true]")),
-    ).toBeVisible();
+    await expect(stepper(page).getByRole("listitem")).toHaveCount(3);
+    await expect(currentStep(page)).toHaveText("Passo 1 di 3: 1 · Tu");
+    await expect(page.getByText("Passo 1 di 3")).not.toBeInViewport();
+    await expect(page.getByRole("radio", { name: "All'università" })).toBeChecked();
+    // University asks for the degree course; school asks which school instead, starting at upper secondary.
+    await expect(page.getByLabel("Corso di laurea", { exact: true })).toBeVisible();
+    await page.getByRole("radio", { name: "A scuola" }).click();
+    await expect(page.getByRole("radio", { name: "Superiore" })).toBeChecked();
+    await expect(page.getByLabel("Corso di laurea", { exact: true })).toHaveCount(0);
+    // The arrow keys move along the choice, as in any radio group.
+    await page.getByRole("radio", { name: "A scuola" }).press("ArrowLeft");
+    await expect(page.getByRole("radio", { name: "All'università" })).toBeChecked();
+    await expect(page.getByRole("radio", { name: "All'università" })).toBeFocused();
     await noNavigation(page);
-    await page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }).fill("Ada");
+    // Crash reports are off until the student turns them on, and setup says where to change that later.
+    await expect(
+      page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
+    ).not.toBeChecked();
+    await expect(
+      page.getByText("da Impostazioni, alla voce Privacy", { exact: false }),
+    ).toBeVisible();
+    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    await page.getByLabel("Corso di laurea", { exact: true }).fill("Fisica");
     await noAxeViolations(page);
+    await saveShot(page, "onboarding/1-you.png");
     await button(page, "Continua").click();
 
-    // Step 2: what was found, in plain words, and no model call anywhere.
+    // Step 2: the tools by the name of the account, what was found, and no model call anywhere.
     await expect(
-      page.getByRole("heading", { name: "Chi scrive le tue lezioni" }),
-    ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motore AI");
-    await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
-      {
-        timeout: 30000,
-      },
-    );
+      page.getByRole("heading", { name: "Claude e ChatGPT sono pronti" }),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
+    await expect(found(page, "Ho trovato Claude e ChatGPT.")).toHaveCount(1);
     // One notice for both engines, here and not later in a task. Until it is confirmed Pyxis plans nothing with them.
     const notice = page.getByRole("region", {
       name: "Cosa esce da questo computer",
     });
-    await expect(notice.getByText("Claude Code li invia ad Anthropic.")).toBeVisible();
-    await expect(notice.getByText("Codex li invia ad OpenAI.")).toBeVisible();
-    // One row per engine with its state in words, and automatic chosen until the student picks.
-    const rows = engineRows(page);
-    await expect(rows).toHaveCount(4);
-    await expect(rows.filter({ hasText: "Claude Code" })).toContainText("Pronto");
-    await expect(rows.filter({ hasText: "Codex" })).toContainText("Pronto");
-    await expect(rows.filter({ hasText: "Cursor Agent" })).toContainText("Non installato");
-    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
-    // Until the notice is confirmed Pyxis plans nothing with them, so no row names a model yet.
-    await expect(rows.locator(".px-engine-model")).toHaveCount(0);
+    await expect(notice.getByText("Claude li invia ad Anthropic.")).toBeVisible();
+    await expect(notice.getByText("ChatGPT li invia ad OpenAI.")).toBeVisible();
+    await expect(
+      page.getByRole("list", { name: "Le AI che Pyxis può usare" }).getByRole("listitem"),
+    ).toHaveCount(4);
+    await expect(cardState(page, "Claude")).toHaveText("Collegato");
+    await expect(cardState(page, "ChatGPT")).toHaveText("Collegato");
+    // With one tool connected, the others are offered as a second.
+    await expect(cardState(page, "Cursor")).toHaveText("Collega anche questa");
+    await expect(card(page, "Gemini")).toContainText(
+      "Gratis per gli studenti universitari",
+    );
     await expect(button(page, "Continua")).toHaveCount(0);
-    // One primary button per state: while the notice waits, it is "Ho capito", and carrying on later is secondary.
+    // One primary button per state: while the notice waits, it is "Ho capito".
     await expect(primaryButtons(page)).toHaveText(["Ho capito"]);
-    // Crash reports sit next to the notice, off until the student turns them on.
-    const crash = page.getByRole("switch", {
-      name: "Consenti segnalazioni di crash",
-    });
-    await expect(crash).not.toBeChecked();
-    // Setup is the one place that says where to change the choice later.
-    await expect(page.getByText("da Impostazioni, alla voce Privacy", { exact: false })).toBeVisible();
+    // Which engines Pyxis may use, and the model each gets, wait under Advanced.
+    await expect(advanced(page)).toHaveAttribute("aria-expanded", "false");
     await noAxeViolations(page);
+    await saveShot(page, "onboarding/2-ai-notice.png");
     await notice.getByRole("button", { name: "Ho capito" }).click();
     await expect(notice).toHaveCount(0);
+    await advanced(page).click();
+    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
     // The automatic plan shares the work: both ready engines get models.
-    for (const name of ["Claude Code", "Codex"])
+    for (const name of ["Claude", "ChatGPT"])
       await expect(
-        rows.filter({ hasText: name }).locator(".px-engine-model"),
+        engineRow(page, name).locator(".px-engine-model"),
       ).not.toBeEmpty({ timeout: 30000 });
-    // With engines ready the subscription question stays out of the way, and the missing ones offer Install.
-    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
-    await expect(button(page, "Installa Cursor Agent")).toBeVisible();
     await expect(primaryButtons(page)).toHaveText(["Continua"]);
     expect(
       (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))
@@ -170,71 +213,71 @@ test("First setup: about you, the engine with its notice and crash reports off, 
     // No scan download is offered in setup: it comes up only when a scan is added.
     await expect(button(page, /^Scarica [\d.,]+ MB$/)).toHaveCount(0);
     await noAxeViolations(page);
+    await saveShot(page, "onboarding/2-ai-ready.png");
     // A new step opens at its top, not at the offset the last one was scrolled to.
     await page.setViewportSize({ width: 1280, height: 420 });
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     await button(page, "Continua").click();
-    await expect(page.getByRole("heading", { name: "Quale esame prepari?" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
+    ).toBeVisible();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     await page.setViewportSize({ width: 1280, height: 800 });
 
-    // Step 3: the profile is saved when the engine step ends, with crash reports off.
-    await expect(
-      page.getByRole("heading", { name: "Quale esame prepari?" }),
-    ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 3 di 4: L'esame");
+    // Step 3: the profile is saved when the AI step ends, with crash reports off.
+    await expect(currentStep(page)).toHaveText("Passo 3 di 3: 3 · Il materiale");
     expect(await profile(page)).toMatchObject({
       displayName: "Ada",
       educationLevel: "university",
+      course: "Fisica",
       crashReports: false,
       gradeScale: null,
     });
     await noNavigation(page);
-    // Nothing is chosen for the student: Continue waits for a name and a date, or no date yet.
-    await expect(button(page, "Continua")).toBeDisabled();
-    await page.getByLabel("Nome dell'esame", { exact: true }).fill("Analisi 1");
-    await expect(button(page, "Continua")).toBeDisabled();
-    await button(page, "Non ho ancora la data").click();
-    await expect(page.getByText("Nessuna data per ora.", { exact: false })).toBeVisible();
-    // At university the goal is out of 30, from 18 to 30.
-    const goal = page.getByRole("slider", { name: /^Obiettivo .* su 30$/ });
-    await expect(goal).toHaveAttribute("aria-valuemin", "18");
-    await expect(goal).toHaveAttribute("aria-valuemax", "30");
-    await expect(goal).toHaveAttribute("aria-valuenow", "23");
-    await goal.focus();
-    await page.keyboard.press("End");
-    await expect(goal).toHaveAttribute("aria-valuenow", "30");
-    await expect(button(page, "Nessun esame per ora")).toBeVisible();
-    await noAxeViolations(page);
-    await button(page, "Continua").click();
-
-    // Step 4: the material. With nothing picked the main button continues to the guided flow.
+    // The import copies the files, so the step says the originals stay where they are.
     await expect(
-      page.getByRole("heading", { name: "Da cosa studi?" }),
+      page.getByText("i tuoi file restano dove sono", { exact: false }),
     ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 4 di 4: Materiale");
     await expect(button(page, "Libri PoliTost gratuiti")).toBeVisible();
-    // The buttons sit in a drop zone, and the step's one primary button is Continue, not Add sources.
-    await expect(page.locator(".px-wizard-drop").getByRole("button", { name: "Aggiungi fonti" })).toBeVisible();
-    await expect(button(page, "Continua")).toHaveClass(/ant-btn-primary/);
-    await expect(button(page, "Aggiungi fonti")).not.toHaveClass(/ant-btn-primary/);
-    await expect(page.getByText("Lezioni in italiano, ordine scelto da Pyxis")).toBeVisible();
-    await button(page, "Cambia").click();
-    await expect(button(page, "English")).toBeVisible();
+    // Nothing added yet: no primary action, and "later" ends setup.
+    await expect(primaryButtons(page)).toHaveCount(0);
+    await expect(button(page, "Lo faccio dopo")).toBeVisible();
     await noAxeViolations(page);
+    await saveShot(page, "onboarding/3-material.png");
 
-    // Back to the exam, which a student without one yet skips: the exams list has the way to create one.
-    await button(page, "Indietro").click();
-    await expect(page.getByLabel("Nome dell'esame", { exact: true })).toHaveValue("Analisi 1");
-    await button(page, "Nessun esame per ora").click();
+    // A folder opens the Library's import on its folder tab.
+    await button(page, "Una cartella").click();
+    const dialog = page.getByRole("dialog", { name: "Aggiungi fonti" });
+    await expect(
+      dialog.getByRole("button", { name: "Aggiungi una cartella" }),
+    ).toBeVisible();
+    await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
+    await expect(dialog).toHaveCount(0);
+    // Files go in with the Library's own import, and no exam is made.
+    await answerPicker(app, [notes]);
+    await button(page, "Alcuni file").click();
+    await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 30000 });
+    const added = page.getByRole("region", {
+      name: "Nella Libreria c'è 1 file nuovo",
+    });
+    await expect(added.getByText("Appunti di cinematica")).toBeVisible();
+    await expect(primaryButtons(page)).toHaveText(["Inizia a studiare"]);
+    await noAxeViolations(page);
+    await saveShot(page, "onboarding/3-material-added.png");
+    await button(page, "Inizia a studiare").click();
     await expect(page).toHaveURL(/#\/ask$/);
     await expect(
       page.getByRole("navigation", { name: "Sezioni" }),
     ).toBeVisible();
     await expect(page.locator(".px-side-me")).toBeVisible();
-    // Setup without an exam ends on Chiedi's Home; Esami can create one later.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^(Buongiorno|Buon pomeriggio|Buonasera)/);
+    expect(
+      (await page.evaluate(() => window.pyxis.invoke("sources.list", {}))).map(
+        (source) => source.title,
+      ),
+    ).toEqual(["Appunti di cinematica"]);
     expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toEqual([]);
 
     // The Settings switch shows the stored choice, saves each change and matches the setup wording.
@@ -265,7 +308,7 @@ test("First setup: about you, the engine with its notice and crash reports off, 
   }
 });
 
-test("First setup: each engine shows its real state, an expired sign-in is never Ready, and the student's pick of engines is saved", async () => {
+test("First setup: each tool shows its real state, an expired sign-in is never connected, and the student's pick of engines is saved", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
@@ -291,31 +334,30 @@ esac
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await button(page, "Continua").click();
-    const rows = engineRows(page);
-    const row = (name: string) => rows.filter({ hasText: name });
-    await expect(row("Cursor Agent")).toContainText("Pronto", { timeout: 30000 });
-    await expect(row("Claude Code")).toContainText("Pronto");
-    await expect(row("Codex")).toContainText("Serve l'accesso");
-    await expect(button(page, "Accedi Codex")).toBeVisible();
-    await expect(row("Antigravity")).toContainText("Non installato");
-    await expect(button(page, "Installa Antigravity")).toBeVisible();
+    await expect(cardState(page, "Cursor")).toHaveText("Collegato", { timeout: 30000 });
+    await expect(cardState(page, "Claude")).toHaveText("Collegato");
+    await expect(cardState(page, "ChatGPT")).toHaveText("Serve l'accesso");
+    await expect(cardState(page, "Gemini")).toHaveText("Collega anche questa");
     await page
       .getByRole("region", { name: "Cosa esce da questo computer" })
       .getByRole("button", { name: "Ho capito" })
       .click();
-    await expect(row("Cursor Agent").locator(".px-engine-model")).not.toBeEmpty({
+    await advanced(page).click();
+    await expect(engineRow(page, "Cursor").locator(".px-engine-model")).not.toBeEmpty({
       timeout: 30000,
     });
 
-    // The provider refuses a call: the row turns to an expired sign-in with Sign in, and the plan stops using it.
+    // The provider refuses a call: the card turns to an expired sign-in, offers Sign in, and the plan stops using it.
     const refused = await page.evaluate(() =>
       window.pyxis
         .invoke("engines.test", { provider: "agent" })
         .then(() => "answered", (err: { code?: string }) => err.code),
     );
     expect(refused).toBe("not-logged-in");
-    await expect(row("Cursor Agent")).toContainText("Accesso scaduto");
-    await expect(button(page, "Accedi Cursor Agent")).toBeVisible();
+    await expect(cardState(page, "Cursor")).toHaveText("Accesso scaduto");
+    await expect(engineRow(page, "Cursor")).toContainText("Accesso scaduto");
+    await button(card(page, "Cursor"), "Cursor").click();
+    await expect(button(card(page, "Cursor"), "Accedi con Cursor")).toBeVisible();
     await expect
       .poll(async () =>
         Object.values(
@@ -325,32 +367,29 @@ esac
       .not.toContain("agent");
     await noAxeViolations(page);
 
-    // "I choose" starts from the engines that are ready: Claude Code, which cannot be unticked while it is the only one.
+    // "I choose" starts from the engines that are ready: Claude, which cannot be unticked while it is the only one.
     await page.getByRole("radio", { name: /^Scelgo io/ }).click();
     await expect(page.getByRole("radio", { name: /^Scelgo io/ })).toBeChecked();
     const box = (name: string) => page.getByRole("checkbox", { name: `Usa ${name}` });
-    await expect(box("Claude Code")).toBeChecked();
-    await expect(box("Claude Code")).toBeDisabled();
-    await expect(box("Codex")).not.toBeChecked();
-    await box("Codex").click();
-    await expect(box("Codex")).toBeChecked();
-    await expect(box("Claude Code")).toBeEnabled();
+    await expect(box("Claude")).toBeChecked();
+    await expect(box("Claude")).toBeDisabled();
+    await expect(box("ChatGPT")).not.toBeChecked();
+    await box("ChatGPT").click();
+    await expect(box("ChatGPT")).toBeChecked();
+    await expect(box("Claude")).toBeEnabled();
     const choice = () =>
       page.evaluate(() => window.pyxis.invoke("engines.choice", {}));
     await expect.poll(choice).toEqual({ allowed: ["claude", "codex"] });
     await noAxeViolations(page);
-    await row("Cursor Agent").getByRole("button", { name: "Accedi Cursor Agent" }).click();
-    await expect(
-      page.getByRole("region", { name: "Configura Cursor Agent" }),
-    ).toBeVisible();
 
-    // The pick outlasts leaving the step, and Automatic puts every ready engine back.
+    // The pick outlasts leaving the step, and opens Advanced by itself on the way back. Automatic puts every ready
+    // engine back.
     await button(page, "Continua").click();
     await button(page, "Indietro").click();
     await expect(page.getByRole("radio", { name: /^Scelgo io/ })).toBeChecked({
       timeout: 30000,
     });
-    await expect(box("Codex")).toBeChecked();
+    await expect(box("ChatGPT")).toBeChecked();
     await page.getByRole("radio", { name: /^Automatico/ }).click();
     await expect.poll(choice).toEqual({ allowed: null });
   } finally {
@@ -360,7 +399,7 @@ esac
   }
 });
 
-test("First setup: a signed-out engine offers sign-in, no engine asks what the student pays for, and I'll do it later continues", async () => {
+test("First setup: a signed-out tool offers sign-in first, with none installed nothing is picked, and later continues", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
@@ -368,66 +407,77 @@ test("First setup: a signed-out engine offers sign-in, no engine asks what the s
   let app = await launch(userData, out.env);
   try {
     let page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await button(page, "Continua").click();
     await expect(
-      page.getByText("Ho trovato Claude Code, ma serve ancora l'accesso."),
-    ).toBeVisible({ timeout: 30000 });
-    // The installed engine is offered first: already installed, one sign-in left. Its row says so and offers Sign in.
+      found(page, "Ho trovato Claude, ma serve ancora l'accesso."),
+    ).toHaveCount(1, { timeout: 30000 });
     await expect(
-      engineRows(page).filter({ hasText: "Claude Code" }),
-    ).toContainText("Serve l'accesso");
-    await expect(button(page, "Accedi Claude Code")).toBeVisible();
-    const setup = page.getByRole("region", { name: "Configura Claude Code" });
-    await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible();
-    await expect(button(setup, "Accedi con Claude")).toBeVisible();
-    // The sign-in is secondary: the step's own button is the one primary, here "Lo farò dopo".
-    await expect(primaryButtons(page)).toHaveText(["Lo farò dopo"]);
-    // Every engine has a row, so the subscription question is only for a computer with none installed.
-    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
+      page.getByRole("heading", { name: "Con quale AI vuoi studiare?" }),
+    ).toBeVisible();
+    // The installed tool is offered first: one sign-in left, and its button is the step's one primary action.
+    const claude = card(page, "Claude");
+    await expect(cardState(page, "Claude")).toHaveText("Serve l'accesso");
+    await expect(button(claude, "Accedi con Claude")).toBeVisible();
+    await expect(claude.getByText("Si apre la pagina di Anthropic.")).toBeVisible();
+    await expect(primaryButtons(page)).toHaveText(["Accedi con Claude"]);
+    await expect(button(page, "Lo faccio dopo")).toBeVisible();
     await noAxeViolations(page);
+    await saveShot(page, "onboarding/2-ai-signed-out.png");
     await app.close();
 
     const none = fakeBins({ claude: null, codex: null });
     app = await launch(userData, none.env);
     page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await button(page, "Continua").click();
-    await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
-      timeout: 30000,
-    });
-    // Nothing found: the student says what they pay for and gets that engine's setup, never a GitHub page.
-    await expect(page.getByRole("region", { name: /^Configura / })).toHaveCount(
-      0,
-    );
-    await button(page, /^ChatGPT Plus o Pro/).click();
-    const codex = page.getByRole("region", { name: "Configura Codex" });
     await expect(
-      codex.getByText(
-        "curl -fsSL 'https://chatgpt.com/codex/install.sh' | bash",
-      ),
-    ).toBeVisible();
-    await expect(button(codex, "Installa Codex")).toBeVisible();
+      found(page, "Non ho trovato nessuna AI su questo computer."),
+    ).toHaveCount(1, { timeout: 30000 });
+    // Nothing is picked for the student: four cards, none connected, and the step's one primary action is "later".
+    for (const name of ["Claude", "ChatGPT", "Gemini", "Cursor"])
+      await expect(cardState(page, name)).toHaveText("Non collegato");
+    await expect(button(page, "Installa e accedi")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: /^Configura / })).toHaveCount(0);
+    await expect(primaryButtons(page)).toHaveText(["Lo faccio dopo"]);
+    // Each card links to the plans, and each link names its tool for screen readers.
     await expect(
-      codex.getByText("Disponibile a installazione finita."),
-    ).toBeVisible();
-    await button(page, /^Nessuno di questi/).click();
-    await expect(button(page, "Vedi le offerte per studenti")).toBeVisible();
-    await expect(
-      page.getByRole("region", { name: "Configura Antigravity" }),
-    ).toBeVisible();
-    await button(page, "Mostra tutti i motori").click();
-    // Every engine Pyxis can install, each with its own Set up action.
-    // Each action names its engine for screen readers.
-    await expect(
-      button(page, /^Configura (Claude Code|Codex|Cursor Agent|Antigravity)$/),
+      button(page, /^Vedi i piani di (Claude|ChatGPT|Gemini|Cursor)$/),
     ).toHaveCount(4);
-    await noAxeViolations(page);
-    // Nothing is ready, so the one primary action says what happens: carry on and sign in later.
-    await button(page, "Lo farò dopo").click();
+    // Picking ChatGPT offers Install and sign in, with the command it runs shown first, never a GitHub page.
+    await button(card(page, "ChatGPT"), "ChatGPT").click();
+    const chatgpt = page.getByRole("region", { name: "Configura ChatGPT" });
     await expect(
-      page.getByRole("heading", { name: "Quale esame prepari?" }),
+      chatgpt.getByText("curl -fsSL 'https://chatgpt.com/codex/install.sh' | bash"),
+    ).toBeVisible();
+    await expect(card(page, "ChatGPT").getByText("Si apre la pagina di OpenAI.")).toBeVisible();
+    await expect(primaryButtons(page)).toHaveText(["Installa e accedi"]);
+    await noAxeViolations(page);
+    await saveShot(page, "onboarding/2-ai-picked.png");
+    // Gemini signs in from a terminal, and says so before anything runs. One tool is set up at a time.
+    await button(card(page, "Gemini"), "Gemini").click();
+    await expect(page.getByRole("region", { name: /^Configura / })).toHaveCount(1);
+    await expect(
+      page
+        .getByRole("region", { name: "Configura Gemini" })
+        .getByText("antigravity.google/cli/install.sh", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      card(page, "Gemini").getByText("L'accesso si fa nel terminale: ti spiego io come."),
+    ).toBeVisible();
+    // An API key is added later in Settings, and Advanced says so.
+    await advanced(page).click();
+    await expect(
+      page.getByText("Una chiave API la aggiungi dopo la configurazione", { exact: false }),
+    ).toBeVisible();
+    await noAxeViolations(page);
+    // Nothing is ready, so the footer carries on and says it will be done later.
+    await button(page, "Lo faccio dopo").click();
+    await expect(
+      page.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
     ).toBeVisible();
     await button(page, "Indietro").click();
-    await expect(currentStep(page)).toHaveText("Passo 2 di 4: Motore AI");
+    await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
     rmSync(none.bin, { recursive: true, force: true });
   } finally {
     await app.close();
@@ -450,26 +500,25 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
   try {
     const page = await app.firstWindow();
     await button(page, "Continua").click();
-    const setup = page.getByRole("region", { name: "Configura Claude Code" });
-    await expect(button(setup, "Accedi con Claude")).toBeVisible({
+    const claude = card(page, "Claude");
+    await expect(button(claude, "Accedi con Claude")).toBeVisible({
       timeout: 30000,
     });
-    await button(setup, "Accedi con Claude").click();
-    await button(setup, "Annulla").click();
-    // Idle again means Cancel is gone. The button's name is matched loosely: antd keeps its spinner icon, and so the
-    // name "loading Accedi con Claude", until the icon's exit transition ends, which a hidden window on a slow macOS
-    // runner can delay for seconds.
-    await expect(button(setup, "Annulla")).toHaveCount(0);
-    const signIn = button(setup, /Accedi con Claude$/);
+    await button(claude, "Accedi con Claude").click();
+    await button(claude, "Annulla").click();
+    // Idle again means Cancel is gone. The button's name is matched loosely, as antd can keep a spinner icon in it
+    // until the icon's exit transition ends.
+    await expect(button(claude, "Annulla")).toHaveCount(0);
+    const signIn = button(claude, /Accedi con Claude$/);
     await expect(signIn).toBeVisible();
-    await expect(setup.getByText("Accesso non completato.")).toHaveCount(0);
+    await expect(page.getByText("Accesso non completato.")).toHaveCount(0);
     // Starting again is not undone by the answer to the cancelled attempt.
     await signIn.click();
-    await expect(button(setup, "Annulla")).toBeVisible();
+    await expect(button(claude, "Annulla")).toBeVisible();
     // The cancelled attempt's answer would undo this within moments; its absence has no signal, so this waits a fixed time.
     await page.waitForTimeout(500);
-    await expect(button(setup, "Annulla")).toBeVisible();
-    await expect(setup.getByText(/Accesso non completato/)).toHaveCount(0);
+    await expect(button(claude, "Annulla")).toBeVisible();
+    await expect(page.getByText(/Accesso non completato/)).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -477,7 +526,7 @@ test("First setup: cancelling a sign-in before its page opens is not a failure, 
   }
 });
 
-test("First setup: Install runs the installer, shows its output, then signs in by itself", async () => {
+test("First setup: Install and sign in runs the installer, shows its output, then signs in by itself", async () => {
   test.skip(
     process.platform === "win32",
     "the installer stand-in is a shell script",
@@ -511,21 +560,21 @@ test("First setup: Install runs the installer, shows its output, then signs in b
   try {
     const page = await app.firstWindow();
     await button(page, "Continua").click();
-    await expect(page.getByText("Non ho trovato nessun motore.")).toBeVisible({
+    await expect(
+      found(page, "Non ho trovato nessuna AI su questo computer."),
+    ).toHaveCount(1, { timeout: 30000 });
+    const claude = card(page, "Claude");
+    await button(claude, "Claude").click();
+    await button(claude, "Installa e accedi").click();
+    await expect(claude.getByText("Installo Claude…")).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Configura Claude" }).getByText(/Installing claude into/),
+    ).toBeVisible();
+    await expect(cardState(page, "Claude")).toHaveText("Collegato", {
       timeout: 30000,
     });
-    await button(page, /^Claude Pro o Max/).click();
-    const setup = page.getByRole("region", { name: "Configura Claude Code" });
-    await button(setup, "Installa Claude Code").click();
-    await expect(setup.getByText("Installo Claude Code…")).toBeVisible();
-    await expect(setup.getByText(/Installing claude into/)).toBeVisible();
-    await expect(setup.getByText("Installato, versione 2.1.0.")).toBeVisible({
-      timeout: 30000,
-    });
-    await expect(setup.getByText("Accesso fatto.")).toBeVisible({
-      timeout: 30000,
-    });
-    await expect(page.getByText("Ho trovato Claude Code.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Claude è pronto" })).toBeVisible();
+    await expect(found(page, "Ho trovato Claude.")).toHaveCount(1);
     // The new engine still needs its notice before Pyxis sends it anything.
     await expect(
       page.getByRole("region", { name: "Cosa esce da questo computer" }),
@@ -538,7 +587,7 @@ test("First setup: Install runs the installer, shows its output, then signs in b
   }
 });
 
-test("First setup: skipping leaves crash reports off, and a new profile below university sees goals out of 100", async () => {
+test("First setup: skipping leaves crash reports off, and a new profile at school sets exams out of 100", async () => {
   test.setTimeout(180000);
   const skipped = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
   const engines = fakeBins({ claude: null, codex: null });
@@ -557,21 +606,28 @@ test("First setup: skipping leaves crash reports off, and a new profile below un
     app = await launch(fresh, engines.env);
     try {
       const second = await app.firstWindow();
-      await button(second, "Superiore").click();
-      await button(second, "Continua").click();
+      await second.getByRole("radio", { name: "A scuola" }).click();
+      await expect(second.getByRole("radio", { name: "Superiore" })).toBeChecked();
       await expect(second.getByRole("switch")).not.toBeChecked();
-      await button(second, "Lo farò dopo").click();
+      await button(second, "Continua").click();
+      await button(second, "Lo faccio dopo").click();
       await expect(
-        second.getByRole("heading", { name: "Quale esame prepari?" }),
+        second.getByRole("heading", { name: "Aggiungi il tuo materiale" }),
       ).toBeVisible();
-      // Below university the goal keeps the scale out of 100.
-      const goal = second.getByRole("slider", { name: /^Obiettivo .* su 100$/ });
-      await expect(goal).toHaveAttribute("aria-valuemin", "50");
-      await expect(goal).toHaveAttribute("aria-valuenow", "75");
       expect(await profile(second)).toMatchObject({
         educationLevel: "upper-secondary",
         crashReports: false,
       });
+      // "Later" ends setup on Chiedi with the profile kept.
+      await button(second, "Lo faccio dopo").click();
+      await expect(second).toHaveURL(/#\/ask$/);
+      // Exams are made from Esami now. Below university their goal keeps the scale out of 100.
+      await second.evaluate(() => {
+        location.hash = "/plans/new";
+      });
+      const goal = second.getByRole("slider", { name: /^Obiettivo .* su 100$/ });
+      await expect(goal).toHaveAttribute("aria-valuemin", "50");
+      await expect(goal).toHaveAttribute("aria-valuenow", "75");
     } finally {
       await app.close();
       rmSync(fresh, { recursive: true, force: true });
@@ -582,7 +638,7 @@ test("First setup: skipping leaves crash reports off, and a new profile below un
   }
 });
 
-test("Run setup again: Settings reopens the profile and engine steps filled in, without Skip, leaves engines alone and returns to Settings", async () => {
+test("Run setup again: Settings reopens you and the AI filled in, without Skip, leaves engines alone and returns to Settings", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
@@ -592,26 +648,27 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
 
-    // First setup: a name, a school, a level, and crash reports turned on.
-    await page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }).fill("Ada");
-    await page.getByLabel("Scuola", { exact: true }).fill("Liceo Volta");
-    await button(page, "Superiore").click();
-    await button(page, "Continua").click();
-    await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
-      { timeout: 30000 },
-    );
-    await page
-      .getByRole("region", { name: "Cosa esce da questo computer" })
-      .getByRole("button", { name: "Ho capito" })
-      .click();
-    await expect(
-      engineRows(page).filter({ hasText: "Codex" }).locator(".px-engine-model"),
-    ).not.toBeEmpty({ timeout: 30000 });
+    // First setup: a name, school, a school name, and crash reports turned on.
+    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    await page.getByRole("radio", { name: "A scuola" }).click();
+    await page.getByLabel(/^Nome della scuola/).fill("Liceo Volta");
     await page
       .getByRole("switch", { name: "Consenti segnalazioni di crash" })
       .click();
     await button(page, "Continua").click();
-    await button(page, "Nessun esame per ora").click();
+    await expect(found(page, "Ho trovato Claude e ChatGPT.")).toHaveCount(1, {
+      timeout: 30000,
+    });
+    await page
+      .getByRole("region", { name: "Cosa esce da questo computer" })
+      .getByRole("button", { name: "Ho capito" })
+      .click();
+    await advanced(page).click();
+    await expect(
+      engineRow(page, "ChatGPT").locator(".px-engine-model"),
+    ).not.toBeEmpty({ timeout: 30000 });
+    await button(page, "Continua").click();
+    await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/ask$/);
     const stored = await profile(page);
     expect(stored).toMatchObject({
@@ -636,47 +693,36 @@ test("Run setup again: Settings reopens the profile and engine steps filled in, 
 
     // The rerun has two steps and no Skip. Cancel leaves without saving.
     await expect(
-      page.getByRole("heading", { name: "Ciao, sono Pyxis" }),
+      page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?" }),
     ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 1 di 2: Su di te");
+    await expect(currentStep(page)).toHaveText("Passo 1 di 2: 1 · Tu");
     await expect(button(page, "Salta")).toHaveCount(0);
     await button(page, "Annulla").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
     await button(page, "Rifai la configurazione").click();
 
-    // Profile: every answer is filled in.
-    await expect(
-      page.getByLabel("Come ti chiami? (facoltativo)", { exact: true }),
-    ).toHaveValue("Ada");
-    await expect(page.getByLabel("Scuola", { exact: true })).toHaveValue(
-      "Liceo Volta",
-    );
-    await expect(
-      button(page, "Superiore").and(
-        page.locator("[aria-pressed=true]"),
-      ),
-    ).toBeVisible();
-    await noAxeViolations(page);
-    await page
-      .getByLabel("Come ti chiami? (facoltativo)", { exact: true })
-      .fill("Ada L.");
-    await button(page, "Continua").click();
-
-    // Engines: shows what is set up and asks nothing. No launch notice appears.
-    await expect(page.getByText("Ho trovato Claude Code e Codex.")).toBeVisible(
-      { timeout: 30000 },
-    );
-    for (const name of ["Claude Code", "Codex"])
-      await expect(engineRows(page).filter({ hasText: name })).toContainText(
-        "Pronto",
-      );
-    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByText("Quale di questi paghi già?")).toHaveCount(0);
-    // Crash reports show the stored choice (on), not the first-run default.
+    // You: every answer is filled in, crash reports included.
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Ada");
+    await expect(page.getByLabel(/^Nome della scuola/)).toHaveValue("Liceo Volta");
+    await expect(page.getByRole("radio", { name: "A scuola" })).toBeChecked();
+    await expect(page.getByRole("radio", { name: "Superiore" })).toBeChecked();
     await expect(
       page.getByRole("switch", { name: "Consenti segnalazioni di crash" }),
     ).toBeChecked();
+    await noAxeViolations(page);
+    await saveShot(page, "onboarding/1-you-again.png");
+    await page.getByLabel("Nome", { exact: true }).fill("Ada L.");
+    await button(page, "Continua").click();
+
+    // The AI: shows what is set up and asks nothing. No launch notice appears.
+    await expect(found(page, "Ho trovato Claude e ChatGPT.")).toHaveCount(1, {
+      timeout: 30000,
+    });
+    for (const name of ["Claude", "ChatGPT"])
+      await expect(cardState(page, name)).toHaveText("Collegato");
+    await advanced(page).click();
+    await expect(page.getByRole("radio", { name: /^Automatico/ })).toBeChecked();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await noNavigation(page);
     await noAxeViolations(page);
 

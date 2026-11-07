@@ -11,6 +11,18 @@ export const levels = [
 ] as const;
 export type Level = (typeof levels)[number];
 
+/**
+ * First setup asks "university or school", then which school. Every stored level fits one of the two, so a rerun
+ * opens on the same answer. "Other" sits with the schools, because its grades are out of 100 as theirs are.
+ */
+export type Studies = "university" | "school";
+export const schoolLevels = levels.filter(
+  (level): level is Exclude<Level, "university"> => level !== "university",
+);
+export function studiesOf(level: Level): Studies {
+  return level === "university" ? "university" : "school";
+}
+
 /** The stored fields setup reads and writes. */
 export type StoredProfile = Pick<
   NonNullable<RequestOutput<"profile.get">>,

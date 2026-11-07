@@ -1705,14 +1705,14 @@ async function openState(page: Page, name: string) {
         .getByRole("button", { name: both("Continua", "Continue") })
         .click();
       if (process.platform === "win32") break;
-      const rows = page
+      const cards = page
         .getByRole("list", {
-          name: both("Motori su questo computer", "Engines on this computer"),
+          name: both("Le AI che Pyxis può usare", "The AIs Pyxis can use"),
         })
         .getByRole("listitem");
-      await expect(rows).toHaveCount(4, { timeout: 30000 });
-      const agent = rows.filter({ hasText: "Cursor Agent" });
-      // Cursor Agent's provider refuses a call, so its row reads as an expired sign-in with Sign in.
+      await expect(cards).toHaveCount(4, { timeout: 30000 });
+      const agent = cards.filter({ hasText: "Cursor" });
+      // Cursor's provider refuses a call, so its card reads as an expired sign-in.
       await page.evaluate(async () => {
         await window.pyxis.invoke("engines.acknowledge", {
           providers: ["claude", "agent"],
@@ -1724,9 +1724,10 @@ async function openState(page: Page, name: string) {
       await expect(agent).toContainText(/Accesso scaduto|Sign-in expired/, {
         timeout: 30000,
       });
+      // A saved pick of engines opens Advanced by itself, with the pick ticked.
       if (name === "onboarding-engines-chosen")
         await expect(
-          page.getByRole("checkbox", { name: /^(Usa|Use) Codex$/ }),
+          page.getByRole("checkbox", { name: /^(Usa|Use) ChatGPT$/ }),
         ).toBeChecked();
       break;
     }
