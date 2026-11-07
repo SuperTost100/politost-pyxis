@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { spokenText } from "@shared/spoken-math";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -31,6 +30,7 @@ import { checkJobFor } from "../jobs/jobGroups";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
+import { StudyLayout } from "./StudyBar";
 import {
   answerSource,
   blanks,
@@ -759,6 +759,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const answered = questions.filter((row) => checked[row.id]).length;
   const topic = plan.data?.topics.find((row) => row.id === topicId);
   const showIntro = !start.data && !savedAttempt;
+  // A question is on screen and being answered: the bar counts it.
+  const inQuestions = Boolean(question) && !finalResult && !showIntro && !noAnswers && !gradingStarted;
   // The questions the start button will ask: one paper's, or at most a quiz's ten from all of them.
   const pastCount = (() => {
     const rows = (papers.data?.papers ?? []).filter(
@@ -993,26 +995,35 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   // A Review's questions belong to the attempt its page started; without one, that page starts or resumes it.
   if (reviewRoute && !savedAttempt) return <Navigate to={`/plans/${planId ?? ""}/review`} replace />;
   return (
-    <FocusLayout
-      title={t(
+    <StudyLayout
+      back={
+        // A diagnostic and a Review keep their answers and pick up where they stopped; the others go back by name.
+        inQuestions && (diagnostic || reviewRoute)
+          ? { text: t("quiz.leave"), onClick: () => void close() }
+          : {
+              text: (redo ? t("mistakes.title") : reviewRoute ? t("cards.reviewTitle") : plan.data?.title) ?? t("lesson.back"),
+              label: redo ? t("mistakes.back") : reviewRoute ? t("cards.reviewBack") : plan.data ? t("lesson.back") : undefined,
+              onClick: () => void close(),
+            }
+      }
+      title={
         redo
-          ? "mistakes.redoTitle"
+          ? t("mistakes.redoTitle")
           : review
-            ? "cards.reviewTitle"
+            ? t("cards.reviewTitle")
             : diagnostic
-              ? "quiz.diagnosticTitle"
-              : "quiz.title",
-      )}
-      onClose={() => void close()}
-      meta={
-        question && !finalResult && !showIntro && !noAnswers && !gradingStarted
+              ? t("quiz.diagnosticTitle")
+              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 ")
+      }
+      subtitle={
+        inQuestions
           ? wholeReview
             ? t("cards.reviewPosition", {
                 current: wholeReview.cardsTotal + index + 1,
                 total: wholeReview.total,
               })
             : t("quiz.position", { current: index + 1, total: requestedCount })
-          : undefined
+          : [plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined
       }
       progress={
         questions.length
@@ -1626,7 +1637,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             : t(errorKey, { defaultValue: t("quiz.error") })}
         </ErrorState>
       ) : null}
-    </FocusLayout>
+    </StudyLayout>
   );
 }
 

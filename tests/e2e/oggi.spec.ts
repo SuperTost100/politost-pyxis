@@ -60,7 +60,7 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
     await page.getByRole("button", { name: "Easy", exact: true }).click();
     await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
     await expect(page.getByText("Chimica generale \u00b7 2 of 2")).toBeVisible();
-    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByRole("button", { name: "Undo last", exact: true }).click();
     await expect(page.getByText("Unità della forza?", { exact: true })).toBeVisible();
     await expect(page.getByText("Fisica 1 \u00b7 1 of 2")).toBeVisible();
     for (const front of ["Unità della forza?", "Numero atomico?"]) {
@@ -82,7 +82,9 @@ test("Oggi lists due cards from every plan as one item, then each exam's next st
           .map((row) => `${row.plan_id}:${row.topic_id}`),
       )
       .toEqual(["p-far:t-atoms", "p-near:t-dyn"]);
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    // Oggi's deck spans exams, so its way back is Exams; there is no close button.
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+    await page.getByRole("banner").getByRole("button", { name: "Exams", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(rows.nth(0)).toContainText("Flashcards reviewed");
     await expect(rows.nth(0)).toContainText("Done");

@@ -41,7 +41,7 @@ function seed(db: DatabaseSync) {
   `);
 }
 
-test("card review: ratings only under the card, undo, the card menu and asking the tutor", async () => {
+test("card review: the study bar, ratings only under the card, undo, the card menu and asking the tutor", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-review-"));
   const app = await launchPyxis({ userData });
@@ -63,16 +63,26 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await page.reload();
 
     const front = page.locator("article.px-card .px-card-front");
-    const meta = page.locator(".focus-meta");
+    const bar = page.getByRole("banner");
+    const meta = page.locator(".px-studybar-title p");
     await expect(front).toHaveText("Seconda legge di Newton?");
+    // The study bar: the way back named after the exam, the deck's name, and the deck's actions. No close button.
+    await expect(bar.getByRole("heading", { level: 1 })).toHaveText("Flashcards · Dinamica");
+    const back = bar.getByRole("button", { name: "Back to the exam: Fisica 1", exact: true });
+    await expect(back).toBeVisible();
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+    await expect(bar.getByRole("button")).toHaveText(["Back to the exam: Fisica 1", "New flashcard", "Undo last", "Edit"]);
+    const undoLast = bar.getByRole("button", { name: "Undo last", exact: true });
+    await expect(undoLast).toBeDisabled();
     // The header counts the card on screen, and the deck counts say why the session is shorter than the deck.
     await expect(meta).toHaveText("1 of 3");
     await expect(page.locator(".px-cards-toolbar .small")).toHaveText(
       "New 4 (3 today) · Learning 0 · Mastered 0",
     );
     await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
-    // One way out, and no authoring form open in the loop.
-    await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
+    // One way out, the bar's, and no authoring form open in the loop.
+    await expect(page.getByRole("button", { name: /Back/ })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mark as done" })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Front" })).toBeHidden();
 
@@ -99,7 +109,9 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await page.keyboard.press("Enter");
     await expect(reveal).toBeFocused();
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know it1Hard2Knew it3Easy4");
-    await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    // Edit lives in the bar, not beside the ratings.
+    await expect(page.locator(".px-cards-stage").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+    await expect(bar.getByRole("button", { name: "Edit", exact: true })).toBeEnabled();
     await expectNoAxeViolations(page);
 
     // A rating can be taken back: the card shows again and its review and event are gone.
@@ -109,11 +121,12 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await expect(front).toHaveText("Unità della forza?");
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
     // The next card can show before the rating's refresh ends, and keys wait for it; Undo turns on when it ends.
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await expect(undoLast).toBeEnabled();
     await page.keyboard.press("u");
     await expect(front).toHaveText("Seconda legge di Newton?");
     await expect(meta).toHaveText("1 of 3");
     await expect(page.locator(".px-cards-undo")).toHaveCount(0);
+    await expect(undoLast).toBeDisabled();
     expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(0);
     expect(
       count("SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'card_rated'"),
@@ -124,7 +137,7 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await page.getByRole("menuitem", { name: /Suspend/ }).click();
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard suspended.");
     await expect(front).toHaveText("Unità della forza?");
-    await page.getByRole("button", { name: "Undo" }).click();
+    await undoLast.click();
     await expect(front).toHaveText("Seconda legge di Newton?");
     // The Undo button can keep focus while the bar is open, and the page's keys ignore a button as their target.
     await expect(page.locator(".px-cards-undo")).toHaveCount(0);
@@ -134,7 +147,7 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await page.keyboard.press("d");
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard removed.");
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE removed = 1")).toBe(1);
-    await page.getByRole("button", { name: "Undo" }).click();
+    await undoLast.click();
     await expect(front).toHaveText("Seconda legge di Newton?");
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE removed = 1")).toBe(0);
     // The undo bar and its focused button go once the undo is done; until then Space is not the card's.
@@ -171,13 +184,30 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know it1Hard2Knew it3Easy4");
     await page.keyboard.press("3");
     await expect(front).toHaveText("Unità della forza?");
-    await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+    await expect(undoLast).toBeEnabled();
     await page.keyboard.press("Space");
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know it1Hard2Knew it3Easy4");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
     await expect.poll(() => cardSteps().length).toBe(1);
     expect(JSON.parse(cardSteps()[0]!.payload_json)).toMatchObject({
+      activity: "cards",
+      result: { correct: 1, total: 1 },
+    });
+
+    // Back to the exam records the session first, like leaving for the tutor.
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await expect(front).toHaveText("Unità della forza?");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(front).toHaveText("Velocità media?");
+    await expect(undoLast).toBeEnabled();
+    await back.click();
+    await expect(page).toHaveURL(/#\/plans\/p$/);
+    await expect.poll(() => cardSteps().length).toBe(2);
+    expect(JSON.parse(cardSteps()[1]!.payload_json)).toMatchObject({
       activity: "cards",
       result: { correct: 1, total: 1 },
     });
@@ -198,9 +228,102 @@ test("card review: ratings only under the card, undo, the card menu and asking t
     await confirm.getByRole("button", { name: "Cancel" }).click();
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE id = 'c4'")).toBe(1);
 
-    // The X closes the session and goes back to the exam.
-    await page.getByRole("button", { name: "Close", exact: true }).click();
+    // Back closes the session and goes back to the exam.
+    await back.click();
     await expect(page).toHaveURL(/#\/plans\/p$/);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("new flashcard: a form grown from the bar adds to the deck, closes on Esc and Cancel, and holds the card's keys", async () => {
+  test.setTimeout(90_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-new-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+      timeout: 10_000,
+    });
+    seed(db);
+    const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await page.reload();
+    const card = page.locator("article.px-card");
+    await expect(card.locator(".px-card-front")).toHaveText("Seconda legge di Newton?");
+    await expect(page.locator(".px-cards-toolbar .small")).toHaveText("New 4 · Learning 0 · Mastered 0");
+    // The old fold-out under the card is gone.
+    await expect(page.getByText("Add a flashcard", { exact: true })).toHaveCount(0);
+
+    // It opens from the bar with the focus in Front, and Add waits for both faces.
+    const open = page.getByRole("banner").getByRole("button", { name: "New flashcard", exact: true });
+    await expect(open).toHaveAttribute("aria-expanded", "false");
+    await open.click();
+    const form = page.getByRole("dialog", { name: "New flashcard" });
+    await expect(form).toBeVisible();
+    await expect(open).toHaveAttribute("aria-expanded", "true");
+    const frontField = form.getByRole("textbox", { name: "Front", exact: true });
+    const backField = form.getByRole("textbox", { name: "Back", exact: true });
+    await expect(frontField).toBeFocused();
+    const add = form.getByRole("button", { name: "Add", exact: true });
+    await expect(add).toBeDisabled();
+    // Tab goes round the form and stays in it.
+    await page.keyboard.press("Shift+Tab");
+    await expect(form.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(frontField).toBeFocused();
+    await expectNoAxeViolations(page);
+
+    // While it is open, Space and 1 to 4 are not the card's, even with the focus outside the form.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(card).toHaveAttribute("data-face", "front");
+    expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(0);
+    await expect(form).toBeVisible();
+
+    // Add saves the card into this deck, confirms in place and leaves the form empty for the next one.
+    await frontField.fill("Prima legge di Newton?");
+    await expect(add).toBeDisabled();
+    await backField.fill("Un corpo resta in quiete o in moto rettilineo uniforme.");
+    await add.click();
+    await expect(form.getByRole("status")).toHaveText("Added. You can write another.");
+    await expect(frontField).toHaveValue("");
+    await expect(backField).toHaveValue("");
+    await expect(frontField).toBeFocused();
+    expect(
+      count("SELECT COUNT(*) AS n FROM cards WHERE plan_id = 'p' AND topic_id = 't' AND front = 'Prima legge di Newton?'"),
+    ).toBe(1);
+    await expect(page.locator(".px-cards-toolbar .small")).toHaveText("New 5 · Learning 0 · Mastered 0");
+
+    // Esc closes it and gives the focus back to the button; what was typed is still there when it opens again.
+    await frontField.fill("Una bozza");
+    await page.keyboard.press("Escape");
+    await expect(form).toHaveCount(0);
+    await expect(open).toBeFocused();
+    await expect(open).toHaveAttribute("aria-expanded", "false");
+    await open.click();
+    await expect(frontField).toHaveValue("Una bozza");
+    // Cancel closes it too and throws the draft away.
+    await form.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(form).toHaveCount(0);
+    await expect(open).toBeFocused();
+    await open.click();
+    await expect(frontField).toHaveValue("");
+    await page.keyboard.press("Escape");
+    await expect(form).toHaveCount(0);
+
+    // Closed, the card's keys work again.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Space");
+    await expect(card).toHaveAttribute("data-face", "back");
     db.close();
   } finally {
     await app.close();
@@ -249,7 +372,7 @@ test("card build: cards show as each batch is stored, and Export waits for the f
     `);
     await expect(page.locator("article.px-card .px-card-front")).toHaveText("Seconda legge di Newton?");
     await expect(building).toBeVisible();
-    await expect(page.locator(".focus-meta")).toHaveText("1 of 2");
+    await expect(page.locator(".px-studybar-title p")).toHaveText("1 of 2");
     await expect(exportButton).toBeEnabled();
     db.close();
   } finally {

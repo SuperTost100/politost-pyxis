@@ -1,0 +1,140 @@
+/* The study screens' bar (pyxis-mockups app/study.html, ".stepbar"): back, separator, title, actions. */
+.px-studybar {
+  position: relative;
+  z-index: 10;
+  flex: none;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 var(--space-4);
+  background: var(--bg);
+  -webkit-app-region: drag;
+}
+
+html[data-platform="darwin"] .px-studybar {
+  padding-left: 80px;
+}
+
+/* The bar drags the window; everything that takes a click or text opts out. */
+.px-studybar button,
+.px-studybar a,
+.px-studybar input,
+.px-studybar textarea,
+.px-studybar [role="dialog"] {
+  -webkit-app-region: no-drag;
+}
+
+.px-studybar-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.px-studybar-back:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.px-studybar-back-text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-studybar-sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+
+.px-studybar-title {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.px-studybar-title h1,
+.px-studybar-title b {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font: 600 calc(14px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-studybar-title p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: calc(12.5px * var(--text-scale, 1));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-studybar-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The screen's actions are small ghost buttons, quieter than the page's own. The bar's class outranks antd's own
+   text-button states. */
+.px-studybar .px-studybar-actions .px-studybar-action.ant-btn {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-size: calc(13.5px * var(--text-scale, 1));
+  font-weight: 500;
+}
+
+.px-studybar .px-studybar-actions .px-studybar-action.ant-btn:not(:disabled):hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+/* The button whose popover is open keeps the accent, as in the mockup. */
+.px-studybar .px-studybar-actions .px-studybar-action.ant-btn[aria-expanded="true"],
+.px-studybar .px-studybar-actions .px-studybar-action.ant-btn[aria-expanded="true"]:not(:disabled):hover {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.px-studybar .px-studybar-actions .px-studybar-action.ant-btn:disabled {
+  color: var(--ink-subtle);
+}
+
+/* The progress line sits under the bar, inside it so it belongs to the banner. */
+.px-studybar:has(.px-studybar-progress) {
+  margin-bottom: 2px;
+}
+
+.px-studybar-progress {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  height: 2px;
+  background: var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-studybar-back {
+    transition: none;
+  }
+}

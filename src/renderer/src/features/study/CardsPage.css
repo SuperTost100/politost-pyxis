@@ -239,25 +239,67 @@
   margin: 0;
   color: var(--ink-muted);
 }
-.px-cards .px-cards-add {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border);
+/* New flashcard (pyxis-mockups app/study.html, ".newcard"): a small form grown out of its button in the bar. */
+.px-newcard-wrap {
+  position: relative;
 }
-.px-cards .px-cards-add[open] {
+.px-newcard {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  width: 360px;
+  max-width: calc(100vw - 2 * var(--space-4));
   display: grid;
   gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  animation: px-newcard-grow 180ms ease-out;
 }
-.px-cards .px-cards-add summary {
-  cursor: pointer;
-  width: fit-content;
-  border-radius: var(--radius-sm);
+.px-newcard .label {
+  margin: 0;
 }
-.px-cards .px-cards-add[open] summary {
-  margin-bottom: var(--space-2);
+.px-newcard .label + .ant-input {
+  margin-bottom: var(--space-1);
 }
-.px-cards .px-cards-add > .ant-btn {
-  justify-self: start;
-  margin-top: var(--space-2);
+.px-newcard textarea.ant-input {
+  border-radius: var(--radius-md);
+}
+.px-newcard-note {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--mastery-text);
+}
+.px-newcard-error {
+  margin: 0;
+  color: var(--danger);
+}
+.px-newcard-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+@keyframes px-newcard-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-newcard {
+    animation: none;
+  }
 }
 
 .px-cards textarea.ant-input {

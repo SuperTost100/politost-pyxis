@@ -148,6 +148,8 @@ const routes = [
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-quiz-done-attempt",
   ],
   ["cards", "/plans/audit-plan/cards/audit-topic"],
+  // The study bar's New flashcard form, open over the card.
+  ["cards-new", "/plans/audit-plan/cards/audit-topic"],
   ["simulation-setup", "/plans/audit-plan/simulation"],
   ["simulation-ready", "/plans/audit-ready-plan/simulation"],
   ["simulation-result", "/plans/audit-plan/exam/audit-exam-attempt"],
@@ -2167,6 +2169,18 @@ async function openState(page: Page, name: string) {
       await expect(missed).toHaveAttribute("aria-pressed", "false");
       break;
     }
+    case "cards-new": {
+      const open = page
+        .getByRole("banner")
+        .getByRole("button", { name: both("Nuova flashcard", "New flashcard") });
+      await open.click();
+      await expect(open).toHaveAttribute("aria-expanded", "true");
+      await expect(dialog).toHaveAccessibleName(both("Nuova flashcard", "New flashcard"));
+      await expect(dialog.getByRole("textbox", { name: both("Fronte", "Front") })).toBeFocused();
+      // The study bar has no close button: the way back is named after the exam.
+      await expect(page.getByRole("button", { name: /^(Chiudi|Close)$/ })).toHaveCount(0);
+      break;
+    }
     case "lesson-menu":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -2545,9 +2559,9 @@ async function openState(page: Page, name: string) {
       break;
     case "simulation-grading-failed":
       // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
-      // and the exercise not graded yet says so in words.
+      // and the exercise not graded yet says so in words. The study bar goes back to the exam by name.
       await expect(
-        page.getByRole("button", { name: /Chiudi|Close/, exact: true }),
+        page.getByRole("banner").getByRole("button", { name: /^(Torna all'esame|Back to the exam): / }),
       ).toBeVisible();
       await expect(
         page.getByRole("button", {

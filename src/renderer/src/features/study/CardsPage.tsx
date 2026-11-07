@@ -1,12 +1,11 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Dropdown, Input, Modal } from "antd";
-import { Ellipsis, MessageCircleQuestion } from "lucide-react";
+import { Button, Dropdown, Modal } from "antd";
+import { Ellipsis, MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -23,6 +22,8 @@ import { LoadError } from "../../components/LoadError";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
+import { NewCardButton } from "./NewCardButton";
+import { StudyLayout } from "./StudyBar";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -117,8 +118,8 @@ export function CardsPage() {
   const [editing, setEditing] = useState(false);
   const [draftFront, setDraftFront] = useState("");
   const [draftBack, setDraftBack] = useState("");
-  const [addingFront, setAddingFront] = useState("");
-  const [addingBack, setAddingBack] = useState("");
+  // The bar's New flashcard form; while it is open the card's keys are the form's.
+  const [adding, setAdding] = useState(false);
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
     enabled: Boolean(planId) && !reviewing,
@@ -209,6 +210,7 @@ export function CardsPage() {
     Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
   const plan = usePlan(cardPlanId);
+  const topicTitle = topicId ? plan.data?.topics.find((topic) => topic.id === topicId)?.title : undefined;
   // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
   const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
   const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
@@ -497,6 +499,7 @@ export function CardsPage() {
     function key(event: KeyboardEvent) {
       if (
         editing ||
+        adding ||
         ratingLock.current ||
         event.ctrlKey ||
         event.metaKey ||
@@ -537,7 +540,7 @@ export function CardsPage() {
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [card, editing, showBack, lastAction, cardTopicId]);
+  }, [card, editing, adding, showBack, lastAction, cardTopicId]);
 
   // Oggi has no per-topic count: what is rated plus what is still queued, at most 20 queued at a time.
   const sessionTotal = reviewing
@@ -569,16 +572,60 @@ export function CardsPage() {
       : t(lastAction.kind === "suspend" ? "cards.suspended" : "cards.deleted");
 
   return (
-    <FocusLayout
-      title={t(everywhere ? "oggi.cardsTitle" : reviewing ? "cards.reviewTitle" : "cards.title")}
-      meta={
+    <StudyLayout
+      back={
+        everywhere
+          ? { text: t("nav.exams"), onClick: close }
+          : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
+      }
+      title={
+        everywhere
+          ? t("oggi.cardsTitle")
+          : reviewing
+            ? t("cards.reviewTitle")
+            : [t("cards.title"), topicTitle].filter(Boolean).join(" \u00b7 ")
+      }
+      subtitle={
         sessionTotal > 0
           ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionAt, total: sessionTotal })]
               .filter(Boolean)
               .join(" \u00b7 ")
           : shownCard?.planTitle
       }
-      onClose={close}
+      actions={
+        <>
+          {reviewing || everywhere ? null : (
+            <NewCardButton
+              open={adding}
+              onOpenChange={setAdding}
+              onAdd={async (front, back) => {
+                await invoke("study.save", { planId: planId ?? "", topicId: topicId ?? "", front, back });
+                void refresh();
+              }}
+            />
+          )}
+          <Button
+            type="text"
+            className="px-studybar-action"
+            icon={<Undo2 size={16} strokeWidth={1.75} aria-hidden />}
+            disabled={!lastAction || ratingPending}
+            aria-keyshortcuts="U"
+            onClick={() => void undo()}
+          >
+            {t("cards.undoLast")}
+          </Button>
+          <Button
+            type="text"
+            className="px-studybar-action"
+            icon={<Pencil size={16} strokeWidth={1.75} aria-hidden />}
+            disabled={!card || !cardTopicId || editing || ratingPending}
+            aria-keyshortcuts={MENU_KEYS.edit.toUpperCase()}
+            onClick={startEdit}
+          >
+            {t("cards.edit")}
+          </Button>
+        </>
+      }
     >
       {modalContext}
       <section className="px-cards">
@@ -867,21 +914,12 @@ export function CardsPage() {
             )}
           </div>
         )}
+        {/* What the last change did; the bar's Undo last takes it back. */}
         {lastAction ? (
           <div className="px-cards-undo">
             <p className="small" role="status">
               {undoText}
             </p>
-            <Button
-              type="text"
-              shape="round"
-              size="small"
-              disabled={ratingPending}
-              aria-keyshortcuts="U"
-              onClick={() => void undo()}
-            >
-              {t("cards.undo")}
-            </Button>
           </div>
         ) : null}
         {(parked.data ?? []).map((item) => (
@@ -945,55 +983,7 @@ export function CardsPage() {
             })}
           </p>
         ) : null}
-        {reviewing || everywhere ? null : (
-        <details className="px-cards-add">
-          <summary className="body-strong">{t("cards.add")}</summary>
-          <label className="small" htmlFor="new-front">
-            {t("cards.front")}
-          </label>
-          <Input.TextArea
-            autoSize={{ minRows: 2, maxRows: 8 }}
-            id="new-front"
-            value={addingFront}
-            onChange={(event) => setAddingFront(event.target.value)}
-            placeholder={t("cards.front")}
-          />
-          <label className="small" htmlFor="new-back">
-            {t("cards.back")}
-          </label>
-          <Input.TextArea
-            id="new-back"
-            autoSize={{ minRows: 2, maxRows: 8 }}
-            value={addingBack}
-            onChange={(event) => setAddingBack(event.target.value)}
-            placeholder={t("cards.back")}
-            aria-label={t("cards.back")}
-          />
-          <Button
-            shape="round"
-            onClick={() => {
-              if (!planId || !topicId) return;
-              act(
-                invoke("study.save", {
-                  planId,
-                  topicId,
-                  front: addingFront,
-                  back: addingBack,
-                }),
-                () => {
-                  setAddingFront("");
-                  setAddingBack("");
-                  refresh();
-                },
-              );
-            }}
-            disabled={!addingFront.trim() || !addingBack.trim()}
-          >
-            {t("cards.save")}
-          </Button>
-        </details>
-        )}
       </section>
-    </FocusLayout>
+    </StudyLayout>
   );
 }

@@ -669,9 +669,14 @@
     "learning": "Learning {{count}}",
     "mastered": "Mastered {{count}}",
     "summary": "Seen {{seen}}. Didn't know it {{again}}, hard {{hard}}, knew it {{good}}, easy {{easy}}.",
-    "add": "Add a flashcard",
     "front": "Front",
     "back": "Back",
+    "new": "New flashcard",
+    "newFrontHint": "The question",
+    "newBackHint": "The answer",
+    "newAdd": "Add",
+    "newAdded": "Added. You can write another.",
+    "undoLast": "Undo last",
     "save": "Save",
     "edit": "Edit",
     "delete": "Delete",
@@ -727,7 +732,6 @@
     "rated": "You picked “{{rating}}”.",
     "suspended": "Flashcard suspended.",
     "deleted": "Flashcard removed.",
-    "undo": "Undo",
     "more": "Flashcard actions",
     "card": "Flashcard",
     "askTutor": "Ask the tutor",
@@ -1366,7 +1370,8 @@
     "redo": "Redo",
     "answeredOn": "Your answers from {{date}}",
     "answersNotShared": "The answers of this attempt weren't included in the shared exam.",
-    "verdictLow": "Now you know what to review."
+    "verdictLow": "Now you know what to review.",
+    "leave": "Leave, resume later"
   },
   "practice": {
     "title": "Book exercises",

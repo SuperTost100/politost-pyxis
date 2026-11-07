@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
+import { ListChecks } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { Icon } from "../../components/Icon";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -12,6 +12,7 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
+import { StudyLayout } from "./StudyBar";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 
@@ -214,12 +215,21 @@ export function PracticePage() {
   const stopped = job && !building && job.state !== "succeeded";
 
   return (
-    <FocusLayout
-      title={t("practice.title")}
-      onClose={() => navigate(`/plans/${planId ?? ""}`)}
-      headerRight={
+    <StudyLayout
+      back={{
+        text: plan.data?.title ?? t("lesson.back"),
+        label: plan.data ? t("lesson.back") : undefined,
+        onClick: () => navigate(`/plans/${planId ?? ""}`),
+      }}
+      title={[t("practice.title"), plan.data?.topics.find((topic) => topic.id === topicId)?.title]
+        .filter(Boolean)
+        .join(" \u00b7 ")}
+      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+      actions={
         <Button
-          shape="round"
+          type="text"
+          className="px-studybar-action"
+          icon={<ListChecks size={16} strokeWidth={1.75} aria-hidden />}
           onClick={() => navigate(`/plans/${planId ?? ""}/quiz/${topicId ?? ""}`)}
         >
           {t("quiz.title")}
@@ -293,6 +303,6 @@ export function PracticePage() {
           ))}
         </ol>
       ) : null}
-    </FocusLayout>
+    </StudyLayout>
   );
 }
