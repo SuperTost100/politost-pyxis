@@ -92,10 +92,17 @@ test("the menu follows the interface language and hides its bar on Windows and L
         ),
       ).toBe(true);
 
-    // Changing the language in Settings rebuilds the menu while the app runs.
+    // Changing the language in Settings rebuilds the menu while the app runs. The language sits low on Aspetto e lingua,
+    // where the test release's update notice covers it on the small macOS and Windows runner screens: close it first, as
+    // a person would.
     await page.evaluate(() => {
       location.hash = "/settings/language";
     });
+    await page
+      .locator(".px-update-notice")
+      .getByRole("button", { name: "Chiudi avviso", exact: true })
+      .click();
+    await expect(page.locator(".px-update-notice")).toHaveCount(0);
     await page.getByRole("button", { name: "English", exact: true }).click();
     await expect.poll(() => topLevel(app)).toEqual(withApp(english));
     const labels = await app.evaluate(
