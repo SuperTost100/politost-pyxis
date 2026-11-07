@@ -692,12 +692,15 @@
     "askSource": "Fonte: {{section}}",
     "askFailed": "Non sono riuscito ad aprire la chat con il tutor. Riprova.",
     "sessionProgress": "{{done}} di {{total}}",
-    "dailyLimit_one": "Hai visto la {{count}} flashcard nuova di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni.",
-    "dailyLimit_other": "Hai visto le {{count}} flashcard nuove di oggi per questo esame. Le altre arrivano domani. Puoi cambiare il limite nelle Impostazioni.",
+    "dailyLimit_zero": "Il limite delle flashcard nuove è 0, quindi oggi non ne inizia nessuna.",
+    "dailyLimit_one": "Hai visto la {{count}} flashcard nuova di oggi per questo esame. Le altre arrivano domani.",
+    "dailyLimit_other": "Hai visto le {{count}} flashcard nuove di oggi per questo esame. Le altre arrivano domani.",
     "progressLabel": "Flashcard di questa sessione",
     "rateLabel": "Quanto la sapevi?",
     "rateHint": "Quanto la sapevi? In base alla risposta, la flashcard torna prima o più avanti.",
-    "flipHint": "Oppure premi la barra spaziatrice."
+    "flipHint": "Oppure premi la barra spaziatrice.",
+    "changeLimit": "Cambia",
+    "writingFirst": "Sto scrivendo la prima flashcard…"
   },
   "cardImport": {
     "open": "Importa da Anki",
@@ -1919,7 +1922,7 @@
     "crashKept": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi.",
     "crashKeptSetup": "I rapporti vengono cancellati dopo 90 giorni, e puoi togliere il consenso quando vuoi da Impostazioni, alla voce Privacy.",
     "flashcards": "Flashcard",
-    "newPerDay": "Flashcard nuove al giorno",
+    "newPerDay": "Nuove flashcard giornaliere per ogni esame",
     "newPerDayHint": "Per ogni esame. Le flashcard già iniziate tornano quando scadono, qualunque sia il limite. Con 0 non ne partono di nuove.",
     "levelHelp": "Il tutor spiega a questo livello nelle chat e negli esami che crei da qui in poi.",
     "gradeScale": "Voti e obiettivi",

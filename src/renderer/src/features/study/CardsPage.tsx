@@ -5,9 +5,10 @@ import { Ellipsis, MessageCircleQuestion } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { CitationChip } from "../../components/CitationChip";
+import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
@@ -61,17 +62,41 @@ export function CardsPage() {
     request.then(then, () => setActionFailed(true));
   };
   const [showBack, setShowBack] = useState(false);
-  // Set by the first turn, so a card that just appeared shows without turning.
-  const [turned, setTurned] = useState(false);
-  /** Shows the card's other face. Only the look turns: the face changes at once, so a rating key right after works. */
+  // The face the card shows. It follows showBack half-way through the turn, when the card is edge-on; showBack changes
+  // at once, so Space and then a rating key right after still rate.
+  const [face, setFace] = useState(false);
+  const [phase, setPhase] = useState<"out" | "in" | null>(null);
+  const turnTimers = useRef<number[]>([]);
+  const stopTurn = () => {
+    for (const timer of turnTimers.current) window.clearTimeout(timer);
+    turnTimers.current = [];
+  };
+  useEffect(() => stopTurn, []);
+  /** Turns the card to its other face: it turns away until edge-on, shows the other face, and turns back in. */
   function turn() {
-    // The control that turned the card goes away with its face, so the focus moves to the new face: the answer, which a
-    // screen reader then reads, or Gira again. Focus elsewhere on the page stays where it is.
+    // The control that turned the card goes away with its face, so the focus moves to the new face: the question and
+    // answer, which a screen reader then reads, or Gira again. Focus elsewhere on the page stays where it is.
     const focus = document.activeElement;
     turnFocus.current = !focus || focus === document.body || Boolean(stage.current?.contains(focus));
-    setTurned(true);
-    setShowBack((current) => !current);
+    const next = !showBackRef.current;
+    showBackRef.current = next;
+    setShowBack(next);
+    stopTurn();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setFace(next);
+      setPhase(null);
+      return;
+    }
+    setPhase("out");
+    turnTimers.current.push(
+      window.setTimeout(() => {
+        setFace(next);
+        setPhase("in");
+        turnTimers.current.push(window.setTimeout(() => setPhase(null), 200));
+      }, 160),
+    );
   }
+  const showBackRef = useRef(false);
   const stage = useRef<HTMLDivElement>(null);
   const answer = useRef<HTMLDivElement>(null);
   const flipButton = useRef<HTMLButtonElement>(null);
@@ -79,8 +104,8 @@ export function CardsPage() {
   useEffect(() => {
     if (!turnFocus.current) return;
     turnFocus.current = false;
-    (showBack ? answer.current : flipButton.current)?.focus();
-  }, [showBack]);
+    (face ? answer.current : flipButton.current)?.focus();
+  }, [face]);
   const [lastAction, setLastAction] = useState<Undoable | null>(null);
   // A card brought back by Undo shows next, wherever the deck would sort it.
   const [pinned, setPinned] = useState<string | null>(null);
@@ -283,8 +308,11 @@ export function CardsPage() {
   const cardTopicId = topicId ?? card?.topicId ?? undefined;
   useEffect(() => {
     setEditing(false);
+    stopTurn();
+    showBackRef.current = false;
     setShowBack(false);
-    setTurned(false);
+    setFace(false);
+    setPhase(null);
   }, [card?.id]);
   const counts = { again: 0, hard: 0, good: 0, easy: 0 };
   for (const rating of seen) counts[rating] += 1;
@@ -316,8 +344,11 @@ export function CardsPage() {
         intervalDays: state.intervalDays,
       });
       setPinned(null);
+      stopTurn();
+      showBackRef.current = false;
       setShowBack(false);
-      setTurned(false);
+      setFace(false);
+      setPhase(null);
       setSeen((current) => [...current, rating]);
       if (everywhere && cardPlanId && card.topicId)
         setRatedIn((current) => [
@@ -380,8 +411,11 @@ export function CardsPage() {
     act(invoke("study.suspend", { cardId, suspended: true }), () => {
       setLastAction({ kind: "suspend", cardId });
       setPinned(null);
+      stopTurn();
+      showBackRef.current = false;
       setShowBack(false);
-      setTurned(false);
+      setFace(false);
+      setPhase(null);
       void refresh();
     });
   }
@@ -394,8 +428,11 @@ export function CardsPage() {
       act(invoke("study.remove", { cardId }), () => {
         setLastAction(card.handMade ? null : { kind: "delete", cardId });
         setPinned(null);
+        stopTurn();
+        showBackRef.current = false;
         setShowBack(false);
-        setTurned(false);
+        setFace(false);
+        setPhase(null);
         void refresh();
       });
     if (!card.handMade) return run();
@@ -612,7 +649,15 @@ export function CardsPage() {
           {nextCardText ? t("cards.nextCard", { front: nextCardText }) : ""}
         </div>
         {!card ? (
-          building || deckLoading ? null : shown.isError ? (
+          building ? (
+            // While the first cards are written, a card waits where they will appear, with the mark at work.
+            <div className="px-cards-stage">
+              <div className="px-card px-card-waiting" role="status">
+                <Logo size={40} working />
+                <p>{t("cards.writingFirst")}</p>
+              </div>
+            </div>
+          ) : deckLoading ? null : shown.isError ? (
             <LoadError
               onRetry={() => void shown.refetch()}
               details={errorDetails(shown.error)}
@@ -627,7 +672,8 @@ export function CardsPage() {
             </p>
           ) : capped ? (
             <p className="body">
-              {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}
+              {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}{" "}
+              <Link to="/settings/flashcards">{t("cards.changeLimit")}</Link>
             </p>
           ) : (
             <p className="body">{t("cards.empty")}</p>
@@ -646,9 +692,13 @@ export function CardsPage() {
                 <i style={{ width: `${(100 * sessionDone) / sessionTotal}%` }} />
               </div>
             ) : null}
-            {/* The card turns over when it shows its other face; face is unset until the first turn, so it doesn't
-                turn as it first appears. */}
-            <article className="px-card" aria-label={t("cards.card")} data-face={turned ? (showBack ? "back" : "front") : undefined}>
+            {/* The card turns over when it shows its other face: data-turn is "out" until it is edge-on, then "in". */}
+            <article
+              className="px-card"
+              aria-label={t("cards.card")}
+              data-face={face ? "back" : "front"}
+              data-turn={phase ?? undefined}
+            >
               <div className="px-card-top">
                 <Dropdown
                   trigger={["click"]}
@@ -729,7 +779,7 @@ export function CardsPage() {
                 </div>
               ) : (
                 <div className="px-card-face">
-                  {showBack ? (
+                  {face ? (
                     <>
                       {/* The focus lands here after a turn: the question with a cloze card's answer filled in, then the
                           back, so a screen reader reads both. */}
@@ -788,6 +838,7 @@ export function CardsPage() {
                       onClick={() => void rate(rating)}
                     >
                       {t(`cards.${rating}`)}
+                      <kbd aria-hidden>{index + 1}</kbd>
                     </Button>
                   ))}
                 </div>
@@ -798,6 +849,7 @@ export function CardsPage() {
                 <div className="px-cards-flip">
                   <Button ref={flipButton} type="primary" size="large" aria-keyshortcuts="Space" onClick={turn}>
                     {t("cards.flip")}
+                    <kbd aria-hidden>{t("cards.spaceKey")}</kbd>
                   </Button>
                 </div>
                 <p className="px-cards-hint">{t("cards.flipHint")}</p>

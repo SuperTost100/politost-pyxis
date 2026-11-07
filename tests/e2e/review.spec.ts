@@ -115,14 +115,16 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     const questions = total - 5;
     expect(questions).toBeGreaterThan(0);
 
-    // The rating buttons carry a label only: no key, no next review time, and none stands out from the others.
+    // The rating buttons carry a label and their key as a badge, no next review time, and none stands out.
     // Space does nothing until the first card has loaded, and the progress line can show before it.
     await expect(page.getByRole("button", { name: /^Gira/ })).toBeVisible();
     await page.keyboard.press("Space");
     const labels = ["Non la sapevo", "Difficile", "La sapevo", "Facile"];
     for (const name of labels)
       await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
-    await expect(page.getByRole("group", { name: "Quanto la sapevi?" })).toHaveText(labels.join(""));
+    await expect(page.getByRole("group", { name: "Quanto la sapevi?" })).toHaveText(
+      labels.map((label, index) => `${label}${index + 1}`).join(""),
+    );
     await expect(page.getByRole("group", { name: "Quanto la sapevi?" }).locator(".ant-btn-primary")).toHaveCount(0);
     await page.keyboard.press("Space");
 
