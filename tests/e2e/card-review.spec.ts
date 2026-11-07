@@ -331,7 +331,7 @@ test("card limit: past today's new cards, the message links to the setting, afte
     await expect(page).toHaveURL(/#\/settings\/flashcards$/);
     const steps = await page.evaluate(() => window.pyxis.invoke("plans.read", { planId: "p" }));
     expect((steps as { steps: Array<{ activity: string }> }).steps.some((step) => step.activity === "cards")).toBe(true);
-    await expect(page.getByLabel("New flashcards a day, for each exam")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "New flashcards a day, for each exam" })).toHaveValue("1");
     // With no new cards a day, the message says so in its own words.
     await page.evaluate(() => window.pyxis.invoke("study.saveCardSettings", { newPerDay: 0 }));
     await page.evaluate(() => {

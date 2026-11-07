@@ -1782,7 +1782,7 @@
     "italian": "Italiano",
     "english": "English",
     "themeHint": "Until you choose, Pyxis follows the system theme.",
-    "tutor": "Tutor",
+    "tutor": "How it explains",
     "solver": "Solves",
     "socratic": "Asks questions",
     "interests": "Interests",
@@ -1946,7 +1946,27 @@
     },
     "studyHint": "explanations, reading, flashcards, reminders",
     "theme": "Theme",
-    "aboutBlock": "Version and licences"
+    "aboutBlock": "Version and licences",
+    "how": {
+      "solver": "Step by step, to the solution",
+      "solverHint": "Shows every step and reaches the result.",
+      "socratic": "With questions, until you get there",
+      "socraticHint": "Gives one hint at a time and asks you for the next step.",
+      "followups": "Suggest follow-up questions",
+      "followupsHint": "After each answer, two or three questions to continue from."
+    },
+    "textSize": "Text size",
+    "size": {
+      "sm": "Small",
+      "md": "Normal",
+      "lg": "Large"
+    },
+    "dyslexiaHint": "More space between letters, words and lines.",
+    "preview": "Preview",
+    "newPerDayExample_one": "With {{count}} and three exams, up to {{total}} start each day. Cards already started still come back when due. With 0, no new ones start.",
+    "newPerDayExample_other": "With {{count}} and three exams, up to {{total}} start each day. Cards already started still come back when due. With 0, no new ones start.",
+    "fewer": "Fewer",
+    "more": "More"
   },
   "jobs": {
     "topicsMore_one": "{{first}} and one more topic",

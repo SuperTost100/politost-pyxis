@@ -45,7 +45,7 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
       "page",
     );
     await expect(page.getByRole("heading", { level: 2, name: "Tema" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Italiano" })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Italiano" })).toBeChecked();
     await expect(back).toHaveCount(0);
 
     // A link to one section opens the page that holds it, at that section.
@@ -157,6 +157,63 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await page.getByRole("button", { name: /^Aspetto/ }).click();
     await expect(page).toHaveURL(/#\/settings\/appearance$/);
     await expect(back).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Studio: one choice is radio rows, on or off a switch, the text size a segmented control, new cards a stepper", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-controls-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      window.location.hash = "#/settings/study";
+    });
+    const profile = () => page.evaluate(() => window.pyxis.invoke("profile.get", {} as never)) as Promise<{
+      tutorMode: string;
+      followups: boolean;
+      textSize: string;
+      dyslexia: boolean;
+    }>;
+
+    // How it explains: two radio rows, each with a line on what it does, and a switch for follow-up questions.
+    const how = page.getByRole("radiogroup", { name: "Come ti spiega" });
+    await expect(how.getByRole("radio")).toHaveCount(2);
+    await expect(how.getByRole("radio", { name: /^Passo per passo/ })).toBeChecked();
+    await how.getByRole("radio", { name: /^Con domande/ }).check();
+    await expect.poll(async () => (await profile()).tutorMode).toBe("socratic");
+    const followups = page.getByRole("switch", { name: "Proponi domande per approfondire" });
+    await expect(followups).toHaveAttribute("aria-checked", "true");
+    await followups.click();
+    await expect.poll(async () => (await profile()).followups).toBe(false);
+
+    // Reading: the size is a segmented control that arrows move, and the dyslexia spacing a switch.
+    const size = page.getByRole("radiogroup", { name: "Dimensione del testo" });
+    await expect(size.getByRole("radio", { name: "Normale" })).toHaveAttribute("aria-checked", "true");
+    await size.getByRole("radio", { name: "Normale" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(size.getByRole("radio", { name: "Grande" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.locator("html")).toHaveAttribute("data-text", "lg");
+    await page.getByRole("switch", { name: "Spaziatura per la dislessia" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-dyslexia", "on");
+    await expect(page.getByText("Anteprima", { exact: true })).toBeVisible();
+
+    // New cards a day: − and + step by five and save; a number typed in saves when the field is left.
+    const cards = page.getByRole("textbox", { name: "Nuove flashcard giornaliere per ogni esame" });
+    await expect(cards).toHaveValue("20");
+    await page.getByRole("button", { name: "Più" }).click();
+    await expect(cards).toHaveValue("25");
+    await cards.fill("7");
+    await cards.press("Enter");
+    await expect.poll(() => page.evaluate(() => window.pyxis.invoke("study.cardSettings", {} as never))).toEqual(
+      expect.objectContaining({ newPerDay: 7 }),
+    );
+    await expect(page.getByText(/^Con 7 e tre esami, ogni giorno ne iniziano fino a 21\./)).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);
