@@ -104,6 +104,8 @@ export function Shell() {
         />
       )}
       <div className="px-column">
+        {/* Where notices open (App.tsx): the top of this column, so they stay beside the sidebar. */}
+        <div className="px-message-host" />
         <div className="px-drag" aria-hidden />
         {inSetup ? null : (
           // Attività, in the top-right corner of every page, with its list opening under it.

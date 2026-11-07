@@ -123,6 +123,37 @@ html[data-platform="darwin"] {
   gap: var(--space-1);
   -webkit-app-region: no-drag;
 }
+/* Notices (antd message, configured in App.tsx) open in the page column, centred on it, below the drag strip and
+   Attività (10px from the top, 36px tall), so they never cover the traffic lights or the sidebar. The host sits at the
+   top of the column with no height, so it takes no click, and above dialogs, whose actions also report this way. */
+:root {
+  --px-message-top: 56px;
+}
+.px-message-host {
+  position: sticky;
+  top: 0;
+  z-index: 2100;
+  height: 0;
+}
+.px-message-host > .ant-message {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: auto;
+  transform: none;
+}
+/* As wide as the text, up to 560px; a longer text wraps. */
+.ant-message .ant-message-notice {
+  max-width: 560px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .px-app.px-in-setup {
   flex-direction: column;
   align-items: stretch;
