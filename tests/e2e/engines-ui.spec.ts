@@ -59,6 +59,11 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             page.locator(".engines-list .px-engine").first(),
           ).toBeVisible({ timeout: 30000 });
           await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+          // The engine for each function starts closed; it opens on its heading.
+          const perFeature = page.locator(".engines-section");
+          await expect(perFeature).not.toHaveAttribute("open");
+          await perFeature.locator("summary").click();
+          await expect(perFeature).toHaveAttribute("open", "");
           // Each task has its own reasoning effort next to its model.
           await expect(
             page.getByRole("combobox", {
@@ -232,6 +237,8 @@ test("Automatic engines: simple view names who does what, and advanced can pin a
     await expect(page.locator(".engines-feature-row")).toHaveCount(0);
     await page.getByRole("switch", { name: "Advanced options" }).click();
     await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+    // The table sits in a section that starts closed.
+    await page.locator(".engines-section > summary").click();
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
     // Advanced options add no second primary button: Add engine is a secondary one.
     await expect(

@@ -14,6 +14,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -732,11 +733,23 @@ export function EnginesPanel() {
       ) : null}
       <LocalModelCard place="settings" />
       <EngineUsage />
+      {/* In either view and outside the closed section: "Use as default" in an engine's drawer fails here too. */}
+      {configure.error || automatic.error || setEffortFor.error ? (
+        <Notice tone="danger">
+          {t(messageKey(configure.error ?? automatic.error ?? setEffortFor.error))}
+        </Notice>
+      ) : null}
       {advanced ? <DebugSwitch /> : null}
       {advanced ? (
         <>
+          {/* Closed until opened: the engine and effort for each function are for students who want to tune them. */}
+          <details className="engines-section">
+            <summary>
+              <ChevronRight className="engines-section-caret" size={16} strokeWidth={1.75} aria-hidden />
+              <h2 className="title-3">{t("engines.perFeature")}</h2>
+            </summary>
           <div className="engines-heading">
-            <h2 className="title-3">{t("engines.perFeature")}</h2>
+            <span className="small ink-muted">{t("engines.perFeatureHint")}</span>
             <Button
               shape="round"
               disabled={automatic.isPending || !customised}
@@ -880,15 +893,7 @@ export function EnginesPanel() {
           </div>
           <p className="small engines-hint">{t("engines.modelAdvice")}</p>
           <p className="small engines-hint">{t("engines.effortAdvice")}</p>
-          {configure.error || automatic.error || setEffortFor.error ? (
-            <Notice tone="danger">
-              {t(
-                messageKey(
-                  configure.error ?? automatic.error ?? setEffortFor.error,
-                ),
-              )}
-            </Notice>
-          ) : null}
+          </details>
           <details className="engines-diagnostics">
             <summary>{t("engines.diagnostics")}</summary>
             <div
