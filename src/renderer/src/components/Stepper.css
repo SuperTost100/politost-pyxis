@@ -41,3 +41,35 @@
     flex: 3 1 0;
   }
 }
+/* First setup: three short steps of a fixed width, at the end of the row the brand starts. */
+.px-stepper.is-numbered {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 110px);
+  gap: 10px;
+}
+.px-stepper.is-numbered .px-stepper-bar {
+  opacity: 1;
+  background: var(--border);
+}
+.px-stepper.is-numbered .is-done .px-stepper-bar,
+.px-stepper.is-numbered .is-current .px-stepper-bar {
+  background: var(--primary-text);
+}
+.px-stepper.is-numbered .px-stepper-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.px-stepper.is-numbered .is-done svg {
+  flex: none;
+  color: var(--primary-text);
+}
+/* Three short labels fit a narrow window, so they all stay. */
+@media (max-width: 640px) {
+  .px-stepper.is-numbered .px-stepper-item:not(.is-current) .px-stepper-label {
+    display: inline-flex;
+  }
+}

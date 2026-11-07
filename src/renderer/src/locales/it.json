@@ -87,7 +87,6 @@
   },
   "onboarding": {
     "name": "Nome",
-    "level": "Livello di studio",
     "year": "Anno",
     "school": "Scuola",
     "course": "Corso",
@@ -108,53 +107,96 @@
       "other": "Altro"
     },
     "saveFailed": "Il profilo non è stato salvato. Riprova.",
-    "later": "Lo farò dopo",
+    "later": "Lo faccio dopo",
     "steps": {
-      "profile": "Su di te",
-      "engines": "Motore AI",
-      "exam": "L'esame",
-      "material": "Materiale"
+      "profile": "Tu",
+      "engines": "L'AI",
+      "material": "Il materiale"
     },
     "engines": {
-      "title": "Chi scrive le tue lezioni",
-      "body": "Pyxis usa un'AI che paghi già, quindi non spendi altro. La installo io e ti faccio accedere.",
       "found": "Ho trovato {{names}}.",
       "foundSignedOut": "Ho trovato {{names}}, ma serve ancora l'accesso.",
-      "foundNone": "Non ho trovato nessun motore.",
-      "disclosure": "Più avanti, il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore del motore. Adesso non invio nulla a nessun modello.",
-      "question": "Quale di questi paghi già?",
-      "questionHint": "Scegli quello che usi di più. Gli altri puoi aggiungerli dopo in Impostazioni.",
-      "plans": {
-        "chatgpt": "ChatGPT Plus o Pro",
-        "claude": "Claude Pro o Max",
-        "google": "Google AI Plus, Pro o Ultra",
-        "cursor": "Cursor",
-        "none": "Nessuno di questi"
-      },
-      "startFree": "Gratis con un account Google",
-      "noneBody": "Parti con Antigravity, il motore di Google. Basta un account Google gratuito, con un limite di uso settimanale. PoliTost tiene una lista dei piani gratuiti e scontati per studenti.",
-      "offers": "Vedi le offerte per studenti",
+      "foundNone": "Non ho trovato nessuna AI su questo computer.",
+      "disclosure": "Più avanti, il testo, i brani recuperati e gli allegati escono da questo computer e arrivano a chi fornisce l'AI. Adesso non invio nulla a nessun modello.",
       "offersLink": "Piani gratuiti e per studenti di ogni AI",
-      "showAll": "Mostra tutti i motori",
-      "hideAll": "Nascondi l'elenco",
-      "setUp": "Configura",
       "listLabel": "Motori su questo computer",
       "autoHint": "Per ogni attività Pyxis usa il modello più economico che basta e, se un motore si ferma, passa a un altro tra quelli pronti.",
       "chosenHint": "Per ogni attività Pyxis usa il modello più economico che basta, scegliendo solo tra i motori spuntati e pronti."
     },
-    "nameQuestion": "Come ti chiami? (facoltativo)",
-    "levelHelp": "Il tutor spiega a questo livello. All'università voti e obiettivi sono su 30, negli altri casi su 100. Li cambi quando vuoi nel profilo.",
     "profile": {
-      "title": "Ciao, sono Pyxis",
-      "body": "Dal tuo materiale preparo un percorso fino all'esame, con lezioni che lo citano, quiz e simulazioni. File e progressi restano su questo computer."
-    },
-    "exam": {
-      "title": "Quale esame prepari?",
-      "skip": "Nessun esame per ora"
+      "title": "Ciao, come ti chiami e cosa studi?",
+      "body": "Serve a Pyxis per scegliere esempi e linguaggio adatti a te. Puoi cambiarlo quando vuoi nelle impostazioni."
     },
     "material": {
-      "title": "Da cosa studi?",
-      "body": "Più materiale mi dai, più le lezioni seguono il tuo corso."
+      "title": "Aggiungi il tuo materiale",
+      "body": "Libri, slide, appunti e temi d'esame. Pyxis li legge e cita le loro pagine quando ti spiega qualcosa.",
+      "files": {
+        "title": "Alcuni file",
+        "body": "Scegli i file dal computer, o trascinali qui.",
+        "example": {
+          "one": "Fisica 1, il libro.pdf",
+          "two": "Slide lezione 3.pptx",
+          "three": "Appunti di analisi.docx",
+          "four": "Temi d'esame 2025.pdf"
+        }
+      },
+      "folder": {
+        "title": "Una cartella",
+        "body": "Ti mostro i file che contiene e scegli tu quali aggiungere.",
+        "example": {
+          "folder": "Fisica 1",
+          "one": "Libro.pdf",
+          "two": "Slide.pptx",
+          "three": "Appunti.docx"
+        }
+      },
+      "copy": "Pyxis ne tiene una copia nella Libreria: i tuoi file restano dove sono, e non li sposta, non li rinomina e non li cancella.",
+      "added_one": "Nella Libreria: {{count}} fonte aggiunta",
+      "added_other": "Nella Libreria: {{count}} fonti aggiunte",
+      "reading": "Sto ancora leggendo alcuni file, ma puoi già iniziare: finisco mentre studi."
+    },
+    "optional": "(se vuoi)",
+    "studies": {
+      "label": "Studi",
+      "university": "All'università",
+      "school": "A scuola",
+      "degree": "Corso di laurea",
+      "universityName": "Ateneo",
+      "which": "Che scuola fai",
+      "schoolName": "Nome della scuola",
+      "track": "Indirizzo"
+    },
+    "ai": {
+      "title": "Con quale AI vuoi studiare?",
+      "body": "Pyxis studia con te attraverso un'AI che usi già. Scegline una: la installo e ti faccio accedere io.",
+      "readyTitle_one": "{{names}} è pronto",
+      "readyTitle_other": "{{names}} sono pronti",
+      "readyBody": "Se vuoi, collega anche un'altra AI: quando una finisce le richieste del giorno, Pyxis continua con l'altra.",
+      "listLabel": "Le AI che Pyxis può usare",
+      "tools": {
+        "claude": "Serve un account Claude con il piano Pro, che è a pagamento.",
+        "chatgpt": "Serve un account ChatGPT. Con il piano gratuito hai poche richieste al giorno, con Plus molte di più.",
+        "gemini": "Serve un account Google.",
+        "geminiFree": "Gratis per gli studenti universitari, con il piano AI Pro.",
+        "cursor": "Serve un account Cursor. Quello gratuito basta per iniziare."
+      },
+      "plans": "Vedi i piani",
+      "plansOf": "Vedi i piani di {{name}}",
+      "state": {
+        "connected": "Collegato",
+        "off": "Non collegato",
+        "more": "Collega anche questa"
+      },
+      "signedInWith": "Hai fatto l'accesso con il tuo account {{account}}.",
+      "installAndSignIn": "Installa e accedi",
+      "opensPage": "Si apre la pagina di {{vendor}}.",
+      "terminalSignIn": "Accedi dal terminale",
+      "terminalNote": "L'accesso si fa nel terminale: ti spiego io come.",
+      "terminal": {
+        "open": "Premi Accedi dal terminale. Si apre una finestra del terminale."
+      },
+      "advanced": "Avanzate: modello sul computer o chiave API",
+      "apiKeyLater": "Una chiave API la aggiungi dopo la configurazione, in Impostazioni, alla voce {{section}}."
     }
   },
   "ask": {
@@ -1973,7 +2015,8 @@
     "newPerDayExample_one": "Con {{count}} e tre esami, ogni giorno ne iniziano fino a {{total}}. Quelle già iniziate tornano comunque quando scadono. Con 0 non ne iniziano di nuove.",
     "newPerDayExample_other": "Con {{count}} e tre esami, ogni giorno ne iniziano fino a {{total}}. Quelle già iniziate tornano comunque quando scadono. Con 0 non ne iniziano di nuove.",
     "fewer": "Meno",
-    "more": "Più"
+    "more": "Più",
+    "crashSetup": "Se Pyxis va in errore, il rapporto dice a chi lo sviluppa in quale punto e perché. Contiene la versione, il messaggio di errore e il punto del programma, non i tuoi file, le chat o le chiavi API. Se Pyxis si chiude di colpo, include anche una parte della sua memoria, che può contenere frammenti di ciò che avevi sullo schermo. È spento finché non lo accendi tu."
   },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",

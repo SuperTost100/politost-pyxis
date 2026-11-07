@@ -32,7 +32,7 @@ test("window CSP: no string eval and no remote images in the main window", async
   try {
     const page = await app.firstWindow();
     await expect(
-      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+      page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     expect(page.url()).toMatch(/^pyxis-app:\/\/app\/index\.html#/);
     // The route answers like the remote server would; a request the CSP blocks never reaches it.
@@ -103,7 +103,7 @@ test("an update from the file:// window keeps what the renderer stored", async (
     const first = await launch();
     const page = await first.firstWindow();
     await expect(
-      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+      page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({ keys: 0 });
     // A value the new origin already has is newer and stays.
@@ -129,7 +129,7 @@ test("an update from the file:// window keeps what the renderer stored", async (
         .toBe(true);
       const window = updated.windows().find((w) => w.url().startsWith("pyxis-app://app/index.html"))!;
       await expect(
-        window.getByRole("heading", { name: "Hi, I'm Pyxis", exact: true }),
+        window.getByRole("heading", { name: "Hi! What's your name, and what do you study?", exact: true }),
       ).toBeVisible({ timeout: 30_000 });
       expect(
         await window.evaluate(() => [
@@ -268,7 +268,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     // The first launch of a fresh install waits for core to create the workspace before onboarding shows; on a
     // Windows runner that can take longer than the default 5 s.
     await expect(
-      page.getByRole("heading", { name: "Ciao, sono Pyxis", exact: true }),
+      page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await clean(page);
     await page.getByRole("button", { name: "Salta", exact: true }).focus();

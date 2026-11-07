@@ -1,42 +1,354 @@
 .px-onboarding {
   /* The page container shrinks to its content, so the width is set here to keep every step the same size. */
-  width: min(var(--content-width), calc(100vw - var(--space-12)));
+  width: min(720px, calc(100vw - var(--space-12)));
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 26px;
   padding-bottom: var(--space-8);
 }
+/* The AI tools and the material choices need the room of four and two cards side by side. */
+.px-onboarding.is-wide {
+  width: min(920px, calc(100vw - var(--space-12)));
+}
 .px-onboarding h1,
+.px-onboarding h2,
+.px-onboarding h3,
 .px-onboarding p {
   margin: 0;
 }
 .px-onboarding h1:focus-visible {
   outline: none;
 }
-/* The margin is in global.css, which used to load after this file and set it. */
-.px-onboarding .body {
+.px-onboarding-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+.px-onboarding-head .px-brand {
+  margin-right: 0;
+}
+.px-onboarding-head .px-stepper {
+  margin-left: auto;
+}
+.px-onboarding-title {
+  display: grid;
+  gap: 10px;
+}
+.px-onboarding-title h1 {
+  text-wrap: balance;
+}
+.px-onboarding-title p {
+  max-width: 62ch;
   color: var(--ink-muted);
 }
-.px-onboarding .px-form-grid,
-.px-onboarding .choice-list {
-  margin-block: 0;
+/* The cards of setup sit on the page with a shadow and no outline, as in the mockup. */
+.px-onboarding .px-onboarding-card,
+.px-onboarding .px-crash-setup {
+  border: 0;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-raised);
 }
-.px-onboarding .section-label {
-  margin-top: var(--space-2);
+.px-onboarding-card {
+  padding: var(--space-6) 26px;
 }
-/* School and course take the room, the year is short. */
-.px-onboarding .px-form-grid {
-  grid-template-columns: 2fr 2fr 1fr;
+.px-onboarding-grid,
+.px-onboarding-more {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+/* The fields that follow the studies answer take the grid's rows below it. */
+.px-onboarding-more {
+  grid-column: 1 / -1;
+}
+.px-onboarding-wide {
+  grid-column: 1 / -1;
+}
+.px-onboarding .px-form-field {
+  min-width: 0;
+}
+.px-onboarding-optional {
+  font-weight: 400;
+  color: var(--ink-subtle);
+}
+/* University or school: two halves of one control, the chosen one raised. */
+.px-onboarding-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--radius-field);
+  background: var(--surface-raised);
+}
+.px-onboarding-seg button {
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 14px/1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+.px-onboarding-seg button:hover {
+  color: var(--ink);
+}
+.px-onboarding-seg button[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 650;
+  box-shadow: var(--shadow-card);
+}
+[data-theme="dark"] .px-onboarding-seg button[aria-checked="true"] {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.px-onboarding-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.px-onboarding-chip {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+  font: 500 14px/1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out;
+}
+.px-onboarding-chip:hover {
+  background: var(--surface-raised);
+}
+.px-onboarding-chip[aria-checked="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font-weight: 650;
+}
+.px-onboarding-seg button:focus-visible,
+.px-onboarding-chip:focus-visible,
+.px-tool-plans:focus-visible,
+.px-material-books-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 @media (max-width: 640px) {
-  .px-onboarding .px-form-grid {
-    grid-template-columns: 1fr;
+  .px-onboarding-grid,
+  .px-onboarding-more {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .px-onboarding-head {
+    flex-wrap: wrap;
   }
 }
+
+/* What appears grows from what made it appear: the element sets its transform-origin toward its cause. */
+@keyframes px-onboarding-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.px-grow {
+  transform-origin: top center;
+  animation: px-onboarding-grow 0.22s ease-out;
+}
+/* The studies fields come from the choice above them, on the right; Advanced opens from its button on the left. */
+.px-onboarding-more.px-grow {
+  transform-origin: 75% 0;
+}
+.px-onboarding-advanced-body.px-grow {
+  transform-origin: top left;
+}
+@media (max-width: 640px) {
+  .px-onboarding-more.px-grow {
+    transform-origin: top center;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-grow {
+    animation: none;
+  }
+}
+
+/* Step 2: the AI tools. */
 .px-onboarding-engines {
   display: flex;
   flex-direction: column;
+  gap: var(--space-5);
+}
+.px-onboarding-engines p {
+  margin: 0;
+}
+.px-tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+@media (max-width: 1000px) {
+  .px-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* Five rows shared by the four cards, so names, links, buttons and states line up across them. */
+.px-tool {
+  position: relative;
+  display: grid;
+  grid-row: span 5;
+  grid-template-rows: subgrid;
+  row-gap: 7px;
+  align-content: start;
+  padding: 18px 18px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  transition:
+    box-shadow 0.15s ease-out,
+    background-color 0.15s ease-out;
+}
+.px-tool-name {
+  font: 650 16.5px/1.3 var(--font-sans);
+  color: var(--ink);
+}
+.px-tool-pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+/* The whole card picks the tool; the plans link and the card's own buttons sit above that. */
+.px-tool-pick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+}
+.px-tool:has(.px-tool-pick):hover {
+  box-shadow: var(--shadow-overlay);
+}
+.px-tool-desc {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+}
+.px-tool-desc p {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+.px-tool-free {
+  font-weight: 650;
+  color: var(--ink) !important;
+}
+.px-tool-plans {
+  position: relative;
+  z-index: 1;
+  justify-self: start;
+  align-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 13px/1.3 var(--font-sans);
+  color: var(--primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.px-tool-action {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+.px-tool-action-body {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  padding-top: 6px;
+}
+.px-tool-action-body .small {
+  color: var(--ink);
+}
+/* A card is narrow: its button may take two lines rather than leave the card. */
+.px-tool-action-body .ant-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  white-space: normal;
+  text-align: left;
+}
+.px-tool-action-body p:empty {
+  display: none;
+}
+.px-tool-state {
+  display: inline-flex;
+  align-items: center;
+  align-self: end;
+  gap: 6px;
+  padding-top: 8px;
+  font: 500 13px/1.3 var(--font-sans);
+  color: var(--ink-subtle);
+}
+.px-tool.is-more .px-tool-state {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+.px-tool.is-picked {
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+.px-tool.is-picked .px-tool-desc p {
+  color: var(--ink);
+}
+.px-tool.is-done .px-tool-state {
+  color: var(--ink);
+  font-weight: 650;
+}
+.px-tool.is-done .px-tool-state svg {
+  color: var(--primary-text);
+}
+.px-tool-panel-slot:empty {
+  display: none;
+}
+.px-tool-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-tool-command {
+  display: grid;
+  gap: var(--space-2);
+}
+.px-onboarding-advanced {
+  display: grid;
+  gap: var(--space-4);
+}
+.px-onboarding-advanced-toggle.ant-btn {
+  justify-self: start;
+  padding-inline: var(--space-2);
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.px-onboarding-advanced-body {
+  display: grid;
   gap: var(--space-4);
 }
 .px-onboarding-engines .engines-list {
@@ -46,46 +358,187 @@
 .px-onboarding-engines .px-engine {
   max-width: none;
 }
-.px-onboarding-engines p {
-  margin: 0;
-}
 .px-onboarding-note {
   color: var(--ink-muted);
 }
+
+/* Step 3: the material. */
+.px-material-choices {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+@media (max-width: 640px) {
+  .px-material-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.px-material-choice {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 14px;
+  align-content: start;
+  padding: 22px 22px 20px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease-out;
+}
+.px-material-choice {
+  position: relative;
+}
+.px-material-pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* The whole card picks; the ring goes round the card, not just its title. */
+.px-material-pick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+}
+.px-material-pick:focus-visible,
+.px-tool-pick:focus-visible {
+  outline: none;
+}
+.px-material-choice:has(.px-material-pick:focus-visible),
+.px-tool:has(.px-tool-pick:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-material-choices {
+  grid-template-rows: auto auto auto;
+}
+.px-material-choice:hover {
+  box-shadow: var(--shadow-overlay);
+}
+.px-material-choice.is-dragging {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+}
+.px-material-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  line-height: 1.2;
+}
+.px-material-title svg {
+  margin-left: auto;
+  color: var(--ink-subtle);
+}
+.px-material-tree {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+[data-theme="dark"] .px-material-tree {
+  background: var(--bg);
+}
+.px-material-tree > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  font: 500 13.5px/1 var(--font-sans);
+  color: var(--ink-muted);
+}
+.px-material-tree > span.is-head {
+  color: var(--ink);
+  font-weight: 650;
+}
+.px-material-tree > span.is-sub {
+  padding-left: 24px;
+}
+.px-material-tree svg {
+  flex: none;
+  color: var(--ink-subtle);
+}
+.px-material-tree > span.is-head svg {
+  color: var(--primary-text);
+}
+.px-material-body {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.px-material-copy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-subtle);
+}
+.px-material-copy svg {
+  flex: none;
+}
+.px-material-books-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 14px/1.3 var(--font-sans);
+  color: var(--primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.px-material-added {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-material-added ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.px-material-added li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.px-material-added li span {
+  overflow-wrap: anywhere;
+}
+.px-material-added li svg {
+  flex: none;
+  color: var(--primary-text);
+}
+
 .px-onboarding-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding-top: var(--space-6);
-}
-/* Back and Skip are real secondary buttons, as in the task pages' action bar. */
-.px-onboarding-actions .ant-btn-text {
-  border-color: var(--border-control);
+  flex-wrap: wrap;
+  gap: var(--space-3);
 }
 .px-onboarding-primary {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-3);
-}
-.px-onboarding-plans {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
-  display: grid;
-  gap: var(--space-3);
-}
-.px-onboarding-plans legend {
-  padding: 0;
-  margin-bottom: var(--space-1);
-}
-.px-onboarding-plans .choice {
-  gap: var(--space-4);
-}
-/* Text links that line up with the content edge rather than sitting inside button padding. */
-.px-onboarding-engines .ant-btn-text.px-onboarding-link {
-  padding-inline: 0;
-  height: auto;
+  margin-left: auto;
 }

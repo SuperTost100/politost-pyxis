@@ -136,7 +136,7 @@ html[data-platform="darwin"] {
   z-index: 100;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   height: 60px;
   padding-inline: 18px 14px;
   background: var(--bg);

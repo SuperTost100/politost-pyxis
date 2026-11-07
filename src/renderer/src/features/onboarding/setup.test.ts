@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { firstAnswers, savedProfile, type StoredProfile } from "./setup";
+import {
+  firstAnswers,
+  levels,
+  savedProfile,
+  schoolLevels,
+  studiesOf,
+  type StoredProfile,
+} from "./setup";
+
+describe("studies", () => {
+  it("puts university apart and every other level, other included, at school", () => {
+    expect(studiesOf("university")).toBe("university");
+    for (const level of schoolLevels) expect(studiesOf(level)).toBe("school");
+    // No stored level is lost: the two answers cover all of them, once each.
+    expect([...schoolLevels, "university"].sort()).toEqual([...levels].sort());
+  });
+});
 
 const stored: StoredProfile = {
   displayName: "Ada",

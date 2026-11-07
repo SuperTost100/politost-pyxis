@@ -277,7 +277,7 @@ test("LAYOUT-03 the exam settings save bar leaves the goal slider in view", asyn
   }
 });
 
-test("LAYOUT-04 the study levels fill their rows in setup and in the profile", async () => {
+test("LAYOUT-04 setup offers the kinds of school, and the study levels fill their rows in the profile", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-details-"));
   const app = await launchPyxis({ userData });
@@ -324,9 +324,10 @@ test("LAYOUT-04 the study levels fill their rows in setup and in the profile", a
           const key = `${language}-${theme}-${size.width}`;
           await look(page, language, theme);
           await page.setViewportSize(size);
-          // Setup, step one: the profile.
-          await expect(page.locator(".px-profile-levels")).toBeVisible();
-          await balanced(page);
+          // Setup, step one: the profile. Its study levels are now a choice of university or school, then the kind of
+          // school, so the balanced grid is only the profile's.
+          await page.getByRole("radio", { name: /^(A scuola|At school)$/ }).click();
+          await expect(page.getByRole("radiogroup", { name: /^(Che scuola fai|Which school)$/ })).toBeVisible();
           await saveShot(page, `layout-details/setup-levels-${key}.png`, { fullPage: true });
           await expectNoAxeViolations(page);
         }

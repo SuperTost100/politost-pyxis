@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import "./Stepper.css";
 
@@ -9,14 +10,23 @@ import "./Stepper.css";
 export function Stepper({
   steps,
   current,
+  numbered = false,
 }: {
   steps: string[];
   /** Zero-based index of the current step. */
   current: number;
+  /**
+   * First setup's short form: a fixed width per step, the number before the steps to come ("2 · L'AI") and a tick
+   * before the ones done. The number is for the eye; screen readers hear the position of the current step.
+   */
+  numbered?: boolean;
 }) {
   const { t } = useTranslation();
   return (
-    <ol className="px-stepper" aria-label={t("stepper.label")}>
+    <ol
+      className={numbered ? "px-stepper is-numbered" : "px-stepper"}
+      aria-label={t("stepper.label")}
+    >
       {steps.map((step, index) => {
         const state =
           index < current ? "done" : index === current ? "current" : "next";
@@ -36,6 +46,12 @@ export function Stepper({
                   })}
                   {": "}
                 </span>
+              ) : null}
+              {numbered && state === "done" ? (
+                <Check size={14} strokeWidth={2.5} aria-hidden />
+              ) : null}
+              {numbered && state !== "done" ? (
+                <span aria-hidden>{`${index + 1} · `}</span>
               ) : null}
               {step}
             </span>
