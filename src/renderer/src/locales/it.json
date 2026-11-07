@@ -960,7 +960,14 @@
     "introDone": "Introduzione completata",
     "introPrompt": "Rispondi alle domande per completare l'introduzione, oppure segnala che hai finito.",
     "introMissing": "Questo corso non ha ancora un'introduzione.",
-    "introFailed": "Non è stato possibile aprire l'introduzione."
+    "introFailed": "Non è stato possibile aprire l'introduzione.",
+    "outline": "In questa lezione",
+    "minutesLeft_one": "Circa {{count}} minuto alla fine",
+    "minutesLeft_other": "Circa {{count}} minuti alla fine",
+    "fromSources": "Dalle tue fonti: {{list}}",
+    "sourcesMore_one": "{{first}} e un'altra",
+    "sourcesMore_other": "{{first}} e altre {{count}}",
+    "sourcesAnd": " e "
   },
   "sessions": {
     "heading": "Prova {{n}}",

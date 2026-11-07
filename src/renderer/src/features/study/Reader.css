@@ -50,20 +50,179 @@
   font-weight: 400;
 }
 
-.px-reader-main {
-  flex: 1;
-  padding: var(--space-8) 0 var(--space-16);
+/* With a title in the bar (pyxis-mockups "s-lesson"): the exam beside the back arrow, then the page's name over the
+   exam it belongs to, always shown. */
+.px-reader-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 14px/1 var(--font-sans);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.px-reader-back:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-reader-back-text {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.focus-bar.px-reader-bar.has-title {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.px-reader-bar.has-title .px-reader-bar-title {
+  display: grid;
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+  opacity: 1;
+  line-height: 1.3;
+}
+.px-reader-bar-title b {
+  overflow: hidden;
+  font: 600 14px/1.3 var(--font-sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-reader-bar-title span {
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Book-like measure: ~720px, never wider than the window allows. */
+/* The page under the bar: the outline in its own column on the left, the sheet in the middle. */
+.px-reader-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 860px) minmax(0, 1fr);
+  column-gap: 32px;
+  align-items: start;
+  padding: var(--space-6) var(--space-6) var(--space-16);
+}
+
+/* One white sheet, about 87 characters a line at the reading size. */
 .px-reader-column {
-  width: min(720px, calc(100% - var(--space-6) * 2));
-  margin: 0 auto;
+  grid-column: 2;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 48px 64px 40px;
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.px-reader-kicker {
+  margin: 0;
+  color: var(--ink-subtle);
+  font: 600 12.5px/1.3 var(--font-sans);
+}
+/* Sections in the display face, as the title; a heading reached from the outline stops below the bar. */
+.px-reader-column .px-smart .px-markdown :is(h1, h2) {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 72px;
+}
+/* A display formula sits in a soft box of its own. */
+.px-reader-column .px-markdown .katex-display {
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.px-reader-outline {
+  grid-column: 1;
+  justify-self: end;
+  position: sticky;
+  top: calc(var(--top-height) + 72px);
+  width: min(220px, 100%);
+  padding-top: 24px;
+}
+.px-reader-outline-label {
+  margin: 0 0 8px 10px;
+  color: var(--ink-subtle);
+  font: 600 12.5px/1.3 var(--font-sans);
+}
+.px-reader-outline ol {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-reader-outline button {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 400 13.5px/1.35 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.px-reader-outline button > svg {
+  margin-top: 2px;
+}
+.px-reader-outline button:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-reader-outline button.is-current {
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 600;
+}
+.px-reader-outline-dot {
+  width: 5px;
+  height: 5px;
+  margin: 6px 0 0 4px;
+  border-radius: 50%;
+  background: var(--border-control);
+}
+.px-reader-outline-time {
+  margin: 14px 0 0 10px;
+  color: var(--ink-subtle);
+  font-size: 12.5px;
+}
+/* Without room for both columns, the outline goes and the sheet takes the page. */
+@media (max-width: 1099px) {
+  .px-reader-outline {
+    display: none;
+  }
+  .px-reader-main {
+    grid-template-columns: 0 minmax(0, 860px) 0;
+    justify-content: center;
+    column-gap: 0;
+  }
+}
+@media (max-width: 720px) {
+  .px-reader-column {
+    padding: 32px 24px;
+  }
 }
 
 /* Also an article.passage for selection and older checks; it is not pre-wrapped source text. */
 .px-reader-column.passage {
-  margin: 0 auto;
+  margin: 0;
   white-space: normal;
 }
 

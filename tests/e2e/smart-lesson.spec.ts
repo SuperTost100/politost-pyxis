@@ -233,6 +233,22 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     const display = page.locator(".px-smart .katex-display");
     await expect(display).toHaveCount(1);
     expect(await display.evaluate((element) => getComputedStyle(element).textAlign)).toBe("center");
+
+    // Beside the sheet, the outline lists the lesson's sections with the time left, and follows the reading.
+    const outline = page.getByRole("navigation", { name: "In questa lezione" });
+    const parts = outline.getByRole("button");
+    await expect(parts).toHaveText(["Che cos'è una forza", "La seconda legge"]);
+    await expect(parts.first()).toHaveAttribute("aria-current", "location");
+    await expect(outline.getByText(/^Circa \d+ minut[oi] alla fine$/)).toBeVisible();
+    await page.getByRole("heading", { level: 2, name: "La seconda legge" }).evaluate((head) =>
+      window.scrollTo({ top: head.getBoundingClientRect().top + window.scrollY - 100 }),
+    );
+    await expect(parts.nth(1)).toHaveAttribute("aria-current", "location");
+    await expect(parts.first()).toHaveClass(/is-read/);
+    // A section picked in the outline scrolls into view below the bar.
+    await parts.first().click();
+    await expect(page.getByRole("heading", { level: 2, name: "Che cos'è una forza" })).toBeInViewport();
+    await expect(parts.first()).toHaveAttribute("aria-current", "location");
     await expect(page.getByText("pyxis-")).toHaveCount(0);
     await expectNoAxeViolations(page);
 
