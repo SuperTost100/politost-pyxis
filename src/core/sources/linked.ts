@@ -293,143 +293,149 @@ export function linkedFolders(deps: LinkedDeps) {
         deps.onChange?.();
       return;
     }
-    const subfolders = new Map(subfolderRows(folderId).map((row) => [row.name, row]));
-    const known = new Map(
-      (
-        db
-          .prepare(
-            `SELECT l.*, s.status = 'removed' AS removed FROM linked_files l LEFT JOIN sources s ON s.id = l.source_id
-             WHERE l.folder_id = ?`,
-          )
-          .all(folderId) as Array<FileRow & { removed: number | null }>
-      ).map((row) => [row.rel_path, row]),
-    );
-    const listed = new Set<string>();
-    const fresh: Array<Found & { size: number; mtime: number }> = [];
-    const changed: Array<{ row: FileRow; size: number; mtime: number; path: string }> = [];
-    for (const file of listing.found) {
-      let sub = subfolders.get(file.subfolder);
-      if (!sub && !(folder.mode === "root" && file.subfolder === "")) {
-        // A subfolder added after the folder was linked is a new subject, named as the folder is, once setup is over.
-        const name = file.subfolder.trim().slice(0, MAX_SUBJECT_NAME);
-        const subjectId = folder.confirmed_at && name ? addSubject(db, name).id : null;
-        db.prepare(
-          `INSERT OR IGNORE INTO linked_subfolders (folder_id, name, subject_id, suggested) VALUES (?, ?, ?, ?)`,
-        ).run(folderId, file.subfolder, subjectId, file.subfolder);
-        sub = { name: file.subfolder, subject_id: subjectId, suggested: file.subfolder, kinds_json: "[]", skipped: 0 };
-        subfolders.set(file.subfolder, sub);
-      }
-      if (sub?.skipped) continue;
-      let stat: ReturnType<typeof statSync>;
-      try {
-        stat = statSync(file.path);
-      } catch {
-        continue;
-      }
-      listed.add(file.rel);
-      const row = known.get(file.rel);
-      const size = stat.size;
-      const mtime = mtimeOf(stat);
-      if (!row) fresh.push({ ...file, size, mtime });
-      // The student removed this source from the Library: its file is not read again.
-      else if (row.source_id === null || row.removed) continue;
-      else if (row.size === size && row.mtime_ms === mtime) {
-        if (row.missing_at !== null)
-          changes += db
-            .prepare(`UPDATE linked_files SET missing_at = NULL WHERE folder_id = ? AND rel_path = ?`)
-            .run(folderId, file.rel).changes;
-      } else changed.push({ row, size, mtime, path: file.path });
-    }
-    // A cut walk cannot tell a file that is gone from one it did not reach, so it marks nothing missing.
-    const vanished = isComplete(listing.cut)
-      ? [...known.values()].filter(
-          (row) =>
-            row.source_id !== null &&
-            !listed.has(row.rel_path) &&
-            !subfolders.get(row.subfolder)?.skipped,
-        )
-      : [];
-    // A file that moved shows up as a new file with the size and contents of one that is gone. Only new files with a
-    // matching size are hashed, so a folder full of new files is not read twice.
-    const gone = [
-      ...new Map(
-        [
-          ...vanished,
-          ...(db
+    // What a look already committed is announced even when a later step fails, so the Library is never left stale.
+    try {
+      const subfolders = new Map(subfolderRows(folderId).map((row) => [row.name, row]));
+      const known = new Map(
+        (
+          db
             .prepare(
-              `SELECT * FROM linked_files WHERE missing_at IS NOT NULL AND source_id IS NOT NULL AND content_hash IS NOT NULL`,
+              `SELECT l.*, s.status = 'removed' AS removed FROM linked_files l LEFT JOIN sources s ON s.id = l.source_id
+               WHERE l.folder_id = ?`,
             )
-            .all() as FileRow[]),
-        ]
-          .filter((row) => row.content_hash)
-          .map((row) => [`${row.folder_id}\0${row.rel_path}`, row]),
-      ).values(),
-    ];
-    const sizes = new Set(gone.map((row) => row.size));
-    const maybeMoved = fresh.filter((file) => sizes.has(file.size));
-    if (maybeMoved.length) {
-      const hashes = await deps.hash(
-        maybeMoved.map((file) => file.path),
-        Math.max(...maybeMoved.map((file) => maxSourceBytes(extname(file.path).toLowerCase()))),
-        signal,
+            .all(folderId) as Array<FileRow & { removed: number | null }>
+        ).map((row) => [row.rel_path, row]),
       );
-      maybeMoved.forEach((file, index) => {
-        const sha = hashes[index];
-        const match = sha ? gone.find((row) => row.size === file.size && row.content_hash === sha) : undefined;
-        if (!match) return;
-        gone.splice(gone.indexOf(match), 1);
-        const subjectId = subfolders.get(file.subfolder)?.subject_id ?? null;
-        const moved = db.transaction(() => {
-          const { changes } = db
-            .prepare(
-              `UPDATE linked_files SET folder_id = ?, rel_path = ?, subfolder = ?, mtime_ms = ?, missing_at = NULL
-               WHERE folder_id = ? AND rel_path = ?`,
-            )
-            .run(folderId, file.rel, file.subfolder, file.mtime, match.folder_id, match.rel_path);
-          // Moved into another subject's folder, the source follows it there.
-          if (changes && subjectId && (match.folder_id !== folderId || match.subfolder !== file.subfolder))
-            db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ?`).run(subjectId, match.source_id);
-          return changes > 0;
-        })();
-        // A look at another folder took that file first: this one is a new file after all.
-        if (!moved) return;
-        changes += 1;
-        fresh.splice(fresh.indexOf(file), 1);
-        const vanishedAt = vanished.findIndex((row) => row === match);
-        if (vanishedAt >= 0) vanished.splice(vanishedAt, 1);
-      });
-    }
-    for (const row of vanished) changes += markMissing.run(now, folderId, row.rel_path).changes;
-    for (const item of changed) {
-      signal?.throwIfAborted();
-      const [sha] = await deps.hash([item.path], maxSourceBytes(extname(item.path).toLowerCase()), signal);
-      // Touched or copied over with the same contents: only the recorded time changes.
-      if (sha && item.row.content_hash === sha) {
-        db.prepare(
-          `UPDATE linked_files SET size = ?, mtime_ms = ?, missing_at = NULL WHERE folder_id = ? AND rel_path = ?`,
-        ).run(item.size, item.mtime, folderId, item.row.rel_path);
-        if (item.row.missing_at !== null) changes += 1;
-        continue;
+      const listed = new Set<string>();
+      const fresh: Array<Found & { size: number; mtime: number }> = [];
+      const changed: Array<{ row: FileRow; size: number; mtime: number; path: string }> = [];
+      for (const file of listing.found) {
+        let sub = subfolders.get(file.subfolder);
+        if (!sub && !(folder.mode === "root" && file.subfolder === "")) {
+          // A subfolder added after the folder was linked is a new subject, named as the folder is, once setup is over.
+          // The first file in a subject folder that was empty when linked makes the folder itself the subject.
+          const offered = file.subfolder || basename(folder.path);
+          const name = offered.trim().slice(0, MAX_SUBJECT_NAME);
+          const subjectId = folder.confirmed_at && name ? addSubject(db, name).id : null;
+          db.prepare(
+            `INSERT OR IGNORE INTO linked_subfolders (folder_id, name, subject_id, suggested) VALUES (?, ?, ?, ?)`,
+          ).run(folderId, file.subfolder, subjectId, offered);
+          sub = { name: file.subfolder, subject_id: subjectId, suggested: offered, kinds_json: "[]", skipped: 0 };
+          subfolders.set(file.subfolder, sub);
+        }
+        if (sub?.skipped) continue;
+        let stat: ReturnType<typeof statSync>;
+        try {
+          stat = statSync(file.path);
+        } catch {
+          continue;
+        }
+        listed.add(file.rel);
+        const row = known.get(file.rel);
+        const size = stat.size;
+        const mtime = mtimeOf(stat);
+        if (!row) fresh.push({ ...file, size, mtime });
+        // The student removed this source from the Library: its file is not read again.
+        else if (row.source_id === null || row.removed) continue;
+        else if (row.size === size && row.mtime_ms === mtime) {
+          if (row.missing_at !== null)
+            changes += db
+              .prepare(`UPDATE linked_files SET missing_at = NULL WHERE folder_id = ? AND rel_path = ?`)
+              .run(folderId, file.rel).changes;
+        } else changed.push({ row, size, mtime, path: file.path });
       }
-      // A reading still going (or stopped, waiting for the student) is left alone. The next look reads the file again.
-      if (hasUnfinishedJob(db, item.row.source_id!)) continue;
-      rereadFile(item.row, item.size, item.mtime, sha ?? null);
+      // A cut walk cannot tell a file that is gone from one it did not reach, so it marks nothing missing.
+      const vanished = isComplete(listing.cut)
+        ? [...known.values()].filter(
+            (row) =>
+              row.source_id !== null &&
+              !listed.has(row.rel_path) &&
+              !subfolders.get(row.subfolder)?.skipped,
+          )
+        : [];
+      // A file that moved shows up as a new file with the size and contents of one that is gone. Only new files with a
+      // matching size are hashed, so a folder full of new files is not read twice.
+      const gone = [
+        ...new Map(
+          [
+            ...vanished,
+            ...(db
+              .prepare(
+                `SELECT * FROM linked_files WHERE missing_at IS NOT NULL AND source_id IS NOT NULL AND content_hash IS NOT NULL`,
+              )
+              .all() as FileRow[]),
+          ]
+            .filter((row) => row.content_hash)
+            .map((row) => [`${row.folder_id}\0${row.rel_path}`, row]),
+        ).values(),
+      ];
+      const sizes = new Set(gone.map((row) => row.size));
+      const maybeMoved = fresh.filter((file) => sizes.has(file.size));
+      if (maybeMoved.length) {
+        const hashes = await deps.hash(
+          maybeMoved.map((file) => file.path),
+          Math.max(...maybeMoved.map((file) => maxSourceBytes(extname(file.path).toLowerCase()))),
+          signal,
+        );
+        maybeMoved.forEach((file, index) => {
+          const sha = hashes[index];
+          const match = sha ? gone.find((row) => row.size === file.size && row.content_hash === sha) : undefined;
+          if (!match) return;
+          gone.splice(gone.indexOf(match), 1);
+          const subjectId = subfolders.get(file.subfolder)?.subject_id ?? null;
+          const moved = db.transaction(() => {
+            const { changes } = db
+              .prepare(
+                `UPDATE linked_files SET folder_id = ?, rel_path = ?, subfolder = ?, mtime_ms = ?, missing_at = NULL
+                 WHERE folder_id = ? AND rel_path = ?`,
+              )
+              .run(folderId, file.rel, file.subfolder, file.mtime, match.folder_id, match.rel_path);
+            // Moved into another subject's folder, the source follows it there.
+            if (changes && subjectId && (match.folder_id !== folderId || match.subfolder !== file.subfolder))
+              db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ?`).run(subjectId, match.source_id);
+            return changes > 0;
+          })();
+          // A look at another folder took that file first: this one is a new file after all.
+          if (!moved) return;
+          changes += 1;
+          fresh.splice(fresh.indexOf(file), 1);
+          const vanishedAt = vanished.findIndex((row) => row === match);
+          if (vanishedAt >= 0) vanished.splice(vanishedAt, 1);
+        });
+      }
+      for (const row of vanished) changes += markMissing.run(now, folderId, row.rel_path).changes;
+      for (const item of changed) {
+        signal?.throwIfAborted();
+        const [sha] = await deps.hash([item.path], maxSourceBytes(extname(item.path).toLowerCase()), signal);
+        // Touched or copied over with the same contents: only the recorded time changes.
+        if (sha && item.row.content_hash === sha) {
+          db.prepare(
+            `UPDATE linked_files SET size = ?, mtime_ms = ?, missing_at = NULL WHERE folder_id = ? AND rel_path = ?`,
+          ).run(item.size, item.mtime, folderId, item.row.rel_path);
+          if (item.row.missing_at !== null) changes += 1;
+          continue;
+        }
+        // A reading still going (or stopped, waiting for the student) is left alone. The next look reads the file again.
+        if (hasUnfinishedJob(db, item.row.source_id!)) continue;
+        rereadFile(item.row, item.size, item.mtime, sha ?? null);
+      }
+      const photosReadable = fresh.some((file) => isImageExt(extname(file.path).toLowerCase()))
+        ? await deps.ocrReady()
+        : true;
+      for (const file of fresh) {
+        signal?.throwIfAborted();
+        // Without the OCR data a photo would only fail. It is left unrecorded, so a look after the download reads it.
+        if (!photosReadable && isImageExt(extname(file.path).toLowerCase())) continue;
+        addFile(folderId, file, subfolders.get(file.subfolder)?.subject_id ?? null);
+      }
+      db.prepare(`UPDATE linked_folders SET synced_at = ?, cut_json = ? WHERE id = ?`).run(
+        Date.now(),
+        JSON.stringify(listing.cut),
+        folderId,
+      );
+    } finally {
+      if (changes) deps.onChange?.();
     }
-    const photosReadable = fresh.some((file) => isImageExt(extname(file.path).toLowerCase()))
-      ? await deps.ocrReady()
-      : true;
-    for (const file of fresh) {
-      signal?.throwIfAborted();
-      // Without the OCR data a photo would only fail. It is left unrecorded, so a look after the download reads it.
-      if (!photosReadable && isImageExt(extname(file.path).toLowerCase())) continue;
-      addFile(folderId, file, subfolders.get(file.subfolder)?.subject_id ?? null);
-    }
-    db.prepare(`UPDATE linked_folders SET synced_at = ?, cut_json = ? WHERE id = ?`).run(
-      Date.now(),
-      JSON.stringify(listing.cut),
-      folderId,
-    );
-    if (changes) deps.onChange?.();
   }
 
   // One look at a time per folder. A request during a look runs one more look after it, never several.
@@ -598,6 +604,7 @@ export function linkedFolders(deps: LinkedDeps) {
         );
       },
       {
+        exclude: excludes(),
         // The watch is closed already. The next start watches the folder again.
         onError: () => {
           failed = true;

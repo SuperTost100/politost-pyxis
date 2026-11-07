@@ -98,6 +98,30 @@ describe("folder watch", () => {
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores changes inside hidden folders and inside Pyxis's own data, but not a change with no name", () => {
+    vi.useFakeTimers();
+    const fake = fakeWatch();
+    const onChange = vi.fn();
+    // The student linked their home folder, which holds Pyxis's workspace: its own writes must not start another look.
+    watchFolder("/home/ada", onChange, {
+      quietMs: 100,
+      watch: fake.watch,
+      exclude: ["/home/ada/Library/Application Support/Pyxis"],
+    });
+    fake.emit(join("Library", "Application Support", "Pyxis", "workspace", "pyxis.db-wal"));
+    fake.emit(join(".config", "Pyxis", "workspace", "pyxis.db"));
+    fake.emit(join("Fisica", ".git", "index"));
+    vi.advanceTimersByTime(500);
+    expect(onChange).not.toHaveBeenCalled();
+    fake.emit(join("Library", "Fisica.pdf"));
+    vi.advanceTimersByTime(500);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // Some systems name no file: that change still counts.
+    fake.emit(null);
+    vi.advanceTimersByTime(500);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
   it("falls back to watching the top of the folder where recursive watches are unavailable", () => {
     const calls: boolean[] = [];
     const fake = fakeWatch();

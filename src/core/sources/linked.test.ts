@@ -45,7 +45,14 @@ const tidy = answer([
   { folder: "Erasmus", subject: "Erasmus", study: false, kinds: [] },
 ]);
 
-function setup(options: { run?: Run; engine?: boolean; watch?: Parameters<typeof linkedFolders>[0]["watch"] } = {}) {
+function setup(
+  options: {
+    run?: Run;
+    engine?: boolean;
+    watch?: Parameters<typeof linkedFolders>[0]["watch"];
+    hash?: Parameters<typeof linkedFolders>[0]["hash"];
+  } = {},
+) {
   const changes = { count: 0 };
   const db = openDatabase(":memory:");
   if (options.engine !== false)
@@ -70,7 +77,7 @@ function setup(options: { run?: Run; engine?: boolean; watch?: Parameters<typeof
     db,
     runner,
     protectedPaths: [workspace],
-    hash: (paths, maxBytes) => hashFiles(paths, maxBytes),
+    hash: options.hash ?? ((paths, maxBytes) => hashFiles(paths, maxBytes)),
     ocrReady: async () => false,
     run: options.run ?? tidy,
     watch: options.watch ?? null,
@@ -387,6 +394,41 @@ describe("linked folders", () => {
     expect(app.subjectName(app.source("appunti")!.subjectId)).toBe("Geometria e algebra lineare");
     expect(app.linked.view(folder!.id).subjects.find((subject) => subject.key === "Erasmus")!.skipped).toBe(true);
     expect(watched).toEqual([root]);
+  });
+
+  it("still tells the window about what a look changed before it failed", async () => {
+    const root = studyTree();
+    let failing = "";
+    const app = setup({
+      hash: (paths, maxBytes) =>
+        paths.includes(failing) ? Promise.reject(new Error("read failed")) : hashFiles(paths, maxBytes),
+    });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    const told = app.changes.count;
+    // One file goes missing and another changes, and hashing the changed one fails.
+    rmSync(join(root, "GAL", "appunti.txt"));
+    failing = join(root, "orario.txt");
+    const later = new Date(Date.now() + 60_000);
+    writeFileSync(failing, "Mercoledì: Analisi.");
+    utimesSync(failing, later, later);
+    await expect(app.linked.sync(folder!.id)).rejects.toThrow("read failed");
+    expect(app.source("appunti")!.missingAt).not.toBeNull();
+    expect(app.changes.count).toBe(told + 1);
+  });
+
+  it("gives files added later to an empty subject folder the folder's own name as their subject", async () => {
+    const root = join(tempDir("pyxis-linked-"), "Chimica organica");
+    mkdirSync(root);
+    const app = setup({ engine: false });
+    const [folder] = await app.linked.link({ paths: [root], mode: "subject" });
+    expect(folder!.subjects).toEqual([]);
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    writeFileSync(join(root, "alcani.txt"), "Gli alcani sono idrocarburi saturi a catena aperta.");
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(app.subjectName(app.source("alcani")!.subjectId)).toBe("Chimica organica");
+    expect(app.linked.view(folder!.id).subjects).toMatchObject([{ key: "", folder: "Chimica organica", name: "Chimica organica" }]);
   });
 
   it("writes nothing inside the linked folder", async () => {
