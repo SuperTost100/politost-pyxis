@@ -1121,7 +1121,8 @@ export function LibraryPanel({
         <ScanNotice
           key={source.id}
           source={source}
-          onReplace={() => void replace(source.id).catch(fail)}
+          // A linked file is replaced in its folder, where Pyxis reads it again, never with a copy.
+          onReplace={source.linked ? undefined : () => void replace(source.id).catch(fail)}
         />
       ))}
       <SourceDetails

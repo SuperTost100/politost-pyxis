@@ -193,6 +193,16 @@ test("Setup links the study folder in place, finds its subjects, and the Library
       })
       .toBe(true);
     await expect(row("Dispense matrici")).toContainText("Spostato o cancellato dalla cartella Università");
+    // A scan read from the folder whose file is then deleted has nothing to read, and offers no Replace: a linked
+    // file is replaced in its folder.
+    writeFileSync(join(root, "GAL", "Lavagna.pdf"), onePagePdf("Lavagna"));
+    await expect
+      .poll(async () => (await listed(page)).find((source) => source.title === "Lavagna")?.status, { timeout: 60000 })
+      .toBe("needs-ocr");
+    rmSync(join(root, "GAL", "Lavagna.pdf"));
+    const scanNotice = page.getByText("Lavagna non ha testo e Pyxis non ha più il file da leggere.");
+    await expect(scanNotice).toBeVisible({ timeout: 60000 });
+    await expect(button(page, /^(Sostituisci il file|Replace file)$/)).toHaveCount(0);
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "linked-folders/4-library.png");
