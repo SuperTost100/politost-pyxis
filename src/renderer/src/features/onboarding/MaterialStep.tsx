@@ -110,15 +110,29 @@ export function MaterialStep({
 
   async function pick() {
     setError(null);
-    const picked = await window.pyxis.showOpenDialog({
-      properties: mode === "subject" ? ["openDirectory", "multiSelections"] : ["openDirectory"],
-    });
+    let picked: string[] | null;
+    try {
+      picked = await window.pyxis.showOpenDialog({
+        properties: mode === "subject" ? ["openDirectory", "multiSelections"] : ["openDirectory"],
+      });
+    } catch (err) {
+      // Main could not grant the folder in time (core busy): say so on the screen instead of doing nothing.
+      setError(messageKeyOf(err));
+      return;
+    }
     if (picked?.length) await link(picked);
   }
 
   async function drop(files: File[]) {
     setError(null);
-    const granted = await window.pyxis.grantDroppedFolders(files);
+    let granted: { paths: string[]; skipped: number };
+    try {
+      granted = await window.pyxis.grantDroppedFolders(files);
+    } catch (err) {
+      // Too many folders at once, or core did not take the grant in time.
+      setError(messageKeyOf(err));
+      return;
+    }
     if (!granted.paths.length) {
       setError("sources.linked.dropNotFolder");
       return;

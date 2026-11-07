@@ -213,6 +213,16 @@ test("Setup links one folder per subject, and never skips a folder the student p
     await toMaterial(page);
     await button(page, "Una cartella per ogni materia").click();
     await expect(title(page)).toHaveText("Dove sono le cartelle delle materie?");
+    // A picker that fails in main says so on the screen.
+    await app.evaluate(({ dialog }) => {
+      delete process.env["PYXIS_E2E_FILE"];
+      dialog.showOpenDialog = (async () => {
+        throw new Error("core-busy");
+      }) as typeof dialog.showOpenDialog;
+    });
+    await button(page, "Scegli le cartelle").click();
+    await expect(page.getByText("Non sono riuscito a leggere la cartella. Riprova.")).toBeVisible();
+    await expect(title(page)).toHaveText("Dove sono le cartelle delle materie?");
     await answerPicker(app, [join(root, "Fisica 1"), join(root, "Erasmus")]);
     await button(page, "Scegli le cartelle").click();
     await expect(title(page)).toHaveText("Ho trovato 2 materie", { timeout: 60000 });
