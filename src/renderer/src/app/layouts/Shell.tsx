@@ -108,6 +108,12 @@ export function Shell() {
       )}
       <div className="px-column">
         <div className="px-drag" aria-hidden />
+        {inSetup ? null : (
+          // Attività, in the top-right corner of every page, with its list opening under it.
+          <div className="px-corner-tools">
+            <JobsButton keep />
+          </div>
+        )}
       <LaunchEngineNotice ready={profile.isSuccess && Boolean(profile.data)} />
       <main
         className={

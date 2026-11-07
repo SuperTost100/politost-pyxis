@@ -14,7 +14,7 @@
 
 .px-jobs {
   width: min(420px, calc(100vw - 32px));
-  max-height: min(724px, calc(100vh - 32px - var(--top-height)));
+  max-height: min(724px, calc(100vh - 96px));
   overflow-y: auto;
   outline: none;
   border-radius: var(--radius-lg);
