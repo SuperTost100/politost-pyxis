@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { ArrowLeft, CircleCheck, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleCheck, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,27 +12,48 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { recommendQuery } from "../../lib/queries";
 
+/** About how many words a student reads a minute, for the time left in a lesson. */
+const WORDS_PER_MINUTE = 200;
+
+type Part = { id: string; title: string; words: number };
+
 /**
- * The reading page shared by lessons and the course introduction: a slim sticky bar (back, title once the heading has
- * scrolled away, page actions) over a ~720px book-like column.
+ * The reading page shared by lessons and the course introduction (pyxis-mockups app/study.html, "s-lesson"): a bar with
+ * the way back, the page's name and its actions, over one white sheet about 87 characters a line. With `outline`, the
+ * sheet's sections are listed beside it, with what has been read ticked, the current one marked and the time left.
  */
 export function ReaderLayout({
   eyebrow,
   title,
   backLabel,
+  backText,
+  barTitle,
+  barSubtitle,
   onBack,
   actions,
+  outline = false,
   children,
 }: {
-  eyebrow?: string;
+  eyebrow?: ReactNode;
   title: string;
+  /** The back button's name. With `backText` it is read before that text. */
   backLabel: string;
+  /** Shown beside the back arrow, as the exam's name. */
+  backText?: string;
+  /** Always shown in the bar; without it the bar shows the title once the heading has scrolled away. */
+  barTitle?: string;
+  barSubtitle?: string;
   onBack: () => void;
   actions?: ReactNode;
+  outline?: boolean;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const heading = useRef<HTMLHeadingElement>(null);
+  const sheet = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
+  const [parts, setParts] = useState<Part[]>([]);
+  const [current, setCurrent] = useState(0);
   useEffect(() => {
     const element = heading.current;
     if (!element) return;
@@ -43,30 +64,140 @@ export function ReaderLayout({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // The outline reads the sheet's own section headings, so it follows the text as it is written and rewritten.
+  useEffect(() => {
+    const node = sheet.current;
+    if (!outline || !node) return;
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      const heads = [...node.querySelectorAll<HTMLHeadingElement>(".px-markdown h2")];
+      const next = heads.map((head, index) => {
+        if (!head.id) head.id = `px-part-${index}`;
+        const range = document.createRange();
+        range.setStartBefore(head);
+        const following = heads[index + 1];
+        if (following) range.setEndBefore(following);
+        else range.setEndAfter(node.lastChild ?? head);
+        return { id: head.id, title: head.textContent ?? "", words: range.toString().split(/\s+/).filter(Boolean).length };
+      });
+      setParts((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
+    };
+    read();
+    const observer = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(read);
+    });
+    observer.observe(node, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [outline]);
+  // The current section is the last one whose heading has reached the top third of the window.
+  useEffect(() => {
+    if (parts.length === 0) return;
+    let frame = 0;
+    const place = () => {
+      frame = 0;
+      const line = window.innerHeight / 3;
+      let index = 0;
+      parts.forEach((part, at) => {
+        const head = document.getElementById(part.id);
+        if (head && head.getBoundingClientRect().top <= line) index = at;
+      });
+      setCurrent(index);
+    };
+    place();
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(place);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, [parts]);
+  const minutes = Math.ceil(parts.slice(current).reduce((sum, part) => sum + part.words, 0) / WORDS_PER_MINUTE);
+  const showOutline = outline && parts.length > 1;
   return (
     <div className="px-reader">
-      <header className={`focus-bar px-reader-bar${scrolled ? " is-scrolled" : ""}`}>
-        <Button
-          shape="circle"
-          type="text"
-          aria-label={backLabel}
-          title={backLabel}
-          icon={<ArrowLeft size={18} strokeWidth={1.75} />}
-          onClick={onBack}
-        />
-        <p className="title-3 px-reader-bar-title" aria-hidden>
-          {title}
-        </p>
+      <header
+        className={`focus-bar px-reader-bar${scrolled ? " is-scrolled" : ""}${barTitle ? " has-title" : ""}`}
+      >
+        {backText ? (
+          <button type="button" className="px-reader-back" onClick={onBack}>
+            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
+            <span className="visually-hidden">{backLabel}: </span>
+            <span className="px-reader-back-text">{backText}</span>
+          </button>
+        ) : (
+          <Button
+            shape="circle"
+            type="text"
+            aria-label={backLabel}
+            title={backLabel}
+            icon={<ArrowLeft size={18} strokeWidth={1.75} />}
+            onClick={onBack}
+          />
+        )}
+        {barTitle ? (
+          <div className="px-reader-bar-title" aria-hidden>
+            <b>{barTitle}</b>
+            {barSubtitle ? <span>{barSubtitle}</span> : null}
+          </div>
+        ) : (
+          <p className="title-3 px-reader-bar-title" aria-hidden>
+            {title}
+          </p>
+        )}
         {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
         <div className="px-reader-actions">
           <JobsButton />
           {actions}
         </div>
       </header>
-      <main className="px-reader-main">
-        <article className="px-reader-column passage">
+      <main className={showOutline ? "px-reader-main has-outline" : "px-reader-main"}>
+        {showOutline ? (
+          <nav className="px-reader-outline" aria-label={t("lesson.outline")}>
+            <p className="px-reader-outline-label" aria-hidden>
+              {t("lesson.outline")}
+            </p>
+            <ol>
+              {parts.map((part, index) => (
+                <li key={part.id}>
+                  <button
+                    type="button"
+                    className={index < current ? "is-read" : index === current ? "is-current" : undefined}
+                    aria-current={index === current ? "location" : undefined}
+                    onClick={() =>
+                      document.getElementById(part.id)?.scrollIntoView({
+                        block: "start",
+                        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+                      })
+                    }
+                  >
+                    {index < current ? (
+                      <Check size={14} strokeWidth={2} aria-hidden />
+                    ) : index === current ? (
+                      <ArrowRight size={14} strokeWidth={2} aria-hidden />
+                    ) : (
+                      <span className="px-reader-outline-dot" aria-hidden />
+                    )}
+                    <span>{part.title}</span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+            {minutes > 0 ? (
+              <p className="px-reader-outline-time">{t("lesson.minutesLeft", { count: minutes })}</p>
+            ) : null}
+          </nav>
+        ) : null}
+        <article ref={sheet} className="px-reader-column passage">
           <header className="px-reader-head">
-            {eyebrow ? <p className="label ink-muted">{eyebrow}</p> : null}
+            {eyebrow ? <p className="label ink-muted px-reader-kicker">{eyebrow}</p> : null}
             <h1 ref={heading} className="title-1">
               {title}
             </h1>

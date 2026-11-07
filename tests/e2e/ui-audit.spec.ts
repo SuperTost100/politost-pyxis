@@ -343,7 +343,7 @@ function seed(db: DatabaseSync) {
         passageIds: ["audit-passage"],
       }),
       markdown:
-        "# La dinamica\n\nLa seconda legge di Newton è $F=ma$ [P1].\n\n## Un esempio\n\nCon una massa di $2\\,kg$ e un’accelerazione di $3\\,m/s^2$,\n\n$$F=2\\cdot3=6\\,N.$$",
+        "## La dinamica\n\nLa seconda legge di Newton è $F=ma$ [P1].\n\n## Un esempio\n\nCon una massa di $2\\,kg$ e un’accelerazione di $3\\,m/s^2$,\n\n$$F=2\\cdot3=6\\,N.$$",
     }),
     1,
   );
@@ -3404,7 +3404,7 @@ test("M14 every application route in both languages, themes and supported widths
               }
               if (name === "lesson")
                 await expect(
-                  page.getByText("La dinamica", { exact: true }),
+                  page.getByRole("heading", { level: 2, name: "La dinamica" }),
                 ).toBeVisible();
               if (name === "map")
                 await expect(page.locator(".react-flow__node")).toHaveCount(3);

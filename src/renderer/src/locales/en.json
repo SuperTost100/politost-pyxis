@@ -963,7 +963,14 @@
     "introDone": "Introduction complete",
     "introPrompt": "Answer the questions to complete the introduction, or mark it done now.",
     "introMissing": "This course has no introduction yet.",
-    "introFailed": "The introduction could not be opened."
+    "introFailed": "The introduction could not be opened.",
+    "outline": "In this lesson",
+    "minutesLeft_one": "About {{count}} minute left",
+    "minutesLeft_other": "About {{count}} minutes left",
+    "fromSources": "From your sources: {{list}}",
+    "sourcesMore_one": "{{first}} and one more",
+    "sourcesMore_other": "{{first}} and {{count}} more",
+    "sourcesAnd": " and "
   },
   "sessions": {
     "heading": "Session {{n}}",

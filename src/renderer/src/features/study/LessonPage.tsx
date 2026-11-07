@@ -328,11 +328,26 @@ export function LessonPage() {
     </Dropdown>
   );
 
+  // Above the title, what the lesson was written from: its first two sources and how many more.
+  const sourceTitles = (data?.sources ?? []).map((source) => source.title);
+  const sourceLine = sourceTitles.length
+    ? t("lesson.fromSources", {
+        list:
+          sourceTitles.length > 2
+            ? t("lesson.sourcesMore", { first: sourceTitles.slice(0, 2).join(", "), count: sourceTitles.length - 2 })
+            : sourceTitles.join(t("lesson.sourcesAnd")),
+      })
+    : t("lesson.title");
+
   return (
     <ReaderLayout
-      eyebrow={t("lesson.title")}
+      eyebrow={sourceLine}
       title={topic?.title ?? t("lesson.title")}
       backLabel={t("lesson.back")}
+      backText={plan.data?.title}
+      barTitle={[t("lesson.title"), topic?.title].filter(Boolean).join(" · ")}
+      barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
+      outline
       onBack={() => navigate(`/plans/${planId}`)}
       actions={
         <>
