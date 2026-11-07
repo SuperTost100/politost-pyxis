@@ -257,37 +257,37 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await expect(fold).toHaveAttribute("aria-expanded", "false");
     // The branch slides back into n1 and fades before it leaves the map.
     await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
-    // Unfolding slides the branch out of n1 instead of cutting to it: a frame after the click its nodes sit near n1,
-    // and they end at their places farther out. With reduced motion they are there at once.
-    const centres = () =>
-      [...document.querySelectorAll<HTMLElement>(".react-flow__node")].map((node) => {
-        const box = node.getBoundingClientRect();
-        return { id: node.dataset.id!, x: box.x + box.width / 2, y: box.y + box.height / 2 };
-      });
-    type Centre = { id: string; x: number; y: number };
+    // Unfolding slides the branch out of n1 instead of cutting to it. Each new node is recorded the moment it enters the
+    // page, from its own transform, so no frame timing is involved: it enters at n1 and ends farther out. With reduced
+    // motion it enters where it ends.
+    type Spot = { x: number; y: number };
+    const spotOf = (node: Element): Spot => {
+      const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec((node as HTMLElement).style.transform)!;
+      return { x: Number(match[1]), y: Number(match[2]) };
+    };
     const unfold = async () => {
-      const shownBefore = new Set(((await page.evaluate(`(${centres.toString()})()`)) as Centre[]).map((n) => n.id));
-      // The first frame the branch is on screen, read frame by frame after the click.
-      const firstFrame = (await page.evaluate(`new Promise((done) => {
-        const read = ${centres.toString()};
+      const entered = (await page.evaluate(`new Promise((done) => {
+        const spot = ${spotOf.toString()};
+        const layer = document.querySelector(".react-flow__nodes");
+        const seen = {};
+        const watch = new MutationObserver((records) => {
+          for (const record of records)
+            for (const node of record.addedNodes)
+              if (node instanceof HTMLElement && node.dataset.id && !(node.dataset.id in seen)) seen[node.dataset.id] = spot(node);
+        });
+        watch.observe(layer, { childList: true });
         document.querySelector('.react-flow__node[data-id="n1"] .px-concept-fold').click();
-        let frames = 0;
-        const tick = () => {
-          const now = read();
-          if (now.length >= ${before} || ++frames > 30) done(now);
-          else requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      })`)) as Centre[];
+        setTimeout(() => { watch.disconnect(); done(seen); }, 100);
+      })`)) as Record<string, Spot>;
       await expect(page.locator(".react-flow__node")).toHaveCount(before);
-      // The canvas marks itself while the map moves, restarts included; read the end once it no longer does.
+      // The canvas marks itself while the map moves, restarts included; then two frames let the last move draw.
       await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
-      const settled = (await page.evaluate(`(${centres.toString()})()`)) as Centre[];
-      const parent = settled.find((node) => node.id === "n1")!;
-      const away = (node: Centre) => Math.hypot(node.x - parent.x, node.y - parent.y);
-      const arrived = firstFrame.filter((node) => !shownBefore.has(node.id));
-      expect(arrived.length).toBeGreaterThan(0);
-      return arrived.map((node) => ({ first: away(node), end: away(settled.find((n) => n.id === node.id)!) }));
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const end = (await page.evaluate(`Object.fromEntries([...document.querySelectorAll(".react-flow__node")].map((node) => [node.dataset.id, (${spotOf.toString()})(node)]))`)) as Record<string, Spot>;
+      const parent = end["n1"]!;
+      const away = (spot: Spot) => Math.hypot(spot.x - parent.x, spot.y - parent.y);
+      expect(Object.keys(entered).length).toBeGreaterThan(0);
+      return Object.entries(entered).map(([id, spot]) => ({ first: away(spot), end: away(end[id]!) }));
     };
     await page.emulateMedia({ reducedMotion: "no-preference" });
     for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
