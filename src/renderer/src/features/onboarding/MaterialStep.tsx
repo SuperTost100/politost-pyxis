@@ -46,19 +46,24 @@ function withBold(text: string, folder: string): ReactNode {
 }
 
 /**
- * The last step of first setup: how the student keeps their material, where the folder is, and the subjects Pyxis
- * found in it. Folders are linked, not copied: Pyxis reads them in place, starts reading as soon as a folder is chosen,
- * and keeps reading new files later. The step owns its title and footer, because each of its three screens has its own.
+ * The last step of setup: how the student keeps their material, where the folder is, and the subjects Pyxis found in
+ * it. Folders are linked, not copied: Pyxis reads them in place, starts reading as soon as a folder is chosen, and keeps
+ * reading new files later. On setup again the step opens on the folders linked already and their subjects, so the
+ * student can rename one, add a folder or just finish. The step owns its title and footer, because each of its three
+ * screens has its own.
  */
 export function MaterialStep({
   heading,
+  again,
   onBack,
   onLeave,
 }: {
   heading: RefObject<HTMLHeadingElement | null>;
+  /** Setup again, which ends back in Settings. */
+  again: boolean;
   /** Back to the AI step. */
   onBack: () => void;
-  /** Ends setup on Chiedi. */
+  /** Ends setup: on Chiedi, or in Settings on setup again. */
   onLeave: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -71,18 +76,40 @@ export function MaterialStep({
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [checked, setChecked] = useState(false);
+  // On setup again, whether the folders linked already were read. Until then the step draws nothing, so it never
+  // flashes the choice.
+  const [loaded, setLoaded] = useState(!again);
   const sources = useSources(folders.length > 0);
 
-  // Each screen starts at its top with the heading focused, as the steps of setup do.
-  const first = useRef(true);
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    if (!again) return;
+    let live = true;
+    invoke("sources.linkedFolders", {})
+      .then((linked) => {
+        if (!live || !linked.length) return;
+        setFolders(linked);
+        setMode(linked[0]!.mode);
+        setScreen("found");
+      })
+      // Without the list the step starts at the choice, as a first setup does; a folder linked again is returned as is.
+      .catch(() => undefined)
+      .finally(() => {
+        if (live) setLoaded(true);
+      });
+    return () => {
+      live = false;
+    };
+  }, [again]);
+
+  // Each screen starts at its top with the heading focused, as the steps of setup do. The step's first screen only
+  // takes the focus: setup scrolled to the top when the step opened, before the folders were read.
+  const shown = useRef(false);
+  useEffect(() => {
+    if (!loaded) return;
+    if (shown.current) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    shown.current = true;
     heading.current?.focus({ preventScroll: true });
-  }, [screen, heading]);
+  }, [loaded, screen, heading]);
 
   const go = (next: Screen) => {
     setError(null);
@@ -450,6 +477,14 @@ export function MaterialStep({
     footer = (
       <>
         <span>
+          {/* Setup again reads the folders afresh when it comes back here. A first setup has no way back once linked. */}
+          {again ? (
+            <Button shape="round" disabled={busy !== null} onClick={onBack}>
+              {t("nav.back")}
+            </Button>
+          ) : null}
+        </span>
+        <span className="px-onboarding-primary">
           <Button
             type="text"
             shape="round"
@@ -459,8 +494,6 @@ export function MaterialStep({
           >
             {t("onboarding.material.found.addFolder")}
           </Button>
-        </span>
-        <span className="px-onboarding-primary">
           <Button
             type="primary"
             shape="round"
@@ -468,13 +501,14 @@ export function MaterialStep({
             loading={busy === "confirming"}
             onClick={() => void confirm()}
           >
-            {t("onboarding.done")}
+            {t(again ? "onboarding.again.done" : "onboarding.done")}
           </Button>
         </span>
       </>
     );
   }
 
+  if (!loaded) return null;
   return (
     <>
       <div className="px-onboarding-title">

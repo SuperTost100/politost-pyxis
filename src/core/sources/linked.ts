@@ -6,7 +6,7 @@ import { MAX_FOLDER_ENTRIES, maxSourceBytes, isImageExt } from "../../shared/sou
 import { MAX_SUBJECT_NAME, type LinkMode, type MaterialKind } from "../../shared/linked-folders";
 import type { GenerateInput } from "../engine/generate";
 import type { Runner } from "../jobs/runner";
-import { addSubject } from "../plans/subjects";
+import { addSubject, renameSubject } from "../plans/subjects";
 import { inside } from "../path-inside";
 import { kindFor, mimeFor } from "./documents";
 import { listImportable } from "./folder";
@@ -478,6 +478,23 @@ export function linkedFolders(deps: LinkedDeps) {
     })();
   }
 
+  /**
+   * The subject a confirmed name stands for. A subfolder that already has a subject of its own, as on setup again, keeps
+   * it under the new name, so the exams and plans that hang on its id stay with it. Otherwise the name makes a subject
+   * or reuses the one with that name: when another subject has the name already, or another subfolder shares this one.
+   */
+  function subjectFor(current: string | null, name: string): { id: string; name: string } {
+    const clean = name.trim();
+    const own =
+      current !== null &&
+      db.prepare(`SELECT COUNT(*) FROM linked_subfolders WHERE subject_id = ?`).pluck().get(current) === 1 &&
+      !db.prepare(`SELECT 1 FROM subjects WHERE name = ? COLLATE NOCASE AND id <> ?`).get(clean, current);
+    if (!own) return addSubject(db, clean);
+    const stored = db.prepare(`SELECT name FROM subjects WHERE id = ?`).pluck().get(current) as string | undefined;
+    if (stored === undefined) return addSubject(db, clean);
+    return stored === clean ? { id: current, name: stored } : renameSubject(db, current, clean);
+  }
+
   function assignSubject(folderId: string, key: string, subjectId: string): void {
     db.prepare(`UPDATE linked_subfolders SET subject_id = ?, skipped = 0 WHERE folder_id = ? AND name = ?`).run(
       subjectId,
@@ -544,7 +561,7 @@ export function linkedFolders(deps: LinkedDeps) {
     },
     /**
      * Saves the subjects the student confirmed in setup. Each name creates a subject or reuses the one with that name,
-     * and the folder's sources take it. A subfolder marked as a subject after it was skipped is read now. Subfolders
+     * and the folder's sources take it; on setup again a subfolder's own subject is renamed instead (`subjectFor`). A subfolder marked as a subject after it was skipped is read now. Subfolders
      * left out keep the subject setup offered. Errors: `linked-folder-missing`.
      */
     async confirm(input: {
@@ -563,7 +580,7 @@ export function linkedFolders(deps: LinkedDeps) {
               ).run(folder.folderId, choice.key);
               continue;
             }
-            const subject = addSubject(db, choice.name);
+            const subject = subjectFor(rows.get(choice.key)!.subject_id, choice.name);
             subjects.set(subject.id, subject.name);
             assignSubject(folder.folderId, choice.key, subject.id);
           }

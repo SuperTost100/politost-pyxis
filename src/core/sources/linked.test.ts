@@ -231,6 +231,47 @@ describe("linked folders", () => {
     expect(app.db.prepare(`SELECT COUNT(*) FROM subjects`).pluck().get()).toBe(3);
   });
 
+  it("confirming again renames a folder's own subject in place, and gives a shared subject a new one", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    const first = (subjects: Array<{ key: string; name: string; skipped: boolean }>) =>
+      app.linked.confirm({ folders: [{ folderId: folder!.id, subjects }] });
+    await first([
+      { key: "Fisica 1", name: "Fisica I", skipped: false },
+      { key: "GAL", name: "Geometria", skipped: false },
+      { key: "Erasmus", name: "Geometria", skipped: false },
+    ]);
+    await app.settled();
+    const physics = app.source("Mazzoldi cap 2")!.subjectId;
+    const geometry = app.source("appunti")!.subjectId;
+    expect(app.source("learning agreement")!.subjectId).toBe(geometry);
+
+    // Setup again: a subject only this subfolder has is renamed, so what hangs on its id stays with it. A subject two
+    // subfolders share is left to the other one, and the renamed subfolder gets a subject of its own.
+    await first([
+      { key: "Fisica 1", name: "Fisica", skipped: false },
+      { key: "GAL", name: "Geometria", skipped: false },
+      { key: "Erasmus", name: "Erasmus", skipped: false },
+    ]);
+    await app.settled();
+    expect(app.source("Mazzoldi cap 2")!.subjectId).toBe(physics);
+    expect(app.subjectName(physics)).toBe("Fisica");
+    expect(app.source("appunti")!.subjectId).toBe(geometry);
+    expect(app.subjectName(geometry)).toBe("Geometria");
+    expect(app.subjectName(app.source("learning agreement")!.subjectId)).toBe("Erasmus");
+    expect(app.db.prepare(`SELECT name FROM subjects ORDER BY name`).pluck().all()).toEqual([
+      "Erasmus",
+      "Fisica",
+      "Geometria",
+    ]);
+
+    // A new name that another subject already has joins that subject, as a first confirmation does.
+    await first([{ key: "Fisica 1", name: "geometria", skipped: false }]);
+    expect(app.source("Mazzoldi cap 2")!.subjectId).toBe(geometry);
+    expect(app.subjectName(geometry)).toBe("Geometria");
+  });
+
   it("uses the folder names and skips nothing without an AI tool", async () => {
     const root = studyTree();
     const app = setup({ engine: false });

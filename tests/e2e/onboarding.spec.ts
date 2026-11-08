@@ -614,7 +614,7 @@ test("First setup: skipping leaves crash reports off, and a new profile at schoo
   }
 });
 
-test("Run setup again: Settings reopens you and the AI filled in, without Skip, leaves engines alone and returns to Settings", async () => {
+test("Run setup again: Settings reopens all three steps filled in, without Skip, leaves engines alone and returns to Settings", async () => {
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
@@ -667,11 +667,11 @@ test("Run setup again: Settings reopens you and the AI filled in, without Skip, 
     await button(page, "Rifai la configurazione").click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1$/);
 
-    // The rerun has two steps and no Skip. Cancel leaves without saving.
+    // The rerun has the three steps and no Skip. Cancel leaves without saving.
     await expect(
       page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?" }),
     ).toBeVisible();
-    await expect(currentStep(page)).toHaveText("Passo 1 di 2: 1 · Tu");
+    await expect(currentStep(page)).toHaveText("Passo 1 di 3: 1 · Tu");
     await expect(button(page, "Salta")).toHaveCount(0);
     await button(page, "Annulla").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
@@ -702,8 +702,14 @@ test("Run setup again: Settings reopens you and the AI filled in, without Skip, 
     await noNavigation(page);
     await noAxeViolations(page);
 
-    // The end saves and goes back to Settings > Profile.
-    await button(page, "Salva e torna alle impostazioni").click();
+    // The AI step saves and goes on to the material, which with no folder linked asks how the student keeps it.
+    // Later goes back to Settings > Profile with the profile saved.
+    await button(page, "Continua").click();
+    await expect(currentStep(page)).toHaveText("Passo 3 di 3: 3 · Il materiale");
+    await expect(
+      page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
+    ).toBeVisible();
+    await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
     await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(
       "Ada L.",
