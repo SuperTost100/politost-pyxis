@@ -15,12 +15,14 @@
 
 import {
   createEmptyCard,
+  dateDiffInDays,
   fsrs,
   generatorParameters,
   Rating as FsrsRating,
   State as FsrsState,
   type Card,
 } from "ts-fsrs";
+import { forgettingCurve } from "ts-fsrs/models/fsrs-6";
 import { daysBetween } from "../../shared/local-day";
 
 /** A card counts as mastered once its FSRS stability reaches this many days. */
@@ -49,10 +51,15 @@ export type ScheduleState = {
   fsrs?: StoredCard;
 };
 
-const scheduler = fsrs(
-  generatorParameters({ enable_fuzz: false, request_retention: 0.9 }),
-);
+// ts-fsrs 6 keeps this legacy facade on FSRS-6, the model every stored card was scheduled with. Moving to its
+// DefaultScheduler (FSRS-7) would need each card's full history replayed with FSRS-7 weights.
+const parameters = generatorParameters({
+  enable_fuzz: false,
+  request_retention: 0.9,
+});
+const scheduler = fsrs(parameters);
 const MS_PER_DAY = 86_400_000;
+const MS_PER_MINUTE = 60_000;
 
 /**
  * The longest interval that keeps the next review on or before the exam day: whole local days from today to the exam,
@@ -72,16 +79,23 @@ function revive(stored: StoredCard): Card {
     ...stored,
     due: new Date(stored.due),
     last_review: stored.last_review ? new Date(stored.last_review) : undefined,
-    state: stored.state,
+    state: stored.state as FsrsState,
   };
 }
 
-function store(card: Card): StoredCard {
+/**
+ * `elapsed_days` is the whole UTC days from the previous review to this one, 0 for a new card. ts-fsrs 6 no longer
+ * keeps it on the card, but stored rows and plan files carry it, so Pyxis works it out as ts-fsrs 5 did.
+ */
+function store(card: Card, previous: Card, now: number): StoredCard {
   return {
     due: card.due.toISOString(),
     stability: card.stability,
     difficulty: card.difficulty,
-    elapsed_days: card.elapsed_days,
+    elapsed_days:
+      previous.state !== FsrsState.New && previous.last_review
+        ? dateDiffInDays(previous.last_review, new Date(now))
+        : 0,
     scheduled_days: card.scheduled_days,
     learning_steps: card.learning_steps,
     reps: card.reps,
@@ -115,7 +129,13 @@ export function review(
         : rating === "good"
           ? preview[FsrsRating.Good].card
           : preview[FsrsRating.Easy].card;
-  const saved = store(next);
+  const saved = store(next, current, now);
+  // ts-fsrs 6 keeps learning steps to the second, so Hard on the first step, halfway between 1 and 10 minutes, is
+  // 5.5 minutes. ts-fsrs 5 rounded a step to whole minutes (6), and Pyxis keeps that schedule.
+  if (saved.scheduled_days === 0) {
+    const minutes = Math.round((next.due.getTime() - now) / MS_PER_MINUTE);
+    saved.due = new Date(now + minutes * MS_PER_MINUTE).toISOString();
+  }
   const maxDays = examMaxInterval(examAt, now);
   if (maxDays != null && saved.scheduled_days > maxDays) {
     saved.scheduled_days = maxDays;
@@ -167,7 +187,8 @@ export function retrievability(
     0,
     (now - new Date(state.fsrs.last_review).getTime()) / MS_PER_DAY,
   );
-  const value = scheduler.forgetting_curve(
+  const value = forgettingCurve(
+    parameters.w,
     elapsedDays,
     state.fsrs.stability,
   );

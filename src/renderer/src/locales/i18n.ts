@@ -7,6 +7,15 @@ import it from "./it.json";
 
 export type Locale = "it" | "en";
 
+// i18next 27 turns strictInterpolationChecks on by default. The resources here are not typed, so keys are plain
+// strings and the check has no variables to compare. It does change t's signature, though, so helpers typed as
+// `(key, params?) => string` no longer accept t. False keeps the i18next 26 signature.
+declare module "i18next" {
+  interface CustomTypeOptions {
+    strictInterpolationChecks: false;
+  }
+}
+
 const STORAGE_KEY = "pyxis.lang";
 
 function storedLocale(): Locale {
