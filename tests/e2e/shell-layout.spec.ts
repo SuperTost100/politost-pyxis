@@ -255,6 +255,8 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       // As wide as its text, up to 560px, and a longer text wraps instead of spanning the window.
       expect(box.width).toBeLessThan(560);
       expect(await notice.evaluate((element) => getComputedStyle(element).maxWidth)).toBe("560px");
+      // It adds nothing to the page's height: a page that could scroll while it shows would jump back when it closes.
+      expect(await page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight)).toBe(0);
       await saveShot(page, `notice-${language}-${theme}-${width}.png`, { animations: "disabled" });
       await expect(notice).toHaveCount(0, { timeout: 10000 });
     }
