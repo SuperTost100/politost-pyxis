@@ -378,12 +378,14 @@ export function MapPage() {
     const ids = new Set(target.map((node) => node.id));
     const leaving = nodesRef.current.filter((node) => !ids.has(node.id));
     const shownAt = (node?: FlowNode) => Number(node?.style?.opacity ?? 1);
-    const start = performance.now();
+    // The clock starts at the first screen frame, which draws the start again. Whether the first frame drawn is that one
+    // or the one set here, the motion starts from where the nodes are, and no node steps back first.
+    let start: number | undefined;
     let ended = false;
-    const step = (time: number) => {
-      // A frame's time can be earlier than the effect that started the motion, and counting such a frame as the start
-      // keeps nodes from first stepping backwards.
-      const progress = Math.min(1, Math.max(0, (time - start) / MOTION_MS));
+    const step = (time?: number) => {
+      if (time !== undefined) start ??= time;
+      const progress =
+        time === undefined || start === undefined ? 0 : Math.min(1, (time - start) / MOTION_MS);
       const eased = 1 - (1 - progress) ** 3;
       const between = (from: { x: number; y: number }, to: { x: number; y: number }) => ({
         x: from.x + (to.x - from.x) * eased,
@@ -439,7 +441,7 @@ export function MapPage() {
       else motion.current.origin = undefined;
     };
     // The first frame now, so no frame shows the old layout; the rest on the screen's frames.
-    step(start);
+    step();
     return () => {
       cancelAnimationFrame(motion.current.frame);
       canvas.current?.removeAttribute("data-moving");
