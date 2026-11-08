@@ -424,11 +424,12 @@ function ProfileStep(props: {
           </div>
         )}
         <div className="px-form-field px-onboarding-wide">
-          <span className="label" aria-hidden>
+          <label className="label" htmlFor="profile-interests">
             {t("onboarding.interests.label")}
             {optional}
-          </span>
+          </label>
           <TagsField
+            id="profile-interests"
             label={t("onboarding.interests.label")}
             values={values.interests}
             max={PROFILE_LIMITS.interests}

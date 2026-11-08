@@ -625,8 +625,11 @@ test("First setup: interests added on the first step show in Settings > Profile 
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByLabel("Nome", { exact: true }).fill("Ada");
-    // Enter adds an interest, and so does a comma.
-    const interests = page.getByRole("textbox", { name: "Interessi" });
+    // The visible label names the field, optional note included, and focuses it. Enter adds an interest, and so does a
+    // comma.
+    const interests = page.getByRole("textbox", { name: "Interessi (se vuoi)", exact: true });
+    await page.locator("label", { hasText: "Interessi" }).click();
+    await expect(interests).toBeFocused();
     await interests.fill("calcio");
     await interests.press("Enter");
     await interests.pressSequentially("chitarra,");
