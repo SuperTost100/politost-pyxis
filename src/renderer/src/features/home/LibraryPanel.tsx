@@ -186,8 +186,12 @@ export function LibraryPanel({
   }, [opened.data, searchPicked]);
 
   useEffect(() => {
-    if (passageId)
-      openSourceViewer({ passageId, sourceId: sourceId ?? undefined });
+    if (!passageId) return;
+    // A passage from the address opens only while the address still names it. Back can keep the library mounted
+    // while the next page loads, and a reply that lands then must not open the viewer over that page.
+    const address = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
+    if (!searchPicked && address.get("passage") !== passageId) return;
+    openSourceViewer({ passageId, sourceId: sourceId ?? undefined });
   }, [page.data, opened.data]);
 
   const [dragging, setDragging] = useState(false);
