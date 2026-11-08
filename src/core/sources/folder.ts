@@ -122,10 +122,20 @@ export async function walkImportable(
   let seen = 0;
   // A failure in `onFiles` ends the walk; it is not a folder that could not be read.
   let handedOver = false;
+  /**
+   * What `lstat` says about a path, or null when it is gone. Any other failure (no permission, a disk error) leaves
+   * the walk unreadable, so a file that is there but could not be read is never taken for one that was deleted.
+   */
+  const statOf = (path: string) =>
+    lstat(path).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== "ENOENT" && err.code !== "ENOTDIR") cut.unreadable = true;
+      return null;
+    });
   const flush = async () => {
     const batch = files;
     files = [];
-    const stats = await Promise.all(batch.map((path) => lstat(path).catch(() => null)));
+    const stats = await Promise.all(batch.map(statOf));
+    options.signal?.throwIfAborted();
     const found: WalkedFile[] = [];
     batch.forEach((path, index) => {
       const stat = stats[index];
@@ -151,11 +161,13 @@ export async function walkImportable(
   const importable = (name: string) => IMPORT_EXTENSIONS.has(extname(name).toLowerCase());
   const stack: Array<{ dir: string; depth: number }> = [];
   if (options.within) {
-    const parts = options.within.split(/[\\/]/).filter(Boolean);
+    // A watch names a place with the system's own separator; a backslash on Linux is part of a name.
+    const parts = options.within.split(sep).filter(Boolean);
     if (parts.some((part) => part.startsWith(".") || part === "..")) return cut;
     const start = join(root, ...parts);
     if (exclude.some((place) => start === place || start.startsWith(place + sep))) return cut;
-    const stat = await lstat(start).catch(() => null);
+    options.signal?.throwIfAborted();
+    const stat = await statOf(start);
     if (stat?.isFile() && importable(start)) {
       if (parts.length - 1 > options.maxDepth) cut.depth = true;
       else files.push(start);

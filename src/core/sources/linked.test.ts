@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -662,14 +662,23 @@ describe("a large linked folder", () => {
     expect(first.count(`SELECT COUNT(*) FROM linked_files WHERE pending = 1`)).toBe(590);
     closeLinkedWatches();
     expect(first.queuedImports()).toBe(10);
+    // A file still waiting is renamed while Pyxis is closed: its old name must not be read.
+    const waiting = first.db
+      .prepare(`SELECT rel_path FROM linked_files WHERE pending = 1 ORDER BY rowid LIMIT 1`)
+      .pluck()
+      .get() as string;
+    renameSync(join(root, waiting), join(root, `${waiting.slice(0, -4)} bis.txt`));
 
-    const second = bulk({ db: first.db, window: 10 });
+    // A wider window, so the queue has room for waiting files the moment Pyxis starts.
+    const second = bulk({ db: first.db, window: 20 });
     await second.linked.start();
     await second.settled();
     expect(second.reads()).toBe(600);
     expect(second.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import'`)).toBe(600);
     expect(second.count(`SELECT COUNT(*) FROM sources`)).toBe(600);
     expect(second.count(`SELECT COUNT(DISTINCT source_id) FROM linked_files`)).toBe(600);
+    expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE missing_at IS NOT NULL`)).toBe(0);
+    expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE rel_path = '${waiting.replaceAll("'", "''")}'`)).toBe(0);
   }, 60_000);
 
   it("sorts loose files into subjects by name, a hundred names a call, and asks about each file once", async () => {
@@ -685,7 +694,12 @@ describe("a large linked folder", () => {
     }
     for (const name of loose) writeFileSync(join(root, name), name);
     const calls: string[][] = [];
-    const sorter = sortByPrefix(calls);
+    // The model leaves the timetables out of its answer altogether.
+    const sorter: Run = async (input) => {
+      const reply = await sortByPrefix(calls)(input);
+      const structured = reply.structured as { files: Array<{ file: string }> };
+      return { ...reply, structured: { files: structured.files.filter((item) => !item.file.startsWith("orario")) } };
+    };
     const app = bulk({
       run: async (input) =>
         isSorting(input)
@@ -756,6 +770,9 @@ describe("a large linked folder", () => {
     await app.settled();
     expect(app.source("appunti")!.missingAt).not.toBeNull();
     expect(app.source("Mazzoldi cap 2")!.missingAt).toBeNull();
+    // A request that names no place reads nothing, and the next one still runs.
+    await app.linked.sync(folder!.id, []);
+    await app.linked.idle();
     // A change the system reported without a name reads the whole folder.
     changed!(null);
     await app.settled();
@@ -768,8 +785,54 @@ describe("a large linked folder", () => {
     const runner = createRunner(db, () => {}, undefined, true);
     runner.register("source-import", { jobClass: "local", steps: [{ name: "read", label: "x", run: async () => ({}) }] });
     runner.start("source-import", { sourceId: "s1" });
+    const prepared: string[] = [];
+    const prepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      prepared.push(sql);
+      return prepare(sql);
+    }) as typeof db.prepare;
     expect(hasUnfinishedJob(db, "s1")).toBe(true);
+    db.prepare = prepare;
     expect(hasUnfinishedJob(db, "s2")).toBe(false);
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${prepared[0]!}`).all("s1") as Array<{ detail: string }>;
+    expect(plan.map((row) => row.detail).join(" ")).toContain("jobs_state");
+  });
+
+  it("drops a waiting change whose source was deleted, and goes on reading the rest", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    const orario = app.source("orario")!;
+    // The file changed and waits for the queue, and meanwhile the student deletes its source.
+    app.db.prepare(`UPDATE linked_files SET pending = 2 WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM passages WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM source_documents WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM sources WHERE id = ?`).run(orario.id);
+    writeFileSync(join(root, "GAL", "vettori.txt"), "Un vettore ha modulo, direzione e verso.");
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(app.db.prepare(`SELECT source_id, pending FROM linked_files WHERE rel_path = 'orario.txt'`).get()).toEqual({
+      source_id: null,
+      pending: 0,
+    });
+    expect(app.source("vettori")).toMatchObject({ status: "ready" });
+  });
+
+  it.skipIf(process.platform === "win32")("treats a file it may not look at as unreadable, never as deleted", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    // GAL can still be listed, but nothing inside it can be looked at.
+    chmodSync(join(root, "GAL"), 0o444);
+    try {
+      await app.linked.sync(folder!.id);
+      expect(app.source("appunti")!.missingAt).toBeNull();
+      expect(app.linked.view(folder!.id).cut.unreadable).toBe(true);
+    } finally {
+      chmodSync(join(root, "GAL"), 0o755);
+    }
   });
 });
 

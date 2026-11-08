@@ -110,6 +110,8 @@ const HASH_BATCH = 32;
 const PEEK_FILES = 40;
 /** ...and this many entries, so linking never waits on a huge subfolder. */
 const PEEK_ENTRIES = 5_000;
+/** ...and of the folder's own top level, which may hold thousands of loose files. */
+const PEEK_TOP_ENTRIES = 20_000;
 
 /**
  * Checks a folder the renderer asks to link, after the folder grant: an absolute path to a directory, outside the
@@ -192,10 +194,11 @@ export async function peekFolder(
   }
   const loose: string[] = [];
   const subfolders = new Set<string>();
-  // The top level only: its files, and the subfolders to sample one by one.
+  // The top level only, its files and the subfolders to sample one by one, and only so far: the full walk finds the rest.
   await walkImportable(root, {
     exclude,
     maxDepth: 0,
+    maxEntries: PEEK_TOP_ENTRIES,
     signal,
     onFiles: (files) => {
       for (const file of files) if (!isPackage(file.rel)) loose.push(file.rel);
@@ -221,7 +224,7 @@ const mtimeOf = (stat: { mtimeMs: number }) => Math.floor(stat.mtimeMs);
  * left to it. Null for the whole folder, when one of them is the folder itself or there are too many.
  */
 function scopesOf(paths: Iterable<string>): string[] | null {
-  const places = [...new Set([...paths].map((path) => path.split(/[\\/]/).filter(Boolean).join(sep)))].sort();
+  const places = [...new Set([...paths].map((path) => path.split(sep).filter(Boolean).join(sep)))].sort();
   if (places.includes("") || places.length > WATCH_MAX_PATHS) return null;
   const kept = new Set<string>();
   for (const place of places) {
@@ -405,6 +408,9 @@ export function linkedFolders(deps: LinkedDeps) {
             continue;
           }
           if (row.pending === 1) readNew(row, row.subject_id);
+          // The source was deleted while its change waited: the row stays, with no source, so it is not read again.
+          else if (row.source_id === null)
+            db.prepare(`UPDATE linked_files SET pending = 0 WHERE folder_id = ? AND rel_path = ?`).run(folderId, row.rel_path);
           else readAgain(row, folder.path);
           room -= 1;
         }
@@ -730,7 +736,9 @@ export function linkedFolders(deps: LinkedDeps) {
         if (!db.open) return;
         db.transaction(() => {
           const now = Date.now();
-          for (const [rel, key] of answer) {
+          // A file the answer left out is one no subject fits: it is not asked about again either.
+          for (const rel of batch) {
+            const key = answer.get(rel) ?? null;
             const placed = db
               .prepare(
                 `UPDATE linked_files SET subfolder = ?, sorted_at = ? WHERE folder_id = ? AND rel_path = ? AND subfolder = ''
@@ -756,6 +764,8 @@ export function linkedFolders(deps: LinkedDeps) {
   const running = new Map<string, Promise<void>>();
   const queued = new Map<string, Set<string> | null>();
   function sync(folderId: string, paths: readonly string[] | null = null): Promise<void> {
+    // Nothing to read. A look that ended without waiting would delete its entry before it was set.
+    if (paths?.length === 0) return running.get(folderId) ?? Promise.resolve();
     const before = queued.get(folderId);
     queued.set(
       folderId,
@@ -909,8 +919,11 @@ export function linkedFolders(deps: LinkedDeps) {
      * it stopped. Runs in the background; a folder that fails is reported and left for the next start.
      */
     async start(): Promise<void> {
+      // A file recorded before the restart may have moved or gone since: each folder's files wait for its first look.
+      const ids = folderIds();
+      for (const id of ids) walking.add(id);
       schedulePump();
-      for (const id of folderIds()) {
+      for (const id of ids) {
         if (!db.open) return;
         try {
           if (!folderRow(id)?.confirmed_at) confirmOffered(id);
@@ -923,6 +936,8 @@ export function linkedFolders(deps: LinkedDeps) {
           await sync(id);
         } catch (err) {
           console.error("pyxis-core: linked folder look failed", err instanceof Error ? err.message : "unknown");
+        } finally {
+          walking.delete(id);
         }
       }
     },

@@ -55,7 +55,7 @@ Migration 24 adds linked folders, read in place (see [architecture](architecture
 
 Migration 25 lets a linked folder be read in full. `linked_files.pending` is 1 for a file a look recorded that waits for its first reading (it has no source yet), 2 for a changed file waiting to be read again, and 0 otherwise, which every existing row keeps. `sorted_at` is when the AI tool was asked which subject a file lying loose at the top of the folder belongs to. The partial index `linked_files_pending` finds a folder's waiting files, and `linked_files_gone` finds missing files a move could match by size.
 
-Current version is 24. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Current version is 25. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
