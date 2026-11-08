@@ -871,6 +871,10 @@ export function linkedFolders(deps: LinkedDeps) {
     async confirm(input: {
       folders: Array<{ folderId: string; subjects: Array<{ key: string; name: string; skipped: boolean }> }>;
     }): Promise<{ subjects: Array<{ id: string; name: string }> }> {
+      // The subfolders skipped before this confirmation: one the student marks as a subject is read after it.
+      const skippedBefore = (folderId: string) =>
+        new Set(subfolderRows(folderId).filter((row) => row.skipped).map((row) => row.name));
+      const before = new Map(input.folders.map((folder) => [folder.folderId, skippedBefore(folder.folderId)]));
       const subjects = new Map<string, string>();
       db.transaction(() => {
         for (const folder of input.folders) {
@@ -891,7 +895,12 @@ export function linkedFolders(deps: LinkedDeps) {
           confirmOffered(folder.folderId);
         }
       })();
-      for (const folder of input.folders) syncInBackground(folder.folderId);
+      for (const [folderId, skipped] of before) {
+        const now = skippedBefore(folderId);
+        const read = [...skipped].filter((key) => !now.has(key));
+        // A subject folder's key is "" for the folder itself, which is the whole folder.
+        if (read.length) syncInBackground(folderId, read.includes("") ? null : read);
+      }
       return { subjects: [...subjects].map(([id, name]) => ({ id, name })) };
     },
     /**
