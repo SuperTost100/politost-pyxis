@@ -29,6 +29,7 @@
       "general": "Anywhere",
       "ask": "Ask",
       "cards": "Flashcards",
+      "maps": "Maps",
       "quiz": "Quizzes",
       "whiteboard": "Whiteboard",
       "python": "Python"
@@ -82,7 +83,10 @@
       "slash": "Slash",
       "bracket": "Left bracket",
       "plus": "Plus",
-      "minus": "Minus"
+      "minus": "Minus",
+      "delete": "Delete",
+      "backspace": "Backspace",
+      "arrows": "Arrow keys"
     }
   },
   "onboarding": {
@@ -987,7 +991,6 @@
       "select": "Select a concept",
       "rename": "Rename",
       "delete": "Delete the branch",
-      "deleteKey": "Delete",
       "move": "Move the concept"
     },
     "pickHint": "Click a concept to see its sources and edit it.",

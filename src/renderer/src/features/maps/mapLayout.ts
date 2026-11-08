@@ -2,6 +2,7 @@ import { childrenOf, type Item } from "../../../../shared/map-layout";
 
 export {
   COLUMN_GAP,
+  NODE_MIN_HEIGHT,
   NODE_WIDTH,
   SIBLING_GAP,
   layoutTree,

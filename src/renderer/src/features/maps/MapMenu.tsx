@@ -8,6 +8,21 @@ import {
 import { Icon, type IconName } from "../../components/Icon";
 import { IconButton } from "../../components/IconButton";
 
+/**
+ * The map's keys, listed in its "…" menu and under Maps in Help > Keyboard shortcuts. Each row's label is
+ * `map.keys.<id>`, and `either` marks keys that each do the same thing.
+ */
+export const MAP_KEYS: ReadonlyArray<{
+  id: "select" | "rename" | "delete" | "move";
+  keys: string[];
+  either?: boolean;
+}> = [
+  { id: "select", keys: ["Tab"] },
+  { id: "rename", keys: ["enter"] },
+  { id: "delete", keys: ["delete", "backspace"], either: true },
+  { id: "move", keys: ["arrows"] },
+];
+
 export type MapMenuItem = {
   key: string;
   label: string;
