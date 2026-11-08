@@ -41,8 +41,15 @@ export function SourceViewer() {
       setBack(backTo ? () => backTo : null);
       if (!markdown) void loadMarkdown().then(() => setMarkdownReady(true));
     };
+    // The viewer belongs to the page that opened it. Going back or forward leaves that page, so it closes too, and does
+    // not stay over the next one.
+    const leave = () => setLocation(null);
     window.addEventListener(eventName, open);
-    return () => window.removeEventListener(eventName, open);
+    window.addEventListener("popstate", leave);
+    return () => {
+      window.removeEventListener(eventName, open);
+      window.removeEventListener("popstate", leave);
+    };
   }, []);
   const passages = useQuery({
     queryKey: ["viewer", location], enabled: location != null,

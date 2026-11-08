@@ -592,9 +592,9 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   }
 });
 
-// The Mac bundle leaves out SwiftShader (build/after-pack.cjs). The packaged app must report the same GPU acceleration as
+// The Mac bundle leaves out SwiftShader (build/after-pack.cjs). The packaged app must report the same GPU features as
 // Electron's own build, which still has it.
-test("the packaged app reports the same GPU acceleration as Electron's build", async () => {
+test("the packaged app reports the same GPU features as Electron's build", async () => {
   const packaged = process.env.PYXIS_DIST_APP;
   test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
   async function features(executablePath?: string) {
@@ -603,27 +603,11 @@ test("the packaged app reports the same GPU acceleration as Electron's build", a
     try {
       const page = await app.firstWindow();
       await page.waitForLoadState("load");
-      const status = await app.evaluate(async ({ app }) => {
-        // Loading the window can finish before Chromium has collected GPU information. Compare the resolved
-        // capabilities of both launches, rather than a provisional status from either GPU process.
-        try {
-          await app.getGPUInfo("complete");
-        } catch (error) {
-          // A headless runner can exhaust Chromium's GPU crash retries. It still has a feature status to compare.
-          if (!(error instanceof Error) || !error.message.includes("GPU access not allowed")) throw error;
-        }
-        return app.getGPUFeatureStatus();
-      });
+      const status = await app.evaluate(({ app }) => app.getGPUFeatureStatus());
       // Chromium picks the raster thread count from the machine's CPUs at launch, not from the files that ship. On the
       // macOS Intel runners two launches in one job disagree on it, so it says nothing about the package.
       const { multiple_raster_threads: _threads, ...rest } = status;
-      // Headless Linux may report unavailable_software before exhausting GPU crash retries, and disabled_off or
-      // disabled_software afterwards. None is accelerated. Keep enabled statuses exact so packaging cannot silently
-      // remove acceleration on a machine that supports it.
-      return Object.fromEntries(Object.entries(rest).map(([feature, value]) => [
-        feature,
-        /^(disabled|unavailable)_/.test(value) ? "not-accelerated" : value,
-      ]));
+      return rest;
     } finally {
       await app.close();
       removeTestFolder(userData);

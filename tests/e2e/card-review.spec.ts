@@ -189,6 +189,9 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await expect(page.getByRole("group", { name: "How well did you know it?" })).toHaveText("Didn't know it1Hard2Knew it3Easy4");
     await page.getByRole("button", { name: "Ask the tutor" }).click();
     await expect(page).toHaveURL(/#\/ask\/[\w-]+$/);
+    // As on the first visit, the chat page settles first: the address changes before the page does, and coming back
+    // before the flashcards page has gone would find it as it was left.
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
     await expect.poll(() => cardSteps().length).toBe(1);
     expect(JSON.parse(cardSteps()[0]!.payload_json)).toMatchObject({
       activity: "cards",

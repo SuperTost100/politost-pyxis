@@ -1474,10 +1474,12 @@ function prepareState(name: string) {
       now,
       now,
     );
-    // A lesson the lesson page wrote itself, finished today.
+    // A lesson the lesson page wrote itself, finished today. Finished today means since local midnight, so both
+    // finished jobs end now: a run that crosses midnight would otherwise list them as yesterday's and hide them.
     db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-running-lesson','lesson-write',?,'succeeded',1,?,?)",
-    ).run(JSON.stringify({ exam: "Analisi 1", topic: "Limiti" }), now - 60_000, now - 30_000);
+    ).run(JSON.stringify({ exam: "Analisi 1", topic: "Limiti" }), now - 60_000, now);
+    db.prepare("UPDATE jobs SET updated_at = ? WHERE id = 'audit-ready-build'").run(now);
     running.run(
       "audit-running-photo",
       "source-import",
