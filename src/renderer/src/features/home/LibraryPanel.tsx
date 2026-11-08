@@ -185,13 +185,15 @@ export function LibraryPanel({
     if (openedSource) setSourceId(openedSource);
   }, [opened.data, searchPicked]);
 
+  // The address when the passage to show was chosen, by the address itself or by a search hit. Back can keep the
+  // library mounted while the next page loads, and a reply that lands then must not open the viewer over that page.
+  const chosenAt = useRef(window.location.hash);
   useEffect(() => {
-    if (!passageId) return;
-    // A passage from the address opens only while the address still names it. Back can keep the library mounted
-    // while the next page loads, and a reply that lands then must not open the viewer over that page.
-    const address = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
-    if (!searchPicked && address.get("passage") !== passageId) return;
-    openSourceViewer({ passageId, sourceId: sourceId ?? undefined });
+    chosenAt.current = window.location.hash;
+  }, [passageId]);
+  useEffect(() => {
+    if (passageId && window.location.hash === chosenAt.current)
+      openSourceViewer({ passageId, sourceId: sourceId ?? undefined });
   }, [page.data, opened.data]);
 
   const [dragging, setDragging] = useState(false);
