@@ -236,6 +236,18 @@ CREATE TABLE linked_files (
 );
 CREATE UNIQUE INDEX linked_files_source ON linked_files(source_id) WHERE source_id IS NOT NULL;`,
   },
+  // Linked folders read in full. A file a look finds is recorded first and read later, a window at a time, so a folder
+  // of tens of thousands of files never fills the job queue: `pending` is 1 for a file waiting for its first reading
+  // (no source yet) and 2 for a changed file waiting to be read again. `sorted_at` is when the AI tool was asked which
+  // subject a file lying loose at the top of a study folder belongs to. Rows that existed keep pending 0.
+  {
+    version: 25,
+    sql: `ALTER TABLE linked_files ADD COLUMN pending INTEGER NOT NULL DEFAULT 0 CHECK (pending IN (0, 1, 2));
+ALTER TABLE linked_files ADD COLUMN sorted_at INTEGER;
+CREATE INDEX linked_files_pending ON linked_files(folder_id) WHERE pending > 0;
+CREATE INDEX linked_files_gone ON linked_files(size)
+  WHERE missing_at IS NOT NULL AND source_id IS NOT NULL AND content_hash IS NOT NULL;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {

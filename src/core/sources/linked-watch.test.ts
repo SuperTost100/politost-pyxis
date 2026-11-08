@@ -1,8 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { tempDir } from "../test-temp";
-import { watchFolder } from "./linked-watch";
+import { WATCH_MAX_PATHS, watchFolder } from "./linked-watch";
 
 type Listener = (event: string, name: string | null) => void;
 
@@ -58,6 +58,30 @@ describe("folder watch", () => {
     fake.emit();
     vi.advanceTimersByTime(1000);
     expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands over the places a burst changed, or the whole folder when it cannot tell them", () => {
+    vi.useFakeTimers();
+    const fake = fakeWatch();
+    const onChange = vi.fn();
+    watchFolder("/study", onChange, { quietMs: 100, watch: fake.watch });
+    fake.emit(join("Fisica", "appunti.pdf"));
+    fake.emit(join("Fisica", "appunti.pdf"));
+    fake.emit("GAL");
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenLastCalledWith([join("Fisica", "appunti.pdf"), "GAL"]);
+    // A change with no name, or more places than are worth reading one by one, reads the whole folder.
+    fake.emit("GAL");
+    fake.emit(null);
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    for (let index = 0; index <= WATCH_MAX_PATHS; index += 1) fake.emit(`nota ${index}.pdf`);
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    // The next burst starts again from nothing.
+    fake.emit("GAL");
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenLastCalledWith(["GAL"]);
   });
 
   it("still runs when changes never stop, once the longest wait is over", () => {
@@ -154,6 +178,10 @@ describe("folder watch", () => {
       await new Promise((resolve) => setTimeout(resolve, 200));
       writeFileSync(join(root, "Fisica", "Esami", "luglio.pdf"), "x");
       await expect.poll(() => onChange.mock.calls.length, { timeout: 5000 }).toBe(1);
+      // The place is named, so only it is read again; a system that names nothing has the whole folder read.
+      const target = join("Fisica", "Esami", "luglio.pdf");
+      const paths = onChange.mock.calls[0]![0] as string[] | null;
+      if (paths !== null) expect(paths.some((path) => target === path || target.startsWith(path + sep))).toBe(true);
     } finally {
       watch.close();
     }

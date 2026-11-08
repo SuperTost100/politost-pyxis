@@ -58,7 +58,9 @@ export type JobAbout = Pick<JobView, "topic" | "topics" | "exam" | "activity">;
 /** Work a request does itself, as the runner lists it while it lasts. */
 export type Tracked = {
   progress: (fraction: number) => void;
-  /** Ends the entry; one that succeeded is kept as a finished job. Later calls do nothing. */
+  /** How many things the work has reached so far (`JobView.count`). */
+  count: (count: number) => void;
+  /** Ends the entry; one that succeeded is kept as a finished job, unless it was tracked with `keep: false`. Later calls do nothing. */
   finish: (succeeded: boolean) => void;
 };
 
@@ -121,9 +123,15 @@ export type Runner = {
   /**
    * Lists model work a request does itself rather than as a queued job, such as a lesson streaming to its page: as
    * running while it lasts, with `label` as its step, and as a finished job of `kind` once it succeeds. It takes no
-   * slot and the list offers no cancel; its page stops it.
+   * slot and the list offers no cancel; its page stops it. `title` names what it works on; `keep: false` leaves no
+   * finished job behind, for background work that runs often, such as a look at a linked folder.
    */
-  track: (kind: string, about: JobAbout, label: string) => Tracked;
+  track: (
+    kind: string,
+    about: JobAbout,
+    label: string,
+    options?: { title?: string; keep?: boolean },
+  ) => Tracked;
 };
 
 export function createRunner(
@@ -604,7 +612,7 @@ export function createRunner(
         ...[...tracked.values()].map((view) => ({ ...view })),
       ];
     },
-    track(kind, about, label) {
+    track(kind, about, label, options = {}) {
       if (!specs.has(kind)) specs.set(kind, trackedJob);
       const id = uuidv7();
       const startedAt = Date.now();
@@ -618,6 +626,7 @@ export function createRunner(
       const view: JobView = {
         id,
         kind,
+        ...(options.title ? { title: options.title } : {}),
         ...known,
         inPage: true,
         state: "running",
@@ -637,10 +646,20 @@ export function createRunner(
           view.updatedAt = Date.now();
           onUpdate({ ...view });
         },
+        count(count) {
+          if (!tracked.has(id) || count === view.count) return;
+          view.count = count;
+          view.updatedAt = Date.now();
+          onUpdate({ ...view });
+        },
         finish(succeeded) {
           if (!tracked.delete(id) || closed()) return;
           if (!succeeded) {
             onUpdate({ ...view, state: "cancelled" });
+            return;
+          }
+          if (options.keep === false) {
+            onUpdate({ ...view, state: "succeeded", progress: 1, updatedAt: Date.now() });
             return;
           }
           db.prepare(

@@ -182,7 +182,7 @@
         "isSubject": "It's a subject",
         "isSubjectNamed": "{{folder}}: it's a subject",
         "addFolder": "Add another folder",
-        "cut": "This folder is very large: Pyxis reads its first {{files}} files, down to {{depth}} levels of subfolders."
+        "cut": "Pyxis reads subfolders up to {{depth}} levels deep, so the ones nested further down weren't read."
       }
     },
     "optional": "(optional)",
@@ -2232,6 +2232,8 @@
     "lessonWriting": "Writing the lesson",
     "lessonSection": "Rewriting part of the lesson",
     "doing": {
+      "folderRead_one": "Reading the folder: 1 file found",
+      "folderRead_other": "Reading the folder: {{count, number}} files found",
       "quizBuild": "Preparing the quiz",
       "quizBuild_topic": "Preparing the quiz on {{topic}}",
       "quizGrade": "Grading the quiz",

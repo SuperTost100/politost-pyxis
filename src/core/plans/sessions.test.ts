@@ -159,7 +159,7 @@ describe("migration 22", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

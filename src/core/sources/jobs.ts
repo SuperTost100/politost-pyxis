@@ -605,12 +605,14 @@ export function markInterruptedImports(db: Database.Database): void {
  * so the student never sees it to dismiss it.
  */
 export function hasUnfinishedJob(db: Database.Database, sourceId: string): boolean {
+  // The states are listed whole first, so the `jobs_state` index skips the succeeded jobs, which a large linked folder
+  // leaves by the thousand.
   return (
     db
       .prepare(
-        `SELECT 1 FROM jobs WHERE json_extract(params_json, '$.sourceId') = ?
-        AND (state IN ('running', 'queued')
-          OR (state IN ('failed', 'cancelled', 'interrupted') AND kind IN ('source-import', 'source-import-vision')))`,
+        `SELECT 1 FROM jobs WHERE state IN ('running', 'queued', 'failed', 'cancelled', 'interrupted')
+        AND json_extract(params_json, '$.sourceId') = ?
+        AND (state IN ('running', 'queued') OR kind IN ('source-import', 'source-import-vision'))`,
       )
       .get(sourceId) != null
   );

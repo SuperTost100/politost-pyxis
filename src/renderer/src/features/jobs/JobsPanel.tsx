@@ -43,7 +43,8 @@ function useJobDoing() {
   const topicOf = useJobTopic();
   return (job: JobView) => {
     const key = runningLabelKey(job.kind);
-    if (key) return t(key, { context: jobContext(job), topic: topicOf(job) });
+    // A folder being read counts the files found so far.
+    if (key) return t(key, { context: jobContext(job), topic: topicOf(job), ...(job.count === undefined ? {} : { count: job.count }) });
     return job.stepLabel ? t(job.stepLabel) : t(`jobs.state.${job.state}`);
   };
 }
