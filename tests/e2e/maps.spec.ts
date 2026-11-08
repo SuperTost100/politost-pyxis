@@ -259,7 +259,11 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await saveShot(page, "m10-map-selected.png");
     await foot.getByRole("button", { name: "Analisi", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams\/library\?passage=/);
+    // The library opens the source on that passage; going back to the map closes it with the library.
+    const viewer = page.locator(".source-viewer-chapter");
+    await expect(viewer).toBeVisible();
     await page.goBack();
+    await expect(viewer).toBeHidden();
     await page.locator('.react-flow__node[data-id="n4"]').click();
     await foot.getByRole("button", { name: "Chiedi", exact: true }).click();
     await expect(page).toHaveURL(/#\/ask\/[^/?]+$/);
