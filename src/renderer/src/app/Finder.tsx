@@ -270,6 +270,8 @@ export function Finder({
                 setText(event.target.value);
                 setActive(0);
               }}
+              // Back from scrolling the list with the keyboard, the choice Enter opens is put back in sight.
+              onFocus={() => document.getElementById(optionId(current))?.scrollIntoView({ block: "nearest" })}
               onKeyDown={(event) => {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
