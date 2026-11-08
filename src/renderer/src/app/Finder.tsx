@@ -270,6 +270,8 @@ export function Finder({
                 setText(event.target.value);
                 setActive(0);
               }}
+              // Back from scrolling the list with the keyboard, the choice Enter opens is put back in sight.
+              onFocus={() => document.getElementById(optionId(current))?.scrollIntoView({ block: "nearest" })}
               onKeyDown={(event) => {
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
@@ -284,7 +286,9 @@ export function Finder({
             />
             <kbd>{t("finder.close")}</kbd>
           </label>
-          <div className="px-finder-list">
+          {/* A long list scrolls, so Tab can stop on it and the arrow keys and Page Down scroll it, as in Safari, where
+              a scrolling area without anything focusable can't be reached from the keyboard. */}
+          <div className="px-finder-list" role="group" tabIndex={0} aria-label={t("finder.label")}>
             {/* The listbox holds options only; the messages about it sit beside it. */}
             {rows.length > 0 ? (
               <div id={listId} role="listbox" aria-label={t("finder.label")}>

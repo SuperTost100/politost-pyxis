@@ -313,7 +313,8 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await page
       .getByRole("button", { name: "See results", exact: true })
       .click();
-    await page.getByRole("button", { name: "Back to the notebook" }).click();
+    // The results' own button; the bar's way back starts with the same words.
+    await page.getByRole("button", { name: "Back to the notebook", exact: true }).click();
     // The notebook lives only under Exams, so that is where the redo returns, still narrowed to the same exam.
     await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
     await expect(page.getByRole("status")).toHaveText("3 questions to redo from quizzes, quick checks and simulations");

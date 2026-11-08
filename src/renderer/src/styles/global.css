@@ -140,6 +140,11 @@ html[data-platform="darwin"] {
   left: 0;
   right: 0;
   width: auto;
+  /* antd makes the list as tall as the window. Started below the top of the window, that height ran past its bottom,
+     so the page could scroll while a notice showed and jumped back when it closed, which also closed a selection's
+     menu. As tall as its notices, the list stays inside the window. */
+  height: auto;
+  max-height: calc(100vh - var(--px-message-top));
   transform: none;
 }
 /* As wide as the text, up to 560px; a longer text wraps. */
