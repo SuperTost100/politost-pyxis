@@ -481,13 +481,14 @@ export function linkedFolders(deps: LinkedDeps) {
   /**
    * The subject a confirmed name stands for. A subfolder that already has a subject of its own, as on setup again, keeps
    * it under the new name, so the exams and plans that hang on its id stay with it. Otherwise the name makes a subject
-   * or reuses the one with that name: when another subject has the name already, or another subfolder shares this one.
+   * or reuses the one with that name: when another subject has the name already, or the subject was shared by several
+   * subfolders before this confirmation (`shared`, read once, so the order of the choices does not matter).
    */
-  function subjectFor(current: string | null, name: string): { id: string; name: string } {
+  function subjectFor(current: string | null, name: string, shared: ReadonlySet<string>): { id: string; name: string } {
     const clean = name.trim();
     const own =
       current !== null &&
-      db.prepare(`SELECT COUNT(*) FROM linked_subfolders WHERE subject_id = ?`).pluck().get(current) === 1 &&
+      !shared.has(current) &&
       !db.prepare(`SELECT 1 FROM subjects WHERE name = ? COLLATE NOCASE AND id <> ?`).get(clean, current);
     if (!own) return addSubject(db, clean);
     const stored = db.prepare(`SELECT name FROM subjects WHERE id = ?`).pluck().get(current) as string | undefined;
@@ -569,6 +570,14 @@ export function linkedFolders(deps: LinkedDeps) {
     }): Promise<{ subjects: Array<{ id: string; name: string }> }> {
       const subjects = new Map<string, string>();
       db.transaction(() => {
+        const shared = new Set(
+          db
+            .prepare(
+              `SELECT subject_id FROM linked_subfolders WHERE subject_id IS NOT NULL GROUP BY subject_id HAVING COUNT(*) > 1`,
+            )
+            .pluck()
+            .all() as string[],
+        );
         for (const folder of input.folders) {
           if (!folderRow(folder.folderId)) throw new Error("linked-folder-missing");
           const rows = new Map(subfolderRows(folder.folderId).map((row) => [row.name, row]));
@@ -580,7 +589,7 @@ export function linkedFolders(deps: LinkedDeps) {
               ).run(folder.folderId, choice.key);
               continue;
             }
-            const subject = subjectFor(rows.get(choice.key)!.subject_id, choice.name);
+            const subject = subjectFor(rows.get(choice.key)!.subject_id, choice.name, shared);
             subjects.set(subject.id, subject.name);
             assignSubject(folder.folderId, choice.key, subject.id);
           }

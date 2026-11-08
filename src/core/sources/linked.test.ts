@@ -270,6 +270,16 @@ describe("linked folders", () => {
     await first([{ key: "Fisica 1", name: "geometria", skipped: false }]);
     expect(app.source("Mazzoldi cap 2")!.subjectId).toBe(geometry);
     expect(app.subjectName(geometry)).toBe("Geometria");
+
+    // Now GAL and Fisica 1 share Geometria. Renaming both, in either order, gives each a subject of its own and leaves
+    // Geometria, with what hangs on it, as it was.
+    await first([
+      { key: "Fisica 1", name: "Fisica II", skipped: false },
+      { key: "GAL", name: "Algebra", skipped: false },
+    ]);
+    expect(app.subjectName(geometry)).toBe("Geometria");
+    expect(app.subjectName(app.source("Mazzoldi cap 2")!.subjectId)).toBe("Fisica II");
+    expect(app.subjectName(app.source("appunti")!.subjectId)).toBe("Algebra");
   });
 
   it("uses the folder names and skips nothing without an AI tool", async () => {

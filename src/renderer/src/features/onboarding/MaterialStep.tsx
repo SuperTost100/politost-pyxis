@@ -209,6 +209,8 @@ export function MaterialStep({
         })),
       });
       await client.invalidateQueries({ queryKey: ["subjects"] });
+      // A subject renamed on setup again renames it in the chats too.
+      await client.invalidateQueries({ queryKey: ["chats"] });
       void client.invalidateQueries({ queryKey: ["sources"] });
       onLeave();
     } catch (err) {
