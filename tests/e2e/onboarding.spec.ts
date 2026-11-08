@@ -74,6 +74,8 @@ const profile = (page: Page) =>
     contentLanguage: string;
     crashReports: boolean;
     gradeScale: 30 | 100 | null;
+    interests: string[];
+    interestsOn: boolean;
   } | null>;
 const button = (page: Page | Locator, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
@@ -610,6 +612,53 @@ test("First setup: skipping leaves crash reports off, and a new profile at schoo
     }
   } finally {
     rmSync(skipped, { recursive: true, force: true });
+    rmSync(engines.bin, { recursive: true, force: true });
+  }
+});
+
+test("First setup: interests added on the first step show in Settings > Profile and on setup again", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-onb-"));
+  const engines = fakeBins({ claude: null, codex: null });
+  const app = await launch(userData, engines.env);
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByLabel("Nome", { exact: true }).fill("Ada");
+    // Enter adds an interest, and so does a comma.
+    const interests = page.getByRole("textbox", { name: "Interessi" });
+    await interests.fill("calcio");
+    await interests.press("Enter");
+    await interests.pressSequentially("chitarra,");
+    await expect(button(page, "Togli calcio")).toBeVisible();
+    await expect(button(page, "Togli chitarra")).toBeVisible();
+    await expect(interests).toHaveValue("");
+    await noAxeViolations(page);
+    await saveShot(page, "onboarding/1-you-interests.png");
+    await button(page, "Continua").click();
+    await button(page, "Lo faccio dopo").click();
+    await button(page, "Lo faccio dopo").click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    expect(await profile(page)).toMatchObject({ interests: ["calcio", "chitarra"], interestsOn: true });
+
+    await page.evaluate(() => {
+      location.hash = "/settings/profile";
+    });
+    await expect(button(page, "Togli calcio")).toBeVisible();
+    await expect(button(page, "Togli chitarra")).toBeVisible();
+    await expect(page.getByRole("switch", { name: "Usa i miei interessi negli esempi" })).toBeChecked();
+    // Setup again opens with them, and one removed there is gone from the profile.
+    await button(page, "Rifai la configurazione").click();
+    await expect(button(page, "Togli calcio")).toBeVisible();
+    await button(page, "Togli calcio").click();
+    await button(page, "Continua").click();
+    await button(page, "Lo faccio dopo").click();
+    await button(page, "Lo faccio dopo").click();
+    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    expect((await profile(page))?.interests).toEqual(["chitarra"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
     rmSync(engines.bin, { recursive: true, force: true });
   }
 });

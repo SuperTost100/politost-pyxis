@@ -33,6 +33,8 @@ export type StoredProfile = Pick<
   | "course"
   | "contentLanguage"
   | "crashReports"
+  | "interests"
+  | "interestsOn"
 >;
 
 /** What the profile and privacy screens show. */
@@ -42,6 +44,7 @@ export type Answers = {
   year: string;
   school: string;
   course: string;
+  interests: string[];
   crashReports: boolean;
 };
 
@@ -58,6 +61,7 @@ export function firstAnswers(profile: StoredProfile | null): Answers {
       year: "",
       school: "",
       course: "",
+      interests: [],
       crashReports: false,
     };
   return {
@@ -66,13 +70,15 @@ export function firstAnswers(profile: StoredProfile | null): Answers {
     year: profile.year,
     school: profile.school,
     course: profile.course,
+    interests: profile.interests,
     crashReports: profile.crashReports,
   };
 }
 
 /**
- * What finishing setup saves. First setup takes the content language from the interface. A rerun keeps the stored one,
- * because the student did not pick a language here.
+ * What finishing setup saves. First setup takes the content language from the interface and uses the interests in
+ * examples. A rerun keeps the stored language and the stored interests switch, because the student did not pick either
+ * here.
  */
 export function savedProfile(
   answers: Answers,
@@ -86,6 +92,8 @@ export function savedProfile(
     school: answers.school.trim(),
     course: answers.course.trim(),
     contentLanguage: stored?.contentLanguage ?? interfaceLanguage,
+    interests: answers.interests,
+    interestsOn: stored?.interestsOn ?? true,
     crashReports: answers.crashReports,
   };
 }

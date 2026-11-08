@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
+import { TagsField } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import { Stepper } from "../../components/Stepper";
 import { PROFILE_LIMITS } from "@shared/limits";
@@ -65,6 +66,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   const [year, setYear] = useState(start.year);
   const [school, setSchool] = useState(start.school);
   const [course, setCourse] = useState(start.course);
+  const [interests, setInterests] = useState(start.interests);
   // Off for a new install, so nothing is sent unless the student turns it on. A rerun shows the stored choice.
   const [crashReports, setCrashReports] = useState(start.crashReports);
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
@@ -103,7 +105,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         skip
           ? { displayName: "" }
           : savedProfile(
-              { name, level, year, school, course, crashReports },
+              { name, level, year, school, course, interests, crashReports },
               t("onboarding.contentLanguage"),
               stored,
             ),
@@ -227,8 +229,8 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       {id === "profile" ? (
         <>
           <ProfileStep
-            values={{ name, level, year, school, course }}
-            set={{ setName, setLevel, setYear, setSchool, setCourse }}
+            values={{ name, level, year, school, course, interests }}
+            set={{ setName, setLevel, setYear, setSchool, setCourse, setInterests }}
           />
           <CrashReportsSwitch
             setup
@@ -262,6 +264,7 @@ function ProfileStep(props: {
     year: string;
     school: string;
     course: string;
+    interests: string[];
   };
   set: {
     setName: (value: string) => void;
@@ -269,6 +272,7 @@ function ProfileStep(props: {
     setYear: (value: string) => void;
     setSchool: (value: string) => void;
     setCourse: (value: string) => void;
+    setInterests: (value: string[]) => void;
   };
 }) {
   const { t } = useTranslation();
@@ -419,6 +423,22 @@ function ProfileStep(props: {
             )}
           </div>
         )}
+        <div className="px-form-field px-onboarding-wide">
+          <span className="label" aria-hidden>
+            {t("onboarding.interests.label")}
+            {optional}
+          </span>
+          <TagsField
+            label={t("onboarding.interests.label")}
+            values={values.interests}
+            max={PROFILE_LIMITS.interests}
+            maxLength={PROFILE_LIMITS.interest}
+            placeholder={t("onboarding.interests.placeholder")}
+            fullPlaceholder={t("settings.interestsFull", { max: PROFILE_LIMITS.interests })}
+            removeLabel={(name) => t("settings.interestsRemove", { name })}
+            onChange={set.setInterests}
+          />
+        </div>
       </div>
     </div>
   );

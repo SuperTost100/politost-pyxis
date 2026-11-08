@@ -628,3 +628,12 @@
   gap: var(--space-3);
   margin-left: auto;
 }
+
+/* The interests: as tall as the fields above while empty. Its own ring shows the focus, as in Settings, so the input
+   inside draws none. */
+.px-onboarding .px-ctl-tags {
+  padding-block: 5px;
+}
+.px-onboarding .px-ctl-tags > input:focus-visible {
+  outline: none;
+}
