@@ -306,8 +306,8 @@ export function MapPage() {
     setSourceOpen(true);
   }
   // Focus moves into the panel once it is no longer inert, so the keyboard and screen readers follow it there. When the
-  // narrower canvas has hidden the concept whose source is open, the view moves to it, at the same zoom, once the panel
-  // has slid in.
+  // narrower canvas has hidden the concept whose source is open, the view moves just enough to show it, at the same
+  // zoom, once the panel has slid in; the rest of the map stays where it was.
   useEffect(() => {
     if (!sourceOpen) return;
     sourcePanel.current?.focus({ preventScroll: true });
@@ -321,10 +321,21 @@ export function MapPage() {
       const at = node.internals.positionAbsolute;
       const width = node.measured.width ?? NODE_WIDTH;
       const height = node.measured.height ?? NODE_MIN_HEIGHT;
+      // How far to move along one axis so a span from `start` to `end` fits in `size`, keeping a margin; a span wider
+      // than the canvas lines up with its start.
+      const MARGIN = 24;
+      const shift = (start: number, end: number, size: number) =>
+        start < MARGIN || end - start > size - 2 * MARGIN
+          ? MARGIN - start
+          : end > size - MARGIN
+            ? size - MARGIN - end
+            : 0;
       const left = at.x * zoom + x;
       const top = at.y * zoom + y;
-      if (left >= 0 && top >= 0 && left + width * zoom <= box.width && top + height * zoom <= box.height) return;
-      void instance.setCenter(at.x + width / 2, at.y + height / 2, { zoom, duration: reduced ? 0 : 200 });
+      const dx = shift(left, left + width * zoom, box.width);
+      const dy = shift(top, top + height * zoom, box.height);
+      if (dx || dy)
+        void instance.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: reduced ? 0 : 200 });
     }, reduced ? 0 : 260);
     return () => window.clearTimeout(timer);
     // Only opening the panel, or another source in it, moves the view; picking a concept afterwards does not.
