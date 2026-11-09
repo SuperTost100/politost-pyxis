@@ -1,6 +1,7 @@
 import { App } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { MapAddress } from "@shared/concept-map";
 import { invoke } from "../../lib/ipc";
 import { textBase64 } from "../share/ExportButton";
 
@@ -11,8 +12,7 @@ export type MapExportFormat = "markdown" | "svg" | "pdf";
  * PDF prints both. `settle` waits for edits still on their way to core, so the file has the last drag.
  */
 export function useMapExport(props: {
-  planId: string;
-  topicId: string;
+  address: MapAddress;
   mapId?: string;
   settle: () => Promise<unknown>;
 }) {
@@ -33,8 +33,7 @@ export function useMapExport(props: {
     try {
       await props.settle();
       const file = await invoke("maps.export", {
-        planId: props.planId,
-        topicId: props.topicId,
+        ...props.address,
         mapId: props.mapId,
         language: i18n.language === "en" ? "en" : "it",
       });

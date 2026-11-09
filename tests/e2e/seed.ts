@@ -79,6 +79,8 @@ export type SeedSource = {
   /** "excerpt" unless given. */
   kind?: string;
   status?: string;
+  /** The subject it was imported with, or the linked folder's subject; none unless given. */
+  subjectId?: string;
   /** In the library (1) unless given; null leaves the column out. */
   library?: number | null;
   /** Its read document; tree_json is {"kind": kind} unless given. */
@@ -96,6 +98,7 @@ export function seedSource(db: DatabaseSync, source: SeedSource) {
   const kind = source.kind ?? "excerpt";
   insert(db, "sources", {
     id: source.id,
+    subject_id: source.subjectId,
     kind,
     title: source.title,
     status: source.status ?? "ready",

@@ -4,10 +4,10 @@ import { openDatabase } from "../db/connection";
 import { createPlan } from "../plans/create";
 import { importSmartbook } from "../sources/smartbook";
 import {
-  openTopicMap,
-  patchTopicMap,
-  setTopicLayout,
-  undoTopicMap,
+  openMap,
+  patchMap,
+  setMapLayout,
+  undoMap,
 } from "./store";
 
 function pack(files: Record<string, string>): Uint8Array {
@@ -18,7 +18,7 @@ function pack(files: Record<string, string>): Uint8Array {
   );
 }
 
-describe("openTopicMap", () => {
+describe("openMap", () => {
   it("builds a tree from the chapter and undoes an added branch", () => {
     const db = openDatabase(":memory:");
     const imported = importSmartbook(
@@ -43,10 +43,10 @@ describe("openTopicMap", () => {
       .get(plan.planId) as {
       id: string;
     };
-    const opened = openTopicMap(db, plan.planId, topic.id);
+    const opened = openMap(db, { planId: plan.planId, topicId: topic.id });
     expect(opened.nodes[0]?.label).toContain("Moti");
     expect(opened.nodes.length).toBeGreaterThan(1);
-    const patched = patchTopicMap(db, plan.planId, topic.id, [
+    const patched = patchMap(db, { planId: plan.planId, topicId: topic.id }, [
       {
         op: "add_node",
         id: "chain",
@@ -57,11 +57,11 @@ describe("openTopicMap", () => {
     expect(
       patched.nodes.some((node) => node.label === "Regola della catena"),
     ).toBe(true);
-    const undone = undoTopicMap(db, plan.planId, topic.id);
+    const undone = undoMap(db, { planId: plan.planId, topicId: topic.id });
     expect(undone.nodes.some((node) => node.id === "chain")).toBe(false);
-    const radial = setTopicLayout(db, plan.planId, topic.id, "radial");
+    const radial = setMapLayout(db, { planId: plan.planId, topicId: topic.id }, "radial");
     expect(radial.layout).toBe("radial");
-    expect(undoTopicMap(db, plan.planId, topic.id).layout).toBe("tree");
+    expect(undoMap(db, { planId: plan.planId, topicId: topic.id }).layout).toBe("tree");
     // An edit reads the topic's map row once.
     const prepare = db.prepare.bind(db);
     let reads = 0;
@@ -69,7 +69,7 @@ describe("openTopicMap", () => {
       if (/FROM maps/.test(sql)) reads += 1;
       return prepare(sql);
     }) as typeof db.prepare;
-    setTopicLayout(db, plan.planId, topic.id, "radial");
+    setMapLayout(db, { planId: plan.planId, topicId: topic.id }, "radial");
     db.prepare = prepare;
     expect(reads).toBe(1);
   });
@@ -80,10 +80,10 @@ describe("openTopicMap", () => {
     db.prepare(
       `INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', ?, 'Moti', 0, 1)`,
     ).run(plan.planId);
-    expect(setTopicLayout(db, plan.planId, "t", "radial")).toMatchObject({
+    expect(setMapLayout(db, { planId: plan.planId, topicId: "t" }, "radial")).toMatchObject({
       layout: "radial",
       nodes: [expect.objectContaining({ label: "Moti" })],
     });
-    expect(() => setTopicLayout(db, plan.planId, "t", "tree", "nope")).toThrow("map-missing");
+    expect(() => setMapLayout(db, { planId: plan.planId, topicId: "t" }, "tree", "nope")).toThrow("map-missing");
   });
 });

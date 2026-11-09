@@ -9,111 +9,70 @@ import {
   registerMapJobs,
 } from "./generate";
 import {
-  listTopicMaps,
-  moveTopicNode,
-  openTopicMap,
-  patchTopicMap,
-  setTopicLayout,
-  undoTopicMap,
-  redoTopicMap,
+  listMaps,
+  moveMapNode,
+  openMap,
+  patchMap,
+  setMapLayout,
+  undoMap,
+  redoMap,
 } from "./store";
 import { listAllMaps } from "./library";
 import { exportMap, type MapExportLanguage } from "./export";
+import { describeScope, mapScope, type MapAddress } from "./scope";
+
+/** Every map request names a topic or a subject (`MapAddress`); `mapScope` turns that into the row it means. */
 export function mapHandlers(
   db: Database.Database,
   runner: Runner,
   run?: GenerateInput["run"],
 ) {
   registerMapJobs(db, runner, run);
+  const scope = (input: MapAddress) => mapScope(db, input);
   return {
-    build(input: { planId: string; topicId: string }) {
-      return mapBuild(db, input);
+    scope(input: MapAddress) {
+      return describeScope(db, scope(input));
+    },
+    build(input: MapAddress) {
+      return mapBuild(db, scope(input));
     },
     all(input: { query?: string }) {
       return listAllMaps(db, input.query);
     },
-    export(input: {
-      planId: string;
-      topicId: string;
-      mapId?: string;
-      language: MapExportLanguage;
-    }) {
-      return exportMap(db, input);
+    export(input: MapAddress & { mapId?: string; language: MapExportLanguage }) {
+      return exportMap(db, scope(input), input);
     },
-    list(input: { planId: string; topicId: string }) {
-      return listTopicMaps(db, input.planId, input.topicId);
+    list(input: MapAddress) {
+      return listMaps(db, scope(input));
     },
-    generate(input: { planId: string; topicId: string }) {
-      return enqueueMaps(db, runner, input);
+    generate(input: MapAddress) {
+      return enqueueMaps(db, runner, scope(input));
     },
-    edit(input: {
-      planId: string;
-      topicId: string;
-      mapId?: string;
-      instruction: string;
-    }, signal?: AbortSignal) {
-      return editMap(db, input, run, signal);
-    },
-    open(input: { planId: string; topicId: string; mapId?: string }) {
-      return openTopicMap(
+    edit(input: MapAddress & { mapId?: string; instruction: string }, signal?: AbortSignal) {
+      return editMap(
         db,
-        input.planId,
-        input.topicId,
-        Date.now(),
-        input.mapId,
+        { ...scope(input), mapId: input.mapId, instruction: input.instruction },
+        run,
+        signal,
       );
     },
-    layout(input: {
-      planId: string;
-      topicId: string;
-      mapId?: string;
-      layout: "tree" | "radial";
-    }) {
-      return setTopicLayout(
-        db,
-        input.planId,
-        input.topicId,
-        input.layout,
-        input.mapId,
-      );
+    open(input: MapAddress & { mapId?: string }) {
+      return openMap(db, scope(input), Date.now(), input.mapId);
     },
-    move(input: {
-      planId: string;
-      topicId: string;
-      mapId?: string;
-      nodeId: string;
-      x: number;
-      y: number;
-    }) {
-      return moveTopicNode(
-        db,
-        input.planId,
-        input.topicId,
-        input.nodeId,
-        input.x,
-        input.y,
-        input.mapId,
-      );
+    layout(input: MapAddress & { mapId?: string; layout: "tree" | "radial" }) {
+      return setMapLayout(db, scope(input), input.layout, input.mapId);
     },
-    patch(input: {
-      planId: string;
-      topicId: string;
-      mapId?: string;
-      ops: MapOp[];
-    }) {
-      return patchTopicMap(
-        db,
-        input.planId,
-        input.topicId,
-        input.ops,
-        input.mapId,
-      );
+    move(input: MapAddress & { mapId?: string; nodeId: string; x: number; y: number }) {
+      return moveMapNode(db, scope(input), input.nodeId, input.x, input.y, input.mapId);
     },
-    redo(input: { planId: string; topicId: string; mapId?: string }) {
-      return redoTopicMap(db, input.planId, input.topicId, input.mapId);
+    patch(input: MapAddress & { mapId?: string; ops: MapOp[] }) {
+      return patchMap(db, scope(input), input.ops, input.mapId);
     },
-    undo(input: { planId: string; topicId: string; mapId?: string }) {
-      return undoTopicMap(db, input.planId, input.topicId, input.mapId);
+    redo(input: MapAddress & { mapId?: string }) {
+      return redoMap(db, scope(input), input.mapId);
+    },
+    undo(input: MapAddress & { mapId?: string }) {
+      return undoMap(db, scope(input), input.mapId);
     },
   };
 }

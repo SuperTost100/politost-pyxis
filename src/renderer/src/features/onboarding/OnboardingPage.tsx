@@ -41,25 +41,42 @@ type StepId = (typeof steps)[number];
 /**
  * First setup, or with `?again=1` (Settings > Profile > Run setup again) the same three steps for a student who already
  * has a profile. A rerun waits for the stored profile so the screens open filled in, and its material step opens on the
- * folders linked already.
+ * folders linked already. Mappe, with no subject yet, opens a rerun on the material step (`step=material&from=maps`),
+ * and leaving it goes back to Mappe.
  */
 export function OnboardingPage() {
   const [params] = useSearchParams();
   const again = params.get("again") === "1";
   const profile = useQuery({ ...profileQuery, enabled: again });
   if (again && profile.isPending) return null;
-  // A rerun link without a profile is a first setup.
-  return <Setup stored={again ? (profile.data ?? null) : null} />;
+  const stored = again ? (profile.data ?? null) : null;
+  // A rerun link without a profile is a first setup, from its first step.
+  const material = stored !== null && params.get("step") === "material";
+  return (
+    <Setup
+      stored={stored}
+      start={material ? steps.indexOf("material") : 0}
+      leaveTo={material && params.get("from") === "maps" ? "/maps" : "/settings/profile"}
+    />
+  );
 }
 
-function Setup({ stored }: { stored: StoredProfile | null }) {
+function Setup({
+  stored,
+  start: startAt = 0,
+  leaveTo = "/settings/profile",
+}: {
+  stored: StoredProfile | null;
+  start?: number;
+  leaveTo?: string;
+}) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
   // Setup is not left through the menu: Shell sends a profile-less student back here, and a rerun has its own Cancel.
   useMenuLock(true);
   const again = stored !== null;
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(startAt);
   const [start] = useState(() => firstAnswers(stored));
   const [name, setName] = useState(start.name);
   const [level, setLevel] = useState<Level>(start.level);
@@ -121,7 +138,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   }
 
   // A rerun ends where it started.
-  const backToSettings = () => navigate("/settings/profile", { replace: true });
+  const backToSettings = () => navigate(leaveTo, { replace: true });
   const next = () => setIndex((value) => Math.min(value + 1, steps.length - 1));
   const back = () => setIndex((value) => Math.max(value - 1, 0));
 

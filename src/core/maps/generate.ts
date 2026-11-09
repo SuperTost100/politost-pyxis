@@ -12,7 +12,6 @@ import {
   systemPrompt,
 } from "../engine/prompts";
 import { selectionFor, type StoredSelection } from "../engine/selection";
-import { requireTopic } from "../study/openLesson";
 import type { Runner } from "../jobs/runner";
 import { aboutPlan } from "../study/jobAbout";
 import {
@@ -22,12 +21,14 @@ import {
   type ConceptGraph,
 } from "./graph";
 import {
-  listTopicMaps,
+  listMaps,
   readStoredMap,
   storeMap,
 } from "./store";
+import { isTopicScope, requireScope, type MapScope } from "./scope";
+import { subjectPassages } from "./subject-sources";
 
-type Input = { planId: string; topicId: string };
+type Input = MapScope;
 type Passage = { id: string; text: string; section: string };
 type Part = { id: string; title: string; passages: Passage[] };
 type Params = {
@@ -76,7 +77,8 @@ function graphOf(value: z.infer<typeof generatedSchema>): ConceptGraph {
   };
 }
 export function prepareMaps(db: Database.Database, input: Input): Params {
-  requireTopic(db, input.planId, input.topicId);
+  requireScope(db, input);
+  if (!isTopicScope(input)) return prepareSubjectMap(db, input);
   const topic = db
     .prepare(
       "SELECT t.title, p.content_language AS language FROM topics t JOIN plans p ON p.id = t.plan_id WHERE t.id = ? AND p.id = ?",
@@ -145,6 +147,20 @@ export function prepareMaps(db: Database.Database, input: Input): Params {
     next: 0,
   };
 }
+/**
+ * A whole subject gets one map, built in one call from passages spread over all its sources (`subjectPassages`). The
+ * profile's content language is used, since a subject has no exam that sets one.
+ */
+function prepareSubjectMap(db: Database.Database, input: { subjectId: string }): Params {
+  const name = db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId) as string;
+  return {
+    input,
+    parts: [{ id: uuidv7(), title: name, passages: subjectPassages(db, input.subjectId) }],
+    selection: selectionFor(db, "map"),
+    language: contentLanguage(db),
+    next: 0,
+  };
+}
 async function buildPart(
   part: Part,
   params: Params,
@@ -206,7 +222,7 @@ export function registerMapJobs(
   run?: GenerateInput["run"],
 ): void {
   runner.register("map-build", {
-    about: (params) => aboutPlan(db, (params as Params).input.planId, (params as Params).input.topicId),
+    about: (params) => aboutScope(db, (params as Params).input),
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "map") }),
     jobClass: "model-cli",
     steps: [
@@ -218,16 +234,14 @@ export function registerMapJobs(
           while (params.next < params.parts.length) {
             ctx.signal.throwIfAborted();
             const part = params.parts[params.next]!;
-            const done = listTopicMaps(
-              db,
-              params.input.planId,
-              params.input.topicId,
-            ).some((map) => map.id === part.id);
+            const done = listMaps(db, params.input).some(
+              (map) => map.id === part.id,
+            );
             if (!done) {
               const map = await buildPart(part, params, run, ctx.signal);
               ctx.signal.throwIfAborted();
               db.transaction(() => {
-                storeMap(db, params.input.planId, params.input.topicId, map);
+                storeMap(db, params.input, map);
                 params.next++;
                 ctx.setParams(params);
               })();
@@ -242,28 +256,47 @@ export function registerMapJobs(
     ],
   });
 }
+/** What the jobs list says a map build is about: the exam and topic, or the subject. */
+function aboutScope(db: Database.Database, input: Input) {
+  if (isTopicScope(input)) return aboutPlan(db, input.planId, input.topicId);
+  const subject = db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId) as
+    | string
+    | undefined;
+  return subject ? { topic: subject } : {};
+}
+/** The scope's newest map-build job, as `columns`. A subject's job has no topic in its params. */
+function latestBuild<T>(db: Database.Database, input: Input, columns: string): T | undefined {
+  return (
+    isTopicScope(input)
+      ? db
+          .prepare(
+            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ? ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get(input.planId, input.topicId)
+      : db
+          .prepare(
+            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.subjectId') = ? AND json_extract(params_json, '$.input.topicId') IS NULL ORDER BY created_at DESC LIMIT 1`,
+          )
+          .get(input.subjectId)
+  ) as T | undefined;
+}
 export function enqueueMaps(
   db: Database.Database,
   runner: Runner,
   input: Input,
 ) {
-  requireTopic(db, input.planId, input.topicId);
-  const existing = db
-    .prepare(
-      "SELECT id, state FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(input.planId, input.topicId) as
-    { id: string; state: string } | undefined;
+  requireScope(db, input);
+  const existing = latestBuild<{ id: string; state: string }>(db, input, "id, state");
   if (existing) {
     if (existing.state === "failed" || existing.state === "cancelled")
       runner.retry(existing.id);
     else if (existing.state === "interrupted") runner.resume(existing.id);
     return {
       jobId: existing.id,
-      maps: listTopicMaps(db, input.planId, input.topicId),
+      maps: listMaps(db, input),
     };
   }
-  const maps = listTopicMaps(db, input.planId, input.topicId);
+  const maps = listMaps(db, input);
   const params = prepareMaps(db, input);
   const jobId = runner.start("map-build", params);
   return { jobId, maps };
@@ -274,7 +307,7 @@ export async function editMap(
   run?: GenerateInput["run"],
   signal?: AbortSignal,
 ) {
-  const stored = readStoredMap(db, input.planId, input.topicId, input.mapId);
+  const stored = readStoredMap(db, input, input.mapId);
   if (!stored) throw new Error("map-missing");
   if (!input.instruction.trim() || input.instruction.length > 2000)
     throw new Error("map-instruction");
@@ -297,7 +330,9 @@ export async function editMap(
     signal,
     schema,
     system: systemPrompt("map.edit", {
-      contentLanguage: planLanguage(db, input.planId),
+      contentLanguage: isTopicScope(input)
+        ? planLanguage(db, input.planId)
+        : contentLanguage(db),
     }),
     prompt: JSON.stringify({
       instruction: input.instruction,
@@ -307,7 +342,7 @@ export async function editMap(
   // The student may have moved, renamed or undone something while the model wrote. The model's operations name nodes
   // by id, so they are applied to the map as it is now; that keeps the student's changes and puts the edit on top.
   return db.transaction(() => {
-    const current = readStoredMap(db, input.planId, input.topicId, stored.id);
+    const current = readStoredMap(db, input, stored.id);
     if (!current) throw editConflict();
     let next: ConceptGraph;
     try {
@@ -318,7 +353,7 @@ export async function editMap(
     } catch {
       throw editConflict();
     }
-    storeMap(db, input.planId, input.topicId, { ...current, graph: next });
+    storeMap(db, input, { ...current, graph: next });
     return next;
   })();
 }
@@ -328,19 +363,17 @@ function editConflict() {
 }
 
 export function mapBuild(db: Database.Database, input: Input) {
-  requireTopic(db, input.planId, input.topicId);
-  const row = db
-    .prepare(
-      "SELECT id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(input.planId, input.topicId) as
-    | {
-        jobId: string;
-        state: string;
-        progress: number;
-        stepLabel: string | null;
-        error: string | null;
-      }
-    | undefined;
+  requireScope(db, input);
+  const row = latestBuild<{
+    jobId: string;
+    state: string;
+    progress: number;
+    stepLabel: string | null;
+    error: string | null;
+  }>(
+    db,
+    input,
+    "id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error",
+  );
   return row ?? null;
 }

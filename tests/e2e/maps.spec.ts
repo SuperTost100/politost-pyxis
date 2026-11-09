@@ -257,14 +257,19 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     ])
       await expect(tools.getByRole("button", { name: tool })).toBeEnabled();
     await saveShot(page, "m10-map-selected.png");
-    await foot.getByRole("button", { name: "Analisi", exact: true }).click();
-    await expect(page).toHaveURL(/#\/exams\/library\?passage=/);
-    // The library opens the source on that passage; going back to the map closes it with the library.
-    const viewer = page.locator(".source-viewer-chapter");
-    await expect(viewer).toBeVisible();
-    await page.goBack();
-    await expect(viewer).toBeHidden();
-    await page.locator('.react-flow__node[data-id="n4"]').click();
+    // The source opens beside the map on that passage, without leaving the map; Esc closes it and focus goes back.
+    const mapUrl = page.url();
+    const sourceButton = foot.getByRole("button", { name: "Analisi", exact: true });
+    await sourceButton.click();
+    const panel = page.getByRole("complementary", { name: /Analisi/ });
+    await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
+    await expect(sourceButton).toHaveAttribute("aria-expanded", "true");
+    expect(page.url()).toBe(mapUrl);
+    await expect(page.locator(".react-flow__node")).toHaveCount(initial.nodes.length);
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(sourceButton).toBeFocused();
+    await expect(sourceButton).toHaveAttribute("aria-expanded", "false");
     await foot.getByRole("button", { name: "Chiedi", exact: true }).click();
     await expect(page).toHaveURL(/#\/ask\/[^/?]+$/);
     await page.goBack();

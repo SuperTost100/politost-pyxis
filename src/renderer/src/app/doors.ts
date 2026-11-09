@@ -25,9 +25,12 @@ function readLast(): Record<Door, string> {
   }
 }
 
-/** A map's page, `/plans/:planId/map/:topicId`, which belongs to Maps although its address starts with the exam's. */
+/**
+ * A map's page: `/maps/:subjectId/:topicId?`, or the older `/plans/:planId/map/:topicId`, which belongs to Maps
+ * although its address starts with the exam's. The Maps list itself, `/maps`, is not one.
+ */
 export function isMapPath(pathname: string): boolean {
-  return /^\/plans\/[^/]+\/map\//.test(pathname);
+  return /^\/plans\/[^/]+\/map\/|^\/maps\/[^/]+/.test(pathname);
 }
 
 /** Settings and dev pages belong to no door, so neither door is selected there. */

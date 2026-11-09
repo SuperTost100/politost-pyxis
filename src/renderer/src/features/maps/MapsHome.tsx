@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { Button, Input, Modal, Select } from "antd";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -11,17 +11,10 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { MapThumb } from "./MapThumb";
 import "./MapsHome.css";
-import { usePlan, usePlans } from "../../lib/queries";
+import { planQuery, usePlans, useSubjects } from "../../lib/queries";
+import { mapPath } from "./mapPath";
 
-/** Where a map opens, inside the shell under Mappe. */
-export const mapPath = (map: {
-  planId: string;
-  topicId: string;
-  id?: string;
-}) =>
-  `/plans/${map.planId}/map/${map.topicId}?from=maps${map.id ? `&map=${encodeURIComponent(map.id)}` : ""}`;
-
-/** The Maps section: every map of every exam, grouped by subject, with search and a way to start a new one. */
+/** The Maps section: every map, grouped by subject, with search and a way to start a new one. */
 export function MapsHome() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -41,11 +34,13 @@ export function MapsHome() {
     placeholderData: keepPreviousData,
   });
   const plans = usePlans();
+  const subjects = useSubjects();
 
   const data = maps.data;
   const dialog = (
     <NewMapDialog
       open={creating}
+      subjects={subjects.data ?? []}
       plans={plans.data ?? []}
       onClose={() => setCreating(false)}
     />
@@ -57,37 +52,52 @@ export function MapsHome() {
   );
 
   let body;
-  if (maps.isError && !data)
+  // Without the subjects the empty state and the new-map dialog would be wrong, so their failure shows like the maps'.
+  if ((maps.isError && !data) || (subjects.isError && !subjects.data))
     body = (
       <Notice
         tone="danger"
-        action={{ label: t("maps.retry"), onClick: () => void maps.refetch() }}
+        action={{
+          label: t("maps.retry"),
+          onClick: () => void Promise.all([maps.refetch(), subjects.refetch()]),
+        }}
       >
         {t("maps.loadFailed")}
       </Notice>
     );
   // Nothing shows until the lists arrive, so the empty state never flashes first.
-  else if (!data || plans.isPending) body = null;
+  else if (!data || subjects.isPending) body = null;
   else if (data.length === 0 && !query)
     body =
-      (plans.data?.length ?? 0) > 0 ? (
+      (subjects.data?.length ?? 0) > 0 ? (
         <EmptyState
           title={t("maps.emptyTitle")}
           body={t("maps.emptyBody")}
           action={newMap}
         />
       ) : (
+        // A map needs a subject's material, so without any subject the ways to add some come first.
         <EmptyState
           title={t("maps.emptyTitle")}
-          body={t("maps.emptyNoExams")}
+          body={t("maps.emptyNoSubjects")}
           action={
             <Button
               type="primary"
               shape="round"
-              onClick={() => navigate("/plans/new")}
+              onClick={() => navigate("/onboarding?again=1&step=material&from=maps")}
             >
-              {t("exams.newPlan")}
+              {t("maps.linkFolder")}
             </Button>
+          }
+          secondary={
+            <>
+              <Button shape="round" onClick={() => navigate("/exams/library")}>
+                {t("maps.openLibrary")}
+              </Button>
+              <Button shape="round" onClick={() => navigate("/plans/new")}>
+                {t("exams.newPlan")}
+              </Button>
+            </>
           }
         />
       );
@@ -130,7 +140,7 @@ export function MapsHome() {
             </header>
             <ul className="px-maps-grid">
               {group.maps.map((map) => (
-                <li key={`${map.planId}-${map.topicId}-${map.id}`}>
+                <li key={`${map.subjectId}-${map.planId}-${map.topicId}-${map.id}`}>
                   <MapCard map={map} />
                 </li>
               ))}
@@ -182,7 +192,9 @@ function MapCard({ map }: { map: MapEntry }) {
       <div className="px-maps-cap">
         <h3 className="px-maps-card-title">{map.title}</h3>
         <p className="px-maps-card-origin">
-          {map.planTitle} · {map.topicTitle}
+          {map.planTitle && map.topicTitle
+            ? `${map.planTitle} · ${map.topicTitle}`
+            : t("maps.wholeSubject")}
         </p>
         <p className="px-maps-card-meta">
           {t("maps.concepts", { count: map.nodeCount })}
@@ -193,18 +205,31 @@ function MapCard({ map }: { map: MapEntry }) {
   );
 }
 
-/** Picks the exam and topic a new map belongs to, then opens that topic's map page, where the maps are built. */
+/**
+ * Picks the subject a new map belongs to, then, if the student wants, one topic of the subject's exams, and opens that
+ * map page, where the map is built. No topic means a map of the whole subject.
+ */
 function NewMapDialog(props: {
   open: boolean;
-  plans: Array<{ id: string; title: string; subject: string | null }>;
+  subjects: Array<{ id: string; name: string }>;
+  plans: Array<{ id: string; title: string; subject: string | null; archived: boolean }>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [planId, setPlanId] = useState<string>();
+  const [subjectId, setSubjectId] = useState<string>();
   const [topicId, setTopicId] = useState<string>();
-  const plan = usePlan(planId, props.open);
-  // How many maps each topic holds already, so the student sees which topics are mapped.
+  const subject = props.subjects.find((item) => item.id === subjectId);
+  // The subject's exams, matched by name as the exam list names them; subject names are unique regardless of case.
+  const exams = subject
+    ? props.plans.filter(
+        (plan) => !plan.archived && plan.subject?.toLocaleLowerCase() === subject.name.toLocaleLowerCase(),
+      )
+    : [];
+  const read = useQueries({
+    queries: exams.map((plan) => ({ ...planQuery(plan.id), enabled: props.open })),
+  });
+  // How many maps each topic and subject holds already, so the student sees what is mapped.
   const existing = useQuery({
     queryKey: ["maps-all", ""],
     enabled: props.open,
@@ -212,29 +237,31 @@ function NewMapDialog(props: {
   });
   useEffect(() => {
     if (!props.open) {
-      setPlanId(undefined);
+      setSubjectId(undefined);
       setTopicId(undefined);
     }
   }, [props.open]);
 
-  const examGroups: Array<{
-    label: string;
-    options: Array<{ value: string; label: string }>;
-  }> = [];
-  for (const item of props.plans) {
-    const label = item.subject ?? t("maps.noSubject");
-    let group = examGroups.find((entry) => entry.label === label);
-    if (!group) {
-      group = { label, options: [] };
-      examGroups.push(group);
-    }
-    group.options.push({ value: item.id, label: item.title });
-  }
-  const topics = plan.data?.topics ?? [];
+  // Topics by id; a whole subject's maps by the subject's id.
   const counts = new Map<string, number>();
-  for (const map of existing.data ?? [])
-    if (map.planId === planId)
-      counts.set(map.topicId, (counts.get(map.topicId) ?? 0) + 1);
+  for (const map of existing.data ?? []) {
+    const key = map.topicId ?? map.subjectId;
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const label = (title: string, key: string) =>
+    counts.get(key) ? t("maps.topicMaps", { topic: title, count: counts.get(key) }) : title;
+  const topicGroups = exams.flatMap((plan, index) => {
+    const topics = read[index]?.data?.topics ?? [];
+    return topics.length
+      ? [
+          {
+            label: plan.title,
+            options: topics.map((topic) => ({ value: topic.id, label: label(topic.title, topic.id) })),
+          },
+        ]
+      : [];
+  });
+  const loading = read.some((query) => query.isPending);
 
   return (
     <Modal
@@ -243,29 +270,32 @@ function NewMapDialog(props: {
       onCancel={props.onClose}
       okText={t("maps.continue")}
       cancelText={t("maps.cancel")}
-      okButtonProps={{ disabled: !planId || !topicId }}
+      okButtonProps={{ disabled: !subjectId }}
       onOk={() => {
-        if (!planId || !topicId) return;
+        if (!subjectId) return;
         props.onClose();
-        navigate(mapPath({ planId, topicId }));
+        navigate(mapPath({ subjectId, topicId }));
       }}
       destroyOnHidden
     >
       <p className="small px-maps-new-lead">{t("maps.newBody")}</p>
       <div className="px-maps-new-fields">
         <div className="px-form-field">
-          <label className="label" htmlFor="new-map-exam">
-            {t("maps.exam")}
+          <label className="label" htmlFor="new-map-subject">
+            {t("maps.subject")}
           </label>
           <Select
-            id="new-map-exam"
-            placeholder={t("maps.pickExam")}
-            value={planId}
+            id="new-map-subject"
+            placeholder={t("maps.pickSubject")}
+            value={subjectId}
             onChange={(value) => {
-              setPlanId(value);
+              setSubjectId(value);
               setTopicId(undefined);
             }}
-            options={examGroups}
+            options={props.subjects.map((item) => ({
+              value: item.id,
+              label: label(item.name, item.id),
+            }))}
           />
         </div>
         <div className="px-form-field">
@@ -274,22 +304,15 @@ function NewMapDialog(props: {
           </label>
           <Select
             id="new-map-topic"
-            placeholder={t("maps.pickTopic")}
+            placeholder={t("maps.wholeSubject")}
             value={topicId}
-            disabled={!planId || plan.isPending}
-            loading={Boolean(planId) && plan.isPending}
-            onChange={setTopicId}
-            options={topics.map((topic) => ({
-              value: topic.id,
-              label: counts.get(topic.id)
-                ? t("maps.topicMaps", {
-                    topic: topic.title,
-                    count: counts.get(topic.id),
-                  })
-                : topic.title,
-            }))}
+            allowClear
+            disabled={!subjectId || loading || topicGroups.length === 0}
+            loading={Boolean(subjectId) && loading}
+            onChange={(value) => setTopicId(value ?? undefined)}
+            options={topicGroups}
           />
-          {planId && plan.data && topics.length === 0 ? (
+          {subjectId && !loading && topicGroups.length === 0 ? (
             <p className="small px-maps-new-note">{t("maps.noTopics")}</p>
           ) : null}
         </div>

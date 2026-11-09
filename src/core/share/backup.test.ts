@@ -938,7 +938,7 @@ describe("restore validation and interruption recovery", { timeout: 30_000 }, ()
 });
 
 describe("hasStudyData", () => {
-  it("is false for a new workspace and true once it has a source, plan, chat or whiteboard", () => {
+  it("is false for a new workspace and true once it has a source, plan, map, chat or whiteboard", () => {
     const root = mkdtempSync(join(tmpdir(), "pyxis-study-data-"));
     try {
       const db = openDatabase(join(root, "pyxis.db"));
@@ -954,6 +954,8 @@ describe("hasStudyData", () => {
         "INSERT INTO whiteboards (id, title, created_at, updated_at) VALUES ('w', 'Board', 1, 1)",
         "INSERT INTO plans (id, title, created_at, updated_at) VALUES ('p', 'Plan', 1, 1)",
         "INSERT INTO sources (id, kind, title, created_at, updated_at) VALUES ('x', 'file', 'Notes', 1, 1)",
+        // A whole subject's map, which needs no source or exam.
+        `INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('m', 's', '{"version":1,"maps":[]}', 1)`,
       ]) {
         db.prepare(insert).run();
         expect(hasStudyData(root)).toBe(true);
