@@ -749,6 +749,8 @@ describe("a large linked folder", () => {
     expect(listed).toHaveLength(10);
     for (const job of listed) expect(job.group).toEqual({ id: `folder:${folder!.id}`, folder: "Studio", waiting: 90 });
 
+    // Readings queued before an update recorded no folder: the folder is found from their source.
+    app.db.exec(`UPDATE jobs SET params_json = json_remove(params_json, '$.folderId') WHERE kind = 'source-import'`);
     const stopped = app.runner.stopAll();
     expect(stopped).toHaveLength(10);
     // A few pump rounds later, the rest of the folder still waits: stopping did not just make room for the next files.

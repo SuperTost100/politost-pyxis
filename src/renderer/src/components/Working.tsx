@@ -21,21 +21,26 @@ export function Working({
   className?: string;
 }) {
   const classes = [slot ? "px-working-slot" : "px-working", className].filter(Boolean).join(" ");
+  // Only the mark and the line are the live region, so a screen reader does not read the action out with them.
   if (slot)
     return (
-      <div className={classes} role="status">
-        <Logo size={44} working decorative />
-        <p className="px-working-text">
-          <span className="px-working-line">{line}</span>
-          {detail ? <span className="px-working-detail">{detail}</span> : null}
-        </p>
+      <div className={classes}>
+        <div className="px-working-status" role="status">
+          <Logo size={44} working decorative />
+          <p className="px-working-text">
+            <span className="px-working-line">{line}</span>
+            {detail ? <span className="px-working-detail">{detail}</span> : null}
+          </p>
+        </div>
         {action}
       </div>
     );
   return (
-    <div className={classes} role="status">
-      <Logo size={22} working decorative />
-      <span className="px-working-line">{line}</span>
+    <div className={classes}>
+      <span className="px-working-status" role="status">
+        <Logo size={22} working decorative />
+        <span className="px-working-line">{line}</span>
+      </span>
       {action}
     </div>
   );

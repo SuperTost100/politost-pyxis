@@ -20,7 +20,9 @@ const hands = (page: Page) =>
 /** Starts demo jobs: three short steps each, one at a time, so the later ones wait. */
 const startDemos = (page: Page, count: number) =>
   page.evaluate(async (n) => {
-    for (let i = 0; i < n; i += 1) await window.pyxis.invoke("jobs.startDemo", {});
+    const ids: string[] = [];
+    for (let i = 0; i < n; i += 1) ids.push((await window.pyxis.invoke("jobs.startDemo", {})).jobId);
+    return ids;
   }, count);
 
 test("the Attività clock turns only while jobs run, and stands still with reduced motion", async () => {
@@ -64,7 +66,7 @@ test("Ferma tutte stops every running job at once, and they wait under Ti serve 
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    await startDemos(page, 5);
+    const ids = await startDemos(page, 5);
     await corner(page).click();
     const list = page.locator(".px-jobs");
     const running = list.getByRole("region", { name: "In corso" });
@@ -88,6 +90,14 @@ test("Ferma tutte stops every running job at once, and they wait under Ti serve 
     await expect(needs).toHaveCount(0);
     await expect(list.getByRole("region", { name: "In corso" })).toBeVisible();
     await expect(corner(page).locator(".px-jobs-clock.is-running")).toHaveCount(0, { timeout: 30_000 });
+    // Every one of them finished.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      const state = db.prepare("SELECT state FROM jobs WHERE id = ?");
+      for (const id of ids) expect(state.get(id)).toEqual({ state: "succeeded" });
+    } finally {
+      db.close();
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -179,8 +189,7 @@ test("the maps page shows the Pyxis mark at work while the maps are built", asyn
     });
     const working = page.locator(".px-map-working");
     await expect(working).toBeVisible();
-    await expect(working).toHaveAttribute("role", "status");
-    await expect(working).toHaveText("Creo le tue mappe…");
+    await expect(working.getByRole("status")).toHaveText("Creo le tue mappe…");
     await expect(working.locator(".px-logo-working")).toBeVisible();
     // The empty state and its button wait until the build is over.
     await expect(page.getByRole("button", { name: "Crea mappe" })).toHaveCount(0);

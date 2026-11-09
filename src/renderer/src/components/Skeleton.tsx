@@ -8,7 +8,8 @@ const WIDTHS = [[42, 68], [34, 58], [48, 62], [38, 54]] as const;
  */
 export function SkeletonRows({ rows = 3, label }: { rows?: number; label: string }) {
   return (
-    <div className="px-skeleton" role="status" aria-label={label}>
+    <div className="px-skeleton" role="status">
+      <span className="visually-hidden">{label}</span>
       {Array.from({ length: rows }, (_, index) => {
         const [title, line] = WIDTHS[index % WIDTHS.length]!;
         return (

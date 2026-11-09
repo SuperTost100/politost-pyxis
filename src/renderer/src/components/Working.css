@@ -8,8 +8,14 @@
   font: 500 14px/1.3 var(--font-sans);
 }
 
-.px-working > .px-working-line {
-  flex: 0 1 auto;
+.px-working > .px-working-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.px-working .px-working-line {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -22,6 +28,12 @@
   min-height: 210px;
   padding: var(--space-6);
   text-align: center;
+}
+
+.px-working-slot > .px-working-status {
+  display: grid;
+  place-items: center;
+  gap: 14px;
 }
 
 .px-working-text {

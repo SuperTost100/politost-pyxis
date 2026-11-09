@@ -444,6 +444,11 @@
   margin: 5px 8px 0 0;
 }
 
+/* An engine fallback under a request's row, aligned with its text. */
+.px-jobs-batch-note {
+  margin: 0 46px var(--space-2) 46px;
+}
+
 /* The list grows in place, its height first, and the rows below move down. */
 .px-jobs-more {
   display: grid;

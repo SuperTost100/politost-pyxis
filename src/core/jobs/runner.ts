@@ -380,8 +380,11 @@ export function createRunner(
     }
   }
 
-  /** Queues an interrupted job again, from the step it reached, and says whether it did. */
-  function resume(jobId: string): boolean {
+  /**
+   * Queues an interrupted job again, from the step it reached, and says whether it did. `schedule: false` leaves
+   * starting it to the caller, which queues many and looks for work once.
+   */
+  function resume(jobId: string, schedule = true): boolean {
     const changed = db
       .prepare(
         `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
@@ -389,7 +392,7 @@ export function createRunner(
       .run(Date.now(), jobId);
     if (changed.changes === 0) return false;
     publish(jobId);
-    kick();
+    if (schedule) kick();
     return true;
   }
 
@@ -426,8 +429,8 @@ export function createRunner(
     }
   }
 
-  /** Queues a failed or cancelled job again, keeping its finished steps, and says whether it did. */
-  function retry(jobId: string): boolean {
+  /** Queues a failed or cancelled job again, keeping its finished steps, and says whether it did (`schedule` as resume). */
+  function retry(jobId: string, schedule = true): boolean {
     const job = db
       .prepare(
         "SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled')",
@@ -462,7 +465,7 @@ export function createRunner(
        WHERE job_id = ? AND output_json IS NULL`,
     ).run(jobId);
     publish(jobId);
-    kick();
+    if (schedule) kick();
     return true;
   }
 
@@ -551,15 +554,16 @@ export function createRunner(
       const resumed: string[] = [];
       for (const row of rows) {
         if (!wanted.has(row.id)) continue;
-        if (row.state === "interrupted" ? resume(row.id) : retry(row.id)) resumed.push(row.id);
+        if (row.state === "interrupted" ? resume(row.id, false) : retry(row.id, false)) resumed.push(row.id);
       }
+      if (resumed.length) kick();
       return resumed;
     },
     waitingIn(count) {
       countWaiting = count;
     },
-    retry,
-    resume,
+    retry: (jobId) => void retry(jobId),
+    resume: (jobId) => void resume(jobId),
     /**
      * Resumes the interrupted jobs of `kinds` whose next step does local work, and returns their ids. A model step
      * keeps waiting for the student's Resume, since it uses an engine. A job resumes this way once per step: one that

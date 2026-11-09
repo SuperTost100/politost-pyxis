@@ -396,15 +396,17 @@ export function linkedFolders(deps: LinkedDeps) {
       .get() as number;
     let room = queueWindow - busy;
     // A folder whose readings the student stopped waits until they are resumed or cleared, so stopping them does not
-    // just make room for its next files.
+    // just make room for its next files. The folder is found from the reading's source, which also covers readings
+    // queued before they recorded their folder.
     const stopped = new Set(
       db
         .prepare(
-          `SELECT DISTINCT json_extract(params_json, '$.folderId') FROM jobs
-           WHERE state = 'cancelled' AND kind = 'source-import' AND dismissed = 0`,
+          `SELECT DISTINCT l.folder_id FROM jobs j
+           JOIN linked_files l ON l.source_id = json_extract(j.params_json, '$.sourceId')
+           WHERE j.state = 'cancelled' AND j.kind = 'source-import' AND j.dismissed = 0`,
         )
         .pluck()
-        .all() as Array<string | null>,
+        .all() as string[],
     );
     const recorded = db
       .prepare(`SELECT DISTINCT folder_id FROM linked_files WHERE pending > 0 AND missing_at IS NULL`)

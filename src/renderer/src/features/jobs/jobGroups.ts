@@ -246,8 +246,9 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
   const shown = done.filter((job) => job.state === "succeeded" && finishedLabelKey(job.kind) !== undefined);
   const live = new Map<string, JobBatch>();
   for (const job of running) batchOf(live, job)?.jobs.push(job);
-  for (const job of shown) {
-    const key = batchKey(job);
+  // A running request counts every member that finished, also of a kind the finished list leaves out (indexing).
+  for (const job of done) {
+    const key = job.state === "succeeded" ? batchKey(job) : undefined;
     if (key && live.has(key)) live.get(key)!.done.push(job);
   }
   const runningSize = (batch: JobBatch) => batch.jobs.length + batch.done.length + batch.waiting;

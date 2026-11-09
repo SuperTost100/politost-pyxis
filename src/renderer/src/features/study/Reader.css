@@ -225,7 +225,7 @@
 }
 
 /* The status line keeps the detail on one line, so the label and Stop stay where they are. */
-.px-reader-status > .px-working-line {
+.px-reader-status .px-working-line {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);

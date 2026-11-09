@@ -320,7 +320,9 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
   ]
     .filter(Boolean)
     .join(" · ");
-  const latest = finished ? new Date(Math.max(...batch.done.map((job) => job.updatedAt))) : undefined;
+  const latest = finished ? new Date(batch.done.reduce((at, job) => Math.max(at, job.updatedAt), 0)) : undefined;
+  // Another engine answered for some of them: the row says so once, as a single job's row does.
+  const fallback = members.find((job) => job.fallback)?.fallback;
   return (
     <li className={open ? "px-jobs-batch is-open" : "px-jobs-batch"}>
       <div className="px-jobs-batch-head">
@@ -366,6 +368,12 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
           />
         )}
       </div>
+      {fallback ? (
+        <p className="px-jobs-note px-jobs-batch-note">
+          <Info size={16} strokeWidth={1.75} aria-hidden />
+          <span>{t(`engines.fallback.${fallback.reason}`, { from: fallback.from, to: fallback.to })}</span>
+        </p>
+      ) : null}
       <div className="px-jobs-more" id={listId} inert={!open}>
         <ul>
           {named.map((job) => (

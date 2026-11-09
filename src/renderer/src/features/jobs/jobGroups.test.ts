@@ -224,6 +224,13 @@ describe("jobs list groups", () => {
       ]);
     });
 
+    it("counts a request's finished jobs on its row even when finished jobs of that kind are not listed", () => {
+      const index = (id: string, state: JobView["state"]) => read(id, { kind: "source-index", state });
+      const groups = groupJobs([index("a", "running"), index("b", "queued")], [index("c", "succeeded")]);
+      expect(groups.runningItems[0]!.batch!.done.map((item) => item.id)).toEqual(["c"]);
+      expect(groups.finished).toEqual([]);
+    });
+
     it("folds a request that finished into one finished row", () => {
       const groups = groupJobs(
         [],

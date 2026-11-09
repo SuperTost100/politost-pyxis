@@ -1098,6 +1098,26 @@ describe("stopping and resuming every job, and jobs of one request", () => {
     await until(database, first, ["cancelled"]);
   });
 
+  it("looks for work to start once when it resumes many stopped jobs, not once per job", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
+    runner.register("read", { jobClass: "local", steps: held });
+    const ids = Array.from({ length: 20 }, () => runner.start("read", {}));
+    expect(runner.stopAll()).toHaveLength(20);
+    const prepared: string[] = [];
+    const prepare = database.prepare.bind(database);
+    database.prepare = ((sql: string) => {
+      prepared.push(sql);
+      return prepare(sql);
+    }) as typeof database.prepare;
+    try {
+      expect(runner.resumeAll(ids)).toHaveLength(20);
+    } finally {
+      database.prepare = prepare;
+    }
+    expect(prepared.filter((sql) => sql.includes("WHERE state = 'queued' ORDER BY created_at"))).toHaveLength(1);
+  });
+
   it("names the request a job belongs to, and how many of its files still wait to be handed over", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
