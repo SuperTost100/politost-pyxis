@@ -10,6 +10,8 @@ import {
   mapOpSchema as mapOp,
   mapSummarySchema,
   mapEntrySchema,
+  mapAddressSchema as mapAddress,
+  mapAddressInput,
 } from "./concept-map";
 import {
   CHAT_SEED_BODY_MAX,
@@ -1287,6 +1289,8 @@ export const requests = {
       planId: z.string().optional(),
       topicId: z.string().optional(),
       subject: z.string().optional(),
+      /** A map's subject: only its exams are offered, and none when it has none. */
+      subjectId: z.string().optional(),
       passageIds: z.array(z.string()).max(1000).optional(),
     }),
     output: z.object({
@@ -1601,17 +1605,27 @@ export const requests = {
     output: z.object({ path: z.string() }),
   },
   "maps.list": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: mapAddress,
     output: z.array(mapSummarySchema),
+  },
+  /** The subject, and the exam and topic of a topic map, that a map page names in its header. */
+  "maps.scope": {
+    input: mapAddress,
+    output: z.object({
+      subjectId: z.string().nullable(),
+      subjectName: z.string().nullable(),
+      planId: z.string().nullable(),
+      planTitle: z.string().nullable(),
+      topicId: z.string().nullable(),
+      topicTitle: z.string().nullable(),
+    }),
   },
   "maps.all": {
     input: z.object({ query: z.string().max(200).optional() }),
     output: z.array(mapEntrySchema),
   },
   "maps.export": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
       language: z.enum(["en", "it"]),
     }),
@@ -1622,46 +1636,38 @@ export const requests = {
     }),
   },
   "maps.build": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: mapAddress,
     output: jobProgressSchema.nullable(),
   },
   "maps.generate": {
-    input: z.object({ planId: z.string(), topicId: z.string() }),
+    input: mapAddress,
     output: z.object({
       jobId: z.string().optional(),
       maps: z.array(mapSummarySchema),
     }),
   },
   "maps.edit": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
       instruction: z.string().trim().min(1).max(2000),
     }),
     output: conceptGraph,
   },
   "maps.open": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
     }),
     output: conceptGraph,
   },
   "maps.layout": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
       layout: z.enum(["tree", "radial"]),
     }),
     output: conceptGraph,
   },
   "maps.move": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
       nodeId: z.string(),
       x: z.number(),
@@ -1670,26 +1676,20 @@ export const requests = {
     output: conceptGraph,
   },
   "maps.patch": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
       ops: z.array(mapOp),
     }),
     output: conceptGraph,
   },
   "maps.undo": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
     }),
     output: conceptGraph,
   },
   "maps.redo": {
-    input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+    input: mapAddressInput({
       mapId: z.string().optional(),
     }),
     output: conceptGraph,
@@ -1734,8 +1734,10 @@ export const requests = {
   },
   "subjects.list": {
     input: z.object({}),
-    /** `inUse`: an exam, a source or a chat still has the subject. */
-    output: z.array(z.object({ id: z.string(), name: z.string(), inUse: z.boolean() })),
+    /** `inUse`: an exam, a source, a map or a chat still has the subject. `wholeMaps`: its maps of the whole subject. */
+    output: z.array(
+      z.object({ id: z.string(), name: z.string(), inUse: z.boolean(), wholeMaps: z.number().int().nonnegative() }),
+    ),
   },
   "plans.usage": {
     input: z.object({}),

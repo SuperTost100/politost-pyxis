@@ -1,5 +1,5 @@
 import { Button as AntButton } from "antd";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 
@@ -15,6 +15,7 @@ export function Button({
   className,
   children,
   disabled,
+  expanded,
   onClick,
   type = "button",
 }: {
@@ -26,7 +27,9 @@ export function Button({
   className?: string;
   children?: ReactNode;
   disabled?: boolean;
-  onClick?: () => void;
+  /** For a button that opens a panel: whether the panel it opened is open now. */
+  expanded?: boolean;
+  onClick?: (event: MouseEvent<HTMLElement>) => void;
   type?: "button" | "submit" | "reset";
 }) {
   const antType =
@@ -39,6 +42,7 @@ export function Button({
   return (
     <AntButton
       aria-label={ariaLabel}
+      aria-expanded={expanded}
       htmlType={type}
       type={antType}
       danger={variant === "danger"}

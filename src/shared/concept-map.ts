@@ -72,17 +72,40 @@ export const mapSummarySchema = z.object({
 export type ConceptGraph = z.infer<typeof conceptGraphSchema>;
 export type MapOp = z.infer<typeof mapOpSchema>;
 export type MapSummary = z.infer<typeof mapSummarySchema>;
-/** A map in the Maps section, with the exam, topic and subject it belongs to. */
 /** The most branches, and concepts on a branch, that a map's tile draws. */
 export const MAP_SHAPE = { branches: 6, leaves: 4 } as const;
 
+/**
+ * Which maps a request is about: a topic of an exam (`topicId`, with its `planId` or without it), or a whole subject
+ * (`subjectId` alone). A topic also names its subject, which core ignores, since the topic's exam decides it.
+ */
+const mapAddressBase = z.object({
+  subjectId: id.optional(),
+  planId: id.optional(),
+  topicId: id.optional(),
+});
+type AddressFields = z.infer<typeof mapAddressBase>;
+const namesMaps = (value: AddressFields) =>
+  Boolean(value.topicId) || (Boolean(value.subjectId) && !value.planId);
+/** A map request's input: the address and the request's own fields, checked to name a topic or a subject alone. */
+export function mapAddressInput<T extends z.ZodRawShape>(fields: T) {
+  return mapAddressBase
+    .extend(fields)
+    .refine((value) => namesMaps(value as AddressFields), {
+      message: "A map needs a topic, or a subject without an exam",
+    });
+}
+export const mapAddressSchema = mapAddressInput({});
+export type MapAddress = z.infer<typeof mapAddressSchema>;
+
+/** A map in the Maps section, with its subject, and the exam and topic of a topic map (null for a whole subject's). */
 export const mapEntrySchema = z.object({
   id,
   title: z.string(),
-  planId: z.string(),
-  planTitle: z.string(),
-  topicId: z.string(),
-  topicTitle: z.string(),
+  planId: z.string().nullable(),
+  planTitle: z.string().nullable(),
+  topicId: z.string().nullable(),
+  topicTitle: z.string().nullable(),
   subjectId: z.string().nullable(),
   subjectName: z.string().nullable(),
   nodeCount: z.number().int().nonnegative(),

@@ -49,7 +49,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
-    // The header door opens the section. With no exam yet, the empty state sends the student to create one.
+    // The header door opens the section. With no subject yet, the empty state offers material and an exam.
     await page.getByText("Mappe", { exact: true }).click();
     await expect(page).toHaveURL(/#\/maps$/);
     await expect(
@@ -57,6 +57,9 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Nuovo esame" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Apri la Libreria" }),
     ).toBeVisible();
 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
@@ -127,13 +130,14 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await expect(page.getByText("Nessuna mappa corrisponde.")).toBeVisible();
     await search.fill("");
 
-    // A map opens inside the shell under Mappe, says which exam it belongs to, and Mappe leads back to the section.
+    // A map opens inside the shell under Mappe, at its subject and topic, says which exam it belongs to, and Mappe leads
+    // back to the section.
     // Each map is a tile with a drawing of its branches; the whole tile opens it.
     const tile = page.getByRole("link", { name: /^Moto rettilineo Meccanica · Moto/ });
     await expect(tile.locator("svg rect")).toHaveCount(3);
     await tile.click();
     await expect(page).toHaveURL(
-      /#\/plans\/p-phys\/map\/t-motion\?from=maps&map=m-motion$/,
+      /#\/maps\/phys\/t-motion\?from=maps&map=m-motion$/,
     );
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
     await expect(
@@ -190,7 +194,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await mapsDoor.click();
     await expect(page).toHaveURL(/#\/maps$/);
 
-    // A new map starts from an exam and a topic, and opens that topic's map page.
+    // A new map starts from a subject and, here, one of its exam's topics, and opens that topic's map page.
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
     const choose = async (field: string, option: string) => {
@@ -201,10 +205,10 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
         )
         .click();
     };
-    await choose("Esame", "Meccanica");
+    await choose("Materia", "Fisica");
     await choose("Argomento", "Forze");
     await dialog.getByRole("button", { name: "Continua" }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-phys\/map\/t-forces\?from=maps$/);
+    await expect(page).toHaveURL(/#\/maps\/phys\/t-forces\?from=maps$/);
     await expect(
       page.getByRole("button", { name: "Crea mappe" }),
     ).toBeVisible();

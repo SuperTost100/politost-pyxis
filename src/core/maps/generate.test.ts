@@ -14,13 +14,16 @@ import {
   registerMapJobs,
 } from "./generate";
 import {
-  listTopicMaps,
-  moveTopicNode,
-  openTopicMap,
-  patchTopicMap,
+  listMaps,
+  moveMapNode,
+  openMap,
+  patchMap,
   readStoredMap,
-  undoTopicMap,
+  undoMap,
 } from "./store";
+import type { MapScope } from "./scope";
+import { listAllMaps } from "./library";
+import { addSubject } from "../plans/subjects";
 function fixture(count = 50) {
   const db = openDatabase(":memory:");
   db.prepare(
@@ -82,7 +85,7 @@ const run: GenerateInput["run"] = async (input) =>
   response(generated(input.prompt));
 async function until(
   db: ReturnType<typeof openDatabase>,
-  input: { planId: string; topicId: string },
+  input: MapScope,
   state: string,
 ) {
   for (let i = 0; i < 200; i++) {
@@ -94,7 +97,7 @@ async function until(
 /** Builds a topic's maps through the job, as the app does, and waits for it. */
 async function generateMaps(
   db: ReturnType<typeof openDatabase>,
-  input: { planId: string; topicId: string },
+  input: MapScope,
   model: GenerateInput["run"],
 ) {
   const runner = createRunner(db, () => {});
@@ -105,31 +108,31 @@ async function generateMaps(
 describe("M10 model maps", () => {
   it("splits all material into bounded maps without discarding an edited legacy outline", async () => {
     const { db, input } = fixture();
-    const legacy = openTopicMap(db, input.planId, input.topicId);
+    const legacy = openMap(db, input);
     for (const node of legacy.nodes) delete node.sources;
     db.prepare(
       "UPDATE maps SET graph_json = ?, grounding = 'sources' WHERE plan_id = ? AND topic_id = ?",
     ).run(JSON.stringify(legacy), input.planId, input.topicId);
-    expect(listTopicMaps(db, input.planId, input.topicId)[0]!.grounding).toBe(
+    expect(listMaps(db, input)[0]!.grounding).toBe(
       "sources",
     );
-    const legacyId = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    const legacyId = listMaps(db, input)[0]!.id;
     const params = prepareMaps(db, input);
     expect(params.parts.length).toBeGreaterThan(1);
     expect(params.parts.flatMap((p) => p.passages)).toHaveLength(50);
     expect(params.parts.every((p) => p.passages.length <= 24)).toBe(true);
     await generateMaps(db, input, run);
-    const maps = listTopicMaps(db, input.planId, input.topicId);
+    const maps = listMaps(db, input);
     expect(maps.filter((m) => m.provider)).toHaveLength(params.parts.length);
     expect(
-      readStoredMap(db, input.planId, input.topicId, legacyId)!.graph,
+      readStoredMap(db, input, legacyId)!.graph,
     ).toEqual(legacy);
     const covered = new Set(
       maps
         .filter((m) => m.provider)
         .flatMap(
           (m) =>
-            readStoredMap(db, input.planId, input.topicId, m.id)!.passageIds,
+            readStoredMap(db, input, m.id)!.passageIds,
         ),
     );
     expect(covered.size).toBe(50);
@@ -156,14 +159,13 @@ describe("M10 model maps", () => {
   it("applies a model patch only to the selected map, preserves positions and undoes the whole patch", async () => {
     const { db, input } = fixture();
     await generateMaps(db, input, run);
-    const maps = listTopicMaps(db, input.planId, input.topicId);
+    const maps = listMaps(db, input);
     const id = maps[1]!.id;
-    moveTopicNode(db, input.planId, input.topicId, "n1", 777, 888, id);
-    const before = readStoredMap(db, input.planId, input.topicId, id)!.graph;
+    moveMapNode(db, input, "n1", 777, 888, id);
+    const before = readStoredMap(db, input, id)!.graph;
     const untouched = readStoredMap(
       db,
-      input.planId,
-      input.topicId,
+      input,
       maps[0]!.id,
     )!.graph;
     const patched = await editMap(
@@ -184,9 +186,9 @@ describe("M10 model maps", () => {
       label: "Nuovo",
     });
     expect(
-      readStoredMap(db, input.planId, input.topicId, maps[0]!.id)!.graph,
+      readStoredMap(db, input, maps[0]!.id)!.graph,
     ).toEqual(untouched);
-    expect(undoTopicMap(db, input.planId, input.topicId, id).nodes).toEqual(
+    expect(undoMap(db, input, id).nodes).toEqual(
       before.nodes,
     );
     db.close();
@@ -211,7 +213,7 @@ describe("M10 model maps", () => {
       prompt_template: "map.generate",
       prompt_version: templateVersion("map.generate"),
     });
-    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    const id = listMaps(db, input)[0]!.id;
     await editMap(
       db,
       { ...input, mapId: id, instruction: "Rename" },
@@ -227,7 +229,7 @@ describe("M10 model maps", () => {
   it("applies a model edit on top of a move made while it was writing", async () => {
     const { db, input } = fixture(1);
     await generateMaps(db, input, run);
-    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
+    const id = listMaps(db, input)[0]!.id;
     let release!: (value: ReturnType<typeof response>) => void;
     const pending = editMap(
       db,
@@ -237,15 +239,15 @@ describe("M10 model maps", () => {
           release = resolve;
         }),
     );
-    moveTopicNode(db, input.planId, input.topicId, "n1", 42, 45, id);
+    moveMapNode(db, input, "n1", 42, 45, id);
     release(response({ ops: [{ op: "rename", id: "n1", label: "No" }] }));
     const edited = await pending;
     const node = edited.nodes.find((n) => n.id === "n1")!;
     expect([node.label, node.x, node.y]).toEqual(["No", 42, 45]);
-    const stored = readStoredMap(db, input.planId, input.topicId, id)!.graph;
+    const stored = readStoredMap(db, input, id)!.graph;
     expect(stored.nodes.find((n) => n.id === "n1")!.label).toBe("No");
     // Undo returns to the map as the student had left it, move included.
-    const undone = undoTopicMap(db, input.planId, input.topicId, id);
+    const undone = undoMap(db, input, id);
     const before = undone.nodes.find((n) => n.id === "n1")!;
     expect([before.label === "No", before.x]).toEqual([false, 42]);
     db.close();
@@ -253,8 +255,8 @@ describe("M10 model maps", () => {
   it("names the error when the edit no longer fits the map", async () => {
     const { db, input } = fixture(1);
     await generateMaps(db, input, run);
-    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
-    const leaf = readStoredMap(db, input.planId, input.topicId, id)!.graph.nodes
+    const id = listMaps(db, input)[0]!.id;
+    const leaf = readStoredMap(db, input, id)!.graph.nodes
       .filter((n) => n.parent !== null)
       .at(-1)!;
     let release!: (value: ReturnType<typeof response>) => void;
@@ -266,10 +268,9 @@ describe("M10 model maps", () => {
           release = resolve;
         }),
     );
-    patchTopicMap(
+    patchMap(
       db,
-      input.planId,
-      input.topicId,
+      input,
       [{ op: "delete", id: leaf.id }],
       id,
     );
@@ -283,8 +284,8 @@ describe("M10 model maps", () => {
   it("passes the caller's signal to the model and leaves the undo history out of the prompt", async () => {
     const { db, input } = fixture(1);
     await generateMaps(db, input, run);
-    const id = listTopicMaps(db, input.planId, input.topicId)[0]!.id;
-    moveTopicNode(db, input.planId, input.topicId, "n1", 42, 45, id);
+    const id = listMaps(db, input)[0]!.id;
+    moveMapNode(db, input, "n1", 42, 45, id);
     const controller = new AbortController();
     const seen: Array<{ signal?: AbortSignal; prompt: string }> = [];
     await editMap(
@@ -313,15 +314,15 @@ describe("M10 model maps", () => {
     });
     const first = enqueueMaps(db, runner, input);
     await until(db, input, "failed");
-    const completed = listTopicMaps(db, input.planId, input.topicId);
+    const completed = listMaps(db, input);
     expect(completed).toHaveLength(1);
     fail = false;
     expect(enqueueMaps(db, runner, input).jobId).toBe(first.jobId);
     await until(db, input, "succeeded");
-    expect(listTopicMaps(db, input.planId, input.topicId)[0]!.id).toBe(
+    expect(listMaps(db, input)[0]!.id).toBe(
       completed[0]!.id,
     );
-    expect(listTopicMaps(db, input.planId, input.topicId)).toHaveLength(3);
+    expect(listMaps(db, input)).toHaveLength(3);
     expect(calls).toBe(4);
     db.close();
   });
@@ -343,11 +344,11 @@ describe("M10 model maps", () => {
     release();
     await until(db, input, "cancelled");
     await new Promise((r) => setTimeout(r, 10));
-    expect(listTopicMaps(db, input.planId, input.topicId)).toEqual([]);
+    expect(listMaps(db, input)).toEqual([]);
     registerMapJobs(db, runner, run);
     enqueueMaps(db, runner, input);
     await until(db, input, "succeeded");
-    expect(listTopicMaps(db, input.planId, input.topicId)).toHaveLength(1);
+    expect(listMaps(db, input)).toHaveLength(1);
     db.close();
   });
   it("marks a map without source material as general knowledge", async () => {
@@ -356,7 +357,7 @@ describe("M10 model maps", () => {
       input.topicId,
     );
     await generateMaps(db, input, run);
-    expect(listTopicMaps(db, input.planId, input.topicId)[0]).toMatchObject({
+    expect(listMaps(db, input)[0]).toMatchObject({
       grounding: "general",
       passageCount: 0,
     });
@@ -368,15 +369,98 @@ describe("M10 model maps", () => {
   it("rejects patches that name nonexistent nodes without changing stored graph", async () => {
     const { db, input } = fixture(1);
     await generateMaps(db, input, run);
-    const before = readStoredMap(db, input.planId, input.topicId)!.graph;
+    const before = readStoredMap(db, input)!.graph;
     await expect(
       editMap(db, { ...input, instruction: "Rename" }, async () =>
         response({ ops: [{ op: "rename", id: "fake", label: "bad" }] }),
       ),
     ).rejects.toThrow();
-    expect(readStoredMap(db, input.planId, input.topicId)!.graph).toEqual(
+    expect(readStoredMap(db, input)!.graph).toEqual(
       before,
     );
+    db.close();
+  });
+});
+
+describe("whole-subject maps", () => {
+  /** A subject with one book of `count` passages and no exam. */
+  function subjectFixture(count: number) {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
+    const { id: subjectId } = addSubject(db, "Fisica I");
+    const book = importSmartbook(
+      db,
+      zipSync({
+        "smartbook.json": strToU8(
+          JSON.stringify({
+            id: "subject-book",
+            title: "Mazzoldi",
+            access: "public",
+            chapters: [{ id: "c1", number: 1, title: "Moti", file: "01.md" }],
+          }),
+        ),
+        "chapters/01.md": strToU8(
+          Array.from({ length: count }, (_, i) => `## p${i} | Sezione ${i}\nIl concetto ${i} descrive un moto.\n`).join("\n"),
+        ),
+      }),
+    );
+    db.prepare("UPDATE sources SET subject_id = ? WHERE id = ?").run(subjectId, book.sourceId);
+    return { db, input: { subjectId } };
+  }
+
+  it("builds one map of a subject that has no exam, from the subject's sources", async () => {
+    const { db, input } = subjectFixture(40);
+    expect(db.prepare("SELECT COUNT(*) FROM plans").pluck().get()).toBe(0);
+    const params = prepareMaps(db, input);
+    expect(params.parts).toHaveLength(1);
+    expect(params.parts[0]!.title).toBe("Fisica I");
+    expect(params.parts[0]!.passages).toHaveLength(24);
+    await generateMaps(db, input, run);
+    expect(listMaps(db, input)).toEqual([
+      expect.objectContaining({ title: "Moti", grounding: "sources", passageCount: 24, provider: "claude" }),
+    ]);
+    expect(db.prepare("SELECT subject_id, plan_id, topic_id FROM maps").all()).toEqual([
+      { subject_id: input.subjectId, plan_id: null, topic_id: null },
+    ]);
+    expect(listAllMaps(db)).toEqual([
+      expect.objectContaining({ subjectName: "Fisica I", planId: null, topicId: null, nodeCount: 8 }),
+    ]);
+    expect(mapBuild(db, input)).toMatchObject({ state: "succeeded", progress: 1 });
+    // The map is edited in place like any other.
+    const edited = await editMap(db, { ...input, instruction: "Rinomina" }, async () =>
+      response({ ops: [{ op: "rename", id: "n1", label: "Vettori" }] }),
+    );
+    expect(edited.nodes.find((node) => node.id === "n1")!.label).toBe("Vettori");
+    expect(readStoredMap(db, input)!.graph.nodes.find((node) => node.id === "n1")!.label).toBe("Vettori");
+    db.close();
+  });
+
+  it("keeps a subject's build apart from the builds of its exam's topics", async () => {
+    const { db, input } = subjectFixture(3);
+    const source = db.prepare("SELECT id FROM sources").pluck().get() as string;
+    const { planId } = createPlan(db, { title: "Fisica", sourceIds: [source], subject: "Fisica I" });
+    const topicId = db.prepare("SELECT id FROM topics WHERE plan_id = ?").pluck().get(planId) as string;
+    await generateMaps(db, { planId, topicId }, run);
+    expect(mapBuild(db, input)).toBeNull();
+    expect(listMaps(db, input)).toEqual([]);
+    await generateMaps(db, input, run);
+    expect(listMaps(db, input)).toHaveLength(1);
+    expect(listMaps(db, { planId, topicId })).toHaveLength(1);
+    expect(
+      db.prepare("SELECT subject_id, plan_id IS NULL AS whole FROM maps ORDER BY whole").all(),
+    ).toEqual([
+      { subject_id: input.subjectId, whole: 0 },
+      { subject_id: input.subjectId, whole: 1 },
+    ]);
+    db.close();
+  });
+
+  it("refuses a subject that does not exist", () => {
+    const { db } = subjectFixture(1);
+    expect(() => prepareMaps(db, { subjectId: "nope" })).toThrow("subject-missing");
+    expect(() => listMaps(db, { subjectId: "nope" })).toThrow("subject-missing");
     db.close();
   });
 });

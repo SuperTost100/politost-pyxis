@@ -27,6 +27,8 @@ export type CardSource = {
   topicId?: string;
   /** The chat's subject name. */
   subject?: string;
+  /** A map's subject: the cards can go only under its exams, and nowhere when it has none. */
+  subjectId?: string;
   /** Passages the text cites or comes from; they pick the topic and become the cards' source links. */
   passageIds?: string[];
 };
@@ -108,6 +110,7 @@ export function MakeCardsDialog() {
         planId: next.planId,
         topicId: next.topicId,
         subject: next.subject,
+        subjectId: next.subjectId,
         passageIds: next.passageIds,
       }).then(
         (found) => {
@@ -325,7 +328,11 @@ export function MakeCardsDialog() {
             </div>
           </div>
           {noPlans ? (
-            <Notice tone="info">{t("makeCards.noPlans")}</Notice>
+            <Notice tone="info">
+              {source.subjectId
+                ? t("makeCards.noSubjectPlans", { subject: source.subject ?? "" })
+                : t("makeCards.noPlans")}
+            </Notice>
           ) : null}
           {error ? (
             <Notice
