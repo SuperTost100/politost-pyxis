@@ -167,6 +167,9 @@ export async function walkImportable(
     const start = join(root, ...parts);
     if (exclude.some((place) => start === place || start.startsWith(place + sep))) return cut;
     options.signal?.throwIfAborted();
+    // Every folder on the way must be a real folder: one replaced by a link could lead outside `root`.
+    for (let depth = 1; depth < parts.length; depth += 1)
+      if (!(await statOf(join(root, ...parts.slice(0, depth))))?.isDirectory()) return cut;
     const stat = await statOf(start);
     if (stat?.isFile() && importable(start)) {
       if (parts.length - 1 > options.maxDepth) cut.depth = true;

@@ -923,23 +923,26 @@ export function linkedFolders(deps: LinkedDeps) {
       const ids = folderIds();
       for (const id of ids) walking.add(id);
       schedulePump();
-      for (const id of ids) {
-        if (!db.open) return;
-        try {
-          if (!folderRow(id)?.confirmed_at) confirmOffered(id);
-        } catch (err) {
-          console.error("pyxis-core: linked folder setup failed", err instanceof Error ? err.message : "unknown");
-        }
-        // Watched before the look, so a change made while it walks is read after it.
-        startWatch(id);
-        try {
-          await sync(id);
-        } catch (err) {
-          console.error("pyxis-core: linked folder look failed", err instanceof Error ? err.message : "unknown");
-        } finally {
-          walking.delete(id);
-        }
-      }
+      // Each folder is looked at on its own, so a long walk in one does not hold back the files of the others.
+      await Promise.all(
+        ids.map(async (id) => {
+          if (!db.open) return;
+          try {
+            if (!folderRow(id)?.confirmed_at) confirmOffered(id);
+          } catch (err) {
+            console.error("pyxis-core: linked folder setup failed", err instanceof Error ? err.message : "unknown");
+          }
+          // Watched before the look, so a change made while it walks is read after it.
+          startWatch(id);
+          try {
+            await sync(id);
+          } catch (err) {
+            console.error("pyxis-core: linked folder look failed", err instanceof Error ? err.message : "unknown");
+          } finally {
+            walking.delete(id);
+          }
+        }),
+      );
     },
     /** Looks at every folder again, as after the OCR data arrives. */
     async syncAll(): Promise<void> {

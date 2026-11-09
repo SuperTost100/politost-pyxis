@@ -216,6 +216,11 @@ describe("reading a linked folder", () => {
     expect((await walk({ within: join("Fisica 1", "Mazzoldi cap 2.md") })).found).toEqual([join("Fisica 1", "Mazzoldi cap 2.md")]);
     expect((await walk({ within: "Chimica" })).found).toEqual([]);
     expect((await walk({ within: join("..", "elsewhere") })).found).toEqual([]);
+    // A folder on the way that became a link is not followed, even though the place itself is a plain file.
+    const outside = tempDir("pyxis-linked-outside-");
+    writeFileSync(join(outside, "segreto.txt"), "x");
+    symlinkSync(outside, join(root, "scorciatoia"));
+    expect((await walk({ within: join("scorciatoia", "segreto.txt") })).found).toEqual([]);
   });
 
   it("accepts only an absolute directory outside the workspace and the app's data", () => {
