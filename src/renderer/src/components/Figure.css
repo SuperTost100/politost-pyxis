@@ -27,20 +27,8 @@
   justify-items: stretch;
 }
 
-.px-figure-skeleton {
-  height: 240px;
+.px-figure-working {
+  min-height: 240px;
   border-radius: var(--radius-md);
   background: var(--surface-raised);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .px-figure-skeleton {
-    animation: px-figure-pulse 1.4s ease-in-out infinite;
-  }
-}
-
-@keyframes px-figure-pulse {
-  50% {
-    opacity: 0.55;
-  }
 }

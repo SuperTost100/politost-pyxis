@@ -204,15 +204,17 @@
   color: var(--ink);
 }
 
-.px-reader-spinner {
-  flex: none;
-  color: var(--primary);
-  animation: px-reader-spin 1s linear infinite;
+.px-reader-skeleton {
+  display: grid;
+  gap: var(--space-3);
+  /* A fast read never flashes it. */
+  opacity: 0;
+  animation: px-reader-show 1ms linear 150ms forwards;
 }
 
-@keyframes px-reader-spin {
+@keyframes px-reader-show {
   to {
-    transform: rotate(360deg);
+    opacity: 1;
   }
 }
 
@@ -222,9 +224,16 @@
   }
 }
 
-.px-reader-skeleton {
-  display: grid;
-  gap: var(--space-3);
+/* The status line keeps the detail on one line, so the label and Stop stay where they are. */
+.px-reader-status > .px-working-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.px-reader-working {
+  min-height: 280px;
 }
 
 .px-reader-skeleton span {
@@ -336,7 +345,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .px-reader-spinner,
   .px-reader-skeleton span {
     animation: none;
   }

@@ -15,6 +15,7 @@ import "./PracticePage.css";
 import { StudyLayout } from "./StudyBar";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
+import { Working } from "../../components/Working";
 
 type Exercise = Awaited<ReturnType<typeof invoke<"study.exercises">>>["exercises"][number];
 
@@ -263,10 +264,10 @@ export function PracticePage() {
         <Notice tone="danger">{t("planOverview.failed")}</Notice>
       ) : null}
       {building ? (
-        <div role="status">
-          {t("practice.writing")}{" "}
-          <Button onClick={() => cancel.mutate(job.jobId)}>{t("jobs.cancel")}</Button>
-        </div>
+        <Working
+          line={t("practice.writing")}
+          action={<Button onClick={() => cancel.mutate(job.jobId)}>{t("jobs.cancel")}</Button>}
+        />
       ) : null}
       {stopped || generate.isError ? (
         <Notice

@@ -1,4 +1,5 @@
 import { Icon } from "./Icon";
+import { Logo } from "./Logo";
 import type { IconName } from "./Icon";
 import "./StepLines.css";
 
@@ -11,13 +12,10 @@ export type StepLine = {
   meta?: string;
 };
 
-const STATE_ICON: Record<
-  StepLineState,
-  { name: IconName; className?: string; spin?: boolean }
-> =
+const STATE_ICON: Record<StepLineState, { name: IconName; className?: string }> =
   {
     pending: { name: "circle" },
-    running: { name: "loader-circle", spin: true },
+    running: { name: "loader-circle" },
     done: { name: "circle-check", className: "is-done" },
     failed: { name: "circle-x", className: "is-failed" },
   };
@@ -41,11 +39,12 @@ export function StepLines({
                 .join(" ")}
               aria-hidden
             >
-              <Icon
-                name={icon.name}
-                size={18}
-                className={icon.spin ? "px-spin" : undefined}
-              />
+              {/* A running step shows the Pyxis mark at work. */}
+              {step.state === "running" ? (
+                <Logo size={18} working decorative />
+              ) : (
+                <Icon name={icon.name} size={18} className={icon.className} />
+              )}
             </span>
             <span className="px-stepline-label">{step.label}</span>
             {step.meta ? (

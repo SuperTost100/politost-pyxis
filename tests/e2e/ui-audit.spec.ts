@@ -168,6 +168,9 @@ const routes = [
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
   ["jobs-popover", "/exams"],
+  // A linked folder's readings as one row, opened on its files; and a map being built, with the working mark.
+  ["jobs-group", "/exams"],
+  ["map-building", "/plans/audit-ready-plan/map/audit-ready-topic"],
   [
     "quiz-grading-failed",
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-grading-attempt",
@@ -1459,8 +1462,38 @@ function prepareState(name: string) {
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
     db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%'");
-    if (name !== "jobs-popover") return;
+    db.exec(
+      "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
+    );
     const now = Date.now();
+    if (name === "jobs-group") {
+      // A folder being read: three files running, two read already, five recorded and waiting for the queue.
+      db.prepare(
+        "INSERT INTO linked_folders(id,path,mode,created_at) VALUES('audit-group-folder',?,'root',?)",
+      ).run(join(tmpdir(), "Università"), now);
+      const job = db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES(?,'source-import',?,?,?,?,?,?)",
+      );
+      const read = (title: string) =>
+        JSON.stringify({ sourceId: `audit-group-${title}`, title, folderId: "audit-group-folder", linked: true });
+      ["Slide lezione 3, cinematica", "Temi d'esame 2024", "Chimica generale, capitolo 4"].forEach((title, index) =>
+        job.run(`audit-running-group-${index}`, read(title), "running", 0.3, "sources.jobs.extract", now + index, now),
+      );
+      for (const index of [0, 1])
+        job.run(`audit-running-group-done-${index}`, read(`Letto ${index}`), "succeeded", 1, null, now - 60_000, now);
+      const file = db.prepare(
+        "INSERT INTO linked_files(folder_id,rel_path,subfolder,size,mtime_ms,pending) VALUES('audit-group-folder',?,'Fisica 1',10,1,1)",
+      );
+      for (let index = 0; index < 5; index += 1) file.run(`Fisica 1/nota ${index}.txt`);
+      return;
+    }
+    if (name === "map-building") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-running-map','map-build',?,'running',0,?,?)",
+      ).run(JSON.stringify({ input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" } }), now, now);
+      return;
+    }
+    if (name !== "jobs-popover") return;
     const running = db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?)",
     );
@@ -2289,7 +2322,7 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(
           list.getByRole("button", {
-            name: /^(Annulla|Cancel): (Scrivo le flashcard su|Writing flashcards on) .+$/,
+            name: /^(Ferma|Stop): (Scrivo le flashcard su|Writing flashcards on) .+$/,
           }),
         ).toBeVisible();
         // A lesson the lesson page wrote shows as finished work, named after its topic, with its exam.
@@ -2319,6 +2352,28 @@ async function openState(page: Page, name: string) {
           list.getByRole("button", { name: /^(Chiudi le finite|Clear finished)$/ }),
         ).toBeVisible();
       }
+      break;
+    case "jobs-group":
+      await page
+        .getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ })
+        .click();
+      {
+        const running = page.getByRole("region", { name: /^(In corso|Running)$/ });
+        const row = running.getByRole("button", {
+          name: /^(Leggo le fonti · 2 di 10|Reading sources · 2 of 10)/,
+        });
+        await expect(row).toContainText(/Dalla cartella Università|From the folder Università/);
+        await row.click();
+        await expect(row).toHaveAttribute("aria-expanded", "true");
+        await expect(
+          running.getByText(/^(Altri 5 in attesa · 2 già letti|5 more waiting · 2 already read)$/),
+        ).toBeVisible();
+        await expect(running.locator(".px-logo-working")).toHaveCount(4);
+      }
+      break;
+    case "map-building":
+      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo le tue mappe…|Building your maps…)$/);
+      await expect(page.locator(".px-map-working .px-logo-working")).toBeVisible();
       break;
     case "ocr-settings-missing":
       await expect(

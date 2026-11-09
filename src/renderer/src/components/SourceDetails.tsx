@@ -11,7 +11,6 @@ import {
   FileText,
   GraduationCap,
   Image as ImageIcon,
-  LoaderCircle,
   Plus,
   Quote,
   ScanText,
@@ -33,6 +32,7 @@ import { ScanNotice, scanPending } from "./ScanNotice";
 import { openSourceViewer } from "./SourceViewer";
 import { sizeText } from "./SourceRow";
 import "./SourceDetails.css";
+import { Logo } from "./Logo";
 
 type Details = NonNullable<RequestOutput<"sources.details">>;
 type Section = Details["bySection"][number];
@@ -80,7 +80,7 @@ function SourceStatus({ status }: { status: string }) {
       ) : PROBLEM.has(status) ? (
         <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
       ) : (
-        <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} aria-hidden />
+        <Logo size={16} working decorative />
       )}
       {t(`sources.status.${status}`, { defaultValue: status })}
     </span>

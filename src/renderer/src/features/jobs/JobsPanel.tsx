@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { App, Progress } from "antd";
+import { App } from "antd";
 import { ChevronDown, Info, Lock, LogIn, Pause, CircleAlert } from "lucide-react";
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import type { JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
 import { IconButton } from "../../components/IconButton";
+import { Logo } from "../../components/Logo";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
@@ -15,6 +16,7 @@ import {
   jobContext,
   jobTopicName,
   runningLabelKey,
+  type JobBatch,
   type JobGroups,
   type Problem,
   type ProblemKind,
@@ -23,7 +25,7 @@ import { JobDebug } from "./JobDebug";
 import "./JobsPanel.css";
 
 type Act = (
-  request: "jobs.cancel" | "jobs.retry" | "jobs.resume" | "jobs.dismiss",
+  request: "jobs.cancel" | "jobs.retry" | "jobs.resume" | "jobs.dismiss" | "jobs.resumeAll",
   jobs: JobView[],
 ) => void;
 
@@ -31,8 +33,46 @@ const PROBLEM_ICONS = {
   engine: LogIn,
   "locked-pdf": Lock,
   interrupted: Pause,
+  stopped: Pause,
   retry: CircleAlert,
 } satisfies Record<ProblemKind, unknown>;
+
+/** How many of a request's jobs its row names when it opens; the rest are counted. */
+const BATCH_NAMED = 5;
+
+/** The wording of a request's row, by the kind its jobs share. Other kinds use what their first job does. */
+const BATCH_WORDS: Record<string, string> = {
+  "source-import": "read",
+  "source-index": "index",
+};
+
+/** How far a job is, as a 4 px bar under its line. */
+function Bar({ value, label }: { value: number; label: string }) {
+  const percent = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return (
+    <span
+      className="px-jobs-bar"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent}
+    >
+      <i style={{ width: `${percent}%` }} />
+    </span>
+  );
+}
+
+/** The mark of a job in the list: the Pyxis mark at work while it runs, a clock while it waits. */
+function RunningMark({ running }: { running: boolean }) {
+  return running ? (
+    <span className="px-jobs-mark is-working">
+      <Logo size={20} working decorative />
+    </span>
+  ) : (
+    <Icon name="clock" size={20} className="px-jobs-mark" />
+  );
+}
 
 /**
  * What a running job does, naming its topic for study work ("Writing the lesson on Vectors"); other kinds say the step
@@ -152,12 +192,12 @@ function ProblemCard({
             {engineFailure.action?.label ?? t("jobs.openEngines")}
           </Button>
         ) : null}
-        {kind === "interrupted" ? (
+        {kind === "interrupted" || kind === "stopped" ? (
           <Button
             size="sm"
             variant="secondary"
             aria-label={named(t("jobs.resume"))}
-            onClick={() => act("jobs.resume", jobs)}
+            onClick={() => act("jobs.resumeAll", jobs)}
           >
             {many ? t("jobs.resumeAll") : t("jobs.resume")}
           </Button>
@@ -220,13 +260,7 @@ function RunningRow({ job, act }: { job: JobView; act: Act }) {
   const where = jobWhere(job);
   return (
     <li className="px-jobs-row">
-      <Icon
-        name={job.state === "running" ? "loader-circle" : "clock"}
-        size={20}
-        className={
-          job.state === "running" ? "px-jobs-mark px-spin" : "px-jobs-mark"
-        }
-      />
+      <RunningMark running={job.state === "running"} />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         {where || job.state === "queued" ? (
@@ -234,25 +268,120 @@ function RunningRow({ job, act }: { job: JobView; act: Act }) {
             {[job.state === "queued" ? t("jobs.state.queued") : "", where].filter(Boolean).join(" · ")}
           </p>
         ) : null}
-        <Progress
-          percent={Math.round(job.progress * 100)}
-          showInfo={false}
-          aria-label={where ? `${what}, ${where}` : what}
-          size="small"
-          strokeColor="var(--primary)"
-        />
+        <Bar value={job.progress} label={where ? `${what}, ${where}` : what} />
         <JobDebug jobId={job.id} running={job.state === "running"} />
       </div>
       {/* Work a page does itself stops on that page. */}
       {job.inPage ? null : (
         <IconButton
-          icon="x"
+          icon="square"
           size="sm"
           variant="ghost"
-          label={t("jobs.actionOn", { action: t("jobs.cancel"), name: nameOf(job) })}
+          label={t("jobs.actionOn", { action: t("jobs.stop"), name: nameOf(job) })}
           onClick={() => act("jobs.cancel", [job])}
         />
       )}
+    </li>
+  );
+}
+
+/**
+ * The jobs one request made, such as the files of a linked folder, as one row: what they do and how many are done, the
+ * folder they come from and a bar. It opens in place on the first few by name, each with its state, then a count of
+ * the rest. Running, it stops them all; finished, it clears them all.
+ */
+function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act; finished?: boolean }) {
+  const { t, i18n } = useTranslation();
+  const doing = useJobDoing();
+  const nameOf = useJobName();
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const words = BATCH_WORDS[batch.family] ?? "other";
+  const done = batch.done.length;
+  const total = done + batch.jobs.length + batch.waiting;
+  const first = batch.jobs[0] ?? batch.done[0]!;
+  const what = finished
+    ? t(`jobs.batch.finished.${words}`, { count: done, what: t(finishedLabelKey(first.kind) ?? "jobs.state.succeeded") })
+    : t(`jobs.batch.running.${words}`, { done, total, what: doing(first) });
+  const where = batch.folder ? t("jobs.batch.fromFolder", { folder: batch.folder }) : undefined;
+  const running = batch.jobs.some((job) => job.state === "running");
+  const progress = total
+    ? (done + batch.jobs.reduce((sum, job) => sum + (job.state === "running" ? job.progress : 0), 0)) / total
+    : 0;
+  // Running work first, then what waits, as it will be read; a finished request lists what it read.
+  const members = finished
+    ? batch.done
+    : [...batch.jobs.filter((job) => job.state === "running"), ...batch.jobs.filter((job) => job.state !== "running")];
+  const named = members.slice(0, BATCH_NAMED);
+  const rest = members.length - named.length + (finished ? 0 : batch.waiting);
+  const restLine = [
+    rest > 0 ? t(finished ? "jobs.batch.more" : "jobs.batch.moreWaiting", { count: rest }) : "",
+    !finished && done > 0 ? t(`jobs.batch.done.${words}`, { count: done }) : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const latest = finished ? new Date(Math.max(...batch.done.map((job) => job.updatedAt))) : undefined;
+  return (
+    <li className={open ? "px-jobs-batch is-open" : "px-jobs-batch"}>
+      <div className="px-jobs-batch-head">
+        <button
+          type="button"
+          className="px-jobs-batch-main"
+          aria-expanded={open}
+          aria-controls={listId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {finished ? (
+            <Icon name="circle-check" size={20} className="px-jobs-mark is-done" />
+          ) : (
+            <RunningMark running={running} />
+          )}
+          <span className="px-jobs-body">
+            <span className="px-jobs-what">{what}</span>
+            {where ? <span className="px-jobs-sub">{where}</span> : null}
+            {finished ? null : <Bar value={progress} label={where ? `${what}, ${where}` : what} />}
+          </span>
+          {latest ? (
+            <time className="px-jobs-when" dateTime={latest.toISOString()}>
+              {new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }).format(latest)}
+            </time>
+          ) : null}
+          <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="px-jobs-caret" />
+        </button>
+        {finished ? (
+          <IconButton
+            icon="x"
+            size="sm"
+            variant="ghost"
+            label={t("jobs.actionOn", { action: t("jobs.dismiss"), name: where ? `${what}, ${where}` : what })}
+            onClick={() => act("jobs.dismiss", batch.done)}
+          />
+        ) : batch.jobs.every((job) => job.inPage) ? null : (
+          <IconButton
+            icon="square"
+            size="sm"
+            variant="ghost"
+            label={t("jobs.actionOn", { action: t("jobs.stop"), name: what })}
+            onClick={() => act("jobs.cancel", batch.jobs.filter((job) => !job.inPage))}
+          />
+        )}
+      </div>
+      <div className="px-jobs-more" id={listId} inert={!open}>
+        <ul>
+          {named.map((job) => (
+            <li key={job.id}>
+              <span className="px-jobs-item">{nameOf(job)}</span>
+              {finished ? null : (
+                <span className="px-jobs-item-state">
+                  {job.state === "running" ? <Logo size={15} working decorative /> : null}
+                  {t(job.state === "running" ? `jobs.batch.item.${words}` : "jobs.batch.item.waiting")}
+                </span>
+              )}
+            </li>
+          ))}
+          {restLine ? <li className="px-jobs-rest">{restLine}</li> : null}
+        </ul>
+      </div>
     </li>
   );
 }
@@ -328,7 +457,11 @@ export const JobsPanel = forwardRef<
   const headId = useId();
   // A job that changed meanwhile, or a core that restarted, refuses the action. Say so and show the list as it is now.
   const act: Act = (request, jobs) => {
-    void Promise.all(jobs.map((job) => invoke(request, { jobId: job.id }))).catch(
+    const sent =
+      request === "jobs.resumeAll"
+        ? invoke(request, { jobIds: jobs.map((job) => job.id) })
+        : Promise.all(jobs.map((job) => invoke(request, { jobId: job.id })));
+    void sent.catch(
       () => {
         void message.error(t("jobs.actionFailed"));
         void client.invalidateQueries({ queryKey: ["jobs"] });
@@ -336,7 +469,15 @@ export const JobsPanel = forwardRef<
       },
     );
   };
-  const { problems, running, finished } = groups;
+  const { problems, runningItems, finishedItems, finished, running } = groups;
+  const stoppable = running.some((job) => !job.inPage);
+  // Stopping everything asks nothing: what stopped waits under "Needs you" with Resume.
+  const stopAll = () => {
+    void invoke("jobs.stopAll", {}).catch(() => {
+      void message.error(t("jobs.actionFailed"));
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+    });
+  };
   return (
     <section
       ref={ref}
@@ -355,15 +496,6 @@ export const JobsPanel = forwardRef<
           <h2 id={headId}>{t("jobs.title")}</h2>
           <p>{t("jobs.intro")}</p>
         </div>
-        {finished.length > 0 ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => act("jobs.dismiss", finished)}
-          >
-            {t("jobs.clearDone")}
-          </Button>
-        ) : null}
       </header>
       {problems.length > 0 ? (
         <GroupSection title={t("jobs.group.toFix")} needs>
@@ -381,18 +513,42 @@ export const JobsPanel = forwardRef<
           ))}
         </GroupSection>
       ) : null}
-      {running.length > 0 ? (
-        <GroupSection title={t("jobs.group.running")}>
-          {running.map((job) => (
-            <RunningRow key={job.id} job={job} act={act} />
-          ))}
+      {runningItems.length > 0 ? (
+        <GroupSection
+          title={t("jobs.group.running")}
+          action={
+            stoppable ? (
+              <Button size="sm" variant="ghost" onClick={stopAll}>
+                {t("jobs.stopAll")}
+              </Button>
+            ) : null
+          }
+        >
+          {runningItems.map((item) =>
+            item.batch ? (
+              <BatchRow key={item.batch.key} batch={item.batch} act={act} />
+            ) : (
+              <RunningRow key={item.job.id} job={item.job} act={act} />
+            ),
+          )}
         </GroupSection>
       ) : null}
       {finished.length > 0 ? (
-        <GroupSection title={t("jobs.group.done")}>
-          {finished.map((job) => (
-            <FinishedRow key={job.id} job={job} act={act} />
-          ))}
+        <GroupSection
+          title={t("jobs.group.done")}
+          action={
+            <Button size="sm" variant="ghost" onClick={() => act("jobs.dismiss", finished)}>
+              {t("jobs.clearDone")}
+            </Button>
+          }
+        >
+          {finishedItems.map((item) =>
+            item.batch ? (
+              <BatchRow key={item.batch.key} batch={item.batch} act={act} finished />
+            ) : (
+              <FinishedRow key={item.job.id} job={item.job} act={act} />
+            ),
+          )}
         </GroupSection>
       ) : null}
     </section>
@@ -402,19 +558,25 @@ export const JobsPanel = forwardRef<
 function GroupSection({
   title,
   needs = false,
+  action,
   children,
 }: {
   title: string;
   /** What waits for the student, titled in full ink. */
   needs?: boolean;
+  /** One button that acts on the whole group, beside its title. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const id = useId();
   return (
     <section className={needs ? "px-jobs-group is-needs" : "px-jobs-group"} aria-labelledby={id}>
-      <h3 className="label" id={id}>
-        {title}
-      </h3>
+      <div className="px-jobs-group-head">
+        <h3 className="label" id={id}>
+          {title}
+        </h3>
+        {action}
+      </div>
       <ul className="px-jobs-list">{children}</ul>
     </section>
   );

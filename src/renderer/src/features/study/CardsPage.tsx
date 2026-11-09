@@ -24,6 +24,7 @@ import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
 import { StudyLayout } from "./StudyBar";
+import { Working } from "../../components/Working";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
 type RatingName = (typeof RATINGS)[number];
@@ -571,6 +572,18 @@ export function CardsPage() {
         }.`
       : t(lastAction.kind === "suspend" ? "cards.suspended" : "cards.deleted");
 
+  // Stops the cards being written; those already written stay.
+  const cancelBuild = build.data ? (
+    <Button
+      type="text"
+      size="small"
+      onClick={() =>
+        void invoke("jobs.cancel", { jobId: build.data?.jobId ?? "" }).then(() => build.refetch())
+      }
+    >
+      {t("jobs.cancel")}
+    </Button>
+  ) : null;
   return (
     <StudyLayout
       back={
@@ -639,7 +652,10 @@ export function CardsPage() {
         {askFailed ? (
           <Notice tone="danger">{t("cards.askFailed")}</Notice>
         ) : null}
-        {building ? (
+        {building && card ? (
+          <Working line={t("cards.building")} action={cancelBuild} />
+        ) : building ? (
+          // The card below already shows the mark at work; this line only says what happens and how to stop it.
           <Notice
             tone="info"
             action={
@@ -647,9 +663,7 @@ export function CardsPage() {
                 ? {
                     label: t("jobs.cancel"),
                     onClick: () =>
-                      void invoke("jobs.cancel", {
-                        jobId: build.data?.jobId ?? "",
-                      }).then(() => build.refetch()),
+                      void invoke("jobs.cancel", { jobId: build.data?.jobId ?? "" }).then(() => build.refetch()),
                   }
                 : undefined
             }
@@ -702,7 +716,7 @@ export function CardsPage() {
             // While the first cards are written, a card waits where they will appear, with the mark at work.
             <div className="px-cards-stage">
               <div className="px-card px-card-waiting" role="status">
-                <Logo size={40} working />
+                <Logo size={40} working decorative />
                 <p>{t("cards.writingFirst")}</p>
               </div>
             </div>

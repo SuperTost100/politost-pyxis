@@ -4,7 +4,6 @@ import {
   BookMarked,
   CheckCircle2,
   FileText,
-  LoaderCircle,
   MoreHorizontal,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -13,6 +12,7 @@ import { useJobs } from "../features/jobs/queries";
 import { i18n } from "../locales/i18n";
 import "./SourceRow.css";
 import { formatBytes } from "@shared/format-bytes";
+import { Logo } from "./Logo";
 
 export const sizeText = (bytes: number) => formatBytes(bytes, i18n.language);
 
@@ -113,7 +113,7 @@ export function SourceRow(props: {
         ) : problem ? (
           <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
         ) : (
-          <LoaderCircle className="px-spin" size={16} strokeWidth={1.75} aria-hidden />
+          <Logo size={16} working decorative />
         )}
         {t(`sources.status.${source.status}`, { defaultValue: source.status })}
         {source.status === "ocr-queued" && source.scanJobId ? (

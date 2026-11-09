@@ -34,6 +34,7 @@ import { PastPapers } from "./PastPapers";
 import "./PlanPage.css";
 import { pastPapersQuery, scheduleQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
+import { Working } from "../../components/Working";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
 
@@ -199,7 +200,7 @@ export function PlanPage() {
     return (
       <section>
         <h1 className="title-1">{plan.data.title}</h1>
-        <p>{t("wizard.buildInProgress")}</p>
+        <Working line={t("wizard.buildInProgress")} />
         <Button
           type="primary"
           onClick={() => navigate(`/plans/new?build=${planId}`)}

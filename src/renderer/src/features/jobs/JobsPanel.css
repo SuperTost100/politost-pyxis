@@ -1,5 +1,6 @@
-/* The Attività list beside the sidebar (pyxis-mockups app/index.html, "s-jobs"): what needs the student, what is
-   running, what finished today. */
+/* The Attività list in the page's top-right corner (pyxis-mockups app/index.html, "s-jobs-new"): what needs the
+   student, what is running, what finished today. Motion values fall back to the design system's numbers until the
+   global motion tokens exist. */
 /* Transparent room above and below the list: when it slides to stay inside the window, it stops 16px from the edge. */
 .ant-popover.px-jobs-popover {
   padding-block: 16px;
@@ -16,8 +17,83 @@
   width: min(420px, calc(100vw - 32px));
   max-height: min(724px, calc(100vh - 96px));
   overflow-y: auto;
+  scrollbar-gutter: stable;
   outline: none;
   border-radius: var(--radius-lg);
+}
+
+/* Scrollbar A, the thin bar in the app's colours, kept to this list until the app has it everywhere. Chromium ignores
+   these rules on an element that sets scrollbar-width or scrollbar-color, so neither is set. */
+.px-jobs::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.px-jobs::-webkit-scrollbar-track,
+.px-jobs::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.px-jobs::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb, color-mix(in srgb, var(--ink) 30%, transparent)) padding-box;
+}
+.px-jobs::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: var(--scrollbar-thumb-hover, color-mix(in srgb, var(--ink) 50%, transparent));
+}
+
+/* The list grows out of its button, whose bottom-right corner it opens under, and shrinks back into it. */
+.px-jobs-popover {
+  transform-origin: top right;
+}
+@keyframes px-jobs-grow-in {
+  from { opacity: 0; transform: scale(0.94); }
+}
+@keyframes px-jobs-grow-out {
+  to { opacity: 0; transform: scale(0.94); }
+}
+@keyframes px-jobs-fade-in {
+  from { opacity: 0; }
+}
+@keyframes px-jobs-fade-out {
+  to { opacity: 0; }
+}
+.px-jobs-grow-enter,
+.px-jobs-grow-appear,
+.px-jobs-grow-leave {
+  animation-fill-mode: both;
+  animation-play-state: paused;
+  animation-timing-function: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.px-jobs-grow-enter,
+.px-jobs-grow-appear {
+  opacity: 0;
+  animation-duration: 180ms;
+}
+.px-jobs-grow-leave {
+  animation-duration: 120ms;
+}
+.px-jobs-grow-enter.px-jobs-grow-enter-active,
+.px-jobs-grow-appear.px-jobs-grow-appear-active {
+  animation-name: px-jobs-grow-in;
+  animation-play-state: running;
+}
+.px-jobs-grow-leave.px-jobs-grow-leave-active {
+  animation-name: px-jobs-grow-out;
+  animation-play-state: running;
+  pointer-events: none;
+}
+/* Reduced motion: a 120 ms fade, which the app's cut of every other animation must not shorten. */
+@media (prefers-reduced-motion: reduce) {
+  .px-jobs-grow-enter.px-jobs-grow-enter-active,
+  .px-jobs-grow-appear.px-jobs-grow-appear-active {
+    animation-name: px-jobs-fade-in;
+    animation-duration: 120ms !important;
+  }
+  .px-jobs-grow-leave.px-jobs-grow-leave-active {
+    animation-name: px-jobs-fade-out;
+    animation-duration: 120ms !important;
+  }
 }
 
 .px-jobs:focus-visible {
@@ -65,15 +141,23 @@
   border-top: 1px solid var(--border);
 }
 
-.px-jobs-group > .label {
+.px-jobs-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  padding: 0 0 4px 14px;
+}
+
+.px-jobs-group-head > .label {
   display: block;
   margin: 0;
-  padding: 0 14px 4px;
   color: var(--ink-subtle);
   font: 650 12.5px/1.3 var(--font-sans);
 }
 
-.px-jobs-group.is-needs > .label {
+.px-jobs-group.is-needs .px-jobs-group-head > .label {
   color: var(--ink);
 }
 
@@ -85,6 +169,7 @@
 
 .px-jobs-what {
   margin: 0;
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
   font-size: 14px;
   line-height: 20px;
@@ -148,10 +233,13 @@
 }
 
 .px-jobs-caret {
-  transition: transform 0.15s;
+  flex: none;
+  color: var(--ink-subtle);
+  transition: transform var(--duration-small, 200ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
-.px-jobs-caret.is-open {
+.px-jobs-caret.is-open,
+.px-jobs-batch.is-open .px-jobs-caret {
   transform: rotate(180deg);
 }
 
@@ -282,9 +370,141 @@
   color: var(--primary-text);
 }
 
-.px-jobs-row .ant-progress {
-  margin: 6px 0 0;
-  line-height: 1;
+/* How far a job is: 4 px under its line, filling linearly. */
+.px-jobs-bar {
+  display: block;
+  height: 4px;
+  margin-top: var(--space-2);
+  border-radius: 2px;
+  background: var(--ring-track);
+  overflow: hidden;
+}
+
+.px-jobs-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary-text);
+  transition: width 300ms linear;
+}
+
+.px-jobs-mark.is-working {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+}
+
+/* A request's jobs as one row: the row is a button that opens the list of them in place. */
+.px-jobs-batch-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.px-jobs-batch-main {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 2px 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 9px 8px 10px 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-micro, 120ms) ease-out;
+}
+
+.px-jobs-batch-main:has(> .px-jobs-when) {
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+}
+
+.px-jobs-batch-main:hover {
+  background: var(--surface-raised);
+}
+
+.px-jobs-batch-main:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.px-jobs-batch-main .px-jobs-body {
+  display: grid;
+}
+
+.px-jobs-batch-main .px-jobs-caret {
+  margin-top: 2px;
+}
+
+.px-jobs-batch-head > .ant-btn {
+  margin: 5px 8px 0 0;
+}
+
+/* The list grows in place, its height first, and the rows below move down. */
+.px-jobs-more {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-small, 200ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+
+.px-jobs-batch.is-open > .px-jobs-more {
+  grid-template-rows: 1fr;
+}
+
+.px-jobs-more > ul {
+  min-height: 0;
+  overflow: hidden;
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 0 46px;
+}
+
+.px-jobs-more li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.px-jobs-more li:last-child {
+  margin-bottom: var(--space-2);
+}
+
+.px-jobs-item {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-jobs-item-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-subtle);
+  white-space: nowrap;
+}
+
+.px-jobs-more li.px-jobs-rest {
+  color: var(--ink-subtle);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-jobs-more,
+  .px-jobs-caret {
+    transition: none;
+  }
 }
 
 .px-jobs-note {
@@ -321,6 +541,20 @@
 
 .px-jobs-trigger .px-jobs-part.is-problem {
   color: var(--danger);
+}
+
+/* While jobs run, the clock's hands turn once every 6 seconds. With reduced motion they stay still and the count
+   carries the state. */
+.px-jobs-hands {
+  transform-origin: 12px 12px;
+}
+@keyframes px-jobs-hands {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-jobs-clock.is-running .px-jobs-hands {
+    animation: px-jobs-hands 6s linear infinite;
+  }
 }
 
 .px-jobs-trigger .px-jobs-sep {

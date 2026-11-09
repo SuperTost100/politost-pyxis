@@ -46,10 +46,7 @@
   color: var(--ink-muted);
 }
 .px-mc-working {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  color: var(--ink-muted);
+  min-height: 180px;
 }
 .px-mc-list {
   display: flex;

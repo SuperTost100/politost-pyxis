@@ -464,6 +464,12 @@
   margin: 0;
 }
 
+/* Maps being built: the working mark where the map will appear. */
+.px-map-working {
+  flex: 1;
+  background: var(--map-canvas);
+}
+
 @media (max-width: 1000px) {
   .px-map-lower {
     flex-wrap: wrap;

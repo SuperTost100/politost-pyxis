@@ -36,6 +36,7 @@ import { toPng } from "html-to-image";
 import { Button } from "../../components/Button";
 import { IconButton } from "../../components/IconButton";
 import { LoadError } from "../../components/LoadError";
+import { Working } from "../../components/Working";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
@@ -904,11 +905,7 @@ export function MapPage() {
           </>
         ) : null}
       </header>
-      {building && graph ? (
-        <p className="meta px-map-notice" role="status">
-          {t("map.building")}
-        </p>
-      ) : null}
+      {building && graph ? <Working className="px-map-notice" line={t("map.building")} /> : null}
       {notice ? (
         <p className="small px-map-notice" role="status">
           {notice}
@@ -928,11 +925,11 @@ export function MapPage() {
         <p className="meta px-map-notice">{t("map.general")}</p>
       ) : null}
       <div className="px-map-card">
-        {!graph ? (
+        {!graph && building ? (
+          <Working slot className="px-map-working" line={t("map.building")} />
+        ) : !graph ? (
           <div className="px-map-empty">
-            <h2 className="title-2">
-              {t(building ? "map.building" : "map.empty")}
-            </h2>
+            <h2 className="title-2">{t("map.empty")}</h2>
             <p className="small">{t("map.emptyBody")}</p>
             <Button disabled={disabled} onClick={() => void generateMaps()}>
               {t("map.generate")}

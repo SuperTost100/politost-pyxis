@@ -4,17 +4,20 @@ import "./Logo.css";
 /**
  * With `working` the rings turn around the centre, ring 1 clockwise and the next ones alternating.
  * Each ring sits in a group with an invisible full circle so its fill box is centred on the mark.
+ * `decorative` hides the mark from screen readers, for a mark beside a line that says what it means.
  */
 export function Logo({
   size = 32,
   wordmark,
   inverse,
   working,
+  decorative,
 }: {
   size?: number;
   wordmark?: boolean;
   inverse?: boolean;
   working?: boolean;
+  decorative?: boolean;
 }) {
   const stroke = inverse ? "var(--on-primary)" : "var(--ink)";
   const mark = (
@@ -22,9 +25,9 @@ export function Logo({
       width={size}
       height={size}
       viewBox="6 10 88 88"
-      role="img"
-      aria-label={wordmark ? undefined : "Pyxis"}
-      aria-hidden={wordmark ? true : undefined}
+      role={decorative ? undefined : "img"}
+      aria-label={wordmark || decorative ? undefined : "Pyxis"}
+      aria-hidden={wordmark || decorative ? true : undefined}
       className={working ? "px-logo-working" : undefined}
       style={{ flex: "none" }}
     >

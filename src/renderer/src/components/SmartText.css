@@ -263,29 +263,7 @@
   gap: var(--space-2);
 }
 
-.px-sb-skeleton {
-  display: block;
-  height: 12px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-raised);
-  animation: px-sb-pulse 1.4s ease-in-out infinite;
-}
-
-.px-sb-skeleton.is-short {
-  width: 60%;
-}
-
-@keyframes px-sb-pulse {
-  50% {
-    opacity: 0.5;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .px-sb-skeleton {
-    animation: none;
-  }
-
   .px-sb-toggle svg {
     transition: none;
   }

@@ -11,6 +11,8 @@
   .px-logo-ring-2 { animation: px-logo-ccw 3.2s linear infinite; }
   .px-logo-ring-3 { animation: px-logo-cw 4s linear infinite; }
 }
+/* With reduced motion the rings stay still and the mark breathes instead. The app cuts every other animation short
+   under reduced motion (global.css), so the breath keeps its own duration. */
 @media (prefers-reduced-motion: reduce) {
-  .px-logo-working { animation: px-logo-breathe 1.6s ease-in-out infinite; }
+  .px-logo-working { animation: px-logo-breathe 1.6s ease-in-out infinite; animation-duration: 1.6s !important; }
 }

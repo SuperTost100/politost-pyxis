@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal } from "antd";
-import { Check, LoaderCircle } from "lucide-react";
+import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
@@ -8,6 +8,7 @@ import { invoke } from "../lib/ipc";
 import { Notice } from "./Notice";
 import "./FreeBooks.css";
 import { formatBytes } from "@shared/format-bytes";
+import { Logo } from "./Logo";
 
 type Book = RequestOutput<"sources.books">[number];
 export type AddedBook = { sourceId: string; title: string; subject: string };
@@ -127,7 +128,7 @@ export function FreeBooks({
     if (sourceId && book.update === "running")
       return (
         <span className="small px-books-state">
-          <LoaderCircle size={14} aria-hidden />
+          <Logo size={14} working decorative />
           {t("books.updating")}
         </span>
       );
