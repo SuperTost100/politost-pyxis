@@ -29,7 +29,7 @@ Every rule here has a live example on the design system page in the private mock
 ## Changing the system
 
 - Add or change a token before writing a new value by hand in a screen.
-- `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when their colours differ. It doesn't compare spacing, radii, sizes, motion or shadows, so check those by hand.
+- `tokens.json` feeds the Ant Design theme and `tokens.css` the CSS. Change both: `tokens.test.ts` fails when their colours, motion or scrollbar tokens differ. It doesn't compare spacing, radii, sizes, type or shadows, so check those by hand.
 - `token-contrast.test.ts` and `link-contrast.test.ts` check selected pairs in both themes: the text tokens and links at 4.5:1 on each ground, controls, rings and the scrollbar thumb on hover at 3:1, and the soft pairs they list. A new pair of text and ground needs its own line there.
 - Keep visible focus, both themes and both languages. The route audit (`tests/e2e/ui-audit.spec.ts`) checks the states it lists at 1280 and 960 pixels in Italian and English, light and dark. A screen it doesn't list needs a state added there, or a look by hand.
 - Fix a rule in the shared component or the token, not screen by screen.

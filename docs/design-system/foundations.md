@@ -48,7 +48,7 @@ Young Serif for titles, Figtree for everything else, all bundled under the OFL. 
 | `.small`       | Figtree 13/18                  | Descriptions, times, counts                                                       |
 | `.label`       | Figtree 600, 13/18             | The one label style: sentence case, never capitals                                |
 | `.meta`        | Figtree 12/16, tabular figures | Values in a row: grades, dates, counts, model names                               |
-| `.code`        | JetBrains Mono 15/22           | Raw input and paths only                                                          |
+| `.code`        | JetBrains Mono 13/20           | Raw input and paths only                                                          |
 
 - **Mono is for text that is code**: the raw input of the formula field, a folder path in Dati e privacy, token names in docs. Grades, dates, times, counts and model names stay in Figtree with tabular figures.
 - **Headlines** say what is on the screen ("Come ti spiega", not "Impostazioni generali") and wrap with `text-wrap: balance`, so a two-line title never leaves one word alone.
