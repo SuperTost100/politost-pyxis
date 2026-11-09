@@ -602,10 +602,11 @@ html[data-platform="darwin"] .canvas-bar {
   }
 }
 
-/* Reduced motion keeps the fallbacks in docs/design-system/motion.md: nothing moves, but colour, fills and opacity
-   still change over --duration-micro, so a popover or a sheet fades in place and a press changes colour only. A
-   transform or a height jumps to its end, and keyframe animations run once and end at once. The working mark keeps its
-   own fallback, a slow breath (Logo.css). */
+/* Reduced motion keeps the fallbacks in docs/design-system/motion.md: nothing moves, but an element that fades or
+   changes colour still does, over its own duration, so a popover or a sheet fades in place and a press changes colour
+   only. A transform or a height jumps to its end, and keyframe animations run once and end at once. Elements with no
+   transition of their own get none, so a theme applied at start-up doesn't fade the whole window. The working mark
+   keeps its own fallback, a slow breath (Logo.css). */
 @media (prefers-reduced-motion: reduce) {
   *:not(.px-logo-working),
   *::before,
@@ -614,7 +615,6 @@ html[data-platform="darwin"] .canvas-bar {
     animation-iteration-count: 1 !important;
     animation-delay: 0s !important;
     transition-property: color, background-color, border-color, outline-color, box-shadow, opacity !important;
-    transition-duration: var(--duration-micro) !important;
     transition-delay: 0s !important;
   }
 }

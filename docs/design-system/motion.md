@@ -44,7 +44,7 @@ The table below gives exact times where a kind needs one; they stay within the t
 
 With `prefers-reduced-motion: reduce`, the global rule in `global.css` turns movement off and keeps fades:
 
-- Transitions keep only colour, fill, border, shadow and opacity, at `--duration-micro`. A transform or a height then jumps to its end, so a popover or a sheet fades in place and a row opens at once.
+- Transitions keep only colour, fill, border, shadow and opacity, at the element's own duration. A transform or a height then jumps to its end, so a popover or a sheet fades in place and a row opens at once. An element with no transition of its own gets none.
 - Keyframe animations run once and end at once, except the working mark, which breathes.
 
 A component needs its own reduced-motion rule only when the fallback in the table differs from that, such as a flashcard that cross-fades instead of turning.
