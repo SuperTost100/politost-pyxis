@@ -494,7 +494,7 @@ export function planGuide(
 
 /**
  * Every subject in its order, whether anything still uses it (an exam, a source, a map or a chat), and how many maps of
- * the whole subject it has, which removing it deletes. A subject outlives the
+ * the whole subject it has, which removing it deletes. A row holding one bare graph, as before collections, is one map. A subject outlives the
  * exam it came with, so the exam form offers only the ones in use, while the subject manager lists them all.
  */
 export function listSubjects(db: Database.Database) {
@@ -506,7 +506,8 @@ export function listSubjects(db: Database.Database) {
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used,
-           COALESCE((SELECT json_array_length(m.graph_json, '$.maps') FROM maps m
+           COALESCE((SELECT CASE WHEN json_type(m.graph_json, '$.maps') = 'array'
+               THEN json_array_length(m.graph_json, '$.maps') ELSE 1 END FROM maps m
              WHERE m.subject_id = s.id AND m.plan_id IS NULL AND m.topic_id IS NULL), 0) AS wholeMaps
          FROM subjects s ORDER BY s.position, s.name, s.id`,
       )

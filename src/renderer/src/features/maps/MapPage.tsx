@@ -288,6 +288,7 @@ export function MapPage() {
   const [sourceOpen, setSourceOpen] = useState(false);
   const sourceTrigger = useRef<HTMLElement | null>(null);
   const sourcePanel = useRef<HTMLElement>(null);
+  const sourceSlot = useRef<HTMLDivElement>(null);
   const sourceTitleId = useId();
   // Picking another concept meanwhile removes that button, so focus goes to the concept selected now.
   const closeSource = useCallback(() => {
@@ -312,12 +313,12 @@ export function MapPage() {
   }
   // Focus moves into the panel once it is no longer inert, so the keyboard and screen readers follow it there. When the
   // narrower canvas has hidden the concept whose source is open, the view moves just enough to show it, at the same
-  // zoom, once the panel has slid in; the rest of the map stays where it was.
+  // zoom, once the panel's slot has finished growing; the rest of the map stays where it was.
   useEffect(() => {
     if (!sourceOpen) return;
     sourcePanel.current?.focus({ preventScroll: true });
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setTimeout(() => {
+    const reveal = () => {
       const instance = flow.current;
       const node = selected ? instance?.getInternalNode(selected) : undefined;
       const box = canvas.current?.getBoundingClientRect();
@@ -341,8 +342,18 @@ export function MapPage() {
       const dy = shift(top, top + height * zoom, box.height);
       if (dx || dy)
         void instance.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: reduced ? 0 : 200 });
-    }, reduced ? 0 : 260);
-    return () => window.clearTimeout(timer);
+    };
+    const slot = sourceSlot.current;
+    // A slot that was open already, or under reduced motion, does not move, so no transition ends.
+    if (reduced || !slot || slot.getBoundingClientRect().width >= (sourcePanel.current?.offsetWidth ?? 0)) {
+      const timer = window.setTimeout(reveal, 0);
+      return () => window.clearTimeout(timer);
+    }
+    const ended = (event: TransitionEvent) => {
+      if (event.target === slot && event.propertyName === "width") reveal();
+    };
+    slot.addEventListener("transitionend", ended);
+    return () => slot.removeEventListener("transitionend", ended);
     // Only opening the panel, or another source in it, moves the view; picking a concept afterwards does not.
   }, [sourceOpen, openSourceAt]);
   useEffect(() => {
@@ -1307,7 +1318,11 @@ export function MapPage() {
         )}
       </div>
       {/* The source panel beside the card, from the page's right edge. It is inert while closed or sliding out. */}
-      <div className={sourceOpen ? "px-map-source is-open" : "px-map-source"} inert={!sourceOpen}>
+      <div
+        ref={sourceSlot}
+        className={sourceOpen ? "px-map-source is-open" : "px-map-source"}
+        inert={!sourceOpen}
+      >
         <aside
           ref={sourcePanel}
           className="px-map-source-panel"
