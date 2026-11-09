@@ -7,7 +7,8 @@
   padding: var(--space-1);
   background: var(--surface-overlay);
   border: 1px solid var(--border-control);
-  border-radius: var(--radius-pill);
+  /* Its buttons take the field radius, 4px in. */
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow-overlay);
 }
 .px-selection-menu [role="alert"] {

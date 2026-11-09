@@ -129,7 +129,7 @@
 .px-formula-insert {
   height: 44px;
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-field);
   background: var(--primary);
   color: var(--on-primary);
   font: 600 calc(15px * var(--text-scale, 1)) / 1 var(--font-sans);

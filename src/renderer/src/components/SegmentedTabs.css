@@ -2,12 +2,13 @@
   display: inline-flex;
   gap: 2px;
   padding: 4px;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-field);
   background: var(--surface);
   border: 1px solid var(--border);
 }
+/* Nested corners: the track's 10 less its 4px of padding, rounded to the row radius. */
 .px-seg-wrap .px-seg .ant-segmented-item {
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
 }
 .px-seg-wrap .px-seg .ant-segmented-item-label {
   /* antd gives the label a min-height and a line box, which leaves the text on the top edge. */
@@ -26,7 +27,7 @@
 }
 .px-seg-wrap .px-seg .ant-segmented-item-selected {
   background: var(--ink);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
 }
 .px-seg-item-inner {
   display: inline-flex;
