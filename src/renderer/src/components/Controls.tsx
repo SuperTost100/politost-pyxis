@@ -469,8 +469,19 @@ export function PreviewTiles<T extends string>({
   value: T;
   /** `preview` is drawn inside the tile's frame, which keeps a 16:10 shape. */
   options: Array<{ value: T; label: ReactNode; preview: ReactNode }>;
-  onChange: (value: T) => void;
+  /** May return the save; once it settles, the tiles show the stored value again, as RadioRows does. */
+  onChange: (value: T) => void | Promise<unknown>;
 }) {
+  // A pick shows at once, while the setting it changes catches up (the theme applies a moment later).
+  const [picked, setPicked] = useState<{ from: T; to: T } | null>(null);
+  const shown = picked && picked.from === value ? picked.to : value;
+  const pick = (next: T) => {
+    const change = { from: value, to: next };
+    setPicked(change);
+    void Promise.resolve(onChange(next))
+      .catch(() => undefined)
+      .finally(() => setPicked((current) => (current === change ? null : current)));
+  };
   return (
     <div
       className="px-ctl px-ctl-tiles"
@@ -485,9 +496,9 @@ export function PreviewTiles<T extends string>({
               : 0;
         if (!step) return;
         event.preventDefault();
-        const at = options.findIndex((option) => option.value === value);
+        const at = options.findIndex((option) => option.value === shown);
         const next = options[(at + step + options.length) % options.length]!;
-        onChange(next.value);
+        pick(next.value);
         (event.currentTarget.querySelector(`[data-value="${next.value}"]`) as HTMLElement | null)?.focus();
       }}
     >
@@ -498,9 +509,9 @@ export function PreviewTiles<T extends string>({
           role="radio"
           className="px-ctl-tile"
           data-value={option.value}
-          aria-checked={value === option.value}
-          tabIndex={value === option.value ? 0 : -1}
-          onClick={() => onChange(option.value)}
+          aria-checked={shown === option.value}
+          tabIndex={shown === option.value ? 0 : -1}
+          onClick={() => pick(option.value)}
         >
           <span className="px-ctl-tile-frame" aria-hidden="true">
             {option.preview}
