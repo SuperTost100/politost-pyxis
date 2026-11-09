@@ -55,6 +55,12 @@ const buttonIcons = {
 };
 
 /**
+ * No ripple on press (docs/design-system/controls.md): a button gives way by scaling, and antd's wave would add a glow
+ * that fades for two seconds.
+ */
+const noWave = { disabled: true };
+
+/**
  * Notices open in the page column, under the strip that drags the window and under Attività: Shell keeps a host for
  * them at the top of the column. Before the shell is up they open in the body, at the same height. Their look and
  * width are in global.css.
@@ -133,6 +139,7 @@ function StudyApp() {
         locale={locale === "it" ? itIT : enUS}
         select={selectIcons}
         datePicker={dateIcons}
+        wave={noWave}
         button={buttonIcons}
       >
         <AntApp message={messageConfig}>
