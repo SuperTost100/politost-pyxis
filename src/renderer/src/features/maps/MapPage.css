@@ -498,3 +498,114 @@
     animation: px-map-fade 0.12s ease-out;
   }
 }
+
+/* The subject a whole-subject map belongs to, where a topic map links its exam. */
+.px-map-subject {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The card and, when a concept's source is open, the source panel beside it. */
+.px-map-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.px-map-body > .px-map-card {
+  flex: 1;
+  min-width: 0;
+}
+/*
+ * The source panel (pyxis-mockups app/index.html, "s-chat-page"; design system, "Side panels"). Its slot grows from the
+ * page's right edge while the panel inside keeps its width, so the panel slides in from that edge and the canvas narrows
+ * beside it in the same motion. The slot clips what does not fit yet, so the page never scrolls sideways, with a margin
+ * that leaves the panel's shadow visible.
+ */
+.px-map-source {
+  --source-width: clamp(300px, 36vw, 460px);
+  --source-motion: 240ms;
+  flex: none;
+  width: 0;
+  visibility: hidden;
+  overflow: clip;
+  overflow-clip-margin: 24px;
+  transition:
+    width var(--source-motion) var(--map-ease),
+    visibility 0s linear var(--source-motion);
+}
+.px-map-source.is-open {
+  width: calc(var(--source-width) + var(--space-3));
+  visibility: visible;
+  transition: width var(--source-motion) var(--map-ease);
+}
+.px-map-source-panel {
+  display: flex;
+  flex-direction: column;
+  width: var(--source-width);
+  height: 100%;
+  margin-left: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-map-source-panel:focus {
+  outline: none;
+}
+.px-map-source-panel:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-map-source-head {
+  flex: none;
+  padding: 10px 10px 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.px-map-source-head .source-viewer-title > span {
+  font-weight: 600;
+}
+.px-map-source-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--space-2) var(--space-4);
+}
+/* Reduced motion: the panel takes its place at once and only fades in and out. */
+@media (prefers-reduced-motion: reduce) {
+  .px-map-source {
+    transition:
+      width 0s linear 120ms,
+      visibility 0s linear 120ms;
+  }
+  .px-map-source.is-open {
+    transition: none;
+  }
+  .px-map-source-panel {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+  .px-map-source.is-open .px-map-source-panel {
+    opacity: 1;
+  }
+}
+/* A card narrowed by the source panel puts the concept's tools on their own line, so its sources and Chiedi keep their
+   names. */
+.px-map-card {
+  container: px-map-card / inline-size;
+}
+@container px-map-card (max-width: 600px) {
+  .px-map-node {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+  .px-map-node-sources {
+    flex: 1 1 auto;
+  }
+  .px-map-tools {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}

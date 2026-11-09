@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { foldText } from "@shared/fold-text";
+import { mapPath } from "../features/maps/mapPath";
 import { openSourceViewer } from "../components/SourceViewer";
 import { RenameField, type ChatActions } from "../features/ask/chatActions";
 import { groupChats, titleMatches, type ChatGroup } from "../features/ask/chatList";
@@ -141,11 +142,10 @@ export function Finder({
       {
         label: t("finder.maps"),
         rows: (maps.data ?? []).slice(0, PER_KIND).map((map) => ({
-          key: `map:${map.planId}:${map.topicId}:${map.id}`,
+          key: `map:${map.subjectId}:${map.planId}:${map.topicId}:${map.id}`,
           title: map.title,
           sub: map.subjectName ?? map.planTitle,
-          go: () =>
-            navigate(`/plans/${map.planId}/map/${map.topicId}?from=maps&map=${encodeURIComponent(map.id)}`),
+          go: () => navigate(mapPath(map)),
         })),
       },
       {

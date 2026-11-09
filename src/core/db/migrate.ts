@@ -247,6 +247,43 @@ ALTER TABLE linked_files ADD COLUMN sorted_at INTEGER;
 CREATE INDEX linked_files_pending ON linked_files(folder_id) WHERE pending > 0;
 CREATE INDEX linked_files_gone ON linked_files(size)
   WHERE missing_at IS NOT NULL AND source_id IS NOT NULL AND content_hash IS NOT NULL;`,
+  // A map belongs to a subject, and only optionally to an exam topic. `maps.plan_id` becomes nullable, which SQLite can
+  // only do by rebuilding the table; nothing references `maps`, so the rows move as they are. Each row takes its
+  // exam's subject (NULL when the exam has none). A row of a whole subject has no plan and no topic, and a subject
+  // has at most one. The two triggers keep a topic map's subject equal to its exam's, whichever code writes either.
+  {
+    version: 26,
+    sql: `CREATE TABLE maps_next (
+  id TEXT PRIMARY KEY,
+  subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL,
+  plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
+  topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
+  graph_json TEXT NOT NULL CHECK (json_valid(graph_json)),
+  engine_provider TEXT,
+  model_id TEXT,
+  model_source TEXT CHECK (model_source IS NULL OR model_source IN ('reported', 'selected')),
+  prompt_template TEXT,
+  prompt_version TEXT,
+  grounding TEXT CHECK (grounding IS NULL OR grounding IN ('sources', 'mixed', 'general')),
+  created_at INTEGER NOT NULL
+);
+INSERT INTO maps_next (id, subject_id, plan_id, topic_id, graph_json, engine_provider, model_id, model_source,
+    prompt_template, prompt_version, grounding, created_at)
+  SELECT m.id, p.subject_id, m.plan_id, m.topic_id, m.graph_json, m.engine_provider, m.model_id, m.model_source,
+    m.prompt_template, m.prompt_version, m.grounding, m.created_at
+  FROM maps m LEFT JOIN plans p ON p.id = m.plan_id;
+DROP TABLE maps;
+ALTER TABLE maps_next RENAME TO maps;
+CREATE INDEX maps_plan ON maps(plan_id);
+CREATE INDEX maps_topic ON maps(topic_id);
+CREATE INDEX maps_subject ON maps(subject_id);
+CREATE UNIQUE INDEX maps_whole_subject ON maps(subject_id) WHERE plan_id IS NULL AND topic_id IS NULL;
+CREATE TRIGGER maps_take_plan_subject AFTER INSERT ON maps WHEN new.plan_id IS NOT NULL BEGIN
+  UPDATE maps SET subject_id = (SELECT subject_id FROM plans WHERE id = new.plan_id) WHERE id = new.id;
+END;
+CREATE TRIGGER plans_subject_to_maps AFTER UPDATE OF subject_id ON plans BEGIN
+  UPDATE maps SET subject_id = new.subject_id WHERE plan_id = new.id;
+END;`,
   },
 ];
 

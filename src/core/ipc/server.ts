@@ -313,6 +313,7 @@ const routes = {
   "tools.runtimeDownload": ["tools", "runtimeDownload", "bare"],
   "tools.python": ["tools", "python"],
   "maps.list": ["maps", "list"],
+  "maps.scope": ["maps", "scope"],
   "maps.export": ["maps", "export"],
   "maps.build": ["maps", "build"],
   "maps.generate": ["maps", "generate"],

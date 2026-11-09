@@ -493,7 +493,7 @@ export function planGuide(
 }
 
 /**
- * Every subject in its order, and whether anything still uses it: an exam, a source or a chat. A subject outlives the
+ * Every subject in its order, and whether anything still uses it: an exam, a source, a map or a chat. A subject outlives the
  * exam it came with, so the exam form offers only the ones in use, while the subject manager lists them all.
  */
 export function listSubjects(db: Database.Database) {
@@ -503,6 +503,7 @@ export function listSubjects(db: Database.Database) {
         `SELECT s.id, s.name,
            (EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
+             OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used
          FROM subjects s ORDER BY s.position, s.name, s.id`,
       )

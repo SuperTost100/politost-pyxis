@@ -186,15 +186,13 @@ describe("exportMap", () => {
       INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('p','Analisi 1','ready',1,1);
       INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('t','p','Derivate',0,1);
     `);
-    storeMap(db, "p", "t", {
+    storeMap(db, { planId: "p", topicId: "t" }, {
       id: "m1",
       title: "Derivate: regole/casi",
       passageIds: [],
       graph,
     });
-    const file = exportMap(db, {
-      planId: "p",
-      topicId: "t",
+    const file = exportMap(db, { planId: "p", topicId: "t" }, {
       mapId: "m1",
       language: "en",
     });
@@ -202,12 +200,19 @@ describe("exportMap", () => {
     expect(file.markdown).toContain("Exam: Analisi 1 · Topic: Derivate");
     expect(file.svg).toContain("<svg");
     expect(() =>
-      exportMap(db, {
-        planId: "p",
-        topicId: "t",
+      exportMap(db, { planId: "p", topicId: "t" }, {
         mapId: "nope",
         language: "en",
       }),
     ).toThrow("map-missing");
+  });
+
+  it("names the subject of a whole-subject map", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('s','Analisi I',0,1);`);
+    storeMap(db, { subjectId: "s" }, { id: "m1", title: "Analisi", passageIds: [], graph });
+    const file = exportMap(db, { subjectId: "s" }, { language: "it" });
+    expect(file.markdown).toContain("Materia: Analisi I\n");
+    expect(file.markdown).not.toContain("Esame:");
   });
 });

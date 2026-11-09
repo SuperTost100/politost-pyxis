@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input, Modal, Select } from "antd";
-import { ChevronLeft, ChevronRight, GraduationCap } from "lucide-react";
+import { ChevronLeft, ChevronRight, GraduationCap, Library } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -40,7 +41,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
-import { mapColors as fills, type MapOp } from "@shared/concept-map";
+import { mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
   NODE_MIN_HEIGHT,
@@ -55,9 +56,9 @@ import { describeChange } from "./mapChange";
 import { useMapExport } from "./MapExport";
 import { MAP_KEYS, MapMenu, type MapMenuGroup } from "./MapMenu";
 import { KeyCombo } from "../../app/ShortcutsDialog";
-import { useNodeSources } from "./nodeSources";
+import { useNodeSources, type NodeSource } from "./nodeSources";
+import { useSourceView } from "../../components/SourceViewer";
 import "./MapPage.css";
-import { usePlan } from "../../lib/queries";
 
 type FlowNode = Node<
   {
@@ -173,7 +174,17 @@ const edgeTypes = { cross: CrossEdge };
 
 export function MapPage() {
   const { t } = useTranslation();
-  const { planId = "", topicId = "" } = useParams();
+  // `/maps/:subjectId/:topicId?` names a subject and maybe one of its topics; `/plans/:planId/map/:topicId`, the older
+  // address, a topic of an exam. Core reads either as the same map.
+  const params = useParams();
+  const address = useMemo<MapAddress>(
+    () =>
+      params.topicId
+        ? { topicId: params.topicId, ...(params.planId ? { planId: params.planId } : {}) }
+        : { subjectId: params.subjectId ?? "" },
+    [params.subjectId, params.planId, params.topicId],
+  );
+  const scopeKey = params.topicId ?? `subject:${params.subjectId ?? ""}`;
   // The Maps section opens one map by id and expects its close button to lead back there.
   const [search, setSearch] = useSearchParams();
   const openMap = search.get("map") ?? undefined;
@@ -216,15 +227,15 @@ export function MapPage() {
   const flow = useRef<ReactFlowInstance<FlowNode> | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const moves = useRef<Promise<unknown>>(Promise.resolve());
-  const listKey = ["maps", planId, topicId];
+  const listKey = ["maps", scopeKey];
   const list = useQuery({
     queryKey: listKey,
-    queryFn: () => invoke("maps.list", { planId, topicId }),
+    queryFn: () => invoke("maps.list", address),
     refetchInterval: jobId ? 500 : false,
   });
   const build = useQuery({
-    queryKey: ["map-build", planId, topicId],
-    queryFn: () => invoke("maps.build", { planId, topicId }),
+    queryKey: ["map-build", scopeKey],
+    queryFn: () => invoke("maps.build", address),
     refetchInterval: (query) =>
       query.state.data && ["queued", "running"].includes(query.state.data.state)
         ? 500
@@ -251,18 +262,90 @@ export function MapPage() {
     setNotice("");
     setInstruction("");
     setLastChange(undefined);
-  }, [planId, topicId, openMap]);
-  const plan = usePlan(planId);
-  const mapKey = ["map", planId, topicId, activeId];
+  }, [scopeKey, openMap]);
+  // The subject, exam and topic the header names; the exam also gives flashcards and Chiedi their place.
+  const scope = useQuery({
+    queryKey: ["map-scope", scopeKey],
+    queryFn: () => invoke("maps.scope", address),
+  });
+  const planId = scope.data?.planId ?? undefined;
+  const topicId = scope.data?.topicId ?? undefined;
+  const subjectName = scope.data?.subjectName ?? undefined;
+  const wholeSubject = !params.topicId;
+  const mapKey = ["map", scopeKey, activeId];
   const map = useQuery({
     queryKey: mapKey,
     enabled: Boolean(activeId),
-    queryFn: () => invoke("maps.open", { planId, topicId, mapId: activeId }),
+    queryFn: () => invoke("maps.open", { ...address, mapId: activeId }),
   });
   const graph = map.data;
   const selectedNode = graph?.nodes.find((n) => n.id === selected);
   const root = graph?.nodes.find((n) => n.parent === null);
   const nodeSources = useNodeSources(selectedNode?.sources ?? []);
+  // A concept's source opens beside the map, at the passage it cites. The panel keeps its passage while it slides out,
+  // and Esc or its close button put focus back on the source button that opened it.
+  const [openSourceAt, setOpenSourceAt] = useState<NodeSource>();
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const sourceTrigger = useRef<HTMLElement | null>(null);
+  const sourcePanel = useRef<HTMLElement>(null);
+  const sourceTitleId = useId();
+  const closeSource = useCallback(() => {
+    setSourceOpen(false);
+    const trigger = sourceTrigger.current;
+    if (trigger?.isConnected) trigger.focus();
+  }, []);
+  const sourceView = useSourceView(
+    openSourceAt
+      ? { passageId: openSourceAt.passageId, sourceId: openSourceAt.sourceId }
+      : null,
+    { titleId: sourceTitleId, onClose: closeSource },
+  );
+  function openSource(picked: NodeSource, trigger: HTMLElement) {
+    sourceTrigger.current = trigger;
+    setOpenSourceAt(picked);
+    setSourceOpen(true);
+  }
+  // Focus moves into the panel once it is no longer inert, so the keyboard and screen readers follow it there. When the
+  // narrower canvas has hidden the concept whose source is open, the view moves to it, at the same zoom, once the panel
+  // has slid in.
+  useEffect(() => {
+    if (!sourceOpen) return;
+    sourcePanel.current?.focus({ preventScroll: true });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setTimeout(() => {
+      const instance = flow.current;
+      const node = selected ? instance?.getInternalNode(selected) : undefined;
+      const box = canvas.current?.getBoundingClientRect();
+      if (!instance || !node || !box) return;
+      const { x, y, zoom } = instance.getViewport();
+      const at = node.internals.positionAbsolute;
+      const width = node.measured.width ?? NODE_WIDTH;
+      const height = node.measured.height ?? NODE_MIN_HEIGHT;
+      const left = at.x * zoom + x;
+      const top = at.y * zoom + y;
+      if (left >= 0 && top >= 0 && left + width * zoom <= box.width && top + height * zoom <= box.height) return;
+      void instance.setCenter(at.x + width / 2, at.y + height / 2, { zoom, duration: reduced ? 0 : 200 });
+    }, reduced ? 0 : 260);
+    return () => window.clearTimeout(timer);
+    // Only opening the panel, or another source in it, moves the view; picking a concept afterwards does not.
+  }, [sourceOpen, openSourceAt]);
+  useEffect(() => {
+    if (!sourceOpen) return;
+    const escape = (event: KeyboardEvent) => {
+      // A dialog over the map takes its own Esc, and a menu that handled the key stopped it already.
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        (event.target instanceof Element && event.target.closest("[role='dialog']"))
+      )
+        return;
+      closeSource();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [sourceOpen, closeSource]);
+  // Another map, or another scope, starts without the panel.
+  useEffect(() => setSourceOpen(false), [scopeKey, activeId]);
   const title =
     list.data?.find((m) => m.id === activeId)?.title ?? t("map.title");
   const job = build.data;
@@ -285,7 +368,7 @@ export function MapPage() {
       void client.invalidateQueries({ queryKey: listKey });
       if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
     }
-  }, [job?.state, jobId, client, planId, topicId, t]);
+  }, [job?.state, jobId, client, scopeKey, t]);
   const radial = graph?.layout === "radial";
   const folded = useMemo(
     () =>
@@ -557,7 +640,7 @@ export function MapPage() {
   }
   function patch(ops: MapOp[]) {
     return commit(() =>
-      invoke("maps.patch", { planId, topicId, mapId: activeId, ops }),
+      invoke("maps.patch", { ...address, mapId: activeId, ops }),
     );
   }
   const changes = useCallback(
@@ -591,8 +674,7 @@ export function MapPage() {
           .catch(() => undefined)
           .then(() =>
             invoke("maps.move", {
-              planId,
-              topicId,
+              ...address,
               mapId: activeId,
               nodeId: change.id,
               x,
@@ -603,17 +685,17 @@ export function MapPage() {
           .catch(() => setNotice(t("map.editFailed")));
       }
     },
-    [planId, topicId, activeId, client],
+    [address, activeId, client],
   );
   async function generateMaps() {
     setBusy(true);
     setNotice("");
     try {
-      const result = await invoke("maps.generate", { planId, topicId });
+      const result = await invoke("maps.generate", address);
       setJobId(result.jobId);
       await client.invalidateQueries({ queryKey: listKey });
       await client.invalidateQueries({
-        queryKey: ["map-build", planId, topicId],
+        queryKey: ["map-build", scopeKey],
       });
     } catch {
       setNotice(t("map.generateFailed"));
@@ -675,7 +757,7 @@ export function MapPage() {
       origin: "map",
       planId,
       topicId,
-      subject: plan.data?.subject ?? undefined,
+      subject: subjectName,
       passageIds: [
         ...new Set(graph.nodes.flatMap((n) => n.sources ?? [])),
       ].slice(0, 1000),
@@ -701,7 +783,7 @@ export function MapPage() {
           ? nodeSources.map((source) => source.sourceId)
           : undefined,
         planId,
-        subject: plan.data?.subject ?? undefined,
+        subject: subjectName,
       });
       navigate(`/ask/${chatId}`);
     } catch {
@@ -716,8 +798,7 @@ export function MapPage() {
       async () => {
         setEditing(true);
         const result = await invoke("maps.edit", {
-          planId,
-          topicId,
+          ...address,
           mapId: activeId,
           instruction: asked,
         }).finally(() => setEditing(false));
@@ -740,15 +821,14 @@ export function MapPage() {
   }
   const undo = () =>
     void commit(() =>
-      invoke("maps.undo", { planId, topicId, mapId: activeId }),
+      invoke("maps.undo", { ...address, mapId: activeId }),
     );
   const redo = () =>
     void commit(() =>
-      invoke("maps.redo", { planId, topicId, mapId: activeId }),
+      invoke("maps.redo", { ...address, mapId: activeId }),
     );
   const mapExport = useMapExport({
-    planId,
-    topicId,
+    address,
     mapId: activeId,
     settle: () => moves.current.catch(() => undefined),
   });
@@ -766,8 +846,7 @@ export function MapPage() {
               if ((graph.layout ?? "tree") !== layout)
                 void commit(() =>
                   invoke("maps.layout", {
-                    planId,
-                    topicId,
+                    ...address,
                     mapId: activeId,
                     layout,
                   }),
@@ -877,16 +956,23 @@ export function MapPage() {
         <div className="px-map-title">
           <h1>{title}</h1>
           <p>
-            {plan.data ? (
+            {scope.data?.planTitle ? (
               <RouterLink
                 to={`/plans/${planId}`}
-                aria-label={t("map.openExam", { title: plan.data.title })}
+                aria-label={t("map.openExam", { title: scope.data.planTitle })}
               >
                 <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
-                <span>{plan.data.title}</span>
+                <span>{scope.data.planTitle}</span>
               </RouterLink>
+            ) : subjectName ? (
+              <span className="px-map-subject">
+                <Library size={14} strokeWidth={1.75} aria-hidden />
+                <span>{subjectName}</span>
+              </span>
             ) : null}
-            {plan.data && graph ? <span aria-hidden>·</span> : null}
+            {scope.data && (scope.data.planTitle || subjectName) && graph ? (
+              <span aria-hidden>·</span>
+            ) : null}
             {graph ? <span>{t("map.hint")}</span> : null}
           </p>
         </div>
@@ -927,15 +1013,16 @@ export function MapPage() {
       {list.data?.find((m) => m.id === activeId)?.grounding === "general" ? (
         <p className="meta px-map-notice">{t("map.general")}</p>
       ) : null}
+      <div className="px-map-body">
       <div className="px-map-card">
         {!graph ? (
           <div className="px-map-empty">
             <h2 className="title-2">
-              {t(building ? "map.building" : "map.empty")}
+              {t(building ? "map.building" : wholeSubject ? "map.emptySubject" : "map.empty")}
             </h2>
-            <p className="small">{t("map.emptyBody")}</p>
+            <p className="small">{t(wholeSubject ? "map.emptySubjectBody" : "map.emptyBody")}</p>
             <Button disabled={disabled} onClick={() => void generateMaps()}>
-              {t("map.generate")}
+              {t(wholeSubject ? "map.generateSubject" : "map.generate")}
             </Button>
           </div>
         ) : (
@@ -1039,10 +1126,11 @@ export function MapPage() {
                           variant="secondary"
                           size="sm"
                           icon="book-open"
-                          onClick={() =>
-                            navigate(
-                              `/exams/library?passage=${encodeURIComponent(source.passageId)}`,
-                            )
+                          expanded={
+                            sourceOpen && source.passageId === openSourceAt?.passageId
+                          }
+                          onClick={(event) =>
+                            openSource(source, event.currentTarget)
                           }
                         >
                           {source.page != null
@@ -1201,6 +1289,19 @@ export function MapPage() {
             </footer>
           </>
         )}
+      </div>
+      {/* The source panel beside the card, from the page's right edge. It is inert while closed or sliding out. */}
+      <div className={sourceOpen ? "px-map-source is-open" : "px-map-source"} inert={!sourceOpen}>
+        <aside
+          ref={sourcePanel}
+          className="px-map-source-panel"
+          aria-labelledby={sourceTitleId}
+          tabIndex={-1}
+        >
+          <div className="px-map-source-head">{sourceView.head}</div>
+          <div className="px-map-source-body">{sourceView.body}</div>
+        </aside>
+      </div>
       </div>
       <Modal
         title={t(

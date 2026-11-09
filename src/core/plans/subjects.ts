@@ -38,6 +38,10 @@ export function renameSubject(db: Database.Database, id: string, name: string): 
   })();
 }
 
+/** A whole subject's maps go with it; an exam's maps stay with the exam and lose only the subject. */
 export function removeSubject(db: Database.Database, id: string): void {
-  db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
+  db.transaction(() => {
+    db.prepare("DELETE FROM maps WHERE subject_id = ? AND plan_id IS NULL").run(id);
+    db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
+  })();
 }

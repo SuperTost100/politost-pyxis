@@ -37,7 +37,7 @@ function seed() {
     UPDATE topics SET archived_at = 5 WHERE id = 't-old';
   `);
   const put = (planId: string, topicId: string, id: string, labels: string[]) =>
-    storeMap(db, planId, topicId, {
+    storeMap(db, { planId, topicId }, {
       id,
       title: labels[0]!,
       passageIds: id === "m-general" ? [] : ["passage"],
@@ -107,6 +107,39 @@ describe("listAllMaps", () => {
     expect(mapShape({ nodes })).toEqual([2, 3, 4, 0, 0, 0]);
     expect(mapShape({ nodes: [node("only", null)] })).toEqual([]);
     expect(mapShape({ nodes: [] })).toEqual([]);
+  });
+
+  it("puts a whole subject's maps first in the subject, and keeps them when an exam moves to another subject", () => {
+    const db = seed();
+    storeMap(db, { subjectId: "chem" }, {
+      id: "m-chem-all",
+      title: "Chimica",
+      passageIds: ["passage"],
+      graph: graph(["Chimica", "Legami"]),
+    });
+    expect(listAllMaps(db).map((map) => map.id)).toEqual([
+      "m-motion",
+      "m-general",
+      "m-forces",
+      "m-chem-all",
+      "m-atoms",
+      "m-loose",
+    ]);
+    expect(listAllMaps(db, "legami")).toEqual([
+      expect.objectContaining({
+        id: "m-chem-all",
+        planId: null,
+        planTitle: null,
+        topicId: null,
+        topicTitle: null,
+        subjectId: "chem",
+        subjectName: "Chimica",
+      }),
+    ]);
+    // An exam's maps follow the exam into its new subject; the subject's own map stays where it was.
+    db.prepare("UPDATE plans SET subject_id = 'chem' WHERE id = 'p-loose'").run();
+    expect(listAllMaps(db).find((map) => map.id === "m-loose")).toMatchObject({ subjectId: "chem" });
+    expect(listAllMaps(db).map((map) => map.id).slice(3)).toEqual(["m-chem-all", "m-loose", "m-atoms"]);
   });
 
   it("reads a row saved before collections as one map", () => {

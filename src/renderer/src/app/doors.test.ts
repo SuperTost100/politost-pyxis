@@ -8,5 +8,8 @@ describe("isMapPath", () => {
     expect(isMapPath("/plans/p1/map")).toBe(false);
     expect(isMapPath("/plans/p1/lesson/t1")).toBe(false);
     expect(isMapPath("/maps")).toBe(false);
+    expect(isMapPath("/maps/")).toBe(false);
+    expect(isMapPath("/maps/s1")).toBe(true);
+    expect(isMapPath("/maps/s1/t1")).toBe(true);
   });
 });
