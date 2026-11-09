@@ -37,7 +37,8 @@
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--ink-muted);
-  font: 500 12px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 .px-opt-text {
   min-width: 0;

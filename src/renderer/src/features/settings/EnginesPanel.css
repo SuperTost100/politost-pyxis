@@ -190,8 +190,9 @@
 .engines-auto-model {
   margin-top: var(--space-2) !important;
   color: var(--ink-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The engine for each function, closed until opened: a summary that reads as a heading, with a caret that turns. */

@@ -42,7 +42,6 @@ export function Button({
       htmlType={type}
       type={antType}
       danger={variant === "danger"}
-      shape="round"
       size={antSize}
       block={block}
       disabled={disabled}
@@ -57,7 +56,7 @@ export function Button({
         .filter(Boolean)
         .join(" ")}
       icon={
-        icon ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : undefined
+        icon ? <Icon name={icon} size={size === "sm" ? 14 : 16} /> : undefined
       }
     >
       {children}

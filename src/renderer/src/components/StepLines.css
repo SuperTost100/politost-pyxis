@@ -25,10 +25,6 @@
   height: 24px;
 }
 
-.px-stepline-icon .px-spin {
-  transform-origin: center;
-}
-
 .px-stepline-icon.is-done {
   color: var(--mastery-text);
 }

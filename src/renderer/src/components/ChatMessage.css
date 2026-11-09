@@ -7,7 +7,7 @@
 .px-msg-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); }
 .px-msg-text { font: 400 calc(17px * var(--text-scale))/calc(28px * var(--text-scale)) var(--font-sans); max-width: 68ch; margin: 0; }
 .px-msg-foot { display: flex; align-items: center; gap: var(--space-1); margin-top: var(--space-2); flex-wrap: wrap; }
-.px-msg-engine { margin-left: auto; font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-mono); color: var(--ink-subtle); }
+.px-msg-engine { margin-left: auto; font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-sans); color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
 .px-msg-chips { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
 .px-msg-thinking { align-items: center; }
 .px-msg-cut { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-top: var(--space-3); }

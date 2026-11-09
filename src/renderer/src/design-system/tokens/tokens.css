@@ -149,9 +149,9 @@
   --radius-lg: 16px;
   --radius-xl: 24px;
   --radius-pill: 999px;
-  --control-sm: 32px;
-  --control-md: 40px;
-  --control-lg: 48px;
+  --control-sm: 30px;
+  --control-md: 34px;
+  --control-lg: 42px;
   --path-node: 80px;
   --content-width: 768px;
   --font-display: "Young Serif", Georgia, serif;
@@ -188,8 +188,8 @@
 }
 .title-1 {
   font-family: var(--font-display);
-  font-size: calc(28px * var(--text-scale, 1));
-  line-height: calc(34px * var(--text-scale, 1));
+  font-size: calc(36px * var(--text-scale, 1));
+  line-height: calc(40px * var(--text-scale, 1));
   font-weight: 400;
   letter-spacing: -0.01em;
 }
@@ -198,29 +198,30 @@
   font-size: calc(22px * var(--text-scale, 1));
   line-height: calc(28px * var(--text-scale, 1));
   font-weight: 400;
+  letter-spacing: -0.005em;
 }
 .title-3 {
   font-family: var(--font-sans);
-  font-size: calc(17px * var(--text-scale, 1));
-  line-height: calc(24px * var(--text-scale, 1));
-  font-weight: 600;
+  font-size: calc(15.5px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  font-weight: 650;
 }
 .reading {
   font-family: var(--font-sans);
-  font-size: calc(17px * var(--text-scale, 1));
-  line-height: calc(28px * var(--text-scale, 1));
+  font-size: calc(16px * var(--text-scale, 1));
+  line-height: 1.65;
   font-weight: 400;
 }
 .body {
   font-family: var(--font-sans);
-  font-size: calc(15px * var(--text-scale, 1));
-  line-height: calc(22px * var(--text-scale, 1));
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
   font-weight: 400;
 }
 .body-strong {
   font-family: var(--font-sans);
-  font-size: calc(15px * var(--text-scale, 1));
-  line-height: calc(22px * var(--text-scale, 1));
+  font-size: calc(14.5px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
   font-weight: 600;
 }
 .small {
@@ -229,7 +230,7 @@
   line-height: calc(18px * var(--text-scale, 1));
   font-weight: 400;
 }
-/* The one label style: Figtree 13 semibold, sentence case. Monospace stays for values (grades, dates, durations, model names). */
+/* The one label style: Figtree 13 semibold, sentence case. */
 .label {
   font-family: var(--font-sans);
   font-size: calc(13px * var(--text-scale, 1));
@@ -237,11 +238,14 @@
   font-weight: 600;
   letter-spacing: 0;
 }
+/* Values in a row (grades, dates, counts, model names): Figtree with tabular figures, so a changing number doesn't
+   shake the words after it. Mono is only for code, raw input and paths (.code). */
 .meta {
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: calc(12px * var(--text-scale, 1));
   line-height: calc(16px * var(--text-scale, 1));
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 .code {
   font-family: var(--font-mono);
