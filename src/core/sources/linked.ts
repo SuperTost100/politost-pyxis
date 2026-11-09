@@ -397,13 +397,14 @@ export function linkedFolders(deps: LinkedDeps) {
     let room = queueWindow - busy;
     // A folder whose readings the student stopped waits until they are resumed or cleared, so stopping them does not
     // just make room for its next files. The folder is found from the reading's source, which also covers readings
-    // queued before they recorded their folder.
+    // queued before they recorded their folder. The unary plus keeps SQLite on the state index, which holds only the
+    // few stopped jobs; the kind index would read every import of a large folder at every tick.
     const stopped = new Set(
       db
         .prepare(
           `SELECT DISTINCT l.folder_id FROM jobs j
            JOIN linked_files l ON l.source_id = json_extract(j.params_json, '$.sourceId')
-           WHERE j.state = 'cancelled' AND j.kind = 'source-import' AND j.dismissed = 0`,
+           WHERE j.state = 'cancelled' AND +j.kind = 'source-import' AND j.dismissed = 0`,
         )
         .pluck()
         .all() as string[],

@@ -881,6 +881,26 @@ describe("a large linked folder", () => {
     expect(plan.map((row) => row.detail).join(" ")).toContain("jobs_state");
   });
 
+  it("finds the folders with stopped readings through the jobs' state index, not by reading every import", async () => {
+    const app = bulk({ engine: false, paused: true, window: 4 });
+    const prepared: string[] = [];
+    const prepare = app.db.prepare.bind(app.db);
+    app.db.prepare = ((sql: string) => {
+      prepared.push(sql);
+      return prepare(sql);
+    }) as typeof app.db.prepare;
+    try {
+      await app.linked.link({ paths: [bigTree(20)], mode: "root" });
+      await app.linked.idle();
+      await expect.poll(() => prepared.some((sql) => sql.includes("JOIN linked_files l"))).toBe(true);
+    } finally {
+      app.db.prepare = prepare;
+    }
+    const sql = prepared.find((text) => text.includes("JOIN linked_files l"))!;
+    const plan = app.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all() as Array<{ detail: string }>;
+    expect(plan.map((row) => row.detail).join(" ")).toContain("jobs_state");
+  });
+
   it("drops a waiting change whose source was deleted, and goes on reading the rest", async () => {
     const root = studyTree();
     const app = setup();
