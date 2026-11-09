@@ -67,6 +67,7 @@ const reviewQuestions = async () => {
 const cards = page(() => import("../features/study/CardsPage"), "CardsPage");
 const simulation = page(() => import("../features/study/SimulationPage"), "SimulationPage");
 const review = page(() => import("../features/study/ReviewPage"), "ReviewPage");
+const mapPage = page(() => import("../features/maps/MapPage"), "MapPage");
 
 export const router = createHashRouter([
   {
@@ -85,8 +86,10 @@ export const router = createHashRouter([
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "plans/:planId/settings", lazy: page(plans, "ExamSettingsPage") },
-      // A map belongs to Maps and opens inside the shell; its address keeps the exam and topic, as links expect.
-      { path: "plans/:planId/map/:topicId", lazy: page(() => import("../features/maps/MapPage"), "MapPage") },
+      // A map belongs to Maps and opens inside the shell, by its subject and, for a topic's map, the topic. The exam's
+      // address still opens a topic's map, for older links and for an exam that has no subject.
+      { path: "maps/:subjectId/:topicId?", lazy: mapPage },
+      { path: "plans/:planId/map/:topicId", lazy: mapPage },
       { path: "plans/:planId/:view?", lazy: page(plans, "PlanPage") },
       { path: "settings/subjects", loader: () => replace("/exams") },
       { path: "settings/:section?", lazy: page(() => import("../features/settings/SettingsPage"), "SettingsPage") },

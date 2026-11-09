@@ -164,6 +164,9 @@ const routes = [
   ["maps-none", "/maps"],
   ["maps-new", "/maps"],
   ["map-export", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
+  ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
+  ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
@@ -637,6 +640,25 @@ function seed(db: DatabaseSync) {
           title: "Dinamica",
           passageIds: ["audit-passage"],
           graph,
+        },
+      ],
+    }),
+  );
+  // The subject's own map, with no exam: the same concepts under the subject's name.
+  db.prepare(
+    "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-subject-map','audit-subject',?,'sources',1)",
+  ).run(
+    JSON.stringify({
+      version: 1,
+      maps: [
+        {
+          id: "audit-subject-map-entry",
+          title: "Fisica",
+          passageIds: ["audit-passage"],
+          graph: {
+            ...graph,
+            nodes: graph.nodes.map((node) => (node.parent ? node : { ...node, label: "Fisica" })),
+          },
         },
       ],
     }),
@@ -2740,6 +2762,22 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(dialog).toBeVisible();
       break;
+    case "map-subject":
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await expect(page.locator(".px-map-title p")).toContainText("Fisica");
+      break;
+    case "map-source": {
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page.locator('.react-flow__node[data-id="map-force"]').click();
+      await page
+        .locator(".px-map-foot")
+        .getByRole("button", { name: "Appunti di fisica", exact: true })
+        .click();
+      const panel = page.getByRole("complementary", { name: /Appunti di fisica/ });
+      await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
+      await expect(panel).toBeFocused();
+      break;
+    }
     case "map-export":
       // The map's "…" menu holds the layout, the build, the exports, undo and the shortcuts.
       await expect(page.locator(".react-flow__node")).toHaveCount(3);

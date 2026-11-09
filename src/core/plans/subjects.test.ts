@@ -15,7 +15,7 @@ describe("ASK-01 shared subjects", () => {
     expect(() => reorderSubjects(db, [first.id, first.id])).toThrow();
     expect(listSubjects(db)[0]?.id).toBe(second.id);
     removeSubject(db, second.id);
-    expect(listSubjects(db)).toEqual([{ ...first, inUse: false }]);
+    expect(listSubjects(db)).toEqual([{ ...first, inUse: false, wholeMaps: 0 }]);
     expect(() => addSubject(db, "  ")).toThrow();
     db.close();
   });
@@ -40,6 +40,25 @@ describe("ASK-01 shared subjects", () => {
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(subject.id);
     removeSubject(db, subject.id);
     expect(db.prepare("SELECT title, subject_id FROM plans WHERE id = 'plan'").get()).toEqual({ title: "Esame", subject_id: null });
+    db.close();
+  });
+  it("deletes a whole subject's maps with the subject, and counts them first, while an exam's maps stay", () => {
+    const db = openDatabase(":memory:");
+    const subject = addSubject(db, "Fisica");
+    const collection = JSON.stringify({ version: 1, maps: [{ id: "a" }, { id: "b" }] });
+    db.prepare("INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('whole', ?, ?, 1)").run(subject.id, collection);
+    // The map alone keeps the subject in use.
+    expect(listSubjects(db)).toEqual([{ ...subject, inUse: true, wholeMaps: 2 }]);
+    // A bare graph, as before collections, is one map even with a stray `maps` field, as the map reader sees it.
+    db.prepare("UPDATE maps SET graph_json = ? WHERE id = 'whole'").run(JSON.stringify({ layout: "tree", nodes: [], edges: [], undo: null, maps: [] }));
+    expect(listSubjects(db)[0]!.wholeMaps).toBe(1);
+    db.prepare("UPDATE maps SET graph_json = ? WHERE id = 'whole'").run(collection);
+    db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(subject.id);
+    db.prepare("INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'plan', 'Moto', 0, 1)").run();
+    db.prepare("INSERT INTO maps (id, plan_id, topic_id, graph_json, created_at) VALUES ('topic', 'plan', 't', ?, 1)").run(collection);
+    expect(listSubjects(db)).toEqual([{ ...subject, inUse: true, wholeMaps: 2 }]);
+    removeSubject(db, subject.id);
+    expect(db.prepare("SELECT id, subject_id, plan_id FROM maps").all()).toEqual([{ id: "topic", subject_id: null, plan_id: "plan" }]);
     db.close();
   });
   it("marks the subjects an exam, a source or a chat still uses", () => {

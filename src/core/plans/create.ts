@@ -493,7 +493,8 @@ export function planGuide(
 }
 
 /**
- * Every subject in its order, and whether anything still uses it: an exam, a source or a chat. A subject outlives the
+ * Every subject in its order, whether anything still uses it (an exam, a source, a map or a chat), and how many maps of
+ * the whole subject it has, which removing it deletes. A row holding one bare graph, as before collections, is one map. A subject outlives the
  * exam it came with, so the exam form offers only the ones in use, while the subject manager lists them all.
  */
 export function listSubjects(db: Database.Database) {
@@ -503,9 +504,13 @@ export function listSubjects(db: Database.Database) {
         `SELECT s.id, s.name,
            (EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used
+             OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
+             OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used,
+           COALESCE((SELECT CASE WHEN json_extract(m.graph_json, '$.version') = 1
+               THEN COALESCE(json_array_length(m.graph_json, '$.maps'), 0) ELSE 1 END FROM maps m
+             WHERE m.subject_id = s.id AND m.plan_id IS NULL AND m.topic_id IS NULL), 0) AS wholeMaps
          FROM subjects s ORDER BY s.position, s.name, s.id`,
       )
-      .all() as Array<{ id: string; name: string; used: number }>
+      .all() as Array<{ id: string; name: string; used: number; wholeMaps: number }>
   ).map(({ used, ...subject }) => ({ ...subject, inUse: used === 1 }));
 }

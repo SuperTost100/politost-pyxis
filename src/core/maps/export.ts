@@ -7,14 +7,16 @@ import {
 } from "../../shared/map-layout";
 import type { ConceptGraph, MapNode } from "./graph";
 import { readStoredMap } from "./store";
+import { describeScope, type MapScope } from "./scope";
 import { safeFileName } from "../../shared/file-name";
 
 export type MapExportLanguage = "en" | "it";
 
 const labels = {
-  en: { untitled: "Map", exam: "Exam", topic: "Topic", links: "Cross-links" },
+  en: { untitled: "Map", subject: "Subject", exam: "Exam", topic: "Topic", links: "Cross-links" },
   it: {
     untitled: "Mappa",
+    subject: "Materia",
     exam: "Esame",
     topic: "Argomento",
     links: "Collegamenti",
@@ -93,7 +95,7 @@ function crossLinks(graph: ConceptGraph) {
 export function mapOutline(
   title: string,
   graph: ConceptGraph,
-  context: { planTitle: string; topicTitle: string },
+  context: { planTitle: string; topicTitle: string } | { subjectName: string },
   language: MapExportLanguage = "en",
 ): string {
   const words = labels[language];
@@ -121,7 +123,9 @@ export function mapOutline(
   if (root) walk(root, 0);
   const blocks = [
     `# ${oneLine(title) || words.untitled}`,
-    `${words.exam}: ${oneLine(context.planTitle)} · ${words.topic}: ${oneLine(context.topicTitle)}`,
+    "subjectName" in context
+      ? `${words.subject}: ${oneLine(context.subjectName)}`
+      : `${words.exam}: ${oneLine(context.planTitle)} · ${words.topic}: ${oneLine(context.topicTitle)}`,
     lines.join("\n"),
   ];
   const links = crossLinks(graph);
@@ -311,23 +315,17 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
 /** `maps.export`: one map's outline and drawing, named after its title. */
 export function exportMap(
   db: Database.Database,
-  input: {
-    planId: string;
-    topicId: string;
-    mapId?: string;
-    language: MapExportLanguage;
-  },
+  scope: MapScope,
+  input: { mapId?: string; language: MapExportLanguage },
 ): { filename: string; markdown: string; svg: string } {
-  const map = readStoredMap(db, input.planId, input.topicId, input.mapId);
+  const map = readStoredMap(db, scope, input.mapId);
   if (!map) throw new Error("map-missing");
-  const context = db
-    .prepare(
-      "SELECT p.title AS planTitle, t.title AS topicTitle FROM topics t JOIN plans p ON p.id = t.plan_id WHERE t.id = ? AND p.id = ?",
-    )
-    .get(input.topicId, input.planId) as {
-    planTitle: string;
-    topicTitle: string;
-  };
+  const named = describeScope(db, scope);
+  // A topic map names its exam and topic, as it always has; a whole-subject map names its subject.
+  const context =
+    named.planTitle !== null && named.topicTitle !== null
+      ? { planTitle: named.planTitle, topicTitle: named.topicTitle }
+      : { subjectName: named.subjectName ?? "" };
   const name = safeFileName(map.title, labels[input.language].untitled);
   return {
     filename: `${name}.md`,

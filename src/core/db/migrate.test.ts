@@ -32,8 +32,31 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migration 24 adds: the linked-folder tables. */
+/** Puts `maps` back as it was before migration 26: no subject, an exam on every row, and no triggers. */
+function undoMapSubjects(db: Database.Database) {
+  db.exec(`DROP TRIGGER plans_subject_to_maps;
+CREATE TABLE maps_before (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
+  graph_json TEXT NOT NULL CHECK (json_valid(graph_json)),
+  engine_provider TEXT,
+  model_id TEXT,
+  model_source TEXT CHECK (model_source IS NULL OR model_source IN ('reported', 'selected')),
+  prompt_template TEXT,
+  prompt_version TEXT,
+  grounding TEXT CHECK (grounding IS NULL OR grounding IN ('sources', 'mixed', 'general')),
+  created_at INTEGER NOT NULL
+);
+DROP TABLE maps;
+ALTER TABLE maps_before RENAME TO maps;
+CREATE INDEX maps_plan ON maps(plan_id);
+CREATE INDEX maps_topic ON maps(topic_id);`);
+}
+
+/** Removes what migration 24 adds, the linked-folder tables with migration 25's columns, and migration 26 after them. */
 function undoLinked(db: Database.Database) {
+  undoMapSubjects(db);
   db.exec("DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders;");
 }
 
@@ -115,7 +138,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(25);
+    expect(db.pragma("user_version", { simple: true })).toBe(26);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -130,7 +153,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -147,7 +170,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(
       again
         .prepare(
@@ -177,7 +200,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -205,7 +228,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -255,7 +278,7 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(again.prepare("SELECT * FROM sources").all()).toEqual(before);
     expect(again.prepare("SELECT COUNT(*) AS n FROM linked_files").get()).toEqual({ n: 0 });
     again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
@@ -278,6 +301,7 @@ describe("linked folders read in full", () => {
     db.exec(
       "DROP INDEX linked_files_pending; DROP INDEX linked_files_gone; ALTER TABLE linked_files DROP COLUMN pending; ALTER TABLE linked_files DROP COLUMN sorted_at;",
     );
+    undoMapSubjects(db);
     db.pragma("user_version = 24");
     db.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
     db.prepare(
@@ -286,7 +310,7 @@ describe("linked folders read in full", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
     expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
     // The queue finds waiting files of a folder through its own index.
@@ -294,6 +318,55 @@ describe("linked folders read in full", () => {
       .prepare("EXPLAIN QUERY PLAN SELECT * FROM linked_files WHERE folder_id = 'f' AND pending > 0 ORDER BY rowid")
       .all() as Array<{ detail: string }>;
     expect(plan.map((row) => row.detail).join(" ")).toContain("linked_files_pending");
+  });
+});
+
+describe("maps by subject", () => {
+  it("gives every map its exam's subject, keeps a map whose exam has none, and lets a map have no exam", () => {
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
+    const db = openDatabase(file);
+    undoMapSubjects(db);
+    db.pragma("user_version = 25");
+    db.exec(`
+      INSERT INTO subjects (id, name, position, created_at) VALUES ('phys', 'Fisica I', 0, 1);
+      INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES
+        ('p', 'phys', 'Meccanica', 'ready', 1, 1), ('loose', NULL, 'Appunti', 'ready', 1, 1);
+      INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'p', 'Moto', 0, 1), ('u', 'loose', 'Varie', 0, 1);
+      INSERT INTO maps (id, plan_id, topic_id, graph_json, grounding, prompt_version, created_at) VALUES
+        ('m', 'p', 't', '{"version":1,"maps":[]}', 'sources', '3', 7),
+        ('n', 'loose', 'u', '{"version":1,"maps":[]}', 'general', NULL, 8);
+    `);
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
+    expect(
+      again.prepare("SELECT id, subject_id, plan_id, topic_id, grounding, prompt_version, created_at FROM maps ORDER BY id").all(),
+    ).toEqual([
+      { id: "m", subject_id: "phys", plan_id: "p", topic_id: "t", grounding: "sources", prompt_version: "3", created_at: 7 },
+      { id: "n", subject_id: null, plan_id: "loose", topic_id: "u", grounding: "general", prompt_version: null, created_at: 8 },
+    ]);
+    expect(again.pragma("foreign_key_check")).toEqual([]);
+    // A whole subject's map has no exam and no topic, and a subject has one such row.
+    again.prepare(
+      "INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('whole', 'phys', '{\"version\":1,\"maps\":[]}', 9)",
+    ).run();
+    expect(() =>
+      again.prepare(
+        "INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('twice', 'phys', '{\"version\":1,\"maps\":[]}', 9)",
+      ).run(),
+    ).toThrow();
+    // A topic map follows its exam's subject, set when it is written and whenever the exam changes subject.
+    again.prepare("UPDATE plans SET subject_id = 'phys' WHERE id = 'loose'").run();
+    again.prepare(
+      "INSERT INTO maps (id, plan_id, topic_id, graph_json, created_at) VALUES ('o', 'loose', 'u', '{\"version\":1,\"maps\":[]}', 10)",
+    ).run();
+    expect(again.prepare("SELECT id, subject_id FROM maps ORDER BY id").all()).toEqual([
+      { id: "m", subject_id: "phys" },
+      { id: "n", subject_id: "phys" },
+      { id: "o", subject_id: "phys" },
+      { id: "whole", subject_id: "phys" },
+    ]);
   });
 });
 
@@ -316,7 +389,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.pragma("user_version", { simple: true })).toBe(26);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,

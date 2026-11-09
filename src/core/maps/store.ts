@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { requireTopic } from "../study/openLesson";
+import { isTopicScope, requireScope, type MapScope } from "./scope";
 import {
   applyOps,
   layoutGraph,
@@ -23,30 +23,30 @@ export type StoredMap = {
   grounding?: "sources" | "general";
 };
 type Collection = { version: 1; maps: StoredMap[] };
-/** The topic's maps and the ID of the row that holds them (null before the first map), in one read. */
+/** The scope's maps and the ID of the row that holds them (null before the first map), in one read. */
 function collectionRow(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
 ): { rowId: string | null; value: Collection } {
-  requireTopic(db, planId, topicId);
-  const row = db
-    .prepare(
-      "SELECT id, graph_json, grounding FROM maps WHERE plan_id = ? AND topic_id = ?",
-    )
-    .get(planId, topicId) as
-    { id: string; graph_json: string; grounding: string } | undefined;
+  requireScope(db, scope);
+  const row = (
+    isTopicScope(scope)
+      ? db
+          .prepare("SELECT id, graph_json, grounding FROM maps WHERE plan_id = ? AND topic_id = ?")
+          .get(scope.planId, scope.topicId)
+      : db
+          .prepare(
+            "SELECT id, graph_json, grounding FROM maps WHERE subject_id = ? AND plan_id IS NULL AND topic_id IS NULL",
+          )
+          .get(scope.subjectId)
+  ) as { id: string; graph_json: string; grounding: string } | undefined;
   if (!row) return { rowId: null, value: { version: 1, maps: [] } };
   return { rowId: row.id, value: parseCollection(row) };
 }
-function collection(
-  db: Database.Database,
-  planId: string,
-  topicId: string,
-): Collection {
-  return collectionRow(db, planId, topicId).value;
+function collection(db: Database.Database, scope: MapScope): Collection {
+  return collectionRow(db, scope).value;
 }
-/** The maps one topic's row holds. Rows saved before collections hold one bare graph. */
+/** The maps one topic's or subject's row holds. Rows saved before collections hold one bare graph. */
 export function parseCollection(row: {
   id: string;
   graph_json: string;
@@ -70,12 +70,8 @@ export function parseCollection(row: {
     ],
   };
 }
-export function listTopicMaps(
-  db: Database.Database,
-  planId: string,
-  topicId: string,
-): MapSummary[] {
-  return collection(db, planId, topicId).maps.map(
+export function listMaps(db: Database.Database, scope: MapScope): MapSummary[] {
+  return collection(db, scope).maps.map(
     ({ id, title, passageIds, provider, model, grounding }) => ({
       id,
       title,
@@ -88,22 +84,21 @@ export function listTopicMaps(
 }
 export function storeMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   map: StoredMap,
 ): void {
   db.transaction(() => {
-    const { rowId, value } = collectionRow(db, planId, topicId);
+    const { rowId, value } = collectionRow(db, scope);
     const index = value.maps.findIndex((item) => item.id === map.id);
     if (index < 0) value.maps.push(map);
     else value.maps[index] = map;
-    save(db, planId, topicId, rowId, value, map.grounding, map.prompt);
+    save(db, scope, rowId, value, map.grounding, map.prompt);
   })();
 }
+/** Writes the scope's row. A topic row takes its exam's subject from the database's trigger. */
 function save(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   rowId: string | null,
   value: Collection,
   grounding?: string,
@@ -121,11 +116,12 @@ function save(
     );
   else
     db.prepare(
-      "INSERT INTO maps (id, plan_id, topic_id, graph_json, grounding, prompt_template, prompt_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO maps (id, subject_id, plan_id, topic_id, graph_json, grounding, prompt_template, prompt_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
       uuidv7(),
-      planId,
-      topicId,
+      isTopicScope(scope) ? null : scope.subjectId,
+      isTopicScope(scope) ? scope.planId : null,
+      isTopicScope(scope) ? scope.topicId : null,
       JSON.stringify(value),
       grounding ?? "sources",
       prompt?.template ?? null,
@@ -135,24 +131,25 @@ function save(
 }
 export function readStoredMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   mapId?: string,
 ): StoredMap | undefined {
-  const maps = collection(db, planId, topicId).maps;
+  const maps = collection(db, scope).maps;
   const selected = mapId ? maps.find((map) => map.id === mapId) : maps[0];
   if (mapId && !selected) throw new Error("map-missing");
   return selected;
 }
-export function openTopicMap(
+export function openMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   now = Date.now(),
   mapId?: string,
 ): ConceptGraph {
-  const existing = readStoredMap(db, planId, topicId, mapId);
+  const existing = readStoredMap(db, scope, mapId);
   if (existing) return existing.graph;
+  // A subject has no offline outline: its map page offers to build the map instead.
+  if (!isTopicScope(scope)) throw new Error("map-missing");
+  const { planId, topicId } = scope;
   // Legacy callers get an offline outline. The map UI uses explicit model generation.
   const topic = db
     .prepare("SELECT title FROM topics WHERE id = ? AND plan_id = ?")
@@ -193,7 +190,7 @@ export function openTopicMap(
     ],
     edges: passages.map((row) => ({ from: "root", to: row.id })),
   });
-  storeMap(db, planId, topicId, {
+  storeMap(db, scope, {
     id: uuidv7(now),
     title: topic.title,
     passageIds: passages.map((row) => row.id),
@@ -203,29 +200,28 @@ export function openTopicMap(
   return graph;
 }
 /**
- * Changes one map and saves it laid out, reading the topic's row once. A topic with no map yet gets the offline outline
- * `openTopicMap` makes first. `change` may throw, and then nothing is saved.
+ * Changes one map and saves it laid out, reading the scope's row once. A topic with no map yet gets the offline outline
+ * `openMap` makes first. `change` may throw, and then nothing is saved.
  */
-function editTopicMap(
+function editMapGraph(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   mapId: string | undefined,
   change: (graph: ConceptGraph) => ConceptGraph,
 ): ConceptGraph {
   return db.transaction(() => {
-    let { rowId, value } = collectionRow(db, planId, topicId);
+    let { rowId, value } = collectionRow(db, scope);
     let index = mapId ? value.maps.findIndex((map) => map.id === mapId) : 0;
     if (index < 0) throw new Error("map-missing");
     if (!value.maps[index]) {
-      openTopicMap(db, planId, topicId);
-      ({ rowId, value } = collectionRow(db, planId, topicId));
+      openMap(db, scope);
+      ({ rowId, value } = collectionRow(db, scope));
       index = 0;
     }
     const stored = value.maps[index]!;
     const next = layoutGraph(change(stored.graph));
     value.maps[index] = { ...stored, graph: next };
-    save(db, planId, topicId, rowId, value, stored.grounding, stored.prompt);
+    save(db, scope, rowId, value, stored.grounding, stored.prompt);
     return next;
   })();
 }
@@ -236,10 +232,9 @@ function snapshot(graph: ConceptGraph): NonNullable<ConceptGraph["undo"]> {
     layout: graph.layout,
   };
 }
-export function moveTopicNode(
+export function moveMapNode(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   nodeId: string,
   x: number,
   y: number,
@@ -247,7 +242,7 @@ export function moveTopicNode(
 ): ConceptGraph {
   if (!Number.isFinite(x) || !Number.isFinite(y))
     throw new Error("map-position");
-  return editTopicMap(db, planId, topicId, mapId, (graph) => {
+  return editMapGraph(db, scope, mapId, (graph) => {
     if (!graph.nodes.some((node) => node.id === nodeId))
       throw new Error("map-missing");
     return {
@@ -260,43 +255,39 @@ export function moveTopicNode(
     };
   });
 }
-export function setTopicLayout(
+export function setMapLayout(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   layout: ConceptGraph["layout"],
   mapId?: string,
 ): ConceptGraph {
-  return editTopicMap(db, planId, topicId, mapId, (graph) => ({
+  return editMapGraph(db, scope, mapId, (graph) => ({
     ...graph,
     layout,
     undo: snapshot(graph),
     redo: null,
   }));
 }
-export function patchTopicMap(
+export function patchMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   ops: MapOp[],
   mapId?: string,
 ): ConceptGraph {
-  return editTopicMap(db, planId, topicId, mapId, (graph) => applyOps(graph, ops));
+  return editMapGraph(db, scope, mapId, (graph) => applyOps(graph, ops));
 }
-export function undoTopicMap(
+export function undoMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   mapId?: string,
 ): ConceptGraph {
-  return editTopicMap(db, planId, topicId, mapId, undoGraph);
+  return editMapGraph(db, scope, mapId, undoGraph);
 }
 
-export function redoTopicMap(
+export function redoMap(
   db: Database.Database,
-  planId: string,
-  topicId: string,
+  scope: MapScope,
   mapId?: string,
 ): ConceptGraph {
-  return editTopicMap(db, planId, topicId, mapId, redoGraph);
+  return editMapGraph(db, scope, mapId, redoGraph);
 }

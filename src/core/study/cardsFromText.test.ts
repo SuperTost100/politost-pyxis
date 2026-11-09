@@ -478,4 +478,27 @@ describe("where the cards go", () => {
     ).toMatchObject({ planId: null, topicId: null });
     db.close();
   });
+
+  it("keeps a map's cards in its own subject's exams, chosen by id, even when its passages point elsewhere", () => {
+    const db = fixture();
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('bio', 'Biology', 1)").run();
+    // p3 belongs to a Physics topic; a Chemistry map that cites it still files its cards under Chemistry.
+    expect(cardPlaces(db, { subjectId: "chem", passageIds: ["p3"] })).toEqual({
+      plans: [expect.objectContaining({ id: "org" })],
+      planId: "org",
+      topicId: null,
+    });
+    // A subject with no exam offers nothing and preselects nothing, whatever the passages say.
+    expect(cardPlaces(db, { subjectId: "bio", passageIds: ["p3"] })).toEqual({
+      plans: [],
+      planId: null,
+      topicId: null,
+    });
+    // The id wins over a subject name that another subject has taken since.
+    expect(cardPlaces(db, { subjectId: "bio", subject: "Physics", passageIds: ["p3"] })).toMatchObject({
+      plans: [],
+      planId: null,
+    });
+    db.close();
+  });
 });

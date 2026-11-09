@@ -32,6 +32,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 23             | `jobs.fallback_json`, the engine that answered when the chosen one refused              |
 | 24             | `linked_folders`, `linked_subfolders` and `linked_files`, for folders read in place     |
 | 25             | `linked_files.pending` and `sorted_at`, for linked folders read in full                 |
+| 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject     |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -55,7 +56,9 @@ Migration 24 adds linked folders, read in place (see [architecture](architecture
 
 Migration 25 lets a linked folder be read in full. `linked_files.pending` is 1 for a file a look recorded that waits for its first reading (it has no source yet), 2 for a changed file waiting to be read again, and 0 otherwise, which every existing row keeps. `sorted_at` is when the AI tool was asked which subject a file lying loose at the top of the folder belongs to. The partial index `linked_files_pending` finds a folder's waiting files, and `linked_files_gone` finds missing files a move could match by size.
 
-Current version is 25. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 26 lets a map belong to a subject without an exam. SQLite cannot drop a `NOT NULL`, so the migration rebuilds `maps` with the same rows and columns plus `subject_id`, and `plan_id` nullable; nothing references `maps`, so no other table changes. Each existing row takes its exam's subject, and a row whose exam has none keeps `subject_id` NULL and still opens by its exam and topic. A row has one of two shapes. A topic map has `plan_id` and `topic_id`, as before, and its `subject_id` is always its exam's: the trigger `maps_take_plan_subject` sets it when the row is written, and `plans_subject_to_maps` follows the exam when its subject changes. A whole-subject map has `subject_id` alone, and the partial unique index `maps_whole_subject` allows one such row per subject. As before, one row holds a collection of maps in `graph_json`. Deleting an exam deletes its topic maps. Deleting a subject deletes its whole-subject row (`removeSubject`), and a subject that has one counts as in use.
+
+Current version is 26. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -86,7 +89,7 @@ Current version is 25. A restored backup is migrated on a staging copy before it
 | gaps              | An open or closed knowledge gap. A topic can have several, one per misconception.                            |
 | gap_items         | The drill quiz built for a gap.                                                                              |
 | gap_answers       | A wrong answer (attempt and question) that counts for a gap.                                                 |
-| maps              | A concept map.                                                                                               |
+| maps              | The concept maps of one exam topic or of one whole subject.                                                  |
 | chats             | A tutor conversation.                                                                                        |
 | messages          | One turn in a chat.                                                                                          |
 | message_passages  | Passages cited by a message.                                                                                 |
