@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
@@ -6,9 +6,10 @@ import type { GenerateInput } from "../engine/generate";
 import { createRunner } from "../jobs/runner";
 import { tempDir } from "../test-temp";
 import { extractByExt } from "./documents";
-import { MAX_FOLDER_DEPTH } from "./folder";
-import { registerSourceJobs } from "./jobs";
-import { checkLinkPath, linkedFolders, readFolder, subjectCandidates } from "./linked";
+import { MAX_LINKED_DEPTH } from "../../shared/linked-folders";
+import { walkImportable, type WalkedFile } from "./folder";
+import { hasUnfinishedJob, registerSourceJobs } from "./jobs";
+import { checkLinkPath, closeLinkedWatches, linkedFolders, peekFolder, subfolderOf } from "./linked";
 import { hashFiles } from "./quality";
 import { listSources } from "./smartbook";
 import { waitingScans } from "./ocr-job";
@@ -39,11 +40,35 @@ const answer = (folders: unknown[]): Run => async () => ({
   structured: { folders },
 });
 
-const tidy = answer([
+/** The prompt that sorts loose files starts this way; the fake engines tell the two calls apart by it. */
+const isSorting = (input: Parameters<Run>[0]) => input.system?.startsWith("A student keeps their study material in one folder") === true;
+
+/** Sorts loose files by the subfolder named at the start of each file name, and leaves the rest without a subject. */
+const sortByPrefix =
+  (calls: string[][] = []): Run =>
+  async (input) => {
+    const { subjects, files } = JSON.parse(input.prompt) as { subjects: Array<{ folder: string }>; files: string[] };
+    calls.push(files);
+    return {
+      text: "",
+      provider: "claude",
+      model: "claude-sonnet-5",
+      inputTokens: 1,
+      structured: {
+        files: files.map((file) => ({
+          file,
+          folder: subjects.find((subject) => file.startsWith(`${subject.folder} `))?.folder ?? "",
+        })),
+      },
+    };
+  };
+
+const tidyFolders = answer([
   { folder: "Fisica 1", subject: "Fisica I", study: true, kinds: ["book", "exams"] },
   { folder: "GAL", subject: "Geometria e algebra lineare", study: true, kinds: ["notes"] },
   { folder: "Erasmus", subject: "Erasmus", study: false, kinds: [] },
 ]);
+const tidy: Run = async (input) => (isSorting(input) ? sortByPrefix()(input) : tidyFolders(input));
 
 function setup(
   options: {
@@ -81,16 +106,28 @@ function setup(
     ocrReady: async () => false,
     run: options.run ?? tidy,
     watch: options.watch ?? null,
+    pumpMs: 10,
     onChange: () => {
       changes.count += 1;
     },
   });
-  const settled = () =>
-    expect
-      .poll(() => db.prepare(`SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running')`).pluck().get(), {
-        timeout: 10_000,
-      })
+  // Every look is over, and every file it recorded has gone through the queue and been read.
+  const settled = async () => {
+    await linked.idle();
+    await expect
+      .poll(
+        () =>
+          db
+            .prepare(
+              `SELECT (SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running'))
+                    + (SELECT COUNT(*) FROM linked_files WHERE pending > 0 AND missing_at IS NULL)`,
+            )
+            .pluck()
+            .get(),
+        { timeout: 10_000 },
+      )
       .toBe(0);
+  };
   const source = (title: string) =>
     db
       .prepare(
@@ -122,39 +159,68 @@ function snapshot(root: string): string[] {
 }
 
 describe("reading a linked folder", () => {
-  it("groups files by first-level subfolder, keeps top-level files without a subject and skips book packages", () => {
+  it("groups files by first-level subfolder, keeps top-level files without a subject and samples each subject", async () => {
     const root = studyTree();
     writeFileSync(join(root, "GAL", "libro.ptsb"), "x");
-    const { found, cut } = readFolder(root, "root", []);
-    expect(found.map((file) => [file.rel, file.subfolder])).toEqual([
+    const found: WalkedFile[] = [];
+    const cut = await walkImportable(root, { maxDepth: MAX_LINKED_DEPTH, onFiles: (files) => void found.push(...files) });
+    expect(
+      found.map((file) => [file.rel, subfolderOf("root", file.rel)]).sort((a, b) => a[0]!.localeCompare(b[0]!)),
+    ).toEqual([
       [join("Erasmus", "learning agreement.txt"), "Erasmus"],
       [join("Fisica 1", "Mazzoldi cap 2.md"), "Fisica 1"],
       [join("Fisica 1", "Temi d'esame", "febbraio.txt"), "Fisica 1"],
       [join("GAL", "appunti.txt"), "GAL"],
+      [join("GAL", "libro.ptsb"), "GAL"],
       ["orario.txt", ""],
     ]);
-    expect(cut).toEqual({ files: false, depth: false, entries: false, unreadable: false });
-    expect([...subjectCandidates(root, "root", found).keys()]).toEqual(["Erasmus", "Fisica 1", "GAL"]);
+    expect(found.find((file) => file.rel === "orario.txt")).toMatchObject({ size: statSync(join(root, "orario.txt")).size });
+    expect(cut).toEqual({ depth: false, unreadable: false });
+    // A book package is a library import, not material to name a subject by.
+    const groups = await peekFolder(root, "root", []);
+    expect([...groups.keys()]).toEqual(["Erasmus", "Fisica 1", "GAL"]);
+    expect(groups.get("GAL")).toEqual({ folder: "GAL", files: ["appunti.txt"] });
     // One folder per subject: everything in it belongs to the folder itself.
     const fisica = join(root, "Fisica 1");
-    const own = readFolder(fisica, "subject", []);
-    expect(own.found.every((file) => file.subfolder === "")).toBe(true);
-    expect([...subjectCandidates(fisica, "subject", own.found).entries()]).toEqual([
+    expect(subfolderOf("subject", join("Temi d'esame", "febbraio.txt"))).toBe("");
+    expect([...(await peekFolder(fisica, "subject", [])).entries()]).toEqual([
       ["", { folder: "Fisica 1", files: ["Mazzoldi cap 2.md", join("Temi d'esame", "febbraio.txt")] }],
     ]);
     // A study folder with no subfolders is one subject.
-    expect([...subjectCandidates(join(root, "GAL"), "root", readFolder(join(root, "GAL"), "root", []).found).keys()]).toEqual([""]);
+    expect([...(await peekFolder(join(root, "GAL"), "root", [])).keys()]).toEqual([""]);
+    // Setup names a subject from a sample of its files, never from the whole tree.
+    for (let index = 0; index < 60; index += 1) writeFileSync(join(root, "GAL", `esercizi ${index}.txt`), "x");
+    expect((await peekFolder(root, "root", [])).get("GAL")!.files).toHaveLength(40);
   });
 
-  it("reports a walk the caps cut, and never walks into an excluded folder", () => {
+  it("reports a walk the depth cap cut, never walks into an excluded folder, and reads one place on its own", async () => {
     const root = studyTree();
     let deep = join(root, "Fisica 1");
-    for (let level = 0; level <= MAX_FOLDER_DEPTH; level += 1) deep = join(deep, `l${level}`);
+    for (let level = 0; level <= MAX_LINKED_DEPTH; level += 1) deep = join(deep, `l${level}`);
     mkdirSync(deep, { recursive: true });
     writeFileSync(join(deep, "lost.txt"), "x");
-    expect(readFolder(root, "root", []).cut.depth).toBe(true);
-    const excluded = readFolder(root, "root", [join(root, "Erasmus")]);
-    expect(excluded.found.some((file) => file.subfolder === "Erasmus")).toBe(false);
+    const walk = async (options: { exclude?: string[]; within?: string } = {}) => {
+      const found: string[] = [];
+      const cut = await walkImportable(root, {
+        ...options,
+        maxDepth: MAX_LINKED_DEPTH,
+        onFiles: (files) => void found.push(...files.map((file) => file.rel)),
+      });
+      return { found: found.sort(), cut };
+    };
+    expect((await walk()).cut.depth).toBe(true);
+    expect((await walk()).found.some((rel) => rel.endsWith("lost.txt"))).toBe(false);
+    expect((await walk({ exclude: [join(root, "Erasmus")] })).found.some((rel) => rel.startsWith("Erasmus"))).toBe(false);
+    // A place a watch reported: a subfolder, a file, or something gone.
+    expect((await walk({ within: "GAL" })).found).toEqual([join("GAL", "appunti.txt")]);
+    expect((await walk({ within: join("Fisica 1", "Mazzoldi cap 2.md") })).found).toEqual([join("Fisica 1", "Mazzoldi cap 2.md")]);
+    expect((await walk({ within: "Chimica" })).found).toEqual([]);
+    expect((await walk({ within: join("..", "elsewhere") })).found).toEqual([]);
+    // A folder on the way that became a link is not followed, even though the place itself is a plain file.
+    const outside = tempDir("pyxis-linked-outside-");
+    writeFileSync(join(outside, "segreto.txt"), "x");
+    symlinkSync(outside, join(root, "scorciatoia"));
+    expect((await walk({ within: join("scorciatoia", "segreto.txt") })).found).toEqual([]);
   });
 
   it("accepts only an absolute directory outside the workspace and the app's data", () => {
@@ -410,7 +476,7 @@ describe("linked folders", () => {
     expect(app.db.prepare(`SELECT COUNT(*) FROM jobs`).pluck().get()).toBe(jobs);
 
     let deep = join(root, "GAL");
-    for (let level = 0; level <= MAX_FOLDER_DEPTH; level += 1) deep = join(deep, `l${level}`);
+    for (let level = 0; level <= MAX_LINKED_DEPTH; level += 1) deep = join(deep, `l${level}`);
     mkdirSync(deep, { recursive: true });
     rmSync(join(root, "GAL", "appunti.txt"));
     await app.linked.sync(folder!.id);
@@ -518,6 +584,311 @@ describe("linked folders", () => {
     await app.settled();
     expect(app.db.prepare(`SELECT COUNT(*) FROM sources WHERE status = 'ready'`).pluck().get()).toBe(5);
     expect(snapshot(root)).toEqual(before);
+  });
+});
+
+/** A folder of `count` small notes spread over ten subjects and their chapters, plus `loose` files at the top. */
+function bigTree(count: number, loose: string[] = []) {
+  const root = join(tempDir("pyxis-linked-big-"), "Studio");
+  for (let index = 0; index < count; index += 1) {
+    const dir = join(root, `Materia ${index % 10}`, `cap ${Math.floor(index / 10) % 25}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `nota ${index}.txt`), `Nota ${index}`);
+  }
+  for (const name of loose) writeFileSync(join(root, name), name);
+  return root;
+}
+
+/**
+ * Linked folders over a runner whose imports only mark their source ready, so a test can read thousands of files and
+ * watch the queue. `paused` leaves every queued import waiting, as a quit would.
+ */
+function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean; window?: number; run?: Run; engine?: boolean; listAfterMs?: number } = {}) {
+  const db = options.db ?? openDatabase(":memory:");
+  if (!options.db && options.engine !== false)
+    db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+  const updates: Array<{ kind: string; state: string; count?: number; title?: string }> = [];
+  // The most imports waiting or running at once, read at every job update.
+  let mostQueued = 0;
+  const runner = createRunner(
+    db,
+    (job) => {
+      updates.push(job);
+      if (job.kind === "source-import") mostQueued = Math.max(mostQueued, queuedImports());
+    },
+    undefined,
+    options.paused === true,
+  );
+  let reads = 0;
+  runner.register("source-import", {
+    jobClass: "local",
+    steps: [
+      {
+        name: "read",
+        label: "sources.jobs.extract",
+        async run(ctx) {
+          reads += 1;
+          const { sourceId } = ctx.params as { sourceId: string };
+          db.prepare(`UPDATE sources SET status = 'ready' WHERE id = ?`).run(sourceId);
+          return {};
+        },
+      },
+    ],
+  });
+  const linked = linkedFolders({
+    db,
+    runner,
+    protectedPaths: [tempDir("pyxis-linked-ws-")],
+    hash: (paths, maxBytes) => hashFiles(paths, maxBytes),
+    ocrReady: async () => false,
+    run: options.run,
+    watch: null,
+    queueWindow: options.window ?? 16,
+    pumpMs: 5,
+    listAfterMs: options.listAfterMs ?? 1_000,
+  });
+  const count = (sql: string) => db.prepare(sql).pluck().get() as number;
+  const queuedImports = () =>
+    count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import' AND state IN ('queued', 'running')`);
+  const settled = async () => {
+    await linked.idle();
+    await expect
+      .poll(() => queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`), { timeout: 60_000 })
+      .toBe(0);
+  };
+  return { db, runner, linked, updates, count, queuedImports, settled, reads: () => reads, mostQueued: () => mostQueued };
+}
+
+describe("a large linked folder", () => {
+  it("reads 5,000 files with no cap, keeps core free while it walks, and queues them a window at a time", async () => {
+    const root = bigTree(5_000);
+    const app = bulk({ engine: false, listAfterMs: 0 });
+    // A timer that should fire every few milliseconds: a walk that held the event loop would leave a long gap.
+    let last = performance.now();
+    let longest = 0;
+    let ticks = 0;
+    const timer = setInterval(() => {
+      const now = performance.now();
+      longest = Math.max(longest, now - last);
+      last = now;
+      ticks += 1;
+    }, 2);
+    const started = performance.now();
+    let folderId = "";
+    try {
+      const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+      expect(folder!.subjects).toHaveLength(10);
+      folderId = folder!.id;
+      await app.linked.idle();
+      const walked = performance.now() - started;
+      expect(app.count(`SELECT COUNT(*) FROM linked_files`)).toBe(5_000);
+      console.info(`linked folder: 5,000 files walked and recorded in ${Math.round(walked)} ms, longest event-loop gap ${Math.round(longest)} ms over ${ticks} ticks`);
+      expect(ticks).toBeGreaterThan(10);
+      expect(longest).toBeLessThan(250);
+      await app.settled();
+      console.info(`linked folder: 5,000 files queued and read in ${Math.round(performance.now() - started)} ms`);
+    } finally {
+      clearInterval(timer);
+    }
+    // Every file was read, once, and never more than the window waited in the queue at the same time.
+    expect(app.count(`SELECT COUNT(*) FROM sources WHERE status = 'ready'`)).toBe(5_000);
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE source_id IS NULL`)).toBe(0);
+    expect(app.reads()).toBe(5_000);
+    expect(app.mostQueued()).toBe(16);
+    // The walk was listed in Attività with the count of files found, and left no finished job behind.
+    const listed = app.updates.filter((job) => job.kind === "linked-folder-read");
+    expect(listed[0]).toMatchObject({ state: "running", title: "Studio" });
+    expect(listed.at(-1)).toMatchObject({ state: "succeeded", count: 5_000 });
+    expect(app.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'linked-folder-read'`)).toBe(0);
+    // A second look finds nothing new, and reads nothing again.
+    await app.linked.sync(folderId);
+    await app.settled();
+    expect(app.reads()).toBe(5_000);
+  }, 120_000);
+
+  it("carries on after a restart with the files still waiting, and reads none of them twice", async () => {
+    const root = bigTree(600);
+    const first = bulk({ engine: false, paused: true, window: 10 });
+    await first.linked.link({ paths: [root], mode: "root" });
+    await first.linked.idle();
+    // Pyxis quits with ten readings queued and the rest of the folder recorded but not queued.
+    await expect.poll(() => first.queuedImports()).toBe(10);
+    expect(first.count(`SELECT COUNT(*) FROM linked_files WHERE pending = 1`)).toBe(590);
+    closeLinkedWatches();
+    expect(first.queuedImports()).toBe(10);
+    // A file still waiting is renamed while Pyxis is closed: its old name must not be read.
+    const waiting = first.db
+      .prepare(`SELECT rel_path FROM linked_files WHERE pending = 1 ORDER BY rowid LIMIT 1`)
+      .pluck()
+      .get() as string;
+    renameSync(join(root, waiting), join(root, `${waiting.slice(0, -4)} bis.txt`));
+
+    // A wider window, so the queue has room for waiting files the moment Pyxis starts.
+    const second = bulk({ db: first.db, window: 20 });
+    await second.linked.start();
+    await second.settled();
+    expect(second.reads()).toBe(600);
+    expect(second.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import'`)).toBe(600);
+    expect(second.count(`SELECT COUNT(*) FROM sources`)).toBe(600);
+    expect(second.count(`SELECT COUNT(DISTINCT source_id) FROM linked_files`)).toBe(600);
+    expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE missing_at IS NOT NULL`)).toBe(0);
+    expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE rel_path = '${waiting.replaceAll("'", "''")}'`)).toBe(0);
+  }, 60_000);
+
+  it("sorts loose files into subjects by name, a hundred names a call, and asks about each file once", async () => {
+    const loose = [
+      ...Array.from({ length: 100 }, (_, index) => `Analisi esercizi ${index}.txt`),
+      ...Array.from({ length: 100 }, (_, index) => `Fisica appunti ${index}.txt`),
+      ...Array.from({ length: 30 }, (_, index) => `orario ${index}.txt`),
+    ];
+    const root = join(tempDir("pyxis-linked-loose-"), "Studio");
+    for (const subject of ["Analisi", "Fisica"]) {
+      mkdirSync(join(root, subject), { recursive: true });
+      writeFileSync(join(root, subject, "libro.txt"), subject);
+    }
+    for (const name of loose) writeFileSync(join(root, name), name);
+    const calls: string[][] = [];
+    // The model leaves the timetables out of its answer altogether.
+    const sorter: Run = async (input) => {
+      const reply = await sortByPrefix(calls)(input);
+      const structured = reply.structured as { files: Array<{ file: string }> };
+      return { ...reply, structured: { files: structured.files.filter((item) => !item.file.startsWith("orario")) } };
+    };
+    const app = bulk({
+      run: async (input) =>
+        isSorting(input)
+          ? sorter(input)
+          : answer([
+              { folder: "Analisi", subject: "Analisi matematica I", study: true, kinds: ["exercises"] },
+              { folder: "Fisica", subject: "Fisica I", study: true, kinds: ["notes"] },
+            ])(input),
+    });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    expect(calls.map((batch) => batch.length)).toEqual([100, 100, 30]);
+    // The model saw names only, and every loose file once.
+    expect(calls.flat().sort()).toEqual([...loose].sort());
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    await app.settled();
+    const subjectOf = (title: string) =>
+      app.db
+        .prepare(`SELECT j.name FROM sources s LEFT JOIN subjects j ON j.id = s.subject_id WHERE s.title = ?`)
+        .pluck()
+        .get(title);
+    expect(subjectOf("Analisi esercizi 7")).toBe("Analisi matematica I");
+    expect(subjectOf("Fisica appunti 99")).toBe("Fisica I");
+    expect(subjectOf("orario 3")).toBeNull();
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE subfolder = '' AND sorted_at IS NULL`)).toBe(0);
+    // The next look asks about nothing it asked about already.
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(calls).toHaveLength(3);
+  }, 60_000);
+
+  it("without an AI tool, reads every file, keeps the folder names and leaves loose files without a subject", async () => {
+    const root = bigTree(200, ["Analisi esercizi.txt", "orario.txt"]);
+    const app = bulk({ engine: false });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    expect(folder!.detection).toBe("names");
+    expect(folder!.subjects.every((subject) => !subject.skipped && subject.name === subject.folder)).toBe(true);
+    await app.settled();
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    await app.settled();
+    expect(app.count(`SELECT COUNT(*) FROM sources WHERE status = 'ready'`)).toBe(202);
+    expect(app.count(`SELECT COUNT(*) FROM sources WHERE subject_id IS NULL`)).toBe(2);
+    // Nobody was asked, so a later look with an AI tool can still sort them.
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE sorted_at IS NOT NULL`)).toBe(0);
+  });
+
+  it("reads again only the places the watch saw change", async () => {
+    const root = studyTree();
+    let changed: ((paths: string[] | null) => void) | undefined;
+    const app = setup({
+      watch: (_path, onChange) => {
+        changed = onChange;
+        return { close() {} };
+      },
+    });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    // One file is deleted where the watch did not look, and one is added where it did.
+    rmSync(join(root, "Fisica 1", "Mazzoldi cap 2.md"));
+    writeFileSync(join(root, "GAL", "vettori.txt"), "Un vettore ha modulo, direzione e verso.");
+    changed!([join("GAL", "vettori.txt")]);
+    await app.settled();
+    expect(app.source("vettori")).toMatchObject({ status: "ready", missingAt: null });
+    expect(app.source("Mazzoldi cap 2")!.missingAt).toBeNull();
+    // A file deleted in a place the watch names is missing at once.
+    rmSync(join(root, "GAL", "appunti.txt"));
+    changed!(["GAL"]);
+    await app.settled();
+    expect(app.source("appunti")!.missingAt).not.toBeNull();
+    expect(app.source("Mazzoldi cap 2")!.missingAt).toBeNull();
+    // A request that names no place reads nothing, and the next one still runs.
+    await app.linked.sync(folder!.id, []);
+    await app.linked.idle();
+    // A change the system reported without a name reads the whole folder.
+    changed!(null);
+    await app.settled();
+    expect(app.source("Mazzoldi cap 2")!.missingAt).not.toBeNull();
+    expect(app.linked.view(folder!.id).cut).toEqual({ depth: false, unreadable: false });
+  });
+
+  it("finds an unfinished reading through the jobs' state index", () => {
+    const db = openDatabase(":memory:");
+    const runner = createRunner(db, () => {}, undefined, true);
+    runner.register("source-import", { jobClass: "local", steps: [{ name: "read", label: "x", run: async () => ({}) }] });
+    runner.start("source-import", { sourceId: "s1" });
+    const prepared: string[] = [];
+    const prepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      prepared.push(sql);
+      return prepare(sql);
+    }) as typeof db.prepare;
+    expect(hasUnfinishedJob(db, "s1")).toBe(true);
+    db.prepare = prepare;
+    expect(hasUnfinishedJob(db, "s2")).toBe(false);
+    const plan = db.prepare(`EXPLAIN QUERY PLAN ${prepared[0]!}`).all("s1") as Array<{ detail: string }>;
+    expect(plan.map((row) => row.detail).join(" ")).toContain("jobs_state");
+  });
+
+  it("drops a waiting change whose source was deleted, and goes on reading the rest", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    const orario = app.source("orario")!;
+    // The file changed and waits for the queue, and meanwhile the student deletes its source.
+    app.db.prepare(`UPDATE linked_files SET pending = 2 WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM passages WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM source_documents WHERE source_id = ?`).run(orario.id);
+    app.db.prepare(`DELETE FROM sources WHERE id = ?`).run(orario.id);
+    writeFileSync(join(root, "GAL", "vettori.txt"), "Un vettore ha modulo, direzione e verso.");
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(app.db.prepare(`SELECT source_id, pending FROM linked_files WHERE rel_path = 'orario.txt'`).get()).toEqual({
+      source_id: null,
+      pending: 0,
+    });
+    expect(app.source("vettori")).toMatchObject({ status: "ready" });
+  });
+
+  it.skipIf(process.platform === "win32")("treats a file it may not look at as unreadable, never as deleted", async () => {
+    const root = studyTree();
+    const app = setup();
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    // GAL can still be listed, but nothing inside it can be looked at.
+    chmodSync(join(root, "GAL"), 0o444);
+    try {
+      await app.linked.sync(folder!.id);
+      expect(app.source("appunti")!.missingAt).toBeNull();
+      expect(app.linked.view(folder!.id).cut.unreadable).toBe(true);
+    } finally {
+      chmodSync(join(root, "GAL"), 0o755);
+    }
   });
 });
 

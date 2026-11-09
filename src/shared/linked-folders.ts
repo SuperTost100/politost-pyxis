@@ -11,3 +11,9 @@ export const MAX_LINK_PATHS = 20;
 
 /** A subject name, as `subjects` stores it. */
 export const MAX_SUBJECT_NAME = 120;
+
+/**
+ * A linked folder is read with no cap on files, but folders nested deeper than this are not opened. Links are never
+ * followed, so this only stops a tree that is absurdly deep.
+ */
+export const MAX_LINKED_DEPTH = 32;

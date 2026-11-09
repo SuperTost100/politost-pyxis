@@ -8,10 +8,13 @@ export const SOURCE_EXTENSIONS = ["ptsb", ...DOCUMENT_EXTENSIONS, ...IMAGE_EXTEN
 /** Replacing a source needs a document the extractors can version, not a photo. */
 export const REPLACE_EXTENSIONS = DOCUMENT_EXTENSIONS;
 
-/** A folder scan lists this many files, and does not open folders nested deeper. It says so when either cuts the list. */
+/**
+ * A folder import (a one-shot copy) lists this many files, and does not open folders nested deeper. It says so when
+ * either cuts the list. A linked folder has no file cap (see `MAX_LINKED_DEPTH`).
+ */
 export const MAX_FOLDER_FILES = 2000;
 export const MAX_FOLDER_DEPTH = 12;
-/** A folder scan stops after reading this many entries, files and folders alike, importable or not. */
+/** A folder import stops after reading this many entries, files and folders alike, importable or not. */
 export const MAX_FOLDER_ENTRIES = 20_000;
 
 /** The most files one drop can hand to main. */

@@ -187,7 +187,7 @@
         "isSubject": "È una materia",
         "isSubjectNamed": "{{folder}} è una materia",
         "addFolder": "Aggiungi un'altra cartella",
-        "cut": "La cartella è molto grande: Pyxis legge i primi {{files}} file, fino a {{depth}} livelli di sottocartelle."
+        "cut": "Pyxis legge le sottocartelle fino a {{depth}} livelli di profondità, quindi quelle più interne non sono state lette."
       }
     },
     "optional": "(se vuoi)",
@@ -2240,6 +2240,8 @@
     "lessonWriting": "Scrivo la lezione",
     "lessonSection": "Riscrivo una parte della lezione",
     "doing": {
+      "folderRead_one": "Leggo la cartella: 1 file trovato",
+      "folderRead_other": "Leggo la cartella: {{count, number}} file trovati",
       "quizBuild": "Preparo il quiz",
       "quizBuild_topic": "Preparo il quiz su {{topic}}",
       "quizGrade": "Correggo il quiz",

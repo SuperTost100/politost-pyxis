@@ -81,6 +81,7 @@ const RUNNING_LABELS: Record<string, string> = {
   "map-build": "jobs.doing.mapBuild",
   "simulation-build": "jobs.doing.simulationBuild",
   "simulation-grade": "jobs.doing.simulationGrade",
+  "linked-folder-read": "jobs.doing.folderRead",
 };
 
 /** The message key for a finished job of this kind, or undefined for work the student never asked for by name. */

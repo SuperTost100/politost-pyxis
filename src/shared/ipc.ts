@@ -275,6 +275,8 @@ export const JobView = z.object({
   ref: z.string().optional(),
   state: JobState,
   progress: z.number(),
+  /** How many things the work has reached so far, such as the files found in a folder being read. */
+  count: z.number().optional(),
   stepLabel: z.string().nullable(),
   error: z.string().nullable(),
   steps: z.array(JobStepView),
@@ -460,8 +462,8 @@ const linkedFolderSchema = z.object({
   mode: z.enum(LINK_MODES),
   /** `names`: no model named the subjects, so they are the folder names. */
   detection: z.enum(["ai", "names"]),
-  /** What the walk left out, with the same caps as a folder import. */
-  cut: z.object({ files: z.boolean(), depth: z.boolean(), entries: z.boolean(), unreadable: z.boolean() }),
+  /** What the last look could not read: folders nested past MAX_LINKED_DEPTH, and folders the system would not open. */
+  cut: z.object({ depth: z.boolean(), unreadable: z.boolean() }),
   subjects: z.array(
     z.object({
       key: z.string(),

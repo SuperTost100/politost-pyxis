@@ -115,7 +115,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(24);
+    expect(db.pragma("user_version", { simple: true })).toBe(25);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -130,7 +130,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -147,7 +147,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(
       again
         .prepare(
@@ -177,7 +177,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -205,7 +205,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -255,7 +255,7 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(again.prepare("SELECT * FROM sources").all()).toEqual(before);
     expect(again.prepare("SELECT COUNT(*) AS n FROM linked_files").get()).toEqual({ n: 0 });
     again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
@@ -268,6 +268,32 @@ describe("linked folders", () => {
     expect(() =>
       again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('g', '/other', 'drive', 1)").run(),
     ).toThrow();
+  });
+});
+
+describe("linked folders read in full", () => {
+  it("keeps every recorded file as read, and adds the waiting and sorting columns", () => {
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
+    const db = openDatabase(file);
+    db.exec(
+      "DROP INDEX linked_files_pending; DROP INDEX linked_files_gone; ALTER TABLE linked_files DROP COLUMN pending; ALTER TABLE linked_files DROP COLUMN sorted_at;",
+    );
+    db.pragma("user_version = 24");
+    db.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
+    db.prepare(
+      "INSERT INTO linked_files (folder_id, rel_path, subfolder, size, mtime_ms) VALUES ('f', 'a.pdf', '', 1, 1)",
+    ).run();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
+    expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
+    expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
+    // The queue finds waiting files of a folder through its own index.
+    const plan = again
+      .prepare("EXPLAIN QUERY PLAN SELECT * FROM linked_files WHERE folder_id = 'f' AND pending > 0 ORDER BY rowid")
+      .all() as Array<{ detail: string }>;
+    expect(plan.map((row) => row.detail).join(" ")).toContain("linked_files_pending");
   });
 });
 
@@ -290,7 +316,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(24);
+    expect(again.pragma("user_version", { simple: true })).toBe(25);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,

@@ -3,8 +3,7 @@ import { Button, Input } from "antd";
 import { ArrowRight, Folder, FolderPlus, FolderX, Hourglass, LoaderCircle, Lock } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type { LinkMode } from "@shared/linked-folders";
-import { MAX_FOLDER_DEPTH, MAX_FOLDER_FILES } from "@shared/source-types";
+import { MAX_LINKED_DEPTH, type LinkMode } from "@shared/linked-folders";
 import type { RequestOutput } from "../../../../shared/ipc";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
@@ -400,7 +399,7 @@ export function MaterialStep({
           listFormat.format(places),
         )
       : withBold(t("onboarding.material.found.empty", { folder: SLOT }), listFormat.format(places));
-    const cut = folders.some((folder) => folder.cut.files || folder.cut.depth || folder.cut.entries);
+    const cut = folders.some((folder) => folder.cut.depth);
     const unreadable = folders.some((folder) => folder.cut.unreadable);
     content = (
       <>
@@ -463,7 +462,7 @@ export function MaterialStep({
         ) : null}
         {cut ? (
           <Notice tone="warning">
-            {t("onboarding.material.found.cut", { files: MAX_FOLDER_FILES, depth: MAX_FOLDER_DEPTH })}
+            {t("onboarding.material.found.cut", { depth: MAX_LINKED_DEPTH })}
           </Notice>
         ) : null}
         {unreadable ? <Notice tone="warning">{t("sources.folderUnreadable")}</Notice> : null}

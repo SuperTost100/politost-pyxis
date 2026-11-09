@@ -137,6 +137,7 @@ describe("lessons in the jobs list", () => {
     // The jobs list entry fails to save, as it would with a full disk.
     runner.track = () => ({
       progress: () => {},
+      count: () => {},
       finish: () => {
         throw new Error("disk-full");
       },
