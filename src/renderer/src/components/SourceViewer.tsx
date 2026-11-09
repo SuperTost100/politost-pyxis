@@ -38,8 +38,9 @@ export function useSourceView(
   const body = useRef<HTMLDivElement>(null);
   const [markdownReady, setMarkdownReady] = useState(markdown != null);
   useEffect(() => {
-    if (location && !markdown) void loadMarkdown().then(() => setMarkdownReady(true));
-  }, [location]);
+    // Another viewer may have loaded Markdown already; this one still has to notice.
+    if (location && !markdownReady) void loadMarkdown().then(() => setMarkdownReady(true));
+  }, [location, markdownReady]);
   const passages = useQuery({
     queryKey: ["viewer", location], enabled: location != null,
     queryFn: async () => location?.passageId

@@ -52,11 +52,15 @@ export function MapsHome() {
   );
 
   let body;
-  if (maps.isError && !data)
+  // Without the subjects the empty state and the new-map dialog would be wrong, so their failure shows like the maps'.
+  if ((maps.isError && !data) || (subjects.isError && !subjects.data))
     body = (
       <Notice
         tone="danger"
-        action={{ label: t("maps.retry"), onClick: () => void maps.refetch() }}
+        action={{
+          label: t("maps.retry"),
+          onClick: () => void Promise.all([maps.refetch(), subjects.refetch()]),
+        }}
       >
         {t("maps.loadFailed")}
       </Notice>

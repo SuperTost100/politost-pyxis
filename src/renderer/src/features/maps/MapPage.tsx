@@ -289,10 +289,15 @@ export function MapPage() {
   const sourceTrigger = useRef<HTMLElement | null>(null);
   const sourcePanel = useRef<HTMLElement>(null);
   const sourceTitleId = useId();
+  // Picking another concept meanwhile removes that button, so focus goes to the concept selected now.
   const closeSource = useCallback(() => {
     setSourceOpen(false);
     const trigger = sourceTrigger.current;
     if (trigger?.isConnected) trigger.focus();
+    else
+      canvas.current
+        ?.querySelector<HTMLElement>(".react-flow__node.selected, .react-flow__node")
+        ?.focus({ preventScroll: true });
   }, []);
   const sourceView = useSourceView(
     openSourceAt
@@ -347,7 +352,7 @@ export function MapPage() {
       if (
         event.key !== "Escape" ||
         event.defaultPrevented ||
-        (event.target instanceof Element && event.target.closest("[role='dialog']"))
+        (event.target instanceof Element && event.target.closest("dialog, [role='dialog']"))
       )
         return;
       closeSource();

@@ -11,7 +11,7 @@ import { invoke } from "../../lib/ipc";
 import "./SubjectPicker.css";
 import { useSubjects } from "../../lib/queries";
 
-type Subject = { id: string; name: string };
+type Subject = { id: string; name: string; wholeMaps?: number };
 function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disabled: boolean; remove: () => void; rename: (name: string) => Promise<void> }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
@@ -42,7 +42,7 @@ function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disable
         <Button type="text" disabled={disabled} onClick={() => setDraft(null)}>{t("ask.cancelSubjects")}</Button>
       </>
     )}
-    <Popconfirm title={t("ask.removeSubjectConfirm", { name: item.name })} onConfirm={remove} okText={t("ask.removeSubject")} cancelText={t("ask.cancelSubjects")}>
+    <Popconfirm title={item.wholeMaps ? t("ask.removeSubjectMapsConfirm", { name: item.name, count: item.wholeMaps }) : t("ask.removeSubjectConfirm", { name: item.name })} onConfirm={remove} okText={t("ask.removeSubject")} cancelText={t("ask.cancelSubjects")}>
       <Button type="text" disabled={disabled} aria-label={t("ask.removeNamedSubject", { name: item.name })}>{t("ask.removeSubject")}</Button>
     </Popconfirm>
   </li>;

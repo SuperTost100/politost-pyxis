@@ -1714,8 +1714,10 @@ export const requests = {
   },
   "subjects.list": {
     input: z.object({}),
-    /** `inUse`: an exam, a source, a map or a chat still has the subject. */
-    output: z.array(z.object({ id: z.string(), name: z.string(), inUse: z.boolean() })),
+    /** `inUse`: an exam, a source, a map or a chat still has the subject. `wholeMaps`: its maps of the whole subject. */
+    output: z.array(
+      z.object({ id: z.string(), name: z.string(), inUse: z.boolean(), wholeMaps: z.number().int().nonnegative() }),
+    ),
   },
   "plans.usage": {
     input: z.object({}),

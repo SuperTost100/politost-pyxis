@@ -54,7 +54,7 @@ describe("subjectPassages", () => {
     expect(subjectPassages(db, "chem").map((passage) => passage.id)).toEqual(["other-1"]);
   });
 
-  it("takes sections evenly from start to end when a subject has more than fit", () => {
+  it("takes sections evenly from the first to the last when a subject has more than fit", () => {
     const db = seed();
     db.exec("DELETE FROM passages WHERE source_id = 'book'");
     const insert = db.prepare(
@@ -64,13 +64,36 @@ describe("subjectPassages", () => {
     const ids = subjectPassages(db, "phys").map((passage) => passage.id);
     expect(ids).toHaveLength(24);
     expect(ids[0]).toBe("s0");
-    expect(ids).toContain("s30");
-    expect(ids).not.toContain("slides-1");
+    expect(ids).toContain("s29");
+    // The last section is the slides' only one, and it is still read.
+    expect(ids.at(-1)).toBe("slides-1");
   });
 
-  it("spreads a list evenly or keeps it whole", () => {
+  it("reads the study material of the subject's exams, even without a subject of its own or as a past paper elsewhere", () => {
+    const db = seed();
+    db.exec(`
+      INSERT INTO sources(id,subject_id,kind,title,status,library,created_at,updated_at) VALUES
+        ('notes',NULL,'pdf','Appunti','ready',1,1,1),
+        ('elsewhere',NULL,'pdf','Altro corso','ready',1,1,1);
+      INSERT INTO plans(id,subject_id,title,status,created_at,updated_at) VALUES('q','chem','Chimica','ready',1,1);
+      INSERT INTO plan_sources(plan_id,source_id,role) VALUES('p','notes','material'),('q','paper','material'),('q','notes','past_paper');
+    `);
+    const insert = db.prepare(
+      "INSERT INTO passages(id,source_id,version,text,section_path,created_at) VALUES(?,?,1,'testo',NULL,1)",
+    );
+    insert.run("notes-1", "notes");
+    insert.run("elsewhere-1", "elsewhere");
+    const ids = subjectPassages(db, "phys").map((passage) => passage.id);
+    expect(ids).toContain("notes-1");
+    expect(ids).not.toContain("elsewhere-1");
+    // Chimica studies from the past paper of Fisica I's exam, and has Fisica I's notes as its own past paper.
+    expect(subjectPassages(db, "chem").map((passage) => passage.id)).toEqual(["other-1", "paper-1"]);
+  });
+
+  it("spreads a list evenly from its first item to its last, or keeps it whole", () => {
     expect(spread([1, 2, 3], 5)).toEqual([1, 2, 3]);
-    expect(spread([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 5)).toEqual([0, 2, 4, 6, 8]);
+    expect(spread([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 4)).toEqual([0, 3, 6, 9]);
+    expect(spread([4, 5, 6], 1)).toEqual([4]);
     expect(spread([1, 2], 0)).toEqual([]);
   });
 });

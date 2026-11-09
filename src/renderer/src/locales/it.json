@@ -315,6 +315,8 @@
     "renameSubjectField": "Nome della materia",
     "saveSubject": "Salva",
     "removeSubjectConfirm": "Rimuovere {{name}} dalla lista delle materie? Gli esami e le conversazioni restano salvati.",
+    "removeSubjectMapsConfirm_one": "Rimuovere {{name}} dalla lista delle materie? La sua mappa di tutta la materia verrà cancellata. Gli esami e le conversazioni restano salvati.",
+    "removeSubjectMapsConfirm_other": "Rimuovere {{name}} dalla lista delle materie? Le sue {{count}} mappe di tutta la materia verranno cancellate. Gli esami e le conversazioni restano salvati.",
     "subjectOrderHelp": "Trascina una materia per cambiare ordine. Puoi anche selezionare la maniglia, premere Spazio, spostarla con le frecce e premere Spazio per salvare.",
     "subjectDragInstructions": "Premi Spazio per prendere una materia, usa le frecce per spostarla e premi Spazio per posarla. Premi Esc per annullare.",
     "subjectSaveFailed": "Non è stato possibile salvare le materie. Riprova.",

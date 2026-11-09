@@ -315,6 +315,8 @@
     "renameSubjectField": "Subject name",
     "saveSubject": "Save",
     "removeSubjectConfirm": "Remove {{name}} from the subject list? Existing exams and conversations are kept.",
+    "removeSubjectMapsConfirm_one": "Remove {{name}} from the subject list? Its map of the whole subject will be deleted. Existing exams and conversations are kept.",
+    "removeSubjectMapsConfirm_other": "Remove {{name}} from the subject list? Its {{count}} maps of the whole subject will be deleted. Existing exams and conversations are kept.",
     "subjectOrderHelp": "Drag a subject to change the order. You can also focus its handle, press Space, move with the arrow keys, then press Space to save.",
     "subjectDragInstructions": "Press Space to pick up a subject, use the arrow keys to move it, and press Space to drop it. Press Escape to cancel.",
     "subjectSaveFailed": "The subjects could not be saved. Try again.",

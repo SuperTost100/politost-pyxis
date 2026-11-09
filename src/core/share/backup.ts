@@ -636,7 +636,7 @@ function openLiveDatabase(file: string): Database.Database {
 }
 
 /**
- * Whether the workspace holds anything the student made or imported: a source, a plan, a chat or a whiteboard. An
+ * Whether the workspace holds anything the student made or imported: a source, a plan, a map, a chat or a whiteboard. An
  * empty workspace is not backed up automatically. On a new computer set up to restore, that copy would be the newest
  * file in a synced folder and look like the one to pick.
  */
@@ -646,8 +646,8 @@ export function hasStudyData(workspace: string): boolean {
     return (
       db
         .prepare(
-          `SELECT 1 FROM sources UNION ALL SELECT 1 FROM plans UNION ALL SELECT 1 FROM chats
-           UNION ALL SELECT 1 FROM whiteboards LIMIT 1`,
+          `SELECT 1 FROM sources UNION ALL SELECT 1 FROM plans UNION ALL SELECT 1 FROM maps
+           UNION ALL SELECT 1 FROM chats UNION ALL SELECT 1 FROM whiteboards LIMIT 1`,
         )
         .get() !== undefined
     );
