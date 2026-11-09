@@ -3255,6 +3255,7 @@
     "planPlaceholder": "Choose an exam",
     "topicPlaceholder": "Choose a topic",
     "noPlans": "Flashcards belong to a topic of an exam. Create an exam first.",
+    "noSubjectPlans": "{{subject}} has no exam with topics yet, so there is nowhere to file these flashcards. Create an exam for {{subject}} first.",
     "hint": "Pyxis writes short flashcards from this text. You check them before they are saved.",
     "make": "Make flashcards",
     "again": "Make again",

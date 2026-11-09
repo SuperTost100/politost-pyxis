@@ -786,6 +786,7 @@ export function MapPage() {
       planId,
       topicId,
       subject: subjectName,
+      subjectId: scope.data?.subjectId ?? undefined,
       passageIds: [
         ...new Set(graph.nodes.flatMap((n) => n.sources ?? [])),
       ].slice(0, 1000),

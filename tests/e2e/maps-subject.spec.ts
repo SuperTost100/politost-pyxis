@@ -133,6 +133,21 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(panel).toBeHidden();
     await expect(foot.getByRole("button", { name: "Mazzoldi", exact: true })).toBeFocused();
 
+    // Flashcards from a map go only under its own subject's exams. Fisica I has none, so even an exam of another subject
+    // whose topic cites the same passages is not offered, and the dialog says why.
+    const chem = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedPlan(chem, { id: "p-chem", subjectId: "chem", title: "Chimica generale", topics: [{ id: "t-chem", title: "Cinetica" }] });
+    chem.exec("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-chem','pa-1'),('t-chem','pa-2'),('t-chem','pa-3')");
+    chem.close();
+    await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
+    const cards = page.getByRole("dialog", { name: "Crea flashcard" });
+    await expect(cards.getByText("Fisica I non ha ancora un esame con argomenti")).toBeVisible();
+    await expect(cards.locator(".px-mc-where")).not.toContainText("Chimica generale");
+    await expect(cards.getByLabel("Esame")).toBeDisabled();
+    await saveShot(cards, "maps-subject/cards-no-exam.png");
+    await cards.getByRole("button", { name: "Annulla" }).click();
+    await expect(cards).toHaveCount(0);
+
     // An exam's map from before still opens at the exam's address, and an exam without a subject keeps it too.
     const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seedPlan(again, { id: "p-mech", subjectId: "phys", title: "Meccanica", topics: [{ id: "t-motion", title: "Moto" }] });

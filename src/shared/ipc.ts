@@ -1271,6 +1271,8 @@ export const requests = {
       planId: z.string().optional(),
       topicId: z.string().optional(),
       subject: z.string().optional(),
+      /** A map's subject: only its exams are offered, and none when it has none. */
+      subjectId: z.string().optional(),
       passageIds: z.array(z.string()).max(1000).optional(),
     }),
     output: z.object({

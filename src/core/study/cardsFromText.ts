@@ -31,6 +31,8 @@ export type CardPlaces = {
 /**
  * The plans and topics a card can be filed under, with a first guess. A request that names a plan or a topic keeps it.
  * Otherwise a subject picks its latest plan, and the passages the text cites pick the plan and topic they belong to most.
+ * A `subjectId` (a map's subject) limits the list and the guess to that subject's exams, so passages the subject shares
+ * with another one never file the cards there; a subject without an exam offers nothing.
  */
 export function cardPlaces(
   db: Database.Database,
@@ -38,6 +40,7 @@ export function cardPlaces(
     planId?: string;
     topicId?: string;
     subject?: string;
+    subjectId?: string;
     passageIds?: string[];
   },
 ): CardPlaces {
@@ -47,9 +50,10 @@ export function cardPlaces(
        FROM plans p
        JOIN topics t ON t.plan_id = p.id AND t.archived_at IS NULL
        LEFT JOIN subjects s ON s.id = p.subject_id
+       WHERE @subjectId IS NULL OR p.subject_id = @subjectId
        ORDER BY p.updated_at DESC, p.id, t.position, t.created_at`,
     )
-    .all() as Array<{
+    .all({ subjectId: input.subjectId ?? null }) as Array<{
     plan_id: string;
     plan_title: string;
     subject: string | null;
@@ -100,9 +104,12 @@ export function cardPlaces(
   };
 
   const named = plans.find((plan) => plan.id === input.planId);
-  const ofSubject = input.subject
-    ? plans.filter((plan) => plan.subject === input.subject)
-    : [];
+  // With a subject id every plan listed is the subject's already, so its name adds nothing.
+  const ofSubject = input.subjectId
+    ? plans
+    : input.subject
+      ? plans.filter((plan) => plan.subject === input.subject)
+      : [];
   const plan =
     named ??
     best(ofSubject, planVotes) ??

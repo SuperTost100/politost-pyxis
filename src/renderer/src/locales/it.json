@@ -3255,6 +3255,7 @@
     "planPlaceholder": "Scegli un esame",
     "topicPlaceholder": "Scegli un argomento",
     "noPlans": "Le flashcard stanno in un argomento di un esame. Crea prima un esame.",
+    "noSubjectPlans": "{{subject}} non ha ancora un esame con argomenti, quindi non c’è dove mettere queste flashcard. Crea prima un esame di {{subject}}.",
     "hint": "Pyxis scrive flashcard brevi a partire da questo testo. Le controlli tu prima di salvarle.",
     "make": "Crea flashcard",
     "again": "Crea di nuovo",
