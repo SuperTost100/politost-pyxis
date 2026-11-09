@@ -1,109 +1,133 @@
 # Foundations
 
-Pyxis is a free, open-source study app that runs on the student's own computer. The 0.5 interface is calm and bookish: a paper or night ground, one centred column, Young Serif titles, teal for the next step, star gold for where you are and where you aim, and green for what you have mastered.
-
-## Principles
-
-- **One next step.** A screen has at most one `primary` action, and it moves the student forward.
-- **Each element once.** Nothing appears twice on a screen: Home is the greeting and the composer, and the top bar's doors are not repeated below it.
-- **Show the source.** Generated content says where it came from: numbered citations for grounded answers, a tag for general knowledge.
-- **Calm, not gamified.** No streaks, medals, confetti or mascots. Progress is mastery against a target.
-- **Native where it exists.** Context menus, file pickers and dialogs that the system already draws come from Electron. Pyxis draws its own only where the system can't, such as a red Delete button.
-- **Local and honest.** Status and errors are plain sentences with the fix.
-
-## Copy
-
-- Two interface languages, Italian and English. Write Italian first; it runs about 20% longer, so layouts must allow it.
-- Address the student as **tu** / **you**.
-- Sentence case everywhere: "Nuova chat", "Inizia a studiare". No uppercase labels.
-- Short and concrete: "Imposta le ore a settimana per vedere quando studierai ogni argomento." Never "AI-powered magic".
-- The word is "flashcard", never "schede". AI tools are named Claude, ChatGPT, Gemini and Cursor in what the student reads.
-- No emoji in UI copy.
+Colour, type, spacing, corners, depth, icons and numbers. Every screen is built from these, and a screen that needs a new value adds a token first. The values live in [`tokens.css`](../../src/renderer/src/design-system/tokens/tokens.css) and [`tokens.json`](../../src/renderer/src/design-system/tokens/tokens.json); this page gives their names and what each is for.
 
 ## Colour
 
-Both themes are designed; set `data-theme="dark"` or `data-theme="light"` on `<html>`. The values live in `tokens.json` and `tokens.css`.
+Teal is the one accent. The ring colours belong to the exam rings and their legend, and nothing else uses them. Both themes are designed: set `data-theme="dark"` or `data-theme="light"` on `<html>`, or on any element that should show the other theme, such as a theme preview.
 
-| Token                                                | Use                                                                                                                                                                                            |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bg`                                                 | The page ground, the top bar and the chat sidebar                                                                                                                                              |
-| `surface`, `surface-overlay`                         | Cards, the composer, the doors card, menus and dialogs                                                                                                                                         |
-| `surface-raised`                                     | Hover, the student's messages, soft buttons and the selected chat row                                                                                                                          |
-| `surface-sunken`                                     | Wells inside a card                                                                                                                                                                            |
-| `ink`, `ink-muted`, `ink-subtle`                     | Content, metadata, placeholders. All three hold 4.5:1 on every surface                                                                                                                         |
-| `primary` (`#14807a` dark, `#0f6e66` light)          | The one primary button and the selected option                                                                                                                                                 |
-| `primary-text`, `primary-soft`                       | Links and citations; the selected door and tinted notices                                                                                                                                      |
-| `star`, `star-text`, `star-soft`                     | Position and ambition only. `star` for marks such as the target tick and the current path node; `star-text` for words such as Consigliato, since `star` is too light for text on light grounds |
-| `mastery`, `ok` and their `-soft` forms              | Progress fills, done nodes, right answers                                                                                                                                                      |
-| `danger`, `danger-soft`                              | Wrong answers and destructive actions, always with a word or an icon                                                                                                                           |
-| `ring-prep`, `ring-path`, `ring-today`, `ring-track` | The exam page's three rings                                                                                                                                                                    |
-| `border`, `border-control`                           | Hairlines; outlines of anything the student operates (3:1)                                                                                                                                     |
-| `focus-ring`                                         | A 2px outline, 2px offset, on every focusable element                                                                                                                                          |
-| `scrim`                                              | Behind dialogs and full-screen tools                                                                                                                                                           |
+Targets are measured against the weakest ground a colour sits on: 4.5:1 for text, 3:1 for control edges, focus and rings.
 
-No gradients. The one glow, `glow-star`, marks the current path node.
+| Token                                          | Use                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `--bg`                                         | The ground behind every screen                                                      |
+| `--surface`                                    | Cards, the side panel, settings lists                                               |
+| `--surface-raised`                             | Soft fills: secondary buttons, hover, the student's chat messages, fields in a row  |
+| `--surface-sunken`                             | Panels inside a card: a formula, a graph, code                                      |
+| `--surface-overlay`                            | Popovers, menus and dialogs, always with `--shadow-overlay`                         |
+| `--border`                                     | Hairlines between rows and groups. Decorative, so it has no contrast target         |
+| `--border-control`                             | The edge of a text field, the stepper, the tags field and the switch track (3:1)    |
+| `--ink`                                        | Titles, body text, icons that mean something                                        |
+| `--ink-muted`                                  | Secondary text: the line under a title, ghost buttons                               |
+| `--ink-subtle`                                 | Descriptions, times, group labels, placeholders                                     |
+| `--primary`                                    | The one primary button, a checked switch, radio or box. Its label is `--on-primary` |
+| `--primary-text`                               | Links, the current item, the ring around a chosen preview tile, progress            |
+| `--primary-soft`                               | Behind citations and counts, and the selected segment in dark                       |
+| `--focus-ring`                                 | A 2px outline, 2px away, on everything focusable                                    |
+| `--ok`, `--mastery`                            | A right answer, a finished step, "Aggiunta". Always with a check or a word          |
+| `--danger`                                     | A wrong answer, an error line, the label of a destructive button                    |
+| `--star`, `--star-text`                        | The star in the mark and the app icon                                               |
+| `--ring-prep`, `--ring-path`, `--ring-today`   | The three exam rings and their legend                                               |
+| `--scrollbar-thumb`, `--scrollbar-thumb-hover` | The scrollbar thumb at rest and on hover (see [Layout](layout.md#scroll-areas))     |
+
+No gradients and no glass. State is never shown by colour alone.
 
 ## Type
 
-Four bundled families, all under the OFL: **Young Serif** for titles, **Figtree** for the interface and for reading, **Source Serif 4** for long reading where a screen asks for it, and **JetBrains Mono** for values and code.
+Young Serif for titles, Figtree for everything else, all bundled under the OFL. Every size scales with the text size in Impostazioni through `--text-scale`. Italics are for maths only, in Source Serif 4, and never stress a word.
 
-| Style                 | Font              | Size  | Use                                                              |
-| --------------------- | ----------------- | ----- | ---------------------------------------------------------------- |
-| `display`             | Young Serif 400   | 40/44 | The Home greeting, at 46px on Home                               |
-| `title-1`             | Young Serif 400   | 28/34 | Page titles                                                      |
-| `title-2`             | Young Serif 400   | 22/28 | Sections                                                         |
-| `title-3`             | Figtree 600       | 17/24 | Card titles                                                      |
-| `reading`             | Figtree 400       | 17/28 | Answers, lessons, flashcards; at most about 68 characters a line |
-| `body`, `body-strong` | Figtree 400 / 600 | 15/22 | Interface text                                                   |
-| `small`               | Figtree 400       | 13/18 | Metadata                                                         |
-| `label`               | Figtree 600       | 13    | Field labels and eyebrows, sentence case                         |
-| `stat`                | Figtree 600       | 56/56 | The one big number on a page                                     |
+| Class          | Font and size                  | Use                                                                               |
+| -------------- | ------------------------------ | --------------------------------------------------------------------------------- |
+| `.display`     | Young Serif 40/44              | The Home greeting and the exam name                                               |
+| `.title-1`     | Young Serif 36/40              | Page titles                                                                       |
+| `.title-2`     | Young Serif 22/28              | Sections, popovers, the side panel                                                |
+| `.title-3`     | Figtree 650, 15.5/20           | The title over a group of settings                                                |
+| `.body-strong` | Figtree 600, 14.5/20           | Row and list item names                                                           |
+| `.reading`     | Figtree 16/1.65                | Lessons, about 87 characters a line. The chat is 15.5/1.6, quiz questions 18/1.55 |
+| `.body`        | Figtree 14/20                  | Buttons, fields, menus                                                            |
+| `.small`       | Figtree 13/18                  | Descriptions, times, counts                                                       |
+| `.label`       | Figtree 600, 13/18             | The one label style: sentence case, never capitals                                |
+| `.meta`        | Figtree 12/16, tabular figures | Values in a row: grades, dates, counts, model names                               |
+| `.code`        | JetBrains Mono 15/22           | Raw input and paths only                                                          |
 
-- Every size scales with the student's text size through `--text-scale`.
-- Mono is for values only: grades, dates, durations, model ids and code.
-- The dyslexia-friendly mode adds letter and word spacing and a taller line height to reading text.
-- Formulas render with KaTeX in its own fonts, sized to the surrounding text.
+- **Mono is for text that is code**: the raw input of the formula field, a folder path in Dati e privacy, token names in docs. Grades, dates, times, counts and model names stay in Figtree with tabular figures.
+- **Headlines** say what is on the screen ("Come ti spiega", not "Impostazioni generali") and wrap with `text-wrap: balance`, so a two-line title never leaves one word alone.
+- The dyslexia-friendly mode adds letter and word spacing and a taller line to reading text.
+- Formulas render with KaTeX in its own fonts, sized to the text around them.
 
-## Spacing, radius and size
+## Spacing
 
-- A 4px base: `space-1` to `space-16`. Cards pad `space-6` (`space-4` when compact); sections sit `space-8` apart.
-- Content lives in one centred column of `content-width` (768px). Settings takes 960px from a 960px window, for its section list. Chiedi runs edge to edge: the chat sidebar (264px, 232px under 1100px) at the left edge, the chat's header across the rest, and the conversation in the 768px column.
-- The top bar is 60px high. On macOS it leaves 116px at the left for the traffic lights and the 48px after them.
+A 4px base, from `--space-1` (4) through `--space-2` (8), `--space-3` (12), `--space-4` (16), `--space-5` (20), `--space-6` (24) and `--space-8` (32) to `--space-12` (48) and `--space-16` (64). Group with space first: things that belong together sit close and groups sit far apart, so a screen needs few lines and boxes.
 
-| Radius                     | Value       | Use                                           |
-| -------------------------- | ----------- | --------------------------------------------- |
-| `radius-sm`                | 8px         | Menu items, rows, small icon buttons          |
-| `radius-field`             | 10px        | Buttons, inputs, selects, segmented controls  |
-| `radius-md`                | 12px        | Tiles, options, the doors card                |
-| `radius-card`              | 14px        | Cards and the composer                        |
-| `radius-lg`                | 16px        | Dialogs and side panels                       |
-| `radius-xl`, `radius-pill` | 24px, 999px | Older screens only; new work doesn't use them |
+| Between                                              | Space      |
+| ---------------------------------------------------- | ---------- |
+| A title and the line under it                        | 2 to 4px   |
+| Items of one group, and a group's title and its card | 8 to 12px  |
+| Inside a row                                         | 12 to 16px |
+| Inside a card that holds text                        | 24px       |
+| Groups on a page                                     | 30 to 32px |
+| Sections of a long page                              | 48 to 64px |
 
-Control heights are `control-sm` 32, `control-md` 40 (the default) and `control-lg` 48.
+## Corners
 
-## Elevation and motion
+Moderate corners, 8 to 16px. Circles only where the thing is round: the radio, the switch, a tag, the avatar, the rings and the path markers. Buttons are never pills.
 
-- `shadow-raised` lifts the doors card and cards that float on the ground. `shadow-card` is the resting card shadow, `shadow-overlay` the one for menus and dialogs.
-- Motion is short: 150ms for colour and background, 200ms for sheets. No bounce. Everything respects `prefers-reduced-motion`.
-- Long AI work shows the Pyxis mark turning and a line that says what it does, never a blank spinner.
+| Token            | Value | Use                                     |
+| ---------------- | ----- | --------------------------------------- |
+| `--radius-sm`    | 8px   | Rows, icon buttons, nav items           |
+| `--radius-field` | 10px  | Buttons, fields, segmented controls     |
+| `--radius-md`    | 12px  | Panels inside a card                    |
+| `--radius-card`  | 14px  | Cards, popovers, the composer           |
+| `--radius-lg`    | 16px  | The side panel, the quiz sheet, dialogs |
+
+**Nested corners.** An element inside another takes the outer radius minus the padding between them, rounded to the nearest radius token and never larger than the outer one. A card of 14 with 6px of padding holds rows of 8. A card of 14 holding rows of 14 looks swollen.
+
+`--radius-xl` and `--radius-pill` remain for screens not yet moved to this look. New work doesn't use them.
+
+## Depth
+
+Separate with space first, then a fill, then a shadow; a border comes last. Shadows mean height. In dark the surfaces get lighter as they rise, with a faint rim in place of the soft shadow.
+
+| Token              | Use                                                                 |
+| ------------------ | ------------------------------------------------------------------- |
+| `--shadow-card`    | Resting: the selected segment, small chips                          |
+| `--shadow-raised`  | Cards on the ground: settings lists, the side panel, the quiz sheet |
+| `--shadow-overlay` | Above everything: popovers, menus, dialogs, the command palette     |
+
+- Never a card inside a card. A group inside a card is rows split by hairlines.
+- Nothing is pressed in, inset or glowing. The one glow, `--glow-star`, marks the current path node.
 
 ## Icons
 
-- **Lucide** line icons, 1.75 stroke, `currentColor`, through `lucide-react` or the `Icon` component.
-- One icon per concept, the same everywhere: Library `book-open`, Attività `clock`, Settings `settings`, the sidebar fold `panel-left`, New chat `square-pen`.
-- No emoji as icons, no filled icons, and no icons from Ant Design's set.
+Lucide only, at a 1.75 stroke, in `currentColor`, through `lucide-react` or the `Icon` component. One icon per idea, the same everywhere, and never an emoji.
+
+| Idea              | Icon             |
+| ----------------- | ---------------- |
+| Nuova chat        | `square-pen`     |
+| Cerca             | `search`         |
+| Esami             | `graduation-cap` |
+| Mappe             | `network`        |
+| Libreria          | `book-open`      |
+| Attività          | `clock`          |
+| Impostazioni      | `settings`       |
+| Fold the sidebar  | `panel-left`     |
+| Stop              | `square`         |
+| Undo the last one | `undo-2`         |
+| Needs you         | `circle-alert`   |
+| Done              | `circle-check`   |
+
+Sizes: 14px in small buttons, 16px by default, 18px in the sidebar and toolbars, 20px for the mark of a job row.
+
+## Numbers
+
+Tabular figures (`font-variant-numeric: tabular-nums`) wherever a number changes or lines up: counts, scores, times, the stepper, the question grid. With proportional figures a counting number shakes the words after it.
+
+Italian numbers use a decimal comma and a space before the unit: 2,4 GB, 18,5 px. Counts read "12 di 37", not "12/37".
 
 ## Logo
 
-The mark is **star trails**: three trails circling the pole star, the fixed point you steer by.
+The mark is star trails: three trails circling the pole star, the fixed point you steer by. With `<Logo working />` the trails turn, which is the [working mark](feedback.md#the-working-mark).
 
-- The top bar shows the mark at 24px beside "Pyxis" in Young Serif 20px. The brand opens Home.
 - Mark files: `pyxis-mark-dark.svg` on dark grounds, `pyxis-mark-light.svg` on light, `pyxis-mark-mono.svg` for one colour.
 - App icon: white trails and a gold star on a teal (`#14807a`) rounded square, `pyxis-app-icon.svg`. Below 32px use `pyxis-app-icon-small.svg`, which keeps two thicker trails. `build/icon.png` is its 1024px render.
 - Never recolour the star, add trails or rotate the mark.
-
-## Building screens
-
-- Screens use Pyxis's own components where they exist (see [Components](components.md)), then Ant Design v6 themed by `pyxis-theme.ts`. Ant Design goes away screen by screen during 0.5, and a screen that has moved imports nothing from `antd`.
-- The shell is Pyxis's own top bar (`app/layouts/Shell.tsx`): the brand, the Chiedi · Esami · Mappe doors, then Library, Attività and Settings at the right.
-- Accessibility: every control reachable by keyboard, every icon-only button labelled, state never shown by colour alone, text at 4.5:1 and controls, rings and focus at 3:1. The contrast tests cover the pairs they list, so a new pair of text and ground gets its own line there (see [the README](README.md#changing-the-system)).
