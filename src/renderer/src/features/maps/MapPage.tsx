@@ -296,9 +296,10 @@ export function MapPage() {
     const trigger = sourceTrigger.current;
     if (trigger?.isConnected) trigger.focus();
     else
-      canvas.current
-        ?.querySelector<HTMLElement>(".react-flow__node.selected, .react-flow__node")
-        ?.focus({ preventScroll: true });
+      (
+        canvas.current?.querySelector<HTMLElement>(".react-flow__node.selected") ??
+        canvas.current?.querySelector<HTMLElement>(".react-flow__node")
+      )?.focus({ preventScroll: true });
   }, []);
   const sourceView = useSourceView(
     openSourceAt
@@ -1009,6 +1010,8 @@ export function MapPage() {
               variant="secondary"
               size="sm"
               icon="layers"
+              // A topic map's cards go under its exam and topic, which come with the scope.
+              disabled={Boolean(params.topicId) && !scope.data}
               onClick={makeCards}
             >
               {t("map.makeCards")}
@@ -1027,11 +1030,12 @@ export function MapPage() {
           {notice}
         </p>
       ) : null}
-      {map.isError || list.isError ? (
+      {map.isError || list.isError || scope.isError ? (
         <LoadError
           onRetry={() => {
             if (list.isError) void list.refetch();
             if (map.isError) void map.refetch();
+            if (scope.isError) void scope.refetch();
           }}
         >
           {t("map.loadFailed")}

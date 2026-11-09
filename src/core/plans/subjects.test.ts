@@ -49,7 +49,8 @@ describe("ASK-01 shared subjects", () => {
     db.prepare("INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('whole', ?, ?, 1)").run(subject.id, collection);
     // The map alone keeps the subject in use.
     expect(listSubjects(db)).toEqual([{ ...subject, inUse: true, wholeMaps: 2 }]);
-    db.prepare("UPDATE maps SET graph_json = ? WHERE id = 'whole'").run(JSON.stringify({ layout: "tree", nodes: [], edges: [], undo: null }));
+    // A bare graph, as before collections, is one map even with a stray `maps` field, as the map reader sees it.
+    db.prepare("UPDATE maps SET graph_json = ? WHERE id = 'whole'").run(JSON.stringify({ layout: "tree", nodes: [], edges: [], undo: null, maps: [] }));
     expect(listSubjects(db)[0]!.wholeMaps).toBe(1);
     db.prepare("UPDATE maps SET graph_json = ? WHERE id = 'whole'").run(collection);
     db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(subject.id);

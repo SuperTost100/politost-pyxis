@@ -506,8 +506,8 @@ export function listSubjects(db: Database.Database) {
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used,
-           COALESCE((SELECT CASE WHEN json_type(m.graph_json, '$.maps') = 'array'
-               THEN json_array_length(m.graph_json, '$.maps') ELSE 1 END FROM maps m
+           COALESCE((SELECT CASE WHEN json_extract(m.graph_json, '$.version') = 1
+               THEN COALESCE(json_array_length(m.graph_json, '$.maps'), 0) ELSE 1 END FROM maps m
              WHERE m.subject_id = s.id AND m.plan_id IS NULL AND m.topic_id IS NULL), 0) AS wholeMaps
          FROM subjects s ORDER BY s.position, s.name, s.id`,
       )
