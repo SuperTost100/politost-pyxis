@@ -215,7 +215,8 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     );
     const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
     await expect(status).toBeVisible();
-    await expect(status.getByRole("button", { name: "Interrompi" })).toBeVisible();
+    // Stop sits beside the status line, outside the live region.
+    await expect(status.locator("xpath=..").getByRole("button", { name: "Interrompi" })).toBeVisible();
     await saveShot(page, `smart-text/lesson-generating-it-light.png`);
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
     await expect(status).toHaveCount(0);

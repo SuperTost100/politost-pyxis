@@ -22,6 +22,7 @@ import { OggiBlock } from "./OggiBlock";
 import "./HomePages.css";
 import { usePlans } from "../../lib/queries";
 import { useGradeScale } from "../../lib/useGradeScale";
+import { SkeletonRows } from "../../components/Skeleton";
 
 // Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
 const CardBrowser = lazy(() =>
@@ -144,18 +145,20 @@ export function ExamsHome() {
         </Suspense>
       ) : null}
       {tab === "plans" ? planImport.element : null}
-      {/* Plans show nothing until the list arrives, so "No plans yet" never flashes first. */}
+      {/* Plans show a skeleton until the list arrives, so "No plans yet" never flashes first. */}
       {tab === "sources" ? (
         <LibraryPanel />
       ) : tab === "cards" ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
           <CardBrowser />
         </Suspense>
       ) : tab === "mistakes" ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
           <MistakesNotebook />
         </Suspense>
-      ) : plans.isPending ? null : (plans.data?.length ?? 0) > 0 ? (
+      ) : plans.isPending ? (
+        <SkeletonRows label={t("components.loading")} />
+      ) : (plans.data?.length ?? 0) > 0 ? (
         <div className="px-exams-plans">
           <OggiBlock />
           <ListToolbar

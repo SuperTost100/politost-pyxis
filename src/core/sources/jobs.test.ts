@@ -165,3 +165,25 @@ it("the library row of a failed import says why it failed", async () => {
   expect(handlers.list().find((source) => source.id === result.sourceId)?.error).toBe("archive-too-large");
   db.close();
 });
+
+it("lists files the Library imported together as one request, with the folder they came from", async () => {
+  const workspace = mkdtempSync(join(tmpdir(), "pyxis-import-batch-"));
+  dirs.push(workspace);
+  const db = openDatabase(":memory:");
+  const runner = createRunner(db, () => {}, undefined, true);
+  registerSourceJobs(db, workspace, runner, async () => ({ document: extractPlain("Moto nel piano", false) }));
+  const paths = ["uno.txt", "due.txt", "solo.txt"].map((name) => {
+    const path = join(workspace, name);
+    writeFileSync(path, `Moto nel piano, ${name}`);
+    return path;
+  });
+  const batch = { id: "b1", folder: "Fisica I" };
+  const one = await enqueueSourceFile(db, workspace, runner, paths[0]!, undefined, batch);
+  const two = await enqueueSourceFile(db, workspace, runner, paths[1]!, undefined, batch);
+  const alone = await enqueueSourceFile(db, workspace, runner, paths[2]!);
+  const listed = runner.list();
+  for (const { jobId } of [one, two])
+    expect(listed.find((job) => job.id === jobId)?.group).toEqual({ id: "batch:b1", folder: "Fisica I" });
+  expect(listed.find((job) => job.id === alone.jobId)).not.toHaveProperty("group");
+  db.close();
+});

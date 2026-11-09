@@ -14,6 +14,7 @@ import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { stemText, type AnswerSource, type Citation } from "./quizText";
 import "./ResultsScreen.css";
 import { Logo } from "../../components/Logo";
+import { Working } from "../../components/Working";
 
 /** Where one answer stands: graded (four ways), or still waiting for its grade. */
 export type ResultMark =
@@ -432,11 +433,7 @@ function Changes({
         <h2 id={title} className="small px-res-changes-title">
           {t("results.changes")}
         </h2>
-        <div className="px-res-skeleton" aria-hidden>
-          <span />
-          <span className="is-short" />
-        </div>
-        <p className="small px-res-changes-later">{t("results.changesLater")}</p>
+        <Working className="px-res-changes-later" line={t("results.changesLater")} />
       </section>
     );
   if (!outcome) return null;

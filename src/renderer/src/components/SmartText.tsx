@@ -13,6 +13,7 @@ import { InlineMarkdown } from "./InlineMarkdown";
 import { MarkdownView, type CitationResolver } from "./MarkdownView";
 import { QuizOption } from "./QuizOption";
 import "./SmartText.css";
+import { Working } from "./Working";
 
 /** Saves a pick. A rejection with `dropped: true` means the pick was discarded on purpose: the check reverts without an error. */
 export type SmartAnswer = (questionId: string, pick: number) => Promise<unknown>;
@@ -88,10 +89,8 @@ export function SmartText({
         ) : segment.type === "pending" && segment.kind === "figure" ? (
           <Figure key={index} caption="" drawing />
         ) : segment.type === "pending" ? (
-          <div key={index} className="px-sb is-pending" role="status">
-            <span className="label">{t("smart.preparing")}</span>
-            <span className="px-sb-skeleton" />
-            <span className="px-sb-skeleton is-short" />
+          <div key={index} className="px-sb is-pending">
+            <Working line={t("smart.preparing")} />
           </div>
         ) : segment.block.kind === "figure" ? (
           <Figure

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { Working } from "../../components/Working";
 import { CitationChip } from "../../components/CitationChip";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { JobsButton } from "../jobs/JobsButton";
@@ -12,7 +13,6 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar } from "./StudyBar";
 import { recommendQuery } from "../../lib/queries";
-import { Logo } from "../../components/Logo";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
 const WORDS_PER_MINUTE = 200;
@@ -190,7 +190,10 @@ export function ReaderLayout({
   );
 }
 
-/** "Writing…" with a Stop action, and skeleton lines until the first words arrive. */
+/**
+ * The AI writing the page: the working mark with what it writes and a Stop action. Before the first words it stands
+ * where the text will appear; once text is on screen it is one line under it (`pending`).
+ */
 export function ReaderProgress({
   label,
   detail,
@@ -205,37 +208,48 @@ export function ReaderProgress({
   stopLabel?: string;
   onStop?: () => void;
   empty: boolean;
-  /** More is coming below text already on screen: shows the lines of the next section, without a heading bar. */
+  /** More is coming below text already on screen. */
   pending?: boolean;
 }) {
+  const stop = onStop ? (
+    <Button size="small" type="text" onClick={onStop}>
+      {stopLabel}
+    </Button>
+  ) : null;
+  if (empty) return <Working slot className="px-reader-working" line={label} detail={detail} action={stop} />;
   return (
-    <>
-      <div className={`px-reader-status${pending && !empty ? " is-after" : ""}`} role="status">
-        <Logo working decorative size={22} />
-        <span className="small">{label}</span>
-        {detail ? <span className="small body-strong px-reader-detail">{detail}</span> : null}
-        {onStop ? (
-          <Button size="small" type="text" onClick={onStop}>
-            {stopLabel}
-          </Button>
-        ) : null}
-      </div>
-      {empty || pending ? (
-        <div className="px-reader-skeleton" aria-hidden>
-          {empty ? <span className="is-heading" /> : null}
-          <span />
-          <span />
-          <span className="is-short" />
-          {empty ? (
-            <>
-              <span />
-              <span />
-              <span className="is-short" />
-            </>
-          ) : null}
-        </div>
-      ) : null}
-    </>
+    <Working
+      className={`px-reader-status${pending ? " is-after" : ""}`}
+      line={
+        <>
+          <span className="small">{label}</span>
+          {detail ? <span className="small body-strong px-reader-detail">{detail}</span> : null}
+        </>
+      }
+      action={stop}
+    />
+  );
+}
+
+/** A page read from this computer: skeleton lines in the shape of the text, shown once the read has taken 150 ms. */
+export function ReaderLoading({ label }: { label: string }) {
+  // The label arrives after the live region, with the skeleton, so a screen reader announces it (as SkeletonRows).
+  const [said, setSaid] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSaid(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <div className="px-reader-skeleton" role="status">
+      <span className="visually-hidden">{said ? label : ""}</span>
+      <span className="is-heading" />
+      <span />
+      <span />
+      <span className="is-short" />
+      <span />
+      <span />
+      <span className="is-short" />
+    </div>
   );
 }
 

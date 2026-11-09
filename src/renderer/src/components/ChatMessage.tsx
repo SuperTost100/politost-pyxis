@@ -119,6 +119,7 @@ export function ChatMessage({
         ) : null}
         {checking ? (
           <p className="px-msg-status px-msg-checking" role="status">
+            <Logo size={16} working decorative />
             {t("components.chat.checking")}
           </p>
         ) : null}

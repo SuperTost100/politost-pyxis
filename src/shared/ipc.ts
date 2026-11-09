@@ -286,6 +286,14 @@ export const JobView = z.object({
   updatedAt: z.number(),
   /** Set when an automatic engine refused a call of this job and another engine did the work. */
   fallback: JobFallback.optional(),
+  /**
+   * The request the job came from when that request made several jobs of one kind, such as the files of a linked
+   * folder: the jobs list shows them as one row. `folder` names the folder they come from; `waiting` counts the files
+   * of that request not handed to the queue yet.
+   */
+  group: z
+    .object({ id: z.string(), folder: z.string().optional(), waiting: z.number().optional() })
+    .optional(),
 });
 
 export type JobView = z.infer<typeof JobView>;
@@ -488,6 +496,16 @@ export const requests = {
   "jobs.cancel": {
     input: z.object({ jobId: z.string() }),
     output: z.object({}),
+  },
+  /** Stops every queued and running job the jobs list can stop, and returns their ids. */
+  "jobs.stopAll": {
+    input: z.object({}),
+    output: z.object({ jobIds: z.array(z.string()) }),
+  },
+  /** Resumes stopped (cancelled or interrupted) jobs from the step they reached; other ids are ignored. */
+  "jobs.resumeAll": {
+    input: z.object({ jobIds: z.array(z.string()).max(100_000) }),
+    output: z.object({ jobIds: z.array(z.string()) }),
   },
   "jobs.retry": {
     input: z.object({ jobId: z.string() }),
@@ -2376,7 +2394,11 @@ export const requests = {
     ),
   },
   "sources.import": {
-    input: z.object({ path: z.string() }),
+    input: z.object({
+      path: z.string(),
+      /** Files the Library imports together: one id for the request, and the folder they were picked from. */
+      batch: z.object({ id: z.string().min(1).max(64), folder: z.string().max(255).optional() }).optional(),
+    }),
     output: importResultSchema,
   },
   "sources.search": {

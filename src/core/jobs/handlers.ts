@@ -38,6 +38,12 @@ export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database
       runner.cancel(input.jobId);
       return {};
     },
+    stopAll(): RequestOutput<"jobs.stopAll"> {
+      return { jobIds: runner.stopAll() };
+    },
+    resumeAll(input: RequestInput<"jobs.resumeAll">): RequestOutput<"jobs.resumeAll"> {
+      return { jobIds: runner.resumeAll(input.jobIds) };
+    },
     retry(input: RequestInput<"jobs.retry">): RequestOutput<"jobs.retry"> {
       runner.retry(input.jobId);
       return {};

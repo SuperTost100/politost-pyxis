@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router";
 import type { MapEntry } from "@shared/concept-map";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
+import { SkeletonRows } from "../../components/Skeleton";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { MapThumb } from "./MapThumb";
@@ -65,8 +66,8 @@ export function MapsHome() {
         {t("maps.loadFailed")}
       </Notice>
     );
-  // Nothing shows until the lists arrive, so the empty state never flashes first.
-  else if (!data || subjects.isPending) body = null;
+  // A skeleton until the lists arrive, so the empty state never flashes first.
+  else if (!data || subjects.isPending) body = <SkeletonRows label={t("components.loading")} />;
   else if (data.length === 0 && !query)
     body =
       (subjects.data?.length ?? 0) > 0 ? (

@@ -104,7 +104,7 @@ describe("jobs list groups", () => {
       groups.problems.map((problem) => [problem.kind, problem.jobs.map((item) => item.id)]),
     ).toEqual([
       ["interrupted", ["a", "c"]],
-      ["retry", ["b", "d"]],
+      ["stopped", ["b", "d"]],
     ]);
   });
 
@@ -181,4 +181,65 @@ describe("jobs list groups", () => {
     expect(jobTopicName({ topics: ["A", "B", "C"] }, "en", more)).toBe("A +2");
     expect(jobTopicName({ topic: "Dinamica" }, "it", more)).toBe("Dinamica");
   });
+
+  describe("jobs of one request", () => {
+    const read = (id: string, over: Partial<JobView> = {}) =>
+      job(id, { kind: "source-import", state: "queued", group: { id: "folder:f", folder: "Università" }, ...over });
+
+    it("shows a request's jobs as one row, where its first job was, counting what it read and what still waits", () => {
+      const groups = groupJobs(
+        [
+          job("lesson", { kind: "lesson-write", state: "running" }),
+          read("a", { state: "running" }),
+          job("solo", { kind: "source-import", state: "running" }),
+          read("b", { kind: "source-import-vision", group: { id: "folder:f", folder: "Università", waiting: 20 } }),
+          read("c"),
+        ],
+        [read("old", { state: "succeeded" }), job("quiz", { kind: "quiz-build", state: "succeeded" })],
+      );
+      expect(groups.runningItems.map((item) => item.batch?.key ?? item.job?.id)).toEqual([
+        "lesson",
+        "source-import|folder:f",
+        "solo",
+      ]);
+      const batch = groups.runningItems[1]!.batch!;
+      expect(batch).toMatchObject({ family: "source-import", folder: "Università", waiting: 20 });
+      expect(batch.jobs.map((item) => item.id)).toEqual(["a", "b", "c"]);
+      expect(batch.done.map((item) => item.id)).toEqual(["old"]);
+      // What the running row already counts is not listed again under finished.
+      expect(groups.finished.map((item) => item.id)).toEqual(["quiz"]);
+      expect(groups.finishedItems.map((item) => item.job?.id)).toEqual(["quiz"]);
+      // Every running job stays countable and stoppable on its own.
+      expect(groups.running.map((item) => item.id)).toEqual(["lesson", "a", "solo", "b", "c"]);
+    });
+
+    it("keeps a lone job of a request as its own row, and other kinds of the same request apart", () => {
+      const groups = groupJobs(
+        [read("a", { state: "running" }), read("idx", { kind: "source-index" }), read("idx2", { kind: "source-index" })],
+        [],
+      );
+      expect(groups.runningItems.map((item) => item.batch?.key ?? item.job?.id)).toEqual([
+        "a",
+        "source-index|folder:f",
+      ]);
+    });
+
+    it("counts a request's finished jobs on its row even when finished jobs of that kind are not listed", () => {
+      const index = (id: string, state: JobView["state"]) => read(id, { kind: "source-index", state });
+      const groups = groupJobs([index("a", "running"), index("b", "queued")], [index("c", "succeeded")]);
+      expect(groups.runningItems[0]!.batch!.done.map((item) => item.id)).toEqual(["c"]);
+      expect(groups.finished).toEqual([]);
+    });
+
+    it("folds a request that finished into one finished row", () => {
+      const groups = groupJobs(
+        [],
+        [read("x", { state: "succeeded" }), job("quiz", { kind: "quiz-build", state: "succeeded" }), read("y", { state: "succeeded" })],
+      );
+      expect(groups.finishedItems.map((item) => item.batch?.key ?? item.job?.id)).toEqual(["source-import|folder:f", "quiz"]);
+      expect(groups.finishedItems[0]!.batch!.done.map((item) => item.id)).toEqual(["x", "y"]);
+      expect(groups.finished.map((item) => item.id)).toEqual(["x", "quiz", "y"]);
+    });
+  });
 });
+

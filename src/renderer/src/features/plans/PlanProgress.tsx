@@ -28,6 +28,7 @@ import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { MasteryEvidence } from "./MasteryEvidence";
 import "./PlanProgress.css";
+import { Working } from "../../components/Working";
 
 type Progress = RequestOutput<"plans.series">;
 export function PlanProgress({
@@ -274,26 +275,24 @@ export function PlanProgress({
               )}
             </div>
             {preparing ? (
-              <Notice
-                tone="info"
+              <Working
+                line={t("progress.drillBuilding")}
                 action={
-                  drillRead.data
-                    ? {
-                        label: t("jobs.cancel"),
-                        onClick: () =>
-                          void invoke("jobs.cancel", {
-                            jobId: drillRead.data?.jobId ?? "",
-                          }).then(() =>
-                            client.invalidateQueries({
-                              queryKey: ["gap-drill", planId],
-                            }),
-                          ),
+                  drillRead.data ? (
+                    <Button
+                      type="text"
+                      size="small"
+                      onClick={() =>
+                        void invoke("jobs.cancel", { jobId: drillRead.data?.jobId ?? "" }).then(() =>
+                          client.invalidateQueries({ queryKey: ["gap-drill", planId] }),
+                        )
                       }
-                    : undefined
+                    >
+                      {t("jobs.cancel")}
+                    </Button>
+                  ) : null
                 }
-              >
-                {t("progress.drillBuilding")}
-              </Notice>
+              />
             ) : drillStopped && drill ? (
               <Notice
                 tone={drillState === "cancelled" ? "info" : "danger"}

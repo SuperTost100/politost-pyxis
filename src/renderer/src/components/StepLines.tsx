@@ -1,7 +1,7 @@
 import { Icon } from "./Icon";
+import { Logo } from "./Logo";
 import type { IconName } from "./Icon";
 import "./StepLines.css";
-import { Logo } from "./Logo";
 
 export type StepLineState = "pending" | "running" | "done" | "failed";
 

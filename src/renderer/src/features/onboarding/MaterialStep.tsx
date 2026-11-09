@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
-import { ArrowRight, Folder, FolderPlus, FolderX, Hourglass, Lock } from "lucide-react";
+import { ArrowRight, Folder, FolderPlus, FolderX, Lock } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { MAX_LINKED_DEPTH, type LinkMode } from "@shared/linked-folders";
@@ -469,7 +469,7 @@ export function MaterialStep({
         {unreadable ? <Notice tone="warning">{t("sources.folderUnreadable")}</Notice> : null}
         {reading ? (
           <p className="small px-material-reading" role="status">
-            <Hourglass size={15} aria-hidden />
+            <Logo size={16} working decorative />
             {t("onboarding.material.reading")}
           </p>
         ) : null}

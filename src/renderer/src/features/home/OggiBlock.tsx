@@ -14,6 +14,7 @@ import { examDaysLabel } from "../plans/examDays";
 import { stepPath } from "../plans/reopen";
 import { behindText, formatMinutes } from "./plannerFormat";
 import "./OggiBlock.css";
+import { SkeletonRows } from "../../components/Skeleton";
 
 type Today = RequestOutput<"plans.today">;
 type Item = Today["items"][number];
@@ -32,7 +33,7 @@ export function OggiBlock() {
     queryKey: ["plans", "today"],
     queryFn: () => invoke("plans.today", {}),
   });
-  if (today.isPending) return null;
+  if (today.isPending) return <SkeletonRows rows={2} label={t("components.loading")} />;
   if (today.isError)
     return (
       <section className="px-oggi" aria-labelledby={heading}>

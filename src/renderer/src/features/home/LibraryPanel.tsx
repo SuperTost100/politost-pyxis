@@ -200,7 +200,7 @@ export function LibraryPanel({
   const [dragging, setDragging] = useState(false);
   // One path for the picker, a drop and a folder. A drop gets its grant from main before core sees a path.
   const add = useMutation({
-    mutationFn: async (input: { dropped?: File[]; paths?: string[] }) => {
+    mutationFn: async (input: { dropped?: File[]; paths?: string[]; folder?: string }) => {
       setWarning(null);
       setError(null);
       setAgain(null);
@@ -236,6 +236,9 @@ export function LibraryPanel({
         done: [],
       };
       let firstError: unknown;
+      // Files added together are one request, which Attività shows as one row.
+      const batch =
+        paths.length > 1 ? { id: crypto.randomUUID(), ...(input.folder ? { folder: input.folder } : {}) } : undefined;
       try {
         for (const [index, path] of paths.entries()) {
           setProgress({ done: index, total: paths.length, name: fileName(path) });
@@ -256,7 +259,7 @@ export function LibraryPanel({
               });
               outcome.ids.push(preview.existingSourceId);
             } else {
-              const value = await invoke("sources.import", { path });
+              const value = await invoke("sources.import", { path, ...(batch ? { batch } : {}) });
               outcome.ids.push(value.sourceId);
               outcome.imported += 1;
             }
@@ -267,7 +270,7 @@ export function LibraryPanel({
               const rest = paths.slice(index);
               setAgain({
                 label: t("sources.ocrData.again.import", { count: rest.length }),
-                run: () => add.mutate({ paths: rest }),
+                run: () => add.mutate({ paths: rest, ...(input.folder ? { folder: input.folder } : {}) }),
               });
               throw err;
             }
@@ -823,6 +826,7 @@ export function LibraryPanel({
                     paths: folderFiles
                       .filter((file) => file.selected)
                       .map((file) => file.path),
+                    ...(folderScanned ? { folder: folderScanned } : {}),
                   })
                 }
               >

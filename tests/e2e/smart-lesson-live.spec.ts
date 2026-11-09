@@ -198,7 +198,8 @@ test("a quick check can be answered while the lesson is still being written, and
     await quick.getByRole("button", { name: /Spinge nel verso/ }).click();
     await expect(quick.getByText("Non proprio.")).toBeVisible();
     await expect(status).toBeVisible();
-    await status.getByRole("button", { name: "Interrompi" }).click();
+    // Stop sits beside the status line, outside the live region.
+    await status.locator("xpath=..").getByRole("button", { name: "Interrompi" }).click();
     await expect(status).toHaveCount(0);
     await expect(quick.getByText("Non proprio.")).toHaveCount(0);
     // A stop is not a failure to save: the pick just goes back to unanswered, with no error and nothing more to click.

@@ -60,6 +60,10 @@ type ImportParams = {
    * taken as the extract step reads it and kept on its `linked_files` row.
    */
   linked?: boolean;
+  /** The linked folder the file is in, so its readings are listed as one request (`importGroup`). */
+  folderId?: string;
+  /** The request that imported several files at once, such as files picked or dropped together in the Library. */
+  batch?: ImportBatch;
   /** The step `runner.resumeLocal` resumed this job at after a restart, if it did. */
   autoResumedAt?: string;
   /** Read the stored original again as a new version. The file, name and type stay, and old passages are kept. */
@@ -75,6 +79,22 @@ type ImportParams = {
    */
   refresh?: { fetchedAt: number };
 };
+/** Files imported by one request: `id` is unique to it, `folder` names the folder they were picked from. */
+export type ImportBatch = { id: string; folder?: string };
+
+/**
+ * The request an import belongs to, for the jobs list: the linked folder its file is in, or the batch the Library
+ * imported it with. Other imports stand alone.
+ */
+export function importGroup(db: Database.Database, params: unknown): { id: string; folder?: string } | null {
+  const { folderId, batch } = (params ?? {}) as Pick<ImportParams, "folderId" | "batch">;
+  if (folderId) {
+    const path = db.prepare(`SELECT path FROM linked_folders WHERE id = ?`).pluck().get(folderId) as string | undefined;
+    return { id: `folder:${folderId}`, ...(path ? { folder: basename(path) } : {}) };
+  }
+  return batch?.id ? { id: `batch:${batch.id}`, ...(batch.folder ? { folder: batch.folder } : {}) } : null;
+}
+
 export type Extraction = {
   book?: ParsedSmartbook;
   document?: ExtractedDocument;
@@ -178,6 +198,7 @@ export function registerSourceJobs(
   const base: JobSpec = {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
+    group: (params) => importGroup(db, params),
     steps: [
       {
         name: "extract",
@@ -739,6 +760,8 @@ export async function enqueueSourceFile(
   runner: Runner,
   path: string,
   existingId?: string,
+  /** The Library request this file came with, when it brought several files. */
+  batch?: ImportBatch,
 ) {
   const ext = extname(path).toLowerCase();
   // The size is read before the file, so a huge one never gets a buffer.
@@ -758,6 +781,8 @@ export async function enqueueSourceFile(
     basename(path, extname(path)),
     undefined,
     existingId,
+    undefined,
+    batch,
   );
 }
 
@@ -772,6 +797,7 @@ export function enqueueSourceData(
   existingId?: string,
   /** The free book these bytes are, from the catalog. A new source records it; an update records it once published. */
   catalog?: { id: string; version: string },
+  batch?: ImportBatch,
 ) {
   if (!IMPORT_EXTENSIONS.has(ext)) {
     throw new Error("unsupported-file");
@@ -848,6 +874,7 @@ export function enqueueSourceData(
       ...(previousStatus ? { previousStatus } : {}),
       ...(vision ? { vision } : {}),
       ...(catalog ? { catalog } : {}),
+      ...(batch ? { batch } : {}),
     } satisfies ImportParams);
   })();
   if (process.env.PYXIS_E2E === "1") console.error("pyxis-e2e: import transaction committed");

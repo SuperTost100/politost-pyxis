@@ -8,9 +8,10 @@ import { jobErrorEngine, jobErrorKey } from "./jobErrors";
  * - `engine`: the AI engine has to be signed in, chosen or changed in Settings before a retry can work;
  * - `locked-pdf`: this file's password;
  * - `interrupted`: Pyxis was closed while it worked, so it can go on from where it stopped;
- * - `retry`: a plain retry, for a failure that can pass or a job the student cancelled.
+ * - `stopped`: the student stopped it, so it can go on from where it stopped too;
+ * - `retry`: a plain retry, for a failure that can pass.
  */
-export type ProblemKind = "engine" | "locked-pdf" | "interrupted" | "retry";
+export type ProblemKind = "engine" | "locked-pdf" | "interrupted" | "stopped" | "retry";
 
 /** Jobs that stopped for the same reason, shown once. */
 export type Problem = {
@@ -23,10 +24,35 @@ export type Problem = {
   jobs: JobView[];
 };
 
+/**
+ * Jobs of one kind that one request made, such as the files of a linked folder, shown as one row from two jobs up.
+ * `family` is the kind they share (a photo read by a vision model counts as an import); `waiting` counts the request's
+ * files not queued yet.
+ */
+export type JobBatch = {
+  key: string;
+  family: string;
+  folder?: string;
+  /** Waiting and running, in the order they were made. */
+  jobs: JobView[];
+  /** Finished today. */
+  done: JobView[];
+  waiting: number;
+};
+
+/** One row of the list: a job on its own, or a request's jobs together. */
+export type JobItem = { job: JobView; batch?: undefined } | { batch: JobBatch; job?: undefined };
+
 export type JobGroups = {
   problems: Problem[];
+  /** Every waiting and running job, one by one. */
   running: JobView[];
+  /** The rows of "Running". */
+  runningItems: JobItem[];
+  /** The finished jobs the list shows, one by one: a running request's finished jobs are counted on its row instead. */
   finished: JobView[];
+  /** The rows of "Finished today". */
+  finishedItems: JobItem[];
 };
 
 /** Engine messages a retry alone can fix. The other engine messages need the engine set up first. */
@@ -138,7 +164,7 @@ function problemOf(job: JobView): Omit<Problem, "jobs"> {
   if (job.state === "cancelled")
     return {
       key: "cancelled",
-      kind: "retry",
+      kind: "stopped",
       messageKey: "jobs.problem.cancelled",
     };
   const messageKey = jobErrorKey(job.error ?? "");
@@ -158,10 +184,51 @@ function problemOf(job: JobView): Omit<Problem, "jobs"> {
   };
 }
 
+/** The kind a job counts as in a request's row: a photo read by a vision model is an import like the others. */
+export function jobFamily(kind: string): string {
+  return kind === "source-import-vision" ? "source-import" : kind;
+}
+
+function batchKey(job: JobView): string | undefined {
+  return job.group ? `${jobFamily(job.kind)}|${job.group.id}` : undefined;
+}
+
+/** Rows for `jobs` in their order: a request's jobs (`size` says how many it has in all) at its first one's place. */
+function rows(jobs: JobView[], batches: Map<string, JobBatch>, size: (batch: JobBatch) => number): JobItem[] {
+  const items: JobItem[] = [];
+  const placed = new Set<string>();
+  for (const job of jobs) {
+    const key = batchKey(job);
+    const batch = key ? batches.get(key) : undefined;
+    if (!batch || size(batch) < 2) items.push({ job });
+    else if (!placed.has(batch.key)) {
+      placed.add(batch.key);
+      items.push({ batch });
+    }
+  }
+  return items;
+}
+
+/** The request `job` belongs to, made on first sight. */
+function batchOf(batches: Map<string, JobBatch>, job: JobView): JobBatch | undefined {
+  const key = batchKey(job);
+  if (!key || !job.group) return undefined;
+  let batch = batches.get(key);
+  if (!batch) {
+    batch = { key, family: jobFamily(job.kind), jobs: [], done: [], waiting: 0 };
+    batches.set(key, batch);
+  }
+  if (job.group.folder && !batch.folder) batch.folder = job.group.folder;
+  batch.waiting = Math.max(batch.waiting, job.group.waiting ?? 0);
+  return batch;
+}
+
 /**
  * Sorts the jobs into what the list shows: problems (stopped jobs, those that stopped for the same reason merged into
  * one), work in progress, and what finished today. `active` is the runner's list in creation order; `done` the jobs
  * that succeeded today, newest first. A succeeded job of a kind with no finished-job wording stays out of the list.
+ * Jobs of one kind from one request form one row from two jobs up; while some of them run, those that finished are
+ * counted on that row rather than listed under finished.
  */
 export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
   const problems = new Map<string, Problem>();
@@ -176,12 +243,27 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
       else problems.set(found.key, { ...found, jobs: [job] });
     }
   }
+  const shown = done.filter((job) => job.state === "succeeded" && finishedLabelKey(job.kind) !== undefined);
+  const live = new Map<string, JobBatch>();
+  for (const job of running) batchOf(live, job)?.jobs.push(job);
+  // A running request counts every member that finished, also of a kind the finished list leaves out (indexing).
+  for (const job of done) {
+    const key = job.state === "succeeded" ? batchKey(job) : undefined;
+    if (key && live.has(key)) live.get(key)!.done.push(job);
+  }
+  const runningSize = (batch: JobBatch) => batch.jobs.length + batch.done.length + batch.waiting;
+  const runningItems = rows(running, live, runningSize);
+  const folded = new Set(
+    runningItems.flatMap((item) => (item.batch ? item.batch.done.map((job) => job.id) : [])),
+  );
+  const finished = shown.filter((job) => !folded.has(job.id));
+  const ended = new Map<string, JobBatch>();
+  for (const job of finished) batchOf(ended, job)?.done.push(job);
   return {
     problems: [...problems.values()],
     running,
-    finished: done.filter(
-      (job) =>
-        job.state === "succeeded" && finishedLabelKey(job.kind) !== undefined,
-    ),
+    runningItems,
+    finished,
+    finishedItems: rows(finished, ended, (batch) => batch.done.length),
   };
 }

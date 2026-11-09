@@ -233,6 +233,8 @@ const routes = {
   "jobs.finished": ["jobs", "finished", "bare"],
   "jobs.startDemo": ["jobs", "startDemo"],
   "jobs.cancel": ["jobs", "cancel"],
+  "jobs.stopAll": ["jobs", "stopAll", "bare"],
+  "jobs.resumeAll": ["jobs", "resumeAll"],
   "jobs.retry": ["jobs", "retry"],
   "jobs.resume": ["jobs", "resume"],
   "jobs.dismiss": ["jobs", "dismiss"],

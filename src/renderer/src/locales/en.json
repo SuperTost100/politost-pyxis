@@ -2168,17 +2168,17 @@
       "one": {
         "failed": "{{name}}: failed",
         "interrupted": "{{name}}: interrupted",
-        "cancelled": "{{name}}: cancelled"
+        "cancelled": "{{name}}: stopped"
       },
       "many": {
         "failed": "{{count}} tasks stopped",
         "interrupted": "{{count}} tasks interrupted",
-        "cancelled": "{{count}} tasks cancelled"
+        "cancelled": "You stopped {{count}} tasks"
       },
       "interrupted_one": "Pyxis closed while it was working. Resume where it stopped.",
       "interrupted_other": "Pyxis closed while they were working. Resume them where they stopped.",
-      "cancelled_one": "You cancelled this one. You can run it again any time.",
-      "cancelled_other": "You cancelled these. You can run them again any time."
+      "cancelled_one": "You stopped this one. Resume it from where it got to whenever you like.",
+      "cancelled_other": "You stopped these. Resume them from where they got to whenever you like."
     },
     "done": {
       "planBuild": "Exam created",
@@ -2216,6 +2216,8 @@
       "python": "Python downloaded"
     },
     "cancel": "Cancel",
+    "stop": "Stop",
+    "stopAll": "Stop all",
     "retry": "Retry",
     "resume": "Resume",
     "dismiss": "Dismiss",
@@ -2307,7 +2309,40 @@
       }
     },
     "none": "Nothing has run today.",
-    "intro": "What Pyxis prepares while you study."
+    "intro": "What Pyxis prepares while you study.",
+    "batch": {
+      "running": {
+        "read": "Reading sources · {{done}} of {{total}}",
+        "index": "Indexing sources · {{done}} of {{total}}",
+        "other": "{{what}} · {{done}} of {{total}}"
+      },
+      "finished": {
+        "read_one": "{{count}} source read",
+        "read_other": "{{count}} sources read",
+        "index_one": "{{count}} source indexed",
+        "index_other": "{{count}} sources indexed",
+        "other": "{{what}} · {{count}}"
+      },
+      "fromFolder": "From the folder {{folder}}",
+      "item": {
+        "read": "Reading",
+        "index": "Indexing",
+        "other": "Running",
+        "waiting": "Waiting"
+      },
+      "moreWaiting_one": "1 more waiting",
+      "moreWaiting_other": "{{count}} more waiting",
+      "more_one": "And 1 more",
+      "more_other": "And {{count}} more",
+      "done": {
+        "read_one": "{{count}} already read",
+        "read_other": "{{count}} already read",
+        "index_one": "{{count}} already indexed",
+        "index_other": "{{count}} already indexed",
+        "other_one": "{{count}} done",
+        "other_other": "{{count}} done"
+      }
+    }
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",
@@ -2527,7 +2562,8 @@
       "path": "Building the path",
       "lessons": "Preparing intro and diagnostic test",
       "metaRead": "3 sources · 212 passages"
-    }
+    },
+    "loading": "Loading…"
   },
   "math": {
     "toggle": "Insert formula",

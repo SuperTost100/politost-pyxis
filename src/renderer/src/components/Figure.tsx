@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { InlineMarkdown } from "./InlineMarkdown";
 import "./Figure.css";
+import { Working } from "./Working";
 
 /**
  * A figure the tutor drew in the Python sandbox, with its caption. Without an image it is still being drawn
@@ -18,9 +19,8 @@ export function Figure({
   const { t } = useTranslation();
   if (!image)
     return drawing ? (
-      <div className="px-figure is-drawing" role="status">
-        <span className="px-figure-skeleton" aria-hidden />
-        <span className="small ink-muted">{t("smart.drawing")}</span>
+      <div className="px-figure is-drawing">
+        <Working slot className="px-figure-working" line={t("smart.drawing")} />
       </div>
     ) : null;
   return (

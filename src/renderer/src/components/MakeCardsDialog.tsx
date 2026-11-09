@@ -11,7 +11,7 @@ import { IconButton } from "./IconButton";
 import { Notice } from "./Notice";
 import { openSourceViewer } from "./SourceViewer";
 import "./MakeCardsDialog.css";
-import { Logo } from "./Logo";
+import { Working } from "./Working";
 
 // The dialog mounts with the window, so KaTeX loads the first time it opens rather than at startup.
 const MathText = lazy(() =>
@@ -358,11 +358,7 @@ export function MakeCardsDialog() {
             <p className="small px-mc-hint">{t("makeCards.hint")}</p>
           ) : null}
           {working ? (
-            // AI work shows the working mark where the cards will appear, never a skeleton.
-            <div className="px-mc-working" role="status">
-              <Logo working decorative size={44} />
-              <span className="small">{t("makeCards.working")}</span>
-            </div>
+            <Working slot className="px-mc-working" line={t("makeCards.working")} />
           ) : null}
           {step === "review" ? (
             rows.length ? (

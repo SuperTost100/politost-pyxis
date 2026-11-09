@@ -48,6 +48,7 @@ import {
 import "./QuizPage.css";
 import { pastPapersQuery, usePlan, useSources } from "../../lib/queries";
 import { Logo } from "../../components/Logo";
+import { Working } from "../../components/Working";
 
 const KINDS = ["mcq", "completion", "matching", "tf", "open"] as const;
 type Kind = (typeof KINDS)[number];
@@ -1194,16 +1195,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         />
       ) : !questions.length && !fixed && attemptId ? (
         <section className="px-quiz-wait">
-          <StepLines
-            label={t("quiz.preparing")}
-            steps={[
-              {
-                id: "questions",
-                label: t(generationFailed ? "quiz.preparingFailed" : "quiz.preparing"),
-                state: generationFailed ? "failed" : "running",
-              },
-            ]}
-          />
+          {generationFailed ? (
+            <StepLines
+              label={t("quiz.preparing")}
+              steps={[{ id: "questions", label: t("quiz.preparingFailed"), state: "failed" }]}
+            />
+          ) : (
+            <Working slot line={t("quiz.preparing")} />
+          )}
           {buildFailed}
         </section>
       ) : noAnswers ? (

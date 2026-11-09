@@ -2168,17 +2168,17 @@
       "one": {
         "failed": "{{name}}: non riuscita",
         "interrupted": "{{name}}: interrotta",
-        "cancelled": "{{name}}: annullata"
+        "cancelled": "{{name}}: fermata"
       },
       "many": {
         "failed": "{{count}} attività ferme",
         "interrupted": "{{count}} attività interrotte",
-        "cancelled": "{{count}} attività annullate"
+        "cancelled": "Hai fermato {{count}} attività"
       },
       "interrupted_one": "Pyxis si è chiuso mentre lavorava. Riprendi da dove si era fermata.",
       "interrupted_other": "Pyxis si è chiuso mentre lavorava. Riprendile da dove si erano fermate.",
-      "cancelled_one": "L'hai annullata tu. Puoi rifarla quando vuoi.",
-      "cancelled_other": "Le hai annullate tu. Puoi rifarle quando vuoi."
+      "cancelled_one": "L'hai fermata tu. Riprendila quando vuoi da dove era arrivata.",
+      "cancelled_other": "Le hai fermate tu. Riprendile quando vuoi da dove erano arrivate."
     },
     "done": {
       "planBuild": "Esame creato",
@@ -2216,6 +2216,8 @@
       "python": "Python scaricato"
     },
     "cancel": "Annulla",
+    "stop": "Ferma",
+    "stopAll": "Ferma tutte",
     "retry": "Riprova",
     "resume": "Riprendi",
     "dismiss": "Chiudi",
@@ -2307,7 +2309,40 @@
       }
     },
     "none": "Nessuna attività oggi.",
-    "intro": "Quello che Pyxis prepara mentre studi."
+    "intro": "Quello che Pyxis prepara mentre studi.",
+    "batch": {
+      "running": {
+        "read": "Leggo le fonti · {{done}} di {{total}}",
+        "index": "Indicizzo le fonti · {{done}} di {{total}}",
+        "other": "{{what}} · {{done}} di {{total}}"
+      },
+      "finished": {
+        "read_one": "{{count}} fonte letta",
+        "read_other": "{{count}} fonti lette",
+        "index_one": "{{count}} fonte indicizzata",
+        "index_other": "{{count}} fonti indicizzate",
+        "other": "{{what}} · {{count}}"
+      },
+      "fromFolder": "Dalla cartella {{folder}}",
+      "item": {
+        "read": "Sto leggendo",
+        "index": "Sto indicizzando",
+        "other": "In corso",
+        "waiting": "In attesa"
+      },
+      "moreWaiting_one": "Un altro in attesa",
+      "moreWaiting_other": "Altri {{count}} in attesa",
+      "more_one": "E un altro",
+      "more_other": "E altri {{count}}",
+      "done": {
+        "read_one": "{{count}} già letto",
+        "read_other": "{{count}} già letti",
+        "index_one": "{{count}} già indicizzato",
+        "index_other": "{{count}} già indicizzati",
+        "other_one": "{{count}} già fatto",
+        "other_other": "{{count}} già fatti"
+      }
+    }
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",
@@ -2527,7 +2562,8 @@
       "path": "Costruisco il percorso",
       "lessons": "Preparo introduzione e test diagnostico",
       "metaRead": "3 fonti · 212 brani"
-    }
+    },
+    "loading": "Carico…"
   },
   "math": {
     "toggle": "Inserisci formula",

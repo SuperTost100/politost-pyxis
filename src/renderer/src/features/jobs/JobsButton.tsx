@@ -1,5 +1,5 @@
 import { Button, Popover } from "antd";
-import { CircleAlert, Clock, LoaderCircle } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
@@ -28,7 +28,9 @@ export function JobsButton({ keep = false }: { keep?: boolean }) {
   const dialog = (
     <PdfPasswordDialog target={unlocking} onClose={() => setUnlocking(null)} />
   );
-  const { problems, running, finished } = groups;
+  const { problems, finished } = groups;
+  // A request's jobs, such as a folder's files, count as the one row the list shows for them.
+  const running = groups.runningItems;
   const empty = problems.length + running.length + finished.length === 0;
   // The button leaves with its last job; it should not reopen the list by itself when a job comes back.
   useEffect(() => {
@@ -68,6 +70,7 @@ export function JobsButton({ keep = false }: { keep?: boolean }) {
         align={{ overflow: { adjustX: true, shiftX: true, adjustY: false, shiftY: true } }}
         arrow={false}
         rootClassName="px-jobs-popover"
+        motion={{ motionName: "px-jobs-grow" }}
         content={
           empty ? (
             <p className="px-jobs-none">{t("jobs.none")}</p>
@@ -95,11 +98,7 @@ export function JobsButton({ keep = false }: { keep?: boolean }) {
           <span className="px-jobs-trigger" aria-hidden>
             {running.length > 0 ? (
               <span className="px-jobs-part">
-                <LoaderCircle
-                  className="px-spin"
-                  size={16}
-                  strokeWidth={1.75}
-                />
+                <JobsClock running />
                 <span className="meta">{running.length}</span>
               </span>
             ) : null}
@@ -112,12 +111,30 @@ export function JobsButton({ keep = false }: { keep?: boolean }) {
                 <span className="meta">{problems.length}</span>
               </span>
             ) : null}
-            {running.length + problems.length === 0 ? (
-              <Clock size={18} strokeWidth={1.75} />
-            ) : null}
+            {running.length + problems.length === 0 ? <JobsClock size={18} /> : null}
           </span>
         </Button>
       </Popover>
     </>
+  );
+}
+
+/** The Attività clock. While jobs run its hands turn once every 6 seconds; with reduced motion they stay still. */
+function JobsClock({ running = false, size = 16 }: { running?: boolean; size?: number }) {
+  return (
+    <svg
+      className={running ? "px-jobs-clock is-running" : "px-jobs-clock"}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path className="px-jobs-hands" d="M12 6v6l4 2" />
+    </svg>
   );
 }

@@ -7,7 +7,7 @@ import { parseSmartText, smartQuestions } from "@shared/smart-text";
 import { invoke } from "../../lib/ipc";
 import { Notice } from "../../components/Notice";
 import { SmartText } from "../../components/SmartText";
-import { ReaderEnd, ReaderLayout, ReaderProgress, useOpenNext } from "./Reader";
+import { ReaderEnd, ReaderLayout, ReaderLoading, useOpenNext } from "./Reader";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 
@@ -72,7 +72,7 @@ export function IntroPage() {
       barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
       onBack={() => navigate(`/plans/${planId}`)}
     >
-      {intro.isPending ? <ReaderProgress label={t("lesson.loading")} empty /> : null}
+      {intro.isPending ? <ReaderLoading label={t("lesson.loading")} /> : null}
       {intro.isError ? (
         <Notice
           tone="warning"
