@@ -6,7 +6,8 @@ import "./Controls.css";
 /*
  * The settings controls, one look per kind (pyxis-mockups app/index.html, "s-settings-studio"): one choice of several is
  * radio rows, on or off is a switch row, a few sizes are a segmented control, and a number is a stepper. Rows sit in a
- * white list card. A short text is a field in its row ("s-settings-profile"), and a list of words is a tags field.
+ * white list card. A short text is a field in its row ("s-settings-profile"), and a list of words is a tags field. A choice
+ * judged by looking is a row of preview tiles ("s-settings-appearance"). docs/design-system/controls.md has the table.
  */
 
 /** A titled group of settings with an optional line under the title, as "Chi sei" or "Copie di sicurezza". */
@@ -449,6 +450,64 @@ export function Stepper({
       >
         <Plus size={16} strokeWidth={1.75} aria-hidden />
       </button>
+    </div>
+  );
+}
+
+/**
+ * A choice judged by looking, as the theme: each option a small picture with its name under it, the chosen one ringed.
+ * A radio group in its own white card, with one tab stop and the arrow keys moving the choice.
+ */
+export function PreviewTiles<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  /** The id of the heading that names the group. */
+  label: string;
+  value: T;
+  /** `preview` is drawn inside the tile's frame, which keeps a 16:10 shape. */
+  options: Array<{ value: T; label: ReactNode; preview: ReactNode }>;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      className="px-ctl px-ctl-tiles"
+      role="radiogroup"
+      aria-labelledby={label}
+      onKeyDown={(event) => {
+        const step =
+          event.key === "ArrowRight" || event.key === "ArrowDown"
+            ? 1
+            : event.key === "ArrowLeft" || event.key === "ArrowUp"
+              ? -1
+              : 0;
+        if (!step) return;
+        event.preventDefault();
+        const at = options.findIndex((option) => option.value === value);
+        const next = options[(at + step + options.length) % options.length]!;
+        onChange(next.value);
+        (event.currentTarget.querySelector(`[data-value="${next.value}"]`) as HTMLElement | null)?.focus();
+      }}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          className="px-ctl-tile"
+          data-value={option.value}
+          aria-checked={value === option.value}
+          tabIndex={value === option.value ? 0 : -1}
+          onClick={() => onChange(option.value)}
+        >
+          <span className="px-ctl-tile-frame" aria-hidden="true">
+            {option.preview}
+          </span>
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

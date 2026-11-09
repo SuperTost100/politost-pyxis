@@ -16,7 +16,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { ControlList, ControlRow, RadioRows, Segmented, Stepper, SwitchRow } from "../../components/Controls";
+import { ControlList, ControlRow, PreviewTiles, RadioRows, Segmented, Stepper, SwitchRow } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import "./SettingsPage.css";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -67,6 +67,22 @@ const PAGE_OF: Record<string, PageKey> = {
   privacy: "data",
   wipe: "data",
 };
+
+/**
+ * A small window drawn in a theme, for its preview tile: the sidebar, a title, a card and the primary button, in the
+ * theme's own tokens. System shows light and dark split on the diagonal.
+ */
+function ThemePreview({ theme }: { theme: "system" | "light" | "dark" }) {
+  const mini = (mode: "light" | "dark") => (
+    <span className="px-theme-mini" data-theme={mode} key={mode}>
+      <i className="px-theme-mini-side" />
+      <i className="px-theme-mini-title" />
+      <i className="px-theme-mini-card" />
+      <i className="px-theme-mini-button" />
+    </span>
+  );
+  return theme === "system" ? [mini("light"), mini("dark")] : mini(theme);
+}
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -149,13 +165,17 @@ export function SettingsPage() {
   const panels: Record<string, ReactNode> = {
     appearance: (
       <>
-        <RadioRows
+        <p className="px-settings-block-hint">{t("settings.themeHint")}</p>
+        <PreviewTiles
           label="settings-appearance-title"
           value={appearance.source}
-          options={(["system", "light", "dark"] as const).map((value) => ({ value, title: t(`settings.${value}`) }))}
+          options={(["system", "light", "dark"] as const).map((value) => ({
+            value,
+            label: t(`settings.${value}`),
+            preview: <ThemePreview theme={value} />,
+          }))}
           onChange={(value) => setTheme(value)}
         />
-        {appearance.source === "system" ? <p className="small section-hint">{t("settings.themeHint")}</p> : null}
       </>
     ),
     engines: <EnginesPanel />,
@@ -237,15 +257,19 @@ export function SettingsPage() {
       />
     ),
     language: (
-      <RadioRows
-        label="settings-language-title"
-        value={locale}
-        options={[
-          { value: "it", title: t("settings.italian") },
-          { value: "en", title: t("settings.english") },
-        ]}
-        onChange={(value) => setLanguage(value)}
-      />
+      <ControlList>
+        <ControlRow id="settings-language-row" title={t("settings.languageRow")} description={t("settings.languageRowHint")}>
+          <Segmented
+            label="settings-language-row"
+            value={locale}
+            options={[
+              { value: "it", label: t("settings.italian") },
+              { value: "en", label: t("settings.english") },
+            ]}
+            onChange={setLanguage}
+          />
+        </ControlRow>
+      </ControlList>
     ),
     updates: <UpdatesPanel />,
     version: (

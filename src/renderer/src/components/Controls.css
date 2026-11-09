@@ -462,6 +462,58 @@ select.px-ctl-field {
   }
 }
 
+/* Preview tiles: a small picture per option with its name under it, the chosen one ringed in --primary-text. The ring
+   is the one outline a selection may have, because a fill would change the picture. Focus rings the frame, further
+   out. */
+.px-ctl-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  padding: 16px 16px 14px;
+}
+.px-ctl-tile {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font: 500 14px/1.2 var(--font-sans);
+  cursor: pointer;
+}
+.px-ctl-tile-frame {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 190px;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius-field);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--border);
+  transition: box-shadow var(--duration-micro) var(--ease-out);
+}
+.px-ctl-tile:hover .px-ctl-tile-frame {
+  box-shadow: 0 0 0 1px var(--border-control);
+}
+.px-ctl-tile[aria-checked="true"] {
+  color: var(--ink);
+  font-weight: 650;
+}
+.px-ctl-tile[aria-checked="true"] .px-ctl-tile-frame {
+  box-shadow:
+    0 0 0 2px var(--surface),
+    0 0 0 4px var(--primary-text);
+}
+.px-ctl .px-ctl-tile:focus-visible {
+  outline: none;
+}
+.px-ctl-tile:focus-visible .px-ctl-tile-frame {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 6px;
+}
+
 .px-ctl :is(input, button, select):focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
