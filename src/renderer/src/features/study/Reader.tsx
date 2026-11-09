@@ -233,8 +233,15 @@ export function ReaderProgress({
 
 /** A page read from this computer: skeleton lines in the shape of the text, shown once the read has taken 150 ms. */
 export function ReaderLoading({ label }: { label: string }) {
+  // The label arrives after the live region, with the skeleton, so a screen reader announces it (as SkeletonRows).
+  const [said, setSaid] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSaid(true), 150);
+    return () => clearTimeout(timer);
+  }, []);
   return (
-    <div className="px-reader-skeleton" role="status" aria-label={label}>
+    <div className="px-reader-skeleton" role="status">
+      <span className="visually-hidden">{said ? label : ""}</span>
       <span className="is-heading" />
       <span />
       <span />

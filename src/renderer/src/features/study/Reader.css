@@ -236,7 +236,7 @@
   min-height: 280px;
 }
 
-.px-reader-skeleton span {
+.px-reader-skeleton span:not(.visually-hidden) {
   display: block;
   height: 14px;
   border-radius: var(--radius-pill);

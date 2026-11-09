@@ -306,7 +306,7 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
   const where = batch.folder ? t("jobs.batch.fromFolder", { folder: batch.folder }) : undefined;
   const running = batch.jobs.some((job) => job.state === "running");
   const progress = total
-    ? (done + batch.jobs.reduce((sum, job) => sum + (job.state === "running" ? job.progress : 0), 0)) / total
+    ? (done + batch.jobs.reduce((sum, job) => sum + job.progress, 0)) / total
     : 0;
   // Running work first, then what waits, as it will be read; a finished request lists what it read.
   const members = finished

@@ -1029,7 +1029,7 @@ it("dismisses an interrupted study build without deleting its resume checkpoint"
 
 describe("stopping and resuming every job, and jobs of one request", () => {
   /** A step that holds until it is aborted, as a long reading does. */
-  const held: JobSpec["steps"] = [
+  const heldSteps: JobSpec["steps"] = [
     { name: "first", label: "first", run: async () => "first" },
     {
       name: "hold",
@@ -1048,7 +1048,7 @@ describe("stopping and resuming every job, and jobs of one request", () => {
   it("stops every running and waiting job at once, and leaves a page's own work and stopped jobs alone", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
-    runner.register("read", { jobClass: "local", steps: held });
+    runner.register("read", { jobClass: "local", steps: heldSteps });
     const running = runner.start("read", {});
     const waiting = runner.start("read", {});
     await until(database, running, ["running"]);
@@ -1072,10 +1072,34 @@ describe("stopping and resuming every job, and jobs of one request", () => {
   it("resumes stopped jobs from the step they reached, in the order they were made, and leaves other jobs alone", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
-    runner.register("read", { jobClass: "local", steps: held });
-    const first = runner.start("read", {});
-    const second = runner.start("read", {});
-    await until(database, first, ["running"]);
+    // How often each job's first step ran, and a signal when a job reaches the step that holds.
+    const firstRuns = new Map<string, number>();
+    let holding: () => void = () => {};
+    const held = () => new Promise<void>((resolve) => (holding = resolve));
+    runner.register("read", {
+      jobClass: "local",
+      steps: [
+        {
+          ...heldSteps[0]!,
+          run: async (ctx) => {
+            const { name } = ctx.params as { name: string };
+            firstRuns.set(name, (firstRuns.get(name) ?? 0) + 1);
+            return "first";
+          },
+        },
+        {
+          ...heldSteps[1]!,
+          run: (ctx) => {
+            holding();
+            return heldSteps[1]!.run(ctx);
+          },
+        },
+      ],
+    });
+    let reached = held();
+    const first = runner.start("read", { name: "first" });
+    const second = runner.start("read", { name: "second" });
+    await reached;
     runner.stopAll();
     await until(database, first, ["cancelled"]);
     const now = Date.now();
@@ -1085,15 +1109,14 @@ describe("stopping and resuming every job, and jobs of one request", () => {
       )
       .run(now, now);
 
+    reached = held();
     expect(runner.resumeAll([second, first, "broken", "missing"])).toEqual([first, second]);
-    expect(await until(database, first, ["running"])).toBe("running");
+    await reached;
+    expect(stateOf(database, first)).toBe("running");
     expect(stateOf(database, second)).toBe("queued");
     expect(stateOf(database, "broken")).toBe("failed");
     // The step that finished before the stop is not run again.
-    const done = database
-      .prepare(`SELECT state FROM job_steps WHERE job_id = ? AND name = 'first'`)
-      .get(first) as { state: string };
-    expect(done.state).toBe("succeeded");
+    expect(firstRuns.get("first")).toBe(1);
     runner.stopAll();
     await until(database, first, ["cancelled"]);
   });
@@ -1101,7 +1124,7 @@ describe("stopping and resuming every job, and jobs of one request", () => {
   it("looks for work to start once when it resumes many stopped jobs, not once per job", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
-    runner.register("read", { jobClass: "local", steps: held });
+    runner.register("read", { jobClass: "local", steps: heldSteps });
     const ids = Array.from({ length: 20 }, () => runner.start("read", {}));
     expect(runner.stopAll()).toHaveLength(20);
     const prepared: string[] = [];
@@ -1123,7 +1146,7 @@ describe("stopping and resuming every job, and jobs of one request", () => {
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
     runner.register("read", {
       jobClass: "local",
-      steps: held,
+      steps: heldSteps,
       group: (params) => {
         const batch = (params as { batch?: { id: string; folder?: string } }).batch;
         return batch ?? null;
