@@ -17,8 +17,8 @@
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 120ms ease-out,
-    background-color 120ms ease-out;
+    border-color var(--duration-micro) var(--ease-out),
+    background-color var(--duration-micro) var(--ease-out);
 }
 .px-opt:hover:not(:disabled) {
   border-color: var(--border-control);

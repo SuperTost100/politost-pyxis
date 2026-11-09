@@ -46,6 +46,28 @@ body {
   outline-offset: 2px;
 }
 
+/* One thin scrollbar in the app's colours for every scroll area, popovers included, on every system
+   (docs/design-system/layout.md, Scroll areas): a 10px gutter with a transparent track, a 4px thumb that widens to
+   6px under the pointer. Chromium ignores these rules on an element that sets scrollbar-width or scrollbar-color, so
+   the app sets neither. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: var(--scrollbar-thumb-hover);
+}
+
 /* Same text width as the shell's page column: 768px minus its 24px side padding. */
 .column {
   width: min(
@@ -222,8 +244,8 @@ a.px-brand:hover {
   color: var(--ink-muted);
   cursor: pointer;
   transition:
-    background-color 0.15s ease-out,
-    color 0.15s ease-out;
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
 }
 .px-top-tool:hover,
 .px-setup-top .ant-btn.px-top-tool:hover {

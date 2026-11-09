@@ -213,7 +213,7 @@
 }
 .engines-section-caret {
   color: var(--ink-subtle);
-  transition: transform 0.15s ease-out;
+  transition: transform var(--duration-micro) var(--ease-out);
 }
 .engines-section[open] .engines-section-caret {
   transform: rotate(90deg);

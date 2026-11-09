@@ -50,7 +50,7 @@
   gap: var(--space-2);
 }
 .px-list-toolbar-menu svg {
-  transition: transform 150ms ease-out;
+  transition: transform var(--duration-micro) var(--ease-out);
 }
 .px-list-toolbar-menu svg.is-open {
   transform: rotate(180deg);

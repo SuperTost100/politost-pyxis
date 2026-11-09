@@ -242,7 +242,7 @@
 }
 
 .px-sb-toggle svg {
-  transition: transform 160ms ease-out;
+  transition: transform var(--duration-small) var(--ease-out);
 }
 
 .px-sb.is-open .px-sb-toggle svg {

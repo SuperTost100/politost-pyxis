@@ -45,4 +45,4 @@ Every scroll area, popovers and menus included, uses the same thin scrollbar in 
 | Colour | `--scrollbar-thumb` at rest, ink at 30%. `--scrollbar-thumb-hover`, ink at 50%, holds 3:1 or more against every ground in both themes |
 | Track  | Transparent in both themes                                                                                                            |
 
-The rule is global, in `global.css`. Chromium ignores `::-webkit-scrollbar` styles on any element that sets `scrollbar-width` or `scrollbar-color`, so the app sets neither. A scroll area that holds content the student reads should be focusable (`tabIndex={0}` with a label) when nothing inside it is, so the arrow keys and Page Up and Down can scroll it.
+The rule is global, in `global.css`. Chromium ignores `::-webkit-scrollbar` styles on any element that sets `scrollbar-width` or `scrollbar-color`, so the app sets neither. The bar changes only the look. Chromium makes a scroll area with nothing focusable inside it a tab stop of its own, so the arrow keys and Page Up and Down scroll it; don't take that away with `tabIndex={-1}`.
