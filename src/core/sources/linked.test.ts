@@ -8,7 +8,7 @@ import { tempDir } from "../test-temp";
 import { extractByExt } from "./documents";
 import { MAX_LINKED_DEPTH } from "../../shared/linked-folders";
 import { walkImportable, type WalkedFile } from "./folder";
-import { hasUnfinishedJob, registerSourceJobs } from "./jobs";
+import { hasUnfinishedJob, importGroup, registerSourceJobs } from "./jobs";
 import { checkLinkPath, closeLinkedWatches, linkedFolders, peekFolder, subfolderOf } from "./linked";
 import { hashFiles } from "./quality";
 import { listSources } from "./smartbook";
@@ -624,6 +624,7 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
   let reads = 0;
   runner.register("source-import", {
     jobClass: "local",
+    group: (params) => importGroup(db, params),
     steps: [
       {
         name: "read",
@@ -735,6 +736,30 @@ describe("a large linked folder", () => {
     expect(second.count(`SELECT COUNT(DISTINCT source_id) FROM linked_files`)).toBe(600);
     expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE missing_at IS NOT NULL`)).toBe(0);
     expect(second.count(`SELECT COUNT(*) FROM linked_files WHERE rel_path = '${waiting.replaceAll("'", "''")}'`)).toBe(0);
+  }, 60_000);
+
+  it("lists a folder's readings as one request, and hands over no more of its files while the student has them stopped", async () => {
+    const root = bigTree(100);
+    const app = bulk({ engine: false, paused: true, window: 10 });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.linked.idle();
+    await expect.poll(() => app.queuedImports()).toBe(10);
+    // Each reading names the folder, and the files not queued yet are counted on it.
+    const listed = app.runner.list().filter((job) => job.kind === "source-import");
+    expect(listed).toHaveLength(10);
+    for (const job of listed) expect(job.group).toEqual({ id: `folder:${folder!.id}`, folder: "Studio", waiting: 90 });
+
+    const stopped = app.runner.stopAll();
+    expect(stopped).toHaveLength(10);
+    // A few pump rounds later, the rest of the folder still waits: stopping did not just make room for the next files.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(app.queuedImports()).toBe(0);
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE pending = 1`)).toBe(90);
+
+    expect(app.runner.resumeAll(stopped)).toHaveLength(10);
+    app.runner.activate();
+    await app.settled();
+    expect(app.reads()).toBe(100);
   }, 60_000);
 
   it("sorts loose files into subjects by name, a hundred names a call, and asks about each file once", async () => {

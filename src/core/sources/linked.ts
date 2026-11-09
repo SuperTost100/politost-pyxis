@@ -260,6 +260,16 @@ export function closeLinkedWatches(): void {
 export function linkedFolders(deps: LinkedDeps) {
   const { db, runner } = deps;
   const queueWindow = deps.queueWindow ?? QUEUE_WINDOW;
+  // The jobs list counts, on a folder's readings, the files not queued yet.
+  const waitingFiles = db.prepare(
+    `SELECT folder_id, COUNT(*) AS n FROM linked_files WHERE pending > 0 AND missing_at IS NULL GROUP BY folder_id`,
+  );
+  runner.waitingIn(
+    () =>
+      new Map(
+        (waitingFiles.all() as Array<{ folder_id: string; n: number }>).map((row) => [`folder:${row.folder_id}`, row.n]),
+      ),
+  );
   const excludes = () =>
     deps.protectedPaths.map((place) => {
       try {
@@ -323,7 +333,7 @@ export function linkedFolders(deps: LinkedDeps) {
       row.folder_id,
       row.rel_path,
     );
-    runner.start("source-import", { sourceId, sha: "", ext, title, version: 1, linked: true });
+    runner.start("source-import", { sourceId, sha: "", ext, title, version: 1, linked: true, folderId: row.folder_id });
   }
 
   /**
@@ -361,6 +371,7 @@ export function linkedFolders(deps: LinkedDeps) {
       title,
       version,
       linked: true,
+      folderId: row.folder_id,
       ...(version > 1 ? { reextract: true } : {}),
     });
   }
@@ -384,11 +395,24 @@ export function linkedFolders(deps: LinkedDeps) {
       .pluck()
       .get() as number;
     let room = queueWindow - busy;
-    const waiting = db
+    // A folder whose readings the student stopped waits until they are resumed or cleared, so stopping them does not
+    // just make room for its next files.
+    const stopped = new Set(
+      db
+        .prepare(
+          `SELECT DISTINCT json_extract(params_json, '$.folderId') FROM jobs
+           WHERE state = 'cancelled' AND kind = 'source-import' AND dismissed = 0`,
+        )
+        .pluck()
+        .all() as Array<string | null>,
+    );
+    const recorded = db
       .prepare(`SELECT DISTINCT folder_id FROM linked_files WHERE pending > 0 AND missing_at IS NULL`)
       .pluck()
       .all() as string[];
-    if (!waiting.length) return false;
+    // A stopped folder still counts as waiting, so the pump keeps going and finds it again once it is resumed.
+    if (!recorded.length) return false;
+    const waiting = recorded.filter((folderId) => !stopped.has(folderId));
     const rows = db.prepare(
       `SELECT l.*, s.subject_id, s.skipped FROM linked_files l
        LEFT JOIN linked_subfolders s ON s.folder_id = l.folder_id AND s.name = l.subfolder

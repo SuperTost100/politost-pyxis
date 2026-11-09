@@ -27,6 +27,7 @@ import {
   markInterruptedImports,
   registerSourceJobs,
   sourceTitle,
+  importGroup,
   unlockPdfImport,
 } from "./jobs";
 import { retrieveWithModel, setRetrievalModel } from "./retrieve";
@@ -177,6 +178,7 @@ export function sourceHandlers(
   runner.register("source-index", {
     jobClass: "local",
     title: (params) => sourceTitle(db, params),
+    group: (params) => importGroup(db, params),
     steps: [
       {
         name: "index",
@@ -442,10 +444,10 @@ export function sourceHandlers(
         };
       });
     },
-    async importFile(input: { path: string }) {
+    async importFile(input: { path: string; batch?: { id: string; folder?: string } }) {
       try {
         await assertLocalOcrReady(db, workspace, extname(input.path).toLowerCase());
-        return await enqueueSourceFile(db, workspace, runner, input.path);
+        return await enqueueSourceFile(db, workspace, runner, input.path, undefined, input.batch);
       } catch (err) {
         sourceError(err);
       }

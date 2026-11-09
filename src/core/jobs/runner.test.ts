@@ -1026,3 +1026,95 @@ it("dismisses an interrupted study build without deleting its resume checkpoint"
   runner.activate();
   await until(database, job, ["succeeded"]);
 });
+
+describe("stopping and resuming every job, and jobs of one request", () => {
+  /** A step that holds until it is aborted, as a long reading does. */
+  const held: JobSpec["steps"] = [
+    { name: "first", label: "first", run: async () => "first" },
+    {
+      name: "hold",
+      label: "hold",
+      run: (ctx) =>
+        new Promise((_resolve, reject) => {
+          ctx.signal.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        }),
+    },
+  ];
+
+  it("stops every running and waiting job at once, and leaves a page's own work and stopped jobs alone", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
+    runner.register("read", { jobClass: "local", steps: held });
+    const running = runner.start("read", {});
+    const waiting = runner.start("read", {});
+    await until(database, running, ["running"]);
+    const lesson = runner.track("lesson-write", { topic: "Vettori" }, "jobs.lessonWriting");
+    const now = Date.now();
+    database
+      .prepare(
+        `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('old', 'read', '{}', 'failed', 0, ?, ?)`,
+      )
+      .run(now, now);
+
+    expect(runner.stopAll().sort()).toEqual([running, waiting].sort());
+    expect(await until(database, running, ["cancelled"])).toBe("cancelled");
+    expect(stateOf(database, waiting)).toBe("cancelled");
+    expect(stateOf(database, "old")).toBe("failed");
+    // The lesson page stops its own lesson.
+    expect(runner.list().find((job) => job.inPage)?.state).toBe("running");
+    lesson.finish(false);
+  });
+
+  it("resumes stopped jobs from the step they reached, in the order they were made, and leaves other jobs alone", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });
+    runner.register("read", { jobClass: "local", steps: held });
+    const first = runner.start("read", {});
+    const second = runner.start("read", {});
+    await until(database, first, ["running"]);
+    runner.stopAll();
+    await until(database, first, ["cancelled"]);
+    const now = Date.now();
+    database
+      .prepare(
+        `INSERT INTO jobs (id, kind, params_json, state, progress, created_at, updated_at) VALUES ('broken', 'read', '{}', 'failed', 0, ?, ?)`,
+      )
+      .run(now, now);
+
+    expect(runner.resumeAll([second, first, "broken", "missing"])).toEqual([first, second]);
+    expect(await until(database, first, ["running"])).toBe("running");
+    expect(stateOf(database, second)).toBe("queued");
+    expect(stateOf(database, "broken")).toBe("failed");
+    // The step that finished before the stop is not run again.
+    const done = database
+      .prepare(`SELECT state FROM job_steps WHERE job_id = ? AND name = 'first'`)
+      .get(first) as { state: string };
+    expect(done.state).toBe("succeeded");
+    runner.stopAll();
+    await until(database, first, ["cancelled"]);
+  });
+
+  it("names the request a job belongs to, and how many of its files still wait to be handed over", async () => {
+    const database = db();
+    const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 0, demo: 1 });
+    runner.register("read", {
+      jobClass: "local",
+      steps: held,
+      group: (params) => {
+        const batch = (params as { batch?: { id: string; folder?: string } }).batch;
+        return batch ?? null;
+      },
+    });
+    runner.waitingIn(() => new Map([["folder:f", 120]]));
+    const one = runner.start("read", { batch: { id: "folder:f", folder: "Università" } });
+    const alone = runner.start("read", {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const listed = runner.list();
+    expect(listed.find((job) => job.id === one)?.group).toEqual({ id: "folder:f", folder: "Università", waiting: 120 });
+    expect(listed.find((job) => job.id === alone)).not.toHaveProperty("group");
+  });
+});

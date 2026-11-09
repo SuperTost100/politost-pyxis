@@ -38,6 +38,8 @@ export type JobSpec = {
   about?: (params: unknown) => JobAbout;
   /** What a page waiting on the job knows it by (`JobView.ref`). */
   ref?: (params: unknown) => string | null;
+  /** The request the job came from, when it made several jobs of this kind (`JobView.group`, without `waiting`). */
+  group?: (params: unknown) => { id: string; folder?: string } | null;
   /**
    * A student is waiting on screen for this job, such as an answer being corrected. It takes a model slot of its own
    * class next to background work (writing a quiz, analysing mistakes) instead of queueing behind it; interactive jobs
@@ -108,6 +110,15 @@ export type Runner = {
   register: (kind: string, spec: JobSpec) => void;
   start: (kind: string, params?: unknown) => string;
   cancel: (jobId: string) => void;
+  /** Cancels every queued and running job, except work a page does itself, and returns their ids. */
+  stopAll: () => string[];
+  /**
+   * Resumes the stopped jobs among `jobIds` (cancelled ones as a retry does, interrupted ones as resume does) and
+   * returns the ids it resumed. Jobs run in the order they were made, whatever the order of `jobIds`.
+   */
+  resumeAll: (jobIds: string[]) => string[];
+  /** Counts, by group id, the work of a request not handed to the queue yet (`JobView.group.waiting`), for `list`. */
+  waitingIn: (count: () => Map<string, number>) => void;
   retry: (jobId: string) => void;
   resume: (jobId: string) => void;
   resumeLocal: (kinds: string[]) => string[];
@@ -166,6 +177,7 @@ export function createRunner(
 
   /** Work tracked for requests, while it runs. Finished work is a job row like any other. */
   const tracked = new Map<string, JobView>();
+  let countWaiting: (() => Map<string, number>) | undefined;
 
   function viewOf(jobId: string): JobView | null {
     const job = jobViewStmt.get(jobId) as ViewRow | undefined;
@@ -173,12 +185,13 @@ export function createRunner(
     const steps = stepViewsStmt.all(jobId) as JobView["steps"];
     const spec = specs.get(job.kind);
     const params =
-      spec?.title || spec?.about || spec?.ref
+      spec?.title || spec?.about || spec?.ref || spec?.group
         ? (JSON.parse((paramsStmt.get(jobId) as { params_json: string }).params_json) as unknown)
         : undefined;
     const title = spec?.title?.(params);
     const about = spec?.about?.(params) ?? {};
     const ref = spec?.ref?.(params);
+    const group = spec?.group?.(params);
     return {
       id: job.id,
       kind: job.kind,
@@ -197,6 +210,7 @@ export function createRunner(
       ...(job.fallback_json
         ? { fallback: JSON.parse(job.fallback_json) as JobView["fallback"] }
         : {}),
+      ...(group ? { group: { id: group.id, ...(group.folder ? { folder: group.folder } : {}) } } : {}),
     };
   }
 
@@ -366,15 +380,17 @@ export function createRunner(
     }
   }
 
-  function resume(jobId: string): void {
+  /** Queues an interrupted job again, from the step it reached, and says whether it did. */
+  function resume(jobId: string): boolean {
     const changed = db
       .prepare(
         `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
       )
       .run(Date.now(), jobId);
-    if (changed.changes === 0) return;
+    if (changed.changes === 0) return false;
     publish(jobId);
     kick();
+    return true;
   }
 
   function finishCancelled(jobId: string): void {
@@ -391,6 +407,63 @@ export function createRunner(
   function abandoned(job: JobRow | undefined): void {
     const hook = job ? specs.get(job.kind)?.onCancelled : undefined;
     if (job && hook) hook(JSON.parse(job.params_json) as unknown);
+  }
+
+  function cancel(jobId: string): void {
+    const entry = active.get(jobId);
+    if (entry) {
+      entry.controller.abort();
+      return;
+    }
+    const changed = db
+      .prepare(
+        `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state IN ('queued', 'interrupted')`,
+      )
+      .run(Date.now(), jobId);
+    if (changed.changes > 0) {
+      cancelled(jobId);
+      publish(jobId);
+    }
+  }
+
+  /** Queues a failed or cancelled job again, keeping its finished steps, and says whether it did. */
+  function retry(jobId: string): boolean {
+    const job = db
+      .prepare(
+        "SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled')",
+      )
+      .get(jobId) as { kind: string; params_json: string } | undefined;
+    if (!job) return false;
+    const refresh = specs.get(job.kind)?.retryParams;
+    if (refresh) {
+      try {
+        const params = refresh(JSON.parse(job.params_json));
+        db.prepare("UPDATE jobs SET params_json = ? WHERE id = ?").run(
+          JSON.stringify(params),
+          jobId,
+        );
+      } catch (error) {
+        db.prepare("UPDATE jobs SET error = ? WHERE id = ?").run(
+          error instanceof Error ? error.message : "failed",
+          jobId,
+        );
+        publish(jobId);
+        return false;
+      }
+    }
+    const changed = db
+      .prepare(
+        `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, fallback_json = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
+      )
+      .run(Date.now(), jobId);
+    if (changed.changes === 0) return false;
+    db.prepare(
+      `UPDATE job_steps SET state = 'pending', error = NULL
+       WHERE job_id = ? AND output_json IS NULL`,
+    ).run(jobId);
+    publish(jobId);
+    kick();
+    return true;
   }
 
   function kick(): void {
@@ -457,59 +530,35 @@ export function createRunner(
       });
       return jobId;
     },
-    cancel(jobId) {
-      const entry = active.get(jobId);
-      if (entry) {
-        entry.controller.abort();
-        return;
-      }
-      const changed = db
-        .prepare(
-          `UPDATE jobs SET state = 'cancelled', updated_at = ? WHERE id = ? AND state IN ('queued', 'interrupted')`,
-        )
-        .run(Date.now(), jobId);
-      if (changed.changes > 0) {
-        cancelled(jobId);
-        publish(jobId);
-      }
+    cancel,
+    stopAll() {
+      const ids = db
+        .prepare(`SELECT id FROM jobs WHERE state IN ('queued', 'running') ORDER BY created_at, rowid`)
+        .pluck()
+        .all() as string[];
+      for (const id of ids) cancel(id);
+      return ids;
     },
-    retry(jobId) {
-      const job = db
+    resumeAll(jobIds) {
+      if (jobIds.length === 0) return [];
+      const wanted = new Set(jobIds);
+      // Read in the order the jobs were made, so the queue keeps it.
+      const rows = db
         .prepare(
-          "SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled')",
+          `SELECT id, state FROM jobs WHERE state IN ('cancelled', 'interrupted') ORDER BY created_at, rowid`,
         )
-        .get(jobId) as { kind: string; params_json: string } | undefined;
-      if (!job) return;
-      const refresh = specs.get(job.kind)?.retryParams;
-      if (refresh) {
-        try {
-          const params = refresh(JSON.parse(job.params_json));
-          db.prepare("UPDATE jobs SET params_json = ? WHERE id = ?").run(
-            JSON.stringify(params),
-            jobId,
-          );
-        } catch (error) {
-          db.prepare("UPDATE jobs SET error = ? WHERE id = ?").run(
-            error instanceof Error ? error.message : "failed",
-            jobId,
-          );
-          publish(jobId);
-          return;
-        }
+        .all() as Array<{ id: string; state: string }>;
+      const resumed: string[] = [];
+      for (const row of rows) {
+        if (!wanted.has(row.id)) continue;
+        if (row.state === "interrupted" ? resume(row.id) : retry(row.id)) resumed.push(row.id);
       }
-      const changed = db
-        .prepare(
-          `UPDATE jobs SET state = 'queued', dismissed = 0, error = NULL, fallback_json = NULL, updated_at = ? WHERE id = ? AND state IN ('failed', 'cancelled')`,
-        )
-        .run(Date.now(), jobId);
-      if (changed.changes === 0) return;
-      db.prepare(
-        `UPDATE job_steps SET state = 'pending', error = NULL
-         WHERE job_id = ? AND output_json IS NULL`,
-      ).run(jobId);
-      publish(jobId);
-      kick();
+      return resumed;
     },
+    waitingIn(count) {
+      countWaiting = count;
+    },
+    retry,
     resume,
     /**
      * Resumes the interrupted jobs of `kinds` whose next step does local work, and returns their ids. A model step
@@ -604,13 +653,16 @@ export function createRunner(
            ORDER BY created_at`,
         )
         .all() as Array<{ id: string }>;
-      return [
-        ...rows.flatMap((row) => {
-          const view = viewOf(row.id);
-          return view ? [view] : [];
-        }),
-        ...[...tracked.values()].map((view) => ({ ...view })),
-      ];
+      const views = rows.flatMap((row) => {
+        const view = viewOf(row.id);
+        return view ? [view] : [];
+      });
+      const waiting = views.some((view) => view.group) ? countWaiting?.() : undefined;
+      for (const view of views) {
+        const count = view.group ? waiting?.get(view.group.id) : undefined;
+        if (view.group && count) view.group.waiting = count;
+      }
+      return [...views, ...[...tracked.values()].map((view) => ({ ...view }))];
     },
     track(kind, about, label, options = {}) {
       if (!specs.has(kind)) specs.set(kind, trackedJob);

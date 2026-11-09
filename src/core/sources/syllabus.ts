@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { uuidv7 } from "../../shared/ids";
 import type { Runner } from "../jobs/runner";
 import { embedTexts, embeddingConsent, embeddingReady } from "./embed";
 import { sha256 } from "./quality";
@@ -237,10 +238,12 @@ export function queueSyllabusChecks(db: Database.Database, runner: Runner, planI
     `SELECT 1 FROM jobs WHERE kind = 'source-index' AND state = 'queued' AND json_extract(params_json, '$.sourceId') = ?`,
   );
   let count = 0;
+  // The checks one plan change queues are listed as one request.
+  const batch = { id: uuidv7() };
   for (const { id } of sources) {
     if (storedSyllabus(db, id) || queued.get(id)) continue;
     try {
-      runner.start("source-index", { sourceId: id });
+      runner.start("source-index", { sourceId: id, batch });
       count += 1;
     } catch {
       // The check is advice: a runner without the job registered must never fail the plan edit that asked for it.
