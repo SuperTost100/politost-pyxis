@@ -273,7 +273,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     // opacity, whether it is selected and how visible its link handles are. The record ends with the map's own signals,
     // once it has stopped moving and shows the expected number of nodes.
     type Spot = { x: number; y: number };
-    type Sample = Spot & { at: number; w: number; h: number; o: number; selected: boolean; handles: number; moving: boolean };
+    type Sample = Spot & { at: number; w: number; h: number; o: number; selected: boolean; handles: number; moving: boolean; label: number };
     await page.evaluate(`window.__recordMotion = (until) => new Promise((done) => {
       const canvas = document.querySelector(".px-map-canvas");
       const count = () => document.querySelectorAll(".react-flow__node").length;
@@ -283,12 +283,14 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       const record = () => {
         const at = performance.now() - start;
         const moving = canvas.hasAttribute("data-moving");
+        const shown = document.querySelector(".px-cross-label");
+        const label = shown ? Number(shown.style.opacity || 1) : -1;
         for (const node of document.querySelectorAll(".react-flow__node")) {
           // A spot near 0 can read as 1e-14px, so the number may carry an exponent.
           const match = /translate\\(([-+\\d.e]+)px,\\s*([-+\\d.e]+)px\\)/.exec(node.style.transform);
           const handles = Math.max(0, ...[...node.querySelectorAll(".react-flow__handle")].map((h) => Number(getComputedStyle(h).opacity)));
           (track[node.dataset.id] ??= []).push({
-            x: Number(match[1]), y: Number(match[2]), at, moving, handles,
+            x: Number(match[1]), y: Number(match[2]), at, moving, handles, label,
             w: node.offsetWidth, h: node.offsetHeight,
             o: Number(node.style.opacity || 1), selected: node.classList.contains("selected"),
           });
@@ -363,6 +365,9 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     // Folding with a real click, as a person does, with the pointer over n1 as its siblings slide. Each node of the
     // branch stays in sight while it slides into n1, and the last time it shows it is inside n1, faded out, in the same
     // frame that puts n1 at its end. That last frame doesn't depend on how many frames the screen managed before it.
+    // n6 is selected, so its link to n23, which folds away with the branch, shows its label; the label fades with it.
+    await page.locator('.react-flow__node[data-id="n6"]').focus();
+    await expect(page.locator(".px-cross-label")).toHaveText("caso particolare");
     const closed = await recordMotion("fewer", () => fold.click({ timeout: 10_000 }));
     await expect(fold).toHaveAttribute("aria-expanded", "false");
     const last = closed["n1"]!.at(-1)!.at;
@@ -371,13 +376,17 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     for (const [id, spots] of gone) {
       const moved = spots.findIndex((spot) => spot.x !== spots[0]!.x || spot.y !== spots[0]!.y);
       expect(moved, `${id} moves before it leaves`).toBeGreaterThan(0);
-      expect(spots.at(-1)!.at - spots[moved]!.at, `${id} stays while it slides`).toBeGreaterThan(150);
+      // Timed from the sample where the map says it moves, which comes before the motion's first frame, so a stalled
+      // frame can't shorten it.
+      const began = spots.find((spot) => spot.moving)!;
+      expect(spots.at(-1)!.at - began.at, `${id} stays while it slides`).toBeGreaterThan(150);
       const end = spots.at(-1)!;
       const n1 = closed["n1"]!.find((spot) => spot.at === end.at)!;
       expect(away(n1, closed["n1"]!.at(-1)!), `${id} last shows when n1 has ended`).toBeLessThan(0.5);
       expect(away(end, tucked(closed, end)), `${id} ends inside n1`).toBeLessThan(24);
       expect(end.o, `${id} has faded out`).toBe(0);
     }
+    expect(closed["n23"]!.at(-1)!.label, "the label of n23's link fades out with n23").toBe(0);
     checkMotion(closed);
     await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
     await fold.dispatchEvent("click");

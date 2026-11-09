@@ -217,7 +217,7 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     for (const [action, keys] of [
       ["Seleziona un concetto", "Tab"],
       ["Rinomina", "Invio"],
-      ["Elimina il ramo", "Canc/⌫Backspace"],
+      ["Elimina il ramo", "Canc/o⌫Backspace"],
       ["Sposta il concetto", "← ↑ → ↓Frecce"],
     ] as const)
       await expect(

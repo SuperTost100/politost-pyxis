@@ -157,6 +157,8 @@ function CrossEdge({
             className="px-cross-label nodrag nopan"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              // The label sits outside the edge's group, so it fades with the connector here.
+              opacity: style?.opacity,
             }}
           >
             {data.label}
@@ -200,7 +202,8 @@ export function MapPage() {
   nodesRef.current = nodes;
   // Unfolding or folding a node moves the map in one motion instead of a cut: children slide out of the node they hang
   // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
-  const motion = useRef<{ origin?: string; frame: number }>({ frame: 0 });
+  // `map` is the map the fold happened on, so switching maps mid-move cuts to the new one.
+  const motion = useRef<{ origin?: string; map?: string; frame: number }>({ frame: 0 });
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
   // Their widths too, which only the fold's motion needs: a branch grows out of its node's right edge.
@@ -294,6 +297,7 @@ export function MapPage() {
   const toggle = useCallback(
     (id: string) => {
       motion.current.origin = id;
+      motion.current.map = activeId;
       const ids = new Set(foldedRef.current);
       if (!ids.delete(id)) ids.add(id);
       setFold({ mapId: activeId, ids });
@@ -355,7 +359,7 @@ export function MapPage() {
           },
         };
       });
-    const originId = motion.current.origin;
+    const originId = motion.current.map === activeId ? motion.current.origin : undefined;
     const now = new Map(nodesRef.current.map((node) => [node.id, node]));
     const origin = originId ? now.get(originId) : undefined;
     cancelAnimationFrame(motion.current.frame);
@@ -446,7 +450,7 @@ export function MapPage() {
       cancelAnimationFrame(motion.current.frame);
       canvas.current?.removeAttribute("data-moving");
     };
-  }, [spots, shown, heights, selected, folded, parents, levels, toggle]);
+  }, [spots, shown, heights, selected, folded, parents, levels, toggle, activeId]);
   useEffect(() => {
     setSelected(undefined);
     setPaletteOpen(false);

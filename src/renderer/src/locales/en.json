@@ -25,6 +25,7 @@
     "title": "Keyboard shortcuts",
     "lead": "The general shortcuts are also in the menus.",
     "altHint": "Press Alt to show the menu bar.",
+    "or": "or",
     "groups": {
       "general": "Anywhere",
       "ask": "Ask",

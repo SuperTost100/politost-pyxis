@@ -131,11 +131,16 @@ function KeyCap({ name, mac }: { name: Key; mac: boolean }) {
 
 /** One row's keys: a combination, joined with + off the Mac, or keys that each do the same, joined with /. */
 export function KeyCombo({ keys, either }: { keys: Key[]; either?: boolean }) {
+  const { t } = useTranslation();
   const mac = window.pyxis.platform === "darwin";
   return keys.map((key, index) => (
     <Fragment key={key}>
       {index > 0 && (either || !mac) ? (
         <span aria-hidden>{either ? "/" : "+"}</span>
+      ) : null}
+      {/* Screen readers hear "or" between keys that each work, so they don't sound like a combination. */}
+      {index > 0 && either ? (
+        <span className="visually-hidden">{t("shortcuts.or")}</span>
       ) : null}
       <KeyCap name={key} mac={mac} />
     </Fragment>

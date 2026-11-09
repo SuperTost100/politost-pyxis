@@ -25,6 +25,7 @@
     "title": "Scorciatoie da tastiera",
     "lead": "Le scorciatoie generali sono anche nei menu.",
     "altHint": "Premi Alt per mostrare la barra dei menu.",
+    "or": "o",
     "groups": {
       "general": "Ovunque",
       "ask": "Chiedi",
