@@ -1,11 +1,13 @@
 import { Modal } from "antd";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
+import { MAP_KEYS } from "../features/maps/MapMenu";
 import "./ShortcutsDialog.css";
 
 /** Keys by name: `mod` is Command on macOS and Ctrl elsewhere. Anything else is shown as typed. */
 type Key = string;
-type Row = { id: string; keys: Key[] };
+/** `label` names a string outside `shortcuts.rows`, and `either` lists keys that each do the same thing. */
+type Row = { id: string; keys: Key[]; label?: string; either?: boolean };
 type Group = { id: string; rows: Row[] };
 
 function groups(mac: boolean): Group[] {
@@ -49,6 +51,10 @@ function groups(mac: boolean): Group[] {
       ],
     },
     {
+      id: "maps",
+      rows: MAP_KEYS.map((row) => ({ ...row, label: `map.keys.${row.id}` })),
+    },
+    {
       id: "quiz",
       rows: [
         { id: "pick", keys: ["1–4"] },
@@ -81,6 +87,8 @@ const GLYPHS: Record<string, string> = {
   bracket: "[",
   plus: "+",
   minus: "−",
+  backspace: "⌫",
+  arrows: "← ↑ → ↓",
 };
 const MAC_GLYPHS: Record<string, string> = { mod: "⌘", shift: "⇧", alt: "⌥" };
 
@@ -121,6 +129,24 @@ function KeyCap({ name, mac }: { name: Key; mac: boolean }) {
   );
 }
 
+/** One row's keys: a combination, joined with + off the Mac, or keys that each do the same, joined with /. */
+export function KeyCombo({ keys, either }: { keys: Key[]; either?: boolean }) {
+  const { t } = useTranslation();
+  const mac = window.pyxis.platform === "darwin";
+  return keys.map((key, index) => (
+    <Fragment key={key}>
+      {index > 0 && (either || !mac) ? (
+        <span aria-hidden>{either ? "/" : "+"}</span>
+      ) : null}
+      {/* Screen readers hear "or" between keys that each work, so they don't sound like a combination. */}
+      {index > 0 && either ? (
+        <span className="visually-hidden">{t("shortcuts.or")}</span>
+      ) : null}
+      <KeyCap name={key} mac={mac} />
+    </Fragment>
+  ));
+}
+
 /** Every shortcut in the app: the menu's and the keys pages answer to. Opens from Help > Keyboard shortcuts. */
 export function ShortcutsDialog({
   open,
@@ -159,14 +185,9 @@ export function ShortcutsDialog({
             <dl>
               {group.rows.map((row) => (
                 <div className="px-shortcuts-row" key={row.id}>
-                  <dt>{t(`shortcuts.rows.${row.id}`)}</dt>
+                  <dt>{t(row.label ?? `shortcuts.rows.${row.id}`)}</dt>
                   <dd>
-                    {row.keys.map((key, index) => (
-                      <Fragment key={key}>
-                        {index > 0 && !mac ? <span aria-hidden>+</span> : null}
-                        <KeyCap name={key} mac={mac} />
-                      </Fragment>
-                    ))}
+                    <KeyCombo keys={row.keys} either={row.either} />
                   </dd>
                 </div>
               ))}

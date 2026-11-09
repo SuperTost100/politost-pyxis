@@ -25,10 +25,12 @@
     "title": "Scorciatoie da tastiera",
     "lead": "Le scorciatoie generali sono anche nei menu.",
     "altHint": "Premi Alt per mostrare la barra dei menu.",
+    "or": "o",
     "groups": {
       "general": "Ovunque",
       "ask": "Chiedi",
       "cards": "Flashcard",
+      "maps": "Mappe",
       "quiz": "Quiz",
       "whiteboard": "Lavagna",
       "python": "Python"
@@ -82,7 +84,10 @@
       "slash": "Barra",
       "bracket": "Parentesi quadra aperta",
       "plus": "Più",
-      "minus": "Meno"
+      "minus": "Meno",
+      "delete": "Canc",
+      "backspace": "Backspace",
+      "arrows": "Frecce"
     }
   },
   "onboarding": {
@@ -991,7 +996,6 @@
       "select": "Seleziona un concetto",
       "rename": "Rinomina",
       "delete": "Elimina il ramo",
-      "deleteKey": "Canc",
       "move": "Sposta il concetto"
     },
     "pickHint": "Clicca un concetto per vedere le sue fonti e modificarlo.",

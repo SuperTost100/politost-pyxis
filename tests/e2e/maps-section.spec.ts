@@ -208,6 +208,8 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await expect(
       page.getByRole("button", { name: "Crea mappe" }),
     ).toBeVisible();
+    // Before a map exists the line under the title names the exam alone, with no dot left hanging after it.
+    await expect(page.locator(".px-map-title p")).toHaveText("Meccanica");
     expect(errors).toEqual([]);
   } finally {
     await app.close();

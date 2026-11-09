@@ -212,6 +212,17 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(dialog.getByText("Rispondi \"Non lo so\"")).toBeVisible();
     await expect(dialog.getByText("Salta la domanda")).toBeVisible();
     await expect(dialog.getByText("Interrompi la risposta")).toBeVisible();
+    // The map's keys, listed from the same rows as the map's "…" menu.
+    const mapKeys = dialog.getByRole("region", { name: "Mappe", exact: true });
+    for (const [action, keys] of [
+      ["Seleziona un concetto", "Tab"],
+      ["Rinomina", "Invio"],
+      ["Elimina il ramo", "Canc/o⌫Backspace"],
+      ["Sposta il concetto", "← ↑ → ↓Frecce"],
+    ] as const)
+      await expect(
+        mapKeys.locator(".px-shortcuts-row").filter({ hasText: action }).locator("dd"),
+      ).toHaveText(keys);
     // Focus is inside the dialog, and Escape closes it and returns to the page behind.
     await expect
       .poll(() =>

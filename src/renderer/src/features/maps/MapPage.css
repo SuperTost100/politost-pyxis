@@ -41,11 +41,32 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The exam link, a dot and the hint on one centred line, with the dot only between two parts. */
 .px-map-title p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   margin: 0;
   font-size: calc(13px * var(--text-scale, 1));
   line-height: calc(18px * var(--text-scale, 1));
   color: var(--ink-subtle);
+}
+.px-map-title p > a {
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+.px-map-title p > span {
+  flex: 0 1 auto;
+}
+.px-map-title p > a,
+.px-map-title p span {
+  min-width: 0;
+}
+.px-map-title p span:not([aria-hidden]) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .px-map-title a {
   display: inline-flex;
@@ -61,7 +82,7 @@
   text-decoration-color: currentColor;
 }
 .px-map-title a svg {
-  vertical-align: -2px;
+  flex: none;
 }
 .px-map-notice {
   margin: 0;
@@ -155,8 +176,10 @@
 }
 .px-map-keys dd {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
   margin: 0;
+  color: var(--ink-subtle);
 }
 .px-map-keys kbd {
   display: grid;
@@ -229,8 +252,9 @@
 .px-concept-node.is-level-1 .px-markdown {
   font-weight: 650;
 }
+/* While the map moves, nodes slide under a still pointer, so hover waits until they stop and nothing flickers. */
 @media (hover: hover) and (pointer: fine) {
-  .px-map-canvas .react-flow__node:hover .px-concept-node {
+  .px-map-canvas:not([data-moving]) .react-flow__node:hover .px-concept-node {
     background: color-mix(in srgb, var(--ink) 5%, var(--node-fill, var(--map-node)));
   }
 }
@@ -283,10 +307,13 @@
   opacity: 0;
   transition: opacity 0.15s ease-out;
 }
-.px-map-canvas .react-flow__node:hover .react-flow__handle,
+.px-map-canvas:not([data-moving]) .react-flow__node:hover .react-flow__handle,
 .px-map-canvas .react-flow__handle.connectingfrom,
 .px-map-canvas .react-flow__handle.connectingto {
   opacity: 1;
+}
+.px-map-canvas[data-moving] .react-flow__handle {
+  transition: none;
 }
 .px-map-canvas .react-flow__edge-path {
   stroke-linecap: round;

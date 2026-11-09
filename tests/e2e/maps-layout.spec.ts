@@ -210,6 +210,17 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       })
       .toBe(true);
     const opened = await view();
+    // Under the title: the exam's icon and link, a dot, then the hint, all centred on one line.
+    const line = page.locator(".px-map-title p");
+    await expect(line).toHaveText(/^Analisi·clicca un concetto/);
+    const middles = await line.evaluate((p) =>
+      [...p.querySelectorAll("svg, a > span, :scope > span")].map((el) => {
+        const box = el.getBoundingClientRect();
+        return box.top + box.height / 2;
+      }),
+    );
+    expect(middles).toHaveLength(4);
+    expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(1);
     expect(opened.zoom).toBeGreaterThanOrEqual(0.6 - 0.001);
     const placed = await boxes();
     const root = placed.find((box) => box.id === "n0")!;
@@ -257,47 +268,13 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await expect(fold).toHaveAttribute("aria-expanded", "false");
     // The branch slides back into n1 and fades before it leaves the map.
     await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
-    // Unfolding slides the branch out of n1 instead of cutting to it. Each new node is recorded the moment it enters the
-    // page, from its own transform, so no frame timing is involved: it enters at n1 and ends farther out. With reduced
-    // motion it enters where it ends.
+    // Folding and unfolding move the map in one motion. Every change the map makes to a node is recorded as it
+    // happens, without page timers, which a hidden test window may hold back for seconds: where it is, its size, its
+    // opacity, whether it is selected and how visible its link handles are. The record ends with the map's own signals,
+    // once it has stopped moving and shows the expected number of nodes.
     type Spot = { x: number; y: number };
-    const spotOf = (node: Element): Spot => {
-      // A spot near 0 can read as 1e-14px, so the number may carry an exponent.
-      const match = /translate\(([-+\d.e]+)px,\s*([-+\d.e]+)px\)/.exec((node as HTMLElement).style.transform)!;
-      return { x: Number(match[1]), y: Number(match[2]) };
-    };
-    const unfold = async () => {
-      const entered = (await page.evaluate(`new Promise((done) => {
-        const spot = ${spotOf.toString()};
-        const layer = document.querySelector(".react-flow__nodes");
-        const seen = {};
-        const watch = new MutationObserver((records) => {
-          for (const record of records)
-            for (const node of record.addedNodes)
-              if (node instanceof HTMLElement && node.dataset.id && !(node.dataset.id in seen)) seen[node.dataset.id] = spot(node);
-        });
-        watch.observe(layer, { childList: true });
-        document.querySelector('.react-flow__node[data-id="n1"] .px-concept-fold').click();
-        setTimeout(() => { watch.disconnect(); done(seen); }, 100);
-      })`)) as Record<string, Spot>;
-      await expect(page.locator(".react-flow__node")).toHaveCount(before);
-      // The canvas marks itself while the map moves, restarts included; then two frames let the last move draw.
-      await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
-      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-      const end = (await page.evaluate(`Object.fromEntries([...document.querySelectorAll(".react-flow__node")].map((node) => [node.dataset.id, (${spotOf.toString()})(node)]))`)) as Record<string, Spot>;
-      const parent = end["n1"]!;
-      const away = (spot: Spot) => Math.hypot(spot.x - parent.x, spot.y - parent.y);
-      expect(Object.keys(entered).length).toBeGreaterThan(0);
-      return Object.entries(entered).map(([id, spot]) => ({ first: away(spot), end: away(end[id]!) }));
-    };
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    for (const { first, end } of await unfold()) expect(first).toBeLessThan(end);
-    // Folding with a real click, which also selects n1 and so redraws the map mid-move: each node of the branch stays in
-    // sight while it slides into n1, and is closest to n1 the last time it shows. Every change the map makes to a node is
-    // recorded as it happens, without page timers, which a hidden test window may hold back for seconds. The record ends
-    // once the map has stopped moving and the folded nodes are gone.
-    const sampling = page.evaluate(`new Promise((done) => {
-      const spot = ${spotOf.toString()};
+    type Sample = Spot & { at: number; w: number; h: number; o: number; selected: boolean; handles: number; moving: boolean; label: number };
+    await page.evaluate(`window.__recordMotion = (until) => new Promise((done) => {
       const canvas = document.querySelector(".px-map-canvas");
       const count = () => document.querySelectorAll(".react-flow__node").length;
       const before = count();
@@ -305,56 +282,126 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       const start = performance.now();
       const record = () => {
         const at = performance.now() - start;
-        for (const node of document.querySelectorAll(".react-flow__node")) (track[node.dataset.id] ??= []).push({ ...spot(node), at });
+        const moving = canvas.hasAttribute("data-moving");
+        const shown = document.querySelector(".px-cross-label");
+        const label = shown ? Number(shown.style.opacity || 1) : -1;
+        for (const node of document.querySelectorAll(".react-flow__node")) {
+          // A spot near 0 can read as 1e-14px, so the number may carry an exponent.
+          const match = /translate\\(([-+\\d.e]+)px,\\s*([-+\\d.e]+)px\\)/.exec(node.style.transform);
+          const handles = Math.max(0, ...[...node.querySelectorAll(".react-flow__handle")].map((h) => Number(getComputedStyle(h).opacity)));
+          (track[node.dataset.id] ??= []).push({
+            x: Number(match[1]), y: Number(match[2]), at, moving, handles, label,
+            w: node.offsetWidth, h: node.offsetHeight,
+            o: Number(node.style.opacity || 1), selected: node.classList.contains("selected"),
+          });
+        }
       };
       record();
       let moved = false;
-      window.__foldRecord = { moved: () => moved, nodes: count, before, stop: () => watch.disconnect() };
+      const settled = () => !canvas.hasAttribute("data-moving") && (until === "fewer" ? count() < before : count() > before);
+      window.__motion = { moved: () => moved, nodes: count, before, stop: () => watch.disconnect() };
       const watch = new MutationObserver(() => {
         record();
         if (canvas.hasAttribute("data-moving")) moved = true;
-        else if (moved && count() < before) {
+        if ((moved || !window.matchMedia("(prefers-reduced-motion: no-preference)").matches) && settled()) {
           watch.disconnect();
           done(track);
         }
       });
-      watch.observe(canvas, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "data-moving"] });
-    })`) as Promise<Record<string, Array<Spot & { at: number }>>>;
-    await page.locator('.react-flow__node[data-id="n1"] .px-concept-fold').click({ timeout: 10_000 });
-    // The record ends with the map's own signals, so a fold that never settles must still fail here, saying which
-    // signal never came, rather than at the test's time limit. The limit runs in the test, where timers aren't held back.
-    let limit: ReturnType<typeof setTimeout> | undefined;
-    const track = await Promise.race([
-      sampling,
-      new Promise<never>((_, fail) => {
-        limit = setTimeout(() => {
-          void page
-            .evaluate(`(() => { const r = window.__foldRecord; r.stop(); return { moved: r.moved(), nodes: r.nodes(), before: r.before, moving: !!document.querySelector(".px-map-canvas[data-moving]") }; })()`)
-            .then((state) => fail(new Error(`The fold never settled within 10 s: ${JSON.stringify(state)}`)), fail);
-        }, 10_000);
-      }),
-    ]).finally(() => clearTimeout(limit));
+      watch.observe(canvas, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "data-moving", "class"] });
+    })`);
+    // A fold that never settles must fail here, saying which signal never came, rather than at the test's time limit.
+    // The limit runs in the test, where timers aren't held back.
+    const recordMotion = async (until: "fewer" | "more", act: () => Promise<void>) => {
+      const sampling = page.evaluate(`window.__recordMotion(${JSON.stringify(until)})`) as Promise<Record<string, Sample[]>>;
+      await act();
+      let limit: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([
+        sampling,
+        new Promise<never>((_, fail) => {
+          limit = setTimeout(() => {
+            void page
+              .evaluate(`(() => { const r = window.__motion; r.stop(); return { moved: r.moved(), nodes: r.nodes(), before: r.before, moving: !!document.querySelector(".px-map-canvas[data-moving]") }; })()`)
+              .then((state) => fail(new Error(`The map never settled within 10 s: ${JSON.stringify(state)}`)), fail);
+          }, 10_000);
+        }),
+      ]).finally(() => clearTimeout(limit));
+    };
+    const away = (a: Spot, b: Spot) => Math.hypot(a.x - b.x, a.y - b.y);
+    // Where a node sits tucked inside n1 in the same sample: its left edge on n1's right edge, centred on n1. A branch
+    // grows out of there and folds back into it.
+    const tucked = (track: Record<string, Sample[]>, spot: Sample) => {
+      const n1 = track["n1"]!.find((s) => s.at === spot.at)!;
+      return { x: n1.x + n1.w, y: n1.y + (n1.h - spot.h) / 2 };
+    };
+    // What every fold and unfold keeps to: nodes that stay on the map head straight for their end and never step
+    // back, link handles stay hidden while nodes slide under the pointer, and n1's selection doesn't change.
+    const checkMotion = (track: Record<string, Sample[]>) => {
+      const last = track["n1"]!.at(-1)!.at;
+      for (const [id, spots] of Object.entries(track)) {
+        if (spots.at(-1)!.at !== last) continue;
+        const end = spots.at(-1)!;
+        spots.slice(1).forEach((spot, i) => {
+          expect(away(spot, end), `${id} steps back at ${Math.round(spot.at)} ms`).toBeLessThanOrEqual(away(spots[i]!, end) + 0.5);
+        });
+      }
+      for (const [id, spots] of Object.entries(track))
+        for (const spot of spots)
+          if (spot.moving) expect(spot.handles, `${id} shows its handles at ${Math.round(spot.at)} ms`).toBe(0);
+      expect(new Set(track["n1"]!.map((spot) => spot.selected)).size, "n1's selection changes").toBe(1);
+    };
+    // Unfolding grows the branch out of n1: each new node first shows tucked inside n1 and ends farther out.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const unfolded = await recordMotion("more", () => fold.dispatchEvent("click"));
+    await expect(page.locator(".react-flow__node")).toHaveCount(before);
+    const grown = Object.entries(unfolded).filter(([, spots]) => spots[0]!.at > unfolded["n1"]![0]!.at);
+    expect(grown.length).toBeGreaterThan(0);
+    for (const [id, spots] of grown) {
+      expect(away(spots[0]!, tucked(unfolded, spots[0]!)), `${id} grows out of n1`).toBeLessThan(24);
+      expect(spots[0]!.o, `${id} fades in`).toBeLessThan(1);
+      expect(away(spots.at(-1)!, tucked(unfolded, spots.at(-1)!)), `${id} ends farther out`).toBeGreaterThan(100);
+    }
+    checkMotion(unfolded);
+    // Folding with a real click, as a person does, with the pointer over n1 as its siblings slide. Each node of the
+    // branch stays in sight while it slides into n1, and the last time it shows it is inside n1, faded out, in the same
+    // frame that puts n1 at its end. That last frame doesn't depend on how many frames the screen managed before it.
+    // n6 is selected, so its link to n23, which folds away with the branch, shows its label; the label fades with it.
+    await page.locator('.react-flow__node[data-id="n6"]').focus();
+    await expect(page.locator(".px-cross-label")).toHaveText("caso particolare");
+    const closed = await recordMotion("fewer", () => fold.click({ timeout: 10_000 }));
     await expect(fold).toHaveAttribute("aria-expanded", "false");
-    const n1 = track["n1"]!.at(-1)!;
-    const last = track["n1"]!.at(-1)!.at;
-    const gone = Object.entries(track).filter(([, spots]) => spots.at(-1)!.at < last);
+    const last = closed["n1"]!.at(-1)!.at;
+    const gone = Object.entries(closed).filter(([, spots]) => spots.at(-1)!.at < last);
     expect(gone.length).toBeGreaterThan(0);
     for (const [id, spots] of gone) {
       const moved = spots.findIndex((spot) => spot.x !== spots[0]!.x || spot.y !== spots[0]!.y);
       expect(moved, `${id} moves before it leaves`).toBeGreaterThan(0);
-      expect(spots.at(-1)!.at - spots[moved]!.at, `${id} stays while it slides`).toBeGreaterThan(150);
-      const away = (spot: Spot) => Math.hypot(spot.x - n1.x, spot.y - n1.y);
-      expect(away(spots.at(-1)!), `${id} ends where n1 ends`).toBeLessThan(24);
+      // Timed from the sample where the map says it moves, which comes before the motion's first frame, so a stalled
+      // frame can't shorten it.
+      const began = spots.find((spot) => spot.moving)!;
+      expect(spots.at(-1)!.at - began.at, `${id} stays while it slides`).toBeGreaterThan(150);
+      const end = spots.at(-1)!;
+      const n1 = closed["n1"]!.find((spot) => spot.at === end.at)!;
+      expect(away(n1, closed["n1"]!.at(-1)!), `${id} last shows when n1 has ended`).toBeLessThan(0.5);
+      expect(away(end, tucked(closed, end)), `${id} ends inside n1`).toBeLessThan(24);
+      expect(end.o, `${id} has faded out`).toBe(0);
     }
+    expect(closed["n23"]!.at(-1)!.label, "the label of n23's link fades out with n23").toBe(0);
+    checkMotion(closed);
     await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
     await fold.dispatchEvent("click");
     await expect(fold).toHaveAttribute("aria-expanded", "true");
     await expect(page.locator(".react-flow__node")).toHaveCount(before);
     await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
+    // With reduced motion the map cuts: a new node enters where it ends.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await fold.dispatchEvent("click");
     await expect.poll(async () => (await boxes()).length).toBeLessThan(before);
-    for (const { first, end } of await unfold()) expect(Math.abs(first - end)).toBeLessThan(1);
+    const cut = await recordMotion("more", () => fold.dispatchEvent("click"));
+    const entered = Object.values(cut).filter((spots) => spots[0]!.at > cut["n1"]![0]!.at);
+    expect(entered.length).toBeGreaterThan(0);
+    for (const spots of entered) expect(away(spots[0]!, spots.at(-1)!)).toBeLessThan(1);
+    expect(Object.values(cut).every((spots) => spots.every((spot) => !spot.moving))).toBe(true);
     for (const [language, theme] of [
       ["it", "dark"],
       ["it", "light"],

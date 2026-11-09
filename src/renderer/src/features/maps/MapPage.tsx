@@ -9,6 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Link as RouterLink,
@@ -42,6 +43,7 @@ import { invoke } from "../../lib/ipc";
 import { mapColors as fills, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
+  NODE_MIN_HEIGHT,
   NODE_WIDTH,
   initialCollapsed,
   layoutTree,
@@ -51,7 +53,8 @@ import {
 } from "./mapLayout";
 import { describeChange } from "./mapChange";
 import { useMapExport } from "./MapExport";
-import { MapMenu, type MapMenuGroup } from "./MapMenu";
+import { MAP_KEYS, MapMenu, type MapMenuGroup } from "./MapMenu";
+import { KeyCombo } from "../../app/ShortcutsDialog";
 import { useNodeSources } from "./nodeSources";
 import "./MapPage.css";
 import { usePlan } from "../../lib/queries";
@@ -128,6 +131,7 @@ function CrossEdge({
   sourcePosition,
   targetPosition,
   data,
+  style,
 }: EdgeProps<FlowEdge>) {
   const [hover, setHover] = useState(false);
   const [path, labelX, labelY] = getBezierPath({
@@ -142,6 +146,7 @@ function CrossEdge({
   return (
     <g
       className={`px-cross-edge${lit ? " is-lit" : ""}`}
+      style={style?.opacity === undefined ? undefined : { opacity: style.opacity }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
@@ -152,6 +157,8 @@ function CrossEdge({
             className="px-cross-label nodrag nopan"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              // The label sits outside the edge's group, so it fades with the connector here.
+              opacity: style?.opacity,
             }}
           >
             {data.label}
@@ -195,9 +202,12 @@ export function MapPage() {
   nodesRef.current = nodes;
   // Unfolding or folding a node moves the map in one motion instead of a cut: children slide out of the node they hang
   // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
-  const motion = useRef<{ origin?: string; frame: number }>({ frame: 0 });
+  // `map` is the map the fold happened on, so switching maps mid-move cuts to the new one.
+  const motion = useRef<{ origin?: string; map?: string; frame: number }>({ frame: 0 });
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
+  // Their widths too, which only the fold's motion needs: a branch grows out of its node's right edge.
+  const widths = useRef(new Map<string, number>());
   const [ready, setReady] = useState<string>();
   const [fold, setFold] = useState<{ mapId?: string; ids: Set<string> }>({
     ids: new Set(),
@@ -287,6 +297,7 @@ export function MapPage() {
   const toggle = useCallback(
     (id: string) => {
       motion.current.origin = id;
+      motion.current.map = activeId;
       const ids = new Set(foldedRef.current);
       if (!ids.delete(id)) ids.add(id);
       setFold({ mapId: activeId, ids });
@@ -348,70 +359,112 @@ export function MapPage() {
           },
         };
       });
-    const originId = motion.current.origin;
-    const from = nodesRef.current.find((node) => node.id === originId)?.position;
+    const originId = motion.current.map === activeId ? motion.current.origin : undefined;
+    const now = new Map(nodesRef.current.map((node) => [node.id, node]));
+    const origin = originId ? now.get(originId) : undefined;
     cancelAnimationFrame(motion.current.frame);
-    if (!from || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (!origin || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       motion.current.origin = undefined;
       setNodes(target);
       return;
     }
-    // From where each node is now to where the layout puts it. A node that appears starts where the folded node is now;
-    // one that goes slides into where the folded node ends up, and fades. The map redraws mid-move when the click also
-    // selects the node or a new node gets measured: each node then carries on from where it is, so one already on its
-    // way out keeps going instead of vanishing.
-    const into = target.find((node) => node.id === originId)?.position ?? from;
-    const now = new Map(nodesRef.current.map((node) => [node.id, node]));
+    // Every node moves from where it is now to where the layout puts it. The branch that opens or closes hangs off the
+    // folded node's right edge, centred on it, and moves with that node: new nodes grow out of it and fade in, leaving
+    // ones slide into it and fade out. When the map redraws mid-move because a new node got measured, each node carries
+    // on from where it is, so one already on its way out keeps going instead of vanishing.
+    const originEnd = target.find((node) => node.id === originId)?.position ?? origin.position;
+    const originWidth = widths.current.get(origin.id) ?? NODE_WIDTH;
+    const originHeight = heights.get(origin.id) ?? NODE_MIN_HEIGHT;
+    const tucked = (at: { x: number; y: number }, id: string) => ({
+      x: at.x + originWidth,
+      y: at.y + (originHeight - (heights.get(id) ?? originHeight)) / 2,
+    });
     const ids = new Set(target.map((node) => node.id));
     const leaving = nodesRef.current.filter((node) => !ids.has(node.id));
     const shownAt = (node?: FlowNode) => Number(node?.style?.opacity ?? 1);
-    const start = performance.now();
-    const step = (time: number) => {
-      const progress = Math.min(1, (time - start) / MOTION_MS);
+    // The clock starts at the first screen frame, which draws the start again. Whether the first frame drawn is that one
+    // or the one set here, the motion starts from where the nodes are, and no node steps back first.
+    let start: number | undefined;
+    let ended = false;
+    const step = (time?: number) => {
+      if (time !== undefined) start ??= time;
+      const progress =
+        time === undefined || start === undefined ? 0 : Math.min(1, (time - start) / MOTION_MS);
       const eased = 1 - (1 - progress) ** 3;
       const between = (from: { x: number; y: number }, to: { x: number; y: number }) => ({
         x: from.x + (to.x - from.x) * eased,
         y: from.y + (to.y - from.y) * eased,
       });
+      const originAt = between(origin.position, originEnd);
+      // The last frame draws the leaving nodes invisible inside the folded node and the frame after removes them, so
+      // where they last show never depends on how many frames the screen managed.
+      const settled = ended;
+      ended = progress === 1;
       setNodes([
         ...target.map((node) => {
           const was = now.get(node.id);
           const opacity = was ? shownAt(was) : 0;
+          const inside = tucked(originEnd, node.id);
+          const grown = tucked(originAt, node.id);
           return {
             ...node,
-            position: between(was?.position ?? from, node.position),
+            position: was
+              ? between(was.position, node.position)
+              : {
+                  x: grown.x + (node.position.x - inside.x) * eased,
+                  y: grown.y + (node.position.y - inside.y) * eased,
+                },
             style: opacity < 1 ? { ...node.style, opacity: opacity + (1 - opacity) * eased } : node.style,
           };
         }),
-        ...(progress < 1
-          ? leaving.map((node) => ({
-              ...node,
-              position: between(node.position, into),
-              selectable: false,
-              data: { ...node.data, leaving: true },
-              style: { ...node.style, opacity: shownAt(node) * (1 - eased) },
-            }))
-          : []),
+        ...(settled
+          ? []
+          : leaving.map((node) => {
+              const from = tucked(origin.position, node.id);
+              const into = tucked(originAt, node.id);
+              return {
+                ...node,
+                position: {
+                  x: into.x + (node.position.x - from.x) * (1 - eased),
+                  y: into.y + (node.position.y - from.y) * (1 - eased),
+                },
+                selectable: false,
+                data: { ...node.data, leaving: true },
+                style: { ...node.style, opacity: shownAt(node) * (1 - eased) },
+              };
+            })),
       ]);
       // The canvas says while the map moves, for anything that waits for it to settle.
-      canvas.current?.toggleAttribute("data-moving", progress < 1);
-      if (progress < 1) motion.current.frame = requestAnimationFrame(step);
+      canvas.current?.toggleAttribute("data-moving", !settled);
+      if (!settled)
+        motion.current.frame = requestAnimationFrame((time) =>
+          // Each frame reaches the screen in the frame it was worked out for, so the end frame shows before the next
+          // one removes the leaving nodes.
+          flushSync(() => step(time)),
+        );
       else motion.current.origin = undefined;
     };
     // The first frame now, so no frame shows the old layout; the rest on the screen's frames.
-    step(start);
+    step();
     return () => {
       cancelAnimationFrame(motion.current.frame);
       canvas.current?.removeAttribute("data-moving");
     };
-  }, [spots, shown, heights, selected, folded, parents, levels, toggle]);
+  }, [spots, shown, heights, selected, folded, parents, levels, toggle, activeId]);
   useEffect(() => {
     setSelected(undefined);
     setPaletteOpen(false);
     setHeights(new Map());
+    widths.current = new Map();
   }, [activeId]);
   const edges = useMemo(() => {
     const at = new Map(nodes.map((n) => [n.id, n.position.x]));
+    // A connector fades with the node that grows in or slides away at its end.
+    const faded = new Map(
+      nodes.flatMap((n) =>
+        n.style?.opacity === undefined ? [] : [[n.id, Number(n.style.opacity)] as const],
+      ),
+    );
     const byId = new Map((graph?.nodes ?? []).map((n) => [n.id, n]));
     const result: Array<Edge | FlowEdge> = [];
     for (const e of graph?.edges ?? []) {
@@ -425,10 +478,12 @@ export function MapPage() {
       const to = at.get(target);
       if (from === undefined || to === undefined) continue;
       const forward = to >= from;
+      const opacity = Math.min(faded.get(source) ?? 1, faded.get(target) ?? 1);
       const base = {
         id: JSON.stringify([e.from, e.to]),
         source,
         target,
+        ...(opacity < 1 ? { style: { opacity } } : {}),
         sourceHandle: forward ? "out-r" : "out-l",
         targetHandle: forward ? "in-l" : "in-r",
         focusable: false,
@@ -508,6 +563,9 @@ export function MapPage() {
   const changes = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
+      for (const change of changes)
+        if (change.type === "dimensions" && change.dimensions)
+          widths.current.set(change.id, change.dimensions.width);
       const measured = changes.flatMap((change) =>
         change.type === "dimensions" && change.dimensions
           ? [[change.id, Math.ceil(change.dimensions.height)] as const]
@@ -798,20 +856,11 @@ export function MapPage() {
         {t("map.shortcuts")}
       </div>
       <dl>
-        {(
-          [
-            ["select", ["Tab"]],
-            ["rename", [t("shortcuts.keys.enter")]],
-            ["delete", [t("map.keys.deleteKey"), "⌫"]],
-            ["move", ["← ↑ → ↓"]],
-          ] as const
-        ).map(([action, keys]) => (
-          <div key={action}>
-            <dt>{t(`map.keys.${action}`)}</dt>
+        {MAP_KEYS.map((row) => (
+          <div key={row.id}>
+            <dt>{t(`map.keys.${row.id}`)}</dt>
             <dd>
-              {keys.map((key) => (
-                <kbd key={key}>{key}</kbd>
-              ))}
+              <KeyCombo keys={row.keys} either={row.either} />
             </dd>
           </div>
         ))}
@@ -829,18 +878,16 @@ export function MapPage() {
           <h1>{title}</h1>
           <p>
             {plan.data ? (
-              <>
-                <RouterLink
-                  to={`/plans/${planId}`}
-                  aria-label={t("map.openExam", { title: plan.data.title })}
-                >
-                  <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
-                  {plan.data.title}
-                </RouterLink>
-                <span aria-hidden> · </span>
-              </>
+              <RouterLink
+                to={`/plans/${planId}`}
+                aria-label={t("map.openExam", { title: plan.data.title })}
+              >
+                <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
+                <span>{plan.data.title}</span>
+              </RouterLink>
             ) : null}
-            {graph ? t("map.hint") : null}
+            {plan.data && graph ? <span aria-hidden>·</span> : null}
+            {graph ? <span>{t("map.hint")}</span> : null}
           </p>
         </div>
         {graph ? (
@@ -914,6 +961,9 @@ export function MapPage() {
                 }}
                 onNodesChange={changes}
                 onFocusCapture={(event) => {
+                  // Folding a branch leaves the selection as it was.
+                  if ((event.target as HTMLElement).closest(".px-concept-fold"))
+                    return;
                   const id = (event.target as HTMLElement).closest<HTMLElement>(
                     ".react-flow__node",
                   )?.dataset.id;
