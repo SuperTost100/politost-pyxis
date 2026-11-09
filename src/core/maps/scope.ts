@@ -3,7 +3,7 @@ import { requireTopic } from "../study/openLesson";
 
 /**
  * What a map row belongs to: one topic of an exam, or a whole subject. A topic map also belongs to its exam's subject,
- * which the database keeps in step (migration 25). Job params store this object as it is, so a job saved before
+ * which the database keeps in step (migration 26). Job params store this object as it is, so a job saved before
  * subject maps existed, with `{ planId, topicId }`, still names its maps.
  */
 export type MapScope =

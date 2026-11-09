@@ -247,6 +247,7 @@ ALTER TABLE linked_files ADD COLUMN sorted_at INTEGER;
 CREATE INDEX linked_files_pending ON linked_files(folder_id) WHERE pending > 0;
 CREATE INDEX linked_files_gone ON linked_files(size)
   WHERE missing_at IS NOT NULL AND source_id IS NOT NULL AND content_hash IS NOT NULL;`,
+  },
   // A map belongs to a subject, and only optionally to an exam topic. `maps.plan_id` becomes nullable, which SQLite can
   // only do by rebuilding the table; nothing references `maps`, so the rows move as they are. Each row takes its
   // exam's subject (NULL when the exam has none). A row of a whole subject has no plan and no topic, and a subject
