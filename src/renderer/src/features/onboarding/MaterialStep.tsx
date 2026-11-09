@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "antd";
-import { ArrowRight, Folder, FolderPlus, FolderX, Hourglass, LoaderCircle, Lock } from "lucide-react";
+import { ArrowRight, Folder, FolderPlus, FolderX, Hourglass, Lock } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { MAX_LINKED_DEPTH, type LinkMode } from "@shared/linked-folders";
@@ -8,6 +8,7 @@ import type { RequestOutput } from "../../../../shared/ipc";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { useSources } from "../../lib/queries";
+import { Logo } from "../../components/Logo";
 
 type LinkedFolder = RequestOutput<"sources.linkFolders">["folders"][number];
 type Screen = "choice" | "pick" | "found";
@@ -366,7 +367,7 @@ export function MaterialStep({
           <p className="px-material-drop-body" role="status">
             {linking ? (
               <>
-                <LoaderCircle className="px-spin" size={16} aria-hidden />
+                <Logo working decorative size={22} />
                 {t("onboarding.material.pick.reading")}
               </>
             ) : (

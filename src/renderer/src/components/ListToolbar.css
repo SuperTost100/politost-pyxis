@@ -7,6 +7,10 @@
   align-items: center;
   gap: var(--space-3);
 }
+/* The search and the filters line up with the toolbar's 34px buttons. */
+.px-list-toolbar :is(.ant-input-affix-wrapper, .ant-select) {
+  height: var(--control-md);
+}
 .px-list-toolbar-search {
   display: flex;
   flex: 1000 1 240px;
@@ -50,7 +54,7 @@
   gap: var(--space-2);
 }
 .px-list-toolbar-menu svg {
-  transition: transform 150ms ease-out;
+  transition: transform var(--duration-micro) var(--ease-out);
 }
 .px-list-toolbar-menu svg.is-open {
   transform: rotate(180deg);

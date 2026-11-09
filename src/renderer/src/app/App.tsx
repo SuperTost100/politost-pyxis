@@ -3,7 +3,7 @@ import { BackupNotice } from "../features/settings/AutoBackups";
 import { App as AntApp, ConfigProvider } from "antd";
 import enUS from "antd/locale/en_US";
 import itIT from "antd/locale/it_IT";
-import { Calendar, ChevronDown, LoaderCircle } from "lucide-react";
+import { Calendar, ChevronDown } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RouterProvider } from "react-router";
@@ -21,6 +21,7 @@ import { AppStateContext } from "./app-state";
 import { router } from "./router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { profileQuery } from "../lib/queries";
+import { Logo } from "../components/Logo";
 
 // Only the print window shows it, and it waits for the page to say it is ready.
 const PrintPage = lazy(() =>
@@ -50,8 +51,14 @@ const dateIcons = {
  * the spinner's exit motion ended, which a hidden or slow window can delay. This one is no part of the name.
  */
 const buttonIcons = {
-  loadingIcon: <LoaderCircle size={16} strokeWidth={1.75} aria-hidden className="px-spin" />,
+  loadingIcon: <Logo working decorative size={16} />,
 };
+
+/**
+ * No ripple on press (docs/design-system/controls.md): a button gives way by scaling, and antd's wave would add a glow
+ * that fades for two seconds.
+ */
+const noWave = { disabled: true };
 
 /**
  * Notices open in the page column, under the strip that drags the window and under Attività: Shell keeps a host for
@@ -132,6 +139,7 @@ function StudyApp() {
         locale={locale === "it" ? itIT : enUS}
         select={selectIcons}
         datePicker={dateIcons}
+        wave={noWave}
         button={buttonIcons}
       >
         <AntApp message={messageConfig}>

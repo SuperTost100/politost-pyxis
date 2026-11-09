@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, Input, Modal, Progress, Select, Skeleton } from "antd";
-import { FileText, CheckCircle2, LoaderCircle } from "lucide-react";
+import { FileText, CheckCircle2 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
@@ -44,6 +44,7 @@ import {
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
 import { useSources } from "../../lib/queries";
+import { Logo } from "../../components/Logo";
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -642,7 +643,7 @@ export function LibraryPanel({
       {progress ? (
         <div className="px-library-progress" role="status">
           <p className="small">
-            <LoaderCircle size={16} aria-hidden />
+            <Logo working decorative size={16} />
             {t("sources.importing", {
               current: Math.min(progress.done + 1, progress.total),
               total: progress.total,

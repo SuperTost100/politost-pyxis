@@ -37,7 +37,6 @@ export function IconButton({
     <AntButton
       type={antType}
       danger={variant === "danger"}
-      shape="circle"
       size={size === "sm" ? "small" : "middle"}
       className={[
         "px-btn",

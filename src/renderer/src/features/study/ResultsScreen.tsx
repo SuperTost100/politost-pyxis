@@ -13,6 +13,7 @@ import { invoke } from "../../lib/ipc";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { stemText, type AnswerSource, type Citation } from "./quizText";
 import "./ResultsScreen.css";
+import { Logo } from "../../components/Logo";
 
 /** Where one answer stands: graded (four ways), or still waiting for its grade. */
 export type ResultMark =
@@ -59,12 +60,12 @@ export type ResultTopic = {
   level?: string;
 };
 
-const MARK_ICON: Record<ResultMark, IconName> = {
+// A question still being graded shows the working mark instead.
+const MARK_ICON: Record<Exclude<ResultMark, "grading">, IconName> = {
   correct: "circle-check",
   partial: "circle-dot",
   wrong: "circle-x",
   flagged: "flag",
-  grading: "loader-circle",
   queued: "circle-dashed",
   ungraded: "circle-dashed",
 };
@@ -538,12 +539,11 @@ function Question({
   const head = (
     <>
       <span className="px-res-mark">
-        <Icon
-          name={MARK_ICON[item.mark]}
-          size={18}
-          strokeWidth={2}
-          className={item.mark === "grading" ? "px-res-spin" : undefined}
-        />
+        {item.mark === "grading" ? (
+          <Logo working decorative size={18} />
+        ) : (
+          <Icon name={MARK_ICON[item.mark]} size={18} strokeWidth={2} />
+        )}
       </span>
       <span className="meta px-res-n">{number}</span>
       <span className="px-res-stem">

@@ -204,18 +204,6 @@
   color: var(--ink);
 }
 
-.px-reader-spinner {
-  flex: none;
-  color: var(--primary);
-  animation: px-reader-spin 1s linear infinite;
-}
-
-@keyframes px-reader-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes px-reader-pulse {
   50% {
     opacity: 0.35;
@@ -336,7 +324,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .px-reader-spinner,
   .px-reader-skeleton span {
     animation: none;
   }

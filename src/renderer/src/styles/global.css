@@ -46,6 +46,28 @@ body {
   outline-offset: 2px;
 }
 
+/* One thin scrollbar in the app's colours for every scroll area, popovers included, on every system
+   (docs/design-system/layout.md, Scroll areas): a 10px gutter with a transparent track, a 4px thumb that widens to
+   6px under the pointer. Chromium ignores these rules on an element that sets scrollbar-width or scrollbar-color, so
+   the app sets neither. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 2px;
+  background-color: var(--scrollbar-thumb-hover);
+}
+
 /* Same text width as the shell's page column: 768px minus its 24px side padding. */
 .column {
   width: min(
@@ -58,6 +80,31 @@ body {
 .section-hint {
   margin: var(--space-3) 0 0;
   color: var(--ink-muted);
+}
+
+/* Buttons are never pills or circles (docs/design-system/controls.md). A plain antd Button with shape="round" takes
+   the field radius, and an icon button with shape="circle" the row radius. antd sets those radii with three classes,
+   so the class repeats here to outrank them. */
+.ant-btn.ant-btn.ant-btn.ant-btn-round {
+  border-radius: var(--radius-field);
+}
+.ant-btn.ant-btn.ant-btn.ant-btn-circle {
+  border-radius: var(--radius-sm);
+}
+
+/* The danger tier is a soft fill with its label in --danger, never an outline: antd's default danger button, and the
+   Button component's danger variant, which renders it. The hover fill keeps the label at 4.5:1. The solid red
+   button stays for the confirmation itself. */
+.ant-btn.ant-btn-color-dangerous:is(.ant-btn-variant-outlined, .ant-btn-variant-dashed) {
+  --ant-btn-border-color: transparent;
+  --ant-btn-border-color-hover: transparent;
+  --ant-btn-border-color-active: transparent;
+  --ant-btn-bg-color: var(--surface-raised);
+  --ant-btn-bg-color-hover: var(--danger-soft);
+  --ant-btn-bg-color-active: var(--danger-soft);
+  --ant-btn-text-color: var(--danger);
+  --ant-btn-text-color-hover: var(--danger);
+  --ant-btn-text-color-active: var(--danger);
 }
 
 .ant-btn-text.linkish {
@@ -222,8 +269,8 @@ a.px-brand:hover {
   color: var(--ink-muted);
   cursor: pointer;
   transition:
-    background-color 0.15s ease-out,
-    color 0.15s ease-out;
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
 }
 .px-top-tool:hover,
 .px-setup-top .ant-btn.px-top-tool:hover {
@@ -482,11 +529,6 @@ html[data-platform="darwin"] .canvas-bar {
   padding-top: var(--space-8);
 }
 
-/* Back is a real secondary button, not loose text. */
-.focus-actions-bar .ant-btn-text {
-  border-color: var(--border-control);
-}
-
 .focus-main .gallery-row {
   margin-bottom: var(--space-6);
 }
@@ -560,12 +602,20 @@ html[data-platform="darwin"] .canvas-bar {
   }
 }
 
+/* Reduced motion keeps the fallbacks in docs/design-system/motion.md: nothing moves, but an element that fades or
+   changes colour still does, over its own duration, so a popover or a sheet fades in place and a press changes colour
+   only. A transform or a height jumps to its end, and keyframe animations run once and end at once. Elements with no
+   transition of their own get none, so a theme applied at start-up doesn't fade the whole window. The working mark
+   keeps its own fallback, a slow breath (Logo.css). */
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.px-logo-working),
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
-    transition: none !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-property: color, background-color, border-color, outline-color, box-shadow, opacity !important;
+    transition-delay: 0s !important;
   }
 }
 

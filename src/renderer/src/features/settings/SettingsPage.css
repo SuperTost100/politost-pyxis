@@ -76,7 +76,7 @@
   font: 500 14px/1.3 var(--font-sans);
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+  transition: background-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out);
 }
 .px-settings-nav-item > svg {
   color: var(--ink-subtle);
@@ -215,4 +215,103 @@
 .px-settings-who > div > span {
   color: var(--ink-subtle);
   font-size: 13.5px;
+}
+
+/* The line under a block's title, as under Tema. */
+.px-settings-block-title + .px-settings-block-hint {
+  margin: calc(3px - var(--space-4)) 0 0;
+  color: var(--ink-subtle);
+  font-size: 13px;
+}
+
+/* A small window drawn in one theme for its preview tile (pyxis-mockups app/index.html, "s-settings-appearance"): the
+   sidebar with the window buttons and three rows, a title, a card with lines and the primary button. data-theme on
+   each window gives it that theme's tokens. System lays the dark window over the light one, cut on the diagonal. */
+.px-theme-mini {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+}
+.px-theme-mini + .px-theme-mini {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.px-theme-mini > i {
+  position: absolute;
+  display: block;
+}
+.px-theme-mini-side {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 27%;
+  background: color-mix(in srgb, var(--ink) 5%, var(--bg));
+}
+.px-theme-mini-side::before {
+  content: "";
+  position: absolute;
+  left: 12%;
+  top: 9%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow:
+    6px 0 #febc2e,
+    12px 0 #28c840;
+}
+.px-theme-mini-side::after {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 18%;
+  top: 32%;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 28%, transparent);
+  box-shadow:
+    0 9px color-mix(in srgb, var(--ink) 20%, transparent),
+    0 18px color-mix(in srgb, var(--ink) 20%, transparent);
+}
+.px-theme-mini-title {
+  left: 35%;
+  top: 13%;
+  width: 30%;
+  height: 7%;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.px-theme-mini-card {
+  left: 35%;
+  right: 7%;
+  top: 29%;
+  height: 44%;
+  border-radius: 5px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.px-theme-mini-card::before,
+.px-theme-mini-card::after {
+  content: "";
+  position: absolute;
+  left: 9%;
+  height: 7%;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.px-theme-mini-card::before {
+  top: 20%;
+  width: 62%;
+}
+.px-theme-mini-card::after {
+  top: 42%;
+  width: 44%;
+  box-shadow: 0 9px 0 color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.px-theme-mini-button {
+  right: 7%;
+  bottom: 11%;
+  width: 20%;
+  height: 9%;
+  border-radius: 3px;
+  background: var(--primary);
 }

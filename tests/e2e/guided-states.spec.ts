@@ -164,7 +164,7 @@ test("PLAN-10 a failed guided call can be retried and answers survive Back", asy
     await expectState(page, "failed-tree");
     // Back from a failed tree returns to the style choice with the module focus still ticked.
     await page.getByRole("button", { name: "Indietro" }).click();
-    await expect(page.getByRole("button", { name: /Leggere|Esercitarsi|Decidi tu/ }).first()).toBeVisible();
+    await expect(page.getByRole("radio", { name: /Leggere|Esercitarsi|Decidi tu/ }).first()).toBeVisible();
     await next(page).click();
     await expectState(page, "failed-tree");
     // Back twice reaches the module list, whose tick is still there.

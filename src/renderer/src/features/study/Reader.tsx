@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { ArrowRight, Check, CircleCheck, LoaderCircle } from "lucide-react";
+import { ArrowRight, Check, CircleCheck } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +12,7 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar } from "./StudyBar";
 import { recommendQuery } from "../../lib/queries";
+import { Logo } from "../../components/Logo";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
 const WORDS_PER_MINUTE = 200;
@@ -210,7 +211,7 @@ export function ReaderProgress({
   return (
     <>
       <div className={`px-reader-status${pending && !empty ? " is-after" : ""}`} role="status">
-        <LoaderCircle className="px-reader-spinner" size={16} strokeWidth={1.75} aria-hidden />
+        <Logo working decorative size={22} />
         <span className="small">{label}</span>
         {detail ? <span className="small body-strong px-reader-detail">{detail}</span> : null}
         {onStop ? (

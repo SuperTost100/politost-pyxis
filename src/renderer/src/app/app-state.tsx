@@ -3,7 +3,7 @@ import type { Appearance, ThemeSource } from "@shared/bridge";
 
 type AppState = {
   appearance: Appearance;
-  setTheme: (source: ThemeSource) => void;
+  setTheme: (source: ThemeSource) => Promise<void>;
 };
 
 export const AppStateContext = createContext<AppState | null>(null);

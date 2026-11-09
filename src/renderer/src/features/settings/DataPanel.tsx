@@ -232,7 +232,7 @@ export function DataPanel({
           >
             <Button
               size="small"
-              className="px-ctl-danger"
+              danger
               aria-label={t("settings.wipe")}
               aria-expanded={wipeArmed}
               disabled={moving || wiping || archiving !== null}

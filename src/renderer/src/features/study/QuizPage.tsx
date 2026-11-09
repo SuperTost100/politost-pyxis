@@ -47,6 +47,7 @@ import {
 } from "./quizText";
 import "./QuizPage.css";
 import { pastPapersQuery, usePlan, useSources } from "../../lib/queries";
+import { Logo } from "../../components/Logo";
 
 const KINDS = ["mcq", "completion", "matching", "tf", "open"] as const;
 type Kind = (typeof KINDS)[number];
@@ -113,7 +114,7 @@ function CheckStatus({
   const queued = job?.state === "queued";
   return (
     <div className="px-quiz-checking">
-      <Icon name={queued ? "clock" : "loader-circle"} size={16} className={queued ? undefined : "px-spin"} />
+      {queued ? <Icon name="clock" size={16} /> : <Logo working decorative size={16} />}
       <span className="body" role="status">
         {t(queued ? "quiz.checkQueued" : "quiz.checking")}
       </span>
@@ -1051,7 +1052,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         <div className="px-quiz-generation">
           {generating && questions.length ? (
             <p className="meta px-quiz-available" role="status">
-              <Icon name="loader-circle" size={16} className="px-spin" />
+              <Logo working decorative size={16} />
               {t("quiz.available", {
                 available: questions.length,
                 total: requestedCount,

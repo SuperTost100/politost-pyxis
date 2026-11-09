@@ -412,18 +412,7 @@ button.px-res-q-head:hover {
 .px-res-q.is-open .px-res-chevron {
   transform: rotate(180deg);
 }
-.px-res-spin {
-  animation: px-res-spin 1.1s linear infinite;
-}
-@keyframes px-res-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .px-res-spin {
-    animation: none;
-  }
   .px-res-chevron {
     transition: none;
   }
