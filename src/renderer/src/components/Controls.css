@@ -229,10 +229,6 @@
 :is(.px-ctl, .px-ctl-after) .ant-btn.ant-btn-text:not(:disabled):hover {
   color: var(--ink);
 }
-.px-ctl .ant-btn.px-ctl-danger,
-.px-ctl .ant-btn.px-ctl-danger:not(:disabled):hover {
-  color: var(--danger);
-}
 /* Buttons under a card, such as Back up now. */
 .px-ctl-after {
   display: flex;

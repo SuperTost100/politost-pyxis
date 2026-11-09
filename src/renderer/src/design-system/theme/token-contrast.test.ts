@@ -100,6 +100,8 @@ describe("token contrast", () => {
     for (const [name, soft] of [
       ["primary-text", "primary-soft"],
       ["ok", "ok-soft"],
+      // The danger button's label on its hover fill.
+      ["danger", "danger-soft"],
     ]) {
       it(`${name} on ${soft} is 4.5:1 or more in ${mode}`, () => {
         expect(
