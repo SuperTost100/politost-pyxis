@@ -6,7 +6,7 @@ import { MAX_FOLDER_ENTRIES, maxSourceBytes, isImageExt } from "../../shared/sou
 import { MAX_SUBJECT_NAME, type LinkMode, type MaterialKind } from "../../shared/linked-folders";
 import type { GenerateInput } from "../engine/generate";
 import type { Runner } from "../jobs/runner";
-import { addSubject } from "../plans/subjects";
+import { addSubject, renameSubject } from "../plans/subjects";
 import { inside } from "../path-inside";
 import { kindFor, mimeFor } from "./documents";
 import { listImportable } from "./folder";
@@ -478,6 +478,24 @@ export function linkedFolders(deps: LinkedDeps) {
     })();
   }
 
+  /**
+   * The subject a confirmed name stands for. A subfolder that already has a subject of its own, as on setup again, keeps
+   * it under the new name, so the exams and plans that hang on its id stay with it. Otherwise the name makes a subject
+   * or reuses the one with that name: when another subject has the name already, or the subject was shared by several
+   * subfolders before this confirmation (`shared`, read once, so the order of the choices does not matter).
+   */
+  function subjectFor(current: string | null, name: string, shared: ReadonlySet<string>): { id: string; name: string } {
+    const clean = name.trim();
+    const own =
+      current !== null &&
+      !shared.has(current) &&
+      !db.prepare(`SELECT 1 FROM subjects WHERE name = ? COLLATE NOCASE AND id <> ?`).get(clean, current);
+    if (!own) return addSubject(db, clean);
+    const stored = db.prepare(`SELECT name FROM subjects WHERE id = ?`).pluck().get(current) as string | undefined;
+    if (stored === undefined) return addSubject(db, clean);
+    return stored === clean ? { id: current, name: stored } : renameSubject(db, current, clean);
+  }
+
   function assignSubject(folderId: string, key: string, subjectId: string): void {
     db.prepare(`UPDATE linked_subfolders SET subject_id = ?, skipped = 0 WHERE folder_id = ? AND name = ?`).run(
       subjectId,
@@ -544,7 +562,7 @@ export function linkedFolders(deps: LinkedDeps) {
     },
     /**
      * Saves the subjects the student confirmed in setup. Each name creates a subject or reuses the one with that name,
-     * and the folder's sources take it. A subfolder marked as a subject after it was skipped is read now. Subfolders
+     * and the folder's sources take it; on setup again a subfolder's own subject is renamed instead (`subjectFor`). A subfolder marked as a subject after it was skipped is read now. Subfolders
      * left out keep the subject setup offered. Errors: `linked-folder-missing`.
      */
     async confirm(input: {
@@ -552,6 +570,14 @@ export function linkedFolders(deps: LinkedDeps) {
     }): Promise<{ subjects: Array<{ id: string; name: string }> }> {
       const subjects = new Map<string, string>();
       db.transaction(() => {
+        const shared = new Set(
+          db
+            .prepare(
+              `SELECT subject_id FROM linked_subfolders WHERE subject_id IS NOT NULL GROUP BY subject_id HAVING COUNT(*) > 1`,
+            )
+            .pluck()
+            .all() as string[],
+        );
         for (const folder of input.folders) {
           if (!folderRow(folder.folderId)) throw new Error("linked-folder-missing");
           const rows = new Map(subfolderRows(folder.folderId).map((row) => [row.name, row]));
@@ -563,7 +589,7 @@ export function linkedFolders(deps: LinkedDeps) {
               ).run(folder.folderId, choice.key);
               continue;
             }
-            const subject = addSubject(db, choice.name);
+            const subject = subjectFor(rows.get(choice.key)!.subject_id, choice.name, shared);
             subjects.set(subject.id, subject.name);
             assignSubject(folder.folderId, choice.key, subject.id);
           }

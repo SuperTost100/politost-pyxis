@@ -25,6 +25,8 @@ const stored: StoredProfile = {
   course: "Scientific",
   contentLanguage: "English",
   crashReports: false,
+  interests: ["chess"],
+  interestsOn: false,
 };
 
 describe("setup answers", () => {
@@ -35,6 +37,7 @@ describe("setup answers", () => {
       year: "",
       school: "",
       course: "",
+      interests: [],
       crashReports: false,
     });
   });
@@ -46,6 +49,7 @@ describe("setup answers", () => {
       year: "3rd year",
       school: "Liceo Volta",
       course: "Scientific",
+      interests: ["chess"],
       crashReports: false,
     });
   });
@@ -58,10 +62,11 @@ describe("what finishing setup saves", () => {
     year: " 2 ",
     school: " Politecnico ",
     course: " Math ",
+    interests: ["football", "guitar"],
     crashReports: true,
   };
 
-  it("first setup writes the interface language as the content language", () => {
+  it("first setup writes the interface language as the content language, and uses the interests in examples", () => {
     expect(savedProfile(answers, "Italian", null)).toEqual({
       displayName: "Ada L.",
       educationLevel: "technical",
@@ -69,11 +74,13 @@ describe("what finishing setup saves", () => {
       school: "Politecnico",
       course: "Math",
       contentLanguage: "Italian",
+      interests: ["football", "guitar"],
+      interestsOn: true,
       crashReports: true,
     });
   });
 
-  it("a rerun keeps the stored content language and writes the shown answers", () => {
+  it("a rerun keeps the stored content language and interests switch, and writes the shown answers", () => {
     expect(savedProfile(answers, "Italian", stored)).toEqual({
       displayName: "Ada L.",
       educationLevel: "technical",
@@ -81,6 +88,8 @@ describe("what finishing setup saves", () => {
       school: "Politecnico",
       course: "Math",
       contentLanguage: "English",
+      interests: ["football", "guitar"],
+      interestsOn: false,
       crashReports: true,
     });
   });
@@ -93,6 +102,8 @@ describe("what finishing setup saves", () => {
       school: stored.school,
       course: stored.course,
       contentLanguage: stored.contentLanguage,
+      interests: stored.interests,
+      interestsOn: stored.interestsOn,
       crashReports: stored.crashReports,
     });
   });

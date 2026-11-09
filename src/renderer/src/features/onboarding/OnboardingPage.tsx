@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
+import { TagsField } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import { Stepper } from "../../components/Stepper";
 import { PROFILE_LIMITS } from "@shared/limits";
@@ -30,18 +31,17 @@ import "./OnboardingPage.css";
 import { profileQuery } from "../../lib/queries";
 
 /**
- * First setup is three steps: you, the AI, the material. The profile is saved when the AI step ends, so "Later" on the
+ * Setup is three steps: you, the AI, the material. The profile is saved when the AI step ends, so "Later" on the
  * material step lands the student on Chiedi with the profile kept. The material step links the student's folders and
- * names their subjects; it draws its own three screens. Exams are made later, from Esami. A rerun has the first two
- * steps.
+ * names their subjects; it draws its own three screens. Exams are made later, from Esami.
  */
-const firstSteps = ["profile", "engines", "material"] as const;
-const rerunSteps = ["profile", "engines"] as const;
-type StepId = (typeof firstSteps)[number];
+const steps = ["profile", "engines", "material"] as const;
+type StepId = (typeof steps)[number];
 
 /**
- * First setup, or with `?again=1` (Settings > Profile > Run setup again) the profile and AI steps for a student who
- * already has a profile. A rerun waits for the stored profile so the screens open filled in.
+ * First setup, or with `?again=1` (Settings > Profile > Run setup again) the same three steps for a student who already
+ * has a profile. A rerun waits for the stored profile so the screens open filled in, and its material step opens on the
+ * folders linked already.
  */
 export function OnboardingPage() {
   const [params] = useSearchParams();
@@ -59,7 +59,6 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   // Setup is not left through the menu: Shell sends a profile-less student back here, and a rerun has its own Cancel.
   useMenuLock(true);
   const again = stored !== null;
-  const steps: readonly StepId[] = again ? rerunSteps : firstSteps;
   const [index, setIndex] = useState(0);
   const [start] = useState(() => firstAnswers(stored));
   const [name, setName] = useState(start.name);
@@ -67,6 +66,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   const [year, setYear] = useState(start.year);
   const [school, setSchool] = useState(start.school);
   const [course, setCourse] = useState(start.course);
+  const [interests, setInterests] = useState(start.interests);
   // Off for a new install, so nothing is sent unless the student turns it on. A rerun shows the stored choice.
   const [crashReports, setCrashReports] = useState(start.crashReports);
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
@@ -80,7 +80,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
-  const id = steps[index]!;
+  const id: StepId = steps[index]!;
 
   // A new screen starts at its top and its heading, so keyboard and screen reader users do not land in the old controls
   // and the page does not open at the previous screen's scroll offset.
@@ -105,7 +105,7 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         skip
           ? { displayName: "" }
           : savedProfile(
-              { name, level, year, school, course, crashReports },
+              { name, level, year, school, course, interests, crashReports },
               t("onboarding.contentLanguage"),
               stored,
             ),
@@ -183,19 +183,11 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
         loading={busy}
         onClick={() =>
           void save(false).then((saved) => {
-            if (!saved) return;
-            if (again) backToSettings();
-            else next();
+            if (saved) next();
           })
         }
       >
-        {t(
-          again
-            ? "onboarding.again.done"
-            : engines.ready === false
-              ? "onboarding.later"
-              : "onboarding.continue",
-        )}
+        {t(engines.ready === false ? "onboarding.later" : "onboarding.continue")}
       </Button>
     );
   }
@@ -219,7 +211,12 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       </div>
       {/* The material step draws its own title and footer: each of its screens has its own. */}
       {id === "material" ? (
-        <MaterialStep heading={heading} onBack={back} onLeave={() => navigate("/ask")} />
+        <MaterialStep
+          heading={heading}
+          again={again}
+          onBack={back}
+          onLeave={again ? backToSettings : () => navigate("/ask")}
+        />
       ) : (
         <div className="px-onboarding-title">
           <h1 className="display" tabIndex={-1} ref={heading}>
@@ -232,8 +229,8 @@ function Setup({ stored }: { stored: StoredProfile | null }) {
       {id === "profile" ? (
         <>
           <ProfileStep
-            values={{ name, level, year, school, course }}
-            set={{ setName, setLevel, setYear, setSchool, setCourse }}
+            values={{ name, level, year, school, course, interests }}
+            set={{ setName, setLevel, setYear, setSchool, setCourse, setInterests }}
           />
           <CrashReportsSwitch
             setup
@@ -267,6 +264,7 @@ function ProfileStep(props: {
     year: string;
     school: string;
     course: string;
+    interests: string[];
   };
   set: {
     setName: (value: string) => void;
@@ -274,6 +272,7 @@ function ProfileStep(props: {
     setYear: (value: string) => void;
     setSchool: (value: string) => void;
     setCourse: (value: string) => void;
+    setInterests: (value: string[]) => void;
   };
 }) {
   const { t } = useTranslation();
@@ -424,6 +423,23 @@ function ProfileStep(props: {
             )}
           </div>
         )}
+        <div className="px-form-field px-onboarding-wide">
+          <label className="label" htmlFor="profile-interests">
+            {t("onboarding.interests.label")}
+            {optional}
+          </label>
+          <TagsField
+            id="profile-interests"
+            label={t("onboarding.interests.label")}
+            values={values.interests}
+            max={PROFILE_LIMITS.interests}
+            maxLength={PROFILE_LIMITS.interest}
+            placeholder={t("onboarding.interests.placeholder")}
+            fullPlaceholder={t("settings.interestsFull", { max: PROFILE_LIMITS.interests })}
+            removeLabel={(name) => t("settings.interestsRemove", { name })}
+            onChange={set.setInterests}
+          />
+        </div>
       </div>
     </div>
   );

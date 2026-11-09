@@ -186,6 +186,10 @@
       }
     },
     "optional": "(se vuoi)",
+    "interests": {
+      "label": "Interessi",
+      "placeholder": "Per esempio calcio, chitarra, scacchi"
+    },
     "studies": {
       "label": "Studi",
       "university": "All'università",

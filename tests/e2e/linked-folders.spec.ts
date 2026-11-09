@@ -256,3 +256,89 @@ test("Setup links one folder per subject, and never skips a folder the student p
     rmSync(dirname(dirname(root)), { recursive: true, force: true });
   }
 });
+
+test("Setup again opens on the linked folders, renames a subject in place, adds a folder and ends without linking again", async () => {
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-linked-user-"));
+  const root = studyFolder();
+  // A second folder for a subject that lives elsewhere: files at its top, so the folder itself is the subject.
+  const chemistry = join(mkdtempSync(join(tmpdir(), "pyxis-linked-more-")), "Chimica");
+  mkdirSync(chemistry);
+  writeFileSync(join(chemistry, "Atomi.pdf"), onePagePdf("Un atomo ha un nucleo di protoni e neutroni"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: replies } });
+  try {
+    const page = await app.firstWindow();
+    await toMaterial(page);
+    await button(page, "Una cartella con tutto lo studio").click();
+    await answerPicker(app, [root]);
+    await button(page, "Scegli la cartella").click();
+    await expect(title(page)).toHaveText("Ho trovato 3 materie", { timeout: 60000 });
+    await button(page, "Inizia a studiare").click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    const subjects = () => page.evaluate(() => window.pyxis.invoke("subjects.list", {}));
+    const physics = (await subjects()).find((row) => row.name === "Fisica I");
+    expect(physics).toBeDefined();
+
+    // Settings > Profile > Run setup again goes through all three steps.
+    await page.evaluate(() => {
+      location.hash = "/settings/profile";
+    });
+    await button(page, "Rifai la configurazione").click();
+    await expect(page.locator("[aria-current=step]")).toHaveText("Passo 1 di 3: 1 · Tu");
+    await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Ada");
+    await button(page, "Continua").click();
+    await button(page, /^(Lo faccio dopo|Continua)$/).click();
+
+    // The material step opens on what is linked already, with the names the student confirmed.
+    await expect(page.locator("[aria-current=step]")).toHaveText("Passo 3 di 3: 3 · Il materiale");
+    await expect(title(page)).toHaveText("Ho trovato 3 materie");
+    await expect(page.getByText("Documenti › Università", { exact: true })).toBeVisible();
+    const found = page.getByRole("list", { name: "Materie trovate" });
+    const name = (folder: string) =>
+      found.getByRole("textbox", { name: `Nome della materia della cartella ${folder}` });
+    await expect(name("Fisica 1")).toHaveValue("Fisica I");
+    await expect(name("Analisi 2")).toHaveValue("Analisi matematica II");
+    await expect(
+      found.getByText("La cartella Erasmus non sembra materiale di studio, quindi la salto."),
+    ).toBeVisible();
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "linked-folders/5-again.png");
+
+    // A subject is renamed and another folder is added; the rename survives the trip to the picker.
+    await name("Fisica 1").fill("Fisica");
+    await button(page, "Aggiungi un'altra cartella").click();
+    await answerPicker(app, [chemistry]);
+    await button(page, "Scegli la cartella").click();
+    await expect(title(page)).toHaveText("Ho trovato 4 materie", { timeout: 60000 });
+    await expect(name("Fisica 1")).toHaveValue("Fisica");
+    await expect(name("Chimica")).toHaveValue("Chimica");
+    await button(page, "Salva e torna alle impostazioni").click();
+    await expect(page).toHaveURL(/#\/settings\/profile$/);
+
+    // The renamed subject is the same subject, so its exams and plans stay with it. No folder was linked twice.
+    const after = await subjects();
+    expect(after.map((row) => row.name).sort()).toEqual([
+      "Analisi matematica II",
+      "Chimica",
+      "Fisica",
+      "Geometria e algebra lineare",
+    ]);
+    expect(after.find((row) => row.name === "Fisica")?.id).toBe(physics!.id);
+    expect(await page.evaluate(() => window.pyxis.invoke("sources.linkedFolders", {}))).toHaveLength(2);
+    await expect
+      .poll(async () => (await listed(page)).map((row) => `${row.title}|${row.subject}`).sort(), { timeout: 90000 })
+      .toEqual([
+        "Appunti integrali|Analisi matematica II",
+        "Atomi|Chimica",
+        "Dispense matrici|Geometria e algebra lineare",
+        "Febbraio 2025|Fisica",
+        "Mazzoldi cap 2|Fisica",
+      ]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dirname(dirname(root)), { recursive: true, force: true });
+    rmSync(dirname(chemistry), { recursive: true, force: true });
+  }
+});

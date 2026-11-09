@@ -239,6 +239,7 @@ export function TextRow({
  * pasted list separated by commas adds every item. It saves the whole list on each change.
  */
 export function TagsField({
+  id,
   label,
   values,
   max,
@@ -248,6 +249,8 @@ export function TagsField({
   removeLabel,
   onChange,
 }: {
+  /** The input's id, for a visible `<label htmlFor>` that names it. Without one, `label` names it. */
+  id?: string;
   label: string;
   values: readonly string[];
   /** The most tags, and the longest one. */
@@ -298,7 +301,8 @@ export function TagsField({
       ))}
       <input
         ref={input}
-        aria-label={label}
+        id={id}
+        aria-label={id ? undefined : label}
         autoComplete="off"
         disabled={full}
         // Room for a whole item, and for several when a list is pasted.
