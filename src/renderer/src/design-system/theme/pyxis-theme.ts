@@ -92,7 +92,8 @@ export function pyxisTheme(
       fontFamily: FONT_SANS,
       fontFamilyCode: FONT_MONO,
       fontSize: 15 * textScale,
-      // 0.5 shapes (design-spec.md): 10 px buttons and fields, 8 px rows, 14 px cards, 16 px panels. No pills.
+      // 0.5 shapes (docs/design-system/foundations.md): 10 px buttons and fields, 8 px rows, 14 px cards, 16 px panels.
+      // No pills.
       borderRadius: 10,
       controlHeight: 40,
       wireframe: false,
@@ -135,9 +136,17 @@ export function pyxisTheme(
           : "0 4px 10px rgba(21, 24, 30, 0.08), 0 22px 44px -14px rgba(21, 24, 30, 0.3)",
     },
     components: {
+      // The button sizes of the design system (docs/design-system/controls.md): 30, 34 and 42px, all with the 10px
+      // field radius. Other controls keep the global heights.
       Button: {
+        controlHeight: 34,
+        controlHeightSM: 30,
+        controlHeightLG: 42,
+        contentFontSize: 13.5 * textScale,
+        contentFontSizeSM: 13 * textScale,
+        contentFontSizeLG: 14.5 * textScale,
         borderRadius: 10,
-        borderRadiusSM: 8,
+        borderRadiusSM: 10,
         borderRadiusLG: 10,
         fontWeight: 600,
         primaryShadow: "none",
@@ -146,9 +155,10 @@ export function pyxisTheme(
         // The solid danger fill is the light red in the dark theme, where white text fails contrast; onInk is the
         // text colour that sits on a bright fill in each theme.
         dangerColor: c.onInk,
-        paddingInline: 20,
-        paddingInlineLG: 32,
-        // Secondary buttons are a soft fill with no outline (design-spec.md, Buttons).
+        paddingInline: 14,
+        paddingInlineSM: 12,
+        paddingInlineLG: 24,
+        // Secondary buttons are a soft fill with no outline (docs/design-system/controls.md).
         defaultBorderColor: "transparent",
         defaultBg: c.surfaceRaised,
         defaultColor: c.ink,

@@ -646,7 +646,7 @@ export function LibraryPanel({
       {progress ? (
         <div className="px-library-progress" role="status">
           <p className="small">
-            <Logo size={16} working decorative />
+            <Logo working decorative size={16} />
             {t("sources.importing", {
               current: Math.min(progress.done + 1, progress.total),
               total: progress.total,

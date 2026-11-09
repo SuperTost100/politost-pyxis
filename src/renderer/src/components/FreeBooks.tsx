@@ -128,7 +128,7 @@ export function FreeBooks({
     if (sourceId && book.update === "running")
       return (
         <span className="small px-books-state">
-          <Logo size={14} working decorative />
+          <Logo working decorative size={16} />
           {t("books.updating")}
         </span>
       );

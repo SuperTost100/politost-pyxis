@@ -1,6 +1,5 @@
 /* The Attività list in the page's top-right corner (pyxis-mockups app/index.html, "s-jobs-new"): what needs the
-   student, what is running, what finished today. Motion values fall back to the design system's numbers until the
-   global motion tokens exist. */
+   student, what is running, what finished today. Motion follows docs/design-system/motion.md. */
 /* Transparent room above and below the list: when it slides to stay inside the window, it stops 16px from the edge. */
 .ant-popover.px-jobs-popover {
   padding-block: 16px;
@@ -20,26 +19,6 @@
   scrollbar-gutter: stable;
   outline: none;
   border-radius: var(--radius-lg);
-}
-
-/* Scrollbar A, the thin bar in the app's colours, kept to this list until the app has it everywhere. Chromium ignores
-   these rules on an element that sets scrollbar-width or scrollbar-color, so neither is set. */
-.px-jobs::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-.px-jobs::-webkit-scrollbar-track,
-.px-jobs::-webkit-scrollbar-corner {
-  background: transparent;
-}
-.px-jobs::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: 6px;
-  background: var(--scrollbar-thumb, color-mix(in srgb, var(--ink) 30%, transparent)) padding-box;
-}
-.px-jobs::-webkit-scrollbar-thumb:hover {
-  border-width: 2px;
-  background-color: var(--scrollbar-thumb-hover, color-mix(in srgb, var(--ink) 50%, transparent));
 }
 
 /* The list grows out of its button, whose bottom-right corner it opens under, and shrinks back into it. */
@@ -63,7 +42,7 @@
 .px-jobs-grow-leave {
   animation-fill-mode: both;
   animation-play-state: paused;
-  animation-timing-function: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  animation-timing-function: var(--ease-out);
 }
 .px-jobs-grow-enter,
 .px-jobs-grow-appear {
@@ -71,7 +50,7 @@
   animation-duration: 180ms;
 }
 .px-jobs-grow-leave {
-  animation-duration: 120ms;
+  animation-duration: var(--duration-micro);
 }
 .px-jobs-grow-enter.px-jobs-grow-enter-active,
 .px-jobs-grow-appear.px-jobs-grow-appear-active {
@@ -88,11 +67,11 @@
   .px-jobs-grow-enter.px-jobs-grow-enter-active,
   .px-jobs-grow-appear.px-jobs-grow-appear-active {
     animation-name: px-jobs-fade-in;
-    animation-duration: 120ms !important;
+    animation-duration: var(--duration-micro) !important;
   }
   .px-jobs-grow-leave.px-jobs-grow-leave-active {
     animation-name: px-jobs-fade-out;
-    animation-duration: 120ms !important;
+    animation-duration: var(--duration-micro) !important;
   }
 }
 
@@ -235,7 +214,7 @@
 .px-jobs-caret {
   flex: none;
   color: var(--ink-subtle);
-  transition: transform var(--duration-small, 200ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: transform var(--duration-small) var(--ease-out);
 }
 
 .px-jobs-caret.is-open,
@@ -416,7 +395,7 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--duration-micro, 120ms) ease-out;
+  transition: background-color var(--duration-micro) ease-out;
 }
 
 .px-jobs-batch-main:has(> .px-jobs-when) {
@@ -453,7 +432,7 @@
 .px-jobs-more {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--duration-small, 200ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  transition: grid-template-rows var(--duration-small) var(--ease-out);
 }
 
 .px-jobs-batch.is-open > .px-jobs-more {

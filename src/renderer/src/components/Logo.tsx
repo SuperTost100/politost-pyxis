@@ -2,9 +2,10 @@ import { arc, starPath, TRAILS } from "./logoMark";
 import "./Logo.css";
 
 /**
- * With `working` the rings turn around the centre, ring 1 clockwise and the next ones alternating.
- * Each ring sits in a group with an invisible full circle so its fill box is centred on the mark.
- * `decorative` hides the mark from screen readers, for a mark beside a line that says what it means.
+ * With `working` the rings turn around the centre, ring 1 clockwise and the next ones alternating: the working mark
+ * (docs/design-system/feedback.md). Each ring sits in a group with an invisible full circle so its fill box is centred
+ * on the mark. A `decorative` mark sits beside words that say what happens: screen readers skip it, and its rings take
+ * the colour of the text around it, so it reads on a primary button as on a row.
  */
 export function Logo({
   size = 32,
@@ -19,15 +20,16 @@ export function Logo({
   working?: boolean;
   decorative?: boolean;
 }) {
-  const stroke = inverse ? "var(--on-primary)" : "var(--ink)";
+  const stroke = inverse ? "var(--on-primary)" : decorative ? "currentColor" : "var(--ink)";
+  const hidden = wordmark || decorative;
   const mark = (
     <svg
       width={size}
       height={size}
       viewBox="6 10 88 88"
-      role={decorative ? undefined : "img"}
-      aria-label={wordmark || decorative ? undefined : "Pyxis"}
-      aria-hidden={wordmark || decorative ? true : undefined}
+      role={hidden ? undefined : "img"}
+      aria-label={hidden ? undefined : "Pyxis"}
+      aria-hidden={hidden ? true : undefined}
       className={working ? "px-logo-working" : undefined}
       style={{ flex: "none" }}
     >

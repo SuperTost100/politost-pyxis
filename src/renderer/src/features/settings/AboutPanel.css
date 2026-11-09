@@ -8,8 +8,9 @@
 }
 .px-about-version dd {
   margin: 0;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 .px-about summary {
   cursor: pointer;

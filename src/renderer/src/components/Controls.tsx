@@ -6,7 +6,8 @@ import "./Controls.css";
 /*
  * The settings controls, one look per kind (pyxis-mockups app/index.html, "s-settings-studio"): one choice of several is
  * radio rows, on or off is a switch row, a few sizes are a segmented control, and a number is a stepper. Rows sit in a
- * white list card. A short text is a field in its row ("s-settings-profile"), and a list of words is a tags field.
+ * white list card. A short text is a field in its row ("s-settings-profile"), and a list of words is a tags field. A choice
+ * judged by looking is a row of preview tiles ("s-settings-appearance"). docs/design-system/controls.md has the table.
  */
 
 /** A titled group of settings with an optional line under the title, as "Chi sei" or "Copie di sicurezza". */
@@ -449,6 +450,75 @@ export function Stepper({
       >
         <Plus size={16} strokeWidth={1.75} aria-hidden />
       </button>
+    </div>
+  );
+}
+
+/**
+ * A choice judged by looking, as the theme: each option a small picture with its name under it, the chosen one ringed.
+ * A radio group in its own white card, with one tab stop and the arrow keys moving the choice.
+ */
+export function PreviewTiles<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  /** The id of the heading that names the group. */
+  label: string;
+  value: T;
+  /** `preview` is drawn inside the tile's frame, which keeps a 16:10 shape. */
+  options: Array<{ value: T; label: ReactNode; preview: ReactNode }>;
+  /** May return the save; once it settles, the tiles show the stored value again, as RadioRows does. */
+  onChange: (value: T) => void | Promise<unknown>;
+}) {
+  // A pick shows at once, while the setting it changes catches up (the theme applies a moment later).
+  const [picked, setPicked] = useState<{ from: T; to: T } | null>(null);
+  const shown = picked && picked.from === value ? picked.to : value;
+  const pick = (next: T) => {
+    const change = { from: value, to: next };
+    setPicked(change);
+    void Promise.resolve(onChange(next))
+      .catch(() => undefined)
+      .finally(() => setPicked((current) => (current === change ? null : current)));
+  };
+  return (
+    <div
+      className="px-ctl px-ctl-tiles"
+      role="radiogroup"
+      aria-labelledby={label}
+      onKeyDown={(event) => {
+        const step =
+          event.key === "ArrowRight" || event.key === "ArrowDown"
+            ? 1
+            : event.key === "ArrowLeft" || event.key === "ArrowUp"
+              ? -1
+              : 0;
+        if (!step) return;
+        event.preventDefault();
+        const at = options.findIndex((option) => option.value === shown);
+        const next = options[(at + step + options.length) % options.length]!;
+        pick(next.value);
+        (event.currentTarget.querySelector(`[data-value="${next.value}"]`) as HTMLElement | null)?.focus();
+      }}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          className="px-ctl-tile"
+          data-value={option.value}
+          aria-checked={shown === option.value}
+          tabIndex={shown === option.value ? 0 : -1}
+          onClick={() => pick(option.value)}
+        >
+          <span className="px-ctl-tile-frame" aria-hidden="true">
+            {option.preview}
+          </span>
+          {option.label}
+        </button>
+      ))}
     </div>
   );
 }

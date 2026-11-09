@@ -17,8 +17,8 @@
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 120ms ease-out,
-    background-color 120ms ease-out;
+    border-color var(--duration-micro) var(--ease-out),
+    background-color var(--duration-micro) var(--ease-out);
 }
 .px-opt:hover:not(:disabled) {
   border-color: var(--border-control);
@@ -37,7 +37,8 @@
   border-radius: var(--radius-sm);
   background: var(--surface-raised);
   color: var(--ink-muted);
-  font: 500 12px/1 var(--font-mono);
+  font: 500 12px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
 }
 .px-opt-text {
   min-width: 0;

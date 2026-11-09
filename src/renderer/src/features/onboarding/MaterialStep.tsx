@@ -367,7 +367,7 @@ export function MaterialStep({
           <p className="px-material-drop-body" role="status">
             {linking ? (
               <>
-                <Logo size={16} working decorative />
+                <Logo working decorative size={22} />
                 {t("onboarding.material.pick.reading")}
               </>
             ) : (

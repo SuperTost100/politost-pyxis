@@ -80,7 +80,7 @@ function SourceStatus({ status }: { status: string }) {
       ) : PROBLEM.has(status) ? (
         <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
       ) : (
-        <Logo size={16} working decorative />
+        <Logo working decorative size={16} />
       )}
       {t(`sources.status.${status}`, { defaultValue: status })}
     </span>

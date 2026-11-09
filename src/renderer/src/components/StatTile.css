@@ -5,7 +5,7 @@
 .px-stat-num { font: 600 calc(56px * var(--text-scale))/calc(56px * var(--text-scale)) var(--font-sans); letter-spacing: -.02em; }
 .px-stat-num small { font: 400 calc(22px * var(--text-scale))/calc(28px * var(--text-scale)) var(--font-sans); color: var(--ink-muted); margin-left: 4px; }
 .px-stat-pills { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
-.px-pill-meta { display: inline-flex; height: 26px; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--surface-raised); color: var(--ink); font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-mono); }
+.px-pill-meta { display: inline-flex; height: 26px; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--surface-raised); color: var(--ink); font: 400 calc(12px * var(--text-scale))/calc(16px * var(--text-scale)) var(--font-sans); font-variant-numeric: tabular-nums; }
 .px-stat-foot { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); padding-top: var(--space-4); text-align: center; }
 .px-stat-foot > div + div { border-left: 1px solid var(--border); }
 .px-stat-foot b { display: block; font: 600 calc(20px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); }

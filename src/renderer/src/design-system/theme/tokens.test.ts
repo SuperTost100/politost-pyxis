@@ -13,6 +13,8 @@ const tokens = JSON.parse(
   color: {
     tokens: Array<{ name: string; value: { dark: string; light: string } }>;
   };
+  motion: { tokens: Array<{ name: string; value: string }> };
+  scrollbar: { tokens: Array<{ name: string; value: string }> };
 };
 const css = readFileSync(
   resolve(root, "src/renderer/src/design-system/tokens/tokens.css"),
@@ -32,6 +34,7 @@ const lightBlock = css.slice(
   css.search(/\[data-theme="light"\]/),
   css.search(/:root\s*\{/),
 );
+const rootBlock = css.slice(css.search(/:root\s*\{/));
 
 function expectedCss(value: string): string {
   const ref = value.match(/^\{([a-z0-9-]+)\}$/);
@@ -62,6 +65,12 @@ describe("design tokens stay in sync", () => {
       for (const [key, value] of Object.entries(pyxisColors[mode])) {
         expect(value, `${mode} ${key}`).toMatch(/^(#[0-9a-f]{6}|rgba\([\d., ]+\))$/);
       }
+    }
+  });
+
+  it("mirrors the motion and scrollbar tokens into tokens.css", () => {
+    for (const token of [...tokens.motion.tokens, ...tokens.scrollbar.tokens]) {
+      expect(cssValue(rootBlock, token.name), token.name).toBe(expectedCss(token.value));
     }
   });
 });

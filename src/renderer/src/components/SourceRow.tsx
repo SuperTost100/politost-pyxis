@@ -113,7 +113,7 @@ export function SourceRow(props: {
         ) : problem ? (
           <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
         ) : (
-          <Logo size={16} working decorative />
+          <Logo working decorative size={16} />
         )}
         {t(`sources.status.${source.status}`, { defaultValue: source.status })}
         {source.status === "ocr-queued" && source.scanJobId ? (

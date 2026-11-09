@@ -1,5 +1,5 @@
 .px-building-mark .px-building-trail {
-  transition: stroke-dashoffset 200ms ease-out;
+  transition: stroke-dashoffset var(--duration-small) var(--ease-out);
 }
 
 .px-building-mark.is-done .px-building-star {

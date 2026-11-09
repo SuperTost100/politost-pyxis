@@ -38,7 +38,7 @@ html[data-platform="darwin"] .px-studybar {
   color: var(--ink-muted);
   font: 500 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition: background-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out);
 }
 
 .px-studybar-back:hover {

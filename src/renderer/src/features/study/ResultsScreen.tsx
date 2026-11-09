@@ -61,12 +61,12 @@ export type ResultTopic = {
   level?: string;
 };
 
-const MARK_ICON: Record<ResultMark, IconName> = {
+// A question still being graded shows the working mark instead.
+const MARK_ICON: Record<Exclude<ResultMark, "grading">, IconName> = {
   correct: "circle-check",
   partial: "circle-dot",
   wrong: "circle-x",
   flagged: "flag",
-  grading: "loader-circle",
   queued: "circle-dashed",
   ungraded: "circle-dashed",
 };
@@ -537,7 +537,7 @@ function Question({
     <>
       <span className="px-res-mark">
         {item.mark === "grading" ? (
-          <Logo size={18} working decorative />
+          <Logo working decorative size={18} />
         ) : (
           <Icon name={MARK_ICON[item.mark]} size={18} strokeWidth={2} />
         )}

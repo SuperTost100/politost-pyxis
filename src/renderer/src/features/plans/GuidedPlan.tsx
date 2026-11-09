@@ -6,6 +6,7 @@ import type { RequestInput, RequestOutput } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate } from "react-router";
 import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { RadioRows } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
@@ -248,7 +249,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
             t(`wizard.guided.steps.${id}`),
           )}
         />
-        <h2 className="title-1 px-wizard-question">
+        <h2 className="title-1 px-wizard-question" id="guided-question">
           {t(`wizard.guided.questions.${step}`)}
         </h2>
         {loading ? (
@@ -369,20 +370,16 @@ function Guided({ seed }: { seed: WizardSeed }) {
           </>
         ) : null}
         {step === 3 ? (
-          <div className="choice-list">
-            {(["read", "practice", "decide"] as const).map((id) => (
-              <button
-                type="button"
-                key={id}
-                className={style === id ? "choice is-selected" : "choice"}
-                aria-pressed={style === id}
-                onClick={() => setStyle(id)}
-              >
-                <span className="body-strong">{t(`wizard.${id}`)}</span>
-                <span className="small">{t(`wizard.styleHelp.${id}`)}</span>
-              </button>
-            ))}
-          </div>
+          <RadioRows
+            label="guided-question"
+            value={style}
+            options={(["read", "practice", "decide"] as const).map((id) => ({
+              value: id,
+              title: t(`wizard.${id}`),
+              description: t(`wizard.styleHelp.${id}`),
+            }))}
+            onChange={setStyle}
+          />
         ) : null}
         {step === 5 ? (
           <>
