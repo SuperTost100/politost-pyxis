@@ -1010,8 +1010,8 @@ export function MapPage() {
               variant="secondary"
               size="sm"
               icon="layers"
-              // A topic map's cards go under its exam and topic, which come with the scope.
-              disabled={Boolean(params.topicId) && !scope.data}
+              // The cards go under the map's subject, and a topic map's exam and topic, which come with the scope.
+              disabled={!scope.data}
               onClick={makeCards}
             >
               {t("map.makeCards")}
