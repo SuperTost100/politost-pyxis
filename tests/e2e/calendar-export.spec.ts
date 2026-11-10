@@ -74,9 +74,13 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     db.close();
 
     const calendarName = /^(Aggiungi al calendario|Add to calendar)$/;
-    const header = page.locator(".px-plan-header-actions");
-    const headerButton = () =>
-      header.getByRole("button", { name: calendarName });
+    // The exam page's head: its settings button and its menu, where the calendar is saved.
+    const header = page.locator(".px-exam-head");
+    const openMenu = async () => {
+      await header.getByRole("button", { name: /^(Altro|More)$/ }).click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+    };
+    const menuItem = () => page.getByRole("menuitem", { name: calendarName });
     const toast = (text: RegExp) => page.getByText(text).first();
     const open = async (planId: string) => {
       await page.evaluate((planId) => {
@@ -110,16 +114,19 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       0,
     );
 
-    // A plan with no date, or with a date that has passed, has no header button.
+    // A plan with no date, or with a date that has passed, has no calendar in its menu.
     for (const planId of ["plan-undated", "plan-past"]) {
       await open(planId);
-      await expect(headerButton()).toHaveCount(0);
+      await openMenu();
+      await expect(menuItem()).toHaveCount(0);
+      await page.keyboard.press("Escape");
     }
 
     // Plan header, Italian: only this exam.
     await open("plan-far");
     rmSync(saved, { force: true });
-    await headerButton().click();
+    await openMenu();
+    await menuItem().click();
     await expect(toast(/File del calendario salvato/)).toBeVisible();
     let ics = await exported();
     expect(ics.startsWith("BEGIN:VCALENDAR\r\n")).toBe(true);
@@ -144,7 +151,8 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
 
     // Saving again keeps the same UID, so an import updates the event.
     rmSync(saved, { force: true });
-    await headerButton().click();
+    await openMenu();
+    await menuItem().click();
     ics = await exported();
     expect(unfold(ics).filter((l) => l.startsWith("UID:"))).toEqual([
       "UID:plan-far@pyxis.politost.it",
@@ -163,9 +171,11 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
       );
       await page.setViewportSize({ width: 960, height: 700 });
       await page.reload();
-      await expect(headerButton()).toBeEnabled();
+      await openMenu();
+      await expect(menuItem()).toBeEnabled();
       await expectNoAxeViolations(page);
       await saveShot(page, `calendar-plan-header-${language}-${theme}.png`);
+      await page.keyboard.press("Escape");
     }
 
     // Exam settings, English: only that exam, and the summary follows the interface language.

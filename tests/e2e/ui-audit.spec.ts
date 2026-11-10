@@ -91,13 +91,10 @@ const routes = [
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
   ["plan-dated-planner", "/plans/audit-ready-plan"],
-  // The exam page with its finished steps listed, and with the Now card's other activities open.
+  // The exam page with finished steps on its open topic, and with an open gap that offers Ripasso mirato.
   ["plan-done", "/plans/audit-plan"],
-  ["plan-chooser", "/plans/audit-plan"],
+  ["plan-gaps", "/plans/audit-plan"],
   ["plan-sources", "/plans/audit-plan/sources"],
-  ["plan-progress", "/plans/audit-plan/progress"],
-  ["progress-gap-misconception", "/plans/audit-plan/progress"],
-  ["progress-gaps-distinct", "/plans/audit-plan/progress"],
   ["plan-settings", "/plans/audit-plan/settings"],
   // The same page with a goal and a name changed, so the save bar lists them.
   ["plan-settings-changes", "/plans/audit-plan/settings"],
@@ -127,8 +124,6 @@ const routes = [
   ["engine-details-disabled", "/settings/engines"],
   ["engine-add-cli", "/settings/engines"],
   ["engine-add-key", "/settings/engines"],
-  ["progress-simulations", "/plans/audit-plan/progress"],
-  ["progress-pace", "/plans/audit-plan/progress"],
   ["export-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["export-cards", "/plans/audit-plan/cards/audit-topic"],
   ["export-simulation", "/plans/audit-plan/exam/audit-exam-attempt"],
@@ -209,7 +204,7 @@ const routes = [
   ["selection-source", "/exams/library"],
   ["selection-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["reading-large-lesson", "/plans/audit-plan/lesson/audit-topic"],
-  ["reading-large-progress", "/plans/audit-plan/progress"],
+  ["reading-large-exam", "/plans/audit-plan"],
   // Local OCR data: consent, progress and recovery in Settings, in the jobs list and where a read was refused.
   ["ocr-settings-missing", "/settings/data"],
   ["ocr-settings-integrity", "/settings/data"],
@@ -1440,10 +1435,10 @@ function prepareState(name: string) {
       name.includes("book-update") || name.includes("books-update") ? 1 : 0,
     );
   });
-  // PRO-02: gaps with the model's reading of the mistakes; a topic can hold several, one per distinct misconception.
+  // An open gap with the model's reading of the mistakes, for the exam page's Ripasso mirato.
   withDb((db) => {
     db.prepare("DELETE FROM gaps WHERE plan_id = 'audit-plan'").run();
-    if (!name.startsWith("progress-gap")) return;
+    if (name !== "plan-gaps") return;
     const insert = db.prepare(
       "INSERT INTO gaps(id,plan_id,topic_id,opened_at,misconception,severity,comparison) VALUES(?,'audit-plan','audit-topic',?,?,?,?)",
     );
@@ -1455,16 +1450,6 @@ function prepareState(name: string) {
       "severe",
       null,
     );
-    if (name === "progress-gaps-distinct") {
-      insert.run(
-        "audit-gap-2",
-        now - 2 * 86400000,
-        "Applica la seconda legge a una sola forza, senza sommare le forze che agiscono sul corpo.",
-        "minor",
-        "unchecked",
-      );
-      insert.run("audit-gap-3", now - 86400000, null, "minor", null);
-    }
   });
   withDb((db) => {
     db.exec(
@@ -2007,39 +1992,11 @@ async function openState(page: Page, name: string) {
         page.getByRole("button", { name: both("Vedi lo stato", "See status") }),
       ).toBeVisible();
       break;
-    case "progress-gap-misconception":
+    case "plan-gaps":
       await expect(
-        page.getByText(/Confonde la massa con il peso/),
+        page.getByRole("button", { name: /^(Ripasso mirato|Targeted review)/ }).first(),
       ).toBeVisible();
-      await expect(
-        page.getByRole("button", {
-          name: /^(Colma la lacuna|Work on this gap) ·/,
-        }),
-      ).toHaveCount(1);
       break;
-    case "progress-gaps-distinct": {
-      // Three gaps on one topic: each is listed on its own, with its own misconception, and each fill button is named apart.
-      await expect(
-        page.getByText(/Confonde la massa con il peso/),
-      ).toBeVisible();
-      await expect(
-        page.getByText(/Applica la seconda legge a una sola forza/),
-      ).toBeVisible();
-      const fills = page.getByRole("button", {
-        name: /^(Colma la lacuna|Work on this gap) ·/,
-      });
-      await expect(fills).toHaveCount(3);
-      const names = await fills.evaluateAll((nodes) =>
-        nodes.map((node) => node.getAttribute("aria-label")),
-      );
-      expect(new Set(names).size).toBe(3);
-      await expect(
-        page.getByText(
-          /Non confrontato con le altre lacune|Not compared with this topic/,
-        ),
-      ).toHaveCount(1);
-      break;
-    }
     case "review-quiz-pending":
       await expect(
         page
@@ -2695,7 +2652,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "reading-large-lesson":
-    case "reading-large-progress": {
+    case "reading-large-exam": {
       await page.evaluate(() =>
         window.pyxis.invoke("profile.save", {
           dyslexia: false,
@@ -2707,7 +2664,7 @@ async function openState(page: Page, name: string) {
       const textSelectors =
         name === "reading-large-lesson"
           ? [".passage .px-markdown p"]
-          : [".px-plan-progress .title-3", ".px-plan-progress .body-strong"];
+          : [".px-xpath-title", ".px-exam-asec h2"];
       const mediumSizes: number[] = [];
       for (const selector of textSelectors) {
         const text = page.locator(selector).first();
@@ -3058,29 +3015,6 @@ async function openState(page: Page, name: string) {
           name: both("Chiave API", "API key"),
           selected: true,
         }),
-      ).toBeVisible();
-      break;
-    case "progress-simulations":
-      await expect(
-        page.getByRole("heading", {
-          name: both("Simulazioni", "Simulations"),
-          level: 2,
-        }),
-      ).toBeVisible();
-      await page.locator(".px-progress-simulations").scrollIntoViewIfNeeded();
-      await expect(page.locator(".px-progress-simulations")).toBeVisible();
-      await expect(
-        page.getByRole("button", {
-          name: /^(Apri la prova del|Open exam from) /,
-        }),
-      ).toBeVisible();
-      break;
-    case "progress-pace":
-      await page
-        .getByRole("heading", { name: both("Ritmo", "Pace"), level: 2 })
-        .scrollIntoViewIfNeeded();
-      await expect(
-        page.getByRole("heading", { name: both("Ritmo", "Pace"), level: 2 }),
       ).toBeVisible();
       break;
     case "export-lesson":
@@ -3576,21 +3510,14 @@ test("M14 every application route in both languages, themes and supported widths
                 await expect(page.getByRole("dialog")).toBeVisible();
               }
               if (name === "plan-create") {
-                // Creating an activity by hand sits in the header's More menu.
-                await page.locator(".px-plan-header-actions").getByRole("button", { name: /^(Altro|More)$/ }).click();
-                await page.getByRole("menuitem", { name: /Crea lezione|Create lesson/ }).click();
+                // Creating an activity by hand sits in the exam page's menu.
+                await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+                await page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }).click();
                 await expect(page.getByRole("dialog")).toBeVisible();
               }
               if (name === "plan-done") {
-                await page.locator(".px-path-summary").click();
-                await expect(page.getByRole("list", { name: /Passi fatti|Steps done/ })).toBeVisible();
-              }
-              if (name === "plan-chooser") {
-                await page
-                  .locator(".px-path-next")
-                  .getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ })
-                  .click();
-                await expect(page.locator(".px-path-chooser")).toBeVisible();
+                // The topic the path is on is open, its finished steps ticked.
+                await expect(page.getByRole("list", { name: /^(Passi di|Steps)/ })).toBeVisible();
               }
               await openState(page, name);
               if (name === "diagnostic") {

@@ -339,8 +339,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       location.hash = "#/plans/p-none/mistakes";
     });
     await expect(page.getByRole("heading", { level: 1, name: "Appunti sparsi" })).toBeVisible();
-    await expect(page.locator(".px-seg .ant-segmented-item-selected")).toHaveText("Path");
-    await expect(page.locator(".px-seg").getByText("Mistakes notebook")).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 2, name: "Path" })).toBeVisible();
     db.close();
   } finally {
     await app.close();

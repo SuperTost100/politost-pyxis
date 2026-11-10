@@ -58,6 +58,27 @@ describe("topicRows", () => {
     expect(a).toMatchObject({ atGoal: true, current: false, date: undefined });
   });
 
+  it("keeps a done flashcards step once none is due, so its review can be reopened", () => {
+    const [a] = topicRows({
+      topics,
+      steps: [step("cards", "a", 1)],
+      status: [{ topicId: "a", mastery: 0.2, dueCards: 0, gaps: 0 }],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    });
+    expect(a!.steps.at(-1)).toEqual({ activity: "cards", state: "done" });
+    const [b] = topicRows({
+      topics,
+      steps: [],
+      status: [{ topicId: "a", mastery: 0.2, dueCards: 0, gaps: 0 }],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    });
+    expect(b!.steps.map((chip) => chip.activity)).toEqual(["lesson", "practice", "quiz"]);
+  });
+
   it("drops a leading number that repeats the row's own, since the row draws it", () => {
     const titles = ["1. Misure e vettori", "2. Cinematica del punto", "Limiti", "3. Serie", "2020. Storia"];
     const rows = topicRows({

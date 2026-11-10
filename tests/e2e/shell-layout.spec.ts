@@ -188,14 +188,16 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await side.getByRole("button", { name: "Espandi la barra" }).click();
     await expect.poll(async () => (await side.boundingBox())!.width).toBe(260);
 
-    // A plan page offers a way back to the exams.
+    // A plan page belongs to Esami: the sidebar marks it, and Esami there leads back to the list.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seedPlan(db, { id: "p-1", title: "Fisica 1", language: "it", target: 0.75 });
     db.close();
     await page.evaluate(() => {
       window.location.hash = "#/plans/p-1";
     });
-    await page.getByRole("main").getByRole("link", { name: "Esami", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
+    await expect(door("Esami")).toHaveAttribute("aria-current", "page");
+    await door("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
   } finally {
     await app.close();
@@ -232,10 +234,8 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       );
       await page.setViewportSize({ width, height: 800 });
       await page.reload();
-      await page
-        .locator(".px-plan-header-actions")
-        .getByRole("button", { name: /^(Aggiungi al calendario|Add to calendar)$/ })
-        .click();
+      await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+      await page.getByRole("menuitem", { name: /^(Aggiungi al calendario|Add to calendar)$/ }).click();
       const notice = page.locator(".ant-message-notice", {
         hasText: /File del calendario salvato|Calendar file saved/,
       });

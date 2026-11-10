@@ -36,7 +36,7 @@ After a practice exercise the student can choose "Got it" (score 1) or "Missed i
 
 - It decays like other evidence (half-life 14 days) and has weight 0.5.
 - Like a quick check, it never opens or closes a gap, and a "Missed it" is not a wrong answer on a gap. Gaps follow graded answers only.
-- It does not count as a solved exercise on Progress.
+- It does not count as a solved exercise in the plan's series (`plans.series`).
 
 The student can change a rating. Every choice is stored, but mastery counts one rating per exercise per visit: a rating replaces the exercise's previous rating when it comes less than 6 hours after it (`SELF_RATING_WINDOW_MS`). Choosing the same rating again writes nothing. Six hours or more later, a rating is a new observation on top of the old one, which has decayed. The practice page shows the rating from the last 6 hours as chosen and starts a new visit unrated. Replaying an earlier date keeps the rating that stood at that date.
 
@@ -96,7 +96,7 @@ An attempt from an imported plan has no answers (see [plan file](plan-file.md));
 
 ## Knowledge gaps
 
-Gap rows follow the answers. Reading Progress or the recommendation syncs them first, and a second sync changes nothing.
+Gap rows follow the answers. Reading the exam's path or the recommendation syncs them first, and a second sync changes nothing.
 
 **Opening.** A topic opens a gap when one attempt has at least two imperfect answers on it, or one open answer scores below `0.3`, and no gap on that topic is open at that moment. Flagged source exercises open or keep a separate flag-only gap on their topic. When a real gap opens on a topic that already has a flag-only gap, the flag gap becomes it.
 
@@ -106,11 +106,11 @@ Gap rows follow the answers. Reading Progress or the recommendation syncs them f
 
 **Which wrong answers count for which gap.** A drill question counts for the gap its drill was built for. A wrong answer from an analysed attempt counts for the gap the analysis put it on. Any other wrong answer, such as a single miss that never reached an analysis, counts for every gap open on its topic at that time. This is an approximation. A lone miss cannot be pinned on one misconception without a model call per miss, and Pyxis does not guess. The cost is that a stray miss resets every open gap on the topic, so closing is slower when a topic has several gaps. The reverse choice would let a gap close while the student still misses the topic. A session with wrong answers that count for a different gap can count as clean for this one.
 
-**Severity.** The model proposes `severe` or `minor`. Pyxis also labels a gap severe when topic mastery is below half the plan target, and a gap with no proposal and mastery at or above that line is minor. Progress ranks gaps by severity, then by the number of linked wrong answers, then by age.
+**Severity.** The model proposes `severe` or `minor`. Pyxis also labels a gap severe when topic mastery is below half the plan target, and a gap with no proposal and mastery at or above that line is minor. A Ripasso mirato that names no gap drills the topic's first gap in that order: severe first, then by the number of linked wrong answers, then by age.
 
 **Merging.** The older gap keeps its id. The absorbed gap closes with `merged_into` pointing at the survivor, its wrong answers and drill items move to the survivor, and a severe reading stays severe. A merge is not a learning close. It writes a `gap_closed` event with reason `merged`, and a drill built for the absorbed gap is offered for the survivor.
 
-Preparation warns about a below-target topic after 21 days without study. The standalone `idleTopics()` helper defaults to seven days; the Preparation screen uses its own 21-day rule.
+`plans.series` marks a below-target topic idle after 21 days without study. The standalone `idleTopics()` helper defaults to seven days.
 
 ## Recommendation score
 

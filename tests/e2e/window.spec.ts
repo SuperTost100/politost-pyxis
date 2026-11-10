@@ -466,9 +466,9 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await clean(page);
     console.log("release: simulation");
     await page.evaluate((planId) => {
-      location.hash = `/plans/${planId}/progress`;
+      location.hash = `/plans/${planId}`;
     }, planId);
-    await expect(page.locator(".px-preparation")).toBeVisible();
+    await expect(page.locator(".px-exam-rings")).toBeVisible();
     await clean(page);
     console.log("release: progress");
     await page.evaluate((planId) => {

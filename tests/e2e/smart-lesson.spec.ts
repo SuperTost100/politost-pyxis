@@ -185,7 +185,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    await page.locator(".px-path-next").getByRole("button", { name: "Inizia", exact: true }).click();
+    await page.locator(".px-exam-now").getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/intro$`));
     await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
     await expect(page.getByText("imparerai a descrivere il moto")).toBeVisible();
@@ -377,12 +377,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, copyId);
-    // Finished steps are folded into one line until opened.
-    await page.locator(".px-path-summary").click();
-    await page
-      .getByRole("list", { name: "Passi fatti" })
-      .getByRole("button", { name: /^Lezione/ })
-      .click();
+    // A finished step on the path opens what was done: the lesson as it was read.
+    const lessonStep = page.locator(".px-xpath-substep.is-done", { hasText: "Lezione" }).first();
+    if (!(await lessonStep.isVisible())) await page.locator(".px-xpath-row.is-topic .px-xpath-head").first().click();
+    await lessonStep.click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copyId}/lesson/[^/]+\\?item=`));
     await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole("region", { name: "Ripasso finale" }).getByText("2 su 3 giuste")).toBeVisible();

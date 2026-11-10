@@ -87,21 +87,21 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
           await page.evaluate(() => {
             location.hash = "/plans/plan-a";
           });
-          await expect(page.locator(".px-path-rows")).toBeVisible();
+          await expect(page.locator(".px-xpath-list")).toBeVisible();
           const lessonName = language === "it" ? "Lezione" : "Lesson";
           // The path starts on the introduction, so open the first topic.
-          await page.locator(".px-path-row.is-topic .px-path-row-main").first().click();
-          // The step chips and the other-activity list call the lesson by the same name.
-          await expect(page.locator(".px-path-step").first()).toContainText(lessonName);
-          await page
-            .locator(".px-path-next")
-            .getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ })
-            .click();
-          await expect(page.locator(".px-path-chooser")).toContainText(lessonName);
+          await page.locator(".px-xpath-row.is-topic .px-xpath-head").first().click();
+          // The topic's steps and the dialog that creates an activity call the lesson by the same name.
+          await expect(page.locator(".px-xpath-substep").first()).toContainText(lessonName);
+          await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+          await page.getByRole("menuitem", { name: /^(Crea un'attività|Create an activity)$/ }).click();
+          await expect(page.getByRole("dialog")).toContainText(lessonName);
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("dialog")).toHaveCount(0);
           await expect(page.getByText(/Testo smart|Smart text/)).toHaveCount(0);
 
           // The open topic's summary and sub-topics share one font size and colour.
-          const about = page.locator(".px-path-about");
+          const about = page.locator(".px-xpath-about");
           await expect(about).toBeVisible();
           const type = await about.evaluate((element) => {
             const own = getComputedStyle(element);
