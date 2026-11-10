@@ -168,7 +168,7 @@ const routes = [
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
-  ["map-cards-no-exam", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
+  ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
@@ -993,10 +993,42 @@ let auditDone = false;
 function prepareCardBrowser(name: string) {
   withDb((db) => {
     db.exec(`DELETE FROM cards WHERE plan_id IS NULL;
+      DELETE FROM maps WHERE id = 'audit-chem-map';
       DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
       DELETE FROM subjects WHERE id = 'audit-chem';
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
-    if (name === "map-cards-no-exam") seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
+    if (name === "map-cards-no-exam") {
+      // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
+      seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
+      const node = (id: string, label: string, parent: string | null, x: number) => ({ id, label, parent, x, y: parent ? 160 : 0, pinned: false });
+      db.prepare(
+        "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-chem-map','audit-chem',?,'general',1)",
+      ).run(
+        JSON.stringify({
+          version: 1,
+          maps: [
+            {
+              id: "audit-chem-map-entry",
+              title: "Chimica",
+              passageIds: [],
+              graph: {
+                layout: "tree",
+                nodes: [
+                  node("chem-root", "Chimica", null, 0),
+                  node("chem-orbitals", "Orbitali", "chem-root", -120),
+                  node("chem-quantum", "Numeri quantici", "chem-root", 120),
+                ],
+                edges: [
+                  { from: "chem-root", to: "chem-orbitals" },
+                  { from: "chem-root", to: "chem-quantum" },
+                ],
+                undo: null,
+              },
+            },
+          ],
+        }),
+      );
+    }
     if (!name.startsWith("cards-browser")) return;
     // An archived topic hides its cards, so no topic holds a card: the browser has nothing to show.
     if (name === "cards-browser-empty") {
@@ -2845,19 +2877,10 @@ async function openState(page: Page, name: string) {
     case "map-cards":
     case "map-cards-no-exam": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      if (name === "map-cards")
-        await page.getByRole("button", { name: both("Crea flashcard da questa mappa", "Make flashcards from this map") }).click();
-      // A map of a subject with no exam: the same dialog, opened as that map would open it.
-      else
-        await page.evaluate(() =>
-          window.dispatchEvent(
-            new CustomEvent("pyxis:make-cards", {
-              detail: { text: "Orbitali\n- Numeri quantici", origin: "map", subjectId: "audit-chem", subject: "Chimica" },
-            }),
-          ),
-        );
+      await page.getByRole("button", { name: both("Crea flashcard da questa mappa", "Make flashcards from this map") }).click();
       const dialog = page.getByRole("dialog", { name: both("Crea flashcard", "Make flashcards") });
-      await expect(dialog.locator(".px-mc-lead")).toBeVisible();
+      // The dialog names the subject of the map it was opened from.
+      await expect(dialog.locator(".px-mc-lead b")).toHaveText(name === "map-cards" ? "Fisica" : "Chimica");
       await expect(dialog.locator("#mc-plan")).toHaveCount(name === "map-cards" ? 1 : 0);
       break;
     }
