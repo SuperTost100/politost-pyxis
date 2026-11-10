@@ -80,22 +80,25 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(legend.getByRole("listitem")).toHaveText(["Preparationnot measured yet", "Path0%", "Today0%"]);
     await expectNoAxeViolations(page);
 
-    // Adesso: the path's suggestion with the one primary button.
+    // Adesso: the path's suggestion with the one primary button. A due flashcard comes first.
     const now = page.locator(".px-exam-now");
     await expect(now.getByText("Now", { exact: true })).toBeVisible();
+    await expect(now.getByRole("heading")).toHaveText("Flashcards: Misure e vettori");
     await now.getByRole("button", { name: "Start", exact: true }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis\/(intro|diagnostic)$/);
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/cards\/t-vec$/);
     await openExam(page);
 
-    // The path holds every activity: a topic opens to its steps from the keyboard, the simulation is a step.
+    // The path holds every activity. The topic Adesso is on starts open with its steps; another opens from the keyboard.
     const path = page.locator(".px-xpath-list");
-    const topic = path.getByRole("button", { name: /^Misure e vettori/ });
-    await topic.focus();
-    await page.keyboard.press("Enter");
-    await expect(topic).toHaveAttribute("aria-expanded", "true");
     const steps = page.getByRole("list", { name: "Steps for Misure e vettori" });
     await expect(steps.getByRole("button", { name: /^Lesson/ })).toBeVisible();
-    await expect(steps.getByRole("button", { name: /^Flashcards, 1 due/ })).toBeVisible();
+    await expect(steps.getByRole("button", { name: "Flashcards, now" })).toBeVisible();
+    const second = path.getByRole("button", { name: /^Cinematica: moto rettilineo/ });
+    await second.focus();
+    await page.keyboard.press("Enter");
+    await expect(second).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("list", { name: "Steps for Cinematica: moto rettilineo" })).toBeVisible();
+    await expect(steps).toHaveCount(0);
     await path.getByRole("button", { name: /^Exam simulation/ }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/simulation$/);
     await openExam(page);
@@ -126,7 +129,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await aside.getByRole("button", { name: "Fisica I, Mazzoldi" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toBeHidden();
     await aside.getByRole("link", { name: "All material" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/sources$/);
     await expect(page.getByRole("heading", { level: 1, name: "Material" })).toBeVisible();
@@ -139,15 +142,18 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(page).toHaveURL(/#\/plans\/p-fis\/review$/);
     await openExam(page);
     await pickFromMenu(page, "Create an activity");
-    await expect(page.getByRole("dialog")).toContainText("Lesson");
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const create = page.getByRole("dialog", { name: "Create an activity" });
+    await expect(create).toContainText("Lesson");
+    await create.getByRole("button", { name: "Close" }).click();
+    await expect(create).toBeHidden();
     await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Add to calendar" })).toBeVisible();
     await page.keyboard.press("Escape");
     await pickFromMenu(page, "Share the exam");
-    await expect(page.getByRole("dialog").getByRole("button", { name: "Save file" })).toBeVisible();
-    await page.keyboard.press("Escape");
+    const share = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Save file" }) });
+    await expect(share).toBeVisible();
+    await share.getByRole("button", { name: "Close" }).click();
+    await expect(share).toBeHidden();
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
 

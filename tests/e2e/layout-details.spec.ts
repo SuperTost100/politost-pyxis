@@ -95,9 +95,10 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
           await expect(page.locator(".px-xpath-substep").first()).toContainText(lessonName);
           await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
           await page.getByRole("menuitem", { name: /^(Crea un'attività|Create an activity)$/ }).click();
-          await expect(page.getByRole("dialog")).toContainText(lessonName);
+          const create = page.getByRole("dialog", { name: /^(Crea un'attività|Create an activity)$/ });
+          await expect(create).toContainText(lessonName);
           await page.keyboard.press("Escape");
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(create).toBeHidden();
           await expect(page.getByText(/Testo smart|Smart text/)).toHaveCount(0);
 
           // The open topic's summary and sub-topics share one font size and colour.
@@ -122,7 +123,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
           await page.evaluate(() => {
             location.hash = "/plans/plan-a/sources";
           });
-          // A fresh page: the other-activity list above would take the first click as a click outside it.
+          // A fresh page, so nothing opened above takes the first click as a click outside it.
           await page.reload();
           const row = page.locator(".px-source-row").first();
           await expect(row).toBeVisible();

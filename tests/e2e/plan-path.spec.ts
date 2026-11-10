@@ -63,12 +63,11 @@ async function language(page: Page, value: "it" | "en", theme: "light" | "dark")
 
 /** Opens a topic's row on the path, unless it is open already, and returns the list of its steps. */
 async function topicSteps(page: Page, title: string) {
-  const steps = page.getByRole("list", { name: `Passi di ${title}` });
-  if (!(await steps.isVisible()))
-    await page
-      .locator(".px-xpath-list")
-      .getByRole("button", { name: new RegExp(`^${title}`), expanded: false })
-      .click();
+  const head = page.locator(".px-xpath-list").getByRole("button", { name: new RegExp(`^${title}`) });
+  await expect(head).toBeVisible();
+  if ((await head.getAttribute("aria-expanded")) === "false") await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  const steps = page.getByRole("list", { name: new RegExp(`^(Passi di|Steps for) ${title}$`) });
   await expect(steps).toBeVisible();
   return steps;
 }
@@ -79,7 +78,7 @@ async function shoot(page: Page, name: string) {
   await saveShot(page, name, { fullPage: true });
 }
 
-test("plan path: nothing locked, the next step offers every activity, any topic's lesson records a step", async () => {
+test("plan path: nothing locked, every activity is on the path, any topic's lesson records a step", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-path-"));
   const book = join(userData, "fisica.ptsb");
@@ -214,7 +213,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(firstSteps).toHaveCount(0);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await page.locator(".px-xpath-list").getByRole("button", { name: new RegExp(`^${topics[2]!.title}`) }).click();
+      await topicSteps(page, topics[2]!.title);
       await shoot(page, `plan-path/another-topic-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");

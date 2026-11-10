@@ -92,7 +92,7 @@ export function ExamCreateDialog({
     <Modal
       width={640}
       open={createOpen}
-      title={t("planOverview.create")}
+      title={t("examPage.create")}
       onCancel={() => !busy && onClose()}
       footer={null}
     >

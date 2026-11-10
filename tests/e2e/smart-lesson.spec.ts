@@ -378,9 +378,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       location.hash = `/plans/${planId}`;
     }, copyId);
     // A finished step on the path opens what was done: the lesson as it was read.
-    const lessonStep = page.locator(".px-xpath-substep.is-done", { hasText: "Lezione" }).first();
-    if (!(await lessonStep.isVisible())) await page.locator(".px-xpath-row.is-topic .px-xpath-head").first().click();
-    await lessonStep.click();
+    const topic = page.locator(".px-xpath-row.is-topic .px-xpath-head").first();
+    await expect(topic).toBeVisible();
+    if ((await topic.getAttribute("aria-expanded")) === "false") await topic.click();
+    await page.locator(".px-xpath-substep.is-done", { hasText: "Lezione" }).first().click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copyId}/lesson/[^/]+\\?item=`));
     await expect(quick.getByText("Non proprio.")).toBeVisible({ timeout: 20000 });
     await expect(page.getByRole("region", { name: "Ripasso finale" }).getByText("2 su 3 giuste")).toBeVisible();

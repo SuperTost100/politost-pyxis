@@ -420,7 +420,8 @@ export function PlanPath({
                           ) : (
                             <Icon name={stepIcons[chip.state]} size={16} />
                           )}
-                          <span>{t(`plans.path.step.${chip.activity}`)}</span>
+                          {/* The trailing space keeps the step and its note two words in the button's text. */}
+                          <span>{`${t(`plans.path.step.${chip.activity}`)} `}</span>
                           <span className="px-xpath-meta">
                             {chip.activity === "gaps" &&
                             drill.preparing === row.id

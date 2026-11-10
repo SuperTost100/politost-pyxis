@@ -1477,7 +1477,6 @@
     "gaps": "Lacune",
     "simulation": "Simulazione",
     "views": "Sezioni dell'esame",
-    "noExam": "Nessuna data d'esame",
     "quiz": "Quiz",
     "map": "Mappa",
     "path": {
@@ -3000,7 +2999,6 @@
   },
   "planOverview": {
     "settings": "Impostazioni dell'esame",
-    "create": "Crea lezione",
     "failed": "Non è stato possibile completare questa azione. Riprova.",
     "unavailable": "Non è stato possibile aprire l'esame.",
     "gone": "Questo esame non esiste più.",

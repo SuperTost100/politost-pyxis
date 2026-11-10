@@ -1477,7 +1477,6 @@
     "gaps": "Gaps",
     "simulation": "Simulation",
     "views": "Exam sections",
-    "noExam": "No exam date",
     "quiz": "Quiz",
     "map": "Map",
     "path": {
@@ -3000,7 +2999,6 @@
   },
   "planOverview": {
     "settings": "Exam settings",
-    "create": "Create lesson",
     "failed": "This action could not be completed. Try again.",
     "unavailable": "This exam could not be opened.",
     "gone": "This exam no longer exists.",
