@@ -57,6 +57,9 @@ const routes = [
   ["cards-browser-none", "/exams/cards"],
   ["cards-browser-edit", "/exams/cards"],
   ["cards-browser-delete", "/exams/cards"],
+  ["flashcards", "/flashcards"],
+  ["flashcards-empty", "/flashcards"],
+  ["flashcards-none-due", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
   // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
@@ -993,9 +996,10 @@ let auditDone = false;
 function prepareCardBrowser(name: string) {
   withDb((db) => {
     db.exec(`DELETE FROM cards WHERE plan_id IS NULL;
+      DELETE FROM card_reviews WHERE id LIKE 'audit-later-%';
       DELETE FROM maps WHERE id = 'audit-chem-map';
       DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
-      DELETE FROM subjects WHERE id = 'audit-chem';
+      DELETE FROM subjects WHERE id IN ('audit-chem','audit-gal');
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
     if (name === "map-cards-no-exam") {
       // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
@@ -1029,9 +1033,10 @@ function prepareCardBrowser(name: string) {
         }),
       );
     }
-    if (!name.startsWith("cards-browser")) return;
+    // The Flashcard section shows the browser's cards, by subject, exam and topic.
+    if (!name.startsWith("cards-browser") && !name.startsWith("flashcards")) return;
     // An archived topic hides its cards, so no topic holds a card: the browser has nothing to show.
-    if (name === "cards-browser-empty") {
+    if (name === "cards-browser-empty" || name === "flashcards-empty") {
       db.exec("UPDATE topics SET archived_at = 7 WHERE archived_at IS NULL");
       return;
     }
@@ -1065,6 +1070,18 @@ function prepareCardBrowser(name: string) {
     db.prepare(
       "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
     ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+    if (!name.startsWith("flashcards")) return;
+    // A subject with a long name and flashcards with no exam only.
+    seedSubjects(db, [{ id: "audit-gal", name: "Geometria e algebra lineare per l’ingegneria dell’informazione", position: 2 }]);
+    db.exec(`INSERT INTO cards(id,subject_id,front,back,grounding,created_at) VALUES
+      ('audit-card-gal1','audit-gal','Quando una matrice è invertibile?','Quando il determinante non è nullo.','general',5),
+      ('audit-card-gal2','audit-gal','Che cos’è un autovalore?','Uno scalare λ per cui Av = λv con v non nullo.','general',6);`);
+    // Every card rated and due in nine days: nothing to review today.
+    if (name === "flashcards-none-due")
+      db.prepare(
+        `INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at)
+         SELECT 'audit-later-' || id, id, 'good', ?, 2 FROM cards WHERE id NOT IN (SELECT card_id FROM card_reviews)`,
+      ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
   });
 }
 
@@ -3165,6 +3182,23 @@ async function openState(page: Page, name: string) {
       await expect(
         page.locator(".px-cardbrowser-row .katex").first(),
       ).toBeVisible();
+      break;
+    case "flashcards":
+      await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 3, name: "Chimica generale" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: both("Nessuna materia", "No subject") })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /^(Ripassa le \d+ di oggi|Review today's \d+)$/ }),
+      ).toBeVisible();
+      break;
+    case "flashcards-empty":
+      await expect(
+        page.getByRole("heading", { level: 2, name: both("Ancora nessuna flashcard", "No flashcards yet") }),
+      ).toBeVisible();
+      break;
+    case "flashcards-none-due":
+      await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
+      await expect(page.locator(".px-fc-head").getByText(both("Niente da ripassare oggi", "Nothing to review today"))).toBeVisible();
       break;
     case "cards-browser-empty":
       await expect(

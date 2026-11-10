@@ -3399,13 +3399,32 @@
   },
   "finder": {
     "label": "Cerca",
-    "placeholder": "Cerca chat, esami, mappe e materiale",
+    "placeholder": "Cerca chat, esami, mappe, flashcard e materiale",
     "chatsPlaceholder": "Cerca nelle chat",
     "chats": "Chat",
     "exams": "Esami",
     "maps": "Mappe",
+    "flashcards": "Flashcard",
     "material": "Materiale",
     "none": "Niente con queste parole.",
     "close": "esc"
+  },
+  "flashcards": {
+    "title": "Flashcard",
+    "lead": "Le flashcard di ogni materia, con o senza esame.",
+    "reviewToday_one": "Ripassa la flashcard di oggi",
+    "reviewToday_other": "Ripassa le {{count}} di oggi",
+    "noneDue": "Niente da ripassare oggi",
+    "dueToday_one": "{{count}} da ripassare oggi",
+    "dueToday_other": "{{count}} da ripassare oggi",
+    "dueShort_one": "{{count}} oggi",
+    "dueShort_other": "{{count}} oggi",
+    "review": "Ripassa",
+    "reviewSubject": "Ripassa le flashcard di {{subject}}",
+    "examless": "Le flashcard senza esame",
+    "emptyTitle": "Ancora nessuna flashcard",
+    "emptyBody": "Le crei da una mappa, da un testo che selezioni in una lezione o da un argomento nella pagina di un esame.",
+    "emptyAction": "Apri le mappe",
+    "loadFailed": "Non riesco a caricare le flashcard."
   }
 }

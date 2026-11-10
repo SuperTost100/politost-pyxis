@@ -2076,9 +2076,39 @@ export const requests = {
     input: z.object({ subjectId: z.string() }),
     output: z.array(dueCardSchema),
   },
-  "study.dueEverywhere": {
-    // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review.
+  "study.cardSections": {
+    // The Flashcard section: every card by subject, exam and topic, the cards with no exam last in each subject, with
+    // their due counts. `due` is what the daily review holds today.
     input: z.object({}),
+    output: z.object({
+      due: z.number().int(),
+      total: z.number().int(),
+      subjects: z.array(
+        z.object({
+          subjectId: z.string().nullable(),
+          name: z.string().nullable(),
+          total: z.number().int(),
+          due: z.number().int(),
+          exams: z.array(
+            z.object({
+              planId: z.string(),
+              title: z.string(),
+              total: z.number().int(),
+              due: z.number().int(),
+              topics: z.array(
+                z.object({ topicId: z.string(), title: z.string(), total: z.number().int(), due: z.number().int() }),
+              ),
+            }),
+          ),
+          examless: z.object({ total: z.number().int(), due: z.number().int() }).nullable(),
+        }),
+      ),
+    }),
+  },
+  "study.dueEverywhere": {
+    // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review. With
+    // `subjectId`, one subject's (null: the cards with no subject), and with `examless` only its cards with no exam.
+    input: z.object({ subjectId: z.string().nullable().optional(), examless: z.boolean().optional() }),
     output: z.array(
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),
