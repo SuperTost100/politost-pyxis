@@ -452,6 +452,7 @@
     "qualityBody": "Past exams with solutions, lecture slides, your notes, and formula sheets.",
     "reused": "Already in your library: using it.",
     "importedNone": "No new files.",
+    "importedNothing": "Nothing new was added.",
     "blurry": "This photo looks blurry. A sharper picture is easier to read.",
     "paste": "Paste notes",
     "pasteHint": "At least 1,500 characters, about one page.",

@@ -34,7 +34,7 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Puts `cards` back as it was before migration 27: an exam on every card, no subject and no subject triggers. */
+/** Puts `cards` back as it was before migration 28: an exam on every card, no subject and no subject triggers. */
 function undoCardSubjects(db: Database.Database) {
   db.pragma("foreign_keys = OFF");
   db.exec(`DROP TRIGGER plans_subject_to_cards;
@@ -176,7 +176,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(27);
+    expect(db.pragma("user_version", { simple: true })).toBe(28);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -191,7 +191,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -208,7 +208,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(
       again
         .prepare(
@@ -238,7 +238,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -266,7 +266,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -316,7 +316,7 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(again.prepare("SELECT * FROM sources").all()).toEqual(before);
     expect(again.prepare("SELECT COUNT(*) AS n FROM linked_files").get()).toEqual({ n: 0 });
     again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
@@ -337,7 +337,7 @@ describe("linked folders read in full", () => {
     const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
-      "DROP INDEX linked_files_pending; DROP INDEX linked_files_gone; ALTER TABLE linked_files DROP COLUMN pending; ALTER TABLE linked_files DROP COLUMN sorted_at;",
+      "DROP INDEX linked_files_hash; DROP INDEX linked_files_pending; DROP INDEX linked_files_gone; ALTER TABLE linked_files DROP COLUMN pending; ALTER TABLE linked_files DROP COLUMN sorted_at;",
     );
     undoMapSubjects(db);
     db.pragma("user_version = 24");
@@ -348,7 +348,7 @@ describe("linked folders read in full", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
     expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
     // The queue finds waiting files of a folder through its own index.
@@ -359,10 +359,36 @@ describe("linked folders read in full", () => {
   });
 });
 
+describe("the linked-file hash lookup", () => {
+  it("reads a hash through its own index, for files that are present", () => {
+    const file = join(tempDir("pyxis-db-"), "pyxis.db");
+    const db = openDatabase(file);
+    db.exec("DROP INDEX linked_files_hash");
+    undoCardSubjects(db);
+    db.pragma("user_version = 26");
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    // The two queries the import and the folder scan run: a hash among present files, alone and next to a source's own hash.
+    for (const sql of [
+      "SELECT source_id FROM linked_files WHERE content_hash = 'abc' AND missing_at IS NULL",
+      `SELECT id FROM sources WHERE blob_sha = 'abc'
+         OR id IN (SELECT source_id FROM linked_files WHERE content_hash = 'abc' AND missing_at IS NULL)`,
+    ]) {
+      const plan = (again.prepare(`EXPLAIN QUERY PLAN ${sql}`).all() as Array<{ detail: string }>)
+        .map((row) => row.detail)
+        .join(" | ");
+      expect(plan).toContain("linked_files_hash");
+    }
+  });
+});
+
 describe("maps by subject", () => {
   it("gives every map its exam's subject, keeps a map whose exam has none, and lets a map have no exam", () => {
     const file = join(tempDir("pyxis-db-"), "pyxis.db");
     const db = openDatabase(file);
+    db.exec("DROP INDEX linked_files_hash");
     undoMapSubjects(db);
     db.pragma("user_version = 25");
     db.exec(`
@@ -377,7 +403,7 @@ describe("maps by subject", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(
       again.prepare("SELECT id, subject_id, plan_id, topic_id, grounding, prompt_version, created_at FROM maps ORDER BY id").all(),
     ).toEqual([
@@ -427,7 +453,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(27);
+    expect(again.pragma("user_version", { simple: true })).toBe(28);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,
@@ -504,6 +530,7 @@ describe("flashcards by subject", () => {
   for (const [release, version] of [
     ["0.4.x", 23],
     ["0.5.0-dev.7", 26],
+    ["a build of next with the linked-file index but not this change", 27],
   ] as const)
     it(`keeps every card of a ${release} workspace with its reviews, and gives each its exam's subject`, () => {
       const { db, file } = workspaceAt(version);
@@ -517,6 +544,10 @@ describe("flashcards by subject", () => {
       expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
       expect(again.pragma("foreign_keys", { simple: true })).toBe(1);
       expect(again.pragma("foreign_key_check")).toEqual([]);
+      // Migration 27's index is there whichever step created it, and only once.
+      expect(
+        again.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'linked_files_hash'").pluck().get(),
+      ).toBe(1);
       const after = snapshot(again);
       // Every column of every card is unchanged, rowid included, and only the subject is new.
       expect(after.cards.map(({ subject_id: _, ...card }) => card)).toEqual(before.cards);
@@ -591,6 +622,8 @@ describe("flashcards by subject", () => {
     const raw = new Database(file);
     opened.push(raw);
     expect(raw.pragma("user_version", { simple: true })).toBe(26);
+    // Migration 27 ran in the same transaction, so its index is gone again too.
+    expect(raw.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'linked_files_hash'").pluck().get()).toBe(0);
     expect(snapshot(raw)).toEqual(before);
   });
 });

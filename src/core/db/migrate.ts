@@ -286,13 +286,19 @@ CREATE TRIGGER plans_subject_to_maps AFTER UPDATE OF subject_id ON plans BEGIN
   UPDATE maps SET subject_id = new.subject_id WHERE plan_id = new.id;
 END;`,
   },
+  // Importing a file looks its hash up among the files a linked folder reads in place. A scan does it for up to 2,000
+  // files in a row, so the lookup has its own index, narrowed to the rows that lookup reads.
+  {
+    version: 27,
+    sql: `CREATE INDEX linked_files_hash ON linked_files(content_hash) WHERE content_hash IS NOT NULL AND missing_at IS NULL;`,
+  },
   // A flashcard belongs to a subject, and only optionally to an exam. `cards.plan_id` becomes nullable, which needs a
   // rebuilt table. `card_reviews` references `cards`, so this step runs with foreign keys off (see `migrate`): with
   // them on, dropping the old table would delete every review through the cascade. Each row keeps its id, its rowid
   // (the tie-break of the review order) and every column; `subject_id` is its exam's subject, NULL when the exam has
   // none. A card with a topic has an exam. The triggers keep an exam's cards on the exam's subject, as for maps.
   {
-    version: 27,
+    version: 28,
     foreignKeysOff: { check: ["cards", "card_reviews"] },
     sql: `CREATE TABLE cards_next (
   id TEXT PRIMARY KEY,
