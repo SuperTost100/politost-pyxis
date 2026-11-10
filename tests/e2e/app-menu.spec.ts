@@ -327,6 +327,12 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await settle(page);
     await expect(page).toHaveURL(/#\/exams\/library$/);
     await search.fill("");
+    // Back to the exam list, so the menu's Exams leads there again below.
+    await page
+      .getByRole("navigation", { name: "Sezioni" })
+      .getByRole("link", { name: "Esami", exact: true })
+      .click();
+    await expect(page).toHaveURL(/#\/exams$/);
     await pick(app, "ask");
     await expect(page).toHaveURL(/#\/ask$/);
 

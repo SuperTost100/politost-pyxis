@@ -244,9 +244,9 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await page.evaluate(() => {
       location.hash = "/exams";
     });
-    await expect(page.getByRole("heading", { name: "Analisi 2" })).toBeVisible();
-    // With nothing archived the filter is gone.
-    await expect(page.getByRole("combobox", { name: "Status" })).toHaveCount(0);
+    await expect(exams.getByRole("link", { name: /Analisi 2/ })).toBeVisible();
+    // With nothing archived the toggle is gone.
+    await expect(page.getByRole("button", { name: "Archived" })).toHaveCount(0);
 
     // Wizard, exam step: the name, the first day, then a second session with its own time and place.
     for (const theme of ["dark", "light"] as const) {
@@ -288,7 +288,8 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await page.evaluate(() => {
       location.hash = "/exams";
     });
-    await expect(page.getByRole("combobox", { name: "Stato" })).toBeVisible();
+    await page.getByRole("button", { name: "Archiviati" }).click();
+    await expect(page.getByRole("list", { name: "Esami archiviati" })).toBeVisible();
     await snap("exams-narrow", "it", "dark");
     expect(errors).toEqual([]);
   } finally {
