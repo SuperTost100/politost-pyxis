@@ -120,22 +120,45 @@ describe("cached plan mastery", () => {
     db.close();
   });
 
-  it("leaves every plan's cache alone when a card with no exam is written or rated", () => {
+  it("tells listeners about a card with no exam, and leaves every plan's cache alone", () => {
     const { db } = seeded();
     let changes = 0;
     onEvidenceChanged(db, () => (changes += 1));
+    const eventReads = () => {
+      let count = 0;
+      const prepare = db.prepare.bind(db);
+      db.prepare = ((sql: string) => {
+        if (sql.includes("FROM learning_events")) count += 1;
+        return prepare(sql);
+      }) as typeof db.prepare;
+      planMastery(db, "p", now);
+      db.prepare = prepare;
+      return count;
+    };
     const before = planMastery(db, "p", now);
-    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Physics', 1);
-      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('free', 'phys', 'Force', 'F = ma', 1);`);
-    const { reviewId } = rateCard(db, "free", "good", now);
-    undoRating(db, reviewId);
-    db.prepare("UPDATE cards SET suspended = 1 WHERE id = 'free'").run();
-    db.prepare("DELETE FROM cards WHERE id = 'free'").run();
-    expect(changes).toBe(0);
+    expect(eventReads()).toBe(0);
+    // Each write that changes Oggi's due cards reaches the listeners: the insert, a rating, taking it back, a suspend
+    // and a delete.
+    const writes = [
+      () => db.exec("INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('free', 'phys', 'Force', 'F = ma', 1)"),
+      () => (reviewId = rateCard(db, "free", "good", now).reviewId),
+      () => undoRating(db, reviewId),
+      () => db.prepare("UPDATE cards SET suspended = 1 WHERE id = 'free'").run(),
+      () => db.prepare("DELETE FROM cards WHERE id = 'free'").run(),
+    ];
+    let reviewId = "";
+    db.exec("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Physics', 1)");
+    for (const write of writes) {
+      const seen = changes;
+      write();
+      expect(changes).toBeGreaterThan(seen);
+    }
+    // The exam's cached values were not cleared by any of them.
+    expect(eventReads()).toBe(0);
     expect(planMastery(db, "p", now)).toEqual(before);
     // A card of the plan still clears it.
     rateCard(db, "c", "good", now);
-    expect(changes).toBeGreaterThan(0);
+    expect(eventReads()).toBe(1);
     db.close();
   });
 });

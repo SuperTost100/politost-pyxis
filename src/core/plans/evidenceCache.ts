@@ -15,7 +15,8 @@ const CHANGED = "pyxis_evidence_changed";
 
 /**
  * The writes that can change a plan's mastery, and the plan each row belongs to. A NULL plan clears every plan; an
- * empty one belongs to no plan (a flashcard with no exam) and changes nothing.
+ * empty one belongs to no plan (a flashcard with no exam) and clears none, but it still reaches the listeners, since
+ * Oggi's due cards count those cards.
  */
 const SOURCES: Array<{ table: string; columns?: string; plan: string }> = [
   { table: "learning_events", plan: "#.plan_id" },
@@ -50,9 +51,11 @@ function watch(db: Database.Database): Watch | undefined {
   if (db.inTransaction || db.readonly || !db.open) return undefined;
   const state: Watch = { entries: new Map(), listeners: new Set() };
   db.function(CHANGED, (planId: unknown) => {
-    if (planId === "") return null;
-    if (typeof planId === "string") state.entries.delete(planId);
-    else state.entries.clear();
+    // A flashcard with no exam is in no plan's numbers, so it clears nothing, but it changes what is due today.
+    if (planId !== "") {
+      if (typeof planId === "string") state.entries.delete(planId);
+      else state.entries.clear();
+    }
     for (const listener of state.listeners) listener();
     return null;
   });
