@@ -151,7 +151,7 @@ export function prepareMaps(db: Database.Database, input: Input): Params {
   push();
   if (!parts.length)
     parts.push({ title: topic.title, passages: [] });
-  // One part is the whole topic, so its root is the topic; several parts each name their own section.
+  // One part is the whole topic, so its root is the topic; the model names the root of each of several parts itself.
   if (parts.length === 1) parts[0]!.title = topic.title;
   return {
     input,
@@ -183,6 +183,8 @@ function prepareSubjectMap(db: Database.Database, input: { subjectId: string }):
 async function buildPart(
   part: Part,
   params: Params,
+  title: string,
+  position: number,
   run?: GenerateInput["run"],
   signal?: AbortSignal,
 ) {
@@ -217,8 +219,11 @@ async function buildPart(
     system: systemPrompt("map.generate", {
       contentLanguage: languageName(params.language),
     }),
+    // The topic's title always goes in. Several parts add which one this is, and the model then names its root for what
+    // the part covers, since the root becomes a main branch of the map with that title.
     prompt: JSON.stringify({
-      title: part.title,
+      title,
+      ...(params.parts.length > 1 ? { part: position + 1, of: params.parts.length } : {}),
       language: params.language,
       passages: part.passages,
     }),
@@ -279,11 +284,14 @@ export function registerMapJobs(
             params.mapId = uuidv7();
             params.next = 0;
           }
+          const title = scopeTitle(db, params.input);
           while (params.next < params.parts.length) {
             ctx.signal.throwIfAborted();
             const built = await buildPart(
               params.parts[params.next]!,
               params,
+              title,
+              params.next,
               run,
               ctx.signal,
             );

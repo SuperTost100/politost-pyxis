@@ -6,11 +6,12 @@ const MAX_SOURCES = 500;
 
 /**
  * Joins the maps of the parts one request was read in into a single map. Its root is the request's own name (the topic's
- * or the subject's) and each part's root merges into it whatever its label, keeping its sources, so the first level is
- * made of the parts' own first-level concepts. A concept that two parts name the same, ignoring
- * case and the spaces around it, is kept once: the first spelling stays, the later one's children move under it, and
- * its sources and links are added to it. One part needs no joining, so its map is kept as it is and only its root takes
- * the name.
+ * or the subject's) and each part's root becomes a main branch under it, with the short name the model gave it. A part
+ * root that repeats the request's name, ignoring case and the spaces around it, would only show the title twice, so it
+ * folds into the map's root and its children join the first level instead. A concept that two parts name the same,
+ * ignoring case and the spaces around it, is kept once, and that includes two parts that came back with the same root:
+ * the first spelling stays, the later one's children move under it, and its sources and links are added to it. One part
+ * needs no joining, so its map is kept as it is and only its root takes the name.
  *
  * Nodes keep the IDs the model gave them; a later part's ID that is already taken gets a number after it.
  */
@@ -59,13 +60,9 @@ export function mergeGraphs(title: string, graphs: ConceptGraph[]): ConceptGraph
       placed.set(node.id, at.id);
       for (const child of children.get(node.id) ?? []) walk(child, at);
     };
-    // A part's root only names the part, so it joins the map's root: the first level is the parts' own concepts.
+    // The part's root is walked like any concept, so a root named like the title lands on the map's root.
     const start = graph.nodes.find((node) => node.parent === null);
-    if (start) {
-      if (start.sources?.length) root.sources = [...new Set([...(root.sources ?? []), ...start.sources])].slice(0, MAX_SOURCES);
-      placed.set(start.id, root.id);
-      for (const child of children.get(start.id) ?? []) walk(child, root);
-    }
+    if (start) walk(start, root);
     partEdges.push(
       graph.edges.map((edge) => ({
         ...edge,

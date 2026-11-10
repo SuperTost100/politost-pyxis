@@ -8,39 +8,30 @@ export {
   layoutTree,
 } from "../../../../shared/map-layout";
 
-// Maps larger than this open with everything below depth 2 folded, or below depth 1 when that still shows more
-// concepts than this: a wide map, such as one joined from several parts, would open as a column too tall to read.
+// A map of more than this many concepts opens with everything below its main branches folded: the root and its first
+// level, with a count on each branch, so a map joined from several parts opens as a handful of readable names.
 const LARGE_MAP = 25;
-const OPEN_DEPTH = 2;
-const MIN_START_ZOOM = 0.6;
-/** The smallest zoom a map is fitted to on its own: a 14 px concept still reads at about 6 px. */
-export const MIN_READ_ZOOM = 0.45;
+/**
+ * The smallest zoom the view moves to on its own, when a map opens and after an unfold. A concept's label is 14 px
+ * times the text size setting (0.94 at the smallest, 1.12 at the largest), so 0.85 keeps it at 11 px or more on screen
+ * at every text size (11.2 px at the smallest). Below that the labels are too small to read. The student can still zoom
+ * out by hand as far as the canvas's own minimum.
+ */
+export const MIN_READ_ZOOM = 0.85;
 
 /** Ids of nodes that have at least one child. */
 export function parentIds(nodes: Item[]): Set<string> {
   return new Set(childrenOf(nodes).keys());
 }
 
-/** Nodes to fold so that the branches at `depth` show without their children. */
-function foldedAt(nodes: Item[], depth: number): Set<string> {
-  const children = childrenOf(nodes);
-  const root = nodes.find((node) => node.parent === null);
-  const folded = new Set<string>();
-  const walk = (id: string, at: number) => {
-    const next = children.get(id) ?? [];
-    if (at >= depth && next.length) folded.add(id);
-    else for (const child of next) walk(child.id, at + 1);
-  };
-  if (root) walk(root.id, 0);
-  return folded;
-}
-
-/** Nodes to fold when a map opens: large maps open at depth 2, or depth 1 if depth 2 is still too many to read. */
+/**
+ * Nodes to fold when a map opens: a large map opens with every concept that has children folded except the root, so the
+ * main branches show and each unfold adds one level.
+ */
 export function initialCollapsed(nodes: Item[]): Set<string> {
   if (nodes.length <= LARGE_MAP) return new Set();
-  const second = foldedAt(nodes, OPEN_DEPTH);
-  if (visibleNodes(nodes, second).shown.length <= LARGE_MAP) return second;
-  return foldedAt(nodes, 1);
+  const root = nodes.find((node) => node.parent === null);
+  return new Set([...parentIds(nodes)].filter((id) => id !== root?.id));
 }
 
 /** Nodes not hidden inside a folded branch, plus how many each folded node hides. */
@@ -75,7 +66,8 @@ const VIEW_PAD = 40;
 
 /**
  * Opening view: the whole map when it fits at MIN_READ_ZOOM or more (never zoomed in
- * past 1); otherwise MIN_START_ZOOM with the root at the left edge, vertically centred.
+ * past 1); otherwise MIN_READ_ZOOM with the root at the left edge, vertically centred, so the root and its nearest
+ * branches are readable and the student pans for the rest.
  */
 export function startViewport(
   boxes: Box[],
@@ -102,20 +94,23 @@ export function startViewport(
       y: VIEW_PAD + (room.height - (bottom - top) * fit) / 2 - top * fit,
     };
   return {
-    zoom: MIN_START_ZOOM,
-    x: VIEW_PAD - root.x * MIN_START_ZOOM,
-    y: size.height / 2 - (root.y + root.height / 2) * MIN_START_ZOOM,
+    zoom: MIN_READ_ZOOM,
+    x: VIEW_PAD - root.x * MIN_READ_ZOOM,
+    y: size.height / 2 - (root.y + root.height / 2) * MIN_READ_ZOOM,
   };
 }
 
 const REVEAL_MARGIN = 24;
+/** A tall branch starts at its top when its node then sits at least this far above the canvas's bottom edge. */
+const NODE_ROOM = 72;
 
 /**
  * The view that shows a branch that was just unfolded: `box` holds its node and every node it now shows, and `focus` is
  * the node's own vertical centre. Returns null when the box is inside `size` already, with a margin. Otherwise it keeps
  * the zoom if the box fits, zooms out only as far as it must, never below MIN_READ_ZOOM (or the current zoom, if that
- * is smaller already), and moves the box as little as it can. A box too tall for the canvas at that zoom is centred on
- * `focus`, so the node that was clicked stays on screen with its nearest children.
+ * is smaller already), and moves the box as little as it can. A box too tall for the canvas at that zoom starts at the
+ * top, so the node and its first children show, unless that would push the node itself to the bottom edge, and
+ * then it is centred on `focus`. Either way the student scrolls or pans for the rest.
  */
 export function revealViewport(
   box: Box,
@@ -137,7 +132,11 @@ export function revealViewport(
   const zoom = Math.min(view.zoom, Math.max(fit, Math.min(MIN_READ_ZOOM, view.zoom)));
   // Where a span starts on screen: as close to where its centre is now as the margins allow.
   const place = (start: number, span: number, centreNow: number, room: number, centre?: number) => {
-    if (span > room - 2 * m) return centre === undefined ? m : room / 2 - (centre - start) * zoom;
+    if (span > room - 2 * m) {
+      if (centre === undefined) return m;
+      // shortcut: NODE_ROOM stands for a node's height with a margin, not the measured size, upgrade if nodes get taller.
+      return m + (centre - start) * zoom <= room - NODE_ROOM ? m : room / 2 - (centre - start) * zoom;
+    }
     return Math.min(room - m - span, Math.max(m, centreNow - span / 2));
   };
   const x = place(box.x, box.width * zoom, left + (box.width * view.zoom) / 2, size.width);

@@ -71,19 +71,8 @@ describe("collapsing", () => {
     expect(initialCollapsed(wide(8)).size).toBe(0);
   });
 
-  it("folds below depth 2 on large maps", () => {
-    const nodes = wide(10);
-    const folded = initialCollapsed(nodes);
-    expect([...folded].sort()).toEqual(
-      Array.from({ length: 10 }, (_, i) => `b${i}`).sort(),
-    );
-    const { shown, hidden } = visibleNodes(nodes, folded);
-    expect(shown).toHaveLength(21);
-    expect(hidden.get("b0")).toBe(1);
-  });
-
-  it("folds below the first level when depth 2 would still show too many concepts", () => {
-    // Three parts of thirteen concepts each, joined under one root: 43 nodes, all within two levels of it.
+  it("opens a large map with its main branches shown and folded", () => {
+    // Three parts of thirteen concepts each, joined under one root: 43 nodes.
     const joined = [
       { id: "r", parent: null },
       ...[1, 2, 3].flatMap((part) => [
@@ -96,6 +85,23 @@ describe("collapsing", () => {
     const { shown, hidden } = visibleNodes(joined, folded);
     expect(shown.map((node) => node.id)).toEqual(["r", "p1", "p2", "p3"]);
     expect(hidden.get("p2")).toBe(13);
+  });
+
+  it("folds every concept that has children but the root, so each unfold adds one level", () => {
+    const nodes = [
+      { id: "r", parent: null },
+      { id: "leaf", parent: "r" },
+      { id: "a", parent: "r" },
+      { id: "a1", parent: "a" },
+      ...Array.from({ length: 30 }, (_, i) => ({ id: `c${i}`, parent: "a1" })),
+    ];
+    expect([...initialCollapsed(nodes)].sort()).toEqual(["a", "a1"]);
+    const { shown } = visibleNodes(nodes, initialCollapsed(nodes));
+    expect(shown.map((node) => node.id)).toEqual(["r", "leaf", "a"]);
+    // Unfolding "a" shows "a1", still folded.
+    const next = initialCollapsed(nodes);
+    next.delete("a");
+    expect(visibleNodes(nodes, next).shown.map((node) => node.id)).toEqual(["r", "leaf", "a", "a1"]);
   });
 
   it("hides whole branches and counts them", () => {
@@ -114,17 +120,17 @@ describe("startViewport", () => {
     expect(view.zoom).toBe(1);
   });
 
-  it("fits a medium map between 0.6 and 1", () => {
-    const view = startViewport([box(0, 0), box(900, 300)], box(0, 0), size);
-    expect(view.zoom).toBeGreaterThan(0.6);
+  it("fits a medium map between MIN_READ_ZOOM and 1", () => {
+    const view = startViewport([box(0, 0), box(800, 300)], box(0, 0), size);
+    expect(view.zoom).toBeGreaterThan(MIN_READ_ZOOM);
     expect(view.zoom).toBeLessThan(1);
   });
 
-  it("shows a tall first level whole when it still reads, down to MIN_READ_ZOOM", () => {
-    // Eighteen concepts in a column, 35 px tall with the gap between them, are 1.1 times a 600 px canvas at zoom 1.
-    const column = Array.from({ length: 18 }, (_, i) => ({ x: 380, y: i * 63, width: 240, height: 35 }));
-    const view = startViewport([box(0, 500), ...column], box(0, 500), size);
-    expect(view.zoom).toBeLessThan(0.6);
+  it("shows a first level whole when it still reads, down to MIN_READ_ZOOM", () => {
+    // Nine concepts in a column, 35 px tall with the gap between them, are 539 px: 1.04 times a 520 px room at zoom 1.
+    const column = Array.from({ length: 9 }, (_, i) => ({ x: 380, y: i * 63, width: 240, height: 35 }));
+    const view = startViewport([box(0, 300), ...column], box(0, 300), size);
+    expect(view.zoom).toBeLessThan(1);
     expect(view.zoom).toBeGreaterThanOrEqual(MIN_READ_ZOOM);
     for (const { y, height } of column) {
       expect(y * view.zoom + view.y).toBeGreaterThanOrEqual(0);
@@ -132,16 +138,26 @@ describe("startViewport", () => {
     }
   });
 
-  it("starts at 0.6 on the root when the map is too big", () => {
+  it("never opens below MIN_READ_ZOOM: a column too tall is cut, with the root centred", () => {
+    // Eighteen concepts need a zoom of about 0.46 to show whole, which would put the labels under 7 px.
+    const column = Array.from({ length: 18 }, (_, i) => ({ x: 380, y: i * 63, width: 240, height: 35 }));
+    const root = box(0, 550);
+    const view = startViewport([root, ...column], root, size);
+    expect(view.zoom).toBe(MIN_READ_ZOOM);
+    expect(view.x).toBeGreaterThan(0);
+    expect(view.y + 582 * MIN_READ_ZOOM).toBeCloseTo(300);
+  });
+
+  it("starts at MIN_READ_ZOOM on the root when the map is too big", () => {
     const view = startViewport(
       [box(0, 0), box(2660, 2000), box(0, -2000)],
       box(0, 0),
       size,
     );
-    expect(view.zoom).toBe(0.6);
+    expect(view.zoom).toBe(MIN_READ_ZOOM);
     expect(view.x).toBeGreaterThan(0);
     expect(view.x).toBeLessThan(200);
-    expect(view.y + 32 * 0.6).toBeCloseTo(300);
+    expect(view.y + 32 * MIN_READ_ZOOM).toBeCloseTo(300);
   });
 });
 
@@ -163,8 +179,8 @@ describe("childrenOf", () => {
 describe("revealViewport", () => {
   const size = { width: 1000, height: 600 };
   const at = { x: 0, y: 0, zoom: 1 };
-  // The unfolded node and its children: 13 children of 64 px with 28 px between them, a column to the right.
-  const branch = (top: number) => ({ x: 0, y: top, width: 620, height: 13 * 92 - 28 });
+  // The unfolded node and its children: 7 children of 64 px with 28 px between them, a column to the right.
+  const branch = (top: number) => ({ x: 0, y: top, width: 620, height: 7 * 92 - 28 });
 
   it("leaves the view alone when the branch is inside it", () => {
     expect(revealViewport({ x: 100, y: 100, width: 300, height: 200 }, 200, at, size)).toBeNull();
@@ -188,7 +204,19 @@ describe("revealViewport", () => {
     expect(view.zoom).toBeCloseTo(552 / box.height, 5);
   });
 
-  it("never zooms below a readable size and keeps the parent on screen", () => {
+  it("never zooms below a readable size, and starts a tall branch at its top with the parent in view", () => {
+    // A column 1 200 px tall, 1 020 px at 0.85, with the parent 500 px below its top, a little above the middle.
+    const box = { x: 0, y: -500, width: 620, height: 1200 };
+    const view = revealViewport(box, 0, at, size)!;
+    expect(view.zoom).toBe(MIN_READ_ZOOM);
+    // The first child is on screen at the top, and so is the parent.
+    expect(box.y * view.zoom + view.y).toBeCloseTo(24);
+    const parent = 0 * view.zoom + view.y;
+    expect(parent).toBeGreaterThanOrEqual(24);
+    expect(parent).toBeLessThanOrEqual(600 - 24);
+  });
+
+  it("centres a branch too tall for the canvas on its parent when the top would hide it", () => {
     const box = { x: 0, y: -2000, width: 620, height: 4000 };
     const view = revealViewport(box, 0, at, size)!;
     expect(view.zoom).toBe(MIN_READ_ZOOM);

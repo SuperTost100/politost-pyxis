@@ -71,7 +71,6 @@ function generated(prompt: string) {
   const data = JSON.parse(prompt) as { passages: { id: string }[] };
   const ids = [...new Set(data.passages.map((p) => p.id))];
   return {
-    title: "Moti",
     nodes: Array.from({ length: 8 }, (_, i) => ({
       id: `n${i}`,
       label: `Concetto ${i}`,
@@ -138,11 +137,11 @@ describe("M10 model maps", () => {
     expect(covered.size).toBe(50);
     db.close();
   });
-  it("ends a build of several parts with one map that holds the concepts of every part", async () => {
+  it("ends a build of several parts with one map whose main branches are the parts", async () => {
     const { db, input } = fixture();
     const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
     let part = 0;
-    const calls: Array<{ title: string; passages: unknown[] }> = [];
+    const calls: Array<{ title: string; part?: number; of?: number; passages: unknown[] }> = [];
     await generateMaps(db, input, async (call) => {
       calls.push(JSON.parse(call.prompt));
       const data = generated(call.prompt);
@@ -151,12 +150,27 @@ describe("M10 model maps", () => {
         ...data,
         nodes: data.nodes.map((node, i) => ({
           ...node,
-          // Every part also names the concept " Moto " in its own spelling.
-          label: i === 3 ? (at === 1 ? "Moto" : at === 2 ? " moto " : "MOTO") : `Parte ${at}, concetto ${i}`,
+          // Each part names its own root, and every part also names the concept " Moto " in its own spelling.
+          label:
+            i === 0
+              ? `Ramo ${at}`
+              : i === 3
+                ? at === 1
+                  ? "Moto"
+                  : at === 2
+                    ? " moto "
+                    : "MOTO"
+                : `Parte ${at}, concetto ${i}`,
         })),
       });
     });
     expect(calls).toHaveLength(3);
+    // Every part gets the topic's title, which part it is and how many there are.
+    expect(calls.map(({ title, part, of }) => ({ title, part, of }))).toEqual([
+      { title: topic, part: 1, of: 3 },
+      { title: topic, part: 2, of: 3 },
+      { title: topic, part: 3, of: 3 },
+    ]);
     const maps = listMaps(db, input);
     expect(maps).toHaveLength(1);
     expect(maps[0]).toMatchObject({ title: topic, passageCount: 50, grounding: "sources" });
@@ -164,20 +178,39 @@ describe("M10 model maps", () => {
     const roots = graph.nodes.filter((node) => node.parent === null);
     expect(roots).toHaveLength(1);
     expect(roots[0]!.label).toBe(topic);
+    // Each part's root is a main branch, with its own concepts below it.
+    const under = (id: string) => graph.nodes.filter((node) => node.parent === id);
+    const branches = under(roots[0]!.id);
+    expect(branches.map((node) => node.label)).toEqual(["Ramo 1", "Ramo 2", "Ramo 3"]);
+    for (const [at, branch] of branches.entries())
+      for (const i of [1, 2, 4, 5, 6, 7])
+        expect(under(branch.id).map((node) => node.label)).toContain(`Parte ${at + 1}, concetto ${i}`);
+    // The same concept in three parts is one node, under the first part's branch, with the first spelling.
     const labels = graph.nodes.map((node) => node.label.trim().toLowerCase());
-    for (const at of [1, 2, 3])
-      for (const i of [1, 2, 4, 5, 6, 7]) expect(labels).toContain(`parte ${at}, concetto ${i}`);
-    // A part's root only names the part, so no part's root label is left in the map.
-    expect(labels.filter((label) => label.endsWith("concetto 0"))).toEqual([]);
-    // The same concept in three parts is one node, and it keeps the first spelling.
     expect(labels.filter((label) => label === "moto")).toHaveLength(1);
-    expect(graph.nodes.find((node) => node.label === "Moto")).toBeDefined();
-    // The parts' own concepts are the first level, and the citations survive the merge.
-    expect(graph.nodes.filter((node) => node.parent === roots[0]!.id)).toHaveLength(3 * 6 + 1);
+    expect(under(branches[0]!.id).map((node) => node.label)).toContain("Moto");
+    expect(under(branches[1]!.id)).toHaveLength(6);
+    // The citations survive the merge.
     const cited = new Set(graph.nodes.flatMap((node) => node.sources ?? []));
     expect(cited.size).toBe(50);
-    expect(graph.nodes).toHaveLength(1 + 3 * 6 + 1);
+    expect(graph.nodes).toHaveLength(1 + 3 + 3 * 6 + 1);
     expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
+    db.close();
+  });
+  it("gives a topic read in one part no part number and makes its root the topic", async () => {
+    const { db, input } = fixture(1);
+    const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
+    const prompts: string[] = [];
+    await generateMaps(db, input, async (call) => {
+      prompts.push(call.prompt);
+      return response(generated(call.prompt));
+    });
+    expect(prompts).toHaveLength(1);
+    expect(JSON.parse(prompts[0]!)).toMatchObject({ title: topic });
+    expect(JSON.parse(prompts[0]!)).not.toHaveProperty("part");
+    const { graph } = readStoredMap(db, input)!;
+    expect(graph.nodes.filter((node) => node.parent === null).map((node) => node.label)).toEqual([topic]);
+    expect(graph.nodes).toHaveLength(8);
     db.close();
   });
   it("does not start a second build for a scope that already has one", async () => {

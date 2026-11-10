@@ -211,7 +211,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
 });
 
 type Concept = string | [label: string, children: string[]];
-/** One part of the topic's material as the model returns it: a root that names the part, then its first-level concepts. */
+/** One part of the topic's material as the model returns it: a root that names the part, then its concepts in two levels. */
 function partReply(root: string, concepts: Concept[]) {
   const nodes: Array<{ id: string; label: string; parent: string | null; sources: string }> = [
     { id: "n0", label: root, parent: null, sources: "{{allPassages}}" },
@@ -225,6 +225,7 @@ function partReply(root: string, concepts: Concept[]) {
   }
   return { nodes, edges: [] };
 }
+// The first part has the most concepts, twelve at its first level, so it is the branch that does not fit the canvas.
 const kinematics: Concept[] = [
   "Posizione e spostamento",
   ["Velocità", ["Velocità media", "Velocità istantanea"]],
@@ -239,20 +240,23 @@ const kinematics: Concept[] = [
       "Spazio di frenata",
       "Velocità senza il tempo",
       "Lancio verso l’alto",
-      "Tempo di volo",
-      "Velocità d’impatto",
       "Accelerazione di gravità",
     ],
   ],
-  ["Moto circolare uniforme", ["Periodo e frequenza", "Accelerazione centripeta"]],
-  ["Moto parabolico", ["Gittata", "Altezza massima"]],
+  "Moto circolare uniforme",
+  "Moto parabolico",
+  "Moto relativo",
+  "Vettori",
+  "Sistemi di riferimento",
+  "Traiettoria",
+  "Grafici del moto",
 ];
 const dynamics: Concept[] = [
   ["Principi della dinamica", ["Inerzia", "Forza e accelerazione", "Azione e reazione"]],
   "Forza peso",
   ["Attrito", ["Attrito statico", "Attrito dinamico"]],
   "Forza elastica",
-  // The same concept as in the kinematics part, in another spelling.
+  // The same concept as in the kinematics part, in another spelling: it stays under Cinematica and takes this child.
   ["velocità", ["Velocità limite"]],
 ];
 const energy: Concept[] = [
@@ -262,36 +266,38 @@ const energy: Concept[] = [
   "Conservazione dell’energia meccanica",
   [
     "Quantità di moto",
-    [
-      "Impulso",
-      "Teorema dell’impulso",
-      "Urti elastici",
-      "Urti anelastici",
-      "Urto completamente anelastico",
-      "Conservazione della quantità di moto",
-      "Centro di massa",
-      "Moto del centro di massa",
-      "Sistemi isolati",
-    ],
+    ["Impulso", "Teorema dell’impulso", "Urti elastici", "Urti anelastici", "Conservazione della quantità di moto"],
   ],
+  "Centro di massa",
 ];
-const firstLevel = [
-  ...kinematics,
-  ...dynamics.filter((c) => typeof c === "string" || c[0] !== "velocità"),
-  ...energy,
-].map((c) => (typeof c === "string" ? c : c[0]));
+const branches = [
+  { name: "Cinematica", concepts: kinematics },
+  { name: "Dinamica", concepts: dynamics },
+  { name: "Energia e quantità di moto", concepts: energy },
+];
+/** The first-level labels each branch keeps once the same concept in two parts is one node. */
+const under = (name: string) =>
+  branches
+    .find((branch) => branch.name === name)!
+    .concepts.map((c) => (typeof c === "string" ? c : c[0]))
+    .filter((label) => label !== "velocità");
+/** The smallest label on screen, in px: each concept's font size times the canvas's zoom. */
+const smallestLabel = (page: import("@playwright/test").Page) =>
+  page.evaluate(() => {
+    const zoom = new DOMMatrix(getComputedStyle(document.querySelector(".react-flow__viewport")!).transform).a;
+    const sizes = [...document.querySelectorAll(".react-flow__node .px-markdown")].map(
+      (label) => parseFloat(getComputedStyle(label).fontSize) * zoom,
+    );
+    return Math.min(...sizes);
+  });
+/** The label size the view may not go below: a concept is 14 px at the smallest text size setting's 0.94, so 11 px. */
+const READABLE = 11;
 
 test("one request makes one map, even when the topic's material is read in three parts", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-parts-"));
-  // Each part answers with its own concepts under a root that only names the part, and "Velocità" is in two of them.
-  const mapReplies = {
-    nodes: [
-      partReply("Moto, cinematica", kinematics),
-      partReply("Moto: dinamica", dynamics),
-      partReply("Moto e energia", energy),
-    ],
-  };
+  // Each part answers with a root that names what it covers, and "Velocità" is in two of them.
+  const mapReplies = { nodes: branches.map((branch) => partReply(branch.name, branch.concepts)) };
   const app = await launchPyxis({
     userData,
     env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies), PYXIS_E2E_MAP_DELAY: "1500" },
@@ -337,7 +343,7 @@ test("one request makes one map, even when the topic's material is read in three
     await expect(page.locator(".px-map-working")).toBeVisible();
     await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
 
-    // Three model calls, one map: the topic's name at the root and the parts' own concepts as its first level.
+    // Three model calls, one map: the topic's name at the root and each part's root as a main branch.
     const maps = (await page.evaluate(() =>
       window.pyxis.invoke("maps.list", { topicId: "t-motion" }),
     )) as Array<{ title: string; passageCount: number }>;
@@ -348,18 +354,20 @@ test("one request makes one map, even when the topic's material is read in three
     )) as { nodes: Array<{ id: string; label: string; parent: string | null }> };
     const root = graph.nodes.find((node) => node.parent === null)!;
     expect(root.label).toBe("Moto");
-    expect(graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual(firstLevel);
-    // No part's root label is a branch of its own.
-    expect(graph.nodes.filter((node) => /^Moto[,:]|^Moto e/.test(node.label))).toHaveLength(0);
+    const children = (id: string) => graph.nodes.filter((node) => node.parent === id).map((node) => node.label);
+    expect(children(root.id)).toEqual(branches.map((branch) => branch.name));
+    for (const branch of branches) {
+      const node = graph.nodes.find((n) => n.label === branch.name)!;
+      expect(children(node.id), branch.name).toEqual(under(branch.name));
+    }
+    // The concept the Dinamica part names in another spelling is one node, under Cinematica, with both parts' children.
     const speed = graph.nodes.find((node) => node.label === "Velocità")!;
-    expect(graph.nodes.filter((node) => node.parent === speed.id).map((node) => node.label)).toEqual([
-      "Velocità media",
-      "Velocità istantanea",
-      "Velocità limite",
-    ]);
+    expect(children(speed.id)).toEqual(["Velocità media", "Velocità istantanea", "Velocità limite"]);
     expect(graph.nodes.filter((node) => node.label.toLowerCase() === "velocità")).toHaveLength(1);
     await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
-    // More than 25 concepts do not read at once, so it opens with the first level shown and folded; all of it is in view.
+
+    // More than 25 concepts do not read at once, so it opens as the root and its main branches, folded below them, at a
+    // size that reads: all of them in view, and the smallest label at 11 px or more on screen.
     const canvas = page.locator(".px-map-canvas");
     const inView = async (label: string) => {
       const node = (await page.getByRole("group", { name: label, exact: true }).boundingBox())!;
@@ -370,34 +378,38 @@ test("one request makes one map, even when the topic's material is read in three
       expect(node.x + node.width, label).toBeLessThanOrEqual(area.x + area.width);
       expect(node.y + node.height, label).toBeLessThanOrEqual(area.y + area.height);
     };
-    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length);
-    await expect.poll(async () => page.locator(".react-flow__node").count()).toBe(1 + firstLevel.length);
-    for (const label of ["Moto", ...firstLevel]) await inView(label);
-    await saveShot(page, "maps-subject/merged-map.png");
-    // The last concept sits at the bottom edge: its nine children would open half below the canvas, so the view moves to
-    // show them whole, with the concept itself.
-    const fold = (label: string) => page.getByRole("group", { name: label, exact: true }).locator(".px-concept-fold");
     const shows = (labels: string[]) =>
       Promise.all(
         labels.map((label) =>
           expect.poll(async () => inView(label).then(() => true, () => false), { message: label }).toBe(true),
         ),
       );
-    await fold("Quantità di moto").dispatchEvent("click");
-    await expect(fold("Quantità di moto")).toHaveAttribute("aria-expanded", "true");
-    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length + 9);
-    await shows(["Quantità di moto", "Impulso", "Sistemi isolati", "Conservazione della quantità di moto"]);
-    await saveShot(page, "maps-subject/merged-map-last-open.png");
-    // A branch in the middle shows whole with its parent too.
-    await fold("Quantità di moto").dispatchEvent("click");
-    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length);
-    const widest = "Moto uniformemente accelerato";
-    await fold(widest).dispatchEvent("click");
-    await expect(fold(widest)).toHaveAttribute("aria-expanded", "true");
-    const unfolded = ["Legge della velocità", "Legge dello spazio", "Caduta libera", "Spazio di frenata", "Velocità senza il tempo", "Lancio verso l’alto", "Tempo di volo", "Velocità d’impatto", "Accelerazione di gravità"];
-    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length + unfolded.length);
-    await shows([widest, ...unfolded]);
-    await saveShot(page, "maps-subject/merged-map-part-open.png");
+    const names = branches.map((branch) => branch.name);
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + names.length);
+    await expect.poll(async () => page.locator(".react-flow__node").count()).toBe(1 + names.length);
+    await shows(["Moto", ...names]);
+    expect(await smallestLabel(page)).toBeGreaterThanOrEqual(READABLE);
+    await saveShot(page, "maps-subject/merged-map.png");
+
+    // The widest branch, Cinematica with twelve concepts, opens with itself and its first concepts in view and with
+    // labels still readable. It may be taller than the canvas, so the student pans for the rest.
+    const fold = (label: string) => page.getByRole("group", { name: label, exact: true }).locator(".px-concept-fold");
+    await fold("Cinematica").dispatchEvent("click");
+    await expect(fold("Cinematica")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + names.length + 12);
+    await shows(["Cinematica", ...under("Cinematica").slice(0, 3)]);
+    expect(await smallestLabel(page)).toBeGreaterThanOrEqual(READABLE);
+    await saveShot(page, "maps-subject/merged-map-branch-open.png");
+
+    // A concept of the second level unfolds the same way: it and its first children come into view.
+    const deep = "Moto uniformemente accelerato";
+    await fold(deep).dispatchEvent("click");
+    await expect(fold(deep)).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + names.length + 12 + 7);
+    await shows([deep, "Legge della velocità", "Legge dello spazio", "Caduta libera"]);
+    expect(await smallestLabel(page)).toBeGreaterThanOrEqual(READABLE);
+    await saveShot(page, "maps-subject/merged-map-concept-open.png");
+
     // Flashcards from the map take its whole outline and go under the topic's exam.
     await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
     const cards = page.getByRole("dialog", { name: "Crea flashcard" });
@@ -405,10 +417,11 @@ test("one request makes one map, even when the topic's material is read in three
     await cards.getByRole("button", { name: "Annulla" }).click();
     await expect(cards).toHaveCount(0);
 
-    // Mappe lists it as a single tile.
+    // Mappe lists it as a single tile, and the tile counts every concept of the merged map.
     await page.getByRole("link", { name: /^Mappe/ }).click();
     await expect(page.getByRole("status")).toHaveText("1 mappa");
     await expect(page.locator(".px-maps-subject").getByRole("link")).toHaveCount(1);
+    await expect(page.locator(".px-maps-tile").first().locator(".px-maps-card-meta")).toHaveText(`${graph.nodes.length} concetti`);
     await saveShot(page, "maps-subject/merged-tile.png");
     expect(errors).toEqual([]);
   } finally {
