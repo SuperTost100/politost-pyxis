@@ -23,6 +23,7 @@ import {
   hasUnfinishedJob,
   enqueueSourceFile,
   enqueueSourceData,
+  SourceExists,
   assertLocalOcrReady,
   markInterruptedImports,
   registerSourceJobs,
@@ -87,6 +88,13 @@ function sourceError(err: unknown): never {
     throw new IpcError("unsupported", "sources.encrypted");
   }
   throw new IpcError("invalid-output", sourceErrorKey(message) ?? "sources.importFailed", {}, message);
+}
+
+/** An import that found its material already a source answers with that source instead of failing. */
+function sameSource(err: unknown) {
+  return err instanceof SourceExists
+    ? { sourceId: err.sourceId, existing: true as const, title: err.title, chapters: 0, passages: 0, exercises: 0 }
+    : undefined;
 }
 
 const LINK_ERRORS: Record<string, string> = {
@@ -322,17 +330,17 @@ export function sourceHandlers(
           maxSourceBytes(".ptsb"),
           signal,
         );
-        const imported = enqueueSourceData(
-          db,
-          workspace,
-          runner,
-          bytes,
-          ".ptsb",
-          book.title,
-          undefined,
-          undefined,
-          { id: book.id, version: book.version },
-        );
+        let imported;
+        try {
+          imported = enqueueSourceData(db, workspace, runner, bytes, ".ptsb", book.title, undefined, undefined, {
+            id: book.id,
+            version: book.version,
+          });
+        } catch (err) {
+          // The book arrived another way while it downloaded: that copy is the book.
+          if (err instanceof SourceExists) return { sourceId: err.sourceId, title: book.title, subject: book.subject };
+          throw err;
+        }
         return {
           sourceId: imported.sourceId,
           jobId: imported.jobId,
@@ -449,6 +457,8 @@ export function sourceHandlers(
         await assertLocalOcrReady(db, workspace, extname(input.path).toLowerCase());
         return await enqueueSourceFile(db, workspace, runner, input.path, undefined, input.batch);
       } catch (err) {
+        const same = sameSource(err);
+        if (same) return same;
         sourceError(err);
       }
     },
@@ -465,6 +475,8 @@ export function sourceHandlers(
           input.title.trim() || "Notes",
         );
       } catch (err) {
+        const same = sameSource(err);
+        if (same) return same;
         sourceError(err);
       }
     },
@@ -481,6 +493,8 @@ export function sourceHandlers(
           url.href,
         );
       } catch (err) {
+        const same = sameSource(err);
+        if (same) return same;
         sourceError(err);
       }
     },

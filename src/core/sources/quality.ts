@@ -76,8 +76,10 @@ export async function hashFiles(paths: string[], maxBytes: number): Promise<Arra
 /**
  * The newest source whose current file has this hash and that is still usable: reading, waiting or ready.
  * A removed, failed, cancelled or interrupted source does not count, so importing that file again starts over.
- * A chat attachment or a plan file can leave a usable source out of the library (`library = 0`). `libraryOnly` skips
- * those, for answers about what the library holds. A flow that reuses a hidden source must promote it.
+ * A file a linked folder reads in place has no stored copy, so its hash is on the folder's row, and counts while the
+ * file is still there. A chat attachment or a plan file can leave a usable source out of the library
+ * (`library = 0`). `libraryOnly` skips those, for answers about what the library holds. A flow that reuses a hidden
+ * source must promote it.
  */
 export function existingSourceFor(
   db: Database.Database,
@@ -87,11 +89,34 @@ export function existingSourceFor(
   const row = db
     .prepare(
       `SELECT id FROM sources
-       WHERE blob_sha = ? AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+       WHERE (blob_sha = ?
+              OR id IN (SELECT source_id FROM linked_files WHERE content_hash = ? AND missing_at IS NULL))
+         AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
          AND (? = 0 OR library = 1)
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
+    .get(sha, sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+/**
+ * The usable source saved from this web address, so saving a link twice gives one source. A link stores no bytes until
+ * its page is fetched, so the address is looked up on the source (the page's final address, once fetched) and on the
+ * import job that is still to fetch it.
+ */
+export function existingLinkFor(db: Database.Database, url: string): string | null {
+  const row = db
+    .prepare(
+      `SELECT s.id FROM sources s
+       WHERE s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+         AND (s.origin_url = ?
+              OR EXISTS (SELECT 1 FROM jobs j
+                         WHERE j.kind IN ('source-import', 'source-import-vision')
+                           AND json_extract(j.params_json, '$.sourceId') = s.id
+                           AND json_extract(j.params_json, '$.url') = ?))
+       ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1`,
+    )
+    .get(url, url) as { id: string } | undefined;
   return row?.id ?? null;
 }
 

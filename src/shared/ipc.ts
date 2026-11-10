@@ -119,6 +119,8 @@ const quizQuestionSchema = z.object({
 const importResultSchema = z.object({
   sourceId: z.string(),
   jobId: z.string().optional(),
+  /** The same material was already a source: that source is returned, and no job started. */
+  existing: z.boolean().optional(),
   title: z.string(),
   chapters: z.number(),
   passages: z.number(),

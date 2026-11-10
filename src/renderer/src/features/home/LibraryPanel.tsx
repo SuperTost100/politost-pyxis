@@ -63,7 +63,18 @@ type ImportResult = {
   notes: Array<{ name: string; text: string }>;
   failed: Array<{ name: string; key: string }>;
   skipped: number;
+  /** What the heading says when nothing came in, for material that is not a file. */
+  none?: string;
 };
+
+/** What a pasted text or a link that was already a source shows: nothing added, and the source that holds it. */
+const alreadyThere = (title: string, t: (key: string) => string): ImportResult => ({
+  imported: 0,
+  notes: [{ name: title, text: t("sources.reused") }],
+  failed: [],
+  skipped: 0,
+  none: t("sources.importedNothing"),
+});
 
 export function LibraryPanel({
   importOnly = false,
@@ -261,7 +272,9 @@ export function LibraryPanel({
             } else {
               const value = await invoke("sources.import", { path, ...(batch ? { batch } : {}) });
               outcome.ids.push(value.sourceId);
-              outcome.imported += 1;
+              // Core found the same bytes already there after the preview, or in a linked folder: no second copy.
+              if (value.existing) outcome.notes.push({ name: fileName(path), text: t("sources.reused") });
+              else outcome.imported += 1;
             }
             outcome.done.push(path);
           } catch (err) {
@@ -381,7 +394,8 @@ export function LibraryPanel({
       setSourceId(value.sourceId);
       onImported?.([value.sourceId]);
       linkPreview.reset();
-      closeAdd();
+      if (value.existing) setResult(alreadyThere(value.title, t));
+      else closeAdd();
     },
     onError: (err: unknown) => fail(err),
   });
@@ -671,7 +685,7 @@ export function LibraryPanel({
             <CheckCircle2 size={18} aria-hidden />
             {result.imported
               ? t("sources.imported", { count: result.imported })
-              : t("sources.importedNone")}
+              : (result.none ?? t("sources.importedNone"))}
           </p>
           {result.notes.length || result.failed.length || result.skipped ? (
             <ul className="small px-library-result-notes">
@@ -911,7 +925,8 @@ export function LibraryPanel({
                 void client.invalidateQueries({ queryKey: ["sources"] });
                 setSourceId(value.sourceId);
                 onImported?.([value.sourceId]);
-                closeAdd();
+                if (value.existing) setResult(alreadyThere(value.title, t));
+                else closeAdd();
               })
               .catch(fail);
           }}
