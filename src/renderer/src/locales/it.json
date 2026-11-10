@@ -376,6 +376,7 @@
     "due_one": "Oggi hai {{count}} flashcard da ripassare",
     "due_other": "Oggi hai {{count}} flashcard da ripassare",
     "dueFrom": "{{count}} di {{title}}",
+    "dueNoExam": "{{count}} senza esame",
     "dueOthers_one": "{{cards}} da un altro esame",
     "dueOthers_other": "{{cards}} da altri {{count}} esami",
     "reviewDue_one": "Ripassa la flashcard",

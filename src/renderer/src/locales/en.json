@@ -376,6 +376,7 @@
     "due_one": "You have {{count}} flashcard to review today",
     "due_other": "You have {{count}} flashcards to review today",
     "dueFrom": "{{count}} from {{title}}",
+    "dueNoExam": "{{count}} with no exam",
     "dueOthers_one": "{{cards}} from one other exam",
     "dueOthers_other": "{{cards}} from {{count}} other exams",
     "reviewDue_one": "Review the flashcard",

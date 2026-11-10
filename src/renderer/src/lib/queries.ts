@@ -70,6 +70,12 @@ export const ringsQuery = queryOptions({
   queryFn: () => invoke("plans.rings", {}),
 });
 
+/** Flashcards due with no exam: the part of the daily review that the rings leave out. */
+export const examlessDueQuery = queryOptions({
+  queryKey: ["plans", "examlessDue"],
+  queryFn: () => invoke("plans.examlessDue", {}),
+});
+
 /** The session planner: the weekly hours, the hours the exams need, and the weeks. */
 export const plannerQuery = queryOptions({
   queryKey: ["plans", "planner"],

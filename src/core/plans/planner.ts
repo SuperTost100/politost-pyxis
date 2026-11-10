@@ -538,6 +538,14 @@ export function dueEverywhere(db: Database.Database, now = Date.now()) {
   return cards.slice(0, 20);
 }
 
+/** Flashcards due with no exam, across subjects: the ones the daily review adds to the exams' own, as Oggi counts them. */
+export function examlessDue(db: Database.Database, now = Date.now()) {
+  return examlessDecks(db).reduce(
+    (sum, deck) => sum + countDeckDue(db, { subjectId: deck.subjectId }, now),
+    0,
+  );
+}
+
 /** Activities that measure the student; a plan with none of them and no mastery has nothing measured yet. */
 const measuring = (activity: Activity) => activity !== "intro" && activity !== "lesson";
 

@@ -2049,6 +2049,11 @@ export const requests = {
       }),
     ),
   },
+  "plans.examlessDue": {
+    // Flashcards due that belong to no exam, which the daily review shows with the exams' own and the rings do not count.
+    input: z.object({}),
+    output: z.object({ count: z.number().int().nonnegative() }),
+  },
   "plans.planner": {
     input: z.object({}),
     output: z.object({

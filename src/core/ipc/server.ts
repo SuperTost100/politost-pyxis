@@ -342,6 +342,7 @@ const routes = {
   "plans.series": ["plans", "series"],
   "plans.planner": ["plans", "planner", "bare"],
   "plans.rings": ["plans", "rings", "bare"],
+  "plans.examlessDue": ["plans", "examlessDue", "bare"],
   "plans.schedule": ["plans", "schedule"],
   "plans.plannerHours": ["plans", "plannerHours"],
   "plans.complete": ["plans", "complete"],

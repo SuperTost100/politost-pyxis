@@ -5,6 +5,7 @@ import { recordStep } from "./steps";
 import {
   dueEverywhere,
   examRings,
+  examlessDue,
   finishDays,
   neededHours,
   planSchedule,
@@ -403,6 +404,27 @@ describe("Oggi", () => {
     expect(todayPlan(db, now).cards).toEqual({ due: 3, plans: 2, ratedToday: 0 });
     rateCard(db, "c-free", "good", now);
     expect(todayPlan(db, now).cards).toEqual({ due: 2, plans: 2, ratedToday: 1 });
+  });
+});
+
+describe("flashcards due with no exam", () => {
+  it("counts the ones the daily review adds to the exams' own, with or without an exam", () => {
+    const db = openDatabase(":memory:");
+    expect(examlessDue(db, now)).toBe(0);
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1), ('chem', 'Chimica', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c1', 'phys', 'Campo', 'E', 1),
+        ('c2', 'chem', 'Mole', 'n', 1), ('c-gone', 'phys', 'Rimossa', 'x', 1);
+      UPDATE cards SET removed = 1 WHERE id = 'c-gone';`);
+    // No exam at all: the review still has these two.
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(2);
+    // An exam's own card is not counted here, and rating one of the two takes it out.
+    addPlan(db, "near", { examIn: 4 });
+    dueCard(db, "c-near", "near", "near-t0");
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(3);
+    rateCard(db, "c1", "good", now);
+    expect(examlessDue(db, now)).toBe(1);
   });
 });
 

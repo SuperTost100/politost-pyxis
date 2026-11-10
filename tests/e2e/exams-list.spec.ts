@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
-import { seedPlan } from "./seed";
+import { seedPlan, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 
@@ -124,6 +124,55 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     await rows.nth(0).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#\/plans\/p-near$/);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the due line counts the flashcards with no exam, with exams or without any", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-exams-due-free-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
+    db.exec(`INSERT INTO cards(id,subject_id,front,back,created_at) VALUES
+      ('c-free-1','phys','Che cos’è il campo?','Una grandezza in ogni punto.',1),
+      ('c-free-2','phys','Che cos’è la massa?','La resistenza ad accelerare.',2)`);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+
+    // No exam at all: the list is empty, and the daily review still has both flashcards.
+    await expect(page.getByRole("heading", { name: "Create an exam to get started" })).toBeVisible();
+    await expect(page.getByText("You have 2 flashcards to review today")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Review 2", exact: true })).toBeVisible();
+
+    // With an exam, the line adds them to the exam's own and names them apart.
+    seedPlan(db, {
+      id: "p-near",
+      title: "Fisica 1",
+      language: "it",
+      target: 0.75,
+      examAt: Date.now() + 4 * day,
+      topics: [{ id: "t-dyn", title: "Dinamica" }],
+    });
+    db.prepare(
+      "INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c-near','p-near','t-dyn','Unità della forza?','Il newton.',3)",
+    ).run();
+    await page.reload();
+    await expect(page.getByText("You have 3 flashcards to review today")).toBeVisible();
+    await expect(page.getByText("1 from Fisica 1 and 2 with no exam")).toBeVisible();
+
+    // The button opens the same session, which holds all three.
+    await page.getByRole("button", { name: "Review 3", exact: true }).click();
+    await expect(page).toHaveURL(/#\/cards\/due$/);
+    await expect(page.getByText("Unità della forza?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Fisica 1 · 1 of 3")).toBeVisible();
     db.close();
   } finally {
     await app.close();

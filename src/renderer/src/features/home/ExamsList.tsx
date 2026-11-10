@@ -11,7 +11,7 @@ import { Logo } from "../../components/Logo";
 import { Notice } from "../../components/Notice";
 import { Reveal } from "../../components/Controls";
 import { errorDetails } from "../../lib/errorDetails";
-import { plansQuery, ringsQuery } from "../../lib/queries";
+import { examlessDueQuery, plansQuery, ringsQuery } from "../../lib/queries";
 import { useGradeScale } from "../../lib/useGradeScale";
 import "./ExamsList.css";
 
@@ -43,6 +43,7 @@ export function ExamsList({ menu, notice }: { menu: ReactNode; notice?: ReactNod
   const navigate = useNavigate();
   const plans = useQuery(plansQuery);
   const rings = useQuery(ringsQuery);
+  const examless = useQuery(examlessDueQuery);
   const [showArchived, setShowArchived] = useState(false);
   const all = plans.data ?? [];
   const active = all.filter((plan) => !plan.archived);
@@ -71,7 +72,7 @@ export function ExamsList({ menu, notice }: { menu: ReactNode; notice?: ReactNod
         <ExamsSkeleton label={t("components.loading")} />
       ) : (
         <>
-          <DueLine plans={active} rings={rings.data} />
+          <DueLine plans={active} rings={rings.data} examless={examless.data?.count ?? 0} />
           {rings.isError ? (
             <div className="px-exams-error">
               <Notice
@@ -130,15 +131,26 @@ export function ExamsList({ menu, notice }: { menu: ReactNode; notice?: ReactNod
   );
 }
 
-/** "Oggi hai 17 flashcard da ripassare", which exams they come from, and one button to review them all. */
-function DueLine({ plans, rings }: { plans: Plan[]; rings: Ring[] | undefined }) {
+/**
+ * "Oggi hai 17 flashcard da ripassare", which exams they come from, and one button to review them all. It counts what
+ * the daily review will show: the exams' flashcards and the ones with no exam, even when there is no exam at all.
+ */
+function DueLine({
+  plans,
+  rings,
+  examless,
+}: {
+  plans: Plan[];
+  rings: Ring[] | undefined;
+  examless: number;
+}) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const due = plans
     .map((plan) => ({ title: plan.title, count: rings?.find((ring) => ring.planId === plan.id)?.dueCards ?? 0 }))
     .filter((entry) => entry.count > 0)
     .sort((a, b) => b.count - a.count);
-  const total = due.reduce((sum, entry) => sum + entry.count, 0);
+  const total = due.reduce((sum, entry) => sum + entry.count, examless);
   if (total === 0) return null;
   // The three largest by name, the rest as a count, so the line stays one line under the count.
   const named = due.slice(0, 3).map((entry) => t("exams.dueFrom", { count: entry.count, title: entry.title }));
@@ -147,12 +159,13 @@ function DueLine({ plans, rings }: { plans: Plan[]; rings: Ring[] | undefined })
     named.push(
       t("exams.dueOthers", { count: rest.length, cards: rest.reduce((sum, entry) => sum + entry.count, 0) }),
     );
+  if (examless > 0) named.push(t("exams.dueNoExam", { count: examless }));
   const split = new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(named);
   return (
     <div className="px-exams-due">
       <p>
         {t("exams.due", { count: total })}
-        {due.length > 1 ? <span>{split}</span> : null}
+        {named.length > 1 ? <span>{split}</span> : null}
       </p>
       <Button variant="secondary" onClick={() => navigate("/cards/due")}>
         {t("exams.reviewDue", { count: total })}

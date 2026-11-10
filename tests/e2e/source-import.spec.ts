@@ -161,7 +161,7 @@ test("SRC-07 pasting the same text twice keeps one source and says it is already
   test.setTimeout(180000);
   const { page, app, userData } = await start();
   try {
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     const paste = async (title: string) => {
       const dialog = await openAdd(page, "Testo");
       await dialog.getByRole("textbox", { name: "Titolo" }).fill(title);
