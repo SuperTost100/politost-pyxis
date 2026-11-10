@@ -88,6 +88,25 @@ describe("exam sessions", () => {
     db.close();
   });
 
+  it("lists the next session's date and label for the exam list", () => {
+    const db = fixture();
+    saveSessions(
+      db,
+      "p",
+      [
+        { date: noon(2026, 10, 20), label: "Scritto" },
+        { date: noon(2026, 11, 20), label: "Orale" },
+      ],
+      NOW,
+    );
+    expect(listPlans(db, NOW)[0]).toMatchObject({ examAt: noon(2026, 10, 20), examLabel: "Scritto" });
+    const later = new Date(2026, 9, 25, 9).getTime();
+    expect(listPlans(db, later)[0]).toMatchObject({ examAt: noon(2026, 11, 20), examLabel: "Orale" });
+    saveSessions(db, "p", [{ date: noon(2026, 11, 20) }], NOW);
+    expect(listPlans(db, NOW)[0]!.examLabel).toBeNull();
+    db.close();
+  });
+
   it("moves exam_at to the oral part once the written part is over", () => {
     const db = fixture();
     saveSessions(db, "p", [{ date: noon(2026, 10, 20) }, { date: noon(2026, 11, 20) }], NOW);

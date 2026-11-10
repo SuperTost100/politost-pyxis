@@ -1,3 +1,17 @@
-.px-exams-plans > .px-list-toolbar {
+/* A page that was a tab of Esami: the way back, then its title. */
+.px-subpage-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.px-subpage-back:hover {
+  color: var(--ink);
+}
+.px-subpage-title {
   margin-bottom: var(--space-6);
 }

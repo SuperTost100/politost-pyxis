@@ -1,0 +1,193 @@
+/* Esami: a 828px column of exam rows in one white card (Shell.tsx sets px-shell-exams on /exams). */
+.px-shell-container.px-shell-exams {
+  max-width: calc(828px + 48px);
+}
+
+.px-exams-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.px-exams-head h1 {
+  flex: 1;
+  min-width: 0;
+  text-wrap: balance;
+}
+.px-exams-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-exams-error {
+  margin-top: var(--space-5);
+}
+
+.px-exams-due {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: 22px;
+  padding: 0 var(--space-1);
+}
+.px-exams-due p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(21px * var(--text-scale, 1));
+  color: var(--ink);
+}
+.px-exams-due p span {
+  display: block;
+  margin-top: 2px;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+
+/* One card; rows of 8px inside its 6px padding (14 − 6). */
+.px-exams-list {
+  margin: 18px 0 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-exams-list > li {
+  position: relative;
+}
+.px-exams-list > li + li::before,
+.px-exams-row.is-skeleton + .px-exams-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  right: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.px-exams-row.is-skeleton {
+  position: relative;
+}
+.px-exams-list > li:hover::before,
+.px-exams-list > li:hover + li::before,
+.px-exams-list > li:focus-within + li::before {
+  border-color: transparent;
+}
+
+.px-exams-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1.15fr) minmax(0, 1fr) 18px;
+  gap: 22px;
+  align-items: center;
+  padding: 14px var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+a.px-exams-row:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-exams-row > .px-icon,
+.px-exams-row > .px-icon:last-child {
+  color: var(--ink-subtle);
+}
+.px-exams-ring {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+}
+.px-exams-name {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.px-exams-title {
+  font-family: var(--font-display);
+  font-size: calc(21px * var(--text-scale, 1));
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.px-exams-date {
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-exams-next {
+  min-width: 0;
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-exams-kicker {
+  display: block;
+  margin-bottom: 3px;
+  font-weight: 600;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: calc(16px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+
+.px-exams-empty {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-6) 22px;
+}
+.px-exams-empty h2 {
+  margin: 0;
+}
+.px-exams-empty p {
+  margin: 0;
+  max-width: 60ch;
+}
+
+.px-exams-archbtn.px-btn {
+  margin: 14px 0 0 var(--space-1);
+}
+.px-exams-archlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.px-exams-archlabel .px-icon {
+  transition: transform var(--duration-micro) var(--ease-out);
+}
+.px-exams-archbtn[aria-expanded="true"] .px-exams-archlabel .px-icon {
+  transform: rotate(180deg);
+}
+.px-exams-list.is-archived {
+  margin-top: var(--space-1);
+}
+.is-archived .px-exams-row {
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+  padding: 12px var(--space-4);
+}
+.is-archived .px-exams-title {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.is-archived .px-exams-date {
+  text-align: right;
+}
+
+.px-skeleton-bar.is-ring {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+}
+
+@media (max-width: 1200px) {
+  .px-exams-row {
+    gap: var(--space-4);
+  }
+}

@@ -82,7 +82,8 @@ export const router = createHashRouter([
       { path: "exams/library", lazy: examsHome },
       { path: "exams/cards", lazy: examsHome },
       { path: "exams/mistakes", lazy: examsHome },
-      { path: "exams/planner", lazy: page(() => import("../features/home/PlannerPage"), "PlannerPage") },
+      // The session planner's page is gone: the exam rings show the plan, and weekly hours live in exam settings.
+      { path: "exams/planner", loader: () => replace("/exams") },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "plans/:planId/settings", lazy: page(plans, "ExamSettingsPage") },

@@ -19,7 +19,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { MasteryBar } from "../../components/MasteryBar";
 import { Notice } from "../../components/Notice";
 import { PathNode } from "../../components/PathNode";
-import { PlanCard } from "../../components/PlanCard";
+import { ExamRings, RingLegend } from "../../components/ExamRings";
 import { QuizOption } from "../../components/QuizOption";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import { StatTile } from "../../components/StatTile";
@@ -186,23 +186,12 @@ export function ComponentGallery() {
         />
       </Section>
 
-      <Section eyebrow={t("gallery.sections.content")} title="PlanCard">
-        <PlanCard
-          subject="Fisica"
-          title="Fondamenti di Fisica Generale"
-          mastery={23}
-          target={75}
-          meta={t("components.planCards.meta1")}
-          cta={t("components.plan.continue")}
-        />
-        <PlanCard
-          subject="Matematica"
-          title="Analisi 2: serie e integrali multipli"
-          mastery={61}
-          target={80}
-          meta={t("components.planCards.meta2")}
-          cta={t("components.plan.continue")}
-        />
+      <Section eyebrow={t("gallery.sections.progress")} title="ExamRings">
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5 }} size="sm" />
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5 }} />
+        <RingLegend values={{ preparation: 0.63, path: 0.32, today: 0.5 }} />
+        <ExamRings values={{ preparation: null, path: 0.06, today: null }} />
+        <RingLegend values={{ preparation: null, path: 0.06, today: null }} />
       </Section>
 
       <Section

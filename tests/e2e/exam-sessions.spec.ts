@@ -211,21 +211,22 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await expect(page.getByText("This exam is archived.")).toBeVisible();
     await snap("plan-archived", "en", "dark");
 
-    // Exams page: Analisi 2 left the Active list, and the Archived filter brings it back.
+    // Exams page: Analisi 2 left the list of exams, and the Archived toggle shows it apart.
     await page.evaluate(() => {
       location.hash = "/exams";
     });
-    await expect(page.getByRole("heading", { name: "Fisica 1" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Analisi 2" })).toHaveCount(0);
+    const exams = page.getByRole("list", { name: "Your exams" });
+    await expect(exams.getByRole("link", { name: /Fisica 1/ })).toBeVisible();
+    await expect(exams.getByRole("link", { name: /Analisi 2/ })).toHaveCount(0);
     await snap("exams-active", "en", "dark");
-    await page.getByRole("combobox", { name: "Status" }).click();
-    await page.getByTitle("Archived").click();
-    await expect(page.getByRole("heading", { name: "Analisi 2" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Fisica 1" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Archived" }).click();
+    const archived = page.getByRole("list", { name: "Archived exams" });
+    await expect(archived.getByRole("link", { name: /Analisi 2/ })).toBeVisible();
+    await expect(archived.getByRole("link", { name: /Fisica 1/ })).toHaveCount(0);
     await snap("exams-archived", "en", "dark");
     await setLook("en", "light");
-    await page.getByRole("combobox", { name: "Status" }).click();
-    await page.getByTitle("Archived").click();
+    await page.getByRole("button", { name: "Archived" }).click();
+    await expect(archived.getByRole("link", { name: /Analisi 2/ })).toBeVisible();
     await snap("exams-archived", "en", "light");
 
     // The flashcards of an archived exam are not listed, and none is due.

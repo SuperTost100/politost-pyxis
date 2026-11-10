@@ -347,7 +347,9 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   const rows = db
     .prepare(
       `SELECT p.id, p.title, p.status, p.exam_at, p.target, p.archived_at IS NOT NULL AS archived, s.name AS subject,
-       EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported
+       EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported,
+       (SELECT label FROM plan_sessions ps WHERE ps.plan_id = p.id AND ps.date = p.exam_at
+        ORDER BY ps.created_at LIMIT 1) AS exam_label
        FROM plans p
        LEFT JOIN subjects s ON s.id = p.subject_id
        ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
@@ -362,6 +364,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
     archived: number;
     imported: number;
     subject: string | null;
+    exam_label: string | null;
   }>;
   return rows.map((row) => {
     const topics = planMastery(db, row.id, now);
@@ -373,6 +376,8 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       archived: Boolean(row.archived),
       subject: row.subject,
       daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
+      examAt: row.exam_at,
+      examLabel: row.exam_label,
       mastery,
       target: row.target,
       imported: Boolean(row.imported),

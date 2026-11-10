@@ -105,8 +105,8 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(library).not.toHaveAttribute("aria-current", "page");
 
-    // Exams and Ask share one column width, Settings and its subpages share a wider one for the sidebar, and the
-    // sidebar stays put at the left edge.
+    // Ask, Maps and shared plans share one column width, Settings and its subpages share a wider one for the sidebar,
+    // the exam list has its own 828px column with its padding, and the sidebar stays put at the left edge.
     const widths: number[] = [];
     const settingsWidths: number[] = [];
     const sideBoxes = new Set<string>();
@@ -136,7 +136,7 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
       // The column changes width with the route, a moment after the hash: measure once the new page has laid out.
       await expect
         .poll(async () => Math.round((await container.boundingBox())!.width))
-        .toBe(hash.startsWith("#/settings") ? 960 : 768);
+        .toBe(hash.startsWith("#/settings") ? 960 : hash === "#/exams" ? 876 : 768);
       // Maps loads its page on first visit; measure once it is there, so a late chunk can't hide a page of another width.
       if (hash === "#/maps") {
         await expect(page.getByRole("heading", { level: 1, name: "Mappe" })).toBeVisible();
@@ -144,6 +144,7 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
           Math.round((await page.locator(".shell-page").boundingBox())!.width),
         );
       }
+      if (hash === "#/exams") continue;
       (hash.startsWith("#/settings") ? settingsWidths : widths).push(
         Math.round((await container.boundingBox())!.width),
       );

@@ -1705,6 +1705,9 @@ export const requests = {
         archived: z.boolean(),
         subject: z.string().nullable(),
         daysToExam: z.number().nullable(),
+        /** The next exam session, or the last one once all are past, and its label ("Scritto"). */
+        examAt: z.number().nullable(),
+        examLabel: z.string().nullable(),
         mastery: z.number(),
         target: z.number(),
         imported: z.boolean(),
