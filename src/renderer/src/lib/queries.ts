@@ -64,6 +64,12 @@ export const scheduleQuery = (planId: string) =>
     queryFn: () => invoke("plans.schedule", { planId }),
   });
 
+/** The three rings of every built exam (Preparazione, Percorso, Oggi), its next step and its due cards. */
+export const ringsQuery = queryOptions({
+  queryKey: ["plans", "rings"],
+  queryFn: () => invoke("plans.rings", {}),
+});
+
 /** The session planner: the weekly hours, the hours the exams need, and the weeks. */
 export const plannerQuery = queryOptions({
   queryKey: ["plans", "planner"],

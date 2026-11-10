@@ -3398,5 +3398,20 @@
     "material": "Material",
     "none": "Nothing matches these words.",
     "close": "esc"
+  },
+  "rings": {
+    "preparation": "Preparation",
+    "path": "Path",
+    "today": "Today",
+    "legend": "Exam rings",
+    "unmeasured": "not measured yet",
+    "noPath": "no path yet",
+    "nothingToday": "nothing planned",
+    "label": "Preparation {{preparation}}, Path {{path}}, Today {{today}}",
+    "hint": {
+      "preparation": "The grade you would get today",
+      "path": "How much of the path you've done",
+      "today": "How much of today's steps you've done"
+    }
   }
 }

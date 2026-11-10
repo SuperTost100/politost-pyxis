@@ -135,7 +135,12 @@ export function Shell() {
             ? "px-shell-container px-shell-wide"
             : target.pathname.startsWith("/ask") || isMapPath(target.pathname)
               ? "px-shell-container px-shell-bleed"
-              : "px-shell-container"
+              : // The exam list and an exam's page set their own widths (ExamsList.css, ExamPage.css).
+                target.pathname === "/exams"
+                ? "px-shell-container px-shell-exams"
+                : /^\/plans\/[^/]+\/?$/.test(target.pathname)
+                  ? "px-shell-container px-shell-exam"
+                  : "px-shell-container"
         }
       >
         <div className="shell-page">

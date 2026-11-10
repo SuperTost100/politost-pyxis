@@ -204,30 +204,31 @@ export function neededHours(exams: SpreadExam[]): number {
 type PlanState = NonNullable<ReturnType<typeof pathState>>;
 
 function studyState(db: Database.Database, now: number) {
-  const today = startOfDay(now);
   const rows = db.prepare(`${studyPlans} ORDER BY updated_at DESC`).all() as PlanRow[];
-  return rows.flatMap((row) => {
-    // Today counts due cards per plan as one item, so the path's per-topic counts are not needed here.
-    const state = pathState(db, row.id, now, { dueCards: false });
-    if (!state) return [];
-    const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
-    const remainingNow = remainingMinutes(state);
-    const doneMinutes = doneToday.reduce((sum, step) => sum + stepMinutes[step.activity], 0);
-    // The mastery the exam list shows, weighted by passages.
-    const mastery = weightedPlanMastery(state.topics, topicPassageCounts(db, row.id));
-    return [
-      {
-        row,
-        state,
-        doneToday,
-        doneMinutes,
-        // The plan is laid out from the start of today, so studying today does not move today's share.
-        remaining: remainingNow + doneMinutes,
-        remainingNow,
-        mastery,
-      },
-    ];
-  });
+  return rows.flatMap((row) => studiedPlan(db, row, now) ?? []);
+}
+
+/** One plan as the planner reads it, or null while it is building. */
+function studiedPlan(db: Database.Database, row: PlanRow, now: number) {
+  const today = startOfDay(now);
+  // Today counts due cards per plan as one item, so the path's per-topic counts are not needed here.
+  const state = pathState(db, row.id, now, { dueCards: false });
+  if (!state) return null;
+  const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
+  const remainingNow = remainingMinutes(state);
+  const doneMinutes = doneToday.reduce((sum, step) => sum + stepMinutes[step.activity], 0);
+  // The mastery the exam list shows, weighted by passages.
+  const mastery = weightedPlanMastery(state.topics, topicPassageCounts(db, row.id));
+  return {
+    row,
+    state,
+    doneToday,
+    doneMinutes,
+    // The plan is laid out from the start of today, so studying today does not move today's share.
+    remaining: remainingNow + doneMinutes,
+    remainingNow,
+    mastery,
+  };
 }
 
 type Studied = ReturnType<typeof studyState>[number];
@@ -393,6 +394,20 @@ function nextStep(state: PlanState) {
   });
 }
 
+/** The minutes the planner gives a plan today; null when it gives none (no hours set, no date, or the exam is today). */
+function todayMinutes(plan: Studied, result: ReturnType<typeof spread> | null): number | null {
+  const days = plan.state.daysToExam;
+  return result != null && days != null && days > 0 ? (result.days[0]?.get(plan.row.id) ?? 0) : null;
+}
+
+/** Oggi ticks a plan off once today's steps cover its minutes, within 2.5 minutes; without minutes, after one step. */
+function todayComplete(
+  plan: Pick<Studied, "doneToday" | "doneMinutes">,
+  minutes: number | null,
+): boolean {
+  return plan.doneToday.length > 0 && (minutes == null || plan.doneMinutes >= minutes - 2.5);
+}
+
 /**
  * Today's study across every exam: due flashcards from all plans as one item, then each plan's next step, the closest
  * exam first and plans without a date after the dated ones. With hours set in the planner, a plan's item is done once
@@ -421,13 +436,11 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
     .flatMap((plan) => {
       const next = nextStep(plan.state);
       const days = plan.state.daysToExam;
-      const inPlan = result != null && days != null && days > 0;
-      const minutes = inPlan ? (result.days[0]?.get(plan.row.id) ?? 0) : null;
+      const minutes = todayMinutes(plan, result);
       // An allocation under the 2.5 minute tolerance is too small to ask for and would tick off with no work done.
       if (minutes != null && minutes < 2.5 && plan.doneToday.length === 0) return [];
       if (!next && plan.doneToday.length === 0) return [];
-      const complete =
-        plan.doneToday.length > 0 && (minutes == null || plan.doneMinutes >= minutes - 2.5);
+      const complete = todayComplete(plan, minutes);
       return [
         {
           planId: plan.row.id,
@@ -495,4 +508,81 @@ export function dueEverywhere(db: Database.Database, now = Date.now()) {
       cards.push({ ...card, planId: row.id, planTitle: row.title });
   }
   return cards.slice(0, 20);
+}
+
+/** Activities that measure the student; a plan with none of them and no mastery has nothing measured yet. */
+const measuring = (activity: Activity) => activity !== "intro" && activity !== "lesson";
+
+/**
+ * The three rings of each built exam, from what the planner and Oggi already compute:
+ *
+ * - `preparation`: the mastery the exam list shows (topics weighted by passages), which the renderer reads on the
+ *   student's grade scale. Null while nothing is measured: no topic has mastery and no graded step was done.
+ * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
+ *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
+ * - `today`: the share of today's planned work done, as Oggi counts it. With weekly hours the planner gives the exam
+ *   minutes today, and the share is the minutes of today's steps over them; without hours, or on the exam day, one step
+ *   is the day's work. Null when nothing is planned today: an archived or past exam, a share too small to ask for, or
+ *   no next step, unless something was done today anyway.
+ *
+ * `next` is the path's next step without due cards (Oggi lists those apart), and `dueCards` this exam's due cards.
+ * Archived exams come after the others, with no Oggi.
+ */
+export function examRings(db: Database.Database, now = Date.now()) {
+  const active = studyState(db, now);
+  const { result } = layout(db, active, now);
+  const archived = (
+    db
+      .prepare(
+        `SELECT id, title, exam_at, target, updated_at, NULL AS subject FROM plans
+         WHERE status <> 'building' AND archived_at IS NOT NULL ORDER BY updated_at DESC`,
+      )
+      .all() as PlanRow[]
+  ).flatMap((row) => studiedPlan(db, row, now) ?? []);
+  const titles = db.prepare("SELECT title FROM topics WHERE id = ?");
+  const ring = (plan: Studied, isArchived: boolean) => {
+    const { state } = plan;
+    const measured =
+      state.topics.some((topic) => topic.mastery > 0) ||
+      state.steps.some((step) => measuring(step.activity));
+    const fresh = remainingMinutes({
+      topics: state.topics.map((topic) => ({ id: topic.id, mastery: 0 })),
+      steps: [],
+      hasIntro: state.hasIntro,
+      target: state.target,
+    });
+    const next = nextStep(state);
+    return {
+      planId: plan.row.id,
+      preparation: measured ? plan.mastery : null,
+      path: fresh > 0 ? Math.min(1, Math.max(0, 1 - plan.remainingNow / fresh)) : null,
+      today: isArchived ? null : todayShare(plan, todayMinutes(plan, result), next != null),
+      next: next
+        ? {
+            activity: next.activity,
+            topicId: next.topicId,
+            topicTitle: next.topicId
+              ? ((titles.get(next.topicId) as { title: string } | undefined)?.title ?? null)
+              : null,
+          }
+        : null,
+      dueCards: isArchived ? 0 : countDueCards(db, plan.row.id, now),
+    };
+  };
+  return [...active.map((plan) => ring(plan, false)), ...archived.map((plan) => ring(plan, true))];
+}
+
+/** Oggi's share for one exam, with the same rules as Oggi's item: see `examRings`. */
+export function todayShare(
+  plan: Pick<Studied, "doneToday" | "doneMinutes"> & { state: Pick<PlanState, "daysToExam"> },
+  minutes: number | null,
+  hasNext: boolean,
+): number | null {
+  const days = plan.state.daysToExam;
+  const did = plan.doneToday.length > 0;
+  if (days != null && days < 0) return null;
+  if (!did && (!hasNext || (minutes != null && minutes < 2.5))) return null;
+  if (todayComplete(plan, minutes)) return 1;
+  // Not complete: some minutes short of today's share, or nothing done yet.
+  return minutes == null || !did ? 0 : Math.min(plan.doneMinutes / minutes, 0.99);
 }
