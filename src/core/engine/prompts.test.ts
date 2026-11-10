@@ -60,13 +60,12 @@ describe("prompt templates", () => {
       expect(loadTemplate(id).body, id).toContain("own knowledge");
     }
     expect(loadTemplate("chat.solver").body).toContain("opening line is exactly ```check");
-    for (const id of [
-      "plan.synopsis",
-      "map.generate",
-      "map.edit",
-    ] as const) {
+    for (const id of ["plan.synopsis", "map.edit"] as const) {
       expect(loadTemplate(id).version, id).toBe("2");
     }
+    // Version 3: a part of a map gives no title of its own, since the parts of one request join into one map.
+    expect(loadTemplate("map.generate").version).toBe("3");
+    expect(loadTemplate("map.generate").body).not.toContain("title that distinguishes");
     // Version 3 reads the SymPy mathCheck.
     expect(loadTemplate("simulation.grade").version).toBe("4");
     expect(loadTemplate("plan.topics").version).toBe("3");

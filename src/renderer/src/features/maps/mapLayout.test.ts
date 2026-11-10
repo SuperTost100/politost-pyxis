@@ -80,6 +80,22 @@ describe("collapsing", () => {
     expect(hidden.get("b0")).toBe(1);
   });
 
+  it("folds below the first level when depth 2 would still show too many concepts", () => {
+    // Three parts of thirteen concepts each, joined under one root: 43 nodes, all within two levels of it.
+    const joined = [
+      { id: "r", parent: null },
+      ...[1, 2, 3].flatMap((part) => [
+        { id: `p${part}`, parent: "r" },
+        ...Array.from({ length: 13 }, (_, i) => ({ id: `p${part}c${i}`, parent: `p${part}` })),
+      ]),
+    ];
+    const folded = initialCollapsed(joined);
+    expect([...folded].sort()).toEqual(["p1", "p2", "p3"]);
+    const { shown, hidden } = visibleNodes(joined, folded);
+    expect(shown.map((node) => node.id)).toEqual(["r", "p1", "p2", "p3"]);
+    expect(hidden.get("p2")).toBe(13);
+  });
+
   it("hides whole branches and counts them", () => {
     const { shown, hidden } = visibleNodes(wide(2), new Set(["a0"]));
     expect(shown.map((node) => node.id)).toEqual(["r", "a0", "a1", "b1", "c1"]);

@@ -8,7 +8,8 @@ export {
   layoutTree,
 } from "../../../../shared/map-layout";
 
-// Maps larger than this open with everything below depth 2 folded.
+// Maps larger than this open with everything below depth 2 folded, or below depth 1 when that still shows more
+// concepts than this: a wide map, such as one joined from several parts, would open as a column too tall to read.
 const LARGE_MAP = 25;
 const OPEN_DEPTH = 2;
 const MIN_START_ZOOM = 0.6;
@@ -18,19 +19,26 @@ export function parentIds(nodes: Item[]): Set<string> {
   return new Set(childrenOf(nodes).keys());
 }
 
-/** Nodes to fold when a map opens: branches at depth 2 on large maps. */
-export function initialCollapsed(nodes: Item[]): Set<string> {
-  if (nodes.length <= LARGE_MAP) return new Set();
+/** Nodes to fold so that the branches at `depth` show without their children. */
+function foldedAt(nodes: Item[], depth: number): Set<string> {
   const children = childrenOf(nodes);
   const root = nodes.find((node) => node.parent === null);
   const folded = new Set<string>();
-  const walk = (id: string, depth: number) => {
+  const walk = (id: string, at: number) => {
     const next = children.get(id) ?? [];
-    if (depth >= OPEN_DEPTH && next.length) folded.add(id);
-    else for (const child of next) walk(child.id, depth + 1);
+    if (at >= depth && next.length) folded.add(id);
+    else for (const child of next) walk(child.id, at + 1);
   };
   if (root) walk(root.id, 0);
   return folded;
+}
+
+/** Nodes to fold when a map opens: large maps open at depth 2, or depth 1 if depth 2 is still too many to read. */
+export function initialCollapsed(nodes: Item[]): Set<string> {
+  if (nodes.length <= LARGE_MAP) return new Set();
+  const second = foldedAt(nodes, OPEN_DEPTH);
+  if (visibleNodes(nodes, second).shown.length <= LARGE_MAP) return second;
+  return foldedAt(nodes, 1);
 }
 
 /** Nodes not hidden inside a folded branch, plus how many each folded node hides. */

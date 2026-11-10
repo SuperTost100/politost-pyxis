@@ -106,7 +106,7 @@ async function generateMaps(
   await until(db, input, "succeeded");
 }
 describe("M10 model maps", () => {
-  it("splits all material into bounded maps without discarding an edited legacy outline", async () => {
+  it("reads all material in bounded parts and adds one map, without discarding an edited legacy outline", async () => {
     const { db, input } = fixture();
     const legacy = openMap(db, input);
     for (const node of legacy.nodes) delete node.sources;
@@ -123,7 +123,7 @@ describe("M10 model maps", () => {
     expect(params.parts.every((p) => p.passages.length <= 24)).toBe(true);
     await generateMaps(db, input, run);
     const maps = listMaps(db, input);
-    expect(maps.filter((m) => m.provider)).toHaveLength(params.parts.length);
+    expect(maps.filter((m) => m.provider)).toHaveLength(1);
     expect(
       readStoredMap(db, input, legacyId)!.graph,
     ).toEqual(legacy);
@@ -136,6 +136,71 @@ describe("M10 model maps", () => {
         ),
     );
     expect(covered.size).toBe(50);
+    db.close();
+  });
+  it("ends a build of several parts with one map that holds the concepts of every part", async () => {
+    const { db, input } = fixture();
+    const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
+    let part = 0;
+    const calls: Array<{ title: string; passages: unknown[] }> = [];
+    await generateMaps(db, input, async (call) => {
+      calls.push(JSON.parse(call.prompt));
+      const data = generated(call.prompt);
+      const at = ++part;
+      return response({
+        ...data,
+        nodes: data.nodes.map((node, i) => ({
+          ...node,
+          // Every part also names the concept " Moto " in its own spelling.
+          label: i === 3 ? (at === 1 ? "Moto" : at === 2 ? " moto " : "MOTO") : `Parte ${at}, concetto ${i}`,
+        })),
+      });
+    });
+    expect(calls).toHaveLength(3);
+    const maps = listMaps(db, input);
+    expect(maps).toHaveLength(1);
+    expect(maps[0]).toMatchObject({ title: topic, passageCount: 50, grounding: "sources" });
+    const { graph } = readStoredMap(db, input)!;
+    const roots = graph.nodes.filter((node) => node.parent === null);
+    expect(roots).toHaveLength(1);
+    expect(roots[0]!.label).toBe(topic);
+    const labels = graph.nodes.map((node) => node.label.trim().toLowerCase());
+    for (const at of [1, 2, 3])
+      for (const i of [0, 1, 2, 4, 5, 6, 7]) expect(labels).toContain(`parte ${at}, concetto ${i}`);
+    // The same concept in three parts is one node, and it keeps the first spelling.
+    expect(labels.filter((label) => label === "moto")).toHaveLength(1);
+    expect(graph.nodes.find((node) => node.label === "Moto")).toBeDefined();
+    // Each part hangs under the topic, and the citations survive the merge.
+    expect(graph.nodes.filter((node) => node.parent === roots[0]!.id)).toHaveLength(3);
+    const cited = new Set(graph.nodes.flatMap((node) => node.sources ?? []));
+    expect(cited.size).toBe(50);
+    expect(graph.nodes).toHaveLength(1 + 3 * 7 + 1);
+    expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
+    db.close();
+  });
+  it("does not start a second build for a scope that already has one", async () => {
+    const { db, input } = fixture(1);
+    let release!: () => void;
+    let started = 0;
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (call) => {
+      started++;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return response(generated(call.prompt));
+    });
+    const first = enqueueMaps(db, runner, input);
+    while (!started) await new Promise((r) => setTimeout(r, 1));
+    // A second confirm while the first build runs gets the same job back.
+    expect(enqueueMaps(db, runner, input).jobId).toBe(first.jobId);
+    release();
+    await until(db, input, "succeeded");
+    // So does a request after it finished: the maps are not built again.
+    expect(enqueueMaps(db, runner, input)).toMatchObject({ jobId: first.jobId, maps: [expect.anything()] });
+    expect(db.prepare("SELECT COUNT(*) FROM jobs WHERE kind = 'map-build'").pluck().get()).toBe(1);
+    expect(started).toBe(1);
+    expect(listMaps(db, input)).toHaveLength(1);
     db.close();
   });
   it("retains every character when one passage exceeds a map input limit", () => {
@@ -158,8 +223,11 @@ describe("M10 model maps", () => {
   });
   it("applies a model patch only to the selected map, preserves positions and undoes the whole patch", async () => {
     const { db, input } = fixture();
+    // An offline outline made before the build is the scope's other map.
+    openMap(db, input);
     await generateMaps(db, input, run);
     const maps = listMaps(db, input);
+    expect(maps).toHaveLength(2);
     const id = maps[1]!.id;
     moveMapNode(db, input, "n1", 777, 888, id);
     const before = readStoredMap(db, input, id)!.graph;
@@ -302,7 +370,7 @@ describe("M10 model maps", () => {
     expect([graph.undo, graph.redo]).toEqual([null, null]);
     db.close();
   });
-  it("resumes a failed part with stable IDs and retains completed checkpoints", async () => {
+  it("resumes a failed part and keeps the parts that were already read", async () => {
     const { db, input } = fixture();
     let calls = 0,
       fail = true;
@@ -314,15 +382,14 @@ describe("M10 model maps", () => {
     });
     const first = enqueueMaps(db, runner, input);
     await until(db, input, "failed");
-    const completed = listMaps(db, input);
-    expect(completed).toHaveLength(1);
+    // The part that finished waits in the job; no half-built map shows meanwhile.
+    expect(listMaps(db, input)).toEqual([]);
+    expect(mapBuild(db, input)).toMatchObject({ state: "failed", progress: 1 / 3 });
     fail = false;
     expect(enqueueMaps(db, runner, input).jobId).toBe(first.jobId);
     await until(db, input, "succeeded");
-    expect(listMaps(db, input)[0]!.id).toBe(
-      completed[0]!.id,
-    );
-    expect(listMaps(db, input)).toHaveLength(3);
+    expect(listMaps(db, input)).toHaveLength(1);
+    expect(readStoredMap(db, input)!.passageIds).toHaveLength(50);
     expect(calls).toBe(4);
     db.close();
   });
@@ -419,7 +486,7 @@ describe("whole-subject maps", () => {
     expect(params.parts[0]!.passages).toHaveLength(24);
     await generateMaps(db, input, run);
     expect(listMaps(db, input)).toEqual([
-      expect.objectContaining({ title: "Moti", grounding: "sources", passageCount: 24, provider: "claude" }),
+      expect.objectContaining({ title: "Fisica I", grounding: "sources", passageCount: 24, provider: "claude" }),
     ]);
     expect(db.prepare("SELECT subject_id, plan_id, topic_id FROM maps").all()).toEqual([
       { subject_id: input.subjectId, plan_id: null, topic_id: null },

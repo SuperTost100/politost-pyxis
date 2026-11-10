@@ -2150,7 +2150,7 @@
     "doneToday_one": "{{count}} finita oggi",
     "doneToday_other": "{{count}} finite oggi",
     "group": {
-      "toFix": "Ti serve",
+      "toFix": "C'è bisogno di te",
       "running": "In corso",
       "done": "Finite oggi"
     },

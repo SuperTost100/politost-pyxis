@@ -58,7 +58,7 @@ test("the Attività clock turns only while jobs run, and stands still with reduc
   }
 });
 
-test("Ferma tutte stops every running job at once, and they wait under Ti serve with Riprendi", async () => {
+test("Ferma tutte stops every running job at once, and they wait under C'è bisogno di te with Riprendi", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-jobs-stop-"));
   const app = await launchPyxis({ userData });
@@ -75,10 +75,10 @@ test("Ferma tutte stops every running job at once, and they wait under Ti serve 
     await expect(running.locator(".px-logo-working").first()).toBeVisible();
     await expect(list.locator(".px-spin")).toHaveCount(0);
 
-    // Stopping asks nothing: the stopped jobs move to Ti serve as one item.
+    // Stopping asks nothing: the stopped jobs move to C'è bisogno di te as one item.
     await running.getByRole("button", { name: "Ferma tutte" }).click();
     await expect(running).toHaveCount(0);
-    const needs = list.getByRole("region", { name: "Ti serve" });
+    const needs = list.getByRole("region", { name: "C'è bisogno di te" });
     await expect(needs.getByText(/^Hai fermato [2-5] attività$/)).toBeVisible();
     await expect(needs.getByText("Le hai fermate tu. Riprendile quando vuoi da dove erano arrivate.")).toBeVisible();
     await needs.getByRole("button", { name: /^Mostra le [2-5] attività$/ }).click();

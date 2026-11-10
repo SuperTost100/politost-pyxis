@@ -18,6 +18,8 @@ export function recordedPlanRun(
   delayMs = 0,
 ): NonNullable<GenerateInput["run"]> {
   const replies = JSON.parse(fixture) as Record<string, unknown>;
+  // `{{call}}` in a reply is the number of the structured call, from 1, so a build in parts can answer each part differently.
+  let calls = 0;
   return async (input) => {
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
@@ -76,7 +78,9 @@ export function recordedPlanRun(
       batch != null ? { ...recorded, questions: recorded!.questions!.slice(from, from + batch) } : recorded;
     // `{{question:N}}` names a recorded question's place in the whole quiz.
     const questionShift = written - from;
+    calls++;
     const text = JSON.stringify(reply)
+      .replaceAll("{{call}}", String(calls))
       .replaceAll(
         '"{{allPassages}}"',
         JSON.stringify(context.passages?.map((p) => p.id) ?? []),

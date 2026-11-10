@@ -32,14 +32,14 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-subject-"));
   const labels = ["Cinematica", "Velocità", "Accelerazione", "Moto rettilineo", "Moto circolare", "Vettori", "Traiettoria", "Spostamento"];
+  // The reply is looked up by the first property of the map's schema.
   const mapReplies = {
-    title: {
-      title: "Cinematica del punto",
+    nodes: {
       nodes: labels.map((label, i) => ({ id: `n${i}`, label, parent: i ? "n0" : null, sources: "{{allPassages}}" })),
       edges: [],
     },
   };
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies) } });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies), PYXIS_E2E_MAP_DELAY: "1500" } });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -94,11 +94,18 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await saveShot(page, "maps-subject/new-map-subject.png");
     await dialog.getByRole("button", { name: "Continua" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\?from=maps$/);
-    await expect(page.getByRole("heading", { name: "Crea una mappa di questa materia" })).toBeVisible();
+    // One click builds the map: the page shows the working mark where the map will appear, and no second button.
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Crea la mappa", exact: true })).toHaveCount(0);
     await expect(page.locator(".px-map-title p")).toHaveText("Fisica I");
-    await page.getByRole("button", { name: "Crea la mappa", exact: true }).click();
+    await saveShot(page, "maps-subject/building-after-confirm.png");
     await expect(page.locator(".react-flow__node")).toHaveCount(labels.length, { timeout: 60_000 });
-    await expect(page.getByRole("heading", { level: 1, name: "Cinematica del punto" })).toBeVisible();
+    // The map is named after the subject, and so is its root.
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
+    await expect(page.locator('.react-flow__node[data-id="n0"]')).toContainText("Fisica I");
+    expect(
+      await page.evaluate(() => window.pyxis.invoke("maps.list", { subjectId: "phys" })),
+    ).toHaveLength(1);
     // Mappe stays the section the map belongs to.
     await expect(page.getByRole("link", { name: /^Mappe/ })).toHaveAttribute("aria-current", "page");
 
@@ -172,7 +179,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(page.getByRole("status")).toHaveText("3 mappe");
     const groups = page.locator(".px-maps-subject");
     await expect(groups.locator("h2")).toHaveText(["Fisica I", "Nessuna materia"]);
-    await expect(groups.first().locator(".px-maps-card-title")).toHaveText(["Cinematica del punto", "Moto rettilineo"]);
+    await expect(groups.first().locator(".px-maps-card-title")).toHaveText(["Fisica I", "Moto rettilineo"]);
     await expect(groups.first().locator(".px-maps-card-origin")).toHaveText(["Tutta la materia", "Meccanica · Moto"]);
     await saveShot(page, "maps-subject/maps-by-subject.png");
     // The exam's map opens by its subject now; the one without a subject at its exam's address.
@@ -195,6 +202,109 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await dialog.getByRole("button", { name: "Continua" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("one request makes one map, even when the topic's material is read in three parts", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-parts-"));
+  // Each part answers with its own twelve concepts and the concept "Velocità", which the parts share.
+  const concepts = Array.from({ length: 12 }, (_, i) => `Parte {{call}}, concetto ${i + 1}`);
+  const labels = ["Parte {{call}}", ...concepts, "Velocità"];
+  const mapReplies = {
+    nodes: {
+      nodes: labels.map((label, i) => ({ id: `n${i}`, label, parent: i ? "n0" : null, sources: "{{allPassages}}" })),
+      edges: [],
+    },
+  };
+  const app = await launchPyxis({
+    userData,
+    env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies), PYXIS_E2E_MAP_DELAY: "1500" },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // Fifty passages are three parts of the model's reading: 24, 24 and 2.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
+    seedSource(db, {
+      id: "mazzoldi",
+      title: "Mazzoldi",
+      subjectId: "phys",
+      document: { id: "mazzoldi-doc" },
+      passages: Array.from({ length: 50 }, (_, i) => ({
+        id: `pa-${i + 1}`,
+        text: `Il concetto ${i + 1} descrive un moto e le sue grandezze.`,
+        section: "Moto",
+      })),
+    });
+    seedPlan(db, { id: "p-mech", subjectId: "phys", title: "Meccanica", topics: [{ id: "t-motion", title: "Moto" }] });
+    db.exec(
+      "INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-motion', id FROM passages WHERE source_id = 'mazzoldi'",
+    );
+    db.close();
+    await page.reload();
+
+    await page.getByText("Mappe", { exact: true }).click();
+    await page.getByRole("button", { name: "Nuova mappa" }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
+    await dialog.getByLabel("Materia").click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]').click();
+    await dialog.getByLabel("Argomento").click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto"]').click();
+    await dialog.getByRole("button", { name: "Continua" }).click();
+    await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+
+    // Three model calls, one map: the topic's name at the root, each part under it, "Velocità" once.
+    const maps = (await page.evaluate(() =>
+      window.pyxis.invoke("maps.list", { topicId: "t-motion" }),
+    )) as Array<{ title: string; passageCount: number }>;
+    expect(maps).toHaveLength(1);
+    expect(maps[0]).toMatchObject({ title: "Moto", passageCount: 50 });
+    const graph = (await page.evaluate(() =>
+      window.pyxis.invoke("maps.open", { topicId: "t-motion" }),
+    )) as { nodes: Array<{ id: string; label: string; parent: string | null }> };
+    const root = graph.nodes.find((node) => node.parent === null)!;
+    expect(root.label).toBe("Moto");
+    expect(graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual([
+      "Parte 1",
+      "Parte 2",
+      "Parte 3",
+    ]);
+    expect(graph.nodes.filter((node) => node.label === "Velocità")).toHaveLength(1);
+    expect(graph.nodes).toHaveLength(1 + 14 + 13 + 13);
+    await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
+    // 41 concepts in a column are too many to read at once, so it opens with each part folded and counted.
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    await saveShot(page, "maps-subject/merged-map.png");
+    const part = page.locator('.react-flow__node[data-id="n0"] .px-concept-fold');
+    await part.dispatchEvent("click");
+    await expect(part).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(4 + 13);
+    await saveShot(page, "maps-subject/merged-map-part-open.png");
+    // Flashcards from the map take its whole outline and go under the topic's exam.
+    await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
+    const cards = page.getByRole("dialog", { name: "Crea flashcard" });
+    await expect(cards.getByLabel("Esame")).toBeEnabled();
+    await cards.getByRole("button", { name: "Annulla" }).click();
+    await expect(cards).toHaveCount(0);
+
+    // Mappe lists it as a single tile.
+    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await expect(page.getByRole("status")).toHaveText("1 mappa");
+    await expect(page.locator(".px-maps-subject").getByRole("link")).toHaveCount(1);
+    await saveShot(page, "maps-subject/merged-tile.png");
     expect(errors).toEqual([]);
   } finally {
     await app.close();

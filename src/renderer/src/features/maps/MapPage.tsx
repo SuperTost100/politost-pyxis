@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Link as RouterLink,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -190,12 +191,19 @@ export function MapPage() {
   const [search, setSearch] = useSearchParams();
   const openMap = search.get("map") ?? undefined;
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useQueryClient();
   const [selected, setSelected] = useState<string>();
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [jobId, setJobId] = useState<string>();
+  // The Nuova mappa dialog opens this page with `build` set, so the map is built without a second click. It waits for
+  // the page to know the scope has no map and no build, then starts one; the working mark shows meanwhile.
+  const [starting, setStarting] = useState(
+    () => (location.state as { build?: boolean } | null)?.build === true,
+  );
+  const buildAsked = useRef(false);
   const [dialog, setDialog] = useState<"add" | "rename" | "connect" | null>(
     null,
   );
@@ -732,6 +740,15 @@ export function MapPage() {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!starting || buildAsked.current || list.isPending || build.isPending) return;
+    buildAsked.current = true;
+    // The flag belongs to this arrival: going back to the page later must not start a build again.
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (!list.isError && !build.isError && !list.data?.length && !building)
+      void generateMaps().finally(() => setStarting(false));
+    else setStarting(false);
+  });
   // The view on screen as a picture, without the fit button over it.
   async function exportPng() {
     if (!canvas.current) return;
@@ -1044,7 +1061,7 @@ export function MapPage() {
       ) : null}
       <div className="px-map-body">
       <div className="px-map-card">
-        {!graph && building ? (
+        {!graph && (building || starting || busy) ? (
           <Working slot className="px-map-working" line={t("map.building")} />
         ) : !graph ? (
           <div className="px-map-empty">

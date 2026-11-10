@@ -71,9 +71,9 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     "Tangente",
     "Variazione locale",
   ];
+  // The reply is looked up by the first property of the map's schema.
   const mapReplies = {
-    title: {
-      title: "Derivate",
+    nodes: {
       nodes: labels.map((label, i) => ({
         id: `n${i}`,
         label,

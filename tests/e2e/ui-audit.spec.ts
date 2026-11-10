@@ -2323,7 +2323,7 @@ async function openState(page: Page, name: string) {
           list.getByRole("heading", { name: /^(Attività|Background tasks)$/ }),
         ).toBeVisible();
         await expect(
-          list.getByRole("heading", { name: /^(Ti serve|Needs you)$/ }),
+          list.getByRole("heading", { name: /^(C'è bisogno di te|Needs you)$/ }),
         ).toBeVisible();
         await expect(
           list.getByText(
