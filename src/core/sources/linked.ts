@@ -215,9 +215,18 @@ export async function peekFolder(
   return groups;
 }
 
-/** A Library copy a linked file with the same bytes can take over (`adopt`), as a condition on `sources`. */
+/**
+ * A Library copy a linked file with the same bytes can take over (`adopt`), as a condition on `sources`. A source that
+ * is being replaced with another file is not one: its `blob_sha` names the old file until the replacement is published,
+ * so the bytes it names are not the text it is about to hold. The import job of a replacement says so (`replace`), where
+ * the first import of a copy does not, and that one is taken over as it is read.
+ */
 const ADOPTABLE = `library = 1 AND blob_sha IS NOT NULL AND origin_url IS NULL AND kind != 'smartbook'
-  AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')`;
+  AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+  AND NOT EXISTS (
+    SELECT 1 FROM jobs j WHERE j.state IN ('queued', 'running', 'interrupted')
+      AND j.kind IN ('source-import', 'source-import-vision')
+      AND json_extract(j.params_json, '$.sourceId') = sources.id AND json_extract(j.params_json, '$.replace') = 1)`;
 
 /** A folder name as a subject name: trimmed and cut to what `subjects` holds, so `addSubject` never refuses it. */
 const subjectNameOf = (folder: string) => folder.trim().slice(0, MAX_SUBJECT_NAME).trim();
@@ -925,17 +934,25 @@ export function linkedFolders(deps: LinkedDeps) {
   }
 
   function assignSubject(folderId: string, key: string, subjectId: string): void {
+    const previous =
+      (db.prepare(`SELECT subject_id FROM linked_subfolders WHERE folder_id = ? AND name = ?`).pluck().get(folderId, key) as
+        | string
+        | null
+        | undefined) ?? null;
     db.prepare(`UPDATE linked_subfolders SET subject_id = ?, skipped = 0 WHERE folder_id = ? AND name = ?`).run(
       subjectId,
       folderId,
       key,
     );
-    // A Library copy that a file here took over keeps the subject it had (it still has its stored original).
+    // A Library copy that a file here took over (it still has its stored original) keeps a subject of its own. Without a
+    // subject, or with the one the subfolder had before, it takes the new one, since that subject came from the folder.
+    // shortcut: a copy whose own subject is the same as its folder's cannot be told apart from one that inherited it, and
+    // follows the folder too; telling them apart takes a column recording where the subject came from.
     db.prepare(
       `UPDATE sources SET subject_id = ?
        WHERE id IN (SELECT source_id FROM linked_files WHERE folder_id = ? AND subfolder = ?)
-         AND (blob_sha IS NULL OR subject_id IS NULL)`,
-    ).run(subjectId, folderId, key);
+         AND (blob_sha IS NULL OR subject_id IS NULL OR subject_id IS ?)`,
+    ).run(subjectId, folderId, key, previous);
   }
 
   return {

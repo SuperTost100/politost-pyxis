@@ -22,7 +22,11 @@ const sha = (text: string) => createHash("sha256").update(text).digest("hex");
  * A workspace with the import jobs and linked folders, and a study folder holding `Fisica/appunti.txt` with `NOTES`.
  * `extract` stands in for the worker's read, so a test can hold one open.
  */
-function setup(extract?: (input: { path: string; ext: string }) => Promise<Extraction>) {
+function setup(
+  extract?: (input: { path: string; ext: string }) => Promise<Extraction>,
+  /** Stands in for the look's hash, so a test can act between the look listing the copies and adopting one. */
+  linkHash?: (paths: string[], maxBytes: number) => ReturnType<typeof hashFiles>,
+) {
   const db = openDatabase(":memory:");
   const workspace = tempDir("pyxis-adopt-ws-");
   const runner = createRunner(db, () => {});
@@ -43,7 +47,7 @@ function setup(extract?: (input: { path: string; ext: string }) => Promise<Extra
     db,
     runner,
     protectedPaths: [workspace],
-    hash: (paths, maxBytes) => hashFiles(paths, maxBytes),
+    hash: linkHash ?? ((paths, maxBytes) => hashFiles(paths, maxBytes)),
     storedSize: (blob) => blobSize(workspace, blob),
     ocrReady: async () => false,
     watch: null,
@@ -136,6 +140,43 @@ describe("a file imported into the Library before its folder was linked", () => 
     expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Meccanica", rel })]);
   });
 
+  it("takes the folder's subject when setup is confirmed after the file took the copy over", async () => {
+    const app = setup();
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    // The look runs before setup is confirmed, so the subfolder has no subject yet and the copy has none either.
+    const [folder] = await app.linked.link({ paths: [app.root], mode: "root" });
+    await app.settled();
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: null, rel })]);
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [{ key: "Fisica", name: "Fisica", skipped: false }] }] });
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Fisica", rel })]);
+  });
+
+  it("follows the folder to another subject when it only had the folder's", async () => {
+    const app = setup();
+    const analisi = addSubject(app.db, "Analisi").id;
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    const folder = await app.link();
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Fisica", rel })]);
+    // The name of an existing subject makes the folder's subject that one, and what the copy took from the folder goes along.
+    await app.linked.confirm({ folders: [{ folderId: folder.id, subjects: [{ key: "Fisica", name: "Analisi", skipped: false }] }] });
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Analisi", rel })]);
+    expect(app.db.prepare(`SELECT subject_id FROM sources WHERE id = ?`).pluck().get(copy.sourceId)).toBe(analisi);
+  });
+
+  it("keeps a subject of its own when the folder is given another subject later", async () => {
+    const app = setup();
+    const own = addSubject(app.db, "Meccanica").id;
+    addSubject(app.db, "Analisi");
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    app.db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ?`).run(own, copy.sourceId);
+    await app.settled();
+    const folder = await app.link();
+    await app.linked.confirm({ folders: [{ folderId: folder.id, subjects: [{ key: "Fisica", name: "Analisi", skipped: false }] }] });
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Meccanica", rel })]);
+  });
+
   it("is read from the folder once the file there changes, and keeps the original it was imported with", async () => {
     const app = setup();
     const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
@@ -207,6 +248,69 @@ describe("a file imported into the Library before its folder was linked", () => 
     ]);
     expect(app.passageIds(copy.sourceId).length).toBeGreaterThan(0);
     expect(app.reads.filter((path) => path.startsWith(app.root))).toEqual([]);
+  });
+
+  const OTHER = "L'integrale è l'area sotto la curva. ".repeat(40);
+  const textOf = (app: ReturnType<typeof setup>, id: string) =>
+    app.db.prepare(`SELECT text FROM passages WHERE source_id = ?`).pluck().all(id).join("");
+  /** An `extract` that waits on its second read of a stored file, which is the replacement's. */
+  function holdSecondRead() {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let reads = 0;
+    const extract = async (input: { path: string; ext: string }): Promise<Extraction> => {
+      if (!input.path.includes("pyxis-adopt-folder-") && ++reads === 2) await held;
+      return { document: await extractByExt(new Uint8Array(readFileSync(input.path)), input.ext) };
+    };
+    return { extract, release };
+  }
+
+  it("does not take over a copy that is being replaced with another file: the folder's file is its own source", async () => {
+    const { extract, release } = holdSecondRead();
+    const app = setup(extract);
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("nuovo.txt", OTHER), copy.sourceId);
+    await expect.poll(() => app.sources()[0]?.status).toBe("extracting");
+    // Until the replacement is published the copy still names the old file, whose bytes the folder's file has.
+    expect(app.sources()[0]!.blobSha).toBe(sha(NOTES));
+    const [folder] = await app.linked.link({ paths: [app.root], mode: "root" });
+    await app.linked.idle();
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [{ key: "Fisica", name: "Fisica", skipped: false }] }] });
+    release();
+    await app.settled();
+    const rows = app.sources();
+    expect(rows).toHaveLength(2);
+    const replaced = rows.find((row) => row.id === copy.sourceId)!;
+    const file = rows.find((row) => row.rel === rel)!;
+    expect(replaced).toMatchObject({ status: "ready", rel: null, blobSha: sha(OTHER) });
+    expect(file).toMatchObject({ id: expect.not.stringMatching(copy.sourceId), status: "ready", blobSha: null });
+    expect(textOf(app, copy.sourceId)).toContain("integrale");
+    expect(textOf(app, file.id)).toContain("velocità");
+  });
+
+  it("does not take over a copy whose replacement starts after the look listed it", async () => {
+    const { extract, release } = holdSecondRead();
+    let replaceNow: (() => Promise<unknown>) | undefined;
+    const app = setup(extract, async (paths, maxBytes) => {
+      const hashes = await hashFiles(paths, maxBytes);
+      await replaceNow?.();
+      replaceNow = undefined;
+      return hashes;
+    });
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    // The replacement is queued between the look's hash and its takeover, so only the check at that moment can see it.
+    replaceNow = () => enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("nuovo.txt", OTHER), copy.sourceId);
+    const [folder] = await app.linked.link({ paths: [app.root], mode: "root" });
+    await app.linked.idle();
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [{ key: "Fisica", name: "Fisica", skipped: false }] }] });
+    release();
+    await app.settled();
+    const rows = app.sources();
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.id === copy.sourceId)).toMatchObject({ rel: null, blobSha: sha(OTHER) });
+    expect(textOf(app, rows.find((row) => row.rel === rel)!.id)).toContain("velocità");
   });
 
   it("of two copies with the same bytes, the newest becomes the linked file and the other stays a copy", async () => {
