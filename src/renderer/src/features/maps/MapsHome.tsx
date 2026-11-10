@@ -208,7 +208,8 @@ function MapCard({ map }: { map: MapEntry }) {
 
 /**
  * Picks the subject a new map belongs to, then, if the student wants, one topic of the subject's exams, and opens that
- * map page, where the map is built. No topic means a map of the whole subject.
+ * map page, which builds the map right away unless the subject or topic has one already. No topic means a map of the
+ * whole subject.
  */
 function NewMapDialog(props: {
   open: boolean;
@@ -269,13 +270,16 @@ function NewMapDialog(props: {
       open={props.open}
       title={t("maps.new")}
       onCancel={props.onClose}
-      okText={t("maps.continue")}
+      okText={t("maps.create")}
       cancelText={t("maps.cancel")}
       okButtonProps={{ disabled: !subjectId }}
       onOk={() => {
         if (!subjectId) return;
         props.onClose();
-        navigate(mapPath({ subjectId, topicId }));
+        // A subject or topic that is mapped already opens its map; the page checks again before it builds.
+        navigate(mapPath({ subjectId, topicId }), {
+          state: counts.get(topicId ?? subjectId) ? null : { build: true },
+        });
       }}
       destroyOnHidden
     >
