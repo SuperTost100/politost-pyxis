@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App, Button, Input, Modal, Select } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { isCloze } from "../../../core/study/cloze";
 import { errorProvider, useEngineError } from "../lib/engineError";
@@ -27,7 +27,7 @@ export type CardSource = {
   topicId?: string;
   /** The chat's subject name. */
   subject?: string;
-  /** A map's subject: the cards can go only under its exams, and nowhere when it has none. */
+  /** A map's subject: the cards go under it, and only its exams are offered. */
   subjectId?: string;
   /** Passages the text cites or comes from; they pick the topic and become the cards' source links. */
   passageIds?: string[];
@@ -63,6 +63,8 @@ export function MakeCardsDialog() {
   const client = useQueryClient();
   const [source, setSource] = useState<CardSource | null>(null);
   const [places, setPlaces] = useState<Places | null>(null);
+  // The cards belong to a subject; an exam and one of its topics are optional.
+  const [subjectId, setSubjectId] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
   const [topicId, setTopicId] = useState<string | null>(null);
   const [step, setStep] = useState<"pick" | "working" | "review">("pick");
@@ -99,6 +101,7 @@ export function MakeCardsDialog() {
       const next = (event as CustomEvent<CardSource>).detail;
       setSource(next);
       setPlaces(null);
+      setSubjectId(null);
       setPlanId(null);
       setTopicId(null);
       setRows([]);
@@ -116,6 +119,7 @@ export function MakeCardsDialog() {
         (found) => {
           if (id !== run.current) return;
           setPlaces(found);
+          setSubjectId(found.subjectId);
           setPlanId(found.planId);
           setTopicId(found.topicId);
         },
@@ -134,9 +138,16 @@ export function MakeCardsDialog() {
 
   const plan = places?.plans.find((item) => item.id === planId);
   const topic = plan?.topics.find((item) => item.id === topicId);
+  const subject = places?.subjects.find((item) => item.id === subjectId);
+  // A map's subject is fixed; elsewhere the student picks it. Without one, every exam is offered.
+  const subjectFixed = Boolean(source?.subjectId);
+  const exams = (places?.plans ?? []).filter((item) => !subjectId || item.subjectId === subjectId);
+  // Somewhere to file the cards: an exam's topic, or the subject alone.
+  const placed = planId ? Boolean(topicId) : Boolean(subjectId);
+  const nowhere = places !== null && places.subjects.length === 0 && places.plans.length === 0;
 
   async function make() {
-    if (!source || !planId || !topicId) return;
+    if (!source || !placed) return;
     stop();
     const id = run.current;
     setError(null);
@@ -144,8 +155,8 @@ export function MakeCardsDialog() {
     const handle = window.pyxis.stream(
       "study.cardsPropose",
       {
-        planId,
-        topicId,
+        planId: planId ?? undefined,
+        topicId: planId ? (topicId ?? undefined) : undefined,
         text: source.text,
         passageIds: source.passageIds ?? [],
       },
@@ -174,14 +185,12 @@ export function MakeCardsDialog() {
   const incomplete = rows.some((row) => !row.front.trim() || !row.back.trim());
 
   async function save() {
-    if (!planId || !topicId || !made || !rows.length || incomplete || saving)
-      return;
+    if (!placed || !made || !rows.length || incomplete || saving) return;
     setSaving(true);
     setError(null);
     try {
       const result = await invoke("study.cardsSaveProposed", {
-        planId,
-        topicId,
+        ...(planId ? { planId, topicId: topicId ?? undefined } : { subjectId: subjectId ?? undefined }),
         cards: rows.map(({ front, back, passageId }) => ({
           front,
           back,
@@ -189,16 +198,21 @@ export function MakeCardsDialog() {
         })),
         ...made,
       });
-      // The browser lists cards from every plan; the other lists belong to this plan alone.
+      // The browser and the daily review list cards from everywhere; the other lists belong to this plan alone.
       await Promise.all([
         client.invalidateQueries({ queryKey: ["card-browse"] }),
-        ...["cards", "card-queue", "review-session", "plan"].map((key) =>
-          client.invalidateQueries({ queryKey: [key, planId] }),
-        ),
+        client.invalidateQueries({ queryKey: ["cards-everywhere"] }),
+        client.invalidateQueries({ queryKey: ["subject-cards"] }),
+        client.invalidateQueries({ queryKey: ["plans", "today"] }),
+        ...(planId
+          ? ["cards", "card-queue", "review-session", "plan"].map((key) =>
+              client.invalidateQueries({ queryKey: [key, planId] }),
+            )
+          : []),
       ]);
       const saved = t("makeCards.saved", {
         count: result.saved,
-        topic: topic?.title ?? "",
+        topic: (planId ? topic?.title : subject?.name) ?? "",
       });
       void message.success(
         result.skipped
@@ -213,7 +227,6 @@ export function MakeCardsDialog() {
   }
 
   const working = step === "working";
-  const noPlans = places !== null && places.plans.length === 0;
   const footer =
     step === "review" ? (
       <>
@@ -223,7 +236,7 @@ export function MakeCardsDialog() {
         <Button
           shape="round"
           onClick={() => void make()}
-          disabled={saving || !topicId}
+          disabled={saving || !placed}
         >
           {t("makeCards.again")}
         </Button>
@@ -231,7 +244,7 @@ export function MakeCardsDialog() {
           type="primary"
           shape="round"
           loading={saving}
-          disabled={!rows.length || incomplete || !topicId}
+          disabled={!rows.length || incomplete || !placed}
           onClick={() => void save()}
         >
           {t("makeCards.save", { count: rows.length })}
@@ -246,7 +259,7 @@ export function MakeCardsDialog() {
           type="primary"
           shape="round"
           loading={working}
-          disabled={!topicId || noPlans}
+          disabled={!placed}
           onClick={() => void make()}
         >
           {t("makeCards.make")}
@@ -287,53 +300,89 @@ export function MakeCardsDialog() {
               </Suspense>
             </p>
           </figure>
-          <div className="px-mc-where">
-            <div className="px-mc-field">
-              <label className="label" htmlFor="mc-plan">
-                {t("makeCards.plan")}
-              </label>
-              <Select
-                id="mc-plan"
-                showSearch={{ optionFilterProp: "label" }}
-                loading={places === null && !error}
-                disabled={working || saving || noPlans}
-                value={planId}
-                placeholder={t("makeCards.planPlaceholder")}
-                options={places?.plans.map((item) => ({
-                  value: item.id,
-                  label: item.title,
-                }))}
-                onChange={(value) => {
-                  setPlanId(value);
-                  setTopicId(null);
-                }}
+          {subjectFixed ? (
+            <p className="body px-mc-lead">
+              <Trans
+                i18nKey={exams.length ? "makeCards.goesTo" : "makeCards.goesToNoExam"}
+                values={{ subject: subject?.name ?? source.subject ?? "" }}
+                components={{ b: <b /> }}
               />
-            </div>
-            <div className="px-mc-field">
-              <label className="label" htmlFor="mc-topic">
-                {t("makeCards.topic")}
-              </label>
-              <Select
-                id="mc-topic"
-                showSearch={{ optionFilterProp: "label" }}
-                disabled={working || saving || !plan}
-                value={topicId}
-                placeholder={t("makeCards.topicPlaceholder")}
-                options={plan?.topics.map((item) => ({
-                  value: item.id,
-                  label: item.title,
-                }))}
-                onChange={setTopicId}
-              />
-            </div>
-          </div>
-          {noPlans ? (
-            <Notice tone="info">
-              {source.subjectId
-                ? t("makeCards.noSubjectPlans", { subject: source.subject ?? "" })
-                : t("makeCards.noPlans")}
-            </Notice>
+            </p>
           ) : null}
+          <div className="px-mc-where">
+            {subjectFixed ? null : (
+              <div className="px-mc-field">
+                <label className="label" htmlFor="mc-subject">
+                  {t("makeCards.subject")}
+                </label>
+                <Select
+                  id="mc-subject"
+                  showSearch={{ optionFilterProp: "label" }}
+                  loading={places === null && !error}
+                  disabled={working || saving || nowhere}
+                  value={subjectId}
+                  placeholder={t("makeCards.subjectPlaceholder")}
+                  options={places?.subjects.map((item) => ({
+                    value: item.id,
+                    label: item.name,
+                  }))}
+                  onChange={(value: string) => {
+                    setSubjectId(value);
+                    // An exam of another subject cannot hold them any more.
+                    if (plan && plan.subjectId !== value) {
+                      setPlanId(null);
+                      setTopicId(null);
+                    }
+                  }}
+                />
+              </div>
+            )}
+            {exams.length ? (
+              <div className="px-mc-field">
+                <label className="label" htmlFor="mc-plan">
+                  {t("makeCards.plan")}{" "}
+                  <span className="px-mc-optional">{t("makeCards.optional")}</span>
+                </label>
+                <Select
+                  id="mc-plan"
+                  showSearch={{ optionFilterProp: "label" }}
+                  disabled={working || saving}
+                  value={planId ?? ""}
+                  options={[
+                    { value: "", label: t("makeCards.noExam") },
+                    ...exams.map((item) => ({ value: item.id, label: item.title })),
+                  ]}
+                  onChange={(value: string) => {
+                    const next = places?.plans.find((item) => item.id === value);
+                    setPlanId(next?.id ?? null);
+                    setTopicId(null);
+                    if (next?.subjectId) setSubjectId(next.subjectId);
+                  }}
+                />
+              </div>
+            ) : null}
+            {plan ? (
+              <div className="px-mc-field">
+                <label className="label" htmlFor="mc-topic">
+                  {t("makeCards.topic")}
+                </label>
+                <Select
+                  id="mc-topic"
+                  showSearch={{ optionFilterProp: "label" }}
+                  disabled={working || saving}
+                  value={topicId}
+                  placeholder={t("makeCards.topicPlaceholder")}
+                  options={plan.topics.map((item) => ({
+                    value: item.id,
+                    label: item.title,
+                  }))}
+                  onChange={setTopicId}
+                />
+              </div>
+            ) : null}
+          </div>
+          {exams.length ? <p className="small px-mc-hint">{t("makeCards.examHint")}</p> : null}
+          {nowhere ? <Notice tone="info">{t("makeCards.noSubjects")}</Notice> : null}
           {error ? (
             <Notice
               tone="danger"
@@ -354,7 +403,7 @@ export function MakeCardsDialog() {
                 : t(error.key, { defaultValue: t("makeCards.failed") })}
             </Notice>
           ) : null}
-          {step === "pick" && !noPlans && !error ? (
+          {step === "pick" && !nowhere && !error ? (
             <p className="small px-mc-hint">{t("makeCards.hint")}</p>
           ) : null}
           {working ? (

@@ -27,6 +27,12 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+.px-mc-lead {
+  margin: 0;
+}
+.px-mc-optional {
+  font-weight: 400;
+}
 .px-mc-where {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

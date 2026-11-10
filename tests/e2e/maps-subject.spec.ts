@@ -39,7 +39,22 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
       edges: [],
     },
   };
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies) } });
+  // The recorded flashcards a map's outline gives: a question tied to the first passage and a concept with none.
+  const cardReplies = {
+    cards: {
+      cards: [
+        { kind: "qa", front: "Che cos'è la velocità media?", back: "Lo spostamento diviso il tempo.", passageId: "{{passage:0}}" },
+        { kind: "concept", term: "Accelerazione", definition: "Quanto cambia la velocità in un istante.", passageId: null },
+      ],
+    },
+  };
+  const app = await launchPyxis({
+    userData,
+    env: {
+      PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies),
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify(cardReplies),
+    },
+  });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -133,20 +148,73 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(panel).toBeHidden();
     await expect(foot.getByRole("button", { name: "Mazzoldi", exact: true })).toBeFocused();
 
-    // Flashcards from a map go only under its own subject's exams. Fisica I has none, so even an exam of another subject
-    // whose topic cites the same passages is not offered, and the dialog says why.
+    // Flashcards from a map belong to its subject. Fisica I has no exam, so the dialog only says where they go, and an
+    // exam of another subject whose topic cites the same passages is not offered.
     const chem = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seedPlan(chem, { id: "p-chem", subjectId: "chem", title: "Chimica generale", topics: [{ id: "t-chem", title: "Cinetica" }] });
     chem.exec("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-chem','pa-1'),('t-chem','pa-2'),('t-chem','pa-3')");
     chem.close();
     await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
     const cards = page.getByRole("dialog", { name: "Crea flashcard" });
-    await expect(cards.getByText("Fisica I non ha ancora un esame con argomenti")).toBeVisible();
-    await expect(cards.locator(".px-mc-where")).not.toContainText("Chimica generale");
-    await expect(cards.getByLabel("Esame")).toBeDisabled();
+    await expect(cards.locator(".px-mc-lead")).toHaveText(
+      "Vanno in Fisica I, che non ha esami: le ritrovi tra le flashcard della materia.",
+    );
+    await expect(cards.locator("#mc-plan")).toHaveCount(0);
+    await expect(cards.locator("#mc-subject")).toHaveCount(0);
+    await expect(cards).not.toContainText("Chimica generale");
     await saveShot(cards, "maps-subject/cards-no-exam.png");
-    await cards.getByRole("button", { name: "Annulla" }).click();
+    await cards.getByRole("button", { name: "Crea flashcard", exact: true }).click();
+    const proposed = cards.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
+    await expect(proposed).toHaveCount(2);
+    await cards.getByRole("button", { name: "Salva 2 flashcard" }).click();
     await expect(cards).toHaveCount(0);
+    await expect(page.getByText("2 flashcard salvate in Fisica I.")).toBeVisible();
+    const saved = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    expect(
+      saved.prepare("SELECT front, plan_id, topic_id, subject_id, passage_id FROM cards ORDER BY front").all(),
+    ).toEqual([
+      { front: "Accelerazione", plan_id: null, topic_id: null, subject_id: "phys", passage_id: null },
+      { front: "Che cos'è la velocità media?", plan_id: null, topic_id: null, subject_id: "phys", passage_id: "pa-1" },
+    ]);
+    saved.close();
+
+    // They are due in the daily review with every other flashcard, and the card says which subject it belongs to.
+    await page.evaluate(() => {
+      window.location.hash = "/cards/due";
+    });
+    const card = page.getByRole("article", { name: "Flashcard" });
+    await expect(card).toContainText("Che cos'è la velocità media?");
+    await expect(page.getByText("Fisica I · 1 di 2")).toBeVisible();
+    await page.getByRole("button", { name: /^Gira/ }).click();
+    await expect(card).toContainText("Lo spostamento diviso il tempo.");
+    await saveShot(page, "maps-subject/cards-review-no-exam.png");
+    await page.getByRole("button", { name: /^La sapevo/ }).click();
+    await expect(card).toContainText("Accelerazione");
+    const reviewed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    expect(reviewed.prepare("SELECT COUNT(*) AS n FROM card_reviews").get()).toEqual({ n: 1 });
+    // A card with no exam is evidence for no exam's path.
+    expect(reviewed.prepare("SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'card_rated'").get()).toEqual({ n: 0 });
+    reviewed.close();
+
+    // The card browser lists them under their subject, as "Senza esame", and reviews them on their own from there.
+    await page.evaluate(() => {
+      window.location.hash = "/exams/cards";
+    });
+    const physics = page.locator(".px-cardbrowser-subject").filter({ has: page.getByRole("heading", { name: "Fisica I" }) });
+    await expect(physics.getByRole("heading", { level: 3 })).toHaveText(["Senza esame"]);
+    await expect(physics.locator(".px-cardbrowser-row")).toHaveCount(2);
+    await saveShot(page, "maps-subject/cards-browser-no-exam.png");
+    await page.locator("#card-exam").click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Senza esame"]').click();
+    await expect(page.locator(".px-cardbrowser-summary")).toContainText("2 flashcard");
+    await physics.getByRole("button", { name: "Ripassa le flashcard senza esame di Fisica I" }).click();
+    await expect(page).toHaveURL(/#\/cards\/subject\/phys$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Flashcard · Fisica I");
+    await expect(card).toContainText("Accelerazione");
+    await page.getByRole("button", { name: /^Gira/ }).click();
+    await page.getByRole("button", { name: /^La sapevo/ }).click();
+    await expect(card).toHaveCount(0);
+    expect(errors).toEqual([]);
 
     // An exam's map from before still opens at the exam's address, and an exam without a subject keeps it too.
     const again = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
@@ -195,6 +263,22 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await dialog.getByRole("button", { name: "Continua" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
+
+    // Now Fisica I has an exam: from the map of one of its topics the dialog offers the exam, optional and preselected
+    // on the exam and topic that hold the map's topic.
+    await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
+    await expect(cards.locator(".px-mc-lead")).toHaveText("Vanno in Fisica I.");
+    const picked = (id: string) => cards.locator(id).locator("xpath=ancestor::div[contains(@class,'ant-select')][1]");
+    await expect(picked("#mc-plan")).toContainText("Meccanica");
+    await expect(picked("#mc-topic")).toContainText("Moto");
+    await expect(cards.getByText("Con l’esame contano anche nel suo percorso.")).toBeVisible();
+    await saveShot(cards, "maps-subject/cards-with-exam.png");
+    // "Nessun esame" takes the exam away again, and the cards can still be made.
+    await cards.locator("#mc-plan").click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Nessun esame"]').click();
+    await expect(cards.locator("#mc-topic")).toHaveCount(0);
+    await expect(cards.getByRole("button", { name: "Crea flashcard", exact: true })).toBeEnabled();
+    await cards.getByRole("button", { name: "Annulla" }).click();
     expect(errors).toEqual([]);
   } finally {
     await app.close();

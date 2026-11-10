@@ -168,6 +168,8 @@ const routes = [
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
@@ -985,12 +987,49 @@ let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
 
-/** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
+/**
+ * Cards of a second subject, of an exam with no subject and with no exam, for the flashcard browser only. Every other
+ * state removes them. The flashcard dialog of a subject with no exam gets that subject alone.
+ */
 function prepareCardBrowser(name: string) {
   withDb((db) => {
-    db.exec(`DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
+    db.exec(`DELETE FROM cards WHERE plan_id IS NULL;
+      DELETE FROM maps WHERE id = 'audit-chem-map';
+      DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
       DELETE FROM subjects WHERE id = 'audit-chem';
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
+    if (name === "map-cards-no-exam") {
+      // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
+      seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
+      const node = (id: string, label: string, parent: string | null, x: number) => ({ id, label, parent, x, y: parent ? 160 : 0, pinned: false });
+      db.prepare(
+        "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-chem-map','audit-chem',?,'general',1)",
+      ).run(
+        JSON.stringify({
+          version: 1,
+          maps: [
+            {
+              id: "audit-chem-map-entry",
+              title: "Chimica",
+              passageIds: [],
+              graph: {
+                layout: "tree",
+                nodes: [
+                  node("chem-root", "Chimica", null, 0),
+                  node("chem-orbitals", "Orbitali", "chem-root", -120),
+                  node("chem-quantum", "Numeri quantici", "chem-root", 120),
+                ],
+                edges: [
+                  { from: "chem-root", to: "chem-orbitals" },
+                  { from: "chem-root", to: "chem-quantum" },
+                ],
+                undo: null,
+              },
+            },
+          ],
+        }),
+      );
+    }
     if (!name.startsWith("cards-browser")) return;
     // An archived topic hides its cards, so no topic holds a card: the browser has nothing to show.
     if (name === "cards-browser-empty") {
@@ -1021,7 +1060,9 @@ function prepareCardBrowser(name: string) {
         ('audit-card-bohr','audit-chem-plan','audit-atoms','Perché l’atomo di Bohr non spiega gli spettri di tutti gli elementi, compresi quelli con molti elettroni e interazioni tra loro?','Perché trascura la repulsione tra elettroni.','z2',1,'sources',2),
         ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una flashcard senza materia','Resta nel gruppo finale.','z3',0,'sources',1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,grounding,created_at) VALUES
-        ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);`);
+        ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);
+      INSERT INTO cards(id,subject_id,front,back,seed_key,grounding,created_at) VALUES
+        ('audit-card-free','audit-chem','Che cos’è un orbitale?','La regione dove è più probabile trovare l’elettrone.','z4','general',4);`);
     db.prepare(
       "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
     ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
@@ -2842,6 +2883,16 @@ async function openState(page: Page, name: string) {
       const panel = page.getByRole("complementary", { name: /Appunti di fisica/ });
       await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
       await expect(panel).toBeFocused();
+      break;
+    }
+    case "map-cards":
+    case "map-cards-no-exam": {
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page.getByRole("button", { name: both("Crea flashcard da questa mappa", "Make flashcards from this map") }).click();
+      const dialog = page.getByRole("dialog", { name: both("Crea flashcard", "Make flashcards") });
+      // The dialog names the subject of the map it was opened from.
+      await expect(dialog.locator(".px-mc-lead b")).toHaveText(name === "map-cards" ? "Fisica" : "Chimica");
+      await expect(dialog.locator("#mc-plan")).toHaveCount(name === "map-cards" ? 1 : 0);
       break;
     }
     case "map-export":

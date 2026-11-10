@@ -34,6 +34,8 @@ import "./CardBrowser.css";
 import { CardFaceFields } from "../../components/CardFaceFields";
 
 const PAGE_SIZE = 25;
+/** The exam filter's value for the cards with no exam. */
+const NO_EXAM = "none";
 
 type Status = "all" | "due" | "suspended" | "removed" | "leech";
 type Browse = RequestOutput<"study.browse">;
@@ -94,7 +96,7 @@ export function CardBrowser() {
     queryFn: () =>
       invoke("study.browse", {
         query: query.trim() || undefined,
-        planId: planId || undefined,
+        planId: planId === NO_EXAM ? null : planId || undefined,
         topicId: topicId || undefined,
         status,
         offset: (page - 1) * PAGE_SIZE,
@@ -115,7 +117,8 @@ export function CardBrowser() {
   // An exam or topic that no longer holds cards cannot filter.
   useEffect(() => {
     if (!data) return;
-    if (planId && !data.plans.some((plan) => plan.id === planId)) setPlanId("");
+    if (planId && (planId === NO_EXAM ? !data.examless : !data.plans.some((plan) => plan.id === planId)))
+      setPlanId("");
     if (topicId && !data.topics.some((topic) => topic.id === topicId))
       setTopicId("");
   }, [data, planId, topicId]);
@@ -147,7 +150,7 @@ export function CardBrowser() {
       mode={anki ?? "import"}
       open={anki !== null}
       onClose={() => setAnki(null)}
-      initialPlanId={planId || undefined}
+      initialPlanId={planId === NO_EXAM ? undefined : planId || undefined}
       initialTopicId={topicId || undefined}
       onImported={() => void refresh()}
     />
@@ -204,10 +207,9 @@ export function CardBrowser() {
     setSaving(true);
     setSaveFailed(false);
     try {
-      // Saving an existing card never reads the topic; a card whose topic is gone has none to send.
+      // Saving an existing card needs only its id; the exam, when it has one, has to match.
       await invoke("study.save", {
-        planId: editing.planId,
-        topicId: editing.topicId ?? "",
+        planId: editing.planId ?? undefined,
         cardId: editing.id,
         front: draftFront,
         back: draftBack,
@@ -303,7 +305,7 @@ export function CardBrowser() {
     subjectName: string | null;
     runs: Array<{
       key: string;
-      planTitle: string;
+      planTitle: string | null;
       topicTitle: string | null;
       cards: Card[];
     }>;
@@ -318,7 +320,7 @@ export function CardBrowser() {
       };
       sections.push(section);
     }
-    const key = `${card.planId}-${card.topicId ?? "none"}`;
+    const key = `${card.subjectId ?? "none"}-${card.planId ?? "none"}-${card.topicId ?? "none"}`;
     let run = section.runs.at(-1);
     if (!run || run.key !== key) {
       run = {
@@ -508,13 +510,14 @@ export function CardBrowser() {
               options={[
                 { value: "", label: t("cardBrowser.allExams") },
                 ...planGroups,
+                ...(data?.examless ? [{ value: NO_EXAM, label: t("cardBrowser.noExam") }] : []),
               ]}
             />
             <Select
               id="card-topic"
               aria-label={t("cardBrowser.topic")}
               value={topicId}
-              disabled={!planId}
+              disabled={!planId || planId === NO_EXAM}
               popupMatchSelectWidth={false}
               onChange={filter(setTopicId)}
               options={[
@@ -599,13 +602,38 @@ export function CardBrowser() {
               </header>
               {section.runs.map((run) => (
                 <div key={run.key} className="px-cardbrowser-run">
-                  <h3
-                    className="small px-cardbrowser-topic"
-                    id={`card-run-${run.key}`}
-                  >
-                    {run.planTitle} ·{" "}
-                    {run.topicTitle ?? t("cardBrowser.noTopic")}
-                  </h3>
+                  {run.planTitle == null ? (
+                    // A subject's cards with no exam can be reviewed on their own.
+                    <div className="px-cardbrowser-runhead">
+                      <h3
+                        className="small px-cardbrowser-topic"
+                        id={`card-run-${run.key}`}
+                      >
+                        {t("cardBrowser.noExam")}
+                      </h3>
+                      {section.subjectId ? (
+                        <Button
+                          size="small"
+                          shape="round"
+                          type="text"
+                          aria-label={t("cardBrowser.reviewSubject", {
+                            subject: section.subjectName ?? "",
+                          })}
+                          onClick={() => navigate(`/cards/subject/${section.subjectId}`)}
+                        >
+                          {t("cardBrowser.review")}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <h3
+                      className="small px-cardbrowser-topic"
+                      id={`card-run-${run.key}`}
+                    >
+                      {run.planTitle} ·{" "}
+                      {run.topicTitle ?? t("cardBrowser.noTopic")}
+                    </h3>
+                  )}
                   <ul aria-labelledby={`card-run-${run.key}`}>
                     {run.cards.map((card) => renderCard(card))}
                   </ul>

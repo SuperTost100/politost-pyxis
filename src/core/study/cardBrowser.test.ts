@@ -441,4 +441,33 @@ describe("card browser", () => {
       }),
     ).toThrow("card-missing");
   });
+
+  it("lists a subject's cards with no exam after its exams' cards, and filters on them", () => {
+    const db = library();
+    saveCard(db, { subjectId: "s-phys", front: "Campo elettrico?", back: "Forza per carica." }, T0);
+    subject(db, "s-geo", "Geometria", 2);
+    saveCard(db, { subjectId: "s-geo", front: "Autovalore?", back: "λ con Av = λv." }, T0);
+    const result = browseCards(db, {}, T0);
+    expect(result.examless).toBe(true);
+    expect(result.groups).toEqual([
+      { subjectId: "s-phys", subject: "Fisica", count: 4 },
+      { subjectId: "s-chem", subject: "Chimica", count: 2 },
+      { subjectId: "s-geo", subject: "Geometria", count: 1 },
+      { subjectId: null, subject: null, count: 1 },
+    ]);
+    expect(result.cards.slice(0, 4).map((card) => [card.front, card.planId, card.planTitle])).toEqual([
+      ["Velocità media?", "p-phys", "Fisica 1"],
+      ["Perché un corpo accelera?", "p-phys", "Fisica 1"],
+      ["Unità della forza?", "p-phys", "Fisica 1"],
+      ["Campo elettrico?", null, null],
+    ]);
+    expect(fronts(db, { planId: null })).toEqual(["Campo elettrico?", "Autovalore?"]);
+    expect(fronts(db, { planId: null, query: "campo" })).toEqual(["Campo elettrico?"]);
+    expect(fronts(db, { planId: "p-phys" })).not.toContain("Campo elettrico?");
+    // A card with no exam is due like any other.
+    expect(fronts(db, { status: "due" })).toContain("Autovalore?");
+    // The exam filter offers the exams that hold cards; "No exam" is offered when some card has none.
+    expect(result.plans.map((item) => item.id)).toEqual(["p-phys", "p-chem", "p-none"]);
+    expect(browseCards(library(), {}, T0).examless).toBe(false);
+  });
 });

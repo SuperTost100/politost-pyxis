@@ -36,6 +36,13 @@ describe("reminderText", () => {
     ).toBe("1 flashcard to review, Analisi exam tomorrow");
   });
 
+  it("says only the cards when no plan is named, and opens the daily review then", () => {
+    const none = summary({ planId: null, planTitle: null, daysToExam: null });
+    expect(reminderText("it", none).body).toBe("12 flashcard da ripassare");
+    expect(reminderText("en", none).body).toBe("12 flashcards to review");
+    expect(isOpenablePath("/cards/due")).toBe(true);
+  });
+
   it("leaves the exam out when it is far off, past or undated", () => {
     for (const daysToExam of [null, 31, -2])
       expect(reminderText("it", summary({ daysToExam })).body).toBe(

@@ -157,6 +157,36 @@ test("SRC-07 the file picker takes several files and the result lists them", asy
   }
 });
 
+test("SRC-07 pasting the same text twice keeps one source and says it is already in the library", async () => {
+  test.setTimeout(180000);
+  const { page, app, userData } = await start();
+  try {
+    await page.getByText("Fonti", { exact: true }).click();
+    const paste = async (title: string) => {
+      const dialog = await openAdd(page, "Testo");
+      await dialog.getByRole("textbox", { name: "Titolo" }).fill(title);
+      await dialog
+        .getByRole("textbox", { name: "Incolla gli appunti" })
+        .fill("La velocità è la derivata dello spazio rispetto al tempo. ".repeat(40));
+      await dialog.getByRole("button", { name: "Incolla gli appunti" }).click();
+      return dialog;
+    };
+    // The first paste is a clean import and closes the dialog.
+    await expect(await paste("Cinematica")).toBeHidden();
+    // The same text under another title is the source that is already there.
+    const dialog = await paste("Appunti di cinematica");
+    await expect(dialog.getByText("Non è stato aggiunto nulla di nuovo.")).toBeVisible();
+    await expect(dialog.getByText(/Cinematica.*Già in libreria: uso quella/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    const titles = await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
+    expect(titles.map((row) => row.title)).toEqual(["Cinematica"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("PLAN-01 the wizard starts with no sources and includes whatever is imported there", async () => {
   test.setTimeout(180000);
   const { app, page, userData, files } = await start();

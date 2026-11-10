@@ -79,4 +79,13 @@ describe("ASK-01 shared subjects", () => {
     });
     db.close();
   });
+  it("marks a subject in use while it has flashcards with no exam, and removing it keeps them", () => {
+    const db = openDatabase(":memory:");
+    const subject = addSubject(db, "Fisica 2");
+    db.prepare("INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('card', ?, 'Gauss', 'flusso', 1)").run(subject.id);
+    expect(listSubjects(db)).toEqual([{ ...subject, inUse: true, wholeMaps: 0 }]);
+    removeSubject(db, subject.id);
+    expect(db.prepare("SELECT id, plan_id, subject_id FROM cards").all()).toEqual([{ id: "card", plan_id: null, subject_id: null }]);
+    db.close();
+  });
 });

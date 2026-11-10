@@ -58,7 +58,7 @@ Context menus are the system's own, through `window.pyxis.contextMenu` (see `fea
 | `QuizOption`      | One answer of a multiple-choice question, before and after the check                   |
 | `GapItem`         | A gap to fill, named after its topic                                                   |
 | `CardFaceFields`  | A flashcard's front and back while it is edited                                        |
-| `MakeCardsDialog` | Makes flashcards from a selection or a reply                                           |
+| `MakeCardsDialog` | Makes flashcards from a selection, a reply or a map                                    |
 | `SmartText`       | A lesson's text with its inline checks                                                 |
 | `SelectionMenu`   | The actions on selected text in lessons and sources: ask, make a flashcard, copy       |
 

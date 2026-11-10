@@ -286,20 +286,154 @@ CREATE TRIGGER plans_subject_to_maps AFTER UPDATE OF subject_id ON plans BEGIN
   UPDATE maps SET subject_id = new.subject_id WHERE plan_id = new.id;
 END;`,
   },
-];
+  // Importing a file looks its hash up among the files a linked folder reads in place. A scan does it for up to 2,000
+  // files in a row, so the lookup has its own index, narrowed to the rows that lookup reads.
+  {
+    version: 27,
+    sql: `CREATE INDEX linked_files_hash ON linked_files(content_hash) WHERE content_hash IS NOT NULL AND missing_at IS NULL;`,
+  },
+  // A flashcard belongs to a subject, and only optionally to an exam. `cards.plan_id` becomes nullable, which needs a
+  // rebuilt table. `card_reviews` references `cards`, so this step runs with foreign keys off (see `migrate`): with
+  // them on, dropping the old table would delete every review through the cascade. Each row keeps its id, its rowid
+  // (the tie-break of the review order) and every column; `subject_id` is its exam's subject, NULL when the exam has
+  // none. A card with a topic has an exam. The triggers keep an exam's cards on the exam's subject, as for maps.
+  {
+    version: 28,
+    foreignKeysOff: { check: ["cards", "card_reviews"] },
+    sql: `CREATE TABLE cards_next (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
+  topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
+  front TEXT NOT NULL,
+  back TEXT NOT NULL,
+  engine_provider TEXT,
+  model_id TEXT,
+  model_source TEXT CHECK (model_source IS NULL OR model_source IN ('reported', 'selected')),
+  prompt_template TEXT,
+  prompt_version TEXT,
+  grounding TEXT CHECK (grounding IS NULL OR grounding IN ('sources', 'mixed', 'general')),
+  created_at INTEGER NOT NULL,
+  passage_id TEXT REFERENCES passages(id) ON DELETE SET NULL,
+  suspended INTEGER NOT NULL DEFAULT 0,
+  seed_key TEXT,
+  removed INTEGER NOT NULL DEFAULT 0,
+  search_text TEXT,
+  subject_id TEXT REFERENCES subjects(id) ON DELETE SET NULL,
+  CHECK (topic_id IS NULL OR plan_id IS NOT NULL)
+);
+INSERT INTO cards_next (rowid, id, plan_id, topic_id, front, back, engine_provider, model_id, model_source,
+    prompt_template, prompt_version, grounding, created_at, passage_id, suspended, seed_key, removed, search_text,
+    subject_id)
+  SELECT c.rowid, c.id, c.plan_id, c.topic_id, c.front, c.back, c.engine_provider, c.model_id, c.model_source,
+    c.prompt_template, c.prompt_version, c.grounding, c.created_at, c.passage_id, c.suspended, c.seed_key, c.removed,
+    c.search_text, p.subject_id
+  FROM cards c LEFT JOIN plans p ON p.id = c.plan_id;
+DROP TABLE cards;
+ALTER TABLE cards_next RENAME TO cards;
+CREATE INDEX cards_plan ON cards(plan_id, topic_id);
+CREATE INDEX cards_topic ON cards(topic_id);
+CREATE INDEX cards_passage ON cards(passage_id);
+CREATE INDEX cards_subject ON cards(subject_id, plan_id);
+CREATE INDEX cards_search_pending ON cards(id) WHERE search_text IS NULL;
+CREATE TRIGGER cards_search_stale AFTER UPDATE OF front, back ON cards BEGIN
+  UPDATE cards SET search_text = NULL WHERE id = new.id;
+END;
+CREATE TRIGGER cards_take_plan_subject AFTER INSERT ON cards WHEN new.plan_id IS NOT NULL BEGIN
+  UPDATE cards SET subject_id = (SELECT subject_id FROM plans WHERE id = new.plan_id) WHERE id = new.id;
+END;
+CREATE TRIGGER cards_follow_plan AFTER UPDATE OF plan_id ON cards WHEN new.plan_id IS NOT NULL BEGIN
+  UPDATE cards SET subject_id = (SELECT subject_id FROM plans WHERE id = new.plan_id) WHERE id = new.id;
+END;
+CREATE TRIGGER plans_subject_to_cards AFTER UPDATE OF subject_id ON plans BEGIN
+  UPDATE cards SET subject_id = new.subject_id WHERE plan_id = new.id;
+END;`,
+  },
+] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
-export function migrate(db: Database.Database): void {
+/** The newest schema version this build knows. */
+export const SCHEMA_VERSION = steps.at(-1)!.version;
+
+/** One broken reference as `foreign_key_check` reports it, named by the column that holds it. */
+type Violation = { table: string; rowid: number | null; parent: string; column: string };
+
+/**
+ * The broken references of these tables. A reference is told apart by its table, row, parent table and column rather
+ * than by the check's constraint index, which shifts when a rebuilt table gains a foreign key.
+ */
+function violationsOf(db: Database.Database, tables: string[]): Violation[] {
+  return tables.flatMap((table) => {
+    const columns = new Map(
+      (db.pragma(`foreign_key_list(${table})`) as Array<{ id: number; from: string }>).map((key) => [key.id, key.from]),
+    );
+    return (
+      db.pragma(`foreign_key_check(${table})`) as Array<{
+        table: string;
+        rowid: number | null;
+        parent: string;
+        fkid: number;
+      }>
+    ).map((row) => ({
+      table: row.table,
+      rowid: row.rowid,
+      parent: row.parent,
+      column: columns.get(row.fkid) ?? String(row.fkid),
+    }));
+  });
+}
+
+const violationKey = (v: Violation) => `${v.table}\n${v.rowid}\n${v.parent}\n${v.column}`;
+
+/**
+ * Brings the database up to `target` (the newest version by default; tests pass an older one to build a workspace as
+ * an earlier release left it). All pending steps run in one transaction.
+ *
+ * A step that rebuilds a table other tables reference follows SQLite's procedure for it: foreign keys are switched off
+ * before the transaction, since the pragma does nothing inside one and a DROP TABLE with them on runs the ON DELETE
+ * actions of the referencing rows. The step names the tables whose references are checked before and after it. A
+ * reference the rebuild broke rolls the whole migration back before foreign keys are switched on again. One that was
+ * already broken stays as it is, because this upgrade did not cause it and refusing to start would lock the owner out of
+ * their data; it is noted once in the log, with counts and no row content.
+ */
+export function migrate(db: Database.Database, target = SCHEMA_VERSION): void {
   const current = db.pragma("user_version", { simple: true });
   const version = typeof current === "number" ? current : 0;
   // A newer Pyxis wrote this workspace. Running on a schema this build does not know could damage it.
-  if (version > steps.at(-1)!.version) throw new Error("workspace-newer");
-  const pending = steps.filter((step) => step.version > version);
+  if (version > SCHEMA_VERSION) throw new Error("workspace-newer");
+  const pending = steps.filter((step) => step.version > version && step.version <= target);
   if (pending.length === 0) return;
-  const apply = db.transaction(() => {
-    for (const step of pending) {
-      db.exec(step.sql);
-      db.pragma(`user_version = ${step.version}`);
+  const keysOff = pending.some((step) => "foreignKeysOff" in step);
+  const keysWereOn = db.pragma("foreign_keys", { simple: true }) === 1;
+  if (keysOff && keysWereOn) {
+    if (db.inTransaction) throw new Error("migrate-in-transaction");
+    db.pragma("foreign_keys = OFF");
+    if (db.pragma("foreign_keys", { simple: true }) !== 0) throw new Error("migrate-foreign-keys");
+  }
+  const old: Violation[] = [];
+  try {
+    const apply = db.transaction(() => {
+      for (const step of pending) {
+        const tables = "foreignKeysOff" in step && step.foreignKeysOff ? step.foreignKeysOff.check : [];
+        const before = violationsOf(db, tables);
+        db.exec(step.sql);
+        const known = new Set(before.map(violationKey));
+        const added = violationsOf(db, tables).find((violation) => !known.has(violationKey(violation)));
+        if (added) throw new Error(`migrate-broken-references:${added.table}`);
+        old.push(...before);
+        db.pragma(`user_version = ${step.version}`);
+      }
+    });
+    apply();
+  } finally {
+    if (keysOff && keysWereOn) db.pragma("foreign_keys = ON");
+  }
+  if (old.length > 0) {
+    const counts = new Map<string, number>();
+    for (const violation of old) {
+      const key = `${violation.table}.${violation.column} -> ${violation.parent}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
-  });
-  apply();
+    console.warn(
+      `pyxis-core: the workspace already held ${old.length} broken reference(s) before this upgrade and they were left as they are (${[...counts].map(([key, count]) => `${key}: ${count}`).join(", ")})`,
+    );
+  }
 }

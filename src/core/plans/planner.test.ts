@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { setNewCardsPerDay } from "../study/cards";
+import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
@@ -383,6 +383,26 @@ describe("Oggi", () => {
     const cards = dueEverywhere(db, now);
     expect(cards.map((card) => card.planId)).toEqual(["a", "a", "b", "b"]);
     expect(todayPlan(db, now).cards?.due).toBe(4);
+  });
+
+  it("serves and counts flashcards with no exam after the dated exams, before a past one, each subject on its own", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "near", { examIn: 4 });
+    addPlan(db, "past", { examIn: -1 });
+    dueCard(db, "c-near", "near", "near-t0");
+    dueCard(db, "c-past", "past", "past-t0");
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c-free', 'phys', 'Campo', 'E', 1),
+        ('c-gone', 'phys', 'Rimossa', 'x', 1);
+      UPDATE cards SET removed = 1 WHERE id = 'c-gone';`);
+    expect(dueEverywhere(db, now).map((card) => [card.id, card.planId, card.subject])).toEqual([
+      ["c-near", "near", null],
+      ["c-free", null, "Fisica 2"],
+      ["c-past", "past", null],
+    ]);
+    expect(todayPlan(db, now).cards).toEqual({ due: 3, plans: 2, ratedToday: 0 });
+    rateCard(db, "c-free", "good", now);
+    expect(todayPlan(db, now).cards).toEqual({ due: 2, plans: 2, ratedToday: 1 });
   });
 });
 

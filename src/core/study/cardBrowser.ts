@@ -13,8 +13,9 @@ export type BrowsedCard = {
   id: string;
   front: string;
   back: string;
-  planId: string;
-  planTitle: string;
+  /** Null for a card with no exam, which belongs to its subject alone. */
+  planId: string | null;
+  planTitle: string | null;
   topicId: string | null;
   topicTitle: string | null;
   subjectId: string | null;
@@ -53,14 +54,16 @@ export type BrowseResult = {
     subject: string | null;
   }>;
   topics: Array<{ id: string; planId: string; title: string }>;
+  /** Whether any card has no exam, so the exam filter can offer "No exam". */
+  examless: boolean;
 };
 
 type Row = {
   id: string;
   front: string;
   back: string;
-  plan_id: string;
-  plan_title: string;
+  plan_id: string | null;
+  plan_title: string | null;
   topic_id: string | null;
   topic_title: string | null;
   subject_id: string | null;
@@ -96,15 +99,16 @@ function fillSearchText(db: Database.Database): void {
 const PAGE_MAX = 100;
 
 /**
- * Cards across every exam, grouped by subject and ordered subject, exam, topic, creation.
- * Cards of an archived topic stay out, as in the review queue. Every word of the search has to
+ * Cards across every exam, grouped by subject and ordered subject, exam, topic, creation; in each subject the cards
+ * with no exam come after its exams'. A subject is the card's own, which for an exam's card is the exam's. Cards of an
+ * archived exam or topic stay out, as in the review queue. `planId: null` keeps only the cards with no exam. Every word of the search has to
  * appear in the front or the back, compared on the folded copy in `cards.search_text`.
  */
 export function browseCards(
   db: Database.Database,
   input: {
     query?: string;
-    planId?: string;
+    planId?: string | null;
     topicId?: string;
     status?: CardStatus;
     offset?: number;
@@ -129,12 +133,13 @@ export function browseCards(
     leech: `c.removed = 0 AND COALESCE(json_extract(${latest}, '$.fsrs.lapses'), 0) >= ${leechLapses}`,
   };
   const from = `FROM cards c
-       JOIN plans p ON p.id = c.plan_id
+       LEFT JOIN plans p ON p.id = c.plan_id
        LEFT JOIN topics t ON t.id = c.topic_id
-       LEFT JOIN subjects s ON s.id = p.subject_id
+       LEFT JOIN subjects s ON s.id = c.subject_id
        WHERE t.archived_at IS NULL
          AND p.archived_at IS NULL
          AND (? IS NULL OR c.plan_id = ?)
+         AND (? = 0 OR c.plan_id IS NULL)
          AND (? IS NULL OR c.topic_id = ?)
          AND NOT EXISTS (SELECT 1 FROM json_each(?) w WHERE instr(c.search_text, w.value) = 0)
          AND ${byStatus[status]}`;
@@ -142,6 +147,7 @@ export function browseCards(
   const params = [
     input.planId ?? null,
     input.planId ?? null,
+    input.planId === null ? 1 : 0,
     input.topicId ?? null,
     input.topicId ?? null,
     JSON.stringify(words),
@@ -164,7 +170,7 @@ export function browseCards(
         ${latest} AS state_json
        ${from}
        ORDER BY ${subjectOrder},
-         p.title COLLATE NOCASE, p.id,
+         p.id IS NULL, p.title COLLATE NOCASE, p.id,
          t.id IS NULL, t.position, t.id,
          c.created_at, c.rowid
        LIMIT ? OFFSET ?`,
@@ -208,6 +214,7 @@ export function browseCards(
 }
 
 function browseFilters(db: Database.Database) {
+  const examless = Boolean(db.prepare(`SELECT 1 FROM cards WHERE plan_id IS NULL LIMIT 1`).get());
   const plans = db
     .prepare(
       `SELECT p.id, p.title, s.id AS subjectId, s.name AS subject
@@ -228,5 +235,5 @@ function browseFilters(db: Database.Database) {
        ORDER BY t.plan_id, t.position, t.id`,
     )
     .all() as BrowseResult["topics"];
-  return { plans, topics };
+  return { plans, topics, examless };
 }

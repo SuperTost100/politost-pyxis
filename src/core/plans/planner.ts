@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
-import { countDueCards, dueCards } from "../study/cards";
+import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks } from "../study/cards";
 import { topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
@@ -419,12 +419,17 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
   const plans = studyState(db, now);
   const { dated, exams, result, today } = layout(db, plans, now);
   const dueByPlan = plans.map((plan) => countDueCards(db, plan.row.id, now));
-  const due = dueByPlan.reduce((sum, count) => sum + count, 0);
+  // Flashcards with no exam are due in the same daily review.
+  const examless = examlessDecks(db).reduce(
+    (sum, deck) => sum + countDeckDue(db, { subjectId: deck.subjectId }, now),
+    0,
+  );
+  const due = dueByPlan.reduce((sum, count) => sum + count, examless);
   const rated = (
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM card_reviews r JOIN cards c ON c.id = r.card_id
-         WHERE r.reviewed_at >= ? AND c.plan_id IN (SELECT id FROM (${studyPlans}))`,
+         WHERE r.reviewed_at >= ? AND (c.plan_id IS NULL OR c.plan_id IN (SELECT id FROM (${studyPlans})))`,
       )
       .get(today) as { n: number }
   ).n;
@@ -486,8 +491,8 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
 }
 
 /**
- * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, plans without a date after
- * the dated ones and past exams last; at most 20 at a time, like a plan's own session.
+ * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, then plans without a date
+ * and each subject's cards with no exam, past exams last; at most 20 at a time, like a plan's own session.
  */
 export function dueEverywhere(db: Database.Database, now = Date.now()) {
   const today = startOfDay(now);
@@ -500,12 +505,35 @@ export function dueEverywhere(db: Database.Database, now = Date.now()) {
       (a.exam_at ?? 0) - (b.exam_at ?? 0) ||
       b.updated_at - a.updated_at,
   );
-  const cards: Array<ReturnType<typeof dueCards>[number] & { planId: string; planTitle: string }> =
-    [];
-  for (const row of ordered) {
+  type Due = ReturnType<typeof dueCards>[number] & {
+    planId: string | null;
+    planTitle: string | null;
+    subject: string | null;
+  };
+  const decks: Array<() => Due[]> = [
+    ...ordered
+      .filter((row) => rank(row) < 2)
+      .map((row) => () =>
+        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+      ),
+    ...examlessDecks(db).map((deck) => () =>
+      deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
+        ...card,
+        planId: null,
+        planTitle: null,
+        subject: deck.subject,
+      })),
+    ),
+    ...ordered
+      .filter((row) => rank(row) === 2)
+      .map((row) => () =>
+        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+      ),
+  ];
+  const cards: Due[] = [];
+  for (const deck of decks) {
     if (cards.length >= 20) break;
-    for (const card of dueCards(db, row.id, now))
-      cards.push({ ...card, planId: row.id, planTitle: row.title });
+    cards.push(...deck());
   }
   return cards.slice(0, 20);
 }
