@@ -353,14 +353,46 @@ END;`,
 /** The newest schema version this build knows. */
 export const SCHEMA_VERSION = steps.at(-1)!.version;
 
+/** One broken reference as `foreign_key_check` reports it, named by the column that holds it. */
+type Violation = { table: string; rowid: number | null; parent: string; column: string };
+
+/**
+ * The broken references of these tables. A reference is told apart by its table, row, parent table and column rather
+ * than by the check's constraint index, which shifts when a rebuilt table gains a foreign key.
+ */
+function violationsOf(db: Database.Database, tables: string[]): Violation[] {
+  return tables.flatMap((table) => {
+    const columns = new Map(
+      (db.pragma(`foreign_key_list(${table})`) as Array<{ id: number; from: string }>).map((key) => [key.id, key.from]),
+    );
+    return (
+      db.pragma(`foreign_key_check(${table})`) as Array<{
+        table: string;
+        rowid: number | null;
+        parent: string;
+        fkid: number;
+      }>
+    ).map((row) => ({
+      table: row.table,
+      rowid: row.rowid,
+      parent: row.parent,
+      column: columns.get(row.fkid) ?? String(row.fkid),
+    }));
+  });
+}
+
+const violationKey = (v: Violation) => `${v.table}\n${v.rowid}\n${v.parent}\n${v.column}`;
+
 /**
  * Brings the database up to `target` (the newest version by default; tests pass an older one to build a workspace as
  * an earlier release left it). All pending steps run in one transaction.
  *
  * A step that rebuilds a table other tables reference follows SQLite's procedure for it: foreign keys are switched off
  * before the transaction, since the pragma does nothing inside one and a DROP TABLE with them on runs the ON DELETE
- * actions of the referencing rows. The step names the tables whose references must still hold, and any broken one
- * rolls the whole migration back before foreign keys are switched on again.
+ * actions of the referencing rows. The step names the tables whose references are checked before and after it. A
+ * reference the rebuild broke rolls the whole migration back before foreign keys are switched on again. One that was
+ * already broken stays as it is, because this upgrade did not cause it and refusing to start would lock the owner out of
+ * their data; it is noted once in the log, with counts and no row content.
  */
 export function migrate(db: Database.Database, target = SCHEMA_VERSION): void {
   const current = db.pragma("user_version", { simple: true });
@@ -376,19 +408,32 @@ export function migrate(db: Database.Database, target = SCHEMA_VERSION): void {
     db.pragma("foreign_keys = OFF");
     if (db.pragma("foreign_keys", { simple: true }) !== 0) throw new Error("migrate-foreign-keys");
   }
+  const old: Violation[] = [];
   try {
     const apply = db.transaction(() => {
       for (const step of pending) {
+        const tables = "foreignKeysOff" in step && step.foreignKeysOff ? step.foreignKeysOff.check : [];
+        const before = violationsOf(db, tables);
         db.exec(step.sql);
-        if ("foreignKeysOff" in step && step.foreignKeysOff)
-          for (const table of step.foreignKeysOff.check)
-            if ((db.pragma(`foreign_key_check(${table})`) as unknown[]).length > 0)
-              throw new Error(`migrate-broken-references:${table}`);
+        const known = new Set(before.map(violationKey));
+        const added = violationsOf(db, tables).find((violation) => !known.has(violationKey(violation)));
+        if (added) throw new Error(`migrate-broken-references:${added.table}`);
+        old.push(...before);
         db.pragma(`user_version = ${step.version}`);
       }
     });
     apply();
   } finally {
     if (keysOff && keysWereOn) db.pragma("foreign_keys = ON");
+  }
+  if (old.length > 0) {
+    const counts = new Map<string, number>();
+    for (const violation of old) {
+      const key = `${violation.table}.${violation.column} -> ${violation.parent}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    console.warn(
+      `pyxis-core: the workspace already held ${old.length} broken reference(s) before this upgrade and they were left as they are (${[...counts].map(([key, count]) => `${key}: ${count}`).join(", ")})`,
+    );
   }
 }

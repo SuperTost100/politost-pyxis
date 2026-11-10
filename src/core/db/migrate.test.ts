@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { getLoadablePath } from "sqlite-vec";
 import { openDatabase } from "./connection";
@@ -609,21 +609,59 @@ describe("flashcards by subject", () => {
     expect(db.prepare("SELECT COUNT(*) FROM cards").pluck().get()).toBe(9);
   });
 
-  it("rolls the whole upgrade back when a card's references would not hold, and switches foreign keys on again", () => {
+  it("keeps an old broken reference as it was, logs it once without card text, and starts", () => {
     const { db, file } = workspaceAt(26);
     seedCards(db);
-    // A reference broken before the upgrade (written with checks off) stops it rather than being carried over.
+    // References that broke before this upgrade (written with checks off): a card's passage and a review's card.
     db.pragma("foreign_keys = OFF");
+    db.prepare("UPDATE cards SET passage_id = 'ghost' WHERE id = 'c1'").run();
     db.prepare("INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES ('orphan', 'gone', 'good', '{}', 1)").run();
     db.pragma("foreign_keys = ON");
     const before = snapshot(db);
+    expect(db.pragma("foreign_key_check")).toHaveLength(2);
     db.close();
-    expect(() => openDatabase(file)).toThrow("migrate-broken-references:card_reviews");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+    expect(again.pragma("foreign_keys", { simple: true })).toBe(1);
+    // Every card and review is still there, unchanged but for the new subject column; the old references are untouched.
+    const after = snapshot(again);
+    expect(after.cards.map(({ subject_id: _, ...card }) => card)).toEqual(before.cards);
+    expect(after.reviews).toEqual(before.reviews);
+    expect(after.events).toEqual(before.events);
+    expect(again.prepare("SELECT passage_id FROM cards WHERE id = 'c1'").pluck().get()).toBe("ghost");
+    expect(again.pragma("foreign_key_check")).toHaveLength(2);
+    // One note, naming how many and where, and none of the card text.
+    const notes = warn.mock.calls.map((call) => call.join(" "));
+    warn.mockRestore();
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("cards");
+    expect(notes[0]).toContain("card_reviews");
+    expect(notes[0]).not.toContain("Accelerazione");
+  });
+
+  it("rolls the whole upgrade back when the rebuild itself breaks a reference, and switches foreign keys on again", () => {
+    const { db, file } = workspaceAt(26);
+    seedCards(db);
+    // An exam that points at a subject that is gone (written with checks off): each of its cards would take that
+    // subject, so the rebuilt table would hold references that did not exist in the old one.
+    db.pragma("foreign_keys = OFF");
+    db.prepare("UPDATE plans SET subject_id = 'vanished' WHERE id = 'q'").run();
+    db.pragma("foreign_keys = ON");
+    const before = snapshot(db);
+    db.close();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(() => openDatabase(file)).toThrow("migrate-broken-references:cards");
+    warn.mockRestore();
     const raw = new Database(file);
     opened.push(raw);
     expect(raw.pragma("user_version", { simple: true })).toBe(26);
     // Migration 27 ran in the same transaction, so its index is gone again too.
     expect(raw.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name = 'linked_files_hash'").pluck().get()).toBe(0);
     expect(snapshot(raw)).toEqual(before);
+    // The failed upgrade left foreign keys on for the next open.
+    expect(raw.pragma("foreign_keys", { simple: true })).toBe(1);
   });
 });
