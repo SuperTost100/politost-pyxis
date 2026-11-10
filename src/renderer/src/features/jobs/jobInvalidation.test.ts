@@ -13,6 +13,7 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "source-details",
       "series:later",
     ]);
@@ -22,8 +23,17 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "series:later",
     ]);
+  });
+
+  it("refreshes the Flashcard section when a job that makes flashcards ends, and not before", () => {
+    for (const kind of ["cards-build", "cards-propose", "plan-build", "plan-rebuild"]) {
+      expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("card-sections");
+      expect(keys(staleFamilies({ kind, state: "running" }))).not.toContain("card-sections");
+    }
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "succeeded" }))).not.toContain("card-sections");
   });
 
   it("refreshes a source's citation counts when a job that cites passages ends", () => {
@@ -70,6 +80,7 @@ describe("stale batcher", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "series:later",
     ]);
   });
