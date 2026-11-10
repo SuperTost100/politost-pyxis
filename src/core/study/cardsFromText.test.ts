@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { templateVersion } from "../engine/prompts";
-import { dueCards } from "./cards";
+import { deckDueCards, dueCards } from "./cards";
 import {
   cardPlaces,
   proposeCards,
@@ -100,6 +100,18 @@ const reply = [
 ];
 
 describe("cards proposed from a text", () => {
+  it("writes in the profile's language when no exam is chosen", async () => {
+    const db = fixture();
+    db.prepare("UPDATE plans SET content_language = 'en' WHERE id = 'mech'").run();
+    const { seen, run } = recorded(reply.map((card) => ({ ...card, passageId: null })));
+    await proposeCards(db, { planId: "mech", topicId: "kin", text: "Velocity is a rate.", passageIds: [] }, run);
+    await proposeCards(db, { text: "Velocity is a rate.", passageIds: [] }, run);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]!.system).toContain("Write all output in English.");
+    expect(seen[1]!.system).toContain("Write all output in Italian.");
+    db.close();
+  });
+
   it("sends the text and its passages, returns the cards and stores nothing", async () => {
     const db = fixture();
     const { seen, run } = recorded(reply);
@@ -424,6 +436,50 @@ describe("saving the reviewed cards", () => {
     ).toThrow("topic-missing");
     db.close();
   });
+
+  it("files them under a subject with no exam, due in that subject's own review, and skips fronts it already has", () => {
+    const db = fixture();
+    // A front the exam's topic has does not block the same front among the subject's cards with no exam.
+    save(db);
+    const loose = (cards = kept) =>
+      saveProposedCards(db, { subjectId: "phys", cards, provider: "claude", model: "test-model" });
+    expect(loose()).toEqual({ saved: 2, skipped: 0 });
+    expect(loose([{ front: "inertia ", back: "x", passageId: null }])).toEqual({ saved: 0, skipped: 1 });
+    expect(
+      db
+        .prepare("SELECT front, plan_id, topic_id, subject_id, grounding FROM cards WHERE plan_id IS NULL ORDER BY front")
+        .all(),
+    ).toEqual([
+      { front: "Inertia", plan_id: null, topic_id: null, subject_id: "phys", grounding: "general" },
+      { front: "What is velocity?", plan_id: null, topic_id: null, subject_id: "phys", grounding: "sources" },
+    ]);
+    const due = deckDueCards(db, { subjectId: "phys" }, Date.now() + 1);
+    expect(due.map((card) => card.front).sort()).toEqual(["Inertia", "What is velocity?"]);
+    expect(due.find((card) => card.passageId === "p1")?.sourceId).toBe("src");
+    // The exam's own deck is unchanged: the cards with no exam are not its.
+    expect(dueCards(db, "mech", Date.now() + 1, "kin")).toHaveLength(2);
+    expect(() =>
+      saveProposedCards(db, { subjectId: "gone", cards: kept, provider: "p", model: "m" }),
+    ).toThrow("subject-missing");
+    expect(() => saveProposedCards(db, { cards: kept, provider: "p", model: "m" })).toThrow("subject-missing");
+    db.close();
+  });
+
+  it("gives the cards of an exam the exam's subject, even when a subject is sent too", () => {
+    const db = fixture();
+    saveProposedCards(db, {
+      planId: "org",
+      topicId: "alk",
+      subjectId: "phys",
+      cards: kept,
+      provider: "p",
+      model: "m",
+    });
+    expect(db.prepare("SELECT DISTINCT plan_id, topic_id, subject_id FROM cards").all()).toEqual([
+      { plan_id: "org", topic_id: "alk", subject_id: "chem" },
+    ]);
+    db.close();
+  });
 });
 
 describe("where the cards go", () => {
@@ -460,43 +516,75 @@ describe("where the cards go", () => {
     db.close();
   });
 
-  it("takes the subject's latest plan, or the plan the passages point to", () => {
+  it("files under the subject alone unless the passages point to an exam's topic", () => {
     const db = fixture();
-    expect(cardPlaces(db, { subject: "Physics" })).toMatchObject({
-      planId: "mech",
+    // A chat's subject picks no exam by itself: the exam is optional and nothing points to one.
+    expect(cardPlaces(db, { subject: "physics" })).toMatchObject({
+      subjectId: "phys",
+      planId: null,
       topicId: null,
     });
     expect(
       cardPlaces(db, { subject: "Physics", passageIds: ["p3"] }),
-    ).toMatchObject({ planId: "mech", topicId: "dyn" });
+    ).toMatchObject({ subjectId: "phys", planId: "mech", topicId: "dyn" });
+    // Passages alone pick the exam and topic, and the subject is the exam's.
     expect(cardPlaces(db, { passageIds: ["p3"] })).toMatchObject({
+      subjectId: "phys",
       planId: "mech",
       topicId: "dyn",
     });
     expect(
       cardPlaces(db, { subject: "Unknown", passageIds: [] }),
-    ).toMatchObject({ planId: null, topicId: null });
+    ).toMatchObject({ subjectId: null, planId: null, topicId: null });
     db.close();
   });
 
-  it("keeps a map's cards in its own subject's exams, chosen by id, even when its passages point elsewhere", () => {
+  it("takes the subject of the cited passages' sources when no exam's topic holds them", () => {
     const db = fixture();
-    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('bio', 'Biology', 1)").run();
-    // p3 belongs to a Physics topic; a Chemistry map that cites it still files its cards under Chemistry.
-    expect(cardPlaces(db, { subjectId: "chem", passageIds: ["p3"] })).toEqual({
-      plans: [expect.objectContaining({ id: "org" })],
-      planId: "org",
+    db.prepare("UPDATE sources SET subject_id = 'chem' WHERE id = 'src'").run();
+    db.prepare("DELETE FROM topic_passages").run();
+    expect(cardPlaces(db, { passageIds: ["p1", "p3"] })).toMatchObject({
+      subjectId: "chem",
+      planId: null,
       topicId: null,
     });
-    // A subject with no exam offers nothing and preselects nothing, whatever the passages say.
-    expect(cardPlaces(db, { subjectId: "bio", passageIds: ["p3"] })).toEqual({
+    // In the student's order, then by name.
+    db.prepare("UPDATE subjects SET position = 1 WHERE id = 'chem'").run();
+    expect(cardPlaces(db, {}).subjects).toEqual([
+      { id: "phys", name: "Physics" },
+      { id: "chem", name: "Chemistry" },
+    ]);
+    db.close();
+  });
+
+  it("keeps a map's cards in its own subject, offering only its exams, even when its passages point elsewhere", () => {
+    const db = fixture();
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('bio', 'Biology', 1)").run();
+    // p3 belongs to a Physics topic; a Chemistry map that cites it still files its cards under Chemistry, and with no
+    // passage in a Chemistry topic no exam is preselected.
+    expect(cardPlaces(db, { subjectId: "chem", passageIds: ["p3"] })).toMatchObject({
+      plans: [expect.objectContaining({ id: "org", subjectId: "chem" })],
+      subjectId: "chem",
+      planId: null,
+      topicId: null,
+    });
+    // A map of a topic keeps its exam and topic.
+    expect(cardPlaces(db, { subjectId: "chem", planId: "org", topicId: "alk" })).toMatchObject({
+      subjectId: "chem",
+      planId: "org",
+      topicId: "alk",
+    });
+    // A subject with no exam offers none: the cards go under the subject.
+    expect(cardPlaces(db, { subjectId: "bio", passageIds: ["p3"] })).toMatchObject({
       plans: [],
+      subjectId: "bio",
       planId: null,
       topicId: null,
     });
     // The id wins over a subject name that another subject has taken since.
     expect(cardPlaces(db, { subjectId: "bio", subject: "Physics", passageIds: ["p3"] })).toMatchObject({
       plans: [],
+      subjectId: "bio",
       planId: null,
     });
     db.close();

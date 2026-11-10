@@ -17,22 +17,28 @@ const PASSAGES_MAX = 4;
 const PASSAGE_CHARS = 600;
 
 export type CardPlaces = {
+  /** Every subject, in the student's order. */
+  subjects: Array<{ id: string; name: string }>;
   plans: Array<{
     id: string;
     title: string;
+    subjectId: string | null;
     subject: string | null;
     topics: Array<{ id: string; title: string }>;
   }>;
-  /** Preselected plan and topic, or null when nothing in the request points to one. */
+  /** The preselected subject, and the exam and topic, each null when nothing in the request points to one. */
+  subjectId: string | null;
   planId: string | null;
   topicId: string | null;
 };
 
 /**
- * The plans and topics a card can be filed under, with a first guess. A request that names a plan or a topic keeps it.
- * Otherwise a subject picks its latest plan, and the passages the text cites pick the plan and topic they belong to most.
- * A `subjectId` (a map's subject) limits the list and the guess to that subject's exams, so passages the subject shares
- * with another one never file the cards there; a subject without an exam offers nothing.
+ * Where cards can be filed, with a first guess. Cards belong to a subject; an exam and one of its topics are optional.
+ * A request that names a plan or a topic keeps it. Otherwise the passages the text cites pick the exam and topic they
+ * belong to most, and nothing picks an exam without them. The subject is the one named (a map's `subjectId`, or a
+ * chat's subject by name), else the chosen exam's, else the one most of the cited passages' sources belong to. A
+ * `subjectId` also limits the exams to that subject's, so passages it shares with another subject never file the cards
+ * there.
  */
 export function cardPlaces(
   db: Database.Database,
@@ -44,9 +50,13 @@ export function cardPlaces(
     passageIds?: string[];
   },
 ): CardPlaces {
+  const subjects = db
+    .prepare(`SELECT id, name FROM subjects ORDER BY position, name COLLATE NOCASE, id`)
+    .all() as CardPlaces["subjects"];
   const rows = db
     .prepare(
-      `SELECT p.id AS plan_id, p.title AS plan_title, s.name AS subject, t.id AS topic_id, t.title AS topic_title
+      `SELECT p.id AS plan_id, p.title AS plan_title, s.id AS subject_id, s.name AS subject,
+         t.id AS topic_id, t.title AS topic_title
        FROM plans p
        JOIN topics t ON t.plan_id = p.id AND t.archived_at IS NULL
        LEFT JOIN subjects s ON s.id = p.subject_id
@@ -56,6 +66,7 @@ export function cardPlaces(
     .all({ subjectId: input.subjectId ?? null }) as Array<{
     plan_id: string;
     plan_title: string;
+    subject_id: string | null;
     subject: string | null;
     topic_id: string;
     topic_title: string;
@@ -67,6 +78,7 @@ export function cardPlaces(
       plan = {
         id: row.plan_id,
         title: row.plan_title,
+        subjectId: row.subject_id,
         subject: row.subject,
         topics: [],
       };
@@ -75,6 +87,7 @@ export function cardPlaces(
     plan.topics.push({ id: row.topic_id, title: row.topic_title });
   }
 
+  const cited = JSON.stringify(input.passageIds ?? []);
   const votes = new Map<string, number>();
   if (input.passageIds?.length)
     for (const row of db
@@ -82,7 +95,7 @@ export function cardPlaces(
         `SELECT topic_id, COUNT(*) AS n FROM topic_passages
          WHERE passage_id IN (SELECT value FROM json_each(?)) GROUP BY topic_id`,
       )
-      .all(JSON.stringify(input.passageIds)) as Array<{
+      .all(cited) as Array<{
       topic_id: string;
       n: number;
     }>)
@@ -104,21 +117,36 @@ export function cardPlaces(
   };
 
   const named = plans.find((plan) => plan.id === input.planId);
-  // With a subject id every plan listed is the subject's already, so its name adds nothing.
-  const ofSubject = input.subjectId
-    ? plans
-    : input.subject
-      ? plans.filter((plan) => plan.subject === input.subject)
-      : [];
-  const plan =
-    named ??
-    best(ofSubject, planVotes) ??
-    ofSubject[0] ??
-    best(plans, planVotes);
+  const nameSubject = input.subject
+    ? subjects.find((item) => item.name.toLowerCase() === input.subject!.toLowerCase())?.id
+    : undefined;
+  const fixedSubject = input.subjectId ?? named?.subjectId ?? nameSubject;
+  // With a subject, only its exams can be guessed from the passages.
+  const candidates = fixedSubject ? plans.filter((plan) => plan.subjectId === fixedSubject) : plans;
+  const plan = named ?? best(candidates, planVotes);
   const topic =
     plan?.topics.find((item) => item.id === input.topicId) ??
     (plan ? best(plan.topics, (item) => votes.get(item.id) ?? 0) : undefined);
-  return { plans, planId: plan?.id ?? null, topicId: topic?.id ?? null };
+  const sourceSubject = () =>
+    (
+      db
+        .prepare(
+          `SELECT s.subject_id FROM passages p JOIN sources s ON s.id = p.source_id
+           WHERE p.id IN (SELECT value FROM json_each(?)) AND s.subject_id IS NOT NULL
+           GROUP BY s.subject_id ORDER BY COUNT(*) DESC, s.subject_id LIMIT 1`,
+        )
+        .pluck()
+        .get(cited) as string | undefined
+    ) ?? null;
+  const subjectId =
+    fixedSubject ?? plan?.subjectId ?? (input.passageIds?.length ? sourceSubject() : null);
+  return {
+    subjects,
+    plans,
+    subjectId: subjectId ?? null,
+    planId: plan?.id ?? null,
+    topicId: topic?.id ?? null,
+  };
 }
 
 type Passage = { id: string; text: string };
@@ -177,15 +205,16 @@ export type ProposedCard = {
 export async function proposeCards(
   db: Database.Database,
   input: {
-    planId: string;
-    topicId: string;
+    /** The exam the cards may go under, which sets the language they are written in. */
+    planId?: string;
+    topicId?: string;
     text: string;
     passageIds: string[];
   },
   run?: GenerateInput["run"],
   signal?: AbortSignal,
 ): Promise<{ cards: ProposedCard[]; provider: string; model: string }> {
-  requireTopic(db, input.planId, input.topicId);
+  if (input.planId) requireTopic(db, input.planId, input.topicId ?? "");
   const text = input.text.trim().slice(0, TEXT_MAX);
   if (!text) throw new Error("card-blank");
   const found = input.passageIds.length
@@ -208,7 +237,8 @@ export async function proposeCards(
     schema,
     system: [
       systemPrompt(TEMPLATE, {
-        contentLanguage: planLanguage(db, input.planId),
+        // With no exam, the profile's content language.
+        contentLanguage: planLanguage(db, input.planId ?? ""),
       }),
       interestsLine(db),
     ]
@@ -229,36 +259,46 @@ export async function proposeCards(
 }
 
 /**
- * Files the cards the student kept. They start like any new card: no review yet, so they are due at once.
- * A front the topic already has is skipped, so saving twice adds nothing.
+ * Files the cards the student kept, under an exam's topic or, with no exam, under a subject. They start like any new
+ * card: no review yet, so they are due at once. A front already in the same place (the topic, or the subject's cards
+ * with no exam) is skipped, so saving twice adds nothing.
  */
 export function saveProposedCards(
   db: Database.Database,
   input: {
-    planId: string;
-    topicId: string;
+    planId?: string;
+    topicId?: string;
+    subjectId?: string;
     cards: ProposedCard[];
     provider: string;
     model: string;
   },
 ): { saved: number; skipped: number } {
-  requireTopic(db, input.planId, input.topicId);
+  const planId = input.planId ?? null;
+  const topicId = planId ? (input.topicId ?? "") : null;
+  const subjectId = planId ? null : (input.subjectId ?? "");
+  if (planId) requireTopic(db, planId, topicId!);
+  else if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(subjectId))
+    throw new Error("subject-missing");
   return db.transaction(() => {
     // Same comparison as the proposal check and seed_key: case and spacing do not make a new front.
     const present = new Set(
       (
         db
           .prepare(
-            `SELECT front FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0`,
+            planId
+              ? `SELECT front FROM cards WHERE plan_id = ? AND topic_id = ? AND removed = 0`
+              : `SELECT front FROM cards WHERE plan_id IS NULL AND subject_id = ? AND removed = 0`,
           )
-          .all(input.planId, input.topicId) as Array<{ front: string }>
+          .all(...(planId ? [planId, topicId] : [subjectId])) as Array<{ front: string }>
       ).map((row) => norm(row.front)),
     );
     const passage = db.prepare("SELECT 1 FROM passages WHERE id = ?");
+    // An exam's card takes the exam's subject from the trigger `cards_take_plan_subject`.
     const insert = db.prepare(
-      `INSERT INTO cards (id, plan_id, topic_id, front, back, engine_provider, model_id, model_source,
+      `INSERT INTO cards (id, plan_id, topic_id, subject_id, front, back, engine_provider, model_id, model_source,
          prompt_template, prompt_version, grounding, passage_id, seed_key, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reported', ?, ?, ?, ?, ?, ?)`,
     );
     let saved = 0;
     for (const row of input.cards) {
@@ -272,8 +312,9 @@ export function saveProposedCards(
       const now = Date.now();
       insert.run(
         uuidv7(now),
-        input.planId,
-        input.topicId,
+        planId,
+        topicId,
+        subjectId,
         front,
         back,
         input.provider,

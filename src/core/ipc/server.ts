@@ -298,6 +298,7 @@ const routes = {
   "study.gapDrillStart": ["study", "gapDrillStart"],
   "study.gapDrillRead": ["study", "gapDrillRead"],
   "study.queue": ["study", "queue"],
+  "study.subjectCards": ["study", "subjectCards"],
   "study.cardSettings": ["study", "cardSettings", "bare"],
   "study.saveCardSettings": ["study", "saveCardSettings"],
   "study.save": ["study", "save"],

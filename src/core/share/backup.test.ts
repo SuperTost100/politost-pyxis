@@ -14,7 +14,9 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { unzipSync, zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getLoadablePath } from "sqlite-vec";
 import { openDatabase } from "../db/connection";
+import { migrate } from "../db/migrate";
 import { uuidv7 } from "../../shared/ids";
 import {
   backupWorkspace,
@@ -151,6 +153,59 @@ describe("backupWorkspace / restoreWorkspace", { timeout: 30_000 }, () => {
       expect(restored.prepare("SELECT * FROM plans ORDER BY id").all()).toEqual(
         expected,
       );
+      restored.close();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("keeps flashcards with no exam and their reviews, and upgrades a dev.7 backup's cards without losing one", () => {
+    const root = mkdtempSync(join(tmpdir(), "pyxis-card-backup-"));
+    try {
+      const rows = (db: Database.Database) => ({
+        cards: db.prepare("SELECT id, plan_id, topic_id, front, removed, suspended FROM cards ORDER BY id").all(),
+        reviews: db.prepare("SELECT * FROM card_reviews ORDER BY id").all(),
+      });
+      const seed = (db: Database.Database) =>
+        db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1);
+          INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('p', 'phys', 'Elettro', 'ready', 1, 1);
+          INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'p', 'Campo', 0, 1);
+          INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES ('c1', 'p', 't', 'E?', 'F/q', 1), ('c2', 'p', 't', 'Gauss', 'flusso', 2);
+          UPDATE cards SET suspended = 1 WHERE id = 'c2';
+          INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES ('r1', 'c1', 'good', '{"dueAt":9}', 5), ('r2', 'c2', 'hard', '{"dueAt":7}', 6);`);
+
+      // A current workspace with a card that has no exam.
+      const source = join(root, "source");
+      mkdirSync(source);
+      const db = openDatabase(join(source, "pyxis.db"));
+      seed(db);
+      db.exec(`INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c3', 'phys', 'Libera', 'sì', 3);
+        INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES ('r3', 'c3', 'easy', '{"dueAt":11}', 8);`);
+      const expected = rows(db);
+      db.close();
+      const archive = join(root, "backup.zip");
+      backupWorkspace(source, archive);
+      const target = join(root, "fresh");
+      restoreWorkspace(archive, target);
+      let restored = openDatabase(join(target, "pyxis.db"));
+      expect(rows(restored)).toEqual(expected);
+      expect(restored.prepare("SELECT subject_id FROM cards WHERE id = 'c3'").pluck().get()).toBe("phys");
+      restored.close();
+
+      // A backup dev.7 made, before cards had a subject: restore migrates it on the staging copy.
+      const old = join(root, "dev7.db");
+      const raw = new Database(old);
+      raw.pragma("foreign_keys = ON");
+      raw.loadExtension(getLoadablePath());
+      migrate(raw, 26);
+      seed(raw);
+      const before = rows(raw);
+      raw.close();
+      const oldZip = join(root, "dev7.zip");
+      writeFileSync(oldZip, zipSync({ "pyxis.db": new Uint8Array(readFileSync(old)) }));
+      restoreWorkspace(oldZip, target);
+      restored = openDatabase(join(target, "pyxis.db"));
+      expect(rows(restored)).toEqual(before);
+      expect(restored.prepare("SELECT DISTINCT subject_id FROM cards").pluck().all()).toEqual(["phys"]);
       restored.close();
     } finally {
       rmSync(root, { recursive: true, force: true });
