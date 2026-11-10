@@ -14,7 +14,7 @@ export type SubjectPassage = { id: string; text: string; section: string };
  * The passages a whole-subject map is built from. They come from the subject's sources at their newest version: files in
  * its linked folders, material imported with the subject, and the study material of the subject's exams, whose sources
  * often have no subject of their own. Hidden copies (chat attachments, a plan file's originals), files that are gone
- * from a linked folder and sources still being read stay out, and so does a past exam paper that none of the subject's
+ * from a linked folder (unless Pyxis keeps a copy of them) and sources still being read stay out, and so does a past exam paper that none of the subject's
  * exams studies from, as a past paper never becomes a topic either. The first passage of each section goes first, so
  * the map sees how the material is organised; when a subject has more sections than fit, they are taken evenly from the
  * first to the last, and with fewer, the rest is filled evenly from the other passages. Only the chosen passages' text
@@ -32,7 +32,8 @@ export function subjectPassages(db: Database.Database, subjectId: string): Subje
        JOIN passages p ON p.source_id = s.id
          AND p.version = (SELECT MAX(version) FROM passages WHERE source_id = s.id)
        WHERE (s.subject_id = @subject OR s.id IN studied) AND s.library = 1 AND s.status = 'ready'
-         AND NOT EXISTS (SELECT 1 FROM linked_files lf WHERE lf.source_id = s.id AND lf.missing_at IS NOT NULL)
+         AND (s.blob_sha IS NOT NULL
+              OR NOT EXISTS (SELECT 1 FROM linked_files lf WHERE lf.source_id = s.id AND lf.missing_at IS NOT NULL))
          AND (s.id IN studied OR NOT EXISTS (
            SELECT 1 FROM plan_sources ps WHERE ps.source_id = s.id AND ps.role = 'past_paper'))
        ORDER BY s.title COLLATE NOCASE, s.id, p.rowid`,

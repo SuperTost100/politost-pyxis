@@ -539,7 +539,8 @@ export function addExtractionVersion(
 /**
  * The next version of a source read from a linked folder, after its file changed there. As for a re-read, older
  * passages stay for the items that cite them, which are marked stale, and a run with no text is refused
- * (`reextract-no-text`) so the text in use stays. Pyxis keeps no copy of the file, so the version names none.
+ * (`reextract-no-text`) so the text in use stays. Pyxis keeps no copy of the file, so the version names none. A Library
+ * copy that a linked file took over stops naming its stored original as its current file; its older versions keep it.
  */
 export function addLinkedVersion(
   db: Database.Database,
@@ -553,7 +554,7 @@ export function addLinkedVersion(
   const kept = keptPages(extracted);
   if (kept.length === 0) throw new Error("reextract-no-text");
   appendVersion(db, sourceId, null, source.kind, kept, extracted.extractor, (now) => {
-    db.prepare(`UPDATE sources SET status = 'ready', updated_at = ? WHERE id = ?`).run(now, sourceId);
+    db.prepare(`UPDATE sources SET status = 'ready', blob_sha = NULL, updated_at = ? WHERE id = ?`).run(now, sourceId);
   });
   return { sourceId, title: source.title, chapters: 0, passages: kept.length, exercises: 0 };
 }

@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { blobSize } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { createRunner } from "../jobs/runner";
@@ -103,6 +104,7 @@ function setup(
     runner,
     protectedPaths: [workspace],
     hash: options.hash ?? ((paths, maxBytes) => hashFiles(paths, maxBytes)),
+    storedSize: (sha) => blobSize(workspace, sha),
     ocrReady: async () => false,
     run: options.run ?? tidy,
     watch: options.watch ?? null,
@@ -643,6 +645,7 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
     runner,
     protectedPaths: [tempDir("pyxis-linked-ws-")],
     hash: (paths, maxBytes) => hashFiles(paths, maxBytes),
+    storedSize: () => null,
     ocrReady: async () => false,
     run: options.run,
     watch: null,

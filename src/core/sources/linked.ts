@@ -24,6 +24,8 @@ export type LinkedDeps = {
   /** The workspace and the app's own data. A linked folder may not lie inside them, and a walk never enters them. */
   protectedPaths: string[];
   hash: HashFiles;
+  /** The size of a stored file in bytes, or null when it is not there: a look hashes only new files that size. */
+  storedSize: (sha: string) => number | null;
   /** Whether local OCR can read a photo now. A photo found before then is left for a later look. */
   ocrReady: () => Promise<boolean>;
   /** Stands in for the engine in tests. */
@@ -213,6 +215,19 @@ export async function peekFolder(
   return groups;
 }
 
+/**
+ * A Library copy a linked file with the same bytes can take over (`adopt`), as a condition on `sources`. A source that
+ * is being replaced with another file is not one: its `blob_sha` names the old file until the replacement is published,
+ * so the bytes it names are not the text it is about to hold. The import job of a replacement says so (`replace`), where
+ * the first import of a copy does not, and that one is taken over as it is read.
+ */
+const ADOPTABLE = `library = 1 AND blob_sha IS NOT NULL AND origin_url IS NULL AND kind != 'smartbook'
+  AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+  AND NOT EXISTS (
+    SELECT 1 FROM jobs j WHERE j.state IN ('queued', 'running', 'interrupted')
+      AND j.kind IN ('source-import', 'source-import-vision')
+      AND json_extract(j.params_json, '$.sourceId') = sources.id AND json_extract(j.params_json, '$.replace') = 1)`;
+
 /** A folder name as a subject name: trimmed and cut to what `subjects` holds, so `addSubject` never refuses it. */
 const subjectNameOf = (folder: string) => folder.trim().slice(0, MAX_SUBJECT_NAME).trim();
 const isComplete = (cut: FolderCut) => !cut.depth && !cut.unreadable;
@@ -374,6 +389,59 @@ export function linkedFolders(deps: LinkedDeps) {
       folderId: row.folder_id,
       ...(version > 1 ? { reextract: true } : {}),
     });
+  }
+
+  /**
+   * Library copies a new linked file may turn out to be: a file the student imported, still usable, that is not a link's
+   * page and that no linked file reads yet. A copy kept out of the Library by a chat or a plan file goes with that chat
+   * or plan, so it is never one. Newest first, as the import's own duplicate check finds them.
+   */
+  function importedCopies(): Array<{ id: string; sha: string; size: number }> {
+    const rows = db
+      .prepare(
+        `SELECT id, blob_sha AS sha FROM sources
+         WHERE ${ADOPTABLE} AND NOT EXISTS (SELECT 1 FROM linked_files l WHERE l.source_id = sources.id)
+         ORDER BY created_at DESC, rowid DESC`,
+      )
+      .all() as Array<{ id: string; sha: string }>;
+    return rows.flatMap((row) => {
+      const size = deps.storedSize(row.sha);
+      return size === null ? [] : [{ ...row, size }];
+    });
+  }
+
+  /**
+   * Makes a Library copy the source of a new linked file with the same bytes, so the material shows once and keeps the
+   * citations, lessons, maps and cards that point at it. The copy's text is that file's text already, so nothing is read
+   * again; from now on a look follows the file as it follows any linked file. The copy keeps its stored original until
+   * the file changes, and its own subject; one without a subject takes the subfolder's. False when the file or the copy
+   * changed hands since the look listed them.
+   */
+  function adopt(folderId: string, file: Found, sourceId: string, sha: string): boolean {
+    return db.transaction(() => {
+      const still = db
+        .prepare(
+          `SELECT 1 FROM sources WHERE id = ? AND blob_sha = ? AND ${ADOPTABLE}
+           AND NOT EXISTS (SELECT 1 FROM linked_files l WHERE l.source_id = sources.id)`,
+        )
+        .get(sourceId, sha);
+      if (!still) return false;
+      const { changes } = db
+        .prepare(
+          `UPDATE linked_files SET source_id = ?, content_hash = ?, pending = 0
+           WHERE folder_id = ? AND rel_path = ? AND pending = 1 AND source_id IS NULL`,
+        )
+        .run(sourceId, sha, folderId, file.rel);
+      if (!changes) return false;
+      // Read now, not at the start of the look: setup may have been confirmed while the look walked.
+      const subjectId = db
+        .prepare(`SELECT subject_id FROM linked_subfolders WHERE folder_id = ? AND name = ?`)
+        .pluck()
+        .get(folderId, file.subfolder) as string | null | undefined;
+      if (subjectId)
+        db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ? AND subject_id IS NULL`).run(subjectId, sourceId);
+      return true;
+    })();
   }
 
   /** Folders a look is walking. Their recorded files wait, since one may turn out to be a file that moved. */
@@ -630,10 +698,13 @@ export function linkedFolders(deps: LinkedDeps) {
             .map((row) => [`${row.folder_id}\0${row.rel_path}`, row]),
         ).values(),
       ];
-      const sizes = new Set(gone.map((row) => row.size));
+      // A new file may also hold the same bytes as a file the student imported into the Library before. That copy
+      // becomes the linked file instead of a second source (`adopt`), so new files of a copy's size are hashed too.
+      const copies = fresh.length ? importedCopies() : [];
+      const sizes = new Set([...gone.map((row) => row.size), ...copies.map((copy) => copy.size)]);
       const taken = new Error("moved-already");
       const maybeMoved = fresh.filter((file) => sizes.has(file.size));
-      for (let at = 0; at < maybeMoved.length && gone.length; at += HASH_BATCH) {
+      for (let at = 0; at < maybeMoved.length && (gone.length || copies.length); at += HASH_BATCH) {
         const batch = maybeMoved.slice(at, at + HASH_BATCH);
         const hashes = await deps.hash(
           batch.map((file) => file.path),
@@ -642,7 +713,14 @@ export function linkedFolders(deps: LinkedDeps) {
         batch.forEach((file, index) => {
           const sha = hashes[index];
           const match = sha ? gone.find((row) => row.size === file.size && row.content_hash === sha) : undefined;
-          if (!match) return;
+          if (!match) {
+            const copy = sha ? copies.find((item) => item.size === file.size && item.sha === sha) : undefined;
+            if (copy && adopt(folderId, file, copy.id, sha!)) {
+              copies.splice(copies.indexOf(copy), 1);
+              changes += 1;
+            }
+            return;
+          }
           gone.splice(gone.indexOf(match), 1);
           const subjectId = subfolders.get(file.subfolder)?.subject_id ?? null;
           const moved = db.transaction(() => {
@@ -856,15 +934,25 @@ export function linkedFolders(deps: LinkedDeps) {
   }
 
   function assignSubject(folderId: string, key: string, subjectId: string): void {
+    const previous =
+      (db.prepare(`SELECT subject_id FROM linked_subfolders WHERE folder_id = ? AND name = ?`).pluck().get(folderId, key) as
+        | string
+        | null
+        | undefined) ?? null;
     db.prepare(`UPDATE linked_subfolders SET subject_id = ?, skipped = 0 WHERE folder_id = ? AND name = ?`).run(
       subjectId,
       folderId,
       key,
     );
+    // A Library copy that a file here took over (it still has its stored original) keeps a subject of its own. Without a
+    // subject, or with the one the subfolder had before, it takes the new one, since that subject came from the folder.
+    // shortcut: a copy whose own subject is the same as its folder's cannot be told apart from one that inherited it, and
+    // follows the folder too; telling them apart takes a column recording where the subject came from.
     db.prepare(
       `UPDATE sources SET subject_id = ?
-       WHERE id IN (SELECT source_id FROM linked_files WHERE folder_id = ? AND subfolder = ?)`,
-    ).run(subjectId, folderId, key);
+       WHERE id IN (SELECT source_id FROM linked_files WHERE folder_id = ? AND subfolder = ?)
+         AND (blob_sha IS NULL OR subject_id IS NULL OR subject_id IS ?)`,
+    ).run(subjectId, folderId, key, previous);
   }
 
   return {
