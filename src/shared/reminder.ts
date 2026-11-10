@@ -1,10 +1,13 @@
 import type { MenuLanguage } from "./menu";
 
-/** What a study reminder says: cards due now, and the plan the student should open (the one with the nearest exam). */
+/**
+ * What a study reminder says: cards due now, and the plan the student should open (the one with the nearest exam).
+ * With only flashcards that have no exam due, there is no plan and the reminder opens the daily review.
+ */
 export type ReminderSummary = {
   dueCards: number;
-  planId: string;
-  planTitle: string;
+  planId: string | null;
+  planTitle: string | null;
   /** Whole days to the plan's exam; null without a date or once it has passed. */
   daysToExam: number | null;
 };
@@ -26,13 +29,12 @@ export function reminderText(
   language: MenuLanguage,
   summary: ReminderSummary,
 ): { title: string; body: string } {
+  const title = summary.planTitle ?? "";
   const plan =
-    summary.planTitle.length > MAX_TITLE
-      ? `${summary.planTitle.slice(0, MAX_TITLE - 1).trimEnd()}…`
-      : summary.planTitle;
+    title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE - 1).trimEnd()}…` : title;
   const days = summary.daysToExam;
   const exam =
-    days !== null && days >= 0 && days <= EXAM_MENTION_DAYS ? days : null;
+    plan && days !== null && days >= 0 && days <= EXAM_MENTION_DAYS ? days : null;
   if (language === "it") {
     const cards = `${summary.dueCards} flashcard da ripassare`;
     const when =
@@ -64,12 +66,12 @@ export function reminderText(
 }
 
 /**
- * Pages main may ask the renderer to open: a plan's page, or the Flashcards page. The preload checks it, so a message
+ * Pages main may ask the renderer to open: a plan's page, the Flashcards page or the daily review. The preload checks it, so a message
  * from anywhere else cannot send the router to an arbitrary path.
  */
 export function isOpenablePath(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    (value === "/exams/cards" || /^\/plans\/[A-Za-z0-9_-]{1,64}$/.test(value))
+    (value === "/exams/cards" || value === "/cards/due" || /^\/plans\/[A-Za-z0-9_-]{1,64}$/.test(value))
   );
 }

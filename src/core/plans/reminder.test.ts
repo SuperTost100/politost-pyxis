@@ -85,4 +85,15 @@ describe("reminderSummary", () => {
     expect(reminderSummary(db, NOON)?.dueCards).toBe(1);
     db.close();
   });
+
+  it("counts flashcards with no exam, and with only those due opens the daily review", () => {
+    const { db, plan, cards } = database();
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('free1', 'phys', 'a', 'b', 1), ('free2', 'phys', 'c', 'd', 1);`);
+    expect(reminderSummary(db, NOON)).toEqual({ dueCards: 2, planId: null, planTitle: null, daysToExam: null });
+    plan("a", "Analisi", "ready", NOON + 3 * DAY);
+    cards("a", 4);
+    expect(reminderSummary(db, NOON)).toEqual({ dueCards: 6, planId: "a", planTitle: "Analisi", daysToExam: 3 });
+    db.close();
+  });
 });

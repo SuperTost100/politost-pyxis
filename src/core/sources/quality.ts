@@ -76,8 +76,10 @@ export async function hashFiles(paths: string[], maxBytes: number): Promise<Arra
 /**
  * The newest source whose current file has this hash and that is still usable: reading, waiting or ready.
  * A removed, failed, cancelled or interrupted source does not count, so importing that file again starts over.
- * A chat attachment or a plan file can leave a usable source out of the library (`library = 0`). `libraryOnly` skips
- * those, for answers about what the library holds. A flow that reuses a hidden source must promote it.
+ * A file a linked folder reads in place has no stored copy, so its hash is on the folder's row, and counts while the
+ * file is still there. A chat attachment or a plan file can leave a usable source out of the library
+ * (`library = 0`). `libraryOnly` skips those, for answers about what the library holds. A flow that reuses a hidden
+ * source must promote it.
  */
 export function existingSourceFor(
   db: Database.Database,
@@ -87,11 +89,42 @@ export function existingSourceFor(
   const row = db
     .prepare(
       `SELECT id FROM sources
-       WHERE blob_sha = ? AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+       WHERE (blob_sha = ?
+              OR id IN (SELECT source_id FROM linked_files WHERE content_hash = ? AND missing_at IS NULL))
+         AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
          AND (? = 0 OR library = 1)
        ORDER BY created_at DESC, rowid DESC LIMIT 1`,
     )
-    .get(sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
+    .get(sha, sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
+/**
+ * The query behind `existingLinkFor`. The import jobs are filtered by address first, in a part that does not refer to
+ * the outer row, so SQLite runs it once. Written as a correlated `EXISTS` it scanned every import job once per source,
+ * which a library of linked folders (one source and one job per file) turns into minutes.
+ *
+ * A job's address counts while the job is still to fetch the page, or while the source is still a link (it has an
+ * address of its own, the one the page ended on). A source replaced with a file has no address, so the finished job
+ * that once fetched a page for it no longer finds it.
+ */
+export const EXISTING_LINK_SQL = `WITH asked AS (
+    SELECT json_extract(j.params_json, '$.sourceId') AS id, j.state FROM jobs j
+    WHERE j.kind IN ('source-import', 'source-import-vision') AND json_extract(j.params_json, '$.url') = @url)
+  SELECT s.id FROM sources s
+  WHERE s.library = 1 AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+    AND (s.origin_url = @url
+         OR s.id IN (SELECT id FROM asked WHERE state IN ('queued', 'running'))
+         OR (s.origin_url IS NOT NULL AND s.id IN (SELECT id FROM asked)))
+  ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1`;
+
+/**
+ * The usable library source saved from this web address, so saving a link twice gives one source. A link stores no
+ * bytes until its page is fetched, so the address is looked up on the source (the page's final address, once fetched)
+ * and on the import job that is still to fetch it.
+ */
+export function existingLinkFor(db: Database.Database, url: string): string | null {
+  const row = db.prepare(EXISTING_LINK_SQL).get({ url }) as { id: string } | undefined;
   return row?.id ?? null;
 }
 

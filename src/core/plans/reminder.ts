@@ -1,12 +1,12 @@
 import type Database from "better-sqlite3";
 import type { ReminderSummary } from "../../shared/reminder";
-import { countDueCards } from "../study/cards";
+import { countDeckDue, countDueCards, examlessDecks } from "../study/cards";
 import { daysUntil } from "./create";
 
 /**
  * What the daily study reminder reports: the flashcards due now across the plans that are built, and the plan to open.
  * That plan is the one with the nearest exam among those with cards due, or the one with the most cards due when none
- * has a date. Null when nothing is due. Reads only, so asking costs the student nothing. Plans still building are left out. Counting goes through
+ * has a date; flashcards with no exam count too, and when only they are due there is no plan. Null when nothing is due. Reads only, so asking costs the student nothing. Plans still building are left out. Counting goes through
  * `countDueCards`, so whatever it excludes from "due" (suspended or removed cards, archived topics) is excluded here too.
  */
 export function reminderSummary(
@@ -25,13 +25,20 @@ export function reminderSummary(
       days: plan.exam_at == null ? null : daysUntil(plan.exam_at, now),
     }))
     .filter((entry) => entry.cards > 0);
-  if (due.length === 0) return null;
+  const examless = examlessDecks(db).reduce(
+    (sum, deck) => sum + countDeckDue(db, { subjectId: deck.subjectId }, now),
+    0,
+  );
+  if (due.length === 0)
+    return examless > 0
+      ? { dueCards: examless, planId: null, planTitle: null, daysToExam: null }
+      : null;
   const upcoming = due
     .filter((entry) => entry.days !== null && entry.days >= 0)
     .sort((a, b) => a.days! - b.days!);
   const chosen = upcoming[0] ?? [...due].sort((a, b) => b.cards - a.cards)[0]!;
   return {
-    dueCards: due.reduce((sum, entry) => sum + entry.cards, 0),
+    dueCards: due.reduce((sum, entry) => sum + entry.cards, examless),
     planId: chosen.plan.id,
     planTitle: chosen.plan.title,
     daysToExam: chosen.days !== null && chosen.days >= 0 ? chosen.days : null,

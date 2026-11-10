@@ -19,7 +19,7 @@ import { nextLearningDue, trackLearning, type LearningCards } from "./learningCa
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
 import { LoadError } from "../../components/LoadError";
-import { usePlan } from "../../lib/queries";
+import { usePlan, useSubjects } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
@@ -42,11 +42,13 @@ const plainText = (markdown: string) => markdown.replace(/\*\*/g, "").replace(/\
 
 export function CardsPage() {
   const { t } = useTranslation();
-  const { planId, topicId } = useParams();
-  // Without a plan these are Oggi's due cards from every plan, closest exam first.
-  const everywhere = !planId;
+  const { planId, topicId, subjectId } = useParams();
+  // A subject's flashcards with no exam, reviewed on their own.
+  const bySubject = Boolean(subjectId);
+  // Without a plan or a subject these are Oggi's due cards from every plan and subject, closest exam first.
+  const everywhere = !planId && !bySubject;
   // Without a topic this is the Review session: its stored cards, then its questions.
-  const reviewing = !topicId && !everywhere;
+  const reviewing = !topicId && Boolean(planId);
   // Opened from a finished step on the path: looking again starts no card generation and records no step, unless the
   // student rates a card.
   const [searchParams] = useSearchParams();
@@ -132,7 +134,14 @@ export function CardsPage() {
     enabled: everywhere,
     queryFn: () => invoke("study.dueEverywhere", {}),
   });
-  const deck = everywhere ? dueEverywhere : cards;
+  const subjectCards = useQuery({
+    queryKey: ["subject-cards", subjectId],
+    enabled: bySubject,
+    queryFn: () => invoke("study.subjectCards", { subjectId: subjectId ?? "" }),
+  });
+  const subjects = useSubjects();
+  const subjectName = subjects.data?.find((item) => item.id === subjectId)?.name;
+  const deck = everywhere ? dueEverywhere : bySubject ? subjectCards : cards;
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
     enabled: Boolean(planId && topicId),
@@ -197,23 +206,27 @@ export function CardsPage() {
   }, [buildProgress]);
   const deckCards = everywhere
     ? dueEverywhere.data
-    : reviewing
+    : bySubject
+      ? subjectCards.data
+      : reviewing
       ? reviewQueue.data?.cards
       : cards.data;
   const card =
     deckCards?.find((item) => item.id === pinned) ?? deckCards?.[0];
-  // Oggi's cards come from several plans; the card on screen says which one it belongs to.
+  // Oggi's cards come from several plans and subjects; the card on screen says which one it belongs to.
   const shownCard = everywhere ? dueEverywhere.data?.find((item) => item.id === card?.id) : undefined;
-  const cardPlanId = everywhere ? shownCard?.planId : planId;
+  const cardPlanId = everywhere ? (shownCard?.planId ?? undefined) : planId;
+  const cardPlace = shownCard ? (shownCard.planTitle ?? shownCard.subject ?? undefined) : undefined;
   useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
-  // The plan and topic of each card rated here, so each plan's path gets its own cards step.
+  // The plan and topic of each card rated here, so each plan's path gets its own cards step. A rating belongs to its
+  // review, so taking it back removes that entry; a card with no exam, or no topic, has no entry to remove.
   const [ratedIn, setRatedIn] = useState<
-    Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
+    Array<{ reviewId: string; planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
   const plan = usePlan(cardPlanId);
   const topicTitle = topicId ? plan.data?.topics.find((topic) => topic.id === topicId)?.title : undefined;
   // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
-  const shown = everywhere ? dueEverywhere : reviewing ? reviewQueue : cards;
+  const shown = everywhere ? dueEverywhere : bySubject ? subjectCards : reviewing ? reviewQueue : cards;
   const deckLoading = shown.isLoading || (!reviewing && build.isLoading);
   // Said aloud when a rating brings up the next card; the old card's buttons are gone and focus falls to the page.
   // Until the rating's refresh has replaced the deck, the card shown is still the one just rated.
@@ -226,6 +239,8 @@ export function CardsPage() {
   /** Records this topic's card session on the path: when its last due card is rated, or when the student closes it. */
   async function finishSession(): Promise<boolean> {
     if (everywhere) return finishEverywhere();
+    // A subject's cards with no exam belong to no path.
+    if (bySubject) return true;
     if (!planId || !topicId) return false;
     if (recorded) return true;
     setFinishFailed(false);
@@ -307,8 +322,6 @@ export function CardsPage() {
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
-  // Editing needs a topic; a review card brings its own.
-  const cardTopicId = topicId ?? card?.topicId ?? undefined;
   useEffect(() => {
     setEditing(false);
     stopTurn();
@@ -324,6 +337,7 @@ export function CardsPage() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ["cards", planId, topicId] }),
       client.invalidateQueries({ queryKey: ["cards-everywhere"] }),
+      client.invalidateQueries({ queryKey: ["subject-cards", subjectId] }),
       client.invalidateQueries({ queryKey: ["review-session", planId] }),
       client.invalidateQueries({ queryKey: ["card-queue", planId, topicId] }),
       client.invalidateQueries({
@@ -356,7 +370,7 @@ export function CardsPage() {
       if (everywhere && cardPlanId && card.topicId)
         setRatedIn((current) => [
           ...current,
-          { planId: cardPlanId, topicId: card.topicId!, rating },
+          { reviewId: state.reviewId, planId: cardPlanId, topicId: card.topicId!, rating },
         ]);
       const now = Date.now();
       setClock(now);
@@ -381,7 +395,7 @@ export function CardsPage() {
       if (action.kind === "rate") {
         await invoke("study.undoRate", { reviewId: action.reviewId });
         setSeen((current) => current.slice(0, -1));
-        setRatedIn((current) => current.slice(0, -1));
+        setRatedIn((current) => current.filter((entry) => entry.reviewId !== action.reviewId));
         setLearning((current) =>
           Object.fromEntries(
             Object.entries(current).filter(([id]) => id !== action.cardId),
@@ -402,7 +416,7 @@ export function CardsPage() {
   }
 
   function startEdit() {
-    if (!card || !cardTopicId) return;
+    if (!card) return;
     setDraftFront(card.front);
     setDraftBack(card.back);
     setEditing(true);
@@ -476,7 +490,7 @@ export function CardsPage() {
         body,
         sourceIds: card.sourceId ? [card.sourceId] : undefined,
         planId: cardPlanId,
-        subject: plan.data?.subject ?? undefined,
+        subject: plan.data?.subject ?? shownCard?.subject ?? subjectName ?? undefined,
       });
       // Leaving for the tutor ends the visit like the X does, so the ratings so far reach the path.
       if (!reviewing && seen.length > 0 && !recorded && !(await finishSession())) return;
@@ -492,8 +506,8 @@ export function CardsPage() {
     void finishSession().then((ok) => ok && navigate(path));
   }
   function close() {
-    // Oggi's session has no plan to go back to; it ends on the exams list.
-    leaveTo(everywhere ? "/exams" : `/plans/${planId ?? ""}`);
+    // Oggi's session has no plan to go back to; it ends on the exams list. A subject's cards go back to the browser.
+    leaveTo(everywhere ? "/exams" : bySubject ? "/exams/cards" : `/plans/${planId ?? ""}`);
   }
 
   useEffect(() => {
@@ -528,7 +542,7 @@ export function CardsPage() {
       } else if (showBack && /^[1-4]$/.test(event.key)) {
         event.preventDefault();
         void rate(RATINGS[Number(event.key) - 1]!);
-      } else if (letter === MENU_KEYS.edit && cardTopicId) {
+      } else if (letter === MENU_KEYS.edit) {
         event.preventDefault();
         startEdit();
       } else if (letter === MENU_KEYS.suspend) {
@@ -541,12 +555,17 @@ export function CardsPage() {
     }
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [card, editing, adding, showBack, lastAction, cardTopicId]);
+  }, [card, editing, adding, showBack, lastAction]);
 
   // Oggi has no per-topic count: what is rated plus what is still queued, at most 20 queued at a time.
   const sessionTotal = reviewing
     ? (reviewQueue.data?.progress.total ?? 0)
-    : seen.length + (everywhere ? (dueEverywhere.data?.length ?? 0) : (queue.data?.due ?? 0));
+    : seen.length +
+      (everywhere
+        ? (dueEverywhere.data?.length ?? 0)
+        : bySubject
+          ? (subjectCards.data?.length ?? 0)
+          : (queue.data?.due ?? 0));
   const sessionDone = reviewing ? (reviewQueue.data?.progress.done ?? 0) : seen.length;
   // The header counts the card on screen: the first card reads "1 of 20".
   const sessionAt = Math.min(sessionTotal, sessionDone + (card ? 1 : 0));
@@ -589,21 +608,25 @@ export function CardsPage() {
       back={
         everywhere
           ? { text: t("nav.exams"), onClick: close }
-          : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
+          : bySubject
+            ? { text: t("exams.cards"), onClick: close }
+            : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
       }
       title={
         everywhere
           ? t("oggi.cardsTitle")
-          : reviewing
+          : bySubject
+            ? [t("cards.title"), subjectName].filter(Boolean).join(" \u00b7 ")
+            : reviewing
             ? t("cards.reviewTitle")
             : [t("cards.title"), topicTitle].filter(Boolean).join(" \u00b7 ")
       }
       subtitle={
         sessionTotal > 0
-          ? [shownCard?.planTitle, t("cards.sessionProgress", { done: sessionAt, total: sessionTotal })]
+          ? [cardPlace, t("cards.sessionProgress", { done: sessionAt, total: sessionTotal })]
               .filter(Boolean)
               .join(" \u00b7 ")
-          : shownCard?.planTitle
+          : cardPlace
       }
       actions={
         <>
@@ -612,7 +635,10 @@ export function CardsPage() {
               open={adding}
               onOpenChange={setAdding}
               onAdd={async (front, back) => {
-                await invoke("study.save", { planId: planId ?? "", topicId: topicId ?? "", front, back });
+                await invoke(
+                  "study.save",
+                  bySubject ? { subjectId, front, back } : { planId, topicId, front, back },
+                );
                 void refresh();
               }}
             />
@@ -631,7 +657,7 @@ export function CardsPage() {
             type="text"
             className="px-studybar-action"
             icon={<Pencil size={16} strokeWidth={1.75} aria-hidden />}
-            disabled={!card || !cardTopicId || editing || adding || ratingPending}
+            disabled={!card || editing || adding || ratingPending}
             aria-keyshortcuts={MENU_KEYS.edit.toUpperCase()}
             onClick={startEdit}
           >
@@ -694,7 +720,7 @@ export function CardsPage() {
               {t("cards.mastered", { count: queue.data.mastered })}
             </p>
           ) : null}
-          {reviewing || everywhere ? null : (
+          {reviewing || everywhere || bySubject ? null : (
             <div className="px-cards-toolbar-actions">
               <ExportButton
                 planId={planId ?? ""}
@@ -779,7 +805,6 @@ export function CardsPage() {
                       {
                         key: "edit",
                         label: t("cards.edit"),
-                        disabled: !cardTopicId,
                         extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
                       },
                       {
@@ -824,11 +849,9 @@ export function CardsPage() {
                       type="primary"
                       shape="round"
                       onClick={() => {
-                        if (!cardPlanId || !cardTopicId) return;
                         act(
                           invoke("study.save", {
                             planId: cardPlanId,
-                            topicId: cardTopicId,
                             cardId: card.id,
                             front: draftFront,
                             back: draftBack,
