@@ -147,7 +147,7 @@ export function ExamsHome() {
       {tab === "plans" ? planImport.element : null}
       {/* Plans show a skeleton until the list arrives, so "No plans yet" never flashes first. */}
       {tab === "sources" ? (
-        <LibraryPanel />
+        <LibraryPanel sortsSubjects />
       ) : tab === "cards" ? (
         <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
           <CardBrowser />

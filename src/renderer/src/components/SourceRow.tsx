@@ -3,6 +3,7 @@ import {
   AlertCircle,
   BookMarked,
   CheckCircle2,
+  ChevronRight,
   FileText,
   MoreHorizontal,
 } from "lucide-react";
@@ -47,6 +48,10 @@ export function SourceRow(props: {
   /** Opens the source. Without it the title is plain text. */
   onOpen?: () => void;
   selected?: boolean;
+  /** A class for a passing state, such as a row that just landed in its list. */
+  className?: string;
+  /** Shown in place of the state, such as the subject picker of a file waiting for one. */
+  aside?: ReactNode;
   /** Lines under the meta line, such as a failed import's reason or a new book version. */
   notes?: ReactNode;
   actions: {
@@ -71,7 +76,7 @@ export function SourceRow(props: {
   const problem = PROBLEM.has(source.status);
   return (
     <li
-      className={props.selected ? "px-source-row is-selected" : "px-source-row"}
+      className={["px-source-row", props.selected ? "is-selected" : "", props.className ?? ""].filter(Boolean).join(" ")}
       data-source-id={source.id}
     >
       <span className="px-source-row-icon" aria-hidden>
@@ -101,6 +106,7 @@ export function SourceRow(props: {
         <span className="small px-source-row-meta">{meta}</span>
         {props.notes}
       </div>
+      {props.aside ?? (
       <span
         className={
           problem
@@ -120,6 +126,7 @@ export function SourceRow(props: {
           <ScanPercent jobId={source.scanJobId} />
         ) : null}
       </span>
+      )}
       <Dropdown
         trigger={["click"]}
         autoFocus
@@ -131,6 +138,8 @@ export function SourceRow(props: {
         )}
         menu={{
           items: props.actions.items,
+          // A submenu's arrow is drawn, not read: its title is named by its label alone.
+          expandIcon: <ChevronRight size={14} strokeWidth={1.75} aria-hidden className="px-source-row-submenu" />,
           onClick: ({ key }) => props.actions.onSelect(key),
         }}
       >

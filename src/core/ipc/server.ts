@@ -378,6 +378,8 @@ const routes = {
   "sources.paste": ["sources", "paste"],
   "sources.linkPreview": ["sources", "linkPreview", "signal"],
   "sources.link": ["sources", "link"],
+  "sources.sortSubjects": ["sources", "sortSubjects"],
+  "sources.move": ["sources", "move"],
   "sources.importBook": ["sources", "importBook", "signal"],
   "sources.updateBook": ["sources", "updateBook", "signal"],
   "sources.scanFolder": ["sources", "scanFolder", "signal"],

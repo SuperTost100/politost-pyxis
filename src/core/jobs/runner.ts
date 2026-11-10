@@ -38,6 +38,8 @@ export type JobSpec = {
   about?: (params: unknown) => JobAbout;
   /** What a page waiting on the job knows it by (`JobView.ref`). */
   ref?: (params: unknown) => string | null;
+  /** How many things the job works on, such as the files of one sort, for the list's wording (`JobView.count`). */
+  count?: (params: unknown) => number;
   /** The request the job came from, when it made several jobs of this kind (`JobView.group`, without `waiting`). */
   group?: (params: unknown) => { id: string; folder?: string } | null;
   /**
@@ -185,13 +187,14 @@ export function createRunner(
     const steps = stepViewsStmt.all(jobId) as JobView["steps"];
     const spec = specs.get(job.kind);
     const params =
-      spec?.title || spec?.about || spec?.ref || spec?.group
+      spec?.title || spec?.about || spec?.ref || spec?.group || spec?.count
         ? (JSON.parse((paramsStmt.get(jobId) as { params_json: string }).params_json) as unknown)
         : undefined;
     const title = spec?.title?.(params);
     const about = spec?.about?.(params) ?? {};
     const ref = spec?.ref?.(params);
     const group = spec?.group?.(params);
+    const count = spec?.count?.(params);
     return {
       id: job.id,
       kind: job.kind,
@@ -201,6 +204,7 @@ export function createRunner(
       ...(about.exam ? { exam: about.exam } : {}),
       ...(about.activity ? { activity: about.activity } : {}),
       ...(ref ? { ref } : {}),
+      ...(count === undefined ? {} : { count }),
       state: job.state,
       progress: job.progress,
       stepLabel: job.step_label,

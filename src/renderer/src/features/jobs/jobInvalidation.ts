@@ -1,6 +1,6 @@
 import type { JobView } from "../../../../shared/ipc";
 
-const sourceKinds = new Set(["source-import", "source-import-vision", "source-index", "source-ocr"]);
+const sourceKinds = new Set(["source-import", "source-import-vision", "source-index", "source-ocr", "library-sort"]);
 const planKinds = new Set(["plan-build", "plan-rebuild"]);
 /** Jobs that save items citing source passages, so a source's citation counts change when they end. */
 const citingKinds = new Set(["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"]);
@@ -19,6 +19,8 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   if (planKinds.has(job.kind)) keys.push("plan-build");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
+  // Choosing the subjects of Library files can make new subjects.
+  if (job.kind === "library-sort") keys.push("subjects");
   // A job that ends joins or leaves the jobs list's "finished today" group.
   if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
   if (finished.has(job.state) && citingKinds.has(job.kind) && !keys.includes("source-details")) keys.push("source-details");

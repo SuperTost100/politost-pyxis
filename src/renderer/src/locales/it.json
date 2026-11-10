@@ -493,7 +493,9 @@
       "vectors": "Indicizzo i brani",
       "download": "Scarico il modello di ricerca",
       "ocrData": "Scarico i dati di lettura delle scansioni",
-      "ocr": "Leggo le pagine scansionate"
+      "ocr": "Leggo le pagine scansionate",
+      "sortRead": "Aspetto di aver letto i file",
+      "sortSubjects": "Scelgo la materia"
     },
     "copySelection": "Copia",
     "embedQueued": "Il download è nelle attività. Puoi annullarlo o riprenderlo.",
@@ -707,6 +709,31 @@
         "handouts": "dispense"
       },
       "missing": "Spostato o cancellato dalla cartella {{folder}}. Le citazioni restano."
+    },
+    "sort": {
+      "working": "Scelgo la materia",
+      "createdTitle": "Materia nuova.",
+      "created_one": "L'ho creata per questo file, perché non andava in nessuna delle altre.",
+      "created_other": "L'ho creata per questi {{count}} file, perché non andavano in nessuna delle altre.",
+      "rename": "Rinomina",
+      "renameNamed": "Rinomina la materia {{name}}",
+      "renameLabel": "Nome della materia {{name}}",
+      "moveTo": "Sposta in",
+      "newSubject": "Nuova materia…",
+      "newSubjectTitle": "Sposta in una materia nuova",
+      "newSubjectName": "Nome della materia",
+      "newSubjectMove": "Sposta",
+      "cancel": "Annulla",
+      "unsortedTitle": "Da sistemare",
+      "noAi": "Non hai collegato uno strumento AI, quindi la materia di questi file la scegli tu.",
+      "noAiLink": "Collega uno strumento",
+      "unsure": "Non ho capito a quale materia vanno questi file: scegli tu.",
+      "stopped": "Hai fermato la scelta della materia: riprendila da Attività, oppure sceglila tu.",
+      "choose": "Scegli la materia",
+      "chooseFor": "Materia di {{title}}",
+      "failed": "Non sono riuscito a scegliere la materia. Riprova da Attività, oppure sceglila tu.",
+      "linked": "Questo file sta in una cartella collegata, quindi la sua materia è quella della cartella.",
+      "subjectMissing": "Questa materia non c'è più. Scegline un'altra."
     }
   },
   "cards": {
@@ -2217,7 +2244,8 @@
       "mapBuild_topic": "Mappa di {{topic}} pronta",
       "ocrData": "Dati di lettura delle scansioni scaricati",
       "embedding": "Modello di ricerca scaricato",
-      "python": "Python scaricato"
+      "python": "Python scaricato",
+      "librarySort": "Materie scelte"
     },
     "cancel": "Annulla",
     "stop": "Ferma",
@@ -2286,7 +2314,9 @@
       "mapBuild": "Creo la mappa",
       "mapBuild_topic": "Creo la mappa di {{topic}}",
       "simulationBuild": "Preparo la simulazione d'esame",
-      "simulationGrade": "Correggo la simulazione d'esame"
+      "simulationGrade": "Correggo la simulazione d'esame",
+      "librarySort_one": "Scelgo la materia di un file",
+      "librarySort_other": "Scelgo la materia di {{count}} file"
     },
     "debug": {
       "title": "Dettagli tecnici e debug",

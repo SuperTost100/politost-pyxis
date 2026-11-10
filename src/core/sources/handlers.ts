@@ -36,6 +36,7 @@ import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { checkLinkPath, linkedFolders } from "./linked";
 import { linkedFile } from "./linked-file";
+import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { watchFolder } from "./linked-watch";
 import type { LinkMode } from "../../shared/linked-folders";
 import type { GenerateInput } from "../engine/generate";
@@ -171,6 +172,7 @@ export function sourceHandlers(
     watch: linkOptions.watch === undefined ? watchFolder : linkOptions.watch,
     onChange: linkOptions.onChange,
   });
+  registerLibrarySort(db, runner, { run: linkOptions.run });
   registerOcrJob(db, workspace, runner, {
     readPages: (path, pages, signal) =>
       work<{ count: number; pages: Array<{ page: number; text: string }> }>(
@@ -427,7 +429,8 @@ export function sourceHandlers(
          AND state IN ('queued', 'running', 'interrupted', 'failed', 'cancelled')
          AND json_extract(params_json, '$.sourceId') = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`,
       );
-      return listSources(db).map((source) => {
+      const sorting = sortingNow(db);
+      return listSources(db).map(({ subjectSort, ...source }) => {
         // A missing original is shown without an invented size.
         const bytes = source.blobSha ? blobSize(workspace, source.blobSha) : null;
         // Only a stored comparison is read: the list never embeds or recomputes anything.
@@ -445,6 +448,7 @@ export function sourceHandlers(
             : undefined;
         return {
           ...source,
+          sort: sortView(subjectSort, source.id, sorting),
           bytes,
           ...(off > 0 ? { syllabusOff: off } : {}),
           ...(failed ? { error: failed.error, errorJobId: failed.id } : {}),
@@ -452,21 +456,23 @@ export function sourceHandlers(
         };
       });
     },
-    async importFile(input: { path: string; batch?: { id: string; folder?: string } }) {
+    async importFile(input: { path: string; batch?: { id: string; folder?: string }; sort?: boolean }) {
       try {
         await assertLocalOcrReady(db, workspace, extname(input.path).toLowerCase());
-        return await enqueueSourceFile(db, workspace, runner, input.path, undefined, input.batch);
+        const added = await enqueueSourceFile(db, workspace, runner, input.path, undefined, input.batch);
+        if (input.sort) markForSorting(db, added.sourceId);
+        return added;
       } catch (err) {
         const same = sameSource(err);
         if (same) return same;
         sourceError(err);
       }
     },
-    paste(input: { title: string; text: string }) {
+    paste(input: { title: string; text: string; sort?: boolean }) {
       try {
         const text = input.text.replace(/\r\n/g, "\n").trim();
         if (text.length < PASTE_MIN) throw new Error("paste-short");
-        return enqueueSourceData(
+        const added = enqueueSourceData(
           db,
           workspace,
           runner,
@@ -474,16 +480,18 @@ export function sourceHandlers(
           ".txt",
           input.title.trim() || "Notes",
         );
+        if (input.sort) markForSorting(db, added.sourceId);
+        return added;
       } catch (err) {
         const same = sameSource(err);
         if (same) return same;
         sourceError(err);
       }
     },
-    async link(input: { url: string }) {
+    async link(input: { url: string; sort?: boolean }) {
       try {
         const url = parseLinkUrl(input.url);
-        return enqueueSourceData(
+        const added = enqueueSourceData(
           db,
           workspace,
           runner,
@@ -492,9 +500,24 @@ export function sourceHandlers(
           url.hostname,
           url.href,
         );
+        if (input.sort) markForSorting(db, added.sourceId);
+        return added;
       } catch (err) {
         const same = sameSource(err);
         if (same) return same;
+        sourceError(err);
+      }
+    },
+    /** Chooses the subjects of the files one Library add brought in, as one job (see `library-subjects.ts`). */
+    sortSubjects(input: { sourceIds: string[] }) {
+      return { jobId: startLibrarySort(db, runner, input.sourceIds) };
+    },
+    /** Puts a source in the subject the student chose, existing or new. Errors: `source-linked`, `subject-missing`. */
+    move(input: { sourceId: string; subjectId: string } | { sourceId: string; name: string }) {
+      try {
+        return moveSource(db, input.sourceId, "name" in input ? { name: input.name } : { subjectId: input.subjectId });
+      } catch (err) {
+        if (err instanceof IpcError) throw err;
         sourceError(err);
       }
     },

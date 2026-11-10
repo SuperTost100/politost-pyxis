@@ -33,6 +33,17 @@ describe("job update invalidation", () => {
     expect(keys(staleFamilies({ kind: "cards-build", state: "succeeded" }))).not.toContain("source-details");
   });
 
+  it("refreshes sources and subjects while the subjects of Library files are chosen", () => {
+    expect(keys(staleFamilies({ kind: "library-sort", state: "running" }))).toEqual([
+      "jobs",
+      "sources",
+      "source-chapters",
+      "source-meta",
+      "source-details",
+      "subjects",
+    ]);
+  });
+
   it("refreshes sources for imports and each download its own state", () => {
     expect(keys(staleFamilies({ kind: "source-import", state: "running" }))).toEqual([
       "jobs",

@@ -86,6 +86,7 @@ const FINISHED_LABELS: Record<string, string> = {
   "ocr-data-download": "jobs.done.ocrData",
   "embedding-download": "jobs.done.embedding",
   "local-runtime-download": "jobs.done.python",
+  "library-sort": "jobs.done.librarySort",
 };
 
 /**
@@ -108,6 +109,7 @@ const RUNNING_LABELS: Record<string, string> = {
   "simulation-build": "jobs.doing.simulationBuild",
   "simulation-grade": "jobs.doing.simulationGrade",
   "linked-folder-read": "jobs.doing.folderRead",
+  "library-sort": "jobs.doing.librarySort",
 };
 
 /** The message key for a finished job of this kind, or undefined for work the student never asked for by name. */
