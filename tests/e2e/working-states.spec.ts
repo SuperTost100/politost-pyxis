@@ -189,10 +189,10 @@ test("the maps page shows the Pyxis mark at work while the maps are built", asyn
     });
     const working = page.locator(".px-map-working");
     await expect(working).toBeVisible();
-    await expect(working.getByRole("status")).toHaveText("Creo le tue mappe…");
+    await expect(working.getByRole("status")).toHaveText("Creo la mappa…");
     await expect(working.locator(".px-logo-working")).toBeVisible();
     // The empty state and its button wait until the build is over.
-    await expect(page.getByRole("button", { name: "Crea mappe" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toHaveCount(0);
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "working-states/maps-building.png");

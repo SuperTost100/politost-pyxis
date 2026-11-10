@@ -270,7 +270,7 @@ function NewMapDialog(props: {
       open={props.open}
       title={t("maps.new")}
       onCancel={props.onClose}
-      okText={t("maps.continue")}
+      okText={t("maps.create")}
       cancelText={t("maps.cancel")}
       okButtonProps={{ disabled: !subjectId }}
       onOk={() => {

@@ -18,7 +18,8 @@ export function recordedPlanRun(
   delayMs = 0,
 ): NonNullable<GenerateInput["run"]> {
   const replies = JSON.parse(fixture) as Record<string, unknown>;
-  // `{{call}}` in a reply is the number of the structured call, from 1, so a build in parts can answer each part differently.
+  // A reply given as a list answers the structured calls in turn, round and round, so a build in parts can answer each
+  // part differently.
   let calls = 0;
   return async (input) => {
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
@@ -58,7 +59,10 @@ export function recordedPlanRun(
     };
     // A quiz is written a few questions per call: each call gets the next `count` recorded questions, after the ones
     // already written. A recording too short for that hands every call its first `count` instead.
-    const recorded = replies[key] as { questions?: unknown[] } | undefined;
+    const listed = replies[key];
+    const recorded = (Array.isArray(listed) ? listed[calls % listed.length] : listed) as
+      | { questions?: unknown[] }
+      | undefined;
     const previous = context.previousQuestions ?? [];
     const written = previous.length;
     const batch =
@@ -80,7 +84,6 @@ export function recordedPlanRun(
     const questionShift = written - from;
     calls++;
     const text = JSON.stringify(reply)
-      .replaceAll("{{call}}", String(calls))
       .replaceAll(
         '"{{allPassages}}"',
         JSON.stringify(context.passages?.map((p) => p.id) ?? []),

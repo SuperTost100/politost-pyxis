@@ -6,7 +6,8 @@ const MAX_SOURCES = 500;
 
 /**
  * Joins the maps of the parts one request was read in into a single map. Its root is the request's own name (the topic's
- * or the subject's) and each part's root becomes a main branch under it. A concept that two parts name the same, ignoring
+ * or the subject's) and each part's root merges into it whatever its label, keeping its sources, so the first level is
+ * made of the parts' own first-level concepts. A concept that two parts name the same, ignoring
  * case and the spaces around it, is kept once: the first spelling stays, the later one's children move under it, and
  * its sources and links are added to it. One part needs no joining, so its map is kept as it is and only its root takes
  * the name.
@@ -58,8 +59,13 @@ export function mergeGraphs(title: string, graphs: ConceptGraph[]): ConceptGraph
       placed.set(node.id, at.id);
       for (const child of children.get(node.id) ?? []) walk(child, at);
     };
+    // A part's root only names the part, so it joins the map's root: the first level is the parts' own concepts.
     const start = graph.nodes.find((node) => node.parent === null);
-    if (start) walk(start, root);
+    if (start) {
+      if (start.sources?.length) root.sources = [...new Set([...(root.sources ?? []), ...start.sources])].slice(0, MAX_SOURCES);
+      placed.set(start.id, root.id);
+      for (const child of children.get(start.id) ?? []) walk(child, root);
+    }
     partEdges.push(
       graph.edges.map((edge) => ({
         ...edge,

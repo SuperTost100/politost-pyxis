@@ -13,6 +13,8 @@ export {
 const LARGE_MAP = 25;
 const OPEN_DEPTH = 2;
 const MIN_START_ZOOM = 0.6;
+/** The smallest zoom a map is fitted to on its own: a 14 px concept still reads at about 6 px. */
+export const MIN_READ_ZOOM = 0.45;
 
 /** Ids of nodes that have at least one child. */
 export function parentIds(nodes: Item[]): Set<string> {
@@ -72,7 +74,7 @@ type Box = { x: number; y: number; width: number; height: number };
 const VIEW_PAD = 40;
 
 /**
- * Opening view: the whole map when it fits at MIN_START_ZOOM or more (never zoomed in
+ * Opening view: the whole map when it fits at MIN_READ_ZOOM or more (never zoomed in
  * past 1); otherwise MIN_START_ZOOM with the root at the left edge, vertically centred.
  */
 export function startViewport(
@@ -93,7 +95,7 @@ export function startViewport(
     room.width / (right - left),
     room.height / (bottom - top),
   );
-  if (fit >= MIN_START_ZOOM)
+  if (fit >= MIN_READ_ZOOM)
     return {
       zoom: fit,
       x: VIEW_PAD + (room.width - (right - left) * fit) / 2 - left * fit,
@@ -104,4 +106,41 @@ export function startViewport(
     x: VIEW_PAD - root.x * MIN_START_ZOOM,
     y: size.height / 2 - (root.y + root.height / 2) * MIN_START_ZOOM,
   };
+}
+
+const REVEAL_MARGIN = 24;
+
+/**
+ * The view that shows a branch that was just unfolded: `box` holds its node and every node it now shows, and `focus` is
+ * the node's own vertical centre. Returns null when the box is inside `size` already, with a margin. Otherwise it keeps
+ * the zoom if the box fits, zooms out only as far as it must, never below MIN_READ_ZOOM (or the current zoom, if that
+ * is smaller already), and moves the box as little as it can. A box too tall for the canvas at that zoom is centred on
+ * `focus`, so the node that was clicked stays on screen with its nearest children.
+ */
+export function revealViewport(
+  box: Box,
+  focus: number,
+  view: { x: number; y: number; zoom: number },
+  size: { width: number; height: number },
+): { x: number; y: number; zoom: number } | null {
+  const m = REVEAL_MARGIN;
+  const left = box.x * view.zoom + view.x;
+  const top = box.y * view.zoom + view.y;
+  if (
+    left >= m &&
+    top >= m &&
+    left + box.width * view.zoom <= size.width - m &&
+    top + box.height * view.zoom <= size.height - m
+  )
+    return null;
+  const fit = Math.min((size.width - 2 * m) / box.width, (size.height - 2 * m) / box.height);
+  const zoom = Math.min(view.zoom, Math.max(fit, Math.min(MIN_READ_ZOOM, view.zoom)));
+  // Where a span starts on screen: as close to where its centre is now as the margins allow.
+  const place = (start: number, span: number, centreNow: number, room: number, centre?: number) => {
+    if (span > room - 2 * m) return centre === undefined ? m : room / 2 - (centre - start) * zoom;
+    return Math.min(room - m - span, Math.max(m, centreNow - span / 2));
+  };
+  const x = place(box.x, box.width * zoom, left + (box.width * view.zoom) / 2, size.width);
+  const y = place(box.y, box.height * zoom, top + (box.height * view.zoom) / 2, size.height, focus);
+  return { zoom, x: x - box.x * zoom, y: y - box.y * zoom };
 }

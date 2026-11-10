@@ -8,6 +8,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { saveShot } from "./shots";
+import { expectNoAxeViolations } from "./axe";
 
 function collection(id: string, title: string, labels: string[]) {
   return JSON.stringify({
@@ -92,7 +93,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(dialog.getByText("Gli esami di questa materia non hanno ancora argomenti")).toBeVisible();
     await expect(dialog.getByLabel("Argomento")).toBeDisabled();
     await saveShot(page, "maps-subject/new-map-subject.png");
-    await dialog.getByRole("button", { name: "Continua" }).click();
+    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\?from=maps$/);
     // One click builds the map: the page shows the working mark where the map will appear, and no second button.
     await expect(page.locator(".px-map-working")).toBeVisible();
@@ -199,7 +200,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await dialog.getByLabel("Argomento").click();
     await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-group")).toHaveText(["Meccanica"]);
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto · 1 mappa"]').click();
-    await dialog.getByRole("button", { name: "Continua" }).click();
+    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
     expect(errors).toEqual([]);
@@ -209,17 +210,87 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
   }
 });
 
+type Concept = string | [label: string, children: string[]];
+/** One part of the topic's material as the model returns it: a root that names the part, then its first-level concepts. */
+function partReply(root: string, concepts: Concept[]) {
+  const nodes: Array<{ id: string; label: string; parent: string | null; sources: string }> = [
+    { id: "n0", label: root, parent: null, sources: "{{allPassages}}" },
+  ];
+  for (const concept of concepts) {
+    const [label, children] = typeof concept === "string" ? [concept, []] : concept;
+    const id = `n${nodes.length}`;
+    nodes.push({ id, label, parent: "n0", sources: "{{allPassages}}" });
+    for (const child of children)
+      nodes.push({ id: `n${nodes.length}`, label: child, parent: id, sources: "{{allPassages}}" });
+  }
+  return { nodes, edges: [] };
+}
+const kinematics: Concept[] = [
+  "Posizione e spostamento",
+  ["Velocità", ["Velocità media", "Velocità istantanea"]],
+  "Accelerazione",
+  ["Moto rettilineo uniforme", ["Legge oraria"]],
+  [
+    "Moto uniformemente accelerato",
+    [
+      "Legge della velocità",
+      "Legge dello spazio",
+      "Caduta libera",
+      "Spazio di frenata",
+      "Velocità senza il tempo",
+      "Lancio verso l’alto",
+      "Tempo di volo",
+      "Velocità d’impatto",
+      "Accelerazione di gravità",
+    ],
+  ],
+  ["Moto circolare uniforme", ["Periodo e frequenza", "Accelerazione centripeta"]],
+  ["Moto parabolico", ["Gittata", "Altezza massima"]],
+];
+const dynamics: Concept[] = [
+  ["Principi della dinamica", ["Inerzia", "Forza e accelerazione", "Azione e reazione"]],
+  "Forza peso",
+  ["Attrito", ["Attrito statico", "Attrito dinamico"]],
+  "Forza elastica",
+  // The same concept as in the kinematics part, in another spelling.
+  ["velocità", ["Velocità limite"]],
+];
+const energy: Concept[] = [
+  "Lavoro e potenza",
+  "Energia cinetica",
+  ["Energia potenziale", ["Gravitazionale", "Elastica"]],
+  "Conservazione dell’energia meccanica",
+  [
+    "Quantità di moto",
+    [
+      "Impulso",
+      "Teorema dell’impulso",
+      "Urti elastici",
+      "Urti anelastici",
+      "Urto completamente anelastico",
+      "Conservazione della quantità di moto",
+      "Centro di massa",
+      "Moto del centro di massa",
+      "Sistemi isolati",
+    ],
+  ],
+];
+const firstLevel = [
+  ...kinematics,
+  ...dynamics.filter((c) => typeof c === "string" || c[0] !== "velocità"),
+  ...energy,
+].map((c) => (typeof c === "string" ? c : c[0]));
+
 test("one request makes one map, even when the topic's material is read in three parts", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-parts-"));
-  // Each part answers with its own twelve concepts and the concept "Velocità", which the parts share.
-  const concepts = Array.from({ length: 12 }, (_, i) => `Parte {{call}}, concetto ${i + 1}`);
-  const labels = ["Parte {{call}}", ...concepts, "Velocità"];
+  // Each part answers with its own concepts under a root that only names the part, and "Velocità" is in two of them.
   const mapReplies = {
-    nodes: {
-      nodes: labels.map((label, i) => ({ id: `n${i}`, label, parent: i ? "n0" : null, sources: "{{allPassages}}" })),
-      edges: [],
-    },
+    nodes: [
+      partReply("Moto, cinematica", kinematics),
+      partReply("Moto: dinamica", dynamics),
+      partReply("Moto e energia", energy),
+    ],
   };
   const app = await launchPyxis({
     userData,
@@ -261,12 +332,12 @@ test("one request makes one map, even when the topic's material is read in three
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]').click();
     await dialog.getByLabel("Argomento").click();
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto"]').click();
-    await dialog.getByRole("button", { name: "Continua" }).click();
+    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".px-map-working")).toBeVisible();
     await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
 
-    // Three model calls, one map: the topic's name at the root, each part under it, "Velocità" once.
+    // Three model calls, one map: the topic's name at the root and the parts' own concepts as its first level.
     const maps = (await page.evaluate(() =>
       window.pyxis.invoke("maps.list", { topicId: "t-motion" }),
     )) as Array<{ title: string; passageCount: number }>;
@@ -277,21 +348,55 @@ test("one request makes one map, even when the topic's material is read in three
     )) as { nodes: Array<{ id: string; label: string; parent: string | null }> };
     const root = graph.nodes.find((node) => node.parent === null)!;
     expect(root.label).toBe("Moto");
-    expect(graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual([
-      "Parte 1",
-      "Parte 2",
-      "Parte 3",
+    expect(graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual(firstLevel);
+    // No part's root label is a branch of its own.
+    expect(graph.nodes.filter((node) => /^Moto[,:]|^Moto e/.test(node.label))).toHaveLength(0);
+    const speed = graph.nodes.find((node) => node.label === "Velocità")!;
+    expect(graph.nodes.filter((node) => node.parent === speed.id).map((node) => node.label)).toEqual([
+      "Velocità media",
+      "Velocità istantanea",
+      "Velocità limite",
     ]);
-    expect(graph.nodes.filter((node) => node.label === "Velocità")).toHaveLength(1);
-    expect(graph.nodes).toHaveLength(1 + 14 + 13 + 13);
+    expect(graph.nodes.filter((node) => node.label.toLowerCase() === "velocità")).toHaveLength(1);
     await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
-    // 41 concepts in a column are too many to read at once, so it opens with each part folded and counted.
-    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    // More than 25 concepts do not read at once, so it opens with the first level shown and folded; all of it is in view.
+    const canvas = page.locator(".px-map-canvas");
+    const inView = async (label: string) => {
+      const node = (await page.getByRole("group", { name: label, exact: true }).boundingBox())!;
+      const area = (await canvas.boundingBox())!;
+      expect(node, label).toBeTruthy();
+      expect(node.x, label).toBeGreaterThanOrEqual(area.x);
+      expect(node.y, label).toBeGreaterThanOrEqual(area.y);
+      expect(node.x + node.width, label).toBeLessThanOrEqual(area.x + area.width);
+      expect(node.y + node.height, label).toBeLessThanOrEqual(area.y + area.height);
+    };
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length);
+    await expect.poll(async () => page.locator(".react-flow__node").count()).toBe(1 + firstLevel.length);
+    for (const label of ["Moto", ...firstLevel]) await inView(label);
     await saveShot(page, "maps-subject/merged-map.png");
-    const part = page.locator('.react-flow__node[data-id="n0"] .px-concept-fold');
-    await part.dispatchEvent("click");
-    await expect(part).toHaveAttribute("aria-expanded", "true");
-    await expect(page.locator(".react-flow__node")).toHaveCount(4 + 13);
+    // The last concept sits at the bottom edge: its nine children would open half below the canvas, so the view moves to
+    // show them whole, with the concept itself.
+    const fold = (label: string) => page.getByRole("group", { name: label, exact: true }).locator(".px-concept-fold");
+    const shows = (labels: string[]) =>
+      Promise.all(
+        labels.map((label) =>
+          expect.poll(async () => inView(label).then(() => true, () => false), { message: label }).toBe(true),
+        ),
+      );
+    await fold("Quantità di moto").dispatchEvent("click");
+    await expect(fold("Quantità di moto")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length + 9);
+    await shows(["Quantità di moto", "Impulso", "Sistemi isolati", "Conservazione della quantità di moto"]);
+    await saveShot(page, "maps-subject/merged-map-last-open.png");
+    // A branch in the middle shows whole with its parent too.
+    await fold("Quantità di moto").dispatchEvent("click");
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length);
+    const widest = "Moto uniformemente accelerato";
+    await fold(widest).dispatchEvent("click");
+    await expect(fold(widest)).toHaveAttribute("aria-expanded", "true");
+    const unfolded = ["Legge della velocità", "Legge dello spazio", "Caduta libera", "Spazio di frenata", "Velocità senza il tempo", "Lancio verso l’alto", "Tempo di volo", "Velocità d’impatto", "Accelerazione di gravità"];
+    await expect(page.locator(".react-flow__node")).toHaveCount(1 + firstLevel.length + unfolded.length);
+    await shows([widest, ...unfolded]);
     await saveShot(page, "maps-subject/merged-map-part-open.png");
     // Flashcards from the map take its whole outline and go under the topic's exam.
     await page.getByRole("button", { name: "Crea flashcard da questa mappa" }).click();
@@ -305,6 +410,84 @@ test("one request makes one map, even when the topic's material is read in three
     await expect(page.getByRole("status")).toHaveText("1 mappa");
     await expect(page.locator(".px-maps-subject").getByRole("link")).toHaveCount(1);
     await saveShot(page, "maps-subject/merged-tile.png");
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a stopped build is not a failure, and the open page follows a build that is resumed elsewhere", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-stopped-"));
+  const mapReplies = { nodes: partReply("Moto", kinematics) };
+  const app = await launchPyxis({
+    userData,
+    env: { PYXIS_E2E_MAP_REPLIES: JSON.stringify(mapReplies), PYXIS_E2E_MAP_DELAY: "4000" },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
+    seedSource(db, {
+      id: "mazzoldi",
+      title: "Mazzoldi",
+      subjectId: "phys",
+      document: { id: "mazzoldi-doc" },
+      passages: [
+        { id: "pa-1", text: "La velocità media è lo spostamento diviso il tempo impiegato.", section: "Moto" },
+        { id: "pa-2", text: "L'accelerazione misura quanto cambia la velocità in un istante.", section: "Moto" },
+      ],
+    });
+    seedPlan(db, { id: "p-mech", subjectId: "phys", title: "Meccanica", topics: [{ id: "t-motion", title: "Moto" }] });
+    db.exec("INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-motion', id FROM passages WHERE source_id = 'mazzoldi'");
+    db.close();
+    await page.reload();
+
+    // The page carries the map's final name before any map exists, and while it is built.
+    await page.evaluate(() => {
+      location.hash = "#/maps/phys/t-motion";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
+    await page.locator(".px-map-empty").getByRole("button", { name: "Crea la mappa" }).click();
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await expect(page.locator(".px-map-working").getByRole("status")).toHaveText("Creo la mappa…");
+    await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
+    await saveShot(page, "maps-subject/building-title.png");
+
+    // The student stops it, here in the app but not on this page, as Attività does.
+    const jobId = await page.evaluate(async () => {
+      const job = (await window.pyxis.invoke("maps.build", { topicId: "t-motion" })) as { jobId: string };
+      await window.pyxis.invoke("jobs.cancel", { jobId: job.jobId });
+      return job.jobId;
+    });
+    // It says the student stopped it, offers to resume it, and shows no failure.
+    await expect(page.getByRole("heading", { name: "Hai fermato la creazione della mappa" })).toBeVisible();
+    await expect(page.locator(".px-map-empty").getByRole("button", { name: "Riprendi" })).toBeVisible();
+    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "maps-subject/build-stopped.png");
+
+    // Its own button resumes it; the student stops it once more.
+    await page.locator(".px-map-empty").getByRole("button", { name: "Riprendi" }).click();
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await page.evaluate((id) => window.pyxis.invoke("jobs.cancel", { jobId: id }), jobId);
+    await expect(page.getByRole("heading", { name: "Hai fermato la creazione della mappa" })).toBeVisible();
+
+    // Resumed from outside the page: it picks up the running build and then the finished map, with no reload.
+    await page.evaluate((id) => window.pyxis.invoke("jobs.resumeAll", { jobIds: [id] }), jobId);
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hai fermato la creazione della mappa" })).toHaveCount(0);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
+    expect(await page.evaluate(() => window.pyxis.invoke("maps.list", { topicId: "t-motion" }))).toHaveLength(1);
     expect(errors).toEqual([]);
   } finally {
     await app.close();

@@ -166,15 +166,17 @@ describe("M10 model maps", () => {
     expect(roots[0]!.label).toBe(topic);
     const labels = graph.nodes.map((node) => node.label.trim().toLowerCase());
     for (const at of [1, 2, 3])
-      for (const i of [0, 1, 2, 4, 5, 6, 7]) expect(labels).toContain(`parte ${at}, concetto ${i}`);
+      for (const i of [1, 2, 4, 5, 6, 7]) expect(labels).toContain(`parte ${at}, concetto ${i}`);
+    // A part's root only names the part, so no part's root label is left in the map.
+    expect(labels.filter((label) => label.endsWith("concetto 0"))).toEqual([]);
     // The same concept in three parts is one node, and it keeps the first spelling.
     expect(labels.filter((label) => label === "moto")).toHaveLength(1);
     expect(graph.nodes.find((node) => node.label === "Moto")).toBeDefined();
-    // Each part hangs under the topic, and the citations survive the merge.
-    expect(graph.nodes.filter((node) => node.parent === roots[0]!.id)).toHaveLength(3);
+    // The parts' own concepts are the first level, and the citations survive the merge.
+    expect(graph.nodes.filter((node) => node.parent === roots[0]!.id)).toHaveLength(3 * 6 + 1);
     const cited = new Set(graph.nodes.flatMap((node) => node.sources ?? []));
     expect(cited.size).toBe(50);
-    expect(graph.nodes).toHaveLength(1 + 3 * 7 + 1);
+    expect(graph.nodes).toHaveLength(1 + 3 * 6 + 1);
     expect(new Set(graph.nodes.map((node) => node.id)).size).toBe(graph.nodes.length);
     db.close();
   });

@@ -159,7 +159,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await page.evaluate(({ planId, topicId }) => {
       window.location.hash = `/plans/${planId}/map/${topicId}`;
     }, input);
-    await page.getByRole("button", { name: "Crea mappe", exact: true }).click();
+    await page.getByRole("button", { name: "Crea la mappa", exact: true }).click();
     await expect
       .poll(
         async () =>

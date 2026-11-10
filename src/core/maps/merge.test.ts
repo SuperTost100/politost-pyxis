@@ -31,19 +31,21 @@ describe("mergeGraphs", () => {
     expect(merged.edges).toEqual(only.edges);
   });
 
-  it("hangs each part under a root named after the request and keeps both parts' IDs unique", () => {
-    const one = part([["root", "Parte uno", null], ["a", "Velocità", "root"]]);
-    const two = part([["root", "Parte due", null], ["a", "Accelerazione", "root"]]);
+  it("merges each part's root into the map's root, so the first level is the parts' own concepts", () => {
+    const one = part([["root", "Fisica, cinematica e dinamica del punto materiale", null], ["a", "Velocità", "root"]]);
+    const two = part([["root", "Fisica, cinematica…", null], ["a", "Accelerazione", "root"], ["b", "Forza", "a"]]);
     const merged = layoutGraph(mergeGraphs("Fisica", [one, two]));
     const root = merged.nodes.find((node) => node.parent === null)!;
     expect(root.label).toBe("Fisica");
     expect(merged.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual([
-      "Parte uno",
-      "Parte due",
+      "Velocità",
+      "Accelerazione",
     ]);
-    expect(new Set(merged.nodes.map((node) => node.id)).size).toBe(5);
+    // Neither part's root label survives as a node, and both parts' IDs stay unique.
+    expect(merged.nodes.map((node) => node.label)).toEqual(["Fisica", "Velocità", "Accelerazione", "Forza"]);
+    expect(new Set(merged.nodes.map((node) => node.id)).size).toBe(4);
     const accel = merged.nodes.find((node) => node.label === "Accelerazione")!;
-    expect(merged.nodes.find((node) => node.id === accel.parent)!.label).toBe("Parte due");
+    expect(merged.edges).toContainEqual({ from: root.id, to: accel.id });
   });
 
   it("keeps a concept named the same in two parts once, with the first spelling, the later children and every source", () => {
@@ -62,6 +64,8 @@ describe("mergeGraphs", () => {
       [["z", "m", "è un tipo di"]],
     );
     const merged = layoutGraph(mergeGraphs("Fisica", [one, two]));
+    // The parts' roots only name the parts, so their sources go to the map's root.
+    expect(merged.nodes.find((node) => node.parent === null)!.sources).toEqual(["p1", "p2"]);
     const moto = merged.nodes.filter((node) => node.label.trim().toLowerCase() === "moto");
     expect(moto).toHaveLength(1);
     expect(moto[0]!.label).toBe("Moto");
@@ -71,18 +75,7 @@ describe("mergeGraphs", () => {
     // The link from the second part follows its concept to the node that was kept.
     const zed = merged.nodes.find((node) => node.label === "Armonico")!;
     expect(merged.edges).toContainEqual({ from: zed.id, to: moto[0]!.id, label: "è un tipo di" });
-    expect(merged.nodes).toHaveLength(1 + 2 + 3 + 1);
-  });
-
-  it("merges a part whose root has the request's name into the root", () => {
-    const one = part([["r", "Fisica", null], ["a", "Velocità", "r"]]);
-    const two = part([["r", "Dinamica", null], ["b", "Forza", "r"]]);
-    const merged = layoutGraph(mergeGraphs("Fisica", [one, two]));
-    const root = merged.nodes.find((node) => node.parent === null)!;
-    expect(merged.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual([
-      "Velocità",
-      "Dinamica",
-    ]);
+    expect(merged.nodes).toHaveLength(1 + 1 + 2 + 1);
   });
 
   it("drops links that end up joining a concept to itself and links it already has", () => {
