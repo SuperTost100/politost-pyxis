@@ -286,6 +286,12 @@ CREATE TRIGGER plans_subject_to_maps AFTER UPDATE OF subject_id ON plans BEGIN
   UPDATE maps SET subject_id = new.subject_id WHERE plan_id = new.id;
 END;`,
   },
+  // Importing a file looks its hash up among the files a linked folder reads in place. A scan does it for up to 2,000
+  // files in a row, so the lookup has its own index, narrowed to the rows that lookup reads.
+  {
+    version: 27,
+    sql: `CREATE INDEX linked_files_hash ON linked_files(content_hash) WHERE content_hash IS NOT NULL AND missing_at IS NULL;`,
+  },
 ];
 
 export function migrate(db: Database.Database): void {
