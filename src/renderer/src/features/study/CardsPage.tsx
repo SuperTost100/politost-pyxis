@@ -218,9 +218,10 @@ export function CardsPage() {
   const cardPlanId = everywhere ? (shownCard?.planId ?? undefined) : planId;
   const cardPlace = shownCard ? (shownCard.planTitle ?? shownCard.subject ?? undefined) : undefined;
   useActiveTime(cardPlanId, topicId ?? (everywhere ? (card?.topicId ?? null) : null));
-  // The plan and topic of each card rated here, so each plan's path gets its own cards step.
+  // The plan and topic of each card rated here, so each plan's path gets its own cards step. A rating belongs to its
+  // review, so taking it back removes that entry; a card with no exam, or no topic, has no entry to remove.
   const [ratedIn, setRatedIn] = useState<
-    Array<{ planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
+    Array<{ reviewId: string; planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
   const plan = usePlan(cardPlanId);
   const topicTitle = topicId ? plan.data?.topics.find((topic) => topic.id === topicId)?.title : undefined;
@@ -369,7 +370,7 @@ export function CardsPage() {
       if (everywhere && cardPlanId && card.topicId)
         setRatedIn((current) => [
           ...current,
-          { planId: cardPlanId, topicId: card.topicId!, rating },
+          { reviewId: state.reviewId, planId: cardPlanId, topicId: card.topicId!, rating },
         ]);
       const now = Date.now();
       setClock(now);
@@ -394,7 +395,7 @@ export function CardsPage() {
       if (action.kind === "rate") {
         await invoke("study.undoRate", { reviewId: action.reviewId });
         setSeen((current) => current.slice(0, -1));
-        setRatedIn((current) => current.slice(0, -1));
+        setRatedIn((current) => current.filter((entry) => entry.reviewId !== action.reviewId));
         setLearning((current) =>
           Object.fromEntries(
             Object.entries(current).filter(([id]) => id !== action.cardId),
