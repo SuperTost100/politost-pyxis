@@ -100,16 +100,22 @@ export function existingSourceFor(
 }
 
 /**
- * The query behind `existingLinkFor`. The import jobs are filtered by address first, in a subquery that does not refer
- * to the outer row, so SQLite runs it once. Written as a correlated `EXISTS` it scanned every import job once per
- * source, which a library of linked folders (one source and one job per file) turns into minutes.
+ * The query behind `existingLinkFor`. The import jobs are filtered by address first, in a part that does not refer to
+ * the outer row, so SQLite runs it once. Written as a correlated `EXISTS` it scanned every import job once per source,
+ * which a library of linked folders (one source and one job per file) turns into minutes.
+ *
+ * A job's address counts while the job is still to fetch the page, or while the source is still a link (it has an
+ * address of its own, the one the page ended on). A source replaced with a file has no address, so the finished job
+ * that once fetched a page for it no longer finds it.
  */
-export const EXISTING_LINK_SQL = `SELECT s.id FROM sources s
+export const EXISTING_LINK_SQL = `WITH asked AS (
+    SELECT json_extract(j.params_json, '$.sourceId') AS id, j.state FROM jobs j
+    WHERE j.kind IN ('source-import', 'source-import-vision') AND json_extract(j.params_json, '$.url') = @url)
+  SELECT s.id FROM sources s
   WHERE s.library = 1 AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
     AND (s.origin_url = @url
-         OR s.id IN (SELECT json_extract(j.params_json, '$.sourceId') FROM jobs j
-                     WHERE j.kind IN ('source-import', 'source-import-vision')
-                       AND json_extract(j.params_json, '$.url') = @url))
+         OR s.id IN (SELECT id FROM asked WHERE state IN ('queued', 'running'))
+         OR (s.origin_url IS NOT NULL AND s.id IN (SELECT id FROM asked)))
   ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1`;
 
 /**

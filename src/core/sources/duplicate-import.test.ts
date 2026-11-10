@@ -291,6 +291,19 @@ describe("finding a saved link", () => {
     expect(existingLinkFor(app.db, "https://example.org/final/b")).toBeNull();
   });
 
+  it("stops matching a link's address once the source was replaced with a file", () => {
+    const app = setup();
+    const link = save(app, "https://example.org/a");
+    const done = app.db.prepare(`UPDATE jobs SET state = 'succeeded' WHERE json_extract(params_json, '$.sourceId') = ?`);
+    // Fetched after a redirect: the source records where it ended and the finished job still names /a.
+    done.run(link.sourceId);
+    app.db.prepare(`UPDATE sources SET origin_url = ? WHERE id = ?`).run("https://example.org/final", link.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/a")).toBe(link.sourceId);
+    // Replaced with a file: the source has no address any more, so the old job's address must not find it.
+    app.db.prepare(`UPDATE sources SET origin_url = NULL, fetched_at = NULL WHERE id = ?`).run(link.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/a")).toBeNull();
+  });
+
   it("skips a link that is removed, failed or kept out of the library", () => {
     const app = setup();
     for (const change of [`status = 'removed'`, `status = 'failed'`, `status = 'cancelled'`, `status = 'interrupted'`, `library = 0`]) {
