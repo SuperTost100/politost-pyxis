@@ -166,3 +166,13 @@ The exam page shows, for each topic below the target and for the simulation, the
 ### Falling behind
 
 An exam is behind when work is still left on its exam day. The warning gives two numbers. At the pace the exam got, it reaches its target that many days after the exam: the work left divided by its average minutes a day. By the exam it gets the share of the way from its current mastery to the target that matches the share of its work done: an exam at 10% with a 75% target that gets half its work done shows about 42%. This assumes mastery grows in step with the work, which is a simplification; it says which exam needs more time, not what the exam result will be.
+
+## Exam rings
+
+Each exam shows three rings, computed together by `examRings` in `src/core/plans/planner.ts` (`plans.rings`). None of them adds a scoring model; each reads a number the planner or Oggi already computes.
+
+- **Preparazione** is the exam's mastery as the exam list shows it, topics weighted by their passages, read on the student's grade scale. While no topic has mastery and no graded step was done (a lesson or the introduction measures nothing), it shows "ancora da misurare" and its ring stays empty.
+- **Percorso** is the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over the work the same path had with nothing studied. Reading a lesson moves it, and so does mastery reaching the target; mastery that decays below the target moves it back. An exam without topics has no path.
+- **Oggi** is the share of today's planned work done, with Oggi's own rules. With weekly hours, it is the minutes of today's steps over the minutes the planner gives the exam today, full once Oggi ticks the exam off. Without hours, without a date or on the exam day, one step is the day's work. Nothing is planned for an archived or past exam, for a share under 2.5 minutes, or when the path has no next step, unless something was done today anyway.
+
+The rings draw each share from the top; an empty value leaves its track bare. Percentages round down, so a ring never reads 100% before it closes.

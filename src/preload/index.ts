@@ -69,6 +69,7 @@ const replayable = new Set([
   "plans.recommend",
   "plans.today",
   "plans.planner",
+  "plans.rings",
   "study.dueEverywhere",
   "profile.get",
   "sources.list",

@@ -2011,6 +2011,28 @@ export const requests = {
       ),
     }),
   },
+  "plans.rings": {
+    // The three exam rings of every built exam, archived ones last: see `examRings` in core/plans/planner.ts. Each value
+    // is a fraction from 0 to 1, or null when there is nothing to show (nothing measured, no path, nothing planned today).
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        planId: z.string(),
+        preparation: z.number().min(0).max(1).nullable(),
+        path: z.number().min(0).max(1).nullable(),
+        today: z.number().min(0).max(1).nullable(),
+        // The path's next step, due cards aside.
+        next: z
+          .object({
+            activity: PathActivity,
+            topicId: z.string().nullable(),
+            topicTitle: z.string().nullable(),
+          })
+          .nullable(),
+        dueCards: z.number().int().nonnegative(),
+      }),
+    ),
+  },
   "plans.planner": {
     input: z.object({}),
     output: z.object({

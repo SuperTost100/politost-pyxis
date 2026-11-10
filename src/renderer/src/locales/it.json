@@ -3398,5 +3398,20 @@
     "material": "Materiale",
     "none": "Niente con queste parole.",
     "close": "esc"
+  },
+  "rings": {
+    "preparation": "Preparazione",
+    "path": "Percorso",
+    "today": "Oggi",
+    "legend": "Anelli dell'esame",
+    "unmeasured": "ancora da misurare",
+    "noPath": "nessun percorso",
+    "nothingToday": "niente in programma",
+    "label": "Preparazione {{preparation}}, Percorso {{path}}, Oggi {{today}}",
+    "hint": {
+      "preparation": "Il voto che prenderesti oggi",
+      "path": "Quanto del percorso hai fatto",
+      "today": "Quanto hai fatto dei passi di oggi"
+    }
   }
 }

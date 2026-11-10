@@ -4,6 +4,7 @@ import { setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
+  examRings,
   finishDays,
   neededHours,
   planSchedule,
@@ -382,5 +383,96 @@ describe("Oggi", () => {
     const cards = dueEverywhere(db, now);
     expect(cards.map((card) => card.planId)).toEqual(["a", "a", "b", "b"]);
     expect(todayPlan(db, now).cards?.due).toBe(4);
+  });
+});
+
+describe("exam rings", () => {
+  const ringOf = (db: Db, id: string) => examRings(db, now).find((ring) => ring.planId === id)!;
+
+  it("shows no preparation until something is measured, then the exam list's mastery", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    expect(ringOf(db, "a").preparation).toBeNull();
+    // A lesson read measures nothing.
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBeNull();
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBe(0);
+  });
+
+  it("counts the path in the planner's minutes of work, from nothing studied to the target", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // Nothing studied: 15 diagnostic + 2 * (30 lesson + 3 * 20) + 60 simulation = 255 minutes left of 255.
+    expect(ringOf(db, "a").path).toBe(0);
+    // A lesson read ends the start (15) and the lesson (30): 210 left.
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
+    expect(ringOf(db, "a").path).toBeCloseTo(45 / 255);
+  });
+
+  it("has no path for an exam without topics", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4, topics: 0 });
+    expect(ringOf(db, "a").path).toBeNull();
+  });
+
+  it("counts one step as today's work when no weekly hours are set", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    addPlan(db, "undated");
+    expect(ringOf(db, "a").today).toBe(0);
+    expect(ringOf(db, "undated").today).toBe(0);
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").today).toBe(1);
+    // A step yesterday is not today's.
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(-1));
+    expect(ringOf(db, "undated").today).toBe(0);
+  });
+
+  it("counts today's minutes against the planner's share with weekly hours", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // 3.5 h a week gives the exam 30 minutes today; exercises take 20.
+    savePlannerHours(db, { hours: 3.5 }, now);
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").today).toBeCloseTo(20 / 30);
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
+    expect(ringOf(db, "a").today).toBe(1);
+  });
+
+  it("plans nothing today for a share too small to ask for, a past exam or an archived one", () => {
+    const db = openDatabase(":memory:");
+    for (const id of ["a", "b", "c", "d"]) addPlan(db, id, { examIn: 4 });
+    addPlan(db, "past", { examIn: -2 });
+    addPlan(db, "old", { examIn: 3 });
+    db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'old'").run();
+    dueCard(db, "c1", "old", "old-t0");
+    savePlannerHours(db, { hours: 0.5 }, now);
+    expect(ringOf(db, "a").today).toBeNull();
+    expect(ringOf(db, "past").today).toBeNull();
+    // A past exam keeps its path and its preparation.
+    expect(ringOf(db, "past").path).toBe(0);
+    const old = ringOf(db, "old");
+    expect(old.today).toBeNull();
+    expect(old.dueCards).toBe(0);
+    expect(examRings(db, now).at(-1)!.planId).toBe("old");
+  });
+
+  it("names the next step without due cards and counts each exam's due cards", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    dueCard(db, "c1", "a", "a-t0");
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
+    const ring = ringOf(db, "a");
+    expect(ring.dueCards).toBe(1);
+    expect(ring.next?.activity).not.toBe("cards");
+    expect(ring.next?.topicTitle).toBe(ring.next?.topicId ? `Topic ${ring.next.topicId.slice(-1)} of a` : null);
+  });
+
+  it("leaves out an exam still building", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    db.prepare("UPDATE plans SET status = 'building' WHERE id = 'a'").run();
+    expect(examRings(db, now)).toEqual([]);
   });
 });
