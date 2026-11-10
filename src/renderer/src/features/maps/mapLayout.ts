@@ -132,7 +132,8 @@ export function revealViewport(
   const zoom = Math.min(view.zoom, Math.max(fit, Math.min(MIN_READ_ZOOM, view.zoom)));
   // Where a span starts on screen: as close to where its centre is now as the margins allow.
   const place = (start: number, span: number, centreNow: number, room: number, centre?: number) => {
-    if (span > room - 2 * m) {
+    // Half a pixel of slack: a span fitted by the zoom above can land one rounding step over the room.
+    if (span > room - 2 * m + 0.5) {
       if (centre === undefined) return m;
       // shortcut: NODE_ROOM stands for a node's height with a margin, not the measured size, upgrade if nodes get taller.
       return m + (centre - start) * zoom <= room - NODE_ROOM ? m : room / 2 - (centre - start) * zoom;

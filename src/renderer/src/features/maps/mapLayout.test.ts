@@ -193,6 +193,14 @@ describe("revealViewport", () => {
     expect(view.y + 450 + 200).toBeLessThanOrEqual(600 - 24);
   });
 
+  it("places a branch that fits exactly as fitting, despite the rounding of the zoom", () => {
+    // At this height the zoom that fits the branch gives a span one rounding step over the room, with the node at the bottom.
+    const box = { x: 0, y: 0, width: 300, height: 520.6000000000156 };
+    const view = revealViewport(box, 500, at, { width: 1000, height: 500 })!;
+    expect(view.y).toBeCloseTo(24, 6);
+    expect(view.y + box.height * view.zoom).toBeLessThanOrEqual(500 - 24 + 0.001);
+  });
+
   it("zooms out only as far as the branch needs, and puts all of it on screen", () => {
     const box = branch(-300);
     const view = revealViewport(box, 300, at, size)!;
