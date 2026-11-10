@@ -1,14 +1,19 @@
+import { createHash } from "node:crypto";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { tempDir } from "../test-temp";
-import { extractByExt } from "./documents";
 import { sourceHandlers } from "./handlers";
 import { enqueueSourceData, enqueueSourceFile, registerSourceJobs, SourceExists, type Extraction } from "./jobs";
 import { linkedFolders } from "./linked";
-import { hashFiles } from "./quality";
+import { extractByExt, extractPlain } from "./documents";
+import { EXISTING_LINK_SQL, existingLinkFor, hashFiles } from "./quality";
+import { hasBlob } from "../blobs";
+import { commitStaged } from "../chat/attach";
+import { deleteChat } from "../chat/turn";
+import { promoteSource, removeSource } from "./manage";
 
 /** What an import that found its material already there throws, with the source it points at. */
 async function refused(run: () => unknown): Promise<SourceExists> {
@@ -143,15 +148,16 @@ describe("the same material imported twice", () => {
     expect(app.sources()).toHaveLength(2);
   });
 
-  it("a copy hidden in a chat or a plan joins the Library instead of becoming a second source", async () => {
+  it("a removed source is read again as a new one", async () => {
     const app = setup();
     const path = app.file("appunti.txt");
     const first = await app.add(path);
     await app.idle();
-    app.db.prepare(`UPDATE sources SET library = 0 WHERE id = ?`).run(first.sourceId);
-    const again = await refused(() => app.add(path));
-    expect(again.sourceId).toBe(first.sourceId);
-    expect(app.sources()).toEqual([{ id: first.sourceId, status: "ready", library: 1 }]);
+    removeSource(app.db, first.sourceId, true);
+    const second = await app.add(path);
+    expect(second.sourceId).not.toBe(first.sourceId);
+    await app.idle();
+    expect(app.sources().map((row) => row.id)).toEqual([second.sourceId]);
   });
 
   it("a file whose earlier import failed is read again as a new source", async () => {
@@ -199,6 +205,111 @@ describe("the same material imported twice", () => {
     const again = await refused(() => app.add(app.file("copia.txt")));
     expect(app.sources()).toHaveLength(1);
     expect(again.sourceId).toBe(theirs!.id);
+  });
+});
+
+describe("a chat's own copy of a file", () => {
+  /** A document attached to a chat the way a turn does it: a hidden source in the chat's scope. */
+  function attach(app: ReturnType<typeof setup>, chatId: string, text = NOTES): string {
+    app.db
+      .prepare(`INSERT INTO chats (id, title, scope_json, created_at, updated_at) VALUES (?, 't', '[]', 1, 1)`)
+      .run(chatId);
+    const { sourceIds } = commitStaged(
+      app.db,
+      app.workspace,
+      {
+        blobs: [],
+        documents: [
+          { filePath: "/x/appunti.txt", ext: ".txt", bytes: new TextEncoder().encode(text), extracted: extractPlain(text, false) },
+        ],
+      },
+      (ids) => app.db.prepare(`UPDATE chats SET scope_json = ? WHERE id = ?`).run(JSON.stringify(ids), chatId),
+    );
+    return sourceIds[0]!;
+  }
+  const row = (app: ReturnType<typeof setup>, id: string) =>
+    app.db.prepare(`SELECT library, status FROM sources WHERE id = ?`).get(id);
+  const passages = (app: ReturnType<typeof setup>, id: string) =>
+    app.db.prepare(`SELECT COUNT(*) FROM passages WHERE source_id = ?`).pluck().get(id) as number;
+  const blob = (app: ReturnType<typeof setup>) =>
+    hasBlob(app.workspace, createHash("sha256").update(NOTES).digest("hex"));
+
+  it("is not the library's: importing the file makes its own source, and deleting the chat keeps that one", async () => {
+    const app = setup();
+    const hidden = attach(app, "c");
+    const imported = await app.add(app.file("appunti.txt"));
+    await app.idle();
+    expect(imported.sourceId).not.toBe(hidden);
+    deleteChat(app.db, app.workspace, "c");
+    expect(row(app, hidden)).toBeUndefined();
+    expect(row(app, imported.sourceId)).toEqual({ library: 1, status: "ready" });
+    expect(passages(app, imported.sourceId)).toBeGreaterThan(0);
+    expect(blob(app)).toBe(true);
+  });
+
+  it("promoted to the library, it is the library's: importing the file finds it, and deleting the chat keeps it", async () => {
+    const app = setup();
+    const hidden = attach(app, "c");
+    promoteSource(app.db, hidden);
+    const again = await refused(() => app.add(app.file("appunti.txt")));
+    expect(again.sourceId).toBe(hidden);
+    deleteChat(app.db, app.workspace, "c");
+    expect(row(app, hidden)).toEqual({ library: 1, status: "ready" });
+    expect(passages(app, hidden)).toBeGreaterThan(0);
+    expect(blob(app)).toBe(true);
+  });
+
+  it("attached after the file is in the library, it is a separate copy, and deleting the chat keeps the library source", async () => {
+    const app = setup();
+    const library = await app.add(app.file("appunti.txt"));
+    await app.idle();
+    const hidden = attach(app, "c");
+    expect(hidden).not.toBe(library.sourceId);
+    deleteChat(app.db, app.workspace, "c");
+    expect(row(app, hidden)).toBeUndefined();
+    expect(row(app, library.sourceId)).toEqual({ library: 1, status: "ready" });
+    expect(passages(app, library.sourceId)).toBeGreaterThan(0);
+    expect(blob(app)).toBe(true);
+  });
+});
+
+describe("finding a saved link", () => {
+  const save = (app: ReturnType<typeof setup>, href: string) =>
+    enqueueSourceData(app.db, app.workspace, app.runner, new Uint8Array(), ".md", new URL(href).hostname, href);
+
+  it("matches a queued link by the address its job will fetch, and a fetched one by the address it ended on", async () => {
+    const app = setup();
+    const queued = save(app, "https://example.org/a");
+    const other = save(app, "https://example.org/b");
+    // The page behind /a redirected: the source now records where it ended, while its job still names /a.
+    app.db.prepare(`UPDATE sources SET origin_url = ? WHERE id = ?`).run("https://example.org/final", queued.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/a")).toBe(queued.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/final")).toBe(queued.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/b")).toBe(other.sourceId);
+    expect(existingLinkFor(app.db, "https://example.org/c")).toBeNull();
+    // A job's address never matches another source's id.
+    expect(existingLinkFor(app.db, "https://example.org/final/b")).toBeNull();
+  });
+
+  it("skips a link that is removed, failed or kept out of the library", () => {
+    const app = setup();
+    for (const change of [`status = 'removed'`, `status = 'failed'`, `status = 'cancelled'`, `status = 'interrupted'`, `library = 0`]) {
+      const href = `https://example.org/${change.replace(/\W/g, "")}`;
+      const link = save(app, href);
+      expect(existingLinkFor(app.db, href)).toBe(link.sourceId);
+      app.db.prepare(`UPDATE sources SET ${change} WHERE id = ?`).run(link.sourceId);
+      expect([change, existingLinkFor(app.db, href)]).toEqual([change, null]);
+    }
+  });
+
+  it("looks the jobs up once, not once per source", () => {
+    const app = setup();
+    const plan = (app.db.prepare(`EXPLAIN QUERY PLAN ${EXISTING_LINK_SQL}`).all({ url: "https://example.org/a" }) as Array<{
+      detail: string;
+    }>)
+      .map((step) => step.detail)
+      .join(" | ");
+    expect(plan).not.toMatch(/CORRELATED/);
   });
 });
 

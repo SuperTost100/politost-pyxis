@@ -100,23 +100,25 @@ export function existingSourceFor(
 }
 
 /**
- * The usable source saved from this web address, so saving a link twice gives one source. A link stores no bytes until
- * its page is fetched, so the address is looked up on the source (the page's final address, once fetched) and on the
- * import job that is still to fetch it.
+ * The query behind `existingLinkFor`. The import jobs are filtered by address first, in a subquery that does not refer
+ * to the outer row, so SQLite runs it once. Written as a correlated `EXISTS` it scanned every import job once per
+ * source, which a library of linked folders (one source and one job per file) turns into minutes.
+ */
+export const EXISTING_LINK_SQL = `SELECT s.id FROM sources s
+  WHERE s.library = 1 AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+    AND (s.origin_url = @url
+         OR s.id IN (SELECT json_extract(j.params_json, '$.sourceId') FROM jobs j
+                     WHERE j.kind IN ('source-import', 'source-import-vision')
+                       AND json_extract(j.params_json, '$.url') = @url))
+  ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1`;
+
+/**
+ * The usable library source saved from this web address, so saving a link twice gives one source. A link stores no
+ * bytes until its page is fetched, so the address is looked up on the source (the page's final address, once fetched)
+ * and on the import job that is still to fetch it.
  */
 export function existingLinkFor(db: Database.Database, url: string): string | null {
-  const row = db
-    .prepare(
-      `SELECT s.id FROM sources s
-       WHERE s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
-         AND (s.origin_url = ?
-              OR EXISTS (SELECT 1 FROM jobs j
-                         WHERE j.kind IN ('source-import', 'source-import-vision')
-                           AND json_extract(j.params_json, '$.sourceId') = s.id
-                           AND json_extract(j.params_json, '$.url') = ?))
-       ORDER BY s.created_at DESC, s.rowid DESC LIMIT 1`,
-    )
-    .get(url, url) as { id: string } | undefined;
+  const row = db.prepare(EXISTING_LINK_SQL).get({ url }) as { id: string } | undefined;
   return row?.id ?? null;
 }
 
