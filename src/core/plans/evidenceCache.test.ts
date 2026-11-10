@@ -119,4 +119,23 @@ describe("cached plan mastery", () => {
     expect(calls).toBe(2);
     db.close();
   });
+
+  it("leaves every plan's cache alone when a card with no exam is written or rated", () => {
+    const { db } = seeded();
+    let changes = 0;
+    onEvidenceChanged(db, () => (changes += 1));
+    const before = planMastery(db, "p", now);
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Physics', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('free', 'phys', 'Force', 'F = ma', 1);`);
+    const { reviewId } = rateCard(db, "free", "good", now);
+    undoRating(db, reviewId);
+    db.prepare("UPDATE cards SET suspended = 1 WHERE id = 'free'").run();
+    db.prepare("DELETE FROM cards WHERE id = 'free'").run();
+    expect(changes).toBe(0);
+    expect(planMastery(db, "p", now)).toEqual(before);
+    // A card of the plan still clears it.
+    rateCard(db, "c", "good", now);
+    expect(changes).toBeGreaterThan(0);
+    db.close();
+  });
 });

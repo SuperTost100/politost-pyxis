@@ -464,7 +464,7 @@ function showReminder(summary: ReminderSummary): void {
   shownReminders.add(note);
   note.once("click", () => {
     shownReminders.delete(note);
-    openAppPath(`/plans/${summary.planId}`);
+    openAppPath(summary.planId ? `/plans/${summary.planId}` : "/cards/due");
   });
   note.once("close", () => shownReminders.delete(note));
   note.show();

@@ -13,17 +13,20 @@ const watched = new WeakMap<Database.Database, Watch>();
 
 const CHANGED = "pyxis_evidence_changed";
 
-/** The writes that can change a plan's mastery, and the plan each row belongs to. A NULL plan clears every plan. */
+/**
+ * The writes that can change a plan's mastery, and the plan each row belongs to. A NULL plan clears every plan; an
+ * empty one belongs to no plan (a flashcard with no exam) and changes nothing.
+ */
 const SOURCES: Array<{ table: string; columns?: string; plan: string }> = [
   { table: "learning_events", plan: "#.plan_id" },
   {
     table: "card_reviews",
-    plan: "(SELECT plan_id FROM cards WHERE id = #.card_id)",
+    plan: "COALESCE((SELECT plan_id FROM cards WHERE id = #.card_id), '')",
   },
   {
     table: "cards",
     columns: "plan_id, topic_id, suspended, removed, created_at",
-    plan: "#.plan_id",
+    plan: "COALESCE(#.plan_id, '')",
   },
   // Question kinds and old simulation answers are read from items and attempts.
   { table: "items", columns: "plan_id, kind, body_json", plan: "#.plan_id" },
@@ -47,6 +50,7 @@ function watch(db: Database.Database): Watch | undefined {
   if (db.inTransaction || db.readonly || !db.open) return undefined;
   const state: Watch = { entries: new Map(), listeners: new Set() };
   db.function(CHANGED, (planId: unknown) => {
+    if (planId === "") return null;
     if (typeof planId === "string") state.entries.delete(planId);
     else state.entries.clear();
     for (const listener of state.listeners) listener();

@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { uuidv7 } from "../../shared/ids";
 import { openDatabase } from "../db/connection";
 import {
+  countDeckDue,
   countDueCards,
+  deckDueCards,
   deleteCard,
   dueCards,
+  examlessDecks,
   newCardsLeftToday,
   newCardsPerDay,
   queueCounts,
@@ -402,13 +405,13 @@ describe("daily limit of new cards", () => {
     );
     for (const id of ids.slice(0, 5)) rateCard(db, id, "good", T0);
     // Five introduced today: 15 more new cards, and the rated ones wait for their learning step.
-    expect(newCardsLeftToday(db, planId, T0)).toEqual({ limit: 20, left: 15 });
+    expect(newCardsLeftToday(db, { planId }, T0)).toEqual({ limit: 20, left: 15 });
     expect(countDueCards(db, planId, T0)).toBe(15);
     // A rated card that comes back is not new, so it does not use the allowance.
     expect(countDueCards(db, planId, T0 + 3_600_000)).toBe(20);
     // The next day the allowance is whole again.
     const tomorrow = T0 + 86_400_000;
-    expect(newCardsLeftToday(db, planId, tomorrow).left).toBe(20);
+    expect(newCardsLeftToday(db, { planId }, tomorrow).left).toBe(20);
     db.close();
   });
 
@@ -479,7 +482,7 @@ describe("undo a rating", () => {
     const due = dueCards(db, planId, T0);
     expect(due.map((card) => card.id)).toEqual([id]);
     expect(due[0]!.state.fsrs).toBeUndefined();
-    expect(newCardsLeftToday(db, planId, T0).left).toBe(20);
+    expect(newCardsLeftToday(db, { planId }, T0).left).toBe(20);
     db.close();
   });
 
@@ -509,6 +512,84 @@ describe("undo a rating", () => {
     undoRating(db, second.reviewId);
     expect(() => undoRating(db, second.reviewId)).toThrow("review-missing");
     expect(events(db)).toBe(1);
+    db.close();
+  });
+});
+
+describe("cards with no exam", () => {
+  function subjectWithCards(db: ReturnType<typeof openDatabase>, count: number, subjectId = "phys") {
+    db.prepare(`INSERT OR IGNORE INTO subjects (id, name, created_at) VALUES (?, ?, 1)`).run(subjectId, subjectId);
+    return Array.from(
+      { length: count },
+      (_, index) => saveCard(db, { subjectId, front: `Libera ${index}`, back: "R" }, T0 + index).id,
+    );
+  }
+
+  it("are due in their subject's own deck, never in an exam's, with a daily limit of their own", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica I', 1)").run();
+    db.prepare("UPDATE plans SET subject_id = 'phys' WHERE id = ?").run(planId);
+    seedMany(db, planId, topicId, 20);
+    const free = subjectWithCards(db, 25);
+    const deck = { subjectId: "phys" };
+    expect(countDueCards(db, planId, T0 + 100)).toBe(20);
+    expect(countDeckDue(db, deck, T0 + 100)).toBe(20);
+    expect(deckDueCards(db, deck, T0 + 100).map((card) => card.id)).toEqual(free.slice(0, 20));
+    expect(dueCards(db, planId, T0 + 100).some((card) => free.includes(card.id))).toBe(false);
+    // Rating them uses the subject's allowance, not the exam's.
+    for (const id of free.slice(0, 4)) rateCard(db, id, "good", T0 + 100);
+    expect(newCardsLeftToday(db, deck, T0 + 100)).toEqual({ limit: 20, left: 16 });
+    expect(newCardsLeftToday(db, { planId }, T0 + 100)).toEqual({ limit: 20, left: 20 });
+    // Suspended and removed cards are not due; another subject is another deck.
+    setSuspended(db, free[10]!, true);
+    deleteCard(db, free[11]!);
+    expect(countDeckDue(db, deck, T0 + 100)).toBe(16);
+    expect(deckDueCards(db, deck, T0 + 100).map((card) => card.id)).not.toContain(free[10]);
+    subjectWithCards(db, 2, "chem");
+    expect(examlessDecks(db)).toEqual([
+      { subjectId: "chem", subject: "chem" },
+      { subjectId: "phys", subject: "Fisica I" },
+    ]);
+    db.close();
+  });
+
+  it("are rated and undone without writing evidence for any exam", () => {
+    const db = openDatabase(":memory:");
+    const [id] = subjectWithCards(db, 1);
+    const rated = rateCard(db, id!, "good", T0 + 10);
+    expect(db.prepare("SELECT COUNT(*) FROM learning_events").pluck().get()).toBe(0);
+    expect(countDeckDue(db, { subjectId: "phys" }, T0 + 10)).toBe(0);
+    undoRating(db, rated.reviewId);
+    expect(countDeckDue(db, { subjectId: "phys" }, T0 + 10)).toBe(1);
+    expect(db.prepare("SELECT COUNT(*) FROM card_reviews").pluck().get()).toBe(0);
+    db.close();
+  });
+
+  it("are edited by id alone, and need a subject that exists", () => {
+    const db = openDatabase(":memory:");
+    const [id] = subjectWithCards(db, 1);
+    saveCard(db, { cardId: id!, front: "Nuova", back: "Retro" });
+    expect(db.prepare("SELECT front, back, plan_id, subject_id FROM cards").get()).toEqual({
+      front: "Nuova",
+      back: "Retro",
+      plan_id: null,
+      subject_id: "phys",
+    });
+    // A plan that is not the card's does not edit it.
+    expect(() => saveCard(db, { cardId: id!, planId: "other", front: "x", back: "y" })).toThrow("card-missing");
+    expect(() => saveCard(db, { subjectId: "gone", front: "x", back: "y" })).toThrow("subject-missing");
+    expect(() => saveCard(db, { front: "x", back: "y" })).toThrow("subject-missing");
+    expect(() => saveCard(db, { planId: "p", front: "x", back: "y" })).toThrow("topic-missing");
+    db.close();
+  });
+
+  it("keep the cards that lost their subject in one more deck", () => {
+    const db = openDatabase(":memory:");
+    subjectWithCards(db, 2);
+    db.prepare("DELETE FROM subjects WHERE id = 'phys'").run();
+    expect(examlessDecks(db)).toEqual([{ subjectId: null, subject: null }]);
+    expect(countDeckDue(db, { subjectId: null }, T0 + 10)).toBe(2);
     db.close();
   });
 });
