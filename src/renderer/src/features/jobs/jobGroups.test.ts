@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { JobView } from "../../../../shared/ipc";
 import {
   checkJobFor,
-  finishedJobKey,
   finishedLabelKey,
-  finishedPath,
+  requestPath,
   groupJobs,
   jobContext,
   jobTopicName,
@@ -46,7 +45,7 @@ describe("jobs list groups", () => {
     expect(groups.finished.map((item) => item.id)).toEqual(["f"]);
   });
 
-  it("lists a map request that found nothing as finished, with its own line and a way to its map page, never as a problem", () => {
+  it("lists a map request that found nothing under what needs the student, on its own, with a way to its map page", () => {
     const nothing = job("m", {
       kind: "map-build",
       state: "failed",
@@ -54,23 +53,43 @@ describe("jobs list groups", () => {
       ref: "map:p1:t1",
     });
     const fromCore = groupJobs([job("b", { state: "running" })], [nothing, job("f", { state: "succeeded" })]);
-    expect(fromCore.problems).toEqual([]);
-    expect(fromCore.finished.map((item) => item.id)).toEqual(["m", "f"]);
-    // A list read before core moved it is not a problem either.
-    expect(groupJobs([nothing], []).problems).toEqual([]);
-    expect(finishedJobKey(nothing)).toBe("map.nothingMatched");
-    expect(finishedJobKey(job("f", { kind: "map-build", state: "succeeded" }))).toBe("jobs.done.mapBuild");
-    expect(finishedPath(nothing)).toEqual({ to: "/plans/p1/map/t1", state: { job: "m" } });
-    expect(finishedPath({ ...nothing, ref: "map:s1" })).toEqual({ to: "/maps/s1", state: { job: "m" } });
+    expect(fromCore.problems.map((problem) => [problem.kind, problem.messageKey, problem.jobs.map((item) => item.id)])).toEqual([
+      ["nothing-found", "map.nothingMatched", ["m"]],
+    ]);
+    expect(fromCore.finished.map((item) => item.id)).toEqual(["f"]);
+    expect(fromCore.finishedItems.map((item) => item.job?.id)).toEqual(["f"]);
+    // A list read before core moved it shows it once, in the same place.
+    const stale = groupJobs([nothing], [nothing]);
+    expect(stale.problems.map((problem) => problem.key)).toEqual(["nothing-found:m"]);
+    expect(stale.finished).toEqual([]);
+    expect(requestPath(nothing)).toEqual({ to: "/plans/p1/map/t1", state: { job: "m" } });
+    expect(requestPath({ ...nothing, ref: "map:s1" })).toEqual({ to: "/maps/s1", state: { job: "m" } });
     // Two requests of one topic lead to one page, and each names its own job.
-    const older = finishedPath({ ...nothing, id: "old" });
-    const newer = finishedPath({ ...nothing, id: "new" });
+    const older = requestPath({ ...nothing, id: "old" });
+    const newer = requestPath({ ...nothing, id: "new" });
     expect(older?.to).toBe(newer?.to);
     expect(older?.state).toEqual({ job: "old" });
     expect(newer?.state).toEqual({ job: "new" });
     // A map that was built opens nothing from the list, as before; nor does any other failure.
-    expect(finishedPath({ ...nothing, state: "succeeded", error: null })).toBeUndefined();
+    expect(requestPath({ ...nothing, state: "succeeded", error: null })).toBeUndefined();
     expect(groupJobs([job("x", { kind: "map-build", error: "cli-failed" })], []).problems).toHaveLength(1);
+  });
+
+  it("keeps each request that found nothing as its own item, newest first, after the jobs that stopped", () => {
+    const nothing = (id: string, updatedAt: number) =>
+      job(id, { kind: "map-build", state: "failed", error: "map-nothing-matched", ref: "map:s1", updatedAt });
+    const groups = groupJobs(
+      [job("stopped", { state: "cancelled" })],
+      [nothing("newer", 20), nothing("older", 10)],
+    );
+    expect(groups.problems.map((problem) => [problem.kind, problem.jobs.map((item) => item.id)])).toEqual([
+      ["stopped", ["stopped"]],
+      ["nothing-found", ["newer"]],
+      ["nothing-found", ["older"]],
+    ]);
+    // Dismissing one takes it out and leaves the other.
+    expect(groupJobs([], [nothing("older", 10)]).problems.map((problem) => problem.jobs[0]?.id)).toEqual(["older"]);
+    expect(groupJobs([], []).problems).toEqual([]);
   });
 
   it("merges jobs that stopped for the same reason into one problem, in the order they started", () => {

@@ -1,10 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
-import { ChevronDown, Info, Lock, LogIn, Pause, CircleAlert } from "lucide-react";
+import { ChevronDown, Info, Lock, LogIn, Pause, CircleAlert, Search } from "lucide-react";
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import { endedEmpty, type JobView } from "@shared/ipc";
+import type { JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
 import { IconButton } from "../../components/IconButton";
@@ -12,11 +12,10 @@ import { Logo } from "../../components/Logo";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
-  finishedJobKey,
   finishedLabelKey,
-  finishedPath,
   jobContext,
   jobTopicName,
+  requestPath,
   runningLabelKey,
   type JobBatch,
   type JobGroups,
@@ -37,6 +36,7 @@ const PROBLEM_ICONS = {
   interrupted: Pause,
   stopped: Pause,
   retry: CircleAlert,
+  "nothing-found": Search,
 } satisfies Record<ProblemKind, unknown>;
 
 /** How many of a request's jobs its row names when it opens; the rest are counted. */
@@ -118,13 +118,14 @@ function ProblemCard({
   problem: Problem;
   act: Act;
   onUnlock: (job: JobView) => void;
-  onNavigate: (to: string) => void;
+  onNavigate: (to: string, state?: object) => void;
 }) {
   const { t } = useTranslation();
   const nameOf = useJobName();
   const [open, setOpen] = useState(false);
   const listId = useId();
   const { jobs, kind, messageKey, engine } = problem;
+  if (kind === "nothing-found") return <RequestCard job={jobs[0]!} messageKey={messageKey} act={act} onNavigate={onNavigate} />;
   // A refused sign-in names its engine, and its sign-in replaces the general way to the engines page.
   const describeEngineError = useEngineError(onNavigate);
   const engineFailure = describeEngineError(messageKey, engine, {
@@ -251,6 +252,49 @@ function ProblemCard({
           </pre>
         </details>
       ) : null}
+    </li>
+  );
+}
+
+/**
+ * A request that read the material and found nothing. It did not fail, so it has no retry and no technical details: it
+ * waits for the student to change the request on the page it leads to, or to dismiss it.
+ */
+function RequestCard({
+  job,
+  messageKey,
+  act,
+  onNavigate,
+}: {
+  job: JobView;
+  messageKey: string;
+  act: Act;
+  onNavigate: (to: string, state?: object) => void;
+}) {
+  const { t } = useTranslation();
+  const target = requestPath(job);
+  const what = t(messageKey);
+  const where = jobWhere(job);
+  return (
+    <li className="px-jobs-problem">
+      <Search className="px-jobs-problem-mark is-request" size={20} strokeWidth={1.75} aria-hidden />
+      <p className="px-jobs-what">{what}</p>
+      {where ? <p className="px-jobs-why">{where}</p> : null}
+      <div className="px-jobs-acts">
+        {target ? (
+          <Button size="sm" variant="secondary" onClick={() => onNavigate(target.to, target.state)}>
+            {t("jobs.changeRequest")}
+          </Button>
+        ) : null}
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={t("jobs.actionOn", { action: t("jobs.dismiss"), name: where ? `${what}, ${where}` : what })}
+          onClick={() => act("jobs.dismiss", [job])}
+        >
+          {t("jobs.dismiss")}
+        </Button>
+      </div>
     </li>
   );
 }
@@ -396,24 +440,11 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
   );
 }
 
-/**
- * A finished job: what it made, or, for a request that found nothing in the material, that it found nothing, with the
- * way to the page where the request can be changed.
- */
-function FinishedRow({
-  job,
-  act,
-  onNavigate,
-}: {
-  job: JobView;
-  act: Act;
-  onNavigate: (to: string, state?: object) => void;
-}) {
+/** A finished job: what it made. */
+function FinishedRow({ job, act }: { job: JobView; act: Act }) {
   const { t, i18n } = useTranslation();
   const topicOf = useJobTopic();
-  const empty = endedEmpty(job);
-  const target = finishedPath(job);
-  const what = t(finishedJobKey(job) ?? "jobs.state.succeeded", {
+  const what = t(finishedLabelKey(job.kind) ?? "jobs.state.succeeded", {
     context: jobContext(job),
     topic: topicOf(job),
   });
@@ -425,17 +456,10 @@ function FinishedRow({
   }).format(at);
   return (
     <li className="px-jobs-row">
-      <Icon name={empty ? "search" : "circle-check"} size={20} className={empty ? "px-jobs-mark" : "px-jobs-mark is-done"} />
+      <Icon name="circle-check" size={20} className="px-jobs-mark is-done" />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         {where ? <p className="px-jobs-sub">{where}</p> : null}
-        {target ? (
-          <div className="px-jobs-acts">
-            <Button size="sm" variant="secondary" onClick={() => onNavigate(target.to, target.state)}>
-              {t("jobs.changeRequest")}
-            </Button>
-          </div>
-        ) : null}
         {job.fallback ? (
           <p className="px-jobs-note">
             <Info size={16} strokeWidth={1.75} aria-hidden />
@@ -536,9 +560,9 @@ export const JobsPanel = forwardRef<
               problem={problem}
               act={act}
               onUnlock={onUnlock}
-              onNavigate={(to) => {
+              onNavigate={(to, state) => {
                 onClose();
-                void navigate(to);
+                void navigate(to, state ? { state } : undefined);
               }}
             />
           ))}
@@ -577,15 +601,7 @@ export const JobsPanel = forwardRef<
             item.batch ? (
               <BatchRow key={item.batch.key} batch={item.batch} act={act} finished />
             ) : (
-              <FinishedRow
-                key={item.job.id}
-                job={item.job}
-                act={act}
-                onNavigate={(to, state) => {
-                  onClose();
-                  void navigate(to, { state });
-                }}
-              />
+              <FinishedRow key={item.job.id} job={item.job} act={act} />
             ),
           )}
         </GroupSection>

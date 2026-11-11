@@ -72,7 +72,7 @@ async function startApp(replies: unknown[], env: Record<string, string> = {}) {
 /** The Nuova mappa dialog of the Mappe section, and a way to ask for a map of Limiti in it. */
 function dialogs(page: Page) {
   const openDialog = async () => {
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     return page.getByRole("dialog", { name: "Nuova mappa" });
   };
@@ -201,7 +201,7 @@ test("a map asked for in the student's own words reaches the engine, and a secon
     await page.keyboard.press("Escape");
 
     // Mappe lists both, told apart by what each was asked for, with the whole text on hover.
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     const tiles = page.locator(".px-maps-tile");
     await expect(tiles).toHaveCount(2);
     await expect(tiles.locator(".px-maps-card-title")).toHaveText(["Limiti", "Limiti"]);
@@ -265,14 +265,16 @@ test("a request that matches nothing builds no map, says so next to the request,
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-instruction/nothing-matched.png");
 
-    // Attività lists it as finished, with its own line and no retry, and shows no problem. Its button opens this page.
+    // Attività waits for the student under "C'è bisogno di te", with its own line and no retry, and counts it as one item
+    // that needs them. Its button opens this page.
     const activity = page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ });
-    await expect(activity).not.toHaveAccessibleName(/da sistemare/);
-    await expect(page.locator(".px-corner-tools .px-jobs-part.is-problem")).toHaveCount(0);
+    await expect(activity).toHaveAccessibleName(/1 da sistemare/);
+    await expect(page.locator(".px-corner-tools .px-jobs-part.is-problem .meta")).toHaveText("1");
     await activity.click();
     const list = page.getByRole("region", { name: "Attività" });
-    const row = list.locator(".px-jobs-row", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
+    const row = list.getByRole("region", { name: "C'è bisogno di te" }).locator(".px-jobs-problem", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
     await expect(row).toBeVisible();
+    await expect(list.getByRole("region", { name: "Finite oggi" })).toHaveCount(0);
     await expect(list.getByRole("button", { name: /^Riprova/ })).toHaveCount(0);
     await expect(list.getByText("Dettagli tecnici")).toHaveCount(0);
     await saveShot(page, "maps-instruction/nothing-matched-activity.png");
@@ -381,11 +383,13 @@ async function removeJob(userData: string, words: string) {
   }
 }
 
-/** Attività's list, opened from the corner button, and the rows of requests that found nothing. */
+/** Attività's list, opened from the corner button, and the items of requests that found nothing, under C'è bisogno di te. */
 async function openActivity(page: Page) {
   await page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ }).click();
   const list = page.getByRole("region", { name: "Attività" });
-  return list.locator(".px-jobs-row", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
+  return list
+    .getByRole("region", { name: "C'è bisogno di te" })
+    .locator(".px-jobs-problem", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
 }
 
 test("Cambia la richiesta opens the page on the request of its own row, not on the topic's newest one", async () => {
@@ -427,6 +431,31 @@ test("Cambia la richiesta opens the page on the request of its own row, not on t
     await removeJob(userData, older);
     await page.reload();
     await expect(field).toHaveValue(newer);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a request that found nothing leaves C'è bisogno di te and the count when it is dismissed", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([nothing]);
+  try {
+    const { ask } = dialogs(page);
+    const words = "solo i teoremi sulle onde gravitazionali";
+    await ask(words);
+    await expect(page.getByLabel("Come la vuoi?")).toHaveValue(words, { timeout: 60_000 });
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+    const counted = page.locator(".px-corner-tools .px-jobs-part.is-problem .meta");
+    await expect(counted).toHaveText("1");
+    const rows = await openActivity(page);
+    await expect(rows).toHaveCount(1);
+    await rows.getByRole("button", { name: /^Chiudi/ }).click();
+    await expect(rows).toHaveCount(0);
+    await expect(counted).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await app.close();
@@ -631,9 +660,12 @@ test("a request opened from Attività replaces the one this page kept after it f
     await expect(page.locator(".px-map-working")).toHaveCount(0, { timeout: 60_000 });
     await expect(field).toHaveValue(latest);
 
-    // The row of another request opens this same page on that request, and the kept one gives way.
+    // The older request was changed, so it left Attività; the two that wait for the student are the newer and the latest.
     rows = await openActivity(page);
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(2);
+    await expect(page.locator(".px-corner-tools .px-jobs-part.is-problem .meta")).toHaveText("2");
+
+    // The row of another request opens this same page on that request, and the kept one gives way.
     await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
     await expect(field).toHaveValue(newer);
     expect(errors).toEqual([]);

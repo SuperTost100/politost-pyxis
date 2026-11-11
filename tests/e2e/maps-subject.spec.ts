@@ -125,7 +125,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
       await page.evaluate(() => window.pyxis.invoke("maps.list", { subjectId: "phys" })),
     ).toHaveLength(1);
     // Mappe stays the section the map belongs to.
-    await expect(page.getByRole("link", { name: /^Mappe/ })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ })).toHaveAttribute("aria-current", "page");
 
     // The concept's source opens beside the map at the cited passage, and the map stays usable next to it.
     const canvas = page.locator(".px-map-canvas");
@@ -245,7 +245,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(page.getByRole("link", { name: "Apri l’esame Meccanica" })).toBeVisible();
 
     // Mappe groups maps by subject: the whole subject's map first, then its exams' maps; no subject comes last.
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await expect(page).toHaveURL(/#\/maps$/);
     await expect(page.getByRole("status")).toHaveText("3 mappe");
     const groups = page.locator(".px-maps-subject");
@@ -257,13 +257,13 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.getByRole("link", { name: /^Moto rettilineo Meccanica · Moto/ }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps&map=m-motion$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await page.getByRole("link", { name: /^Note sparse/ }).click();
     await expect(page).toHaveURL(/#\/plans\/p-loose\/map\/t-loose\?from=maps&map=m-loose$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(2);
 
     // A new map of one topic of the subject's exam opens by subject and topic.
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     await dialog.getByLabel("Materia").click();
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I · 1 mappa"]').click();
@@ -504,7 +504,7 @@ test("one request makes one map, even when the topic's material is read in three
     await expect(cards).toHaveCount(0);
 
     // Mappe lists it as a single tile, and the tile counts every concept of the merged map.
-    await page.getByRole("link", { name: /^Mappe/ }).click();
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await expect(page.getByRole("status")).toHaveText("1 mappa");
     await expect(page.locator(".px-maps-subject").getByRole("link")).toHaveCount(1);
     await expect(page.locator(".px-maps-tile").first().locator(".px-maps-card-meta")).toHaveText(`${graph.nodes.length} concetti`);

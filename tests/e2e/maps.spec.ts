@@ -232,7 +232,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       initial.nodes.length,
     );
     // The map opens inside the shell, under Mappe, with no close button of its own.
-    await expect(page.getByRole("link", { name: /^Mappe/ })).toHaveAttribute(
+    await expect(page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ })).toHaveAttribute(
       "aria-current",
       "page",
     );

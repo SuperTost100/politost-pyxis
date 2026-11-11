@@ -1659,6 +1659,17 @@ function prepareState(name: string) {
       now,
       now,
     );
+    // A map request that found nothing waits for the student under C'è bisogno di te, with its own line.
+    db.prepare(
+      "INSERT OR REPLACE INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-empty-popover','map-build',?,'failed',1,'map-nothing-matched',?,?)",
+    ).run(
+      JSON.stringify({
+        input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
+        instruction: "solo i teoremi sulle onde gravitazionali",
+      }),
+      now,
+      now,
+    );
   });
   const noFile = name === "library-scan-no-file";
   const ocrState =
@@ -2418,6 +2429,18 @@ async function openState(page: Page, name: string) {
           ),
         ).toBeVisible();
         await expect(list.getByText(/troppi pixel|too many pixels/)).toBeVisible();
+        // A request that found nothing sits in the same group, with its way to the page where it can be changed, and
+        // with no retry and no technical details of its own.
+        const request = list
+          .getByRole("region", { name: /^(C'è bisogno di te|Needs you)$/ })
+          .locator(".px-jobs-problem", {
+            hasText: /Nel materiale non c’è niente per la tua richiesta|Nothing in the material matches your request/,
+          })
+          .first();
+        await expect(request).toBeVisible();
+        await expect(request.getByRole("button", { name: /^(Cambia la richiesta|Change the request)$/ })).toBeVisible();
+        await expect(request.getByRole("button", { name: /^(Riprova|Retry)/ })).toHaveCount(0);
+        await expect(request.getByText(/Dettagli tecnici|Technical details/)).toHaveCount(0);
         await expect(
           list.getByRole("heading", { name: /^(In corso|Running)$/ }),
         ).toBeVisible();

@@ -893,13 +893,21 @@ export function MapPage() {
   }
   // A stopped build asks again with the instruction it had, so it is picked up and not built anew without it.
   const retrying = Boolean(job && ["failed", "cancelled", "interrupted"].includes(job.state));
-  async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "") {
+  // `changing` is the student sending other words from the request on show, which that request gives way to.
+  async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "", changing = false) {
     setBusy(true);
     setNotice("");
+    // A request that found nothing waits in Attività for the student to change it, so changing it takes it out there.
+    const replaced = changing && nothingMatched ? job?.jobId : undefined;
     try {
       const result = await invoke("maps.generate", { ...address, ...(instruction ? { instruction } : {}) });
       // The request the page kept goes only now that the new one has started; a failure leaves it, with the words changed.
       leaveRequest();
+      // The same words may be picked up by the same job, which then stays.
+      if (replaced && result.jobId !== replaced)
+        await invoke("jobs.dismiss", { jobId: replaced }).catch(() =>
+          client.invalidateQueries({ queryKey: ["jobs-finished"] }),
+        );
       // The page follows the job `maps.generate` returned. Its first read is in place before the page switches to it, so
       // the working state does not drop out for a frame.
       if (result.jobId)
@@ -1279,7 +1287,7 @@ export function MapPage() {
                 event.preventDefault();
                 // With maps to show, the working state replaces them until the new map is ready.
                 if (graph) setFresh(true);
-                void generateMaps(reask.trim());
+                void generateMaps(reask.trim(), true);
               }}
             >
               <label className="label" htmlFor="map-reask">
