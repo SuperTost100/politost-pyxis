@@ -211,6 +211,8 @@ test("a request that matches nothing builds no map, says so next to the request,
     await expect(
       empty.getByRole("heading", { name: "Nel materiale non c’è niente per la tua richiesta" }),
     ).toBeVisible({ timeout: 60_000 });
+    // A screen reader that waited for the build hears the result: focus moves to its heading.
+    await expect(empty.getByRole("heading", { name: "Nel materiale non c’è niente per la tua richiesta" })).toBeFocused();
     await expect(empty).toContainText(`«${words}»`);
     await expect(page.getByLabel("Come la vuoi?")).toHaveValue(words);
     await expect(page.locator(".react-flow__node")).toHaveCount(0);
@@ -451,6 +453,37 @@ test("Cambia la richiesta on a topic that already has a map shows the request, a
     await removeJob(userData, words);
     await page.reload();
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(field).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a request that finds nothing on a topic that has a map stays on the page to be changed", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels), nothing, focused(conceptsOf("B"))]);
+  try {
+    const { ask } = dialogs(page);
+    const words = "solo i teoremi sulle onde gravitazionali";
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await ask(words, "Limiti · 1 mappa");
+    // The page stays where the build ended: the request in its field, as when Attività opens it, not the map and not a
+    // notice alone.
+    const field = page.getByLabel("Come la vuoi?");
+    await expect(field).toHaveValue(words, { timeout: 60_000 });
+    await expect(page.getByRole("heading", { name: "Nel materiale non c’è niente per la tua richiesta" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "maps-instruction/nothing-matched-with-map.png");
+    // Other words are another request, built next to the first map.
+    await field.fill(second);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    await expect(conceptOf(page, "B")).toBeVisible({ timeout: 60_000 });
+    expect((await listOf(page)).map((map) => map.instruction)).toEqual([first, second]);
     await expect(field).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
