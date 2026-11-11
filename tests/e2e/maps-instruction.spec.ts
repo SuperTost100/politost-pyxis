@@ -225,6 +225,27 @@ test("a request that matches nothing builds no map, says so next to the request,
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-instruction/nothing-matched.png");
 
+    // Attività lists it as finished, with its own line and no retry, and shows no problem. Its button opens this page.
+    const activity = page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ });
+    await expect(activity).not.toHaveAccessibleName(/da sistemare/);
+    await expect(page.locator(".px-corner-tools .px-jobs-part.is-problem")).toHaveCount(0);
+    await activity.click();
+    const list = page.getByRole("region", { name: "Attività" });
+    const row = list.locator(".px-jobs-row", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
+    await expect(row).toBeVisible();
+    await expect(list.getByRole("button", { name: /^Riprova/ })).toHaveCount(0);
+    await expect(list.getByText("Dettagli tecnici")).toHaveCount(0);
+    await saveShot(page, "maps-instruction/nothing-matched-activity.png");
+    await page.keyboard.press("Escape");
+    await expect(list).toBeHidden();
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+    await activity.click();
+    await row.getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(page).toHaveURL(/#\/plans\/[^/]+\/map\/t-limits$/);
+    await expect(page.getByLabel("Come la vuoi?")).toHaveValue(words);
+
     // Other words are another request, and its map is the topic's first.
     await page.getByLabel("Come la vuoi?").fill("le definizioni sui limiti");
     await page.getByRole("button", { name: "Crea la mappa" }).click();

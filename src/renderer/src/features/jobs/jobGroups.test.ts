@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { JobView } from "../../../../shared/ipc";
-import { checkJobFor, finishedLabelKey, groupJobs, jobContext, jobTopicName, runningLabelKey } from "./jobGroups";
+import {
+  checkJobFor,
+  finishedJobKey,
+  finishedLabelKey,
+  finishedPath,
+  groupJobs,
+  jobContext,
+  jobTopicName,
+  runningLabelKey,
+} from "./jobGroups";
 
 function job(id: string, over: Partial<JobView> = {}): JobView {
   return {
@@ -35,6 +44,27 @@ describe("jobs list groups", () => {
     ]);
     expect(groups.running.map((item) => item.id)).toEqual(["b", "c"]);
     expect(groups.finished.map((item) => item.id)).toEqual(["f"]);
+  });
+
+  it("lists a map request that found nothing as finished, with its own line and a way to its map page, never as a problem", () => {
+    const nothing = job("m", {
+      kind: "map-build",
+      state: "failed",
+      error: "map-nothing-matched",
+      ref: "map:p1:t1",
+    });
+    const fromCore = groupJobs([job("b", { state: "running" })], [nothing, job("f", { state: "succeeded" })]);
+    expect(fromCore.problems).toEqual([]);
+    expect(fromCore.finished.map((item) => item.id)).toEqual(["m", "f"]);
+    // A list read before core moved it is not a problem either.
+    expect(groupJobs([nothing], []).problems).toEqual([]);
+    expect(finishedJobKey(nothing)).toBe("map.nothingMatched");
+    expect(finishedJobKey(job("f", { kind: "map-build", state: "succeeded" }))).toBe("jobs.done.mapBuild");
+    expect(finishedPath(nothing)).toBe("/plans/p1/map/t1");
+    expect(finishedPath({ ...nothing, ref: "map:s1" })).toBe("/maps/s1");
+    // A map that was built opens nothing from the list, as before; nor does any other failure.
+    expect(finishedPath({ ...nothing, state: "succeeded", error: null })).toBeUndefined();
+    expect(groupJobs([job("x", { kind: "map-build", error: "cli-failed" })], []).problems).toHaveLength(1);
   });
 
   it("merges jobs that stopped for the same reason into one problem, in the order they started", () => {

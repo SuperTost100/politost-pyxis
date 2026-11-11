@@ -2153,6 +2153,7 @@
     "retry": "Riprova",
     "resume": "Riprendi",
     "dismiss": "Chiudi",
+    "changeRequest": "Cambia la richiesta",
     "actionFailed": "Pyxis non è riuscito a modificare questa attività. Riprova.",
     "demoFailed": "Il secondo passo non è riuscito.",
     "demo": {

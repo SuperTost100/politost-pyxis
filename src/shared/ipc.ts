@@ -301,6 +301,18 @@ export const JobView = z.object({
 
 export type JobView = z.infer<typeof JobView>;
 
+/**
+ * Errors that end a job with nothing to make, not with a failure: it read everything and found nothing for the
+ * student's request, such as a map asked for in words the material has nothing on. The jobs list shows such a job as
+ * finished, with its own line and no retry, and it never counts as a problem.
+ */
+export const EMPTY_RESULT_ERRORS: readonly string[] = ["map-nothing-matched"];
+
+/** Whether a job ended finding nothing for its request (see `EMPTY_RESULT_ERRORS`). */
+export function endedEmpty(job: Pick<JobView, "state" | "error">): boolean {
+  return job.state === "failed" && job.error != null && EMPTY_RESULT_ERRORS.includes(job.error);
+}
+
 const IpcErrorBody = z.object({
   code: z.string(),
   messageKey: z.string(),

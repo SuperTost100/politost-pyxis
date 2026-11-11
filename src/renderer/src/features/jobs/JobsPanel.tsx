@@ -4,7 +4,7 @@ import { ChevronDown, Info, Lock, LogIn, Pause, CircleAlert } from "lucide-react
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import type { JobView } from "@shared/ipc";
+import { endedEmpty, type JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
 import { IconButton } from "../../components/IconButton";
@@ -12,7 +12,9 @@ import { Logo } from "../../components/Logo";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import {
+  finishedJobKey,
   finishedLabelKey,
+  finishedPath,
   jobContext,
   jobTopicName,
   runningLabelKey,
@@ -394,10 +396,16 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
   );
 }
 
-function FinishedRow({ job, act }: { job: JobView; act: Act }) {
+/**
+ * A finished job: what it made, or, for a request that found nothing in the material, that it found nothing, with the
+ * way to the page where the request can be changed.
+ */
+function FinishedRow({ job, act, onNavigate }: { job: JobView; act: Act; onNavigate: (to: string) => void }) {
   const { t, i18n } = useTranslation();
   const topicOf = useJobTopic();
-  const what = t(finishedLabelKey(job.kind) ?? "jobs.state.succeeded", {
+  const empty = endedEmpty(job);
+  const to = finishedPath(job);
+  const what = t(finishedJobKey(job) ?? "jobs.state.succeeded", {
     context: jobContext(job),
     topic: topicOf(job),
   });
@@ -409,10 +417,17 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
   }).format(at);
   return (
     <li className="px-jobs-row">
-      <Icon name="circle-check" size={20} className="px-jobs-mark is-done" />
+      <Icon name={empty ? "search" : "circle-check"} size={20} className={empty ? "px-jobs-mark" : "px-jobs-mark is-done"} />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         {where ? <p className="px-jobs-sub">{where}</p> : null}
+        {to ? (
+          <div className="px-jobs-acts">
+            <Button size="sm" variant="secondary" onClick={() => onNavigate(to)}>
+              {t("jobs.changeRequest")}
+            </Button>
+          </div>
+        ) : null}
         {job.fallback ? (
           <p className="px-jobs-note">
             <Info size={16} strokeWidth={1.75} aria-hidden />
@@ -554,7 +569,15 @@ export const JobsPanel = forwardRef<
             item.batch ? (
               <BatchRow key={item.batch.key} batch={item.batch} act={act} finished />
             ) : (
-              <FinishedRow key={item.job.id} job={item.job} act={act} />
+              <FinishedRow
+                key={item.job.id}
+                job={item.job}
+                act={act}
+                onNavigate={(to) => {
+                  onClose();
+                  void navigate(to);
+                }}
+              />
             ),
           )}
         </GroupSection>
