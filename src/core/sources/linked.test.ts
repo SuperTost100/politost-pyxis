@@ -854,6 +854,83 @@ describe("a large linked folder", () => {
     expect(app.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'linked-folder-sort'`)).toBe(1);
   }, 30_000);
 
+  describe("stopping the job that sorts loose files", () => {
+    /**
+     * A folder with 101 loose files, a first sort that failed (so the job exists and has failed), and a model that
+     * holds its `holdCall`-th call open, as an engine that is slow to answer does, until the call is aborted or
+     * `release` is called. `release` also lets a call that ignores the stop go on, so a missing stop shows as a wrong
+     * result and not as a hang.
+     */
+    async function failedSort(holdCall: number) {
+      const loose = Array.from({ length: 101 }, (_, index) => `Materia 3 appunti ${String(index).padStart(3, "0")}.txt`);
+      const root = bigTree(20, loose);
+      let mode: "failing" | "holding" = "failing";
+      const calls: string[][] = [];
+      let release = () => {};
+      const released = new Promise<void>((resolve) => (release = resolve));
+      const app = bulk({
+        run: async (input) => {
+          if (!isSorting(input)) return answer([])(input);
+          if (mode === "failing") throw new Error("engine down");
+          const call = calls.length + 1;
+          const reply = await sortByPrefix(calls)(input);
+          if (call === holdCall)
+            await Promise.race([
+              released,
+              new Promise((_, reject) =>
+                input.signal?.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))),
+              ),
+            ]);
+          return reply;
+        },
+      });
+      const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+      await app.settled();
+      await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+      await app.settled();
+      const jobId = app.db.prepare(`SELECT id FROM jobs WHERE kind = 'linked-folder-sort' AND state = 'failed'`).pluck().get() as string;
+      expect(jobId).toBeTruthy();
+      const state = () => app.db.prepare(`SELECT state FROM jobs WHERE id = ?`).pluck().get(jobId);
+      const unplaced = () => app.count(`SELECT COUNT(*) FROM linked_files WHERE subfolder = '' AND sorted_at IS NULL`);
+      const withSubject = () => app.count(`SELECT COUNT(*) FROM sources WHERE title LIKE 'Materia 3 appunti%' AND subject_id IS NOT NULL`);
+      mode = "holding";
+      return { app, jobId, calls, release, state, unplaced, withSubject };
+    }
+
+    it("aborts the call in flight, starts no other and saves nothing, and Riprendi sorts all of them", async () => {
+      const t = await failedSort(1);
+      t.app.runner.retry(t.jobId);
+      await expect.poll(() => t.calls.length).toBe(1);
+      t.app.runner.cancel(t.jobId);
+      t.release();
+      await expect.poll(() => t.state(), { timeout: 5_000 }).toBe("cancelled");
+      expect(t.calls).toHaveLength(1);
+      expect(t.unplaced()).toBe(101);
+      expect(t.withSubject()).toBe(0);
+      expect(t.app.runner.resumeAll([t.jobId])).toEqual([t.jobId]);
+      await expect.poll(() => t.state(), { timeout: 5_000 }).toBe("succeeded");
+      expect(t.calls.slice(1).map((batch) => batch.length)).toEqual([100, 1]);
+      expect(t.unplaced()).toBe(0);
+    }, 30_000);
+
+    it("keeps the files placed before the stop, and Riprendi asks only about the rest", async () => {
+      const t = await failedSort(2);
+      t.app.runner.retry(t.jobId);
+      await expect.poll(() => t.calls.length).toBe(2);
+      // The first hundred are placed; the one file of the second call waits.
+      t.app.runner.cancel(t.jobId);
+      t.release();
+      await expect.poll(() => t.state(), { timeout: 5_000 }).toBe("cancelled");
+      expect(t.calls.map((batch) => batch.length)).toEqual([100, 1]);
+      expect(t.unplaced()).toBe(1);
+      t.app.runner.resumeAll([t.jobId]);
+      await expect.poll(() => t.state(), { timeout: 5_000 }).toBe("succeeded");
+      expect(t.calls.map((batch) => batch.length)).toEqual([100, 1, 1]);
+      expect(t.calls[2]).toEqual(t.calls[1]);
+      expect(t.unplaced()).toBe(0);
+    }, 30_000);
+  });
+
   it("without an AI tool, reads every file, keeps the folder names and leaves loose files without a subject", async () => {
     const root = bigTree(200, ["Analisi esercizi.txt", "orario.txt"]);
     const app = bulk({ engine: false });

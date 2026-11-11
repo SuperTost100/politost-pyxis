@@ -299,7 +299,7 @@ export function linkedFolders(deps: LinkedDeps) {
           const { folderId } = ctx.params as { folderId: string };
           // Riprova asks again, whatever failed before.
           sortGaveUp.delete(folderId);
-          await sortLoose(folderId, true);
+          await sortLoose(folderId, { strict: true, signal: ctx.signal });
           return {};
         },
       },
@@ -830,9 +830,12 @@ export function linkedFolders(deps: LinkedDeps) {
    * it lay inside it; one it cannot place stays without a subject and is not asked about again. Without an AI tool the
    * files stay without a subject, and the next look asks again. When the call fails, the files stay without a subject
    * and a `linked-folder-sort` job asks once more, so a failure that lasts ends as a failed job in Attività; with
-   * `strict` (that job) the failure is thrown as `linked-sort-failed` instead.
+   * `strict` (that job) the failure is thrown as `linked-sort-failed` instead. The job's `signal` is passed to the call,
+   * so a stop aborts the call in flight, starts no other and saves nothing more: the files not placed yet stay without
+   * a subject, and the job's Riprendi asks about those only. The first sort, which follows a look at the folder, runs under no job, so Ferma does not reach it.
    */
-  async function sortLoose(folderId: string, strict = false): Promise<void> {
+  async function sortLoose(folderId: string, options: { strict?: boolean; signal?: AbortSignal } = {}): Promise<void> {
+    const { strict = false, signal } = options;
     const folder = folderRow(folderId);
     if (!folder || folder.mode !== "root" || sortGaveUp.has(folderId)) return;
     const rows = subfolderRows(folderId);
@@ -857,7 +860,10 @@ export function linkedFolders(deps: LinkedDeps) {
     try {
       for (let at = 0; at < loose.length; at += MAX_LOOSE_SENT) {
         const batch = loose.slice(at, at + MAX_LOOSE_SENT);
-        const answer = await sortLooseFiles(db, subjects, batch, { run: deps.run });
+        signal?.throwIfAborted();
+        const answer = await sortLooseFiles(db, subjects, batch, { signal, run: deps.run });
+        // A stop that came as the call answered is a stop: nothing of this answer is saved.
+        signal?.throwIfAborted();
         if (answer === "no-engine") return;
         if (answer === "failed") {
           sortGaveUp.add(folderId);
