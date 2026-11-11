@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapEntry } from "@shared/concept-map";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
 import { Tag } from "../../components/Tag";
@@ -306,7 +307,11 @@ function NewMapDialog(props: {
   });
   // The topic select is there only for a subject whose exams have topics, and folds out of the subject select when
   // they are known. It stays mounted, so that it folds back in too; it keeps its last options while it does.
-  const hasTopics = Boolean(subjectId) && !read.some((query) => query.isPending) && topicGroups.length > 0;
+  // An exam whose read failed has no topics here, so the subject is not taken for one without topics, or its list for
+  // complete, until the read works.
+  const topicsFailed = Boolean(subjectId) && read.some((query) => query.isError);
+  const hasTopics =
+    Boolean(subjectId) && !topicsFailed && !read.some((query) => query.isPending) && topicGroups.length > 0;
   const shownGroups = useRef(topicGroups);
   if (hasTopics) shownGroups.current = topicGroups;
   const wholeLabel = subjectId ? label(t("maps.wholeSubject"), subjectId) : t("maps.wholeSubject");
@@ -319,7 +324,7 @@ function NewMapDialog(props: {
       onCancel={props.onClose}
       okText={t("maps.create")}
       cancelText={t("maps.cancel")}
-      okButtonProps={{ disabled: !subjectId }}
+      okButtonProps={{ disabled: !subjectId || topicsFailed }}
       onOk={() => {
         if (!subjectId) return;
         props.onClose();
@@ -350,6 +355,15 @@ function NewMapDialog(props: {
             }))}
           />
         </div>
+        {topicsFailed ? (
+          <LoadError
+            onRetry={() => {
+              for (const query of read) if (query.isError) void query.refetch();
+            }}
+          >
+            {t("maps.topicsFailed", { subject: subject?.name ?? "" })}
+          </LoadError>
+        ) : null}
         <div className="px-maps-coll" data-shut={!hasTopics || undefined} inert={!hasTopics}>
           <div>
             <div className="px-maps-new-block px-form-field">

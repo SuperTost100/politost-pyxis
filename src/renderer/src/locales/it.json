@@ -1083,6 +1083,7 @@
     "subject": "Materia",
     "pickSubject": "Scegli una materia",
     "topic": "Argomento",
+    "topicsFailed": "Non riesco a caricare gli argomenti di {{subject}}.",
     "wholeSubject": "Tutta la materia",
     "topicMaps_one": "{{topic}} · {{count}} mappa",
     "topicMaps_other": "{{topic}} · {{count}} mappe",

@@ -1083,6 +1083,7 @@
     "subject": "Subject",
     "pickSubject": "Choose a subject",
     "topic": "Topic",
+    "topicsFailed": "The topics of {{subject}} could not be loaded.",
     "wholeSubject": "Whole subject",
     "topicMaps_one": "{{topic}} · {{count}} map",
     "topicMaps_other": "{{topic}} · {{count}} maps",

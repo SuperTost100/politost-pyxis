@@ -91,6 +91,44 @@ function dialogs(page: Page) {
   return { openDialog, choose, ask };
 }
 
+test("the Nuova mappa dialog says when the topics of a subject did not load, and offers to try again", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels)]);
+  // The exam's read fails while the table it joins is away, and works again when it is back.
+  const breakRead = (on: boolean) => {
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      db.exec(on ? "ALTER TABLE plan_sources RENAME TO plan_sources_away" : "ALTER TABLE plan_sources_away RENAME TO plan_sources");
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    breakRead(true);
+    const { openDialog, choose } = dialogs(page);
+    const dialog = await openDialog();
+    await choose(dialog, "Materia", "Analisi 1");
+    // It says the topics are missing, with a way to try again, and does not take the subject for one without topics.
+    const failed = dialog.getByRole("alert");
+    await expect(failed).toContainText("Non riesco a caricare gli argomenti di Analisi 1");
+    await expect(dialog.getByRole("button", { name: "Crea la mappa" })).toBeDisabled();
+    await expectNoAxeViolations(page);
+    await saveShot(page, "maps-instruction/new-map-topics-failed.png");
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toBeVisible();
+    // Once the read works, the topics are there to choose and the dialog goes on as usual.
+    breakRead(false);
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Crea la mappa" })).toBeEnabled();
+    await choose(dialog, "Argomento", "Limiti");
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a map asked for in the student's own words reaches the engine, and a second one for the same topic sits beside the first", async () => {
   test.setTimeout(180_000);
   const { app, page, userData, prompts, errors } = await startApp([focused(labels)], { PYXIS_E2E_MAP_DELAY: "1500" });
