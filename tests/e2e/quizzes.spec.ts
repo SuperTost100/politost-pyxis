@@ -562,7 +562,8 @@ test("open answer: written with formulas, graded by the AI tool after Consegna w
     await sheet(page).getByRole("button", { name: "Consegna", exact: true }).click();
     await page.getByRole("group", { name: /^Consegni con 9 domande vuote/ }).getByRole("button", { name: "Consegna" }).click();
     // The written answer is graded by the model while the results wait with the working mark.
-    await expect(score(page)).toContainText("Correggo le tue risposte.");
+    // The title or the line under it, whichever says it.
+    await expect(page.locator(".px-res")).toContainText("Correggo le tue risposte.");
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await expect(score(page)).toContainText(/0,6 punt[io] su 10\./, { timeout: 15000 });
     await axe(page);
