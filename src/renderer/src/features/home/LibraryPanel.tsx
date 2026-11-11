@@ -26,6 +26,7 @@ import { OcrDataCard } from "../../components/OcrData";
 import { ScanNotice, scanPending } from "../../components/ScanNotice";
 import { isOcrRefusal } from "../../components/ocrErrors";
 import { invoke } from "../../lib/ipc";
+import { reportError } from "../../lib/errorReports";
 import { searchMatcher } from "../../lib/search";
 import {
   FreeBooks,
@@ -157,9 +158,18 @@ export function LibraryPanel({
   const [naming, setNaming] = useState<LibrarySource | null>(null);
   const subjects = useSubjects();
   const move = useMoveSource();
-  /** Starts choosing the subjects of what an add brought in, on the Library page only. */
+  /**
+   * Starts choosing the subjects of what an add brought in, on the Library page only. The files are in before this
+   * runs, so a refused request is reported and nothing more: they stay `waiting` and "Da sistemare" tells the student
+   * what to do, and the add that called this still ends as the success it was.
+   */
   const sortAdded = async (ids: string[]) => {
-    if (sortsSubjects && ids.length) await invoke("sources.sortSubjects", { sourceIds: ids });
+    if (!sortsSubjects || !ids.length) return;
+    try {
+      await invoke("sources.sortSubjects", { sourceIds: ids });
+    } catch (err) {
+      reportError(err);
+    }
   };
   // A folder scan stops at a file count, a depth and an entry count. The student is told when it did.
   const [folderCut, setFolderCut] = useState<{
