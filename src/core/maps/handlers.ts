@@ -33,8 +33,8 @@ export function mapHandlers(
     scope(input: MapAddress) {
       return describeScope(db, scope(input));
     },
-    build(input: MapAddress) {
-      return mapBuild(db, scope(input));
+    build(input: MapAddress & { jobId?: string }) {
+      return mapBuild(db, scope(input), input.jobId);
     },
     all(input: { query?: string }) {
       return listAllMaps(db, input.query);
@@ -45,8 +45,8 @@ export function mapHandlers(
     list(input: MapAddress) {
       return listMaps(db, scope(input));
     },
-    generate(input: MapAddress) {
-      return enqueueMaps(db, runner, scope(input));
+    generate(input: MapAddress & { instruction?: string }) {
+      return enqueueMaps(db, runner, scope(input), input.instruction);
     },
     edit(input: MapAddress & { mapId?: string; instruction: string }, signal?: AbortSignal) {
       return editMap(

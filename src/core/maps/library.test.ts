@@ -53,6 +53,21 @@ function seed() {
 }
 
 describe("listAllMaps", () => {
+  it("gives what the student asked for beside the map of the same topic that has none", () => {
+    const db = seed();
+    storeMap(db, { planId: "p-phys", topicId: "t-motion" }, {
+      id: "m-asked",
+      title: "Moto",
+      passageIds: ["passage"],
+      graph: graph(["Moto", "Teoremi"]),
+      instruction: "solo i teoremi",
+    });
+    expect(listAllMaps(db).filter((map) => map.topicId === "t-motion").map((map) => [map.id, map.instruction])).toEqual([
+      ["m-motion", null],
+      ["m-general", null],
+      ["m-asked", "solo i teoremi"],
+    ]);
+  });
   it("lists every map by subject position, exam, topic position and saved order, without archived topics", () => {
     const maps = listAllMaps(seed());
     expect(maps.map((map) => map.id)).toEqual([
@@ -74,6 +89,7 @@ describe("listAllMaps", () => {
       nodeCount: 2,
       shape: [0],
       grounding: "sources",
+      instruction: null,
     });
     expect(maps[1]!.grounding).toBe("general");
     expect(maps.at(-1)!.subjectName).toBeNull();

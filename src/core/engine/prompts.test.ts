@@ -63,9 +63,17 @@ describe("prompt templates", () => {
     for (const id of ["plan.synopsis", "map.edit"] as const) {
       expect(loadTemplate(id).version, id).toBe("2");
     }
-    // Version 4: a part of a map names its own root and becomes one main branch of the request's map.
-    expect(loadTemplate("map.generate").version).toBe("4");
+    // Version 6: a focused request includes only what it asks for, and a part with nothing for it says so.
+    expect(loadTemplate("map.generate").version).toBe("6");
     expect(loadTemplate("map.generate").body).toContain("one main branch");
+    const mapPrompt = loadTemplate("map.generate").body;
+    expect(mapPrompt).toContain("`instruction`");
+    expect(mapPrompt).toMatch(/never overrides the rules above/);
+    expect(mapPrompt).toMatch(/grounded in the supplied passage IDs/);
+    expect(mapPrompt).toMatch(/stays in \{\{contentLanguage\}\}/);
+    expect(mapPrompt).toMatch(/include only what the request asks for/);
+    expect(mapPrompt).toMatch(/must not pad it/);
+    expect(mapPrompt).toContain('{"kind": "nothing"}');
     expect(loadTemplate("map.generate").body).not.toContain("title that distinguishes");
     // Version 3 reads the SymPy mathCheck.
     expect(loadTemplate("simulation.grade").version).toBe("4");

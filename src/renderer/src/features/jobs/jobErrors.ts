@@ -22,6 +22,8 @@ const ENGINE_ERROR = /^([a-z-]+)(?: \[([\w-]+)\])?(?::|$)/;
 /** The message key for the raw error code a background job stopped with. */
 export function jobErrorKey(error: string): string {
   if (error === "demo-step-failed") return "jobs.demoFailed";
+  // Every part of a map request found nothing for the student's words (see core's map build).
+  if (error === "map-nothing-matched") return "map.nothingMatched";
   if (error.includes("engine-missing")) return "engines.errors.engine-missing";
   const code = ENGINE_ERROR.exec(error)?.[1];
   if (code && ENGINE_CODES.has(code)) return `engines.errors.${code}`;
