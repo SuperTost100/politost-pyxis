@@ -51,17 +51,25 @@ export async function launchPyxis({
           env: set,
         },
   );
-  await sizeWindow(app);
+  try {
+    await sizeWindow(app, set.PYXIS_E2E_WINDOW);
+  } catch (error) {
+    // The caller never gets this app, so nobody else can close it, and on Windows its open database would make the
+    // test's cleanup fail and hide this error.
+    await app.close().catch(() => undefined);
+    throw error;
+  }
   return app;
 }
 
 /**
  * PYXIS_E2E_WINDOW=1024x640 sizes the first window's content area to that, as a smaller screen would: a Windows runner
  * shows 1024 px of desktop and clamps the 1280 px default. The app does not go below 960x640 either way. Writing a
- * window.json into the profile does not work: the app closed right after launch when one was there.
+ * window.json into the profile does not work: the app closed right after launch when one was there. The size is read
+ * from the environment the app was started with, so a test can set or remove it through `LaunchOptions.env`.
  */
-async function sizeWindow(app: ElectronApplication) {
-  const match = /^(\d+)x(\d+)$/.exec(process.env.PYXIS_E2E_WINDOW ?? "");
+async function sizeWindow(app: ElectronApplication, size: string | undefined) {
+  const match = /^(\d+)x(\d+)$/.exec(size ?? "");
   if (!match) return;
   await app.firstWindow();
   await app.evaluate(({ BrowserWindow }, [width, height]) => {
