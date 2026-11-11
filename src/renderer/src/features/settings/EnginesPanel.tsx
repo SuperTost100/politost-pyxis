@@ -17,6 +17,7 @@ import {
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
+import { useStillHere } from "../../lib/useStillHere";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
@@ -245,12 +246,13 @@ export function EnginesPanel() {
   // A CLI that still needs installing or a sign-in, shown in the same setup card as first setup. "Sign in to …" on an
   // engine error elsewhere opens this page with `?signIn=<engine>`, which opens that engine's sign-in at once.
   const [searchParams, setSearchParams] = useSearchParams();
+  const stillHere = useStillHere();
   const signInParam = searchParams.get("signIn");
   const [setupFor, setSetupFor] = useState<InstallableProvider | null>(null);
   useEffect(() => {
     if (!signInParam) return;
     if (isInstallable(signInParam)) setSetupFor(signInParam);
-    setSearchParams({}, { replace: true });
+    if (stillHere()) setSearchParams({}, { replace: true });
   }, [signInParam, setSearchParams]);
   // The notice for engines that are ready but not acknowledged. `then` runs the action the student was after.
   const [notice, setNotice] = useState<{

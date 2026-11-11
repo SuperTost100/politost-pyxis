@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, InputNumber, Select } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +19,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -149,6 +150,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   // A diagnostic and a Review save every question when they start; a quiz is written by a build job meanwhile.
   const fixed = diagnostic || reviewRoute;
   const [searchParams, setSearchParams] = useSearchParams();
+  const stillHere = useStillHere();
   const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
   // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
@@ -207,7 +209,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           })
         : invoke("study.diagnosticStart", { planId: planId ?? "" }),
     onSuccess: (session) => {
-      if (session.attemptId)
+      // The quiz was started a moment ago; the student may have left since, and the address is then another page's.
+      if (session.attemptId && stillHere())
         setSearchParams(
           { ...(paper ? { paper } : {}), attempt: session.attemptId },
           { replace: true },
@@ -528,10 +531,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       setActionError(true);
     }
   }
+  const queryClient = useQueryClient();
   const markWrong = useMutation({
     mutationFn: (input: { questionId: string; wrong: boolean }) =>
       invoke("study.quizWrong", { attemptId, ...input }),
     onSuccess: (_, input) => {
+      // Marking a question wrong recomputes the exam's gaps, which the results screen's change panel shows.
+      void queryClient.invalidateQueries({ queryKey: ["attempt-outcome", attemptId] });
       setWrongMarks((current) => ({
         ...current,
         [input.questionId]: input.wrong,
@@ -843,12 +849,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       stem: item?.stem ?? "",
       topic: topicTitle(row.id),
       mark,
+      value: row.score,
       ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
       answer: answerText(row.id),
       typed: answerSource(item?.grade.kind ?? ""),
       long,
       expected: expectedText(row),
-      expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
+      expectedLabel: t(long ? "quiz.reference" : "results.rightAnswer"),
       explanation: row.explanation,
       citations: row.citations,
       grader:
@@ -1201,15 +1208,19 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               onClick: () => void close(),
             }
       }
-      title={
+      title={[
+        // A handed-in attempt is its results.
+        finalResult ? t("results.title") : "",
         redo
           ? t("mistakes.redoTitle")
           : review
             ? t("cards.reviewTitle")
             : diagnostic
               ? t("quiz.diagnosticTitle")
-              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 ")
-      }
+              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 "),
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 ")}
       subtitle={
         sheet && !wholeReview
           ? [
@@ -1229,14 +1240,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             : t("quiz.position", { current: index + 1, total: requestedCount })
           : [plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined
       }
+      // The results screen, while grading or once graded, has no line: the attempt is over.
       progress={
-        questions.length
-          ? finalResult || noAnswers
+        !questions.length || finalResult || gradingStarted
+          ? undefined
+          : noAnswers
             ? 1
             : wholeReview
               ? (wholeReview.cardsTotal + answered) / wholeReview.total
               : answered / Math.max(1, requestedCount)
-          : undefined
       }
     >
       {owed > 0 && !finalResult && !sheet ? (
@@ -1440,6 +1452,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         <ResultsScreen
           kind="quiz"
           attemptId={attemptId}
+          planId={planId ?? ""}
           eyebrow={
             !finalResult
               ? t("results.result")
@@ -1500,6 +1513,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               ? undefined
               : { done: grading.data?.done ?? 0, total: grading.data?.total ?? 0 }
           }
+          stopped={gradingStopped && !finalResult}
           notes={
             gradingStopped && !finalResult ? (
               grading.data?.error ? (
@@ -1540,20 +1554,18 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   {t(quizBackLabel({ redo, review: reviewRoute }))}
                 </Button>
               )
-            ) : hasMistakes ? (
-              <Button
-                type="primary"
-                shape="round"
-                size="large"
-                onClick={() =>
-                  navigate(`/plans/${planId ?? ""}/review?from=${encodeURIComponent(attemptId)}`)
-                }
-              >
-                {t("quiz.reviewMistakes")}
-              </Button>
-            ) : (
+            ) : hasMistakes ? undefined : (
               backButton("primary")
             )
+          }
+          // Ripasso mirato: a drill on the gap this quiz opened, or this quiz's wrong answers asked again.
+          review={
+            finalResult && hasMistakes
+              ? {
+                  count: countedResults.filter((row) => row.score < 1).length,
+                  onReview: () => navigate(`/plans/${planId ?? ""}/review?from=${encodeURIComponent(attemptId)}`),
+                }
+              : undefined
           }
           secondary={
             !finalResult ? (

@@ -52,6 +52,13 @@ describe("job update invalidation", () => {
     ]);
   });
 
+  it("refreshes the attempt outcome when a gap-insight job ends, since it adds the misconception and severity to a gap", () => {
+    expect(keys(staleFamilies({ kind: "gap-insight", state: "succeeded" }))).toContain("attempt-outcome");
+    expect(keys(staleFamilies({ kind: "gap-insight", state: "failed" }))).toContain("attempt-outcome");
+    expect(keys(staleFamilies({ kind: "gap-insight", state: "running" }))).not.toContain("attempt-outcome");
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "succeeded" }))).not.toContain("attempt-outcome");
+  });
+
   it("refreshes a source's citation counts when a job that cites passages ends", () => {
     for (const kind of ["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"])
       expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("source-details");
