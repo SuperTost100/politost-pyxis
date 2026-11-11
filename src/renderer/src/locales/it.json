@@ -3453,6 +3453,7 @@
       "failed": "Pyxis non è riuscito a scrivere le flashcard. Non è stato salvato niente.",
       "retry": "Riprova",
       "errors": {
+        "allRepeats": "Tutte le flashcard che Pyxis ha scritto le avevi già. Cambia la richiesta, oppure chiedi di nuovo per averne altre.",
         "noMaterial": "In Libreria non c’è materiale di questa materia da cui scrivere le flashcard.",
         "noTopicMaterial": "Questo argomento non ha ancora pagine da cui scrivere le flashcard. Scegli tutta la materia o un altro argomento.",
         "nothingMatched": "Nel materiale non ho trovato niente su quello che hai chiesto. Prova con altre parole, o lascia vuoto «Su cosa?»."

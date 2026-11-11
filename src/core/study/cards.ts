@@ -462,8 +462,14 @@ export function createCard(
   if (!front || !back) throw new Error("card-blank");
   if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(input.subjectId)) throw new Error("subject-missing");
   const planId = input.planId || null;
-  if (planId && !db.prepare("SELECT 1 FROM plans WHERE id = ? AND subject_id = ?").get(planId, input.subjectId))
-    throw new Error("plan-not-in-subject");
+  if (planId) {
+    const plan = db.prepare("SELECT archived_at FROM plans WHERE id = ? AND subject_id = ?").get(planId, input.subjectId) as
+      | { archived_at: number | null }
+      | undefined;
+    if (!plan) throw new Error("plan-not-in-subject");
+    // The dialog offers only the subject's exams that are not archived.
+    if (plan.archived_at !== null) throw new Error("plan-archived");
+  }
   const id = uuidv7(now);
   // An exam's card takes the exam's subject from the trigger `cards_take_plan_subject`, which is the same one.
   db.prepare(

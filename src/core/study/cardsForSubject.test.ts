@@ -87,6 +87,12 @@ describe("createCard", () => {
     expect(() => createCard(db, { subjectId: "phys", front: "a", back: "\n" })).toThrow("card-blank");
     expect(count(db)).toBe(0);
   });
+
+  it("refuses an archived exam of the subject, which the dialog never offers", () => {
+    const db = fixture();
+    expect(() => createCard(db, { subjectId: "phys", planId: "old", front: "a", back: "b" })).toThrow("plan-archived");
+    expect(count(db)).toBe(0);
+  });
 });
 
 describe("newCardPlaces", () => {
@@ -182,6 +188,40 @@ describe("proposeSubjectCards", () => {
     const result = await proposeSubjectCards(db, { subjectId: "phys", count: 2 }, run);
     expect(result.cards.map((row) => row.front)).toEqual(["Forza?"]);
     expect(result.repeats).toBe(1);
+  });
+
+  it("reads a topic's passages from the sources the student still has, not from a removed one", async () => {
+    const db = fixture();
+    db.exec(`
+      INSERT INTO sources(id,subject_id,kind,title,status,library,created_at,updated_at) VALUES
+        ('notes','phys','pdf','Appunti','ready',1,1,1);
+      INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES('doc2','notes',1,'{}',1);
+      INSERT INTO passages(id,source_id,document_id,text,section_path,created_at) VALUES
+        ('p4','notes','doc2','Il moto rettilineo uniforme ha velocità costante.','Lezione 1',9);
+      INSERT INTO topic_passages(topic_id,passage_id) VALUES('kin','p4');
+      UPDATE sources SET status = 'removed' WHERE id = 'book';
+    `);
+    const { seen, run } = recorded([card("Moto uniforme?", "p4")]);
+    await proposeSubjectCards(db, { subjectId: "phys", planId: "mech", topicId: "kin", count: 5 }, run);
+    expect(seen[0]!.request.passages.map((passage) => passage.id)).toEqual(["p4"]);
+    // With only the removed source left under the topic, there is no material to write from.
+    db.exec("UPDATE sources SET status = 'removed' WHERE id = 'notes'");
+    await expect(
+      proposeSubjectCards(db, { subjectId: "phys", planId: "mech", topicId: "kin", count: 5 }, run),
+    ).rejects.toMatchObject({ code: "cards-no-material" });
+    expect(seen).toHaveLength(1);
+  });
+
+  it("fails, and says why, when every card Pyxis wrote repeats one the subject has", async () => {
+    const db = fixture();
+    createCard(db, { subjectId: "phys", front: "Che cos'è la velocità?", back: "x" });
+    createCard(db, { subjectId: "phys", front: "Forza?", back: "x" });
+    const { run } = recorded([card("che cos'è la velocità?", "p1"), card("Forza?", "p3")]);
+    await expect(proposeSubjectCards(db, { subjectId: "phys", count: 2 }, run)).rejects.toMatchObject({
+      code: "cards-all-repeats",
+      messageKey: "flashcards.new.errors.allRepeats",
+    });
+    expect(count(db)).toBe(2);
   });
 
   it("refuses a subject with no material, a focus the material doesn't cover and a reply with no card, saving nothing", async () => {

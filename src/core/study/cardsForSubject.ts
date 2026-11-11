@@ -104,7 +104,7 @@ async function passagesFor(
       .prepare(
         `SELECT p.id, p.text, p.source_id, COALESCE(s.title || COALESCE(' › ' || p.section_path, ''), '') AS section
          FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id JOIN sources s ON s.id = p.source_id
-         WHERE tp.topic_id = ? ORDER BY p.created_at, p.id`,
+         WHERE tp.topic_id = ? AND s.status != 'removed' ORDER BY p.created_at, p.id`,
       )
       .all(input.topicId) as Array<{ id: string; text: string; source_id: string; section: string }>;
     if (!rows.length) throw new IpcError("cards-no-material", "flashcards.new.errors.noTopicMaterial");
@@ -219,5 +219,7 @@ export async function proposeSubjectCards(
     cards.push({ ...card, passageId: row.passageId });
   }
   if (!data.cards.length) throw new IpcError("cards-nothing-matched", "flashcards.new.errors.nothingMatched");
+  // Every card repeats one the subject has: nothing to check, so the dialog gets a way out, not an empty list.
+  if (!cards.length) throw new IpcError("cards-all-repeats", "flashcards.new.errors.allRepeats");
   return { cards, provider: result.provider, model: result.model, repeats: data.cards.length - cards.length };
 }
