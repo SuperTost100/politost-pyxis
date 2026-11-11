@@ -23,6 +23,7 @@ import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { isUnsorted, NewSubjectDialog, SubjectPicker, UnsortedGroup } from "./LibrarySubjects";
+import { bookLabel, coverColour, coverKind } from "./shelf";
 import "./LibraryShelf.css";
 
 export type LibrarySource = RequestOutput<"sources.list">[number];
@@ -41,28 +42,9 @@ const messageKeyOf = (err: unknown): string =>
 
 /** How many covers a shelf shows before "Mostra tutti": two rows at the widest page, so a big subject is no wall. */
 const SHELF_CAP = 14;
-/** The number of subject cover colours (`--cover-1` to `--cover-6` in tokens.css). */
-const COVER_COLOURS = 6;
+/** How many rows "Da sistemare" shows before "Mostra tutti", so twenty files to sort do not push the shelves away. */
+const UNSORTED_CAP = 8;
 const PROBLEM = new Set(["failed", "needs-ocr", "interrupted", "cancelled"]);
-
-/** A subject's cover colour, from its id, so it stays the same for that subject whatever its name or place. */
-export function coverColour(subjectId: string): number {
-  let hash = 2166136261;
-  for (const char of subjectId) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
-  return ((hash >>> 0) % COVER_COLOURS) + 1;
-}
-
-/**
- * What a cover draws, from what core records: a free book is a book, a photo a photo, a file an exam uses as a past
- * paper an exam paper, a PowerPoint file slides, and anything else a stack of pages.
- */
-export function coverKind(source: Pick<LibrarySource, "kind" | "pastPaper">): "book" | "photo" | "exam" | "slides" | "pages" {
-  if (source.kind === "smartbook") return "book";
-  if (source.pastPaper) return "exam";
-  if (source.kind === "image") return "photo";
-  if (source.kind === "pptx") return "slides";
-  return "pages";
-}
 
 /** Sorted the way a shelf reads: by title, numbers in order ("Lezione 2" before "Lezione 10"). */
 const byTitle = (a: LibrarySource, b: LibrarySource) =>
@@ -112,6 +94,7 @@ export function LibraryShelf({
   const [said, setSaid] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [unsortedOpen, setUnsortedOpen] = useState(false);
   const landing = useRef(new Map<string, Landing>());
   const pendingFocus = useRef<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -278,8 +261,17 @@ export function LibraryShelf({
         }}
       />
       {unsorted.length ? (
-        <UnsortedGroup sources={unsorted}>
-          {unsorted.map((source) => (
+        <UnsortedGroup
+          sources={unsorted}
+          more={
+            unsorted.length > UNSORTED_CAP && !filtering ? (
+              <Button variant="ghost" size="sm" expanded={unsortedOpen} onClick={() => setUnsortedOpen((open) => !open)}>
+                {unsortedOpen ? t("sources.shelf.showFewer") : t("sources.shelf.showAll", { count: unsorted.length })}
+              </Button>
+            ) : null
+          }
+        >
+          {(unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP)).map((source) => (
             <UnsortedRow
               key={source.id}
               source={source}
@@ -513,7 +505,8 @@ function CoverArt({ source, colour, label }: { source: LibrarySource; colour?: n
   const style = colour ? ({ "--cover": `var(--cover-${colour})` } as CSSProperties) : undefined;
   return (
     <span className={`px-cover-art is-${kind}`} style={style} aria-hidden>
-      {kind === "book" && label ? <span className="px-cover-book-title">{label}</span> : null}
+      {/* Printed by CSS, so the cover's button is named by the file's title alone. */}
+      {kind === "book" && label ? <span className="px-cover-book-title" data-label={bookLabel(label)} /> : null}
     </span>
   );
 }
@@ -568,10 +561,13 @@ const Cover = memo(function Cover({
     );
   }, []);
   const detail = [state.status, ...state.notes].filter(Boolean).join(". ");
+  const stateId = useId();
   return (
     <li
       ref={item}
-      className={["px-cover", selected ? "is-selected" : "", arrived ? "is-arrived" : ""].filter(Boolean).join(" ")}
+      className={["px-cover", selected ? "is-selected" : "", arrived ? "is-arrived" : "", itemMenu.popup ? "is-menu" : ""]
+        .filter(Boolean)
+        .join(" ")}
       data-source-id={source.id}
       {...itemMenu.bind}
     >
@@ -582,6 +578,8 @@ const Cover = memo(function Cover({
         data-source-open
         onClick={onOpen}
         title={detail || undefined}
+        // The title names the cover; its state, under it, is read after it as a description.
+        aria-describedby={detail ? stateId : undefined}
       >
         <span className="px-cover-frame">
           <CoverArt source={source} colour={colour} label={source.subject ?? undefined} />
@@ -596,10 +594,14 @@ const Cover = memo(function Cover({
           ) : null}
         </span>
         <span className="px-cover-title">{source.title}</span>
-        {state.status || state.notes.length ? (
-          <span className={state.flagged ? "px-cover-state is-problem" : "px-cover-state"}>{detail}</span>
-        ) : null}
       </button>
+      {detail ? (
+        <span id={stateId} className={state.flagged ? "px-cover-state is-problem" : "px-cover-state"}>
+          {[state.status, ...state.notes].filter(Boolean).map((part) => (
+            <span key={part}>{part}</span>
+          ))}
+        </span>
+      ) : null}
       <FileActions source={source} newVersion={newVersion} bookBusy={bookBusy} onAct={onAct} />
       <MenuDots
         menu={menuProps}
@@ -644,13 +646,12 @@ function UnsortedRow({
     t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),
     source.sections ? t("sources.sectionCount", { count: source.sections }) : null,
     state.status,
-    ...state.notes,
   ]
     .filter(Boolean)
     .join(" · ");
   return (
     <li
-      className={selected ? "px-unsorted-row is-selected" : "px-unsorted-row"}
+      className={["px-unsorted-row", selected ? "is-selected" : "", itemMenu.popup ? "is-menu" : ""].filter(Boolean).join(" ")}
       data-source-id={source.id}
       data-unsorted-id={source.id}
       {...itemMenu.bind}
@@ -663,6 +664,11 @@ function UnsortedRow({
           <span className="body-strong">{source.title}</span>
         </button>
         <span className={state.flagged ? "small px-unsorted-meta is-problem" : "small px-unsorted-meta"}>{meta}</span>
+        {state.notes.map((note) => (
+          <span key={note} className={state.flagged ? "small px-unsorted-meta is-problem" : "small px-unsorted-meta"}>
+            {note}
+          </span>
+        ))}
         <FileActions source={source} newVersion={newVersion} bookBusy={bookBusy} onAct={onAct} />
       </span>
       {source.sort === "working" ? (
@@ -753,7 +759,7 @@ function SubjectCard({
   };
   return (
     <section
-      className={fresh ? "px-shelf-subject is-fresh" : "px-shelf-subject"}
+      className={["px-shelf-subject", fresh ? "is-fresh" : "", itemMenu.popup ? "is-menu" : ""].filter(Boolean).join(" ")}
       data-subject-id={subject.id}
       aria-labelledby={`${headId} ${countId}`}
     >

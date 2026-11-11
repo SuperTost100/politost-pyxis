@@ -24,7 +24,16 @@ const NEW = "\u0000new";
  * "Da sistemare": the files without a subject, whose subject the student chooses. The lines above them say why they
  * wait, and link Settings when no AI tool is set up. A file Pyxis is still choosing for says so in its row.
  */
-export function UnsortedGroup({ sources, children }: { sources: LibrarySource[]; children: ReactNode }) {
+export function UnsortedGroup({
+  sources,
+  more,
+  children,
+}: {
+  sources: LibrarySource[];
+  /** "Mostra tutti" when only the first rows show. */
+  more?: ReactNode;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const headId = useId();
   const reasons = new Set(sources.map((source) => source.sort ?? "unsure"));
@@ -44,6 +53,7 @@ export function UnsortedGroup({ sources, children }: { sources: LibrarySource[];
         <p className="small ink-muted">{t("sources.shelf.working")}</p>
       ) : null}
       <ul className="px-unsorted-card">{children}</ul>
+      {more ? <div className="px-unsorted-more">{more}</div> : null}
     </section>
   );
 }

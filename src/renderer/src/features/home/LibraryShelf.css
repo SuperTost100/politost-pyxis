@@ -109,6 +109,7 @@ input.px-ctl-field.px-shelf-subject-rename {
 }
 .px-cover-open:hover,
 .px-cover.is-selected .px-cover-open,
+.px-cover.is-menu .px-cover-open,
 .px-cover:has(.px-cover-menu[aria-expanded="true"]) .px-cover-open {
   background: var(--surface-raised);
 }
@@ -132,7 +133,7 @@ input.px-ctl-field.px-shelf-subject-rename {
 }
 .px-cover-state {
   display: -webkit-box;
-  margin-top: -6px;
+  margin-top: 2px;
   overflow: hidden;
   color: var(--ink-subtle);
   font: 400 calc(12px * var(--text-scale, 1)) / 1.3 var(--font-sans);
@@ -170,13 +171,28 @@ input.px-ctl-field.px-shelf-subject-rename {
 }
 .px-cover:hover .px-cover-menu,
 .px-cover:focus-within .px-cover-menu,
-.px-cover-menu[aria-expanded="true"] {
+.px-cover.is-menu .px-cover-menu,
+.px-cover-menu[aria-expanded="true"],
+.px-unsorted-row:hover .px-unsorted-menu,
+.px-unsorted-row:focus-within .px-unsorted-menu,
+.px-unsorted-row.is-menu .px-unsorted-menu,
+.px-unsorted-menu[aria-expanded="true"] {
   opacity: 1;
 }
+.px-unsorted-menu.ant-btn {
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
 @media (hover: none) {
-  .px-cover-menu.ant-btn {
+  .px-cover-menu.ant-btn,
+  .px-unsorted-menu.ant-btn {
     opacity: 1;
   }
+}
+/* A subject whose menu is open by a right-click lifts, as its dots would show. */
+.px-shelf-subject.is-menu {
+  box-shadow: var(--shadow-overlay);
 }
 
 /* "Da sistemare": a card of rows, each with its picture, name, the subject choice and its menu. */
@@ -200,6 +216,7 @@ input.px-ctl-field.px-shelf-subject-rename {
   margin-top: 1px;
 }
 .px-unsorted-row.is-selected,
+.px-unsorted-row.is-menu,
 .px-unsorted-row:has(.px-unsorted-menu[aria-expanded="true"]) {
   background: var(--surface-raised);
 }
@@ -291,8 +308,12 @@ input.px-ctl-field.px-shelf-subject-rename {
   border-radius: 3px 0 0 3px;
   background: color-mix(in srgb, var(--ink) 25%, transparent);
 }
+.px-cover-book-title::before {
+  content: attr(data-label);
+}
 .px-cover-book-title {
   display: -webkit-box;
+  overflow-wrap: normal;
   overflow: hidden;
   font: 400 6.5px/1.2 var(--font-display);
   -webkit-box-orient: vertical;
@@ -393,6 +414,7 @@ input.px-ctl-field.px-shelf-subject-rename {
 }
 /* On a highlighted row the picker keeps its edge, since the row now has the picker's fill. */
 .px-unsorted-row.is-selected select.px-ctl-field,
+.px-unsorted-row.is-menu select.px-ctl-field,
 .px-unsorted-row:has(.px-unsorted-menu[aria-expanded="true"]) select.px-ctl-field {
   border-color: var(--border-control);
   background: var(--surface);
@@ -430,4 +452,10 @@ input.px-ctl-field.px-shelf-subject-rename {
 .px-file-action:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+.px-unsorted-more {
+  margin-left: -10px;
+}
+.px-cover-state > span + span::before {
+  content: ". ";
 }
