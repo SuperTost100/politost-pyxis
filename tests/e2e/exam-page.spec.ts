@@ -164,6 +164,15 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Fisica I");
     await page.getByRole("link", { name: "Fisica I", exact: true }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+    // An exam with no flashcards yet keeps its filter and shows an empty result, not another exam's cards.
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
+    await page.evaluate(() => {
+      location.hash = "/exams/cards?exam=p-chi";
+    });
+    await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Chimica generale");
+    await expect(page.getByText("No flashcard matches.")).toBeVisible();
+    await expect(page.getByText("Unità della forza?")).toHaveCount(0);
+    await openExam(page);
 
     // Da rifare says when nothing is waiting.
     await expect(aside.getByText("No questions to redo.")).toBeVisible();

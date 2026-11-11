@@ -28,6 +28,7 @@ import {
 } from "../../components/ListToolbar";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 import { invoke } from "../../lib/ipc";
+import { usePlans } from "../../lib/queries";
 import { i18n } from "../../locales/i18n";
 import { AnkiModal } from "./AnkiModal";
 import "./CardBrowser.css";
@@ -115,14 +116,23 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
     if (data && data.cards.length === 0 && data.total > 0 && page > 1)
       setPage(Math.ceil(data.total / PAGE_SIZE));
   }, [data, page]);
+  // The browser lists only exams that hold cards, so the exam it was opened for is looked up among all of them: an
+  // exam with no flashcards yet keeps its filter and shows an empty result, and one that does not exist is dropped.
+  const exams = usePlans();
+  const requested = planId !== "" && planId === initialPlanId ? exams.data?.find((exam) => exam.id === planId) : undefined;
   // An exam or topic that no longer holds cards cannot filter.
   useEffect(() => {
     if (!data) return;
-    if (planId && (planId === NO_EXAM ? !data.examless : !data.plans.some((plan) => plan.id === planId)))
+    if (
+      planId &&
+      (planId === NO_EXAM
+        ? !data.examless
+        : !data.plans.some((plan) => plan.id === planId) && !requested && (planId !== initialPlanId || exams.isSuccess))
+    )
       setPlanId("");
     if (topicId && !data.topics.some((topic) => topic.id === topicId))
       setTopicId("");
-  }, [data, planId, topicId]);
+  }, [data, planId, topicId, requested, exams.isSuccess]);
 
   const refresh = () =>
     Promise.all(
@@ -239,6 +249,13 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
       planGroups.push(group);
     }
     group.options.push({ value: plan.id, label: plan.title });
+  }
+  if (requested && !data?.plans.some((plan) => plan.id === requested.id)) {
+    const label = requested.subject ?? t("cardBrowser.noSubject");
+    const group = planGroups.find((item) => item.label === label);
+    const option = { value: requested.id, label: requested.title };
+    if (group) group.options.push(option);
+    else planGroups.push({ label, options: [option] });
   }
 
   function reset() {
