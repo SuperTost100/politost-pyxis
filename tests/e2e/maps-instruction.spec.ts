@@ -672,6 +672,101 @@ test("a request opened from Attività replaces the one this page kept after it f
   }
 });
 
+test("coming back to the entry a build was asked from, or reloading it, builds nothing again", async () => {
+  test.setTimeout(180_000);
+  // The second reply is there for a second build to use, so a repeat shows as a second map.
+  const { app, page, userData, prompts, errors } = await startApp([focused(labels), focused(conceptsOf("B"))]);
+  try {
+    // When the student is already on their way elsewhere the page cannot take `build` out of its entry. This makes
+    // every attempt to do so fail, which leaves the entry as it would be then.
+    await page.evaluate(() => {
+      const replace = history.replaceState.bind(history);
+      history.replaceState = (state: unknown, ...rest: [string, (string | URL | null)?]) => {
+        const entry = history.state as { usr?: { build?: boolean } } | null;
+        if (entry?.usr?.build && (state as { usr?: unknown } | null)?.usr == null) return;
+        replace(state, ...rest);
+      };
+    });
+    const { ask } = dialogs(page);
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    expect(await page.evaluate(() => (history.state as { usr?: { build?: boolean } } | null)?.usr?.build)).toBe(true);
+    const builds = () => readFileSync(prompts, "utf8").trim().split("\n").length;
+    expect(builds()).toBe(1);
+
+    // Away from the page and Back: the page opens on the map, and nothing is asked of the engine.
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
+    await expect(page.getByRole("button", { name: "Nuova mappa" })).toBeVisible();
+    await page.evaluate(() => history.back());
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    // The same after a reload of that entry.
+    await page.reload();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+    expect(builds()).toBe(1);
+    expect((await listOf(page)).map((map) => map.instruction)).toEqual([first]);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a late answer to a request does not take the request of the entry opened at the same address out of it", async () => {
+  test.setTimeout(180_000);
+  // Asking for a map waits four seconds for its answer, which is time enough to open another request's row meanwhile.
+  const { app, page, userData, errors } = await startApp([nothing, nothing, nothing], {
+    PYXIS_E2E_READ_DELAY: "maps.generate=4000",
+  });
+  try {
+    const { ask } = dialogs(page);
+    const older = "solo i teoremi sulle onde gravitazionali";
+    const newer = "solo le dimostrazioni sulla relatività";
+    const latest = "solo gli esempi sulla meccanica quantistica";
+    const field = page.getByLabel("Come la vuoi?");
+    await ask(older);
+    await expect(field).toHaveValue(older, { timeout: 60_000 });
+    await ask(newer);
+    await expect(field).toHaveValue(newer, { timeout: 60_000 });
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+
+    // The page opens on the older request, and the student asks again from it. Before the answer comes, the row of the
+    // newer request opens the same page, at the same address, on the newer request: another history entry.
+    let rows = await openActivity(page);
+    await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(older);
+    await field.fill(latest);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    rows = await openActivity(page);
+    await rows.nth(0).getByRole("button", { name: "Cambia la richiesta" }).click();
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000, readOnly: true });
+    try {
+      const jobs = () => (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE kind = 'map-build'").get() as { n: number }).n;
+      const newerJob = (
+        db
+          .prepare("SELECT id FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.instruction') = ?")
+          .get(newer) as { id: string }
+      ).id;
+      const entryJob = () =>
+        page.evaluate(() => (history.state as { usr?: { job?: string } } | null)?.usr?.job);
+      await expect.poll(entryJob).toBe(newerJob);
+      // The answer to the first request arrives once its job exists. It belongs to the entry the student left, so the
+      // newer request stays in the entry it was opened in.
+      await expect.poll(jobs, { timeout: 30_000 }).toBe(3);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+      expect(await entryJob()).toBe(newerJob);
+    } finally {
+      db.close();
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("the only map of a topic is one choice away from a request that found nothing", async () => {
   test.setTimeout(180_000);
   const { app, page, userData, errors } = await startApp([focused(labels), nothing]);
