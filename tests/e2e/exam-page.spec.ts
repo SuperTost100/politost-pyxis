@@ -1,4 +1,4 @@
-import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -58,10 +58,15 @@ async function openExam(page: Page, id = "p-fis", title = "Fisica I") {
   await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 }
 
-/** Nothing on the page says it failed or found nothing to show. */
-async function expectContent(page: Page, label: string) {
+/**
+ * The destination shows its own content, and nothing on the page says it failed or found nothing to show. A failure
+ * is an `ErrorState`, which is a danger `Notice` with `role="alert"`; a page can also fail in a warning `Notice`.
+ */
+async function expectContent(page: Page, label: string, content: Locator) {
+  await expect(content, label).toBeVisible();
+  await expect(page.getByRole("alert"), label).toHaveCount(0);
+  await expect(page.locator(".px-notice.is-danger, .px-notice.is-warning"), label).toHaveCount(0);
   await expect(page.getByText(/^(No flashcards due|Nothing here|Page not found)/), label).toHaveCount(0);
-  await expect(page.locator(".px-error-state"), label).toHaveCount(0);
 }
 
 async function pickFromMenu(page: Page, item: string) {
@@ -115,7 +120,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(now.getByRole("heading")).toHaveText(listed);
     await now.getByRole("button", { name: "Start", exact: true }).click();
     await expect(page).not.toHaveURL(/#\/plans\/p-fis$/);
-    await expectContent(page, "Adesso's Start");
+    await expectContent(page, "Adesso's Start", page.getByRole("heading", { level: 1 }));
     await openExam(page);
 
     // The path holds every activity. Adesso is on no topic, so none starts open; a click opens one with its steps, and
@@ -134,6 +139,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(steps).toHaveCount(0);
     await path.getByRole("button", { name: /^Exam simulation/ }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/simulation$/);
+    await expectContent(page, "The path's Exam simulation", page.getByRole("heading", { level: 1 }));
     await openExam(page);
     await expect(path.getByText(/^Written$/)).toBeVisible();
 
@@ -156,7 +162,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(aside.getByRole("heading", { name: /^Flashcards/ })).toContainText("1 in all");
     await aside.getByRole("button", { name: "Review the flashcard" }).click();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
-    await expectContent(page, "Review the flashcard");
+    await expectContent(page, "Review the flashcard", page.getByText("Unità della forza?"));
     await page.getByRole("button", { name: "Back to the exam: Fisica I" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     await aside.getByRole("button", { name: "Browse all" }).click();
@@ -180,10 +186,11 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // Mappe: the subject's maps open, and All maps opens Maps at this subject.
     await aside.getByRole("link", { name: /^Vettori/ }).click();
     await expect(page).toHaveURL(/#\/(maps|plans\/p-fis\/map)\//);
-    await expect(page.getByText("Componenti")).toBeVisible();
+    await expectContent(page, "A map of the exam", page.getByText("Componenti"));
     await openExam(page);
     await aside.getByRole("link", { name: "All maps" }).click();
     await expect(page).toHaveURL(/#\/maps\?subject=sub-fis$/);
+    await expectContent(page, "All maps", page.getByRole("heading", { level: 2, name: "Fisica" }));
     await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeInViewport();
     await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeFocused();
     // A subject with no maps offers to make one, with the subject already chosen.
@@ -205,7 +212,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(page.getByRole("dialog")).toBeHidden();
     await aside.getByRole("link", { name: "All material" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/sources$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Material" })).toBeVisible();
+    await expectContent(page, "All material", page.getByRole("heading", { level: 1, name: "Material" }));
     await expect(page.getByRole("button", { name: "Add sources" })).toBeVisible();
     await page.getByRole("link", { name: "Fisica I", exact: true }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
@@ -213,6 +220,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // The page's menu: the exam's review, creating an activity, the calendar and sharing the exam.
     await pickFromMenu(page, "Review");
     await expect(page).toHaveURL(/#\/plans\/p-fis\/review$/);
+    await expectContent(page, "The page's Review", page.getByRole("heading", { level: 1 }));
     await openExam(page);
     await pickFromMenu(page, "Create an activity");
     const create = page.getByRole("dialog", { name: "Create an activity" });
@@ -229,6 +237,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(share).toBeHidden();
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
+    await expectContent(page, "Exam settings", page.getByRole("heading", { level: 1 }));
 
     // Set the hours brings the weekly hours field into view and puts the focus in it, also in the smallest window.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(960, 700));
