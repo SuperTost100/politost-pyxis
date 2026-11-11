@@ -1,0 +1,85 @@
+/* The exam rings: the ring colours belong here and in the legend, nowhere else. */
+.px-rings {
+  flex: none;
+  overflow: visible;
+}
+.px-rings-lg {
+  width: 92px;
+  height: 92px;
+}
+.px-rings-sm {
+  width: 58px;
+  height: 58px;
+}
+.px-rings circle {
+  fill: none;
+  stroke-width: 9;
+}
+.px-rings-sm circle {
+  stroke-width: 10;
+}
+.px-rings-track {
+  stroke: var(--ring-track);
+}
+.px-rings-arc {
+  stroke-linecap: round;
+}
+.px-rings-arc.is-preparation {
+  stroke: var(--ring-prep);
+}
+.px-rings-arc.is-path {
+  stroke: var(--ring-path);
+}
+.px-rings-arc.is-today {
+  stroke: var(--ring-today);
+}
+
+.px-rings-legend {
+  display: grid;
+  grid-template-columns: 12px auto auto;
+  align-items: center;
+  gap: 6px var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-rings-legend li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-rings-legend li > span:nth-of-type(1) {
+  padding-right: var(--space-5);
+}
+.px-rings-key {
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 3px solid;
+  border-radius: 50%;
+}
+.px-rings-key.is-preparation {
+  border-color: var(--ring-prep);
+}
+.px-rings-key.is-path {
+  border-color: var(--ring-path);
+}
+.px-rings-key.is-today {
+  border-color: var(--ring-today);
+}
+.px-rings-value {
+  font-weight: 700;
+  font-size: calc(15px * var(--text-scale, 1));
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.px-rings-value.is-empty {
+  font-weight: 400;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}

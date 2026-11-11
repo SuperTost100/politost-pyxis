@@ -61,6 +61,12 @@ import {
   Redo2,
   Download,
   Pencil,
+  Archive,
+  ArrowRight,
+  Diamond,
+  RotateCcw,
+  SlidersHorizontal,
+  Star,
 } from "lucide-react";
 
 export type IconName =
@@ -124,7 +130,13 @@ export type IconName =
   | "undo-2"
   | "redo-2"
   | "download"
-  | "pencil";
+  | "pencil"
+  | "archive"
+  | "arrow-right"
+  | "diamond"
+  | "rotate-ccw"
+  | "sliders-horizontal"
+  | "star";
 
 export const ICON_MAP: Record<IconName, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -188,4 +200,10 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "redo-2": Redo2,
   download: Download,
   pencil: Pencil,
+  archive: Archive,
+  "arrow-right": ArrowRight,
+  diamond: Diamond,
+  "rotate-ccw": RotateCcw,
+  "sliders-horizontal": SlidersHorizontal,
+  star: Star,
 };

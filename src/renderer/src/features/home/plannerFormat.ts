@@ -23,35 +23,3 @@ export function decimalSeparator(language: string): string {
       .find((part) => part.type === "decimal")?.value ?? "."
   );
 }
-
-/** A planner date (YYYY-MM-DD, local) as a Date at local midnight. */
-export function plannerDate(key: string): Date {
-  const [year, month, day] = key.split("-").map(Number);
-  return new Date(year!, month! - 1, day!);
-}
-
-/**
- * The falling-behind warning for one exam: the goal written by `format` (a grade, one decimal) and the forecast by
- * `formatMastery` (a mastery, whole), both on the profile's scale.
- */
-export function behindText(
-  t: T,
-  exam: {
-    title: string;
-    target: number;
-    behind: { daysLate: number | null; masteryAtExam: number } | null;
-  },
-  format: (fraction: number) => string,
-  formatMastery: (fraction: number) => string,
-): string {
-  const target = format(exam.target);
-  const atExam = formatMastery(exam.behind?.masteryAtExam ?? 0);
-  if (exam.behind?.daysLate == null)
-    return t("planner.behindNoTime", { title: exam.title, target });
-  return t("planner.behind", {
-    title: exam.title,
-    target,
-    count: exam.behind.daysLate,
-    atExam,
-  });
-}

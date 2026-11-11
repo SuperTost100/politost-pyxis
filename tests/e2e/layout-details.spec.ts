@@ -348,17 +348,17 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
-    // Skipping setup leaves no exam: one primary action creates the first one.
+    // Skipping setup leaves no exam: the list says so, and the one primary action, in the head, creates the first one.
     for (const language of ["it", "en"] as const)
       for (const theme of ["light", "dark"] as const)
         for (const size of sizes) {
           const key = `${language}-${theme}-${size.width}`;
           await look(page, language, theme);
           await page.setViewportSize(size);
-          await expect(page.locator(".empty h2")).toHaveText(
+          await expect(page.locator(".px-exams-empty h2")).toHaveText(
             language === "it" ? "Crea un esame per iniziare" : "Create an exam to get started",
           );
-          const primary = page.locator(".empty .ant-btn-primary");
+          const primary = page.getByRole("main").locator(".ant-btn-primary");
           await expect(primary).toHaveCount(1);
           await expect(primary).toHaveText(language === "it" ? "Nuovo esame" : "New exam");
           await saveShot(page, `layout-details/exams-empty-${key}.png`);

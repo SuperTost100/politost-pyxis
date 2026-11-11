@@ -10,7 +10,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -37,7 +37,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
     await fromChiediToExams(page);
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     await animationsSettled(page);
     await page
@@ -166,7 +166,7 @@ test("the PDF viewer draws a fax-encoded figure", async () => {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     const pdf = join(userData, "figure.pdf");
     writeFileSync(pdf, faxScanPdf("Pendulum figure from the laboratory notes"));
     const imported = (await importPickedSource(page, app, pdf)) as { sourceId: string };

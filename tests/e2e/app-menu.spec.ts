@@ -9,9 +9,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
-import { seedPlan } from "./seed";
+import { seedPlan, seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 const mac = process.platform === "darwin";
 
@@ -286,15 +286,17 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
   const { app, page, userData } = await launch({ onboarded: true });
   try {
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-    seed(userData, (db) =>
+    seed(userData, (db) => {
       seedPlan(db, {
         id: "menu-plan",
         title: "Fisica 1",
         language: "it",
         target: 0.75,
         topics: [{ id: "menu-topic", title: "Dinamica" }],
-      }),
-    );
+      });
+      // A source, so the Library shows its search field.
+      seedSource(db, { id: "menu-source", title: "Appunti di dinamica" });
+    });
     await page.reload();
     // The test release's update notice sits over the exam toolbar when the window is small, as on the Windows runner's
     // 1024x720 screen. Close it, as a person would, before using the toolbar.
@@ -318,13 +320,20 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await page.keyboard.press("Escape");
     await expect(manage).toHaveCount(0);
 
-    // Text typed into a field that the app does not keep.
-    const search = page.getByRole("textbox", { name: "Cerca un esame" });
-    await search.fill("fisica");
+    // Text typed into a field that the app does not keep: the Library's search.
+    await toLibrary(page);
+    const search = page.getByRole("textbox", { name: /^(Cerca una fonte per titolo|Cerca nei brani)$/ });
+    await search.fill("dinamica");
     await pick(app, "ask");
     await settle(page);
-    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(page).toHaveURL(/#\/exams\/library$/);
     await search.fill("");
+    // Back to the exam list, so the menu's Exams leads there again below.
+    await page
+      .getByRole("navigation", { name: "Sezioni" })
+      .getByRole("link", { name: "Esami", exact: true })
+      .click();
+    await expect(page).toHaveURL(/#\/exams$/);
     await pick(app, "ask");
     await expect(page).toHaveURL(/#\/ask$/);
 

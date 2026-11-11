@@ -64,6 +64,18 @@ export const scheduleQuery = (planId: string) =>
     queryFn: () => invoke("plans.schedule", { planId }),
   });
 
+/** The three rings of every built exam (Preparazione, Percorso, Oggi), its next step and its due cards. */
+export const ringsQuery = queryOptions({
+  queryKey: ["plans", "rings"],
+  queryFn: () => invoke("plans.rings", {}),
+});
+
+/** Flashcards due with no exam: the part of the daily review that the rings leave out. */
+export const examlessDueQuery = queryOptions({
+  queryKey: ["plans", "examlessDue"],
+  queryFn: () => invoke("plans.examlessDue", {}),
+});
+
 /** The session planner: the weekly hours, the hours the exams need, and the weeks. */
 /** The Flashcard section's subjects, exams, topics and due counts, also listed by the search. */
 export const cardSectionsQuery = queryOptions({
