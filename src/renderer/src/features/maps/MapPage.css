@@ -125,30 +125,7 @@
 .px-map-sub a svg {
   flex: none;
 }
-/* The map's name, edited in place: the field takes the title's size, the word about it sits under it. */
-.px-map-name {
-  position: relative;
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-.px-map-name-field {
-  min-width: 0;
-  height: calc(38px * var(--text-scale, 1));
-  padding: 0 12px;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-field);
-  background: var(--surface);
-  color: var(--ink);
-  outline: none;
-}
-.px-map-name-field:focus-visible {
-  border-color: var(--primary-text);
-  box-shadow: 0 0 0 2px var(--focus-ring);
-}
-.px-map-name-field[aria-invalid="true"] {
-  border-color: var(--danger);
-}
+/* The name field's own look is in MapActions.css, where the field is; these are the title's. */
 .px-map-name-title {
   flex: 0 1 420px;
 }
@@ -157,10 +134,6 @@
   width: 100%;
   height: calc(34px * var(--text-scale, 1));
   font: 400 calc(24px * var(--text-scale, 1)) / 1 var(--font-display);
-}
-.px-map-name-error {
-  color: var(--danger);
-  font-size: calc(12.5px * var(--text-scale, 1));
 }
 .px-map-name-title .px-map-name-error {
   position: absolute;
@@ -171,6 +144,14 @@
 .px-map-notice {
   margin: 0;
   padding-inline: 10px;
+}
+
+/* How the last build ended, with its way back: the words, then Riprova or Riprendi and Chiudi as quiet buttons. */
+.px-map-recover {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
 }
 
 .px-map-error {

@@ -178,6 +178,9 @@ const routes = [
   // The map's dots menu (Rinomina, Esporta and Elimina la mappa…), with Esporta's formats open, the map's name edited in
   // place, and the confirmation before it is deleted.
   ["map-menu", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  // A map with the topic's last build failed, or cut off, still stored: the line under the head offers it again.
+  ["map-build-failed", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-build-stopped", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   ["map-export", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   ["map-rename", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   ["map-delete", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
@@ -1687,7 +1690,7 @@ function prepareState(name: string) {
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
     // The requests that found nothing go too: one stays in every later state's Attività button until it is dismissed.
-    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%'");
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%' OR id LIKE 'audit-ended-%'");
     db.exec(
       "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
     );
@@ -1734,6 +1737,21 @@ function prepareState(name: string) {
           input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
           instruction: "solo i teoremi sulle onde gravitazionali",
         }),
+        now,
+        now,
+      );
+      return;
+    }
+    if (name === "map-build-failed" || name === "map-build-stopped") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-ended-map','map-build',?,?,0,?,?,?)",
+      ).run(
+        JSON.stringify({
+          input: { planId: "audit-plan", topicId: "audit-topic" },
+          instruction: "solo le leggi di Newton, con un esempio per ognuna",
+        }),
+        name === "map-build-failed" ? "failed" : "interrupted",
+        name === "map-build-failed" ? "offline" : null,
         now,
         now,
       );
@@ -3114,6 +3132,23 @@ async function openState(page: Page, name: string) {
       // The dialog names the subject of the map it was opened from.
       await expect(dialog.locator(".px-mc-lead b")).toHaveText(name === "map-cards" ? "Fisica" : "Chimica");
       await expect(dialog.locator("#mc-plan")).toHaveCount(name === "map-cards" ? 1 : 0);
+      break;
+    }
+    case "map-build-failed":
+    case "map-build-stopped": {
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      const line = page.locator(".px-map-recover");
+      await expect(line).toContainText(
+        name === "map-build-failed"
+          ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
+          : /^(L’ultima costruzione della mappa si è fermata|The last build of this map stopped)/,
+      );
+      await expect(
+        line.getByRole("button", {
+          name: name === "map-build-failed" ? both("Riprova", "Try again") : both("Riprendi", "Resume"),
+        }),
+      ).toBeVisible();
+      await expect(line.getByRole("button", { name: both("Chiudi", "Dismiss") })).toBeVisible();
       break;
     }
     case "map-menu":

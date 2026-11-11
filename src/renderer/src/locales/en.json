@@ -1009,6 +1009,8 @@
     "nothingMatchedBody": "Pyxis read the material and found nothing for “{{text}}”, so it built no map. Reword the request, or leave it empty for a map of all the material.",
     "stopped": "You stopped building the map",
     "stoppedBody": "You can resume it from where it stopped.",
+    "lastFailed": "The last build of this map did not finish",
+    "lastInterrupted": "The last build of this map stopped",
     "exportFailed": "The image could not be exported. Try again.",
     "empty": "Build a map of this topic",
     "emptyBody": "Your sources become one focused map that you can edit and keep offline.",

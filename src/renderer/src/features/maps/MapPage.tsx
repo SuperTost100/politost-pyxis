@@ -525,10 +525,10 @@ export function MapPage() {
           else if (!mapId && instruction && maps.length > 1) pickMap(maps[maps.length - 1]!.id);
         })
         .catch(() => undefined);
-      // A build the student stopped is not a failure. Without a map the empty state says so and offers to resume it.
+      // A build the student stopped is not a failure: without a map the empty state says so and offers to resume it.
       // One that found nothing for the request says so next to the request, which the page shows.
-      if (job.state === "cancelled") setNotice(graph ? t("map.stopped") : "");
-      else if (job.state !== "succeeded" && !(job.state === "failed" && job.error === "map-nothing-matched"))
+      // With a map on show, the line under the head says how the build ended and offers it again, from the stored build.
+      if (!graph && job.state !== "cancelled" && job.state !== "succeeded" && !(job.state === "failed" && job.error === "map-nothing-matched"))
         setNotice(t("map.generateFailed"));
     }
   }, [job?.state, jobId, client, scopeKey, t]);
@@ -911,8 +911,24 @@ export function MapPage() {
       setBusy(false);
     }
   }
+  // Gives up the build the line under the head offers again, as Chiudi does in Attività: nothing offers it after this.
+  async function dismissBuild() {
+    if (!job) return;
+    // Done or not, the build is read again, so the line shows what is stored.
+    const reread = () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: ["map-build", scopeKey] }),
+        client.invalidateQueries({ queryKey: ["jobs"] }),
+      ]);
+    await invoke("jobs.dismiss", { jobId: job.jobId }).then(reread, reread);
+  }
   // A stopped build asks again with the instruction it had, so it is picked up and not built anew without it.
   const retrying = Boolean(job && ["failed", "cancelled", "interrupted"].includes(job.state));
+  // A map is on show and the scope's last build, still stored, stopped or failed: the line under the head offers it again,
+  // whenever the page opens. A request that found nothing is Attività's "Cambia la richiesta", and says so on its own.
+  const recoverable = Boolean(
+    graph && retrying && !building && !nothingMatched && !(job?.state === "failed" && job.error === "map-nothing-matched"),
+  );
   // `changing` is the student sending other words from the request on show, which that request gives way to.
   async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "", changing = false) {
     setBusy(true);
@@ -1282,17 +1298,25 @@ export function MapPage() {
       {notice ? (
         <p className="small px-map-notice" role="status">
           {notice}
+        </p>
+      ) : null}
+      {recoverable && job ? (
+        <p className="small px-map-notice px-map-recover" role="status">
+          <span>
+            {t(job.state === "failed" ? "map.lastFailed" : job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
+          </span>
           {/* A build that stopped or failed next to a map already there is picked up again from here. */}
-          {graph && retrying && !building ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={disabled}
-              onClick={() => void (job?.state === "failed" ? generateMaps() : resumeBuild())}
-            >
-              {t(job?.state === "failed" ? "maps.retry" : "jobs.resume")}
-            </Button>
-          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => void (job.state === "failed" ? generateMaps() : resumeBuild())}
+          >
+            {t(job.state === "failed" ? "maps.retry" : "jobs.resume")}
+          </Button>
+          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void dismissBuild()}>
+            {t("jobs.dismiss")}
+          </Button>
         </p>
       ) : null}
       {map.isError || list.isError || scope.isError ? (

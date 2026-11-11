@@ -447,3 +447,201 @@ test("deleting a map still being written stops its build, and the build never br
     removeTestFolder(userData);
   }
 });
+
+/** A recorded model reply that builds a map of these concepts. */
+function reply(concepts: string[]) {
+  return {
+    result: {
+      kind: "map",
+      nodes: concepts.map((label, i) => ({ id: `n${i}`, label, parent: i ? "n0" : null, sources: "{{allPassages}}" })),
+      edges: [],
+    },
+  };
+}
+/**
+ * The recorded replies: a map of the whole topic is looked up by its nodes, and the maps asked for in words take the
+ * entries of `asked` by the number of the model call, which also counts the whole-topic map's (so the first request in
+ * words after it is `asked[1]`).
+ */
+const recorded = (asked: unknown[]) =>
+  JSON.stringify({
+    nodes: {
+      nodes: ["Numeri reali", "Campo ordinato", "Estremo superiore", "Estremo inferiore", "Densità", "Completezza", "Intervalli", "Valore assoluto"].map(
+        (label, i) => ({ id: `n${i}`, label, parent: i ? "n0" : null, sources: "{{allPassages}}" }),
+      ),
+      edges: [],
+    },
+    result: asked,
+  });
+
+/** The scope's newest build, with the app's own words for its state. */
+const buildOf = (page: Page) =>
+  page.evaluate(() => window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }));
+/** Asks for a map of Numeri reali, with `instruction` or without, and waits for its build to end. */
+async function askAndWait(page: Page, instruction: string | undefined, state: "succeeded" | "failed") {
+  await page.evaluate(
+    (words) => window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", ...(words ? { instruction: words } : {}) }),
+    instruction,
+  );
+  await expect.poll(async () => (await buildOf(page))?.state, { timeout: 60_000 }).toBe(state);
+}
+const recovery = (page: Page) => page.locator(".px-map-notice").filter({ has: page.getByRole("button", { name: /^(Riprova|Riprendi)$/ }) });
+
+test("a build that failed next to a map is offered again whenever the page opens, until the student starts it or clears it", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"]), { fail: "offline" }, reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await askAndWait(page, "solo i teoremi", "failed");
+
+    // The page opens on a build that ended long before: its map is there and the way to ask again is next to it.
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(recovery(page)).toContainText("L’ultima costruzione della mappa non è riuscita");
+    await expect(recovery(page).getByRole("button", { name: "Riprova" })).toBeEnabled();
+
+    // Leaving and coming back finds it again, as does a reload.
+    await openMaps(page);
+    await tile(page, "Numeri reali").getByRole("link").click();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(recovery(page).getByRole("button", { name: "Riprova" })).toBeVisible();
+    await page.reload();
+    await expect(recovery(page).getByRole("button", { name: "Riprova" })).toBeVisible();
+    await expectNoAxeViolations(page);
+    await saveShot(page, "maps-menu/build-failed.png");
+
+    // Riprova asks again with the same words, and the line goes while it builds and after it.
+    await recovery(page).getByRole("button", { name: "Riprova" }).click();
+    await expect(recovery(page)).toHaveCount(0);
+    await expect.poll(async () => (await buildOf(page))?.state, { timeout: 60_000 }).toBe("succeeded");
+    await expect(recovery(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.pyxis.invoke("maps.list", { planId: "p-an", topicId: "t-real" }))).toHaveLength(2);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a build the student stopped is offered again, and Chiudi gives it up for good", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+    PYXIS_E2E_MAP_DELAY: "3000",
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    // The second request is held up, so it can be stopped while it runs.
+    await page.evaluate(() => window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }));
+    await page.evaluate(async () => {
+      const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+      await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+    });
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(recovery(page)).toContainText("Hai fermato la creazione della mappa");
+    await expect(recovery(page).getByRole("button", { name: "Riprendi" })).toBeEnabled();
+    await saveShot(page, "maps-menu/build-stopped.png");
+
+    // Chiudi is Attività's own: the stopped build leaves both places and nothing offers it again.
+    await recovery(page).getByRole("button", { name: "Chiudi" }).click();
+    await expect(recovery(page)).toHaveCount(0);
+    await page.reload();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(recovery(page)).toHaveCount(0);
+    const jobs = await page.evaluate(() => window.pyxis.invoke("jobs.list", {}));
+    expect(jobs.filter((job) => job.kind === "map-build" && job.state !== "succeeded")).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a build cut off by closing the app is offered again when the app opens", async () => {
+  test.setTimeout(180_000);
+  const first = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+    PYXIS_E2E_MAP_DELAY: "3000",
+  });
+  const { userData } = first;
+  let app = first.app;
+  try {
+    await askAndWait(first.page, undefined, "succeeded");
+    await first.page.evaluate(() =>
+      window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }),
+    );
+    await app.close();
+    app = await launchPyxis({
+      userData,
+      env: { PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]), PYXIS_E2E_MAP_DELAY: "100" },
+    });
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await expect.poll(async () => (await buildOf(page))?.state).toMatch(/^(interrupted|cancelled|failed)$/);
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(recovery(page)).toBeVisible();
+    await recovery(page).getByRole("button", { name: /^(Riprova|Riprendi)$/ }).click();
+    await expect.poll(async () => (await buildOf(page))?.state, { timeout: 60_000 }).toBe("succeeded");
+    await expect(recovery(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.pyxis.invoke("maps.list", { planId: "p-an", topicId: "t-real" }))).toHaveLength(2);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("renaming a tile on a fresh launch shows the name field in the design's own look, before any map page was opened", async () => {
+  test.setTimeout(120_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    // Straight to Mappe: the map page, and the styles that ship with it, has not been opened in this launch.
+    await openMaps(page);
+    const card = tile(page, "Successioni");
+    await card.hover();
+    await card.getByRole("button", { name: "Altro su Successioni" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    const field = page.getByRole("textbox", { name: "Nome della mappa" });
+    await expect(field).toBeFocused();
+    // The field wears the tokens' own border (the focus one, as it has the focus), surface, ink and corners, not the browser's.
+    const look = await field.evaluate((input) => {
+      const probe = document.createElement("div");
+      probe.style.cssText = "border: 1px solid var(--primary-text); border-radius: var(--radius-field); background: var(--surface); color: var(--ink)";
+      document.body.append(probe);
+      const want = getComputedStyle(probe);
+      const have = getComputedStyle(input);
+      const result = {
+        border: [have.borderTopColor, want.borderTopColor],
+        borderWidth: [have.borderTopWidth, want.borderTopWidth],
+        background: [have.backgroundColor, want.backgroundColor],
+        color: [have.color, want.color],
+        radius: [have.borderTopLeftRadius, want.borderTopLeftRadius],
+      };
+      probe.remove();
+      return result;
+    });
+    expect(look.border[0]).toBe(look.border[1]);
+    expect(look.borderWidth[0]).toBe(look.borderWidth[1]);
+    expect(look.background[0]).toBe(look.background[1]);
+    expect(look.color[0]).toBe(look.color[1]);
+    expect(look.radius[0]).toBe(look.radius[1]);
+    await saveShot(page, "maps-menu/tile-rename-fresh.png");
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

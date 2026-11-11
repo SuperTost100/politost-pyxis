@@ -1009,6 +1009,8 @@
     "nothingMatchedBody": "Pyxis ha letto il materiale e non ha trovato niente su «{{text}}», quindi non ha creato nessuna mappa. Riformula la richiesta, oppure lasciala vuota per una mappa di tutto il materiale.",
     "stopped": "Hai fermato la creazione della mappa",
     "stoppedBody": "Puoi riprenderla da dove si era fermata.",
+    "lastFailed": "L’ultima costruzione della mappa non è riuscita",
+    "lastInterrupted": "L’ultima costruzione della mappa si è fermata",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
     "empty": "Crea una mappa di questo argomento",
     "emptyBody": "Le tue fonti diventano una mappa mirata, da modificare e usare anche offline.",
