@@ -1,6 +1,6 @@
 /* Esami: a 828px column of exam rows in one white card (Shell.tsx sets px-shell-exams on /exams). */
 .px-shell-container.px-shell-exams {
-  max-width: calc(828px + 48px);
+  --shell-max: calc(828px + 48px);
 }
 
 .px-exams-head {

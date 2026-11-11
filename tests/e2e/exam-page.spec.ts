@@ -314,6 +314,10 @@ test("the exam page keeps its path readable in the smallest window, at 200% zoom
         const path = await box(".px-exam-path");
         const aside = await box(".px-exam-aside");
         const fontSize = await title.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+        // Attività stays in the window's top-right corner, and the page's content never runs under it.
+        const corner = (await page.locator(".px-corner-tools").boundingBox())!;
+        const right = await page.locator(".px-exam").evaluate((element) => element.getBoundingClientRect().right);
+        expect(right, `${label}: the page stays clear of Attività`).toBeLessThanOrEqual(corner.x);
         // The path has room for a topic's title and its marker: about 20 letters of the title's own size.
         expect(path.width, `${label}: the path is not squeezed`).toBeGreaterThanOrEqual(20 * fontSize);
         expect(
