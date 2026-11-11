@@ -4,6 +4,12 @@
   max-width: calc(1068px + 48px);
 }
 
+/* The page is the container the grid answers to: its own width, which the sidebar, the window and the zoom all change,
+   not the window's. */
+.px-exam {
+  container: px-exam / inline-size;
+}
+
 .px-exam-head {
   display: flex;
   flex-wrap: wrap;
@@ -429,5 +435,15 @@
   }
   .px-exam-aside {
     padding: 2px 18px 6px;
+  }
+}
+
+/* One column when the path would be squeezed: it needs about 26em for a topic's title, marker and steps beside the
+   260px column of sections, which with the gaps is 44em. In em, so large text moves the point with the path's text
+   (the sections' column stays 260px). At 200% zoom in a 960px window the page is about 350px wide. */
+@container px-exam (max-width: 44em) {
+  .px-exam-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "now" "path" "aside";
   }
 }

@@ -1,18 +1,25 @@
-import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource } from "./seed";
+import { SHOTS, saveShot } from "./shots";
 
 const day = 86_400_000;
 
-/** One dated exam with two topics, a due card, a source, a map of its first topic and a written session. */
-function seed(db: DatabaseSync) {
+/** One dated exam with its topics, a due card, a source, a map of its first topic and a written session. */
+function seed(
+  db: DatabaseSync,
+  topics = [
+    { id: "t-vec", title: "Misure e vettori" },
+    { id: "t-kin", title: "Cinematica: moto rettilineo" },
+  ],
+) {
   const examAt = Date.now() + 12 * day;
   seedSource(db, { id: "s-book", kind: "smartbook", title: "Fisica I, Mazzoldi" });
   seedPlan(db, {
@@ -22,10 +29,7 @@ function seed(db: DatabaseSync) {
     target: 0.75,
     examAt,
     sourceIds: ["s-book"],
-    topics: [
-      { id: "t-vec", title: "Misure e vettori" },
-      { id: "t-kin", title: "Cinematica: moto rettilineo" },
-    ],
+    topics,
   });
   db.prepare("INSERT INTO plan_sessions(id,plan_id,date,label,created_at) VALUES('s-1','p-fis',?,'Written',1)").run(examAt);
   db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c-1','p-fis','t-vec','Unità della forza?','Il newton.',1)").run();
@@ -162,6 +166,113 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
       location.hash = "/plans/p-fis/progress";
     });
     await expect(page.getByRole("heading", { level: 2, name: "Path" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** Sets the window to `width` device pixels at `zoom`, as Ctrl and plus do, and returns the page's width in CSS pixels. */
+async function zoomWindow(app: ElectronApplication, page: Page, width: number, zoom: number) {
+  await app.evaluate(
+    ({ BrowserWindow }, { width, zoom }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.setContentSize(width, 800);
+      window.webContents.setZoomFactor(zoom);
+    },
+    { width, zoom },
+  );
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(Math.round(width / zoom));
+}
+
+/**
+ * The window's own pixels, as the student sees them. Playwright's page screenshot takes CSS pixels, so at 200% zoom it
+ * would show only the left half of the window. The window is made tall first, to take the whole page in one image.
+ */
+async function shootZoomedWindow(app: ElectronApplication, name: string) {
+  if (!SHOTS) return;
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]!;
+    const [width] = window.getContentSize();
+    window.setContentSize(width!, 4200);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const bottom = (await window.webContents.executeJavaScript(
+      "document.querySelector('.shell-page').getBoundingClientRect().bottom",
+    )) as number;
+    window.setContentSize(width!, Math.ceil((bottom + 24) * window.webContents.getZoomFactor()));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const image = await window.webContents.capturePage();
+    window.setContentSize(width!, 800);
+    return image.toPNG().toString("base64");
+  });
+  const path = join(SHOTS, name);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, Buffer.from(png, "base64"));
+}
+
+// 960 px is the smallest window; at 200% zoom its page is 480 CSS pixels wide.
+const narrowCases = [
+  { name: "960 px", width: 960, zoom: 1, text: "md" },
+  { name: "960 px, 200% zoom", width: 960, zoom: 2, text: "md" },
+  { name: "1280 px, 200% zoom", width: 1280, zoom: 2, text: "md" },
+  { name: "960 px, large text", width: 960, zoom: 1, text: "lg" },
+  { name: "1280 px", width: 1280, zoom: 1, text: "md" },
+] as const;
+
+test("the exam page keeps its path readable in the smallest window, at 200% zoom and with large text", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-exam-narrow-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    seed(db, [
+      { id: "t-vec", title: "Misure e vettori" },
+      { id: "t-kin", title: "Cinematica: moto rettilineo" },
+      { id: "t-din", title: "Dinamica del punto materiale e leggi di Newton" },
+    ]);
+    db.close();
+    for (const [language, theme] of [
+      ["it", "dark"],
+      ["en", "light"],
+    ] as const) {
+      await page.evaluate(
+        async ({ language, theme }) => {
+          localStorage.setItem("pyxis.lang", language);
+          await window.pyxis.setAppearance(theme);
+        },
+        { language, theme },
+      );
+      for (const size of narrowCases) {
+        await page.evaluate((textSize) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize }), size.text);
+        await page.reload();
+        await zoomWindow(app, page, size.width, size.zoom);
+        await openExam(page);
+        const label = `${size.name}, ${language} ${theme}`;
+        const title = page.locator(".px-xpath-title").first();
+        await expect(title).toBeVisible();
+        const box = async (selector: string) => (await page.locator(selector).first().boundingBox())!;
+        const path = await box(".px-exam-path");
+        const aside = await box(".px-exam-aside");
+        const fontSize = await title.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+        // The path has room for a topic's title and its marker: about 20 letters of the title's own size.
+        expect(path.width, `${label}: the path is not squeezed`).toBeGreaterThanOrEqual(20 * fontSize);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+          `${label}: nothing overflows sideways`,
+        ).toBe(true);
+        // The sections sit under the path when the page is narrow, and beside it when there is room.
+        if (size.width / size.zoom < 700) expect(aside.y, `${label}: sections under the path`).toBeGreaterThanOrEqual(path.y + path.height - 1);
+        else expect(aside.x, `${label}: sections beside the path`).toBeGreaterThan(path.x + path.width - 1);
+        const shot = `exam-narrow/${size.name.replace(/%/g, "").replace(/[ ,]+/g, "-")}-${language}-${theme}.png`;
+        await page.evaluate(() => window.scrollTo(0, 0));
+        if (size.zoom === 1) await saveShot(page, shot, { fullPage: true, animations: "disabled" });
+        else await shootZoomedWindow(app, shot);
+      }
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);
