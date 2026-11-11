@@ -209,6 +209,8 @@ const simulationViewSchema = z.object({
     z.object({ id: z.string(), stem: z.string(), topicId: z.string().optional() }),
   ),
   picks: z.record(z.string(), z.string()),
+  /** Questions marked "Segna per dopo" while the exam runs. */
+  marked: z.array(z.string()),
   topics: z.array(
     z.object({ id: z.string(), title: z.string(), score: z.number() }),
   ),
@@ -969,8 +971,10 @@ export const requests = {
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
       index: z.number().int().min(0).max(99),
-      // Skipped questions in the order they were skipped; the quiz asks them again after the others.
+      // Skipped questions in the order they were skipped, from the quiz screen before 0.5; read back, not written.
       skipped: z.array(z.string()).max(100).optional(),
+      // Questions marked "Segna per dopo", in question order.
+      marked: z.array(z.string()).max(100).optional(),
     }),
     output: z.object({ ok: z.literal(true) }),
   },
@@ -984,6 +988,7 @@ export const requests = {
           picks: z.record(z.string(), z.string()),
           index: z.number(),
           skipped: z.array(z.string()).optional(),
+          marked: z.array(z.string()).optional(),
         })
         .optional(),
       submittedAt: z.number().optional(),
@@ -1266,6 +1271,7 @@ export const requests = {
     input: z.object({
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
+      marked: z.array(z.string()).max(100).optional(),
     }),
     output: simulationViewSchema,
   },
