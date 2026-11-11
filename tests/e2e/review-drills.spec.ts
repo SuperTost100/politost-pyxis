@@ -330,7 +330,7 @@ test("LES-13 a failed drill can be skipped for good, a closed gap stops being wa
   }
 });
 
-test("LES-03 a single gap drill started from the progress page opens its quiz with the short explanation above the first question", async () => {
+test("LES-03 a single gap drill started from the exam page opens its quiz with the short explanation above the first question", async () => {
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-progress-drill-"));
   const app = await launch(userData, drillReplies());
@@ -338,8 +338,9 @@ test("LES-03 a single gap drill started from the progress page opens its quiz wi
     const page = await app.firstWindow();
     page.setDefaultTimeout(30000);
     const { planId } = await setupPlan(userData, page, app);
-    await goto(page, `/plans/${planId}/progress`);
-    const fill = page.getByRole("button", { name: /^Colma la lacuna ·/ });
+    await goto(page, `/plans/${planId}`);
+    // Ripasso mirato, on the row of a topic with an open gap or among the open topic's steps.
+    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
     await expect(fill.first()).toBeVisible();
     await fill.first().click();
     // The drill is built by its job; the page then opens the quiz of that one drill, not a Review.
@@ -371,16 +372,16 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
         db.close();
       }
     };
-    // The path's "Gaps" step opens Progress with the topic to drill.
-    await goto(page, `/plans/${planId}/progress?drill=${topics[1]!}`);
+    // A gap step opens the exam page with the topic to drill.
+    await goto(page, `/plans/${planId}?drill=${topics[1]!}`);
     await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 60000 });
     expect(drills()).toBe(1);
     await page.evaluate(() => window.history.back());
-    await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
-    await expect(page.getByRole("button", { name: /^Colma la lacuna ·/ }).first()).toBeVisible();
+    await expect(page).toHaveURL(/#\/plans\/[^/?]+$/);
+    await expect(page.getByRole("button", { name: /^Ripasso mirato/ }).first()).toBeVisible();
     // Give a wrongly repeated request time to show itself. A request that is not repeated has no signal to wait for.
     await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(/#\/plans\/[^/]+\/progress$/);
+    await expect(page).toHaveURL(/#\/plans\/[^/?]+$/);
     expect(drills()).toBe(1);
   } finally {
     await app.close();

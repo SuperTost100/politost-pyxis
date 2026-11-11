@@ -1,42 +1,48 @@
-import { ArrowLeft, ChevronDown } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Form, Modal, Select, Dropdown } from "antd";
+import { Modal } from "antd";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { reachableTarget } from "@shared/plan-file";
-import { examDaysLabel, onTrackLabel } from "./examDays";
-import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
+import { Button } from "../../components/Button";
+import { ExamRings, RingLegend } from "../../components/ExamRings";
+import { ErrorState } from "../../components/ErrorState";
+import { Icon } from "../../components/Icon";
+import { ToolbarMenu } from "../../components/ListToolbar";
+import { Logo } from "../../components/Logo";
+import { MarkdownView } from "../../components/MarkdownView";
+import { Notice } from "../../components/Notice";
+import { SourceDetails } from "../../components/SourceDetails";
+import { openSourceViewer } from "../../components/SourceViewer";
+import { Tag } from "../../components/Tag";
+import { Working } from "../../components/Working";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
-import { useGradeScale } from "../../lib/useGradeScale";
-import { Tag } from "../../components/Tag";
-import { IconButton } from "../../components/IconButton";
-import type { IconName } from "../../components/Icon";
-import { LessonTile } from "../../components/LessonTile";
-import { SegmentedTabs } from "../../components/SegmentedTabs";
-import { ErrorState } from "../../components/ErrorState";
-import { Notice } from "../../components/Notice";
-import { MarkdownView } from "../../components/MarkdownView";
-import { openSourceViewer } from "../../components/SourceViewer";
-import { CalendarButton } from "../share/CalendarButton";
-import { AttachSourcesDialog } from "./AttachSourcesDialog";
+import {
+  pastPapersQuery,
+  ringsQuery,
+  scheduleQuery,
+  usePlan,
+  useRecommend,
+} from "../../lib/queries";
+import { mapPath } from "../maps/mapPath";
+import { MapThumb } from "../maps/MapThumb";
+import { useSaveCalendar } from "../share/CalendarButton";
+import { ExportButton } from "../share/ExportButton";
 import { setPlanArchived } from "./archivePlan";
-import { PlanProgress } from "./PlanProgress";
-import { RebuildDialog } from "./RebuildDialog";
-import { NextStep, PlanPath, type TopicAction } from "./PlanPath";
-import { SourceRow } from "../../components/SourceRow";
-import { SourceDetails } from "../../components/SourceDetails";
-import { PastPapers } from "./PastPapers";
+import { ExamCreateDialog } from "./ExamCreateDialog";
+import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
+import { PlanPath, type TopicAction } from "./PlanPath";
+import { PlanSources } from "./PlanSources";
+import { skipDiagnosticPath, stepPath } from "./reopen";
+import { useGapDrill } from "./useGapDrill";
 import "./PlanPage.css";
-import { pastPapersQuery, scheduleQuery, sourcesQuery, usePlan, useRecommend } from "../../lib/queries";
-import { refreshPlan } from "../../lib/refreshPlan";
-import { Working } from "../../components/Working";
+import "./ExamPage.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
+type Guide = NonNullable<RequestOutput<"plans.recommend">>;
 
 /** "Written: Tue 20 Nov, 09:30 · Aula 5", with "· over" once the day has passed. */
 function sessionLine(
@@ -59,57 +65,41 @@ function sessionLine(
     .filter(Boolean)
     .join(" · ");
 }
-const kinds = ["mcq", "completion", "matching", "tf", "open"] as const;
-type QuizKind = (typeof kinds)[number];
 
+/**
+ * An exam's page at `/plans/:planId`. `/plans/:planId/sources` is all of its material; the older Path, Progress and
+ * Topics tabs land on the page, and `?drill=<topicId>` there starts a Ripasso mirato.
+ */
 export function PlanPage() {
-  const { t, i18n } = useTranslation();
-  const grade = useGradeScale();
   const { planId = "", view } = useParams();
+  return view === "sources" ? (
+    <PlanSources planId={planId} />
+  ) : (
+    <ExamPage planId={planId} />
+  );
+}
+
+function ExamPage({ planId }: { planId: string }) {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
   const plan = usePlan(planId);
   const recommended = useRecommend(planId);
-  const simulations = useQuery({
-    queryKey: ["simulations", planId],
-    enabled: !!planId,
-    queryFn: () => invoke("plans.simulations", { planId }),
-  });
-  const pastPapers = useQuery({ ...pastPapersQuery(planId), enabled: !!planId });
   const schedule = useQuery({ ...scheduleQuery(planId), enabled: !!planId });
-  const series = useQuery({
-    queryKey: ["series", planId],
-    enabled: !!planId,
-    queryFn: () => invoke("plans.series", { planId }),
-  });
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // The source whose details panel is open, from a row of the Sources tab.
-  const [detailSourceId, setDetailSourceId] = useState<string | null>(null);
-  const [itemPreview, setItemPreview] =
-    useState<RequestOutput<"plans.item"> | null>(null);
-  // The Sources tab reads the library too, for the file sizes its rows show.
-  const library = useQuery({ ...sourcesQuery, enabled: view === "sources" });
-  const [rebuildOpen, setRebuildOpen] = useState(false);
+  const rings = useQuery(ringsQuery);
+  const drill = useGapDrill(planId);
+  const calendar = useSaveCalendar(planId);
   const [createOpen, setCreateOpen] = useState(false);
-  const [group, setGroup] = useState("learn");
-  const [lessonKind, setLessonKind] = useState<string | null>(null);
-  const [topicId, setTopicId] = useState("");
-  const [quizKinds, setQuizKinds] = useState<QuizKind[]>([...kinds]);
-  const [minutes, setMinutes] = useState<30 | 60 | 90 | 120>(60);
-  const [material, setMaterial] = useState<"exam" | "mixed">("mixed");
+  const [createTopic, setCreateTopic] = useState<string | undefined>(undefined);
+  const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const busyRef = useRef(false);
-  const [modal, modalContext] = Modal.useModal();
-  // Old links to the removed Topics and Mistakes tabs land on the path.
-  const tab = ["progress", "sources"].includes(view ?? "")
-    ? view!
-    : "path";
-  const progress = series.data;
-  const refresh = () => refreshPlan(client, planId);
+  const [itemPreview, setItemPreview] =
+    useState<RequestOutput<"plans.item"> | null>(null);
+  const ring = rings.data?.find((entry) => entry.planId === planId);
+
   async function action(run: () => Promise<unknown>) {
-    if (busyRef.current) return;
-    busyRef.current = true;
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -117,29 +107,8 @@ export function PlanPage() {
     } catch {
       setError(t("planOverview.failed"));
     } finally {
-      busyRef.current = false;
       setBusy(false);
     }
-  }
-  function showCreate(topic?: string) {
-    setTopicId(
-      topic ?? recommended.data?.next?.topicId ?? plan.data?.topics[0]?.id ?? "",
-    );
-    setLessonKind(null);
-    setGroup("learn");
-    setError("");
-    setCreateOpen(true);
-  }
-  const upcomingDay = nextUpcomingDay(draftsFromSessions(plan.data?.sessions ?? []));
-  function chooseLesson(kind: string) {
-    if (["quiz", "simulation"].includes(kind)) {
-      setLessonKind(kind);
-      return;
-    }
-    setCreateOpen(false);
-    navigate(
-      `/plans/${planId}/${kind}${["lesson", "practice", "cards", "map"].includes(kind) ? `/${topicId}` : ""}`,
-    );
   }
   function openItem(
     item: Plan["topics"][number]["items"][number],
@@ -162,25 +131,27 @@ export function PlanPage() {
         setItemPreview(await invoke("plans.item", { planId, itemId: item.id }));
     });
   }
-  function askTopic(topic: Plan["topics"][number]) {
-    void action(async () => {
-      const thread = await invoke("chats.seed", {
-        kind: "passage",
-        title: topic.title,
-        body: [topic.title, topic.summary, ...topic.subtopics]
-          .filter(Boolean)
-          .join("\n\n"),
-        sourceIds: topic.sourceIds,
-        subject: plan.data?.subject ?? undefined,
-      });
-      navigate(`/ask/${thread.chatId}`);
-    });
-  }
   function topicAction(kind: TopicAction, topic: Plan["topics"][number]) {
     if (kind === "map") navigate(`/plans/${planId}/map/${topic.id}`);
-    if (kind === "viewer" && topic.firstPassageId) openSourceViewer({ passageId: topic.firstPassageId });
-    if (kind === "create") showCreate(topic.id);
-    if (kind === "ask") askTopic(topic);
+    if (kind === "viewer" && topic.firstPassageId)
+      openSourceViewer({ passageId: topic.firstPassageId });
+    if (kind === "create") {
+      setCreateTopic(topic.id);
+      setCreateOpen(true);
+    }
+    if (kind === "ask")
+      void action(async () => {
+        const thread = await invoke("chats.seed", {
+          kind: "passage",
+          title: topic.title,
+          body: [topic.title, topic.summary, ...topic.subtopics]
+            .filter(Boolean)
+            .join("\n\n"),
+          sourceIds: topic.sourceIds,
+          subject: plan.data?.subject ?? undefined,
+        });
+        navigate(`/ask/${thread.chatId}`);
+      });
   }
   const previewBody = itemPreview
     ? (JSON.parse(itemPreview.bodyJson) as {
@@ -188,32 +159,28 @@ export function PlanPage() {
         questions?: Array<{ stem: string; options?: string[] }>;
       })
     : null;
-  function examDays(examAt: number) {
-    const days = dayjs(examAt).startOf("day").diff(dayjs().startOf("day"), "day");
-    return days > 0 ? t("wizard.daysLeft", { count: days }) : examDaysLabel(t, days);
-  }
-  // Nothing measured yet: no topic has mastery and nothing graded was done.
-  const unmeasured =
-    (progress?.preparation.mastery ?? 0) === 0 &&
-    !plan.data?.steps.some((step) => !["intro", "lesson"].includes(step.activity));
+
   if (plan.data?.status === "building")
     return (
-      <section>
+      <section className="px-exam">
         <h1 className="title-1">{plan.data.title}</h1>
         <Working line={t("wizard.buildInProgress")} />
-        <Button
-          type="primary"
-          onClick={() => navigate(`/plans/new?build=${planId}`)}
-        >
+        <Button onClick={() => navigate(`/plans/new?build=${planId}`)}>
           {t("wizard.continueBuild")}
         </Button>
       </section>
     );
   if (plan.isError || (plan.isSuccess && !plan.data)) {
-    const toExams = { label: t("nav.toExams"), onClick: () => navigate("/exams") };
+    const toExams = {
+      label: t("nav.toExams"),
+      onClick: () => navigate("/exams"),
+    };
     return plan.isError ? (
       <ErrorState
-        action={{ label: t("components.notice.retry"), onClick: () => void plan.refetch() }}
+        action={{
+          label: t("components.notice.retry"),
+          onClick: () => void plan.refetch(),
+        }}
         secondary={toExams}
         details={errorDetails(plan.error)}
       >
@@ -223,284 +190,169 @@ export function PlanPage() {
       <ErrorState action={toExams}>{t("planOverview.gone")}</ErrorState>
     );
   }
+  if (!plan.data) return <ExamSkeleton label={t("components.loading")} />;
+  const data = plan.data;
+  const upcoming = nextUpcomingDay(draftsFromSessions(data.sessions)) !== null;
+  const menu = (
+    <ToolbarMenu
+      label={t("listToolbar.more")}
+      items={[
+        { key: "review", label: t("cards.reviewTitle") },
+        {
+          key: "create",
+          label: t("examPage.create"),
+          disabled: !data.topics.length,
+        },
+        { type: "divider" },
+        // Only an exam with a session today or later has anything to put in a calendar.
+        ...(upcoming
+          ? [
+              {
+                key: "calendar",
+                label: t("calendar.add"),
+                disabled: calendar.busy,
+              },
+            ]
+          : []),
+        { key: "share", label: t("examPage.share") },
+      ]}
+      onSelect={(key) => {
+        if (key === "review") navigate(`/plans/${planId}/review`);
+        if (key === "create") {
+          setCreateTopic(undefined);
+          setCreateOpen(true);
+        }
+        if (key === "calendar") void calendar.save();
+        if (key === "share") setExportOpen(true);
+      }}
+    />
+  );
+
   return (
-    <div className="px-plan-page">
-      {modalContext}
-      <RebuildDialog
-        planId={planId}
-        sourceIds={plan.data?.sources.map((source) => source.id) ?? []}
-        open={rebuildOpen}
-        onClose={() => setRebuildOpen(false)}
-        onDone={async () => {
-          await refresh();
-        }}
-      />
-      <Link to="/exams" className="px-plan-back">
-        <ArrowLeft size={16} aria-hidden />
-        {t("doors.exams")}
-      </Link>
-      <header className="px-plan-header">
-        <div className="px-plan-title">
-          {plan.data?.subject && <p className="label ink-muted">{plan.data.subject}</p>}
-          <h1 className="title-1">{plan.data?.title ?? t("wizard.title")}</h1>
+    <div className="px-exam">
+      <header className="px-exam-head">
+        <div className="px-exam-name">
+          <h1 className="title-1">{data.title}</h1>
+          <p className="px-exam-date">
+            <ExamWhen plan={data} />
+          </p>
         </div>
-        <div className="px-plan-header-actions">
-          <Dropdown
-            trigger={["click"]}
-            disabled={!plan.data}
-            menu={{
-              items: [
-                { key: "review", label: t("cards.reviewTitle") },
-                { key: "create", label: t("planOverview.create"), disabled: !plan.data?.topics.length },
-              ],
-              onClick: ({ key }) => (key === "review" ? navigate(`/plans/${planId}/review`) : showCreate()),
-            }}
-          >
-            <Button shape="round" disabled={!plan.data}>
-              <span className="px-plan-more">
-                {t("planOverview.more")}
-                <ChevronDown size={16} strokeWidth={1.75} aria-hidden />
-              </span>
-            </Button>
-          </Dropdown>
-          {/* Only an exam with a session today or later has anything to save. */}
-          {upcomingDay !== null ? <CalendarButton planId={planId} icon /> : null}
-          <IconButton
-            icon="settings"
-            label={t("planOverview.settings")}
-            onClick={() => navigate(`/plans/${planId}/settings`)}
-            disabled={!plan.data}
+        <div className="px-exam-rings">
+          <ExamRings
+            values={ring ?? { preparation: null, path: null, today: null }}
+            label={rings.isPending ? t("components.loading") : undefined}
+          />
+          <RingLegend
+            values={ring ?? { preparation: null, path: null, today: null }}
           />
         </div>
+        <span className="px-exam-grow" aria-hidden />
+        <span className="px-exam-actions">
+          <Button
+            variant="secondary"
+            icon="sliders-horizontal"
+            onClick={() => navigate(`/plans/${planId}/settings`)}
+          >
+            {t("planOverview.settings")}
+          </Button>
+          {menu}
+        </span>
       </header>
-      {plan.data ? (
-        <dl className="px-plan-facts">
-          <div>
-            <dt className="label ink-muted">{t("planOverview.factExam")}</dt>
-            {plan.data.examAt != null ? (
-              <>
-                <dd className="px-plan-fact">
-                  {new Intl.DateTimeFormat(i18n.language, {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "long",
-                  }).format(plan.data.examAt)}
-                </dd>
-                <dd className="small ink-muted">{examDays(plan.data.examAt)}</dd>
-              </>
-            ) : (
-              <>
-                <dd className="px-plan-fact">{t("plans.noExam")}</dd>
-                <dd className="small ink-muted">{t("planOverview.noExamSub")}</dd>
-              </>
-            )}
-          </div>
-          <div>
-            <dt className="label ink-muted">{t("planOverview.factGoal")}</dt>
-            <dd className="px-plan-fact">
-              {grade.number(plan.data.target)}
-              <small>/{grade.scale}</small>
-            </dd>
-            <dd className="small ink-muted">
-              {!progress
-                ? null
-                : grade.format(reachableTarget(plan.data.target)) === grade.format(plan.data.target)
-                  ? t("planOverview.goalSub", {
-                      ready: progress.preparation.onTrack,
-                      count: progress.preparation.totalTopics,
-                    })
-                  : // A full-mark goal counts topics at a reachable mark, and this line names it.
-                    onTrackLabel(
-                      t,
-                      progress.preparation.onTrack,
-                      progress.preparation.totalTopics,
-                      plan.data.target,
-                      grade.format,
-                    )}
-            </dd>
-          </div>
-          <div>
-            <dt className="label ink-muted">{t("planOverview.factPreparation")}</dt>
-            {!progress ? null : unmeasured ? (
-              <>
-                <dd className="px-plan-fact">{t("planOverview.unmeasured")}</dd>
-                <dd className="small ink-muted">{t("planOverview.unmeasuredSub")}</dd>
-              </>
-            ) : (
-              <>
-                <dd className="px-plan-fact">
-                  {grade.masteryNumber(progress.preparation.mastery)}
-                  <small>/{grade.scale}</small>
-                </dd>
-                <dd className="small ink-muted">
-                  {t("planOverview.planMastery", { count: progress.preparation.totalTopics })}
-                </dd>
-                {schedule.data?.behind ? (
-                  <dd className="small ink-muted">
-                    {t("planOverview.atExam", { grade: grade.mastery(schedule.data.behind.masteryAtExam) })}
-                  </dd>
-                ) : null}
-              </>
-            )}
-          </div>
-        </dl>
+      {rings.isError ? (
+        <Notice
+          tone="danger"
+          action={{
+            label: t("components.notice.retry"),
+            onClick: () => void rings.refetch(),
+          }}
+        >
+          {t("examPage.ringsFailed")}
+        </Notice>
       ) : null}
-      {plan.data &&
-      (plan.data.sessions.length > 1 ||
-        plan.data.sessions.some((s) => s.time || s.place || s.label)) ? (
-        <ul className="px-plan-sessions small ink-muted" aria-label={t("sessions.list")}>
-          {plan.data.sessions.map((session) => (
+      {data.sessions.length > 1 ||
+      data.sessions.some((s) => s.time || s.place) ? (
+        <ul className="px-exam-sessions" aria-label={t("sessions.list")}>
+          {data.sessions.map((session) => (
             <li key={session.id}>{sessionLine(session, i18n.language, t)}</li>
           ))}
         </ul>
       ) : null}
-      {plan.data?.imported && (
-        <p className="px-plan-origin">
+      {data.imported ? (
+        <p className="px-exam-origin">
           <Tag>{t("planOverview.imported")}</Tag>
-          <span className="small ink-muted">
+          <span>
             {[
-              plan.data.importedFrom?.author,
+              data.importedFrom?.author,
               new Date(
-                plan.data.importedFrom?.exportedAt ?? plan.data.importedFrom?.importedAt ?? 0,
+                data.importedFrom?.exportedAt ??
+                  data.importedFrom?.importedAt ??
+                  0,
               ).toLocaleDateString(i18n.language),
             ]
               .filter(Boolean)
               .join(" · ")}
           </span>
         </p>
-      )}
-      {plan.data?.archivedAt != null && (
-        <div className="px-plan-archived">
+      ) : null}
+      {data.archivedAt != null ? (
+        <div className="px-exam-notice">
           <Notice
             tone="info"
             action={{
               label: t("planOverview.restore"),
-              onClick: () => void action(() => setPlanArchived(client, planId, false)),
+              onClick: () =>
+                void action(() => setPlanArchived(client, planId, false)),
             }}
           >
             {t("planOverview.archivedNotice")}
           </Notice>
         </div>
-      )}
-      {(plan.data?.status === "draft" ||
-        plan.data?.topics.some((topic) => topic.grounding === "general")) && (
-        <div className="px-plan-archived">
+      ) : null}
+      {data.status === "draft" ||
+      data.topics.some((topic) => topic.grounding === "general") ? (
+        <div className="px-exam-notice">
           <Notice tone="warning">{t("plans.draft")}</Notice>
         </div>
-      )}
-      {plan.data ? <NextStep planId={planId} plan={plan.data} guide={recommended.data ?? undefined} /> : null}
-      <div className="px-plan-tabs">
-        <SegmentedTabs
-          label={t("plans.views")}
-          value={tab}
-          onChange={(next) => navigate(`/plans/${planId}/${next}`)}
-          items={[
-            { value: "path", label: t("plans.tabPath") },
-            {
-              value: "sources",
-              label: t("plans.tabSources"),
-              badge: plan.data?.sources.length ? String(plan.data.sources.length) : undefined,
-            },
-            { value: "progress", label: t("progress.title") },
-          ]}
-        />
-        {tab === "path" && plan.data ? (
-          <span className="px-plan-legend small ink-muted">
-            <span className="px-plan-legend-tick" aria-hidden />
-            {t("plans.path.legend", { goal: grade.format(plan.data.target) })}
-          </span>
-        ) : null}
-      </div>
-      {error && !createOpen && (
-        <Notice tone="danger">{error}</Notice>
-      )}
-      {tab === "path" && plan.data && (
-        <PlanPath
+      ) : null}
+      {error ? (
+        <div className="px-exam-notice">
+          <Notice tone="danger">{error}</Notice>
+        </div>
+      ) : null}
+      <div className="px-exam-grid">
+        <NowCard
           planId={planId}
-          plan={plan.data}
+          plan={data}
           guide={recommended.data ?? undefined}
-          schedule={schedule.data}
-          onTopicAction={topicAction}
-          onOpenItem={openItem}
-          itemsBusy={busy}
+          loading={recommended.isPending}
         />
-      )}
-      {tab === "sources" && (
-        <section className="px-plan-sources">
-          {plan.data?.needsRebuild && (
-            <Notice
-              tone="info"
-              action={{
-                label: t("plans.rebuild"),
-                onClick: () => setRebuildOpen(true),
-              }}
-            >
-              {t("planOverview.rebuildSuggested")}
-            </Notice>
-          )}
-          {plan.data?.sources.length ? (
-            <ul className="px-list-surface" aria-label={t("plans.tabSources")}>
-              {plan.data.sources.map((source) => (
-                <SourceRow
-                  key={source.id}
-                  source={{
-                    ...source,
-                    bytes: library.data?.find((item) => item.id === source.id)
-                      ?.bytes,
-                  }}
-                  selected={source.id === detailSourceId}
-                  onOpen={() => setDetailSourceId(source.id)}
-                  actions={{
-                    disabled: busy,
-                    items: [
-                      {
-                        key: "remove",
-                        label: t("planOverview.removeSource"),
-                        danger: true,
-                      },
-                    ],
-                    onSelect: () =>
-                      modal.confirm({
-                        title: t("planOverview.removeSource"),
-                        content: t("planOverview.removeSourceHelp", {
-                          title: source.title,
-                        }),
-                        onOk: () =>
-                          action(async () => {
-                            await invoke("plans.removeSource", {
-                              planId,
-                              sourceId: source.id,
-                            });
-                            await refresh();
-                          }),
-                      }),
-                  }}
-                />
-              ))}
-            </ul>
-          ) : plan.data ? (
-            <p className="body ink-muted">{t("planOverview.noSources")}</p>
-          ) : null}
-          <Button
-            shape="round"
-            onClick={() => setPickerOpen(true)}
-          >
-            {t("planOverview.addSources")}
-          </Button>
-          <PastPapers planId={planId} />
-          <SourceDetails
-            sourceId={detailSourceId}
-            known={plan.data?.sources.find((source) => source.id === detailSourceId)}
-            onClose={() => setDetailSourceId(null)}
-            onOpen={setDetailSourceId}
+        <div className="px-exam-path">
+          <PlanPath
+            planId={planId}
+            plan={data}
+            guide={recommended.data ?? undefined}
+            schedule={schedule.data}
+            drill={drill}
+            onTopicAction={topicAction}
+            onOpenItem={openItem}
+            itemsBusy={busy}
           />
-        </section>
-      )}
-      <AttachSourcesDialog
+        </div>
+        <ExamAside planId={planId} plan={data} dueCards={ring?.dueCards} />
+      </div>
+      <ExamCreateDialog
         planId={planId}
-        attached={plan.data?.sources.map((source) => source.id) ?? []}
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        plan={data}
+        guide={recommended.data ?? undefined}
+        open={createOpen}
+        initialTopic={createTopic}
+        onClose={() => setCreateOpen(false)}
+      />
+      <ExportButton
+        planId={planId}
+        kind="plan"
+        open={exportOpen}
+        onOpenChange={setExportOpen}
       />
       <Modal
         width={720}
@@ -541,205 +393,435 @@ export function PlanPage() {
           </section>
         ))}
       </Modal>
-      {tab === "progress" && progress && (
-        <PlanProgress
-          planId={planId}
-          progress={progress}
-          simulations={simulations.data ?? []}
-        />
-      )}
-      <Modal
-        width={640}
-        open={createOpen}
-        title={t("planOverview.create")}
-        onCancel={() => !busy && setCreateOpen(false)}
-        footer={null}
+    </div>
+  );
+}
+
+/** "Scritto venerdì 22 gennaio", or that the date is still to be set. */
+function ExamWhen({ plan }: { plan: Plan }) {
+  const { t, i18n } = useTranslation();
+  if (plan.examAt == null) return <>{t("examPage.noDate")}</>;
+  const session = plan.sessions.find((entry) => entry.date === plan.examAt);
+  const label = session?.label?.trim() || t("plans.path.exam");
+  const date = new Intl.DateTimeFormat(i18n.language, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(plan.examAt);
+  const days = dayjs(plan.examAt)
+    .startOf("day")
+    .diff(dayjs().startOf("day"), "day");
+  if (days === 0) return <>{t("examPage.whenToday", { label })}</>;
+  return (
+    <>{t(days < 0 ? "examPage.whenPast" : "examPage.when", { label, date })}</>
+  );
+}
+
+/** Adesso: the path's one suggested step, with the page's only primary button. */
+function NowCard({
+  planId,
+  plan,
+  guide,
+  loading,
+}: {
+  planId: string;
+  plan: Plan;
+  guide: Guide | undefined;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const next = guide?.next ?? null;
+  const topic = next?.topicId
+    ? plan.topics.find((item) => item.id === next.topicId)?.title
+    : null;
+  const activity = next ? t(`plans.path.activity.${next.activity}`) : null;
+  const skipTo = skipDiagnosticPath(planId, plan.topics, plan.steps);
+  const go = () => {
+    const to = next ? stepPath(planId, next.activity, next.topicId) : null;
+    if (to) navigate(to);
+  };
+  return (
+    <section className="px-exam-now" aria-labelledby="px-exam-now-title">
+      <div className="px-exam-now-text">
+        <span className="px-exam-kicker">{t("plans.path.next")}</span>
+        <h2 id="px-exam-now-title">
+          {loading ? (
+            <i className="px-skeleton-bar is-title" />
+          ) : next ? (
+            topic ? (
+              t("examPage.nowTitle", { activity, topic })
+            ) : (
+              activity
+            )
+          ) : (
+            t("plans.path.pick")
+          )}
+        </h2>
+        {next ? (
+          <p>{t(`plans.path.reason.${next.reason}`, { count: next.count })}</p>
+        ) : null}
+      </div>
+      {next?.activity === "diagnostic" && skipTo ? (
+        <Button variant="ghost" onClick={() => navigate(skipTo)}>
+          {t("plans.path.skipDiagnostic")}
+        </Button>
+      ) : null}
+      {next ? (
+        <Button size="lg" onClick={go}>
+          {t("planOverview.start")}
+        </Button>
+      ) : null}
+    </section>
+  );
+}
+
+/** One section of the column beside the path: its title, a count on the right, and its body. */
+function AsideSection({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <section className="px-exam-asec">
+      <h2>
+        {title}
+        {count ? <span>{count}</span> : null}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+/** A section's body while its read is pending or after it failed. */
+function Pending({
+  query,
+  children,
+}: {
+  query: { isPending: boolean; isError: boolean; refetch: () => unknown };
+  children: () => ReactNode;
+}) {
+  const { t } = useTranslation();
+  if (query.isError)
+    return (
+      <p className="px-exam-asec-error">
+        {t("examPage.sectionFailed")}{" "}
+        <button
+          type="button"
+          className="px-exam-link"
+          onClick={() => void query.refetch()}
+        >
+          {t("components.notice.retry")}
+        </button>
+      </p>
+    );
+  if (query.isPending)
+    return (
+      <div className="px-exam-asec-skeleton" aria-hidden>
+        <i className="px-skeleton-bar" />
+        <i className="px-skeleton-bar" />
+      </div>
+    );
+  return <>{children()}</>;
+}
+
+/** The kind of drawing a source gets in Materiale, from what the app knows of it today. */
+function coverKind(
+  kind: string,
+): "book" | "slides" | "exam" | "notebook" | "photo" {
+  if (kind === "smartbook" || kind === "book") return "book";
+  if (kind === "image" || kind === "photo") return "photo";
+  if (kind === "slides" || kind === "pptx") return "slides";
+  return "notebook";
+}
+
+/** Flashcard, Da rifare, Mappe and Materiale, beside the path. */
+function ExamAside({
+  planId,
+  plan,
+  dueCards,
+}: {
+  planId: string;
+  plan: Plan;
+  dueCards: number | undefined;
+}) {
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [detailSourceId, setDetailSourceId] = useState<string | null>(null);
+  const [redoing, setRedoing] = useState(false);
+  const [redoFailed, setRedoFailed] = useState(false);
+  const cards = useQuery({
+    queryKey: ["card-browse", "", planId, "", "all", "count"],
+    queryFn: () => invoke("study.browse", { planId, limit: 1 }),
+  });
+  const mistakes = useQuery({
+    queryKey: ["mistakes", planId],
+    queryFn: () => invoke("study.mistakes", { planId }),
+  });
+  const maps = useQuery({
+    queryKey: ["maps", "all", ""],
+    queryFn: () => invoke("maps.all", {}),
+  });
+  const papers = useQuery(pastPapersQuery(planId));
+  const due = dueCards ?? 0;
+  const entries =
+    mistakes.data?.entries.filter((entry) => entry.planId === planId) ?? [];
+  const mistakeTopics = [
+    ...new Set(
+      entries
+        .map((entry) => entry.topicTitle)
+        .filter((title): title is string => !!title),
+    ),
+  ];
+  const subjectMaps = (maps.data ?? []).filter(
+    (map) =>
+      map.planId === planId ||
+      // Subject names are unique regardless of case, and the Maps section matches them that way.
+      (plan.subject != null &&
+        map.subjectName?.toLocaleLowerCase() ===
+          plan.subject.toLocaleLowerCase()),
+  );
+  const paperIds = new Set(papers.data?.papers.map((paper) => paper.sourceId));
+  const covers = [
+    ...plan.sources
+      .filter((source) => !paperIds.has(source.id))
+      .map((source) => ({
+        id: source.id,
+        title: source.title,
+        art: coverKind(source.kind),
+      })),
+    ...(papers.data?.papers ?? []).map((paper) => ({
+      id: paper.sourceId,
+      title: paper.title,
+      art: "exam" as const,
+    })),
+  ];
+  async function redo() {
+    setRedoing(true);
+    setRedoFailed(false);
+    try {
+      const { attemptId } = await invoke("study.mistakesRedo", {
+        planId,
+        keys: entries.slice(0, 100).map((entry) => entry.key),
+      });
+      navigate(`/plans/${planId}/redo?attempt=${attemptId}`);
+    } catch {
+      setRedoFailed(true);
+      setRedoing(false);
+    }
+  }
+  return (
+    <aside className="px-exam-aside" aria-label={t("examPage.aside")}>
+      <AsideSection
+        title={t("cards.title")}
+        count={
+          cards.data
+            ? t("examPage.cardsTotal", { count: cards.data.total })
+            : null
+        }
       >
-        {error && <Notice tone="danger">{error}</Notice>}
-        {!lessonKind ? (
-          <>
-            <SegmentedTabs
-              label={t("planOverview.lessonGroup")}
-              value={group}
-              onChange={setGroup}
-              items={[
-                { value: "learn", label: t("planOverview.learn") },
-                { value: "practice", label: t("plans.practice") },
-                { value: "exam", label: t("nav.exams") },
-              ]}
-            />
-            <label
-              className="small px-plan-topic-label"
-              htmlFor="plan-lesson-topic"
-            >
-              {t("planOverview.topic")}
-            </label>
-            <Select
-              id="plan-lesson-topic"
-              value={topicId}
-              onChange={setTopicId}
-              options={plan.data?.topics.map((topic) => ({
-                value: topic.id,
-                label: topic.title,
-              }))}
-              style={{ width: "100%" }}
-            />
-            <div className="px-plan-lesson-grid">
-              {(group === "learn"
-                ? [
-                    {
-                      kind: "lesson",
-                      icon: "book-open",
-                      label: t("lesson.title"),
-                    },
-                    { kind: "map", icon: "network", label: t("map.title") },
-                  ]
-                : group === "practice"
-                  ? [
-                      {
-                        kind: "quiz",
-                        icon: "list-checks",
-                        label: t("quiz.title"),
-                      },
-                      {
-                        kind: "cards",
-                        icon: "layers",
-                        label: t("cards.title"),
-                      },
-                      {
-                        kind: "practice",
-                        icon: "pencil-line",
-                        label: t("practice.title"),
-                      },
-                    ]
-                  : [
-                      {
-                        kind: "diagnostic",
-                        icon: "list-checks",
-                        label: t("quiz.diagnostic"),
-                      },
-                      {
-                        kind: "simulation",
-                        icon: "clock",
-                        label: t("simulation.title"),
-                      },
-                      ...(pastPapers.data?.papers.some(
-                        (paper) => paper.status === "ready",
-                      )
-                        ? [
-                            {
-                              kind: "past",
-                              icon: "file-pen",
-                              label: t("pastPapers.practiceTitle"),
-                            },
-                          ]
-                        : []),
-                    ]
-              ).map((tile) => (
-                <LessonTile
-                  key={tile.kind}
-                  icon={tile.icon as IconName}
-                  label={tile.label}
-                  recommended={
-                    recommended.data?.next?.activity === tile.kind &&
-                    [topicId, null].includes(recommended.data.next.topicId)
-                  }
-                  recommendedLabel={t("plans.path.suggested")}
-                  onClick={() => chooseLesson(tile.kind)}
-                />
-              ))}
-            </div>
-          </>
-        ) : (
-          <>
-            <Button
-              type="text"
-              disabled={busy}
-              onClick={() => setLessonKind(null)}
-            >
-              {t("nav.back")}
-            </Button>
-            {lessonKind === "quiz" ? (
+        <Pending query={cards}>
+          {() => (
+            <>
+              <p>
+                {due > 0
+                  ? t("examPage.cardsDue", { count: due })
+                  : cards.data!.total > 0
+                    ? t("examPage.cardsNoneDue")
+                    : t("examPage.cardsNone")}
+              </p>
+              <div className="px-exam-arow">
+                {due > 0 ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate(`/plans/${planId}/review/cards`)}
+                  >
+                    {t("examPage.cardsReview", { count: due })}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/exams/cards")}
+                >
+                  {t("examPage.browseCards")}
+                </Button>
+              </div>
+            </>
+          )}
+        </Pending>
+      </AsideSection>
+      <AsideSection
+        title={t("examPage.redo")}
+        count={
+          entries.length
+            ? t("examPage.questions", { count: entries.length })
+            : null
+        }
+      >
+        <Pending query={mistakes}>
+          {() =>
+            entries.length ? (
               <>
-                <fieldset className="px-plan-quiz-types">
-                  <legend>{t("quiz.types")}</legend>
-                  {kinds.map((kind) => (
-                    <label key={kind}>
-                      <input
-                        type="checkbox"
-                        disabled={busy}
-                        checked={quizKinds.includes(kind)}
-                        onChange={() =>
-                          setQuizKinds((current) =>
-                            current.includes(kind)
-                              ? current.filter((value) => value !== kind)
-                              : [...current, kind],
-                          )
-                        }
-                      />
-                      {t(`quiz.kinds.${kind}`)}
-                    </label>
-                  ))}
-                </fieldset>
+                {mistakeTopics.length ? (
+                  <p>
+                    {t("examPage.redoTopics", {
+                      topics: new Intl.ListFormat(i18n.language, {
+                        type: "conjunction",
+                      }).format(mistakeTopics.slice(0, 3)),
+                    })}
+                  </p>
+                ) : null}
+                {redoFailed ? (
+                  <p className="px-exam-asec-error">
+                    {t("examPage.redoFailed")}
+                  </p>
+                ) : null}
+                <div className="px-exam-arow">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={redoing}
+                    onClick={() => void redo()}
+                  >
+                    {redoing ? (
+                      <span className="px-xpath-working">
+                        <Logo working decorative size={16} />
+                        {t("examPage.redoPreparing")}
+                      </span>
+                    ) : (
+                      t("examPage.redoCount", {
+                        count: Math.min(10, entries.length),
+                      })
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      navigate(
+                        `/exams/mistakes?exam=${encodeURIComponent(planId)}`,
+                      )
+                    }
+                  >
+                    {t("mistakes.title")}
+                  </Button>
+                </div>
               </>
             ) : (
-              <Form layout="vertical">
-                <Form.Item label={t("simulation.duration")}>
-                  <Select
-                    value={minutes}
-                    onChange={setMinutes}
-                    disabled={busy}
-                    options={[30, 60, 90, 120].map((value) => ({
-                      value,
-                      label: t("simulation.minutes", { count: value }),
-                    }))}
-                  />
-                </Form.Item>
-                <Form.Item label={t("simulation.material")}>
-                  <Select
-                    value={material}
-                    onChange={setMaterial}
-                    disabled={busy}
-                    options={[
-                      { value: "exam", label: t("simulation.exam") },
-                      { value: "mixed", label: t("simulation.mixed") },
-                    ]}
-                  />
-                </Form.Item>
-              </Form>
-            )}
-            <Button
-              type="primary"
-              loading={busy}
-              disabled={lessonKind === "quiz" && !quizKinds.length}
-              onClick={() =>
-                void action(async () => {
-                  if (lessonKind === "quiz") {
-                    const result = await invoke("study.quizStart", {
-                      planId,
-                      topicId,
-                      count: 10,
-                      types: quizKinds,
-                    });
-                    navigate(
-                      `/plans/${planId}/quiz/${topicId}?attempt=${result.attemptId}`,
-                    );
-                  } else {
-                    const result = await invoke("study.simulationPrepare", {
-                      planId,
-                      minutes,
-                      source: material,
-                    });
-                    navigate(result.attemptId ? `/plans/${planId}/exam/${result.attemptId}` : `/plans/${planId}/simulation`);
-                  }
-                })
-              }
-            >
-              {t("planOverview.start")}
-            </Button>
-          </>
+              <p>{t("examPage.redoNone")}</p>
+            )
+          }
+        </Pending>
+      </AsideSection>
+      <AsideSection title={t("maps.title")}>
+        <Pending query={maps}>
+          {() => (
+            <>
+              {subjectMaps.length ? (
+                <ul className="px-exam-maps">
+                  {subjectMaps.slice(0, 3).map((map) => (
+                    <li key={map.id}>
+                      <Link className="px-exam-mthumb" to={mapPath(map)}>
+                        <span className="px-exam-mthumb-art">
+                          <MapThumb shape={map.shape} />
+                        </span>
+                        <span>
+                          <b>{map.title}</b>
+                          <small>
+                            {map.topicTitle ?? t("maps.wholeSubject")}
+                          </small>
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{t("examPage.mapsNone")}</p>
+              )}
+              <Link className="px-exam-alink" to="/maps">
+                {t("examPage.allMaps")}
+                <Icon name="chevron-right" size={14} />
+              </Link>
+            </>
+          )}
+        </Pending>
+      </AsideSection>
+      <AsideSection title={t("examPage.material")}>
+        {covers.length ? (
+          <ul className="px-exam-mats">
+            {covers.slice(0, 6).map((cover) => (
+              <li key={cover.id}>
+                <button
+                  type="button"
+                  className="px-exam-cov"
+                  onClick={() => setDetailSourceId(cover.id)}
+                >
+                  <span className={`px-exam-art is-${cover.art}`} aria-hidden>
+                    {cover.art === "book" ? cover.title : null}
+                  </span>
+                  <span className="px-exam-cov-title">{cover.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>{t("planOverview.noSources")}</p>
         )}
-      </Modal>
+        {plan.needsRebuild ? (
+          <p className="px-exam-asec-note">{t("examPage.rebuildSuggested")}</p>
+        ) : null}
+        <Link className="px-exam-alink" to={`/plans/${planId}/sources`}>
+          {covers.length
+            ? t("examPage.allMaterial")
+            : t("examPage.addMaterial")}
+          <Icon name="chevron-right" size={14} />
+        </Link>
+      </AsideSection>
+      <SourceDetails
+        sourceId={detailSourceId}
+        known={plan.sources.find((source) => source.id === detailSourceId)}
+        onClose={() => setDetailSourceId(null)}
+        onOpen={setDetailSourceId}
+      />
+    </aside>
+  );
+}
+
+/** The page's shape while the exam loads from this computer, after 150 ms. */
+function ExamSkeleton({ label }: { label: string }) {
+  return (
+    <div className="px-exam px-skeleton" role="status" aria-label={label}>
+      <div className="px-exam-head" aria-hidden>
+        <div className="px-exam-name">
+          <i
+            className="px-skeleton-bar is-title"
+            style={{ width: 220, height: 32 }}
+          />
+          <i className="px-skeleton-bar" style={{ width: 180 }} />
+        </div>
+        <i className="px-skeleton-bar is-ring" />
+      </div>
+      <div className="px-exam-grid" aria-hidden>
+        <div className="px-exam-now">
+          <i className="px-skeleton-bar is-title" style={{ width: "60%" }} />
+        </div>
+        <div className="px-exam-path">
+          {[70, 55, 62, 48].map((width) => (
+            <i
+              key={width}
+              className="px-skeleton-bar"
+              style={{ width: `${width}%`, margin: "18px 0" }}
+            />
+          ))}
+        </div>
+        <div className="px-exam-aside" />
+      </div>
     </div>
   );
 }

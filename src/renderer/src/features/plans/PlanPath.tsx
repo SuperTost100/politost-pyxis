@@ -1,21 +1,24 @@
-import { Fragment, useId, useMemo, useRef, useState } from "react";
-import { Button, Dropdown, Input } from "antd";
-import { ChevronDown } from "lucide-react";
+import { Fragment, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { Button } from "../../components/Button";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
-import { MasteryBar } from "../../components/MasteryBar";
+import { Logo } from "../../components/Logo";
 import { Notice } from "../../components/Notice";
-import { Tag } from "../../components/Tag";
-import { formatGradeWhole } from "../../lib/grade";
 import { useGradeScale } from "../../lib/useGradeScale";
-import { searchMatcher } from "../../lib/search";
 import { plannerQuery } from "../../lib/queries";
-import { needsWeeklyHours, topicRows, type StepChip, type TopicRow } from "./pathRows";
-import { reopenPath, skipDiagnosticPath, stepPath } from "./reopen";
+import {
+  needsWeeklyHours,
+  reopensFinished,
+  topicRows,
+  type StepChip,
+  type TopicRow,
+} from "./pathRows";
+import { reopenPath, stepPath } from "./reopen";
+import type { useGapDrill } from "./useGapDrill";
 import "./PlanPath.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -36,274 +39,34 @@ export const activityIcons: Record<Activity, IconName> = {
   gaps: "circle-alert",
   simulation: "clock",
 };
-const topicOptions = ["lesson", "practice", "quiz", "cards", "gaps"] as const;
-const planOptions = ["simulation", "diagnostic", "intro"] as const;
 const stepIcons: Record<StepChip["state"], IconName> = {
   done: "check",
   missed: "circle-x",
   todo: "circle",
-  now: "target",
+  now: "arrow-right",
 };
 
 /** "lun 9 nov" from a YYYY-MM-DD day, read as a local date. */
 function shortDay(day: string, language: string): string {
   const [year, month, date] = day.split("-").map(Number);
-  return new Intl.DateTimeFormat(language, { weekday: "short", day: "numeric", month: "short" }).format(
-    new Date(year!, month! - 1, date!),
-  );
+  return new Intl.DateTimeFormat(language, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(year!, month! - 1, date!));
 }
 
 /**
- * The "Now" card: the path's one suggested step with the page's only primary button, and every other activity one
- * click away. Nothing is locked.
- */
-export function NextStep({
-  planId,
-  plan,
-  guide,
-}: {
-  planId: string;
-  plan: Plan;
-  guide: Guide | undefined;
-}) {
-  const { t } = useTranslation();
-  const grade = useGradeScale();
-  const navigate = useNavigate();
-  const ids = useId();
-  const card = useRef<HTMLElement>(null);
-  const moreButton = useRef<HTMLButtonElement>(null);
-  const changeButton = useRef<HTMLButtonElement>(null);
-  const firstOption = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const next = guide?.next ?? null;
-  const topics = plan.topics;
-  const status = new Map(guide?.topics.map((topic) => [topic.topicId, topic]));
-  const title = (topicId: string | null) => topics.find((topic) => topic.id === topicId)?.title ?? "";
-  const name = (activity: Activity) => t(`plans.path.activity.${activity}`);
-  const read = new Set(
-    plan.steps.filter((step) => step.activity === "lesson").map((step) => step.topicId),
-  );
-  const defaultTopic =
-    next?.topicId ?? topics.find((topic) => !read.has(topic.id))?.id ?? topics[0]?.id ?? null;
-  const topicId = picked && topics.some((topic) => topic.id === picked) ? picked : defaultTopic;
-  const topic = topicId ? status.get(topicId) : undefined;
-  // One "Suggested" mark: the path's pick, or what fits a topic the student chose instead.
-  const marked: Activity | null =
-    picked && picked !== next?.topicId ? (topic?.suggested ?? null) : (next?.activity ?? null);
-  const skipTo = skipDiagnosticPath(planId, topics, plan.steps);
-  const matches = useMemo(() => {
-    const titleMatches = searchMatcher(query);
-    return query.trim() ? topics.filter((item) => titleMatches(item.title)) : topics;
-  }, [query, topics]);
-
-  function go(activity: Activity, topic: string | null) {
-    const to = stepPath(planId, activity, topic);
-    if (to) navigate(to);
-  }
-  function closePicker() {
-    setPicking(false);
-    setQuery("");
-    requestAnimationFrame(() => changeButton.current?.focus());
-  }
-
-  const option = (activity: Activity, topic: string | null, index: number) => {
-    const meta =
-      activity === "lesson" && topic && read.has(topic)
-        ? t("plans.path.result.lesson")
-        : activity === "cards" && topic && (status.get(topic)?.dueCards ?? 0) > 0
-          ? t("plans.path.due", { count: status.get(topic)!.dueCards })
-          : activity === "gaps" && topic
-            ? t("plans.path.gaps", { count: status.get(topic)?.gaps ?? 0 })
-            : activity === "intro" && plan.steps.some((step) => step.activity === "intro")
-              ? t("plans.path.result.intro")
-              : null;
-    return (
-      <li key={activity}>
-        <button
-          type="button"
-          className="px-path-option"
-          ref={index === 0 ? firstOption : undefined}
-          onClick={() => go(activity, topic)}
-        >
-          <span className="px-path-option-icon">
-            <Icon name={activityIcons[activity]} size={18} />
-          </span>
-          <span className="px-path-option-text">
-            <span className="body-strong">{name(activity)}</span>
-            {meta ? <span className="meta ink-muted">{meta}</span> : null}
-            {marked === activity ? <Tag tone="recommended">{t("plans.path.suggested")}</Tag> : null}
-          </span>
-        </button>
-      </li>
-    );
-  };
-  const gap = next?.reason === "gaps";
-
-  return (
-    <section ref={card} className="px-path-next" aria-labelledby={`${ids}-next`}>
-      <span className={gap ? "px-path-next-icon is-gap" : "px-path-next-icon"}>
-        <Icon name={next ? activityIcons[next.activity] : "compass"} size={24} />
-      </span>
-      <div className="px-path-next-copy">
-        <p className="label px-path-eyebrow">{t("plans.path.next")}</p>
-        <h2 id={`${ids}-next`} className="title-3">
-          {next
-            ? next.topicId
-              ? t("plans.path.on", { activity: name(next.activity), topic: title(next.topicId) })
-              : name(next.activity)
-            : t("plans.path.pick")}
-        </h2>
-        {next ? (
-          <p className="small ink-muted">{t(`plans.path.reason.${next.reason}`, { count: next.count })}</p>
-        ) : null}
-      </div>
-      <div className="px-path-next-actions">
-        {next ? (
-          <Button type="primary" onClick={() => go(next.activity, next.topicId)}>
-            {t("planOverview.start")}
-          </Button>
-        ) : null}
-        {next?.activity === "diagnostic" && skipTo ? (
-          <Button onClick={() => navigate(skipTo)}>{t("plans.path.skipDiagnostic")}</Button>
-        ) : null}
-        <Button
-          type="text"
-          ref={moreButton}
-          aria-expanded={open}
-          aria-controls={`${ids}-chooser`}
-          onClick={() => {
-            setOpen(!open);
-            setPicking(false);
-          }}
-        >
-          <span className="px-path-more">
-            {t("plans.path.more")}
-            <ChevronDown size={16} strokeWidth={1.75} aria-hidden className={open ? "is-open" : ""} />
-          </span>
-        </Button>
-      </div>
-      {open ? (
-        <div
-          id={`${ids}-chooser`}
-          className="px-path-chooser"
-          onKeyDown={(event) => {
-            if (event.key !== "Escape" || picking) return;
-            event.stopPropagation();
-            setOpen(false);
-            moreButton.current?.focus();
-          }}
-        >
-          {topic && topicId ? (
-            <div className="px-path-topic">
-              <div className="px-path-topic-copy">
-                <p className="label ink-muted">{t("planOverview.topic")}</p>
-                <p className="body-strong">{title(topicId)}</p>
-              </div>
-              <div className="px-path-topic-mastery">
-                <MasteryBar
-                  value={topic.mastery * 100}
-                  target={plan.target * 100}
-                  scale={grade.scale}
-                  label={t("plans.path.mastery", { topic: title(topicId) })}
-                />
-              </div>
-              <Button
-                ref={changeButton}
-                size="small"
-                aria-expanded={picking}
-                aria-controls={`${ids}-topics`}
-                onClick={() => (picking ? closePicker() : setPicking(true))}
-              >
-                {t("plans.path.change")}
-              </Button>
-            </div>
-          ) : null}
-          {picking ? (
-            <div
-              id={`${ids}-topics`}
-              className="px-path-picker"
-              onKeyDown={(event) => {
-                if (event.key !== "Escape") return;
-                event.stopPropagation();
-                closePicker();
-              }}
-            >
-              <Input
-                autoFocus
-                allowClear
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder={t("plans.path.search")}
-                aria-label={t("plans.path.search")}
-                prefix={<Icon name="search" size={16} />}
-              />
-              {matches.length ? (
-                <ul className="px-path-picker-list" aria-label={t("plans.path.topics")}>
-                  {matches.map((item) => {
-                    const mastery = formatGradeWhole(status.get(item.id)?.mastery ?? 0, grade.scale);
-                    return (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          aria-current={item.id === topicId ? "true" : undefined}
-                          aria-label={`${item.title}, ${mastery}${read.has(item.id) ? `, ${t("plans.path.result.lesson")}` : ""}`}
-                          onClick={() => {
-                            setPicked(item.id);
-                            closePicker();
-                          }}
-                        >
-                          <span className="px-path-picker-title">{item.title}</span>
-                          {read.has(item.id) ? (
-                            <span className="meta ink-muted">{t("plans.path.result.lesson")}</span>
-                          ) : null}
-                          <span className="px-path-picker-value meta">{mastery}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="small ink-muted">{t("plans.path.noMatch")}</p>
-              )}
-            </div>
-          ) : (
-            <>
-              {topicId ? (
-                <ul className="px-path-options" aria-label={t("plans.path.forTopic", { topic: title(topicId) })}>
-                  {topicOptions
-                    .filter((activity) => activity !== "gaps" || (topic?.gaps ?? 0) > 0)
-                    .map((activity, index) => option(activity, topicId, index))}
-                </ul>
-              ) : null}
-              <p className="label ink-muted px-path-whole">{t("plans.path.whole")}</p>
-              <ul className="px-path-options" aria-label={t("plans.path.whole")}>
-                {planOptions
-                  .filter((activity) => activity !== "intro" || guide?.hasIntro)
-                  .map((activity, index) => option(activity, null, topicId ? -1 : index))}
-              </ul>
-            </>
-          )}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-/**
- * The exam's path as one column of rows: what was done, folded into one row; the introduction and the starting test
- * while they are still to do; every topic in the plan's order with its mastery against the goal and the day the
- * planner expects it done; then the simulation and the exam day. The topic the student is on opens and shows its
- * steps; any other opens on a click. Nothing is locked.
+ * The exam's path, top to bottom: the introduction and the diagnostic while they are ahead, each topic in the order
+ * the student studies it, the simulation and the exam. A topic opens to its steps; the one the path is on starts open.
+ * Every step opens on a click, done or not: the order is only a suggestion.
  */
 export function PlanPath({
   planId,
   plan,
   guide,
   schedule,
+  drill,
   onTopicAction,
   onOpenItem,
   itemsBusy,
@@ -312,6 +75,7 @@ export function PlanPath({
   plan: Plan;
   guide: Guide | undefined;
   schedule: Schedule | undefined;
+  drill: ReturnType<typeof useGapDrill>;
   onTopicAction: (action: TopicAction, topic: Topic) => void;
   onOpenItem: (item: Topic["items"][number], topicId: string) => void;
   itemsBusy: boolean;
@@ -319,10 +83,11 @@ export function PlanPath({
   const { t, i18n } = useTranslation();
   const grade = useGradeScale();
   // A quiz's points, as the results screen writes them: partial credit keeps one decimal.
-  const points = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 1 });
+  const points = new Intl.NumberFormat(i18n.language, {
+    maximumFractionDigits: 1,
+  });
   const navigate = useNavigate();
   const ids = useId();
-  const [showDone, setShowDone] = useState(false);
   const next = guide?.next ?? null;
   const rows = topicRows({
     topics: plan.topics,
@@ -343,269 +108,386 @@ export function PlanPath({
   });
   // The topic the path is on starts open; a click opens another one instead, and a second click closes it.
   const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  const openTopic = chosen === undefined ? (rows.find((row) => row.current)?.id ?? null) : chosen;
+  const openTopic =
+    chosen === undefined
+      ? (rows.find((row) => row.current)?.id ?? null)
+      : chosen;
   const steps = plan.steps;
-  const did = (activity: Activity) => steps.some((step) => step.activity === activity);
-  const studied = steps.some((step) => step.activity !== "intro" && step.activity !== "diagnostic");
-  const showIntro = Boolean(guide?.hasIntro) && !did("intro");
-  const showDiagnostic = plan.topics.length > 0 && !did("diagnostic") && !studied;
+  const last = (activity: Activity) =>
+    steps.filter((step) => step.activity === activity).at(-1);
+  const studied = steps.some(
+    (step) => step.activity !== "intro" && step.activity !== "diagnostic",
+  );
   const name = (activity: Activity) => t(`plans.path.activity.${activity}`);
-  const title = (topicId: string | null) => plan.topics.find((topic) => topic.id === topicId)?.title ?? "";
   const day = (value: string) => shortDay(value, i18n.language);
 
   function go(activity: Activity, topic: string | null) {
     const to = stepPath(planId, activity, topic);
     if (to) navigate(to);
   }
-  function result(step: Step) {
-    if (step.activity === "lesson" || step.activity === "intro") return t(`plans.path.result.${step.activity}`);
-    if (!step.result) return t("plans.path.result.done");
-    if (step.activity === "cards") return t("plans.path.result.cards", { count: step.result.total });
-    return `${points.format(step.result.correct)}/${step.result.total}`;
+  function reopen(
+    step: Step | undefined,
+    activity: Activity,
+    topicId: string | null = null,
+  ) {
+    const to = step ? reopenPath(planId, step) : null;
+    if (to) navigate(to);
+    else go(activity, topicId);
   }
+
   function when(date: string | null | undefined) {
     if (date === undefined) return null;
-    return date === null ? t("plans.path.late") : t("plans.path.expected", { date: day(date) });
+    return date === null
+      ? t("plans.path.late")
+      : t("examPage.by", { date: day(date) });
   }
   function sub(row: TopicRow) {
     if (row.atGoal)
-      return (
-        <>
-          <Tag tone="mastered">{t("plans.path.atGoal")}</Tag>
-          <span>{t("plans.path.activities", { count: row.done })}</span>
-        </>
-      );
-    const parts = [
-      row.last
-        ? t("progress.lastStudied", {
-            date: new Intl.DateTimeFormat(i18n.language, { day: "numeric", month: "short" }).format(row.last.at),
-          })
-        : null,
-      when(row.date),
-    ].filter((part): part is string => Boolean(part));
+      return row.gaps > 0
+        ? t("examPage.toReview", { count: row.gaps })
+        : t("plans.path.atGoal");
+    if (row.current)
+      return t("examPage.stepsDone", {
+        done: row.steps.filter((chip) => chip.state === "done").length,
+        count: row.steps.length,
+      });
+    if (row.gaps > 0) return t("plans.path.gaps", { count: row.gaps });
+    const expected = when(row.date);
+    if (expected) return expected;
+    if (row.last)
+      return t("progress.lastStudied", {
+        date: new Intl.DateTimeFormat(i18n.language, {
+          day: "numeric",
+          month: "short",
+        }).format(row.last.at),
+      });
+    return t("progress.neverStudied");
+  }
+  /** A step's score, if it has one, and its note: "adesso", what is due, or that it was done. */
+  function chipParts(chip: StepChip) {
+    const score = chip.result
+      ? `${points.format(chip.result.correct)}/${chip.result.total}`
+      : null;
+    const note =
+      chip.state === "now"
+        ? t("examPage.nowStep")
+        : chip.activity === "cards" && chip.count
+          ? t("plans.path.due", { count: chip.count })
+          : chip.activity === "gaps"
+            ? t("plans.path.gaps", { count: chip.count ?? 0 })
+            : chip.state === "done" && !score
+              ? t(
+                  chip.activity === "lesson"
+                    ? "plans.path.result.lesson"
+                    : "plans.path.result.done",
+                )
+              : null;
+    return [score, note].filter((part): part is string => Boolean(part));
+  }
+  function chipMeta(chip: StepChip) {
+    return chipParts(chip).join(" · ") || null;
+  }
+  /** "Quiz, 6/10, sotto l'obiettivo", "Lezione, letto", "Esercizi, adesso": the step, then what it says on screen. */
+  function chipLabel(chip: StepChip) {
+    const step = t(`plans.path.step.${chip.activity}`);
+    const state =
+      chip.state === "todo" ||
+      chip.state === "missed" ||
+      (chip.state === "done" && chip.result)
+        ? t(`plans.path.state.${chip.state}`)
+        : null;
+    return [step, ...chipParts(chip), state].filter(Boolean).join(", ");
+  }
+  /**
+   * A step of a topic: Ripasso mirato prepares its drill; a step already done reopens what was done (the lesson as it was
+   * read, the quiz with its score and Redo); the others start.
+   */
+  function openStep(chip: StepChip, topicId: string) {
+    if (chip.activity === "gaps") {
+      void drill.start(topicId);
+      return;
+    }
+    const done = steps
+      .filter(
+        (step) => step.topicId === topicId && step.activity === chip.activity,
+      )
+      .at(-1);
+    // A step shown as to do starts, whatever is on record; one done or scored reopens it, even when it is the suggestion.
+    if (done && reopensFinished(chip))
+      reopen(done, chip.activity, topicId);
+    else go(chip.activity, topicId);
+  }
+  /** Ripasso mirato on a topic with open gaps: it prepares a drill in place, then opens it. */
+  function review(row: TopicRow) {
+    if (row.gaps === 0) return null;
+    const busy = drill.preparing === row.id;
     return (
-      <>
-        {row.gaps > 0 ? <Tag tone="severe" icon="circle-alert">{t("plans.path.gaps", { count: row.gaps })}</Tag> : null}
-        {parts.map((part) => (
-          <span key={part}>{part}</span>
-        ))}
-        {!parts.length && !row.gaps && row.mastery === 0 ? <span>{t("progress.neverStudied")}</span> : null}
-      </>
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={busy ? undefined : "rotate-ccw"}
+        disabled={drill.preparing != null}
+        aria-label={
+          busy
+            ? t("examPage.reviewPreparing")
+            : t("examPage.reviewTopic", { topic: row.title })
+        }
+        onClick={() => void drill.start(row.id)}
+      >
+        {busy ? (
+          <span className="px-xpath-working">
+            <Logo working decorative size={16} />
+            {t("examPage.reviewPreparing")}
+          </span>
+        ) : (
+          t("plans.path.step.gaps")
+        )}
+      </Button>
     );
   }
-  function chipText(chip: StepChip) {
-    const step = t(`plans.path.step.${chip.activity}`);
-    if (chip.state === "now") return t("plans.path.stepNow", { step });
-    if (chip.result)
-      return t("plans.path.stepScore", {
-        step,
-        count: chip.result.correct,
-        points: points.format(chip.result.correct),
-        total: chip.result.total,
-      });
-    if (chip.activity === "cards") return `${step}, ${t("plans.path.due", { count: chip.count ?? 0 })}`;
-    if (chip.activity === "gaps") return `${step}, ${t("plans.path.gaps", { count: chip.count ?? 0 })}`;
-    return step;
-  }
 
+  const intro = last("intro");
+  const diagnostic = last("diagnostic");
+  const showIntro = Boolean(guide?.hasIntro) || intro != null;
+  const showDiagnostic =
+    plan.topics.length > 0 && (diagnostic != null || !studied);
+  const simulationStep = last("simulation");
   const simulation = schedule?.simulation;
+  const exam = plan.sessions.find((session) => session.date === plan.examAt);
+  const plain = (
+    key: string,
+    activity: Activity,
+    done: Step | undefined,
+    title: string,
+    detail: string | null,
+    icon: IconName,
+    extra?: string,
+  ) => (
+    <li
+      key={key}
+      className={[
+        "px-xpath-row",
+        done ? "is-done" : next?.activity === activity ? "is-now" : "is-later",
+        extra,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span className="px-xpath-mk" aria-hidden>
+        <Icon name={done ? "check" : icon} size={16} />
+      </span>
+      <button
+        type="button"
+        className="px-xpath-head"
+        onClick={() => (done ? reopen(done, activity) : go(activity, null))}
+      >
+        <span className="px-xpath-title">{title}</span>
+        {detail ? <span className="px-xpath-sub">{detail}</span> : null}
+      </button>
+    </li>
+  );
+
   return (
-    <div className="px-path">
+    <section className="px-xpath" aria-labelledby={`${ids}-title`}>
+      <h2 className="px-exam-sech" id={`${ids}-title`}>
+        {t("examPage.path")}
+      </h2>
       {hoursHint ? (
-        <Notice tone="info" action={{ label: t("plans.path.hoursAction"), onClick: () => navigate(`/plans/${planId}/settings`) }}>
+        <Notice
+          tone="info"
+          action={{
+            label: t("plans.path.hoursAction"),
+            onClick: () => navigate(`/plans/${planId}/settings`),
+          }}
+        >
           {t("plans.path.hoursHint")}
         </Notice>
       ) : null}
-      <ol className="px-path-rows" aria-label={t("plans.path.label", { count: rows.length })}>
-        {steps.length ? (
-          <li className="px-path-row is-done-line">
-            <span className="px-path-node is-done" aria-hidden>
-              <Icon name="check" size={16} />
-            </span>
-            <button
-              type="button"
-              className="px-path-summary"
-              aria-expanded={showDone}
-              aria-controls={showDone ? `${ids}-done` : undefined}
-              onClick={() => setShowDone(!showDone)}
-            >
-              <span className="body-strong">{t("plans.path.doneCount", { count: steps.length })}</span>{" "}
-              <span aria-hidden>·</span>{" "}
-              <span className="px-path-summary-toggle">{t(showDone ? "plans.path.hide" : "plans.path.show")}</span>
-            </button>
-            {showDone ? (
-              <ol id={`${ids}-done`} className="px-path-done" aria-label={t("plans.path.done")}>
-                {steps.map((step) => {
-                  const detail = step.topicId ? title(step.topicId) : null;
-                  const meta = result(step);
-                  return (
-                    <li key={step.id}>
-                      {/* The name comes from the text, read as "Quiz, Forces, 6/10 (done)". */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const to = reopenPath(planId, step);
-                          if (to) navigate(to);
-                        }}
-                      >
-                        <Icon name={activityIcons[step.activity]} size={16} />
-                        {/* Each part is a grid item, read with a space after it; the separators are for the name only. */}
-                        <span className="px-path-done-name">
-                          {name(step.activity)}
-                          <span className="px-path-sep">,</span>
-                        </span>
-                        <span className="ink-muted px-path-done-detail">
-                          {detail ? (
-                            <>
-                              {detail}
-                              <span className="px-path-sep">,</span>
-                            </>
-                          ) : null}
-                        </span>
-                        <span className="meta px-path-done-meta">
-                          {meta}
-                          <span className="px-path-sep"> ({t("components.path.state.done")})</span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : null}
-          </li>
-        ) : null}
-        {showIntro ? (
-          <li className={next?.activity === "intro" ? "px-path-row is-current" : "px-path-row"}>
-            <span className="px-path-node is-step" aria-hidden>
-              <Icon name={activityIcons.intro} size={16} />
-            </span>
-            <button type="button" className="px-path-row-main" onClick={() => go("intro", null)}>
-              <span className="px-path-name">{name("intro")}</span>
-              <span className="px-path-sub small ink-muted">{t("plans.path.introSub")}</span>
-            </button>
-            <Icon name="chevron-right" size={18} className="px-path-chev" />
-          </li>
-        ) : null}
-        {showDiagnostic ? (
-          <li className={next?.activity === "diagnostic" ? "px-path-row is-current" : "px-path-row"}>
-            <span className="px-path-node is-step" aria-hidden>
-              <Icon name={activityIcons.diagnostic} size={16} />
-            </span>
-            <button type="button" className="px-path-row-main" onClick={() => go("diagnostic", null)}>
-              <span className="px-path-name">{name("diagnostic")}</span>
-              <span className="px-path-sub small ink-muted">{t("plans.path.diagnosticSub")}</span>
-            </button>
-            <Icon name="chevron-right" size={18} className="px-path-chev" />
-          </li>
-        ) : null}
-        {rows.length ? (
-          <li className="px-path-group">
-            <h2 className="label ink-muted">{t("plans.path.topicsHeading", { count: rows.length })}</h2>
-          </li>
-        ) : null}
+      {drill.stopped != null ? (
+        <Notice
+          tone="danger"
+          action={{
+            label: t("components.notice.retry"),
+            onClick: () => {
+              const topic = drill.stopped;
+              drill.dismiss();
+              if (topic) void drill.start(topic);
+            },
+          }}
+        >
+          {t("examPage.reviewFailed")}
+        </Notice>
+      ) : null}
+      <ol
+        className="px-xpath-list"
+        aria-label={t("plans.path.label", { count: rows.length })}
+      >
+        {showIntro
+          ? plain(
+              "intro",
+              "intro",
+              intro,
+              name("intro"),
+              intro ? t("plans.path.result.intro") : t("plans.path.introSub"),
+              activityIcons.intro,
+            )
+          : null}
+        {showDiagnostic
+          ? plain(
+              "diagnostic",
+              "diagnostic",
+              diagnostic,
+              name("diagnostic"),
+              diagnostic?.result
+                ? `${points.format(diagnostic.result.correct)}/${diagnostic.result.total}`
+                : diagnostic
+                  ? t("plans.path.result.done")
+                  : t("plans.path.diagnosticSub"),
+              activityIcons.diagnostic,
+            )
+          : null}
         {rows.map((row) => {
           const topic = plan.topics.find((item) => item.id === row.id)!;
           const open = openTopic === row.id;
-          const state = row.atGoal ? "is-done" : row.gaps > 0 ? "is-gap" : row.current ? "is-now" : "";
+          const state = row.atGoal
+            ? "is-done"
+            : row.current
+              ? "is-now"
+              : "is-later";
+          const measured = row.mastery > 0 || row.done > 0;
           return (
             <li
               key={row.id}
-              className={["px-path-row", "is-topic", open && "is-open", row.atGoal && "is-done-line"]
+              className={["px-xpath-row", "is-topic", state, open && "is-open"]
                 .filter(Boolean)
                 .join(" ")}
             >
-              <span className={`px-path-node ${state}`} aria-hidden>
-                {row.atGoal ? <Icon name="check" size={16} /> : row.index}
+              <span className="px-xpath-mk" aria-hidden>
+                {row.index}
               </span>
               <button
                 type="button"
-                className="px-path-row-main"
+                className="px-xpath-head"
                 aria-expanded={open}
                 aria-controls={open ? `${ids}-${row.id}` : undefined}
                 onClick={() => setChosen(open ? null : row.id)}
               >
-                <span className="px-path-name">{row.title}</span>
-                <span className="px-path-sub small ink-muted">{sub(row)}</span>
+                <span className="px-xpath-title">{row.title}</span>
+                <span className="px-xpath-sub">{sub(row)}</span>
               </button>
-              <div className="px-path-meter">
-                <MasteryBar
-                  value={row.mastery * 100}
-                  target={plan.target * 100}
-                  scale={grade.scale}
-                  label={t("plans.path.mastery", { topic: row.title })}
-                />
-              </div>
-              <ChevronDown
-                size={18}
-                strokeWidth={1.75}
-                aria-hidden
-                className={open ? "px-path-chev is-open" : "px-path-chev"}
-              />
+              <span className="px-xpath-score">
+                {measured ? (
+                  <>
+                    <span className="visually-hidden">
+                      {t("plans.path.mastery", { topic: row.title })}:{" "}
+                    </span>
+                    {grade.mastery(row.mastery)}
+                  </>
+                ) : null}
+              </span>
+              {!open && (row.atGoal || row.gaps > 0) ? (
+                <div className="px-xpath-steprow">
+                  {row.steps
+                    .filter((chip) => chip.state === "done")
+                    .map((chip) => (
+                      <span key={chip.activity}>
+                        <Icon name="check" size={14} />
+                        {t(`plans.path.step.${chip.activity}`)}
+                      </span>
+                    ))}
+                  {review(row)}
+                </div>
+              ) : null}
               {open ? (
-                <div id={`${ids}-${row.id}`} className="px-path-detail">
-                  <div className="px-path-steps">
-                    <ul aria-label={t("plans.path.stepsFor", { topic: row.title })}>
-                      {row.steps.map((chip) => (
-                        <li key={chip.activity}>
-                          <button
-                            type="button"
-                            className={`px-path-step is-${chip.state}`}
-                            // The suggested step already says "now" on screen; the others add their state.
-                            aria-label={
-                              chip.state === "now"
-                                ? chipText(chip)
-                                : `${chipText(chip)}, ${t(`plans.path.state.${chip.state}`)}`
-                            }
-                            onClick={() => go(chip.activity, row.id)}
-                          >
+                <div id={`${ids}-${row.id}`} className="px-xpath-detail">
+                  <ul
+                    className="px-xpath-substeps"
+                    aria-label={t("plans.path.stepsFor", { topic: row.title })}
+                  >
+                    {row.steps.map((chip) => (
+                      <li key={chip.activity}>
+                        <button
+                          type="button"
+                          className={`px-xpath-substep is-${chip.state}`}
+                          aria-label={chipLabel(chip)}
+                          disabled={
+                            chip.activity === "gaps" && drill.preparing != null
+                          }
+                          onClick={() => openStep(chip, row.id)}
+                        >
+                          {chip.activity === "gaps" &&
+                          drill.preparing === row.id ? (
+                            <Logo working decorative size={16} />
+                          ) : (
                             <Icon name={stepIcons[chip.state]} size={16} />
-                            {chipText(chip)}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <Dropdown
-                      trigger={["click"]}
-                      menu={{
-                        items: [
-                          { key: "map", label: t("map.title") },
-                          { key: "viewer", label: t("planOverview.openViewer"), disabled: !topic.firstPassageId },
-                          { key: "ask", label: t("planOverview.askTopic") },
-                          { key: "create", label: t("planOverview.create") },
-                        ],
-                        onClick: ({ key }) => onTopicAction(key as TopicAction, topic),
-                      }}
+                          )}
+                          {/* The trailing space keeps the step and its note two words in the button's text. */}
+                          <span>{`${t(`plans.path.step.${chip.activity}`)} `}</span>
+                          <span className="px-xpath-meta">
+                            {chip.activity === "gaps" &&
+                            drill.preparing === row.id
+                              ? t("examPage.reviewPreparing")
+                              : chipMeta(chip)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="px-xpath-tools">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="network"
+                      onClick={() => onTopicAction("map", topic)}
                     >
-                      <Button
-                        type="text"
-                        shape="circle"
-                        size="small"
-                        aria-label={t("planOverview.topicActions", { title: row.title })}
-                        title={t("planOverview.topicActions", { title: row.title })}
-                        icon={<Icon name="settings" size={16} />}
-                      />
-                    </Dropdown>
+                      {t("map.title")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="book-open"
+                      disabled={!topic.firstPassageId}
+                      onClick={() => onTopicAction("viewer", topic)}
+                    >
+                      {t("planOverview.openViewer")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="message-circle"
+                      onClick={() => onTopicAction("ask", topic)}
+                    >
+                      {t("planOverview.askTopic")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon="plus"
+                      onClick={() => onTopicAction("create", topic)}
+                    >
+                      {t("examPage.create")}
+                    </Button>
                   </div>
                   {topic.summary || topic.subtopics.length ? (
-                    <p className="small ink-muted px-path-about">
+                    <p className="px-xpath-about">
                       {topic.summary}
                       {topic.summary && topic.subtopics.length ? " " : null}
-                      {topic.subtopics.map((sub, index) => (
+                      {topic.subtopics.map((part, index) => (
                         <Fragment key={index}>
                           {index ? " · " : null}
-                          <InlineMarkdown>{sub}</InlineMarkdown>
+                          <InlineMarkdown>{part}</InlineMarkdown>
                         </Fragment>
                       ))}
                     </p>
                   ) : null}
                   {topic.items.length ? (
-                    <div className="px-path-items">
-                      <span className="small ink-muted">{t("plans.path.made")}</span>
+                    <p className="px-xpath-items">
+                      <span>{t("plans.path.made")}</span>
                       {topic.items.map((item) => (
-                        <Button
+                        <button
                           key={item.id}
-                          size="small"
-                          type="link"
+                          type="button"
+                          className="px-xpath-item"
                           disabled={itemsBusy}
                           onClick={() => onOpenItem(item, topic.id)}
                         >
@@ -618,55 +500,58 @@ export function PlanPath({
                                   ? "map.title"
                                   : `plans.${item.kind}`,
                           )}{" "}
-                          · {new Date(item.createdAt).toLocaleDateString(i18n.language)}
-                        </Button>
+                          ·{" "}
+                          {new Date(item.createdAt).toLocaleDateString(
+                            i18n.language,
+                          )}
+                        </button>
                       ))}
-                    </div>
+                    </p>
                   ) : null}
                 </div>
               ) : null}
             </li>
           );
         })}
-        {plan.topics.length ? (
-          <>
-            <li className="px-path-group">
-              <h2 className="label ink-muted">{t("plans.path.beforeExam")}</h2>
-            </li>
-            <li className={next?.activity === "simulation" ? "px-path-row is-current" : "px-path-row"}>
-              <span className="px-path-node is-step" aria-hidden>
-                <Icon name="file-pen" size={16} />
-              </span>
-              <button type="button" className="px-path-row-main" onClick={() => go("simulation", null)}>
-                <span className="px-path-name">{name("simulation")}</span>
-                <span className="px-path-sub small ink-muted">
-                  {simulation
-                    ? when(simulation.date)
-                    : did("simulation")
-                      ? t("plans.path.simulationDone")
-                      : t("plans.path.simulationSub")}
-                </span>
-              </button>
-              <Icon name="chevron-right" size={18} className="px-path-chev" />
-            </li>
-          </>
-        ) : null}
+        {plan.topics.length
+          ? plain(
+              "simulation",
+              "simulation",
+              undefined,
+              name("simulation"),
+              simulationStep
+                ? simulationStep.result
+                  ? t("examPage.simulationDone", {
+                      result: `${points.format(simulationStep.result.correct)}/${simulationStep.result.total}`,
+                    })
+                  : t("plans.path.simulationDone")
+                : simulation
+                  ? when(simulation.date)
+                  : t("plans.path.simulationSub"),
+              "diamond",
+              simulationStep ? "is-mile is-done-mile" : "is-mile",
+            )
+          : null}
         {plan.examAt != null ? (
-          <li className="px-path-row is-exam">
-            <span className="px-path-node is-goal" aria-hidden>
-              <Icon name="flag" size={16} />
+          <li className="px-xpath-row is-later is-goal">
+            <span className="px-xpath-mk" aria-hidden>
+              <Icon name="star" size={16} />
             </span>
-            <div className="px-path-row-main">
-              <span className="px-path-name">{t("plans.path.exam")}</span>
-              <span className="px-path-sub small ink-muted">
-                {new Intl.DateTimeFormat(i18n.language, { weekday: "short", day: "numeric", month: "long" }).format(
-                  plan.examAt,
-                )}
+            <div className="px-xpath-head">
+              <span className="px-xpath-title">
+                {exam?.label?.trim() || t("plans.path.exam")}
+              </span>
+              <span className="px-xpath-sub">
+                {new Intl.DateTimeFormat(i18n.language, {
+                  weekday: "long",
+                  day: "numeric",
+                  month: "long",
+                }).format(plan.examAt)}
               </span>
             </div>
           </li>
         ) : null}
       </ol>
-    </div>
+    </section>
   );
 }
