@@ -2,7 +2,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { availableParallelism } from "node:os";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
-import { EMPTY_RESULT_ERRORS, IpcError, isAbort, type JobView } from "../../shared/ipc";
+import { IpcError, isAbort, type JobView } from "../../shared/ipc";
 import { withUsageScope } from "../engine/usage";
 import { removeJobLog } from "../debug/log";
 
@@ -125,10 +125,11 @@ export type Runner = {
   resume: (jobId: string) => void;
   resumeLocal: (kinds: string[]) => string[];
   dismiss: (jobId: string) => void;
+  /** Jobs that are running or stopped and were not dismissed, with the requests that found nothing (`endedEmpty`), on any day. */
   list: () => JobView[];
   /**
-   * Jobs that ended today and were not cleared, newest first: those that succeeded and those that found nothing for their
-   * request (`endedEmpty`). The day bounds the list, so it has no other limit: clearing it must reach every job.
+   * Jobs that succeeded today and were not cleared, newest first. The day bounds the list, so it has no other limit:
+   * clearing it must reach every job.
    */
   finished: (now?: number) => JobView[];
   /** Notes that another engine answered a call of this job, for the job's list entry. The latest one is kept. */
@@ -644,15 +645,14 @@ export function createRunner(
     finished(now = Date.now()) {
       const midnight = new Date(now);
       midnight.setHours(0, 0, 0, 0);
-      // A job that found nothing for its request ended too, so it is listed with the ones that succeeded.
+      // A job that found nothing for its request is not here: it waits for the student in `list()`, on any day.
       const rows = db
         .prepare(
           `SELECT id FROM jobs
-           WHERE dismissed = 0 AND updated_at >= ?
-             AND (state = 'succeeded' OR (state = 'failed' AND error IN (SELECT value FROM json_each(?))))
+           WHERE dismissed = 0 AND updated_at >= ? AND state = 'succeeded'
            ORDER BY updated_at DESC, rowid DESC`,
         )
-        .all(midnight.getTime(), JSON.stringify(EMPTY_RESULT_ERRORS)) as Array<{ id: string }>;
+        .all(midnight.getTime()) as Array<{ id: string }>;
       return rows.flatMap((row) => {
         const view = viewOf(row.id);
         return view ? [view] : [];
@@ -663,10 +663,9 @@ export function createRunner(
         .prepare(
           `SELECT id FROM jobs
            WHERE dismissed = 0 AND state IN ('queued', 'running', 'failed', 'cancelled', 'interrupted')
-             AND NOT (state = 'failed' AND COALESCE(error, '') IN (SELECT value FROM json_each(?)))
            ORDER BY created_at`,
         )
-        .all(JSON.stringify(EMPTY_RESULT_ERRORS)) as Array<{ id: string }>;
+        .all() as Array<{ id: string }>;
       const views = rows.flatMap((row) => {
         const view = viewOf(row.id);
         return view ? [view] : [];

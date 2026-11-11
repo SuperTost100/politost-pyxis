@@ -91,6 +91,9 @@ export function recordedPlanRun(
       delayMs?: number;
       hold?: string;
     };
+    // A call the recording has no reply for fails by name: left alone, `JSON.stringify(undefined)` below throws a
+    // TypeError that says nothing about which reply is missing.
+    if (recorded === undefined) throw new Error(`no recorded reply for "${key}"`);
     // The reply is taken before the wait, so a call that comes in while this one waits gets the next reply.
     calls++;
     if (extra) await delay(Math.min(Math.max(extra, 0), 10000), undefined, { signal: input.signal });

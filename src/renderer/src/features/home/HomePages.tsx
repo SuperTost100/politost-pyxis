@@ -2,10 +2,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import { Modal } from "antd";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
-import { Icon } from "../../components/Icon";
+import { BackLink } from "../../components/BackLink";
 import { Notice } from "../../components/Notice";
 import { ToolbarMenu } from "../../components/ListToolbar";
 import type { PlanFile } from "@shared/plan-file";
@@ -125,10 +125,7 @@ function SubPage({
   return (
     <div>
       {back ? (
-        <Link to={to.to} className="px-subpage-back">
-          <Icon name="arrow-left" size={16} />
-          {to.text}
-        </Link>
+        <BackLink to={to.to}>{to.text}</BackLink>
       ) : null}
       <h1 className="title-1 px-subpage-title">{title}</h1>
       {children}

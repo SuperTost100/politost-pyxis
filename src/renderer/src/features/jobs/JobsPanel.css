@@ -177,6 +177,11 @@
   margin-top: 1px;
 }
 
+/* A request that found nothing did not fail, so its mark is not the alarm colour. */
+.px-jobs-problem-mark.is-request {
+  color: var(--ink-muted);
+}
+
 .px-jobs-problem > :not(.px-jobs-problem-mark) {
   grid-column: 2;
   min-width: 0;

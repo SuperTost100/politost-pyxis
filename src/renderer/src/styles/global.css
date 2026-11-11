@@ -275,6 +275,9 @@ a.px-brand:hover {
   height: 36px;
   padding: 0 var(--space-2);
   border: 0;
+  /* antd's hover, pressed and focus rules draw a border from this variable and outrank the border above. A 1px border
+     made the button 2px wider, and its content, anchored at the corner, moved 1px, so no state may have one. */
+  --ant-btn-border-width: 0px;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ink-muted);

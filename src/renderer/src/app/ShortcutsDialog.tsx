@@ -19,6 +19,7 @@ function groups(mac: boolean): Group[] {
         { id: "newExam", keys: ["mod", "N"] },
         { id: "newChat", keys: ["mod", "shift", "N"] },
         { id: "search", keys: ["mod", "K"] },
+        { id: "searchMenu", keys: ["alt", "enter"] },
         { id: "settings", keys: ["mod", "comma"] },
         // The sections' number keys, in the sidebar's order (`goPages`): goAsk, goExams, goMaps…
         ...goPages.map((page) => ({

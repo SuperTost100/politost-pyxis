@@ -83,10 +83,11 @@ export interface PyxisBridge {
   openTerminal(program?: "antigravity"): Promise<void>;
   openExternal(url: string): Promise<void>;
   /**
-   * Opens the system's context menu at the pointer with these items, and resolves with the id of the one picked, or
-   * null when the menu closes without a pick. A null item is a separator.
+   * Opens the system's context menu with these items, and resolves with the id of the one picked, or null when the menu
+   * closes without a pick. A null item is a separator. It opens at the pointer, or at `at` (the page's coordinates)
+   * when a key asked for it and the pointer is somewhere else.
    */
-  contextMenu(items: Array<ContextMenuItem | null>): Promise<string | null>;
+  contextMenu(items: Array<ContextMenuItem | null>, at?: { x: number; y: number }): Promise<string | null>;
   /** Shows a job's debug log in the file manager. False when the job has no log. */
   revealJobLog(jobId: string): Promise<boolean>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;

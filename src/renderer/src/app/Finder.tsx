@@ -9,6 +9,7 @@ import { openSourceViewer } from "../components/SourceViewer";
 import { RenameField, type ChatActions } from "../features/ask/chatActions";
 import { groupChats, titleMatches, type ChatGroup } from "../features/ask/chatList";
 import { invoke } from "../lib/ipc";
+import { menuTrigger, pointBelow, type MenuPoint } from "../lib/itemMenu";
 import { cardSectionsQuery, useChats, usePlans, useSources } from "../lib/queries";
 import "./Finder.css";
 
@@ -89,6 +90,14 @@ export function Finder({
 
   const flashcards = useQuery({ ...cardSectionsQuery, enabled: open && view === "all" });
   const done = () => onClose();
+  // A chat's menu, from a right-click on its row or the menu key. The search is a modal dialog: the delete confirmation
+  // can only be reached once it has closed.
+  const openChatMenu = (row: Row, at?: MenuPoint) => {
+    if (!row.chat) return;
+    void actions.openMenu(row.chat, at).then((picked) => {
+      if (picked === "delete") done();
+    });
+  };
   const allChats = chats.data ?? [];
   const subjectOf = new Map(allChats.map((chat) => [chat.id, chat.subject]));
   // Before core's first answer, the chats whose title matches show at once instead of an empty list.
@@ -223,14 +232,7 @@ export function Finder({
             className={row.stay ? "px-finder-row is-more" : "px-finder-row"}
             onMouseMove={() => setActive(at)}
             onClick={() => pick(row)}
-            onContextMenu={(event) => {
-              if (!row.chat) return;
-              event.preventDefault();
-              // The search is a modal dialog: the delete confirmation can only be reached once it has closed.
-              void actions.openMenu(row.chat).then((picked) => {
-                if (picked === "delete") done();
-              });
-            }}
+            {...menuTrigger(() => openChatMenu(row), Boolean(row.chat))}
           >
             <span className="px-finder-title">{row.title}</span>
             {row.sub ? <span className="px-finder-sub">{row.sub}</span> : null}
@@ -299,7 +301,13 @@ export function Finder({
                 }
                 if (event.key === "Enter" && rows[current]) {
                   event.preventDefault();
-                  pick(rows[current]);
+                  if (!event.altKey) pick(rows[current]);
+                  else {
+                    // The focus stays in the field, whose own menu keeps the context-menu key and Shift+F10, so
+                    // Alt+Enter (Option+Enter on a Mac) opens the menu of the row that Enter would open.
+                    const box = document.getElementById(optionId(current))?.getBoundingClientRect();
+                    openChatMenu(rows[current], box ? pointBelow(box) : undefined);
+                  }
                 }
               }}
             />
