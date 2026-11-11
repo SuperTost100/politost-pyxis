@@ -184,22 +184,20 @@ export function registerLibrarySort(
             db.transaction(() => files.forEach((row) => set.run(null, "no-ai", row.id)))();
             return {};
           }
-          const names = () => db.prepare(`SELECT name FROM subjects ORDER BY position, name`).pluck().all() as string[];
           // Subjects this job made: a later file proposed into one of them shares it, and says it is new too.
           const made = new Set<string>();
           for (let at = 0; at < files.length; at += MAX_LOOSE_SENT) {
-            // A file whose name another file of the call has is told apart by a number, so each answer finds its file.
             const chunk = files.slice(at, at + MAX_LOOSE_SENT);
-            const seen = new Map<string, number>();
-            const labels = chunk.map((row) => {
-              const count = (seen.get(row.title) ?? 0) + 1;
-              seen.set(row.title, count);
-              return count === 1 ? row.title : `${row.title} (${count})`;
-            });
+            // The subjects as the AI tool sees them. The student may rename or delete one while it answers, so an
+            // answer is resolved through the id it had here, never by its name afterwards.
+            const known = db.prepare(`SELECT id, name FROM subjects ORDER BY position, name`).all() as Array<{
+              id: string;
+              name: string;
+            }>;
             const answer = await sortLibraryFiles(
               db,
-              names(),
-              chunk.map((row, index) => ({ file: labels[index]!, about: aboutOf(db, row.id) })),
+              known,
+              chunk.map((row) => ({ title: row.title, about: aboutOf(db, row.id) })),
               { signal: ctx.signal, run: deps.run },
             );
             if (answer === "no-engine") {
@@ -212,14 +210,23 @@ export function registerLibrarySort(
                 // The student may have chosen while the AI tool answered: then nothing is made for this file.
                 const still = db.prepare(`SELECT 1 FROM sources WHERE id = ? AND subject_sort = 'waiting'`).get(row.id);
                 if (!still) return;
-                const placement = answer.get(labels[index]!) ?? null;
+                const placement = answer.get(index) ?? null;
                 if (!placement) return void set.run(null, "unsure", row.id);
-                const name = "subject" in placement ? placement.subject : placement.proposed;
-                const known = db.prepare(`SELECT id FROM subjects WHERE name = ? COLLATE NOCASE`).pluck().get(name) as
-                  | string
-                  | undefined;
-                const subject = known ?? addSubject(db, name).id;
-                if (!known) made.add(subject);
+                let subject: string | undefined;
+                if ("subjectId" in placement) {
+                  // A subject deleted meanwhile is not made again: the student chooses.
+                  subject = db.prepare(`SELECT id FROM subjects WHERE id = ?`).pluck().get(placement.subjectId) as string | undefined;
+                } else {
+                  // A new subject, or one that has the proposed name by now (in any case), which is not ours to call new.
+                  subject = db.prepare(`SELECT id FROM subjects WHERE name = ? COLLATE NOCASE`).pluck().get(placement.proposed) as
+                    | string
+                    | undefined;
+                  if (!subject) {
+                    subject = addSubject(db, placement.proposed).id;
+                    made.add(subject);
+                  }
+                }
+                if (!subject) return void set.run(null, "unsure", row.id);
                 set.run(subject, made.has(subject) ? "created" : "sorted", row.id);
               });
             })();

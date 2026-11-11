@@ -238,36 +238,45 @@ const MAX_ABOUT_SENT = 400;
 
 const librarySchema = z.object({
   files: z
-    .array(z.object({ file: z.string().max(400), subject: z.string().max(400), newSubject: z.string().max(400) }))
+    .array(z.object({ id: z.string().max(40), subject: z.string().max(400), newSubject: z.string().max(400) }))
     .max(MAX_LOOSE_SENT),
 });
 
-/** Where a Library sort puts a file: a subject the student has, a new one it proposes, or none (null). */
-export type LibraryPlacement = { subject: string } | { proposed: string } | null;
+/**
+ * Where a Library sort puts a file: a subject the student has (by the id it had when the call was made), a new one it
+ * proposes, or none (null).
+ */
+export type LibraryPlacement = { subjectId: string } | { proposed: string } | null;
 
 /**
  * Sorts files the student added to the Library into their subjects, as `sortLooseFiles` does for a linked folder: one
- * model call for at most `MAX_LOOSE_SENT` files, with the names of the subjects the student has. Each file goes with
- * its name and, once it is read, the start of its text (`about`), so a file called "scan 3.pdf" can still be placed.
- * When no subject fits but the file clearly belongs to one, the model proposes a new subject's name, the same name for
- * files that belong together; a proposed name that matches a subject the student has (in any case) is that subject.
- * Files the answer leaves out, or that fit nowhere, get null. `no-engine` and `failed` as for `sortLooseFiles`.
+ * model call for at most `MAX_LOOSE_SENT` files, with the names of the subjects the student has. Each file goes with an
+ * `id` that is its place in the call ("1", "2", ...) and its title beside it, and the model answers by `id`, so two
+ * files with one title, or titles that only differ after the cut, never share an answer. Each file also goes with the
+ * start of its text (`about`) once it is read, so a file called "scan 3.pdf" can still be placed. When no subject fits
+ * but the file clearly belongs to one, the model proposes a new subject's name, the same name for files that belong
+ * together; a proposed name that matches a subject the student has (in any case) is that subject. Returns, by the
+ * file's place in `files`, where each answered file goes. A file the answer leaves out, or answers for with an `id`
+ * that was not sent, is not in the map, and one that fits nowhere is null. `no-engine` and `failed` as for
+ * `sortLooseFiles`.
  */
 export async function sortLibraryFiles(
   db: Database.Database,
-  subjects: string[],
-  files: Array<{ file: string; about?: string }>,
+  subjects: Array<{ id: string; name: string }>,
+  files: Array<{ title: string; about?: string }>,
   options: { signal?: AbortSignal; run?: GenerateInput["run"]; timeoutMs?: number },
-): Promise<Map<string, LibraryPlacement> | "no-engine" | "failed"> {
+): Promise<Map<number, LibraryPlacement> | "no-engine" | "failed"> {
   if (!files.length) return new Map();
-  const sent = files.slice(0, MAX_LOOSE_SENT);
+  const sentFiles = files.slice(0, MAX_LOOSE_SENT);
+  const sentSubjects = subjects.slice(0, MAX_SUBJECTS_SENT);
   const answer = await askSorter(
     db,
     "library.sort",
     {
-      subjects: subjects.slice(0, MAX_SUBJECTS_SENT).map((name) => name.slice(0, MAX_NAME_SENT)),
-      files: sent.map((item) => ({
-        file: item.file.slice(0, MAX_NAME_SENT),
+      subjects: sentSubjects.map((subject) => subject.name.slice(0, MAX_NAME_SENT)),
+      files: sentFiles.map((item, index) => ({
+        id: String(index + 1),
+        file: item.title.slice(0, MAX_NAME_SENT),
         ...(item.about ? { about: item.about.replace(/\s+/g, " ").trim().slice(0, MAX_ABOUT_SENT) } : {}),
       })),
     },
@@ -275,21 +284,21 @@ export async function sortLibraryFiles(
     options,
   );
   if (typeof answer === "string") return answer;
-  const byName = new Map(subjects.map((name) => [name.slice(0, MAX_NAME_SENT).toLocaleLowerCase(), name]));
-  const byFile = new Map(sent.map((item) => [item.file.slice(0, MAX_NAME_SENT), item.file]));
-  const sorted = new Map<string, LibraryPlacement>();
+  const byName = new Map(sentSubjects.map((subject) => [subject.name.slice(0, MAX_NAME_SENT).toLocaleLowerCase(), subject.id]));
+  const sorted = new Map<number, LibraryPlacement>();
   for (const item of answer.files) {
-    const file = byFile.get(item.file);
-    if (file === undefined || sorted.has(file)) continue;
+    const id = item.id.trim();
+    const index = /^[1-9]\d*$/.test(id) ? Number(id) - 1 : -1;
+    if (index < 0 || index >= sentFiles.length || sorted.has(index)) continue;
     const existing = byName.get(item.subject.trim().toLocaleLowerCase());
     const proposed = item.newSubject.replace(/\s+/g, " ").trim();
     const same = byName.get(proposed.toLocaleLowerCase());
     sorted.set(
-      file,
+      index,
       existing !== undefined
-        ? { subject: existing }
+        ? { subjectId: existing }
         : same !== undefined
-          ? { subject: same }
+          ? { subjectId: same }
           : proposed && proposed.length <= MAX_SUBJECT_NAME
             ? { proposed }
             : null,
