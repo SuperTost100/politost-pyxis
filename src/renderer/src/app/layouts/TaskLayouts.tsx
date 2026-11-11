@@ -5,14 +5,15 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 
 export function EmptyState(props: {
-  title: string;
+  /** Left out where the page's own title already says what is empty. */
+  title?: string;
   body: string;
   action?: ReactNode;
   secondary?: ReactNode;
 }) {
   return (
     <div className="empty">
-      <h2 className="title-2">{props.title}</h2>
+      {props.title ? <h2 className="title-2">{props.title}</h2> : null}
       <p className="body">{props.body}</p>
       <div className="empty-actions">
         {props.action}

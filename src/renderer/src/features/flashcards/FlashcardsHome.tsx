@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import { useEffect, useId, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Button } from "../../components/Button";
@@ -11,6 +11,7 @@ import { SkeletonRows } from "../../components/Skeleton";
 import { errorDetails } from "../../lib/errorDetails";
 import { cardSectionsQuery } from "../../lib/queries";
 import { stepPath } from "../plans/reopen";
+import { NewCardDialog, type NewCardSide } from "./NewCardDialog";
 import "./FlashcardsHome.css";
 
 type Sections = RequestOutput<"study.cardSections">;
@@ -28,6 +29,16 @@ export function subjectReviewPath(subjectId: string | null, examless = false): s
   return `/cards/due?${params.toString()}`;
 }
 
+/**
+ * The Flashcard page with "Nuova flashcard" open on one side, and on a subject when `subjectId` is given. Another page
+ * navigates here to let the student write a subject's flashcards, or have Pyxis write them, without leaving for a map.
+ */
+export function newCardPath(side: NewCardSide, subjectId?: string): string {
+  const params = new URLSearchParams({ new: side });
+  if (subjectId) params.set("subject", subjectId);
+  return `/flashcards?${params.toString()}`;
+}
+
 /** The id of a subject's heading, so the search can bring it into view. */
 const headingId = (subjectId: string | null) => `px-fc-${subjectId ?? "none"}`;
 
@@ -42,6 +53,35 @@ export function FlashcardsHome() {
   const sections = useQuery(cardSectionsQuery);
   const data = sections.data;
   const go = (path: string) => navigate(path, { state: FROM_SECTION });
+
+  // "Nuova flashcard": the page's button opens it; another page opens it with `newCardPath` (`?new=…&subject=…`).
+  const [params, setParams] = useSearchParams();
+  const [dialog, setDialog] = useState<{ side: NewCardSide; subjectId?: string } | null>(null);
+  const newButton = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const side = params.get("new");
+    if (side !== "hand" && side !== "pyxis") return;
+    setDialog({ side, subjectId: params.get("subject") ?? undefined });
+    // Asked once: closing the dialog, or coming back to this page, does not open it again.
+    setParams(
+      (next) => {
+        next.delete("new");
+        next.delete("subject");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [params]);
+  // The subject that just got flashcards is tinted for a moment, and a screen reader hears how many.
+  const [landed, setLanded] = useState<{ subjectId: string; at: number } | null>(null);
+  const [said, setSaid] = useState("");
+  const newCard = (variant: "primary" | "secondary") => (
+    <span className="px-fc-new" ref={newButton}>
+      <Button variant={variant} icon="plus" onClick={() => setDialog({ side: "hand" })}>
+        {t("flashcards.new.action")}
+      </Button>
+    </span>
+  );
 
   // The search opens a subject here: bring its card into view and put the focus on its name.
   const wanted = (location.state as { subject?: unknown } | null)?.subject;
@@ -70,17 +110,18 @@ export function FlashcardsHome() {
     );
   else if (data.subjects.length === 0)
     body = (
-      <EmptyState
-        title={t("flashcards.emptyTitle")}
-        body={t("flashcards.emptyBody")}
-        action={<Button onClick={() => navigate("/maps")}>{t("flashcards.emptyAction")}</Button>}
-      />
+      <EmptyState body={t("flashcards.emptyBody")} action={newCard("primary")} />
     );
   else
     body = (
       <div className="px-fc-subjects">
         {data.subjects.map((subject) => (
-          <SubjectCard key={subject.subjectId ?? "none"} subject={subject} go={go} />
+          <SubjectCard
+            key={subject.subjectId ?? "none"}
+            subject={subject}
+            go={go}
+            landed={landed && landed.subjectId === subject.subjectId ? landed.at : undefined}
+          />
         ))}
       </div>
     );
@@ -93,24 +134,57 @@ export function FlashcardsHome() {
           <p className="px-fc-lead">{t("flashcards.lead")}</p>
         </div>
         {data && data.subjects.length > 0 ? (
-          data.due > 0 ? (
-            <Button onClick={() => go("/cards/due")}>{t("flashcards.reviewToday", { count: data.due })}</Button>
-          ) : (
-            <p className="small px-fc-none">{t("flashcards.noneDue")}</p>
-          )
+          // One primary button: the review while something is due, else the new flashcard.
+          <div className="px-fc-actions">
+            {data.due > 0 ? (
+              <>
+                {newCard("secondary")}
+                <Button onClick={() => go("/cards/due")}>{t("flashcards.reviewToday", { count: data.due })}</Button>
+              </>
+            ) : (
+              <>
+                <p className="small px-fc-none">{t("flashcards.noneDue")}</p>
+                {newCard("primary")}
+              </>
+            )}
+          </div>
         ) : null}
       </div>
       {body}
+      <p className="visually-hidden" role="status">
+        {said}
+      </p>
+      <NewCardDialog
+        open={dialog !== null}
+        side={dialog?.side ?? "hand"}
+        subjectId={dialog?.subjectId}
+        origin={() => newButton.current?.querySelector("button") ?? null}
+        onClose={() => setDialog(null)}
+        onSaved={({ subjectId, name, count, closing }) => {
+          setLanded({ subjectId, at: Date.now() });
+          // The dialog says "Aggiunta" itself while it stays open.
+          if (closing) setSaid(t("flashcards.new.savedTo", { count, subject: name }));
+        }}
+      />
     </div>
   );
 }
 
-function SubjectCard({ subject, go }: { subject: Subject; go: (path: string) => void }) {
+function SubjectCard({
+  subject,
+  go,
+  landed,
+}: {
+  subject: Subject;
+  go: (path: string) => void;
+  /** When flashcards were just saved here: the card is tinted for a moment (motion.md, "An item added"). */
+  landed?: number;
+}) {
   const { t } = useTranslation();
   const name = subject.name ?? t("cardBrowser.noSubject");
   const id = headingId(subject.subjectId);
   return (
-    <section className="px-fc-subject" aria-labelledby={id}>
+    <section className="px-fc-subject" aria-labelledby={id} data-landed={landed} key={landed}>
       <div className="px-fc-subject-head">
         <div>
           <h2 className="title-2" id={id} tabIndex={-1}>

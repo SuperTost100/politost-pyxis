@@ -272,8 +272,11 @@ export function saveProposedCards(
     cards: ProposedCard[];
     provider: string;
     model: string;
+    /** The prompt that wrote them: a text's (the default) or a subject's, from the Flashcard page. */
+    prompt?: "cards.text" | "cards.subject";
   },
 ): { saved: number; skipped: number } {
+  const template = input.prompt ?? TEMPLATE;
   const planId = input.planId ?? null;
   const topicId = planId ? (input.topicId ?? "") : null;
   const subjectId = planId ? null : (input.subjectId ?? "");
@@ -319,8 +322,8 @@ export function saveProposedCards(
         back,
         input.provider,
         input.model,
-        TEMPLATE,
-        templateVersion(TEMPLATE),
+        template,
+        templateVersion(template),
         linked ? "sources" : "general",
         linked,
         `text:${norm(front).slice(0, 160)}`,

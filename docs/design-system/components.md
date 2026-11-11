@@ -61,6 +61,7 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 | `GapItem`         | A gap to fill, named after its topic                                                   |
 | `CardFaceFields`  | A flashcard's front and back while it is edited                                        |
 | `MakeCardsDialog` | Makes flashcards from a selection, a reply or a map                                    |
+| `ProposedCards`   | Flashcards Pyxis wrote, to edit or drop before saving, in both card dialogs            |
 | `SmartText`       | A lesson's text with its inline checks                                                 |
 | `SelectionMenu`   | The actions on selected text in lessons and sources: ask, make a flashcard, copy       |
 
