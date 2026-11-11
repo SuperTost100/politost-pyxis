@@ -328,11 +328,15 @@ export function planHandlers(
     plannerHours(input: { week?: string; hours: number | null }) {
       return savePlannerHours(db, input);
     },
-    dueEverywhere(input: { subjectId?: string | null; examless?: boolean } = {}) {
+    dueEverywhere(input: { subjectId?: string | null; examless?: boolean; planId?: string; noTopic?: boolean } = {}) {
       return dueEverywhere(
         db,
         Date.now(),
-        input.subjectId === undefined ? undefined : { subjectId: input.subjectId, examless: input.examless },
+        input.planId !== undefined
+          ? { planId: input.planId, noTopic: input.noTopic }
+          : input.subjectId === undefined
+            ? undefined
+            : { subjectId: input.subjectId, examless: input.examless },
       );
     },
     complete(input: {

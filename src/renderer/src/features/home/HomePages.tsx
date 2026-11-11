@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import { Modal } from "antd";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
 import { Icon } from "../../components/Icon";
@@ -14,6 +14,7 @@ import { parsePlanText } from "../plans/importPreview";
 import { ExamsList } from "./ExamsList";
 import "./HomePages.css";
 import { SkeletonRows } from "../../components/Skeleton";
+import { usePlan } from "../../lib/queries";
 
 // Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
 const CardBrowser = lazy(() =>
@@ -106,15 +107,27 @@ function ExamsListPage() {
   );
 }
 
-/** A page that was a tab of Esami: its title, and the way back to the exams when it is not a sidebar section. */
-function SubPage({ title, back, children }: { title: string; back?: boolean; children: ReactNode }) {
+/**
+ * A page that was a tab of Esami: its title, and the way back when it is not a sidebar section: to the exams, or to the
+ * page that opened it (`back` names it).
+ */
+function SubPage({
+  title,
+  back,
+  children,
+}: {
+  title: string;
+  back?: boolean | { to: string; text: string };
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
+  const to = typeof back === "object" ? back : { to: "/exams", text: t("doors.exams") };
   return (
     <div>
       {back ? (
-        <Link to="/exams" className="px-subpage-back">
+        <Link to={to.to} className="px-subpage-back">
           <Icon name="arrow-left" size={16} />
-          {t("doors.exams")}
+          {to.text}
         </Link>
       ) : null}
       <h1 className="title-1 px-subpage-title">{title}</h1>
@@ -134,10 +147,16 @@ function LibraryHome() {
 
 function CardsHome() {
   const { t } = useTranslation();
+  // Opened from an exam's page (`?exam=<id>`): filtered to that exam, and the way back returns to it.
+  const exam = useSearchParams()[0].get("exam") ?? undefined;
+  const plan = usePlan(exam);
   return (
-    <SubPage title={t("exams.allCards")} back>
+    <SubPage
+      title={t("exams.allCards")}
+      back={exam ? { to: `/plans/${exam}`, text: plan.data?.title ?? t("lesson.back") } : true}
+    >
       <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
-        <CardBrowser />
+        <CardBrowser planId={exam} />
       </Suspense>
     </SubPage>
   );

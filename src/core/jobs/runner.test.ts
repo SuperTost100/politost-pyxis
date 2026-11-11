@@ -756,6 +756,24 @@ describe("job runner", () => {
     expect(database.prepare("SELECT id, dismissed FROM jobs ORDER BY id").all()).toEqual([{ id: "done", dismissed: 1 }]);
   });
 
+  it("lists a job that found nothing for its request with the finished ones, not with the problems", () => {
+    const database = db();
+    const runner = createRunner(database, () => {});
+    const add = database.prepare(
+      `INSERT INTO jobs (id, kind, params_json, state, error, progress, created_at, updated_at) VALUES (?, 'map-build', '{}', 'failed', ?, 1, ?, ?)`,
+    );
+    const now = Date.now();
+    add.run("nothing", "map-nothing-matched", now, now);
+    add.run("broken", "cli-failed", now, now);
+    expect(runner.list().map((job) => job.id)).toEqual(["broken"]);
+    expect(runner.finished().map((job) => [job.id, job.state, job.error])).toEqual([
+      ["nothing", "failed", "map-nothing-matched"],
+    ]);
+    // Yesterday's is gone from the day's list, as a finished job is.
+    database.prepare("UPDATE jobs SET updated_at = ? WHERE id = 'nothing'").run(now - 2 * 86_400_000);
+    expect(runner.finished()).toEqual([]);
+  });
+
   it("drops a dismissed job from listeners", () => {
     const database = db();
     const seen: string[] = [];

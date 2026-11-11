@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { daysBetween, startOfDay } from "../../shared/local-day";
-import { suggestStep, topicSuggestion, type Stage, type TopicStatus } from "./path";
+import { pathNext, topicSuggestion, type Stage, type TopicStatus } from "./path";
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
@@ -477,8 +477,9 @@ export function planGuide(
   if (!state) return null;
   const { topics, steps, gaps, read, hasIntro } = state;
   return {
-    // An archived plan recommends nothing; restoring it brings the suggestions back.
-    next: state.archived ? null : suggestStep({
+    // An archived plan recommends nothing; restoring it brings the suggestions back. Due cards have their own line on
+    // the exam's page, so its next step is the one the exam list names.
+    next: state.archived ? null : pathNext({
       topics,
       steps,
       hasIntro,

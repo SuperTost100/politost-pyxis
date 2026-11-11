@@ -1,16 +1,24 @@
 export type MenuLanguage = "it" | "en";
 
-/**
- * Pages with a number key in the Go menu, in menu order. A new page is one entry here, a label in both languages in
- * `src/main/menu.ts` (the build fails without it) and, if it has a page, a route in the renderer.
- */
-export const goPages = [
-  { command: "ask", accelerator: "CmdOrCtrl+1", path: "/ask" },
-  { command: "exams", accelerator: "CmdOrCtrl+2", path: "/exams" },
-  { command: "library", accelerator: "CmdOrCtrl+3", path: "/exams/library" },
-  { command: "flashcards", accelerator: "CmdOrCtrl+4", path: "/flashcards" },
-  { command: "maps", accelerator: "CmdOrCtrl+5", path: "/maps" },
+const sections = [
+  { command: "ask", path: "/ask" },
+  { command: "exams", path: "/exams" },
+  { command: "maps", path: "/maps" },
+  { command: "flashcards", path: "/flashcards" },
+  { command: "library", path: "/exams/library" },
 ] as const;
+
+/**
+ * The app's sections in the sidebar's order, which the Go menu, the number keys (Ctrl or Command and 1, 2…), the
+ * sidebar's key hints and Help > Keyboard shortcuts all follow: a section's key is its place here. A new page is one
+ * entry here, a label in both languages in `src/main/menu.ts` (the build fails without it), its row in the sidebar and
+ * the shortcuts dialog and, if it has a page, a route in the renderer.
+ */
+export const goPages = sections.map((page, index) => ({
+  ...page,
+  /** The number of its place, as Electron writes an accelerator. */
+  accelerator: `CmdOrCtrl+${index + 1}`,
+}));
 
 /** Menu commands that open a fixed page. */
 export const pageCommands = {
@@ -22,7 +30,7 @@ export const pageCommands = {
   "check-updates": "/settings/updates",
 } as const;
 
-export type GoCommand = (typeof goPages)[number]["command"];
+export type GoCommand = (typeof sections)[number]["command"];
 export type MenuCommand =
   | GoCommand
   | keyof typeof pageCommands
