@@ -4,6 +4,8 @@ import { z } from "zod";
  * request join into a single map, so the limit leaves room for many parts.
  */
 export const MAP_LIMITS = { nodes: 2000, edges: 4000 } as const;
+/** The longest instruction a student gives a map: how to build one (`maps.generate`) or what to change in one (`maps.edit`). */
+export const MAP_INSTRUCTION_MAX = 2000;
 const id = z.string().min(1).max(160);
 const label = z.string().trim().min(1).max(500);
 export const mapColors = [
@@ -73,6 +75,8 @@ export const mapSummarySchema = z.object({
   grounding: z.enum(["sources", "general"]).optional(),
   provider: z.string().optional(),
   model: z.string().optional(),
+  /** What the student asked for when they had the map built; maps made without a request have none. */
+  instruction: z.string().optional(),
 });
 export type ConceptGraph = z.infer<typeof conceptGraphSchema>;
 export type MapOp = z.infer<typeof mapOpSchema>;
@@ -117,5 +121,7 @@ export const mapEntrySchema = z.object({
   /** How many concepts sit under each branch of the root, for the tile's small drawing of the map. */
   shape: z.array(z.number().int().nonnegative().max(MAP_SHAPE.leaves)).max(MAP_SHAPE.branches),
   grounding: z.enum(["sources", "general"]),
+  /** What the student asked for when they had the map built, null for a map made without a request. */
+  instruction: z.string().nullable(),
 });
 export type MapEntry = z.infer<typeof mapEntrySchema>;

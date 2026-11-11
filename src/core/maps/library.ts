@@ -66,6 +66,7 @@ export function listAllMaps(db: Database.Database, query = ""): MapEntry[] {
           shape: mapShape(map.graph),
           grounding:
             map.grounding ?? (map.passageIds.length ? "sources" : "general"),
+          instruction: map.instruction ?? null,
         },
       ];
     }),

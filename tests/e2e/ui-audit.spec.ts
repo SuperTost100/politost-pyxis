@@ -172,6 +172,9 @@ const routes = [
   ["maps-empty", "/maps"],
   ["maps-none", "/maps"],
   ["maps-new", "/maps"],
+  // The new-map dialog for a subject whose exams have topics (the topic select shown) and for one without (no select).
+  ["maps-new-topics", "/maps"],
+  ["maps-new-no-topics", "/maps"],
   ["map-export", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
@@ -185,6 +188,10 @@ const routes = [
   // A linked folder's readings as one row, opened on its files; and a map being built, with the working mark.
   ["jobs-group", "/exams"],
   ["map-building", "/plans/audit-ready-plan/map/audit-ready-topic"],
+  // The same build asked for in the student's own words, which the working state shows in a line under its own.
+  ["map-building-asked", "/plans/audit-ready-plan/map/audit-ready-topic"],
+  // A request whose words matched nothing in the material: no map, the message and the words ready to change.
+  ["map-nothing-matched", "/plans/audit-ready-plan/map/audit-ready-topic"],
   [
     "quiz-grading-failed",
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-grading-attempt",
@@ -1007,6 +1014,8 @@ function prepareCardBrowser(name: string) {
       DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
       DELETE FROM subjects WHERE id IN ('audit-chem','audit-gal');
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
+    // A subject with no exam, hence no topics, for the new-map dialog.
+    if (name === "maps-new-no-topics") seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
     if (name === "map-cards-no-exam") {
       // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
       seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
@@ -1610,10 +1619,30 @@ function prepareState(name: string) {
       for (let index = 0; index < 5; index += 1) file.run(`Fisica 1/nota ${index}.txt`);
       return;
     }
-    if (name === "map-building") {
+    if (name === "map-building" || name === "map-building-asked") {
       db.prepare(
         "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('audit-running-map','map-build',?,'running',0,?,?)",
-      ).run(JSON.stringify({ input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" } }), now, now);
+      ).run(
+        JSON.stringify({
+          input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
+          ...(name === "map-building-asked" ? { instruction: "solo le leggi di Newton, con un esempio per ognuna" } : {}),
+        }),
+        now,
+        now,
+      );
+      return;
+    }
+    if (name === "map-nothing-matched") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-empty-map','map-build',?,'failed',1,'map-nothing-matched',?,?)",
+      ).run(
+        JSON.stringify({
+          input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
+          instruction: "solo i teoremi sulle onde gravitazionali",
+        }),
+        now,
+        now,
+      );
       return;
     }
     if (name !== "jobs-popover") return;
@@ -2495,9 +2524,28 @@ async function openState(page: Page, name: string) {
       }
       break;
     case "map-building":
-      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo la mappa…|Building the map…)$/);
+      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo la mappa «Force»…|Building the map “Force”…)$/);
       await expect(page.locator(".px-map-working .px-logo-working")).toBeVisible();
       break;
+    case "map-building-asked":
+      await expect(page.locator(".px-map-working")).toHaveText(
+        /^(Creo la mappa «Force»…«solo le leggi di Newton, con un esempio per ognuna»|Building the map “Force”…“solo le leggi di Newton, con un esempio per ognuna”)$/,
+      );
+      await expect(page.locator(".px-map-asked")).toBeVisible();
+      break;
+    case "map-nothing-matched": {
+      await expect(
+        page.getByRole("heading", {
+          name: /^(Nel materiale non c’è niente per la tua richiesta|Nothing in the material matches your request)$/,
+        }),
+      ).toBeVisible();
+      await expect(page.locator(".px-map-empty")).toContainText("solo i teoremi sulle onde gravitazionali");
+      await expect(page.getByLabel(/^(Come la vuoi\?|How do you want it\?)/)).toHaveValue(
+        "solo i teoremi sulle onde gravitazionali",
+      );
+      await expect(page.locator(".px-map-working")).toHaveCount(0);
+      break;
+    }
     case "ocr-settings-missing":
       await expect(
         page.getByText(
@@ -2918,6 +2966,24 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(dialog).toBeVisible();
       break;
+    case "maps-new-topics":
+    case "maps-new-no-topics": {
+      const withTopics = name === "maps-new-topics";
+      await page.getByRole("button", { name: both("Nuova mappa", "New map") }).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByLabel(both("Materia", "Subject")).click();
+      await page
+        .locator(`.ant-select-dropdown:visible .ant-select-item-option[title^="${withTopics ? "Fisica" : "Chimica"}"]`)
+        .click();
+      const topic = dialog.getByLabel(both("Argomento", "Topic"));
+      // The select folds out of the subject select when the subject has topics, and is not there at all otherwise.
+      if (withTopics) await expect(topic).toBeVisible();
+      else await expect(topic).toBeHidden();
+      await dialog
+        .getByLabel(/^(Come la vuoi\?|How do you want it\?)/)
+        .fill("solo le leggi di Newton, con un esempio per ognuna");
+      break;
+    }
     case "map-subject":
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
       await expect(page.locator(".px-map-title p")).toContainText("Fisica");

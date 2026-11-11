@@ -1,10 +1,10 @@
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { Button, Input, Modal, Select } from "antd";
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
-import type { MapEntry } from "@shared/concept-map";
+import { MAP_INSTRUCTION_MAX, type MapEntry } from "@shared/concept-map";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -192,6 +192,12 @@ function MapCard({ map }: { map: MapEntry }) {
       </span>
       <div className="px-maps-cap">
         <h3 className="px-maps-card-title">{map.title}</h3>
+        {map.instruction ? (
+          // Maps of one topic share a title, so what the student asked for tells them apart. One line, the rest on hover.
+          <p className="px-maps-card-ask" title={map.instruction}>
+            {t("maps.asked", { text: map.instruction })}
+          </p>
+        ) : null}
         <p className="px-maps-card-origin">
           {map.planTitle && map.topicTitle
             ? `${map.planTitle} · ${map.topicTitle}`
@@ -206,10 +212,14 @@ function MapCard({ map }: { map: MapEntry }) {
   );
 }
 
+/** The topic select's value for the whole subject, which no topic ID can be. */
+const WHOLE = "";
+
 /**
- * Picks the subject a new map belongs to, then, if the student wants, one topic of the subject's exams, and opens that
- * map page, which builds the map right away unless the subject or topic has one already. No topic means a map of the
- * whole subject.
+ * Picks the subject a new map belongs to and, when its exams have topics, one of them (the default is the whole
+ * subject), and lets the student say how they want the map. Confirming opens the map page, which builds the map at once.
+ * A subject or topic that has a map already opens that map, unless the student said how they want this one: that asks
+ * for a new map.
  */
 function NewMapDialog(props: {
   open: boolean;
@@ -221,6 +231,7 @@ function NewMapDialog(props: {
   const navigate = useNavigate();
   const [subjectId, setSubjectId] = useState<string>();
   const [topicId, setTopicId] = useState<string>();
+  const [instruction, setInstruction] = useState("");
   const subject = props.subjects.find((item) => item.id === subjectId);
   // The subject's exams, matched by name as the exam list names them; subject names are unique regardless of case.
   const exams = subject
@@ -241,6 +252,7 @@ function NewMapDialog(props: {
     if (!props.open) {
       setSubjectId(undefined);
       setTopicId(undefined);
+      setInstruction("");
     }
   }, [props.open]);
 
@@ -263,7 +275,13 @@ function NewMapDialog(props: {
         ]
       : [];
   });
-  const loading = read.some((query) => query.isPending);
+  // The topic select is there only for a subject whose exams have topics, and folds out of the subject select when
+  // they are known. It stays mounted, so that it folds back in too; it keeps its last options while it does.
+  const hasTopics = Boolean(subjectId) && !read.some((query) => query.isPending) && topicGroups.length > 0;
+  const shownGroups = useRef(topicGroups);
+  if (hasTopics) shownGroups.current = topicGroups;
+  const wholeLabel = subjectId ? label(t("maps.wholeSubject"), subjectId) : t("maps.wholeSubject");
+  const asked = instruction.trim();
 
   return (
     <Modal
@@ -276,16 +294,16 @@ function NewMapDialog(props: {
       onOk={() => {
         if (!subjectId) return;
         props.onClose();
-        // A subject or topic that is mapped already opens its map; the page checks again before it builds.
+        // A subject or topic that is mapped already opens its map, unless the student asked for a different one; the
+        // page checks again before it builds.
         navigate(mapPath({ subjectId, topicId }), {
-          state: counts.get(topicId ?? subjectId) ? null : { build: true },
+          state: asked || !counts.get(topicId ?? subjectId) ? { build: true, instruction: asked } : null,
         });
       }}
       destroyOnHidden
     >
-      <p className="small px-maps-new-lead">{t("maps.newBody")}</p>
       <div className="px-maps-new-fields">
-        <div className="px-form-field">
+        <div className="px-maps-new-block px-form-field">
           <label className="label" htmlFor="new-map-subject">
             {t("maps.subject")}
           </label>
@@ -303,23 +321,33 @@ function NewMapDialog(props: {
             }))}
           />
         </div>
-        <div className="px-form-field">
-          <label className="label" htmlFor="new-map-topic">
-            {t("maps.topic")}
+        <div className="px-maps-coll" data-shut={!hasTopics || undefined} inert={!hasTopics}>
+          <div>
+            <div className="px-maps-new-block px-form-field">
+              <label className="label" htmlFor="new-map-topic">
+                {t("maps.topic")}
+              </label>
+              <Select
+                id="new-map-topic"
+                value={topicId ?? WHOLE}
+                onChange={(value) => setTopicId(value || undefined)}
+                options={[{ value: WHOLE, label: wholeLabel }, ...shownGroups.current]}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="px-maps-new-block px-form-field">
+          <label className="label" htmlFor="new-map-instruction">
+            {t("maps.instruction")} <span className="px-maps-optional">{t("maps.optional")}</span>
           </label>
-          <Select
-            id="new-map-topic"
-            placeholder={t("maps.wholeSubject")}
-            value={topicId}
-            allowClear
-            disabled={!subjectId || loading || topicGroups.length === 0}
-            loading={Boolean(subjectId) && loading}
-            onChange={(value) => setTopicId(value ?? undefined)}
-            options={topicGroups}
+          <Input.TextArea
+            id="new-map-instruction"
+            value={instruction}
+            maxLength={MAP_INSTRUCTION_MAX}
+            autoSize={{ minRows: 2, maxRows: 6 }}
+            placeholder={t("maps.instructionPlaceholder")}
+            onChange={(event) => setInstruction(event.target.value)}
           />
-          {subjectId && !loading && topicGroups.length === 0 ? (
-            <p className="small px-maps-new-note">{t("maps.noTopics")}</p>
-          ) : null}
         </div>
       </div>
     </Modal>

@@ -21,6 +21,8 @@ export type StoredMap = {
   /** Template ID and version that generated the map. */
   prompt?: { template: string; version: string };
   grounding?: "sources" | "general";
+  /** What the student asked for when they had this map built. It lives in the map's JSON, so it needs no column. */
+  instruction?: string;
 };
 type Collection = { version: 1; maps: StoredMap[] };
 /** The scope's maps and the ID of the row that holds them (null before the first map), in one read. */
@@ -72,13 +74,14 @@ export function parseCollection(row: {
 }
 export function listMaps(db: Database.Database, scope: MapScope): MapSummary[] {
   return collection(db, scope).maps.map(
-    ({ id, title, passageIds, provider, model, grounding }) => ({
+    ({ id, title, passageIds, provider, model, grounding, instruction }) => ({
       id,
       title,
       passageCount: passageIds.length,
       grounding: grounding ?? (passageIds.length ? "sources" : "general"),
       provider,
       model,
+      instruction,
     }),
   );
 }
