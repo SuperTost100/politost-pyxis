@@ -7,7 +7,9 @@ import {
   ChartLine,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
+  CircleQuestionMark,
   Circle,
   CircleDashed,
   CircleDot,
@@ -98,7 +100,9 @@ export type IconName =
   | "plus"
   | "arrow-left"
   | "x"
+  | "chevron-left"
   | "chevron-right"
+  | "circle-question-mark"
   | "sigma"
   | "code"
   | "chart-line"
@@ -168,7 +172,9 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   plus: Plus,
   "arrow-left": ArrowLeft,
   x: X,
+  "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
+  "circle-question-mark": CircleQuestionMark,
   sigma: Sigma,
   code: Code,
   "chart-line": ChartLine,

@@ -391,6 +391,27 @@ describe("configured quizzes", () => {
     expect(readQuiz(db, started.attemptId).draft?.skipped).toBeUndefined();
     db.close();
   });
+  it("keeps the questions marked for later in the draft, once each, and refuses unknown ones", async () => {
+    const db = fixture();
+    const started = await startConfiguredQuiz(
+      db,
+      { planId: "plan", topicId: "topic", count: 10, types: ["tf"] },
+      tfRun,
+    );
+    const [first, second] = started.questions.map((question) => question.id);
+    saveQuizDraft(db, started.attemptId, { [first!]: "true" }, 1, "plan", undefined, [], [second!, first!, second!]);
+    expect(readQuiz(db, started.attemptId).draft).toMatchObject({
+      picks: { [first!]: "true" },
+      marked: [second, first],
+    });
+    expect(() =>
+      saveQuizDraft(db, started.attemptId, {}, 1, "plan", undefined, [], ["nope"]),
+    ).toThrow("question-missing");
+    // Unmarking the last one leaves no list behind.
+    saveQuizDraft(db, started.attemptId, {}, 1, "plan", undefined, [], []);
+    expect(readQuiz(db, started.attemptId).draft?.marked).toBeUndefined();
+    db.close();
+  });
   it("rejects unsupported counts and invented grounding without saving a partial attempt", async () => {
     const db = fixture();
     await expect(

@@ -346,6 +346,7 @@ export function studyHandlers(
       picks: Record<string, string>;
       index: number;
       skipped?: string[];
+      marked?: string[];
     }) {
       return saveQuizDraft(
         db,
@@ -355,6 +356,7 @@ export function studyHandlers(
         input.planId,
         undefined,
         input.skipped,
+        input.marked,
       );
     },
     quizRead(input: { attemptId: string; planId?: string }) {
@@ -610,8 +612,10 @@ export function studyHandlers(
     simulationDraft(input: {
       attemptId: string;
       picks: Record<string, string>;
+      marked?: string[];
+      current?: string;
     }) {
-      return saveSimulationDraft(db, input.attemptId, input.picks);
+      return saveSimulationDraft(db, input.attemptId, input.picks, undefined, input.marked, input.current);
     },
     simulationRead(input: { attemptId: string }) {
       return readSimulation(db, input.attemptId);

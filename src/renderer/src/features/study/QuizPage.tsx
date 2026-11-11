@@ -1,11 +1,10 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { App, Button, Input, InputNumber, Select } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { App, Button, InputNumber, Select } from "antd";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { spokenText } from "@shared/spoken-math";
-import { Icon } from "../../components/Icon";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { QuizOption, type QuizOptionState } from "../../components/QuizOption";
@@ -14,31 +13,39 @@ import { Tag } from "../../components/Tag";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
-import { openSourceViewer } from "../../components/SourceViewer";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { errorProvider, useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
-import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
-import { useJobs } from "../jobs/queries";
-import { checkJobFor } from "../jobs/jobGroups";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
+import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
+import { Button as PxButton } from "../../components/Button";
+import { SkeletonRows } from "../../components/Skeleton";
+import {
+  dontKnowPicks,
+  editedPicks,
+  given,
+  handInCount,
+  handInPicks,
+  restoredMarked,
+  toggleMarked,
+} from "./quizSheet";
 import {
   answerSource,
   blanks,
   pairs,
   quizBack,
   quizBackLabel,
-  retryPick,
   skipOrder,
   stemText,
   questionPoints,
@@ -84,7 +91,7 @@ function QuizClock({
   const msLeft = expired ? 0 : Math.max(0, deadlineAt - now);
   return (
     <div className="px-quiz-timer">
-      <output role="timer" aria-label={t("quiz.timer")}>
+      <output role="timer" aria-label={t("quiz.timer")} className={msLeft <= 60000 ? "is-low" : undefined}>
         {clock(msLeft)}
       </output>
       {expired || msLeft <= 60000 ? (
@@ -92,42 +99,6 @@ function QuizClock({
           {t(expired ? "quiz.timeUp" : "quiz.timeLow")}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * An open answer being corrected: whether the correction waits for another one or is running, and for how long, so a
- * long wait never looks stuck. The seconds stay out of the live region; only the state change is announced.
- */
-function CheckStatus({
-  attemptId,
-  questionId,
-  onCancel,
-}: {
-  attemptId: string;
-  questionId: string;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  const [since] = useState(() => Date.now());
-  const seconds = Math.floor((useNow(1000) - since) / 1000);
-  const job = checkJobFor(useJobs().data ?? [], attemptId, questionId);
-  const queued = job?.state === "queued";
-  return (
-    <div className="px-quiz-checking">
-      {queued ? <Icon name="clock" size={16} /> : <Logo working decorative size={16} />}
-      <span className="body" role="status">
-        {t(queued ? "quiz.checkQueued" : "quiz.checking")}
-      </span>
-      {seconds >= 3 ? (
-        <span className="meta" aria-hidden>
-          {t("quiz.checkSeconds", { count: seconds })}
-        </span>
-      ) : null}
-      <Button type="text" shape="round" size="small" onClick={onCancel}>
-        {t("quiz.checkCancel")}
-      </Button>
     </div>
   );
 }
@@ -209,13 +180,18 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const timerReady = !timerOn || Boolean(timerMinutes);
   const [index, setIndex] = useState(0);
   const [picks, setPicks] = useState<Record<string, string>>({});
+  // Answers corrected one by one before 0.5, read back with the attempt: they stay as they were checked.
   const [checked, setChecked] = useState<Record<string, QuizAnswer>>({});
   const [wrongMarks, setWrongMarks] = useState<Record<string, boolean>>({});
-  // Questions the student skipped, in the order they did; they come back once, after all the others.
+  // An attempt handed in before 0.5 with skipped questions numbers its results in the order the student met them.
   const [skipped, setSkipped] = useState<string[]>([]);
+  // Questions marked "Segna per dopo", in question order; saved with the draft.
+  const [marked, setMarked] = useState<string[]>([]);
+  // The Consegna question, open under the button that asked it.
+  const [confirmFrom, setConfirmFrom] = useState<HandInFrom | null>(null);
   const [actionError, setActionError] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const heading = useRef<HTMLDivElement>(null);
+  const card = useRef<HTMLElement>(null);
   const start = useMutation({
     mutationFn: () =>
       past
@@ -298,6 +274,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   useEffect(() => {
     if (!session.data) return;
     const restoring = restoredAttempt.current !== attemptId;
+    // A quiz opened again restores from a read made now: the cached one is from when the page last opened, before the
+    // answers and the question the student left on were saved.
+    if (restoring && !session.isFetchedAfterMount) return;
     setChecked((current) => ({
       ...(restoring ? {} : current),
       ...Object.fromEntries(session.data.checked.map((row) => [row.id, row])),
@@ -318,57 +297,33 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     });
     if (restoring) {
       restoredAttempt.current = attemptId;
-      const restoredSkips = session.data.draft?.skipped ?? [];
-      setSkipped(restoredSkips);
-      const firstUnchecked = skipOrder(
-        session.data.questions,
-        restoredSkips,
-      ).findIndex(
-        (row) => !session.data.checked.some((answer) => answer.id === row.id),
-      );
+      const draft = session.data.draft;
+      const asked = session.data.questions.map((row) => ({ id: row.id, kind: row.grade.kind }));
+      const handedIn = session.data.submittedAt != null;
+      setSkipped(handedIn ? (draft?.skipped ?? []) : []);
+      setMarked(handedIn ? [] : restoredMarked(draft, asked));
+      // A quiz left halfway opens where it was left, or on the first question with nothing given.
+      const saved = { ...draft?.picks, ...Object.fromEntries(session.data.checked.map((row) => [row.id, row.pick])) };
+      const firstBlank = asked.findIndex((row) => given(row.kind, saved[row.id]) === "none");
+      // A draft from before 0.5 counted its place in the order with skipped questions moved last.
+      const left = draft?.skipped?.length && !draft.marked
+        ? skipOrder(asked, draft.skipped)[draft.index]?.id
+        : undefined;
+      const leftAt = left ? asked.findIndex((row) => row.id === left) : -1;
       setIndex(
         Math.min(
-          Math.max(
-            0,
-            session.data.draft?.index ??
-              (firstUnchecked < 0
-                ? session.data.questions.length - 1
-                : firstUnchecked),
-          ),
-          Math.max(0, session.data.questions.length - 1),
+          Math.max(0, leftAt >= 0 ? leftAt : (draft?.index ?? (firstBlank < 0 ? asked.length - 1 : firstBlank))),
+          Math.max(0, asked.length - 1),
         ),
       );
       setHydratedAttempt(attemptId);
     }
-  }, [session.data, attemptId]);
+  }, [session.data, session.isFetchedAfterMount, attemptId]);
+  // The results of an attempt handed in before 0.5 follow the order its questions were met in; the quiz itself asks
+  // them in their own order, as the Domande card numbers them.
   const ordered = skipOrder(questions, skipped);
-  const question = ordered[index];
-  const pickAtFailure = useRef("");
-  const check = useMutation({
-    mutationFn: (input: { questionId: string; pick: string }) =>
-      invoke("study.quizCheck", { attemptId, ...input }),
-    onSuccess: (result, input) => {
-      setChecked((current) => ({ ...current, [result.id]: result }));
-      // The pick that was checked is the answer, an empty "I don't know" too.
-      setPicks((current) => ({ ...current, [result.id]: input.pick }));
-    },
-    // The answer in the field when the check failed, so Try again can tell an edit from an untouched pick.
-    onError: (_, input) => {
-      pickAtFailure.current = picks[input.questionId] ?? "";
-    },
-  });
-  // An open answer the student stopped checking goes back to editable, without an error.
-  const cancelledCheck = useRef<string | null>(null);
-  const checking = check.isPending ? check.variables?.questionId : undefined;
-  const checkFailed =
-    check.isError &&
-    check.variables?.questionId === question?.id &&
-    cancelledCheck.current !== question?.id;
-  // A check that stopped on a refused sign-in names the engine and offers its sign-in next to Try again.
-  const checkJobError = check.isError ? requestJobError(check.error) : undefined;
-  const checkFailure = checkJobError
-    ? describeEngineError(checkJobError.key, checkJobError.engine)
-    : undefined;
+  const question = questions[index];
+  const asked = questions.map((row) => ({ id: row.id, kind: row.grade.kind }));
   // Answers are corrected one by one; submitting only closes the attempt (and grades anything still unchecked).
   const grading = useQuery({
     queryKey: ["quiz-grading", attemptId],
@@ -379,11 +334,12 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         ? 500
         : false,
   });
+  // Consegna hands in every question: a blank one goes as an empty pick, which counts as "Non lo so".
   const submit = useMutation({
     mutationFn: () =>
       invoke("study.quizSubmit", {
         attemptId,
-        picks,
+        picks: handInPicks(asked, picks),
       }),
     onSuccess: () => void grading.refetch(),
   });
@@ -452,7 +408,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       planId?: string;
       picks: Record<string, string>;
       index: number;
-      skipped: string[];
+      marked: string[];
     }) => {
       await invoke("study.quizDraft", draft);
       // The first save after the quiz is ready starts the timer; pick up its deadline.
@@ -469,14 +425,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       !expired &&
       session.data?.submittedAt == null
     )
-      drafts.schedule({ attemptId, planId, picks, index, skipped });
+      drafts.schedule({ attemptId, planId, picks, index, marked });
     else drafts.cancel();
   }, [
     attemptId,
     hydratedAttempt,
     picks,
     index,
-    skipped,
+    marked,
     finalResult,
     gradingStarted,
     expired,
@@ -488,64 +444,51 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     await drafts.flush();
     navigate(back);
   }
+  // An answer corrected one by one before 0.5 stays as it was checked: core keeps the checked pick at Consegna.
   const result = question ? checked[question.id] : undefined;
   const locked =
     Boolean(result) ||
-    checking === question?.id ||
     submit.isPending ||
     gradingStarted ||
     expired ||
     // A timed quiz's clock starts once every question exists; until then it takes no answers.
     (timed && session.data?.state !== "succeeded") ||
     (Boolean(attemptId) && hydratedAttempt !== attemptId);
-  // A new question takes focus for screen readers; the stem shows no focus box for it.
+  // A new question takes focus, so a screen reader reads its position and its text; the card shows no focus box.
+  // The card mounts once the attempt is restored, so its first focus waits for that.
   useEffect(() => {
-    if (question) heading.current?.focus({ preventScroll: false });
-  }, [question?.id]);
+    if (question) card.current?.focus({ preventScroll: true });
+  }, [question?.id, hydratedAttempt]);
   function pick(value: string) {
-    if (question && !locked)
-      setPicks((current) => ({ ...current, [question.id]: value }));
+    if (question && !locked) setPicks((current) => editedPicks(current, question.id, question.grade.kind, value));
   }
   function goTo(next: number) {
-    check.reset();
+    setConfirmFrom(null);
     setIndex(next);
   }
-  function runCheck() {
-    if (!question || !hasAnswer || locked) return;
-    cancelledCheck.current = null;
-    check.mutate({ questionId: question.id, pick: picks[question.id] ?? "" });
-  }
-  // "I don't know" checks an empty pick: scored 0, wrong evidence, answer shown.
+  // "Non lo so" gives an empty answer, scored 0 with the right answer shown in the results; pressed again, it is taken back.
   function dontKnow() {
-    if (!question || locked) return;
-    cancelledCheck.current = null;
-    check.mutate({ questionId: question.id, pick: "" });
+    if (question && !locked) setPicks((current) => dontKnowPicks(current, question.id));
   }
-  // A question can be skipped once: it moves behind the others, and when it comes back it can only be answered.
-  const skippable =
-    Boolean(question) &&
-    !skipped.includes(question?.id ?? "") &&
-    ordered.slice(index + 1).some((row) => !checked[row.id]);
-  function skip() {
-    if (!question || !skippable || locked || !canFinish) return;
-    check.reset();
-    setSkipped((current) => [...current, question.id]);
+  function mark() {
+    if (!question || submit.isPending || gradingStarted) return;
+    setMarked((current) => toggleMarked(current, question.id, questions.map((row) => row.id)));
   }
-  function retryCheck() {
-    if (!check.variables) return;
-    cancelledCheck.current = null;
-    check.mutate({
-      questionId: check.variables.questionId,
-      pick: retryPick(check.variables.pick, pickAtFailure.current, picks[check.variables.questionId] ?? ""),
-    });
+  const handIn = handInCount(asked, picks, marked);
+  function requestHandIn(from: HandInFrom) {
+    if (!canFinish || gradingStarted || submit.isPending) return;
+    if (handIn.blank || handIn.marked) setConfirmFrom(from);
+    else submit.mutate();
   }
-  function stopCheck() {
-    if (!question) return;
-    cancelledCheck.current = question.id;
-    void invoke("study.quizCheckCancel", {
-      attemptId,
-      questionId: question.id,
-    }).catch(() => setActionError(true));
+  function cancelHandIn() {
+    const from = confirmFrom;
+    setConfirmFrom(null);
+    // Focus goes back to the Consegna that asked.
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(from === "nav" ? ".px-qz-nav .px-btn-primary" : ".px-qz-handin > .px-btn")
+        ?.focus(),
+    );
   }
   function finishNow() {
     if (canFinish && !gradingStarted && !submit.isPending) submit.mutate();
@@ -599,7 +542,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       void session.refetch();
       void grading.refetch();
       const key = `quiz-wrong-${input.questionId}`;
-      if (input.wrong)
+      // While answering, "Segnala la domanda" stays pressed and says what it did; the toast is the results screen's.
+      if (input.wrong && finalResult)
         void message.open({
           key,
           type: "info",
@@ -627,67 +571,43 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     },
     onError: () => setActionError(true),
   });
-  const rawPick = question ? (picks[question.id] ?? "") : "";
+  const rawPick = question ? picks[question.id] : undefined;
   const blankCount = question
     ? Math.max(1, [...question.stem.matchAll(/\{\{\d+\}\}/g)].length)
     : 1;
-  const hasAnswer = Boolean(
-    question &&
-    (question.grade.kind === "completion"
-      ? Array.from(
-          { length: blankCount },
-          (_, i) => blanks(rawPick)[i] ?? "",
-        ).every((value) => value.trim())
-      : question.grade.kind === "matching"
-        ? question.left?.every((_, i) => pairs(rawPick)[i]?.[1]?.trim())
-        : rawPick.trim()),
-  );
+  const lastAsked = index + 1 >= questions.length;
+  // More questions are still being written after this one.
+  const waitingAfter = !fixed && generating && lastAsked;
   const primary = expired
     ? {
         key: "finish",
         label: t("quiz.finish"),
         onClick: finishNow,
-        disabled: !canFinish,
-        loading: submit.isPending,
+        disabled: !canFinish || submit.isPending,
       }
-    : !result
-      ? {
-          key: "check",
-          label: t("quiz.submit"),
-          onClick: runCheck,
-          disabled: !hasAnswer || (locked && checking !== question?.id),
-          loading: checking === question?.id,
-        }
-      : index + 1 < questions.length
+    : !lastAsked
+      ? { key: "next", label: t("quiz.next"), onClick: () => goTo(index + 1), disabled: false }
+      : waitingAfter || !canFinish
         ? {
-            key: "next",
-            label: t("quiz.next"),
-            onClick: () => goTo(index + 1),
-            disabled: false,
-            loading: false,
+            key: "wait",
+            // How many are still being written, so the wait has an end the student can see.
+            label:
+              requestedCount > questions.length
+                ? t("quiz.waitingMore", { count: requestedCount - questions.length })
+                : t("quiz.waitingBatch"),
+            onClick: () => undefined,
+            disabled: true,
           }
-        : canFinish
-          ? {
-              key: "results",
-              label: t("quiz.seeResults"),
-              onClick: finishNow,
-              disabled: gradingStarted,
-              loading: submit.isPending,
-            }
-          : {
-              key: "wait",
-              // How many are still being written, so the wait has an end the student can see.
-              label:
-                requestedCount > questions.length
-                  ? t("quiz.waitingMore", { count: requestedCount - questions.length })
-                  : t("quiz.waitingBatch"),
-              onClick: () => undefined,
-              disabled: true,
-              loading: false,
-            };
-  // Keys: 1–4 pick an option, 0 says "I don't know", S skips, Enter checks or moves on. Typing in a field and real buttons keep their own keys.
-  const keys = useRef({ primary, pick, question, locked, dontKnow, skip });
-  keys.current = { primary, pick, question, locked, dontKnow, skip };
+        : {
+            key: "handin",
+            label: t("quiz.sheet.handIn"),
+            onClick: () => requestHandIn("nav"),
+            disabled: gradingStarted || submit.isPending,
+          };
+  // Keys: 1–4 pick an option, 0 says "Non lo so", S marks for later, Enter goes on. Typing in a field and real buttons
+  // keep their own keys.
+  const keys = useRef({ primary, pick, question, locked, dontKnow, mark });
+  keys.current = { primary, pick, question, locked, dontKnow, mark };
   const answering = Boolean(question) && !finalResult && !gradingStarted && !noAnswers;
   // The menu leaves a quiz alone until it is finished.
   useMenuLock(answering);
@@ -697,7 +617,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       const current = keys.current;
       if (event.altKey || event.repeat || event.defaultPrevented || !current.question) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target?.closest("[role=dialog], .ant-drawer, .ant-select-dropdown")) return;
+      if (target?.closest("[role=dialog], .ant-drawer, .ant-select-dropdown, .px-qz-confirm")) return;
       const field = target?.closest("input, textarea, select, [contenteditable=true], .px-mathinput");
       if (event.key === "Enter") {
         if (event.shiftKey) return;
@@ -706,23 +626,23 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         // Enter on an option not yet picked picks it, like any button.
         if (option && option.getAttribute("aria-pressed") !== "true") return;
         if (control && !option) return;
-        const singleLine =
-          target instanceof HTMLInputElement && target.type === "text";
+        const singleLine = target instanceof HTMLInputElement && target.type === "text";
         if (field && !singleLine && !(event.ctrlKey || event.metaKey)) return;
-        if (current.primary.disabled || current.primary.loading) return;
+        if (current.primary.disabled) return;
         event.preventDefault();
         current.primary.onClick();
         return;
       }
-      if (event.ctrlKey || event.metaKey || field || current.locked) return;
+      if (event.ctrlKey || event.metaKey || field) return;
+      if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        current.mark();
+        return;
+      }
+      if (current.locked) return;
       if (event.key === "0") {
         event.preventDefault();
         current.dontKnow();
-        return;
-      }
-      if (event.key === "s" || event.key === "S") {
-        event.preventDefault();
-        current.skip();
         return;
       }
       if (!/^[1-4]$/.test(event.key)) return;
@@ -821,21 +741,10 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       : [];
   const valueOf = (optionIndex: number) =>
     kind === "tf" ? (optionIndex === 0 ? "true" : "false") : String(optionIndex);
-  const rightValue =
-    result && kind === "tf"
-      ? result.expected
-      : result && kind === "mcq"
-        ? String(options.indexOf(result.expected))
-        : undefined;
+  // Answers are graded at Consegna, so an option is only chosen or not until the results.
   function optionState(value: string): QuizOptionState {
-    const chosen = rawPick === value;
-    if (!result) return chosen ? "selected" : "idle";
-    if (value === rightValue) return chosen ? "correct" : "answer";
-    return chosen ? "wrong" : "muted";
+    return rawPick === value ? "selected" : "idle";
   }
-  const wrongMarked = question
-    ? (wrongMarks[question.id] ?? false)
-    : false;
   // A failed preparation sits under the step it stopped at, or above the questions that did arrive. A refused sign-in
   // names its engine and offers its sign-in.
   const buildFailure = session.data?.error
@@ -996,15 +905,299 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           expectedLabel: t("quiz.expected"),
         };
       });
+  // The answer sheet around one card: the Domande card beside it, Indietro and Avanti under it.
+  function answerSheet(content: ReactNode) {
+    const waiting = loadingAttempt || fixed || !generating ? 0 : Math.max(0, requestedCount - questions.length);
+    return (
+      <QuizColumn
+        loading={loadingAttempt}
+        items={questions.map((row) => ({
+          id: row.id,
+          given: given(row.grade.kind, picks[row.id]),
+          marked: marked.includes(row.id),
+        }))}
+        current={index}
+        waiting={waiting}
+        onJump={goTo}
+        busyLine={
+          generating && questions.length
+            ? t("quiz.available", { available: questions.length, total: requestedCount, count: requestedCount })
+            : undefined
+        }
+        handIn={{
+          disabled: !canFinish || gradingStarted || submit.isPending || loadingAttempt,
+          note:
+            generating && timed
+              ? t("quiz.timerWaiting")
+              : generating || owed > 0
+                ? t("quiz.sheet.waitQuestions")
+                : undefined,
+          onRequest: requestHandIn,
+        }}
+        confirm={
+          confirmFrom
+            ? {
+                from: confirmFrom,
+                content: (
+                  <HandInConfirm
+                    blank={handIn.blank}
+                    marked={handIn.marked}
+                    busy={submit.isPending}
+                    onConfirm={() => {
+                      setConfirmFrom(null);
+                      submit.mutate();
+                    }}
+                    onCancel={cancelHandIn}
+                  />
+                ),
+              }
+            : undefined
+        }
+        before={
+          owed > 0 || (generationFailed && questions.length) || errorBox ? (
+            <>
+              {owed > 0 ? (
+                <Notice
+                  tone="info"
+                  action={{
+                    label: t("quiz.drillOwedOpen"),
+                    onClick: () => void drafts.flush().then(() => navigate(`/plans/${planId ?? ""}/review`)),
+                  }}
+                >
+                  {t("quiz.drillOwed", { count: owed })}
+                </Notice>
+              ) : null}
+              {generationFailed && questions.length ? buildFailed : null}
+              {errorBox}
+            </>
+          ) : undefined
+        }
+        card={content}
+        nav={
+          question ? (
+            <>
+              {index > 0 ? (
+                <PxButton variant="secondary" icon="chevron-left" onClick={() => goTo(index - 1)}>
+                  {t("nav.back")}
+                </PxButton>
+              ) : null}
+              <span className="px-qz-grow" />
+              <PxButton
+                key={primary.key}
+                size="lg"
+                iconEnd={primary.key === "next" ? "chevron-right" : undefined}
+                disabled={primary.disabled}
+                expanded={primary.key === "handin" ? confirmFrom === "nav" : undefined}
+                onClick={primary.onClick}
+              >
+                {primary.label}
+              </PxButton>
+            </>
+          ) : undefined
+        }
+        hint={
+          kind === "mcq" || kind === "tf"
+            ? t("quiz.sheet.keysChoice", { last: Math.min(4, options.length) })
+            : kind === "completion"
+              ? t("quiz.sheet.keysEnter")
+              : undefined
+        }
+      />
+    );
+  }
+  // One question on its card: its position and kind, the stem, the answers, and the quiet actions under them.
+  function questionCard(row: NonNullable<typeof question>) {
+    const isMarked = marked.includes(row.id);
+    const reported = wrongMarks[row.id] ?? false;
+    const unsure = rawPick === "";
+    return (
+      <section
+        ref={card}
+        tabIndex={-1}
+        className="px-qz-sheet"
+        aria-labelledby="quiz-position"
+        aria-describedby="quiz-stem"
+      >
+        {index === 0 && drillNotes.length ? (
+          <section className="px-quiz-explain" aria-labelledby="quiz-explain">
+            <h2 id="quiz-explain" className="label">
+              {t("quiz.drillExplanation")}
+            </h2>
+            {drillNotes.map((note) => (
+              <MarkdownView key={note}>{note}</MarkdownView>
+            ))}
+          </section>
+        ) : null}
+        <div className="px-qz-head">
+          <h1 id="quiz-position">{t("quiz.position", { current: index + 1, total: requestedCount })}</h1>
+          <span className="px-qz-kicker">{t(`quiz.kinds.${kind}`, { defaultValue: "" })}</span>
+          {session.data?.general ? <Tag tone="general">{t("components.tags.general")}</Tag> : null}
+        </div>
+        <div id="quiz-stem" className="px-qz-stem">
+          <MarkdownView>{stemText(row.stem)}</MarkdownView>
+        </div>
+        {kind === "tf" && !locked ? <SoftTimer key={row.id} running /> : null}
+        {kind === "mcq" || kind === "tf" ? (
+          <div className="px-qz-options" role="group" aria-label={t("quiz.sheet.answers")}>
+            {options.map((option, optionIndex) => (
+              <QuizOption
+                key={optionIndex}
+                plain
+                letter={String.fromCharCode(65 + optionIndex)}
+                state={optionState(valueOf(optionIndex))}
+                shortcut={optionIndex < 4 ? String(optionIndex + 1) : undefined}
+                math={option}
+                disabled={locked}
+                onClick={() => pick(valueOf(optionIndex))}
+              >
+                <InlineMarkdown>{option}</InlineMarkdown>
+              </QuizOption>
+            ))}
+          </div>
+        ) : kind === "matching" ? (
+          <div className="px-quiz-matching">
+            {row.left?.map((left, leftIndex) => (
+              <label key={leftIndex}>
+                <InlineMarkdown>{left}</InlineMarkdown>
+                <Select
+                  // A native <select> menu is plain text and cannot draw the math in an option.
+                  aria-label={t("quiz.matchFor", { item: spokenText(left) })}
+                  className="px-quiz-match-select"
+                  classNames={{ popup: { root: "px-quiz-match-popup" } }}
+                  disabled={locked}
+                  allowClear
+                  placeholder={t("quiz.chooseMatch")}
+                  value={matchIndex(row.right, pairs(picks[row.id])[leftIndex]?.[1])}
+                  // The label is the plain reading for assistive technology, like a multiple-choice option's. The
+                  // value is the position, so a screen reader never announces the raw TeX.
+                  options={(row.right ?? []).map((right, rightIndex) => ({
+                    value: rightIndex,
+                    label: spokenText(right),
+                    // The default hover tooltip would show the label's raw TeX.
+                    title: "",
+                  }))}
+                  optionRender={(option) => <InlineMarkdown>{row.right?.[Number(option.value)] ?? ""}</InlineMarkdown>}
+                  labelRender={({ value }) => <InlineMarkdown>{row.right?.[Number(value)] ?? ""}</InlineMarkdown>}
+                  onChange={(value: number | undefined) =>
+                    pick(
+                      JSON.stringify(
+                        (row.left ?? []).map((item, itemIndex) => [
+                          item,
+                          itemIndex === leftIndex
+                            ? value === undefined
+                              ? ""
+                              : (row.right?.[value] ?? "")
+                            : (pairs(picks[row.id])[itemIndex]?.[1] ?? ""),
+                        ]),
+                      ),
+                    )
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        ) : kind === "completion" ? (
+          <div className="px-quiz-blanks">
+            {Array.from({ length: blankCount }, (_, blankIndex) => (
+              <label key={blankIndex}>
+                <span className="small">{t("quiz.blank", { index: blankIndex + 1 })}</span>
+                <input
+                  type="text"
+                  className="px-qz-field"
+                  spellCheck={false}
+                  autoComplete="off"
+                  disabled={locked}
+                  value={blanks(picks[row.id])[blankIndex] ?? ""}
+                  onChange={(event) => {
+                    const values = Array.from({ length: blankCount }, (_, i) => blanks(picks[row.id])[i] ?? "");
+                    values[blankIndex] = event.target.value;
+                    pick(JSON.stringify(values));
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        ) : (
+          <div className="px-quiz-open">
+            <MathInput
+              ariaLabel={t("quiz.yourAnswer")}
+              rows={6}
+              disabled={locked}
+              value={rawPick ?? ""}
+              onChange={pick}
+            />
+          </div>
+        )}
+        {result ? <p className="px-qz-said">{t("quiz.sheet.checkedBefore")}</p> : null}
+        <div className="px-qz-acts">
+          <PxButton
+            variant="ghost"
+            icon="circle-question-mark"
+            pressed={unsure}
+            keyShortcuts="0"
+            title={t("quiz.sheet.key", { key: "0" })}
+            disabled={locked}
+            onClick={dontKnow}
+          >
+            {t("quiz.dontKnow")}
+          </PxButton>
+          <PxButton
+            variant="ghost"
+            icon="flag"
+            className="is-mark"
+            pressed={isMarked}
+            keyShortcuts="S"
+            title={t("quiz.sheet.key", { key: "S" })}
+            disabled={submit.isPending || gradingStarted}
+            onClick={mark}
+          >
+            {t("quiz.sheet.mark")}
+          </PxButton>
+          <PxButton
+            variant="ghost"
+            pressed={reported}
+            disabled={markWrong.isPending}
+            onClick={() => markWrong.mutate({ questionId: row.id, wrong: !reported })}
+          >
+            {t(reported ? "quiz.sheet.reported" : "quiz.sheet.report")}
+          </PxButton>
+        </div>
+        {unsure || reported ? (
+          <p className="px-qz-said" role="status">
+            {[unsure ? t("quiz.sheet.dontKnowSaid") : "", reported ? t("quiz.wrongDone") : ""].filter(Boolean).join(" ")}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
   if (redo && !savedAttempt) return <Navigate to={back} replace />;
   // A Review's questions belong to the attempt its page started; without one, that page starts or resumes it.
   if (reviewRoute && !savedAttempt) return <Navigate to={`/plans/${planId ?? ""}/review`} replace />;
+  // The answer sheet: an attempt being read from this computer, its questions still being written, or answered.
+  // Until the attempt is restored from a fresh read its answers are not known, so the sheet shows its shape. A
+  // diagnostic or a Review started here already has its questions and no answers yet.
+  const loadingAttempt = Boolean(attemptId) && hydratedAttempt !== attemptId && !(fixed && start.data);
+  const writing = !questions.length && !fixed && Boolean(attemptId);
+  const sheet =
+    !showIntro && !noAnswers && !finalResult && !gradingStarted && (loadingAttempt || writing || Boolean(question));
+  const errorBox = error ? (
+    <ErrorState details={errorDetails(error)} action={engineFailure?.action}>
+      {engineFailure?.action ? engineFailure.text : t(errorKey, { defaultValue: t("quiz.error") })}
+    </ErrorState>
+  ) : null;
   return (
     <StudyLayout
+      wide={sheet}
+      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
+      heading={!sheet}
+      actions={
+        sheet && deadlineAt ? <QuizClock deadlineAt={deadlineAt} running={running} expired={expired} /> : undefined
+      }
       back={
-        // A diagnostic and a Review keep their answers and pick up where they stopped; the others go back by name.
-        inQuestions && (diagnostic || reviewRoute)
+        // A diagnostic and a Review open again where they stopped from where the student finds them, so their way out
+        // says so. A topic quiz's intro starts a new one, so the others go back by name; every answer is saved anyway.
+        sheet && (diagnostic || reviewRoute)
           ? { text: t("quiz.leave"), onClick: () => void close() }
           : {
               text: (redo ? t("mistakes.title") : reviewRoute ? t("cards.reviewTitle") : plan.data?.title) ?? t("lesson.back"),
@@ -1026,7 +1219,16 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         .filter(Boolean)
         .join(" \u00b7 ")}
       subtitle={
-        inQuestions
+        sheet && !wholeReview
+          ? [
+              plan.data?.title,
+              session.data?.timerMinutes
+                ? t("quiz.sheet.minutes", { count: session.data.timerMinutes })
+                : t("quiz.sheet.untimed"),
+            ]
+              .filter(Boolean)
+              .join(" \u00b7 ")
+          : inQuestions
           ? wholeReview
             ? t("cards.reviewPosition", {
                 current: wholeReview.cardsTotal + index + 1,
@@ -1046,7 +1248,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               : answered / Math.max(1, requestedCount)
       }
     >
-      {owed > 0 && !finalResult ? (
+      {owed > 0 && !finalResult && !sheet ? (
         <Notice
           tone="info"
           action={{
@@ -1058,7 +1260,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           {t("quiz.drillOwed", { count: owed })}
         </Notice>
       ) : null}
-      {!fixed && attemptId && (generating || generationFailed) ? (
+      {!sheet && !fixed && attemptId && (generating || generationFailed) ? (
         <div className="px-quiz-generation">
           {generating && questions.length ? (
             <p className="meta px-quiz-available" role="status">
@@ -1202,18 +1404,24 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             )
           }
         />
-      ) : !questions.length && !fixed && attemptId ? (
-        <section className="px-quiz-wait">
-          {generationFailed ? (
-            <StepLines
-              label={t("quiz.preparing")}
-              steps={[{ id: "questions", label: t("quiz.preparingFailed"), state: "failed" }]}
-            />
-          ) : (
-            <Working slot line={t("quiz.preparing")} />
-          )}
-          {buildFailed}
-        </section>
+      ) : sheet && (!question || loadingAttempt) ? (
+        answerSheet(
+          <div className="px-qz-sheet" aria-busy={loadingAttempt || undefined}>
+            {loadingAttempt ? (
+              <SkeletonRows rows={4} label={t("quiz.sheet.loading")} />
+            ) : generationFailed ? (
+              <>
+                <StepLines
+                  label={t("quiz.preparing")}
+                  steps={[{ id: "questions", label: t("quiz.preparingFailed"), state: "failed" }]}
+                />
+                {buildFailed}
+              </>
+            ) : (
+              <Working slot line={t("quiz.preparing")} />
+            )}
+          </div>,
+        )
       ) : noAnswers ? (
         <section className="px-quiz-wait">
           <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
@@ -1417,352 +1625,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           }
         />
       ) : question ? (
-        <section className="px-quiz-question" aria-labelledby="quiz-stem">
-          {deadlineAt ? (
-            <QuizClock
-              deadlineAt={deadlineAt}
-              running={running}
-              expired={expired}
-            />
-          ) : null}
-          {index === 0 && drillNotes.length ? (
-            <section className="px-quiz-explain" aria-labelledby="quiz-explain">
-              <h2 id="quiz-explain" className="label">
-                {t("quiz.drillExplanation")}
-              </h2>
-              {drillNotes.map((note) => (
-                <MarkdownView key={note}>{note}</MarkdownView>
-              ))}
-            </section>
-          ) : null}
-          <div className="px-quiz-kicker">
-            <span className="label">{t(`quiz.kinds.${kind}`, { defaultValue: "" })}</span>
-            {session.data?.general ? (
-              <Tag tone="general">{t("components.tags.general")}</Tag>
-            ) : null}
-            {skipped.includes(question.id) && !result ? (
-              <span className="meta">{t("quiz.skippedNote")}</span>
-            ) : null}
-          </div>
-          <div
-            ref={heading}
-            id="quiz-stem"
-            tabIndex={-1}
-            className="px-quiz-stem"
-          >
-            <MarkdownView>{stemText(question.stem)}</MarkdownView>
-          </div>
-          {kind === "tf" && !result ? (
-            <SoftTimer key={question.id} running={!finalResult} />
-          ) : null}
-          {kind === "mcq" || kind === "tf" ? (
-            <div className="px-quiz-options-list">
-              {options.map((option, optionIndex) => (
-                <QuizOption
-                  key={optionIndex}
-                  letter={String.fromCharCode(65 + optionIndex)}
-                  state={optionState(valueOf(optionIndex))}
-                  shortcut={optionIndex < 4 ? String(optionIndex + 1) : undefined}
-                  math={option}
-                  disabled={locked}
-                  onClick={() => pick(valueOf(optionIndex))}
-                >
-                  <InlineMarkdown>{option}</InlineMarkdown>
-                </QuizOption>
-              ))}
-            </div>
-          ) : kind === "matching" ? (
-            <div className="px-quiz-matching">
-              {question.left?.map((left, leftIndex) => (
-                <label key={leftIndex}>
-                  <InlineMarkdown>{left}</InlineMarkdown>
-                  <Select
-                    // A native <select> menu is plain text and cannot draw the math in an option.
-                    aria-label={t("quiz.matchFor", { item: spokenText(left) })}
-                    className="px-quiz-match-select"
-                    classNames={{ popup: { root: "px-quiz-match-popup" } }}
-                    disabled={locked}
-                    allowClear
-                    placeholder={t("quiz.chooseMatch")}
-                    value={matchIndex(question.right, pairs(picks[question.id])[leftIndex]?.[1])}
-                    // The label is the plain reading for assistive technology, like a multiple-choice option's. The
-                    // value is the position, so a screen reader never announces the raw TeX.
-                    options={(question.right ?? []).map((right, rightIndex) => ({
-                      value: rightIndex,
-                      label: spokenText(right),
-                      // The default hover tooltip would show the label's raw TeX.
-                      title: "",
-                    }))}
-                    optionRender={(option) => (
-                      <InlineMarkdown>{question.right?.[Number(option.value)] ?? ""}</InlineMarkdown>
-                    )}
-                    labelRender={({ value }) => (
-                      <InlineMarkdown>{question.right?.[Number(value)] ?? ""}</InlineMarkdown>
-                    )}
-                    onChange={(value: number | undefined) =>
-                      pick(
-                        JSON.stringify(
-                          (question.left ?? []).map((item, itemIndex) => [
-                            item,
-                            itemIndex === leftIndex
-                              ? value === undefined
-                                ? ""
-                                : (question.right?.[value] ?? "")
-                              : (pairs(picks[question.id])[itemIndex]?.[1] ??
-                                ""),
-                          ]),
-                        ),
-                      )
-                    }
-                  />
-                </label>
-              ))}
-            </div>
-          ) : kind === "completion" ? (
-            <div className="px-quiz-blanks">
-              {Array.from({ length: blankCount }, (_, blankIndex) => (
-                <label key={blankIndex}>
-                  <span className="small">
-                    {t("quiz.blank", { index: blankIndex + 1 })}
-                  </span>
-                  <Input
-                    disabled={locked}
-                    value={blanks(picks[question.id])[blankIndex] ?? ""}
-                    onChange={(event) => {
-                      const values = blanks(picks[question.id]);
-                      values[blankIndex] = event.target.value;
-                      pick(JSON.stringify(values));
-                    }}
-                  />
-                </label>
-              ))}
-            </div>
-          ) : (
-            <div className="px-quiz-open">
-              <MathInput
-                ariaLabel={t("quiz.yourAnswer")}
-                rows={6}
-                disabled={locked}
-                value={picks[question.id] ?? ""}
-                onChange={pick}
-              />
-            </div>
-          )}
-          {checking === question.id && kind === "open" ? (
-            <CheckStatus key={question.id} attemptId={attemptId} questionId={question.id} onCancel={stopCheck} />
-          ) : null}
-          {checkFailed ? (
-            <Notice
-              tone="danger"
-              action={{ label: t("quiz.checkRetry"), onClick: retryCheck }}
-              secondary={checkFailure?.action}
-            >
-              {checkFailure?.action
-                ? `${t("quiz.checkFailed")} ${checkFailure.text}`
-                : t("quiz.checkFailed")}
-            </Notice>
-          ) : null}
-          {!result ? (
-            <div className="px-quiz-pass">
-              <Button
-                type="text"
-                shape="round"
-                size="small"
-                disabled={locked}
-                aria-keyshortcuts="0"
-                onClick={dontKnow}
-              >
-                {t("quiz.dontKnow")}
-                <kbd className="px-quiz-keycap" aria-hidden>
-                  0
-                </kbd>
-              </Button>
-              {skippable ? (
-                <Button
-                  type="text"
-                  shape="round"
-                  size="small"
-                  disabled={locked || !canFinish}
-                  aria-keyshortcuts="S"
-                  onClick={skip}
-                >
-                  {t("quiz.skip")}
-                  <kbd className="px-quiz-keycap" aria-hidden>
-                    S
-                  </kbd>
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {result ? (
-            <Feedback
-              result={result}
-              dontKnow={rawPick === ""}
-              kind={kind ?? "open"}
-              expected={expectedText(result)}
-              wrong={wrongMarked}
-              busy={markWrong.isPending}
-              onAsk={() => void ask(result)}
-              onWrong={(wrong) =>
-                markWrong.mutate({ questionId: question.id, wrong })
-              }
-            />
-          ) : null}
-          <div className="px-quiz-nav">
-            {index > 0 ? (
-              <Button
-                shape="round"
-                size="large"
-                disabled={Boolean(checking)}
-                onClick={() => goTo(index - 1)}
-              >
-                {t("nav.back")}
-              </Button>
-            ) : (
-              <span />
-            )}
-            <Button
-              key={primary.key}
-              autoFocus={primary.key === "next" || primary.key === "results"}
-              type="primary"
-              shape="round"
-              size="large"
-              loading={primary.loading}
-              aria-busy={primary.loading || undefined}
-              disabled={primary.disabled}
-              onClick={primary.onClick}
-            >
-              {primary.label}
-            </Button>
-          </div>
-        </section>
+        answerSheet(questionCard(question))
       ) : (
         <p className="small">{t("quiz.empty")}</p>
       )}
-      {error ? (
-        <ErrorState details={errorDetails(error)} action={engineFailure?.action}>
-          {engineFailure?.action
-            ? engineFailure.text
-            : t(errorKey, { defaultValue: t("quiz.error") })}
-        </ErrorState>
-      ) : null}
+      {sheet ? null : errorBox}
     </StudyLayout>
-  );
-}
-
-/** The correction shown right after Check: verdict, the right answer when it is not on screen, and why. */
-function Feedback({
-  result,
-  dontKnow,
-  kind,
-  expected,
-  wrong,
-  busy,
-  onAsk,
-  onWrong,
-}: {
-  result: QuizAnswer;
-  /** The student said "I don't know": scored 0, with the answer shown. */
-  dontKnow: boolean;
-  kind: string;
-  expected: string;
-  wrong: boolean;
-  busy: boolean;
-  onAsk: () => void;
-  onWrong: (wrong: boolean) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const engineNames = useEngineNames();
-  const state = verdict(result.score);
-  const closed = kind === "mcq" || kind === "tf";
-  return (
-    <div className={`px-quiz-feedback is-${state}`} role="status">
-      <p className="px-quiz-verdict">
-        <Icon
-          name={
-            state === "correct"
-              ? "circle-check"
-              : state === "partial"
-                ? "circle-alert"
-                : "circle-x"
-          }
-          size={20}
-          strokeWidth={2}
-        />
-        <span className="title-3">
-          {t(
-            dontKnow
-              ? "quiz.dontKnowVerdict"
-              : state === "correct"
-                ? "quiz.correct"
-                : state === "partial"
-                  ? "quiz.partial"
-                  : "quiz.incorrect",
-          )}
-        </span>
-        {state === "partial" ? (
-          <span className="meta">{t("quiz.questionPoints", { points: questionPoints(result.score, i18n.language) })}</span>
-        ) : null}
-      </p>
-      {dontKnow ? <p className="small px-quiz-dont-know">{t("quiz.dontKnowNote")}</p> : null}
-      {!closed && result.score < 1 && expected ? (
-        <div className="px-quiz-answer is-expected">
-          <p className="label">
-            {t(kind === "open" ? "quiz.reference" : "quiz.expected")}
-          </p>
-          <MarkdownView variant="body">{expected}</MarkdownView>
-        </div>
-      ) : null}
-      {result.explanation ? (
-        <MarkdownView
-          variant="body"
-          citationResolver={(n) => result.citations[n - 1]?.label}
-          onCitationClick={(n) => {
-            const cite = result.citations[n - 1];
-            if (cite) openSourceViewer({ passageId: cite.passageId });
-          }}
-        >
-          {result.explanation}
-        </MarkdownView>
-      ) : null}
-      {result.model ? (
-        <p className="meta px-quiz-graded">
-          {t("quiz.gradedBy", { model: engineNames.label(result.provider, result.model) })}
-        </p>
-      ) : null}
-      <div className="px-quiz-feedback-actions">
-        {result.score < 1 ? (
-          <Button type="text" shape="round" size="small" onClick={onAsk}>
-            {t("ask.askTutor")}
-          </Button>
-        ) : null}
-        {wrong ? (
-          <>
-            <span className="small px-quiz-flag-note">{t("quiz.wrongDone")}</span>
-            <Button
-              type="text"
-              shape="round"
-              size="small"
-              disabled={busy}
-              onClick={() => onWrong(false)}
-            >
-              {t("quiz.wrongUndo")}
-            </Button>
-          </>
-        ) : (
-          <Button
-            type="text"
-            shape="round"
-            size="small"
-            className="px-quiz-wrong"
-            icon={<Icon name="flag" size={14} />}
-            disabled={busy}
-            onClick={() => onWrong(true)}
-          >
-            {t("quiz.wrongQuestion")}
-          </Button>
-        )}
-      </div>
-    </div>
   );
 }

@@ -309,10 +309,8 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=[^&]+&exam=p-phys$/);
     await expect(page.getByText("Redo mistakes")).toBeVisible();
     await page.getByRole("button", { name: /^A La forza$/ }).click();
-    await page.getByRole("button", { name: "Check", exact: true }).click();
-    await page
-      .getByRole("button", { name: "See results", exact: true })
-      .click();
+    // One question: its step forward is Hand in, which hands in at once with nothing blank.
+    await page.locator(".px-qz-nav").getByRole("button", { name: "Hand in", exact: true }).click();
     // The results' own button; the bar's way back starts with the same words.
     await page.getByRole("button", { name: "Back to the notebook", exact: true }).click();
     // The notebook lives only under Exams, so that is where the redo returns, still narrowed to the same exam.

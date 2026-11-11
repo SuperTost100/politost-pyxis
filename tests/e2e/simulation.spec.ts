@@ -138,7 +138,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page
       .getByRole("textbox", { name: "La tua risposta" })
       .fill(picks[run.questions[0]!.id]!);
-    await page.getByRole("button", { name: /Domanda 2,/ }).click();
+    await page.getByRole("button", { name: "Domanda 2", exact: true }).click();
     await page
       .getByRole("textbox", { name: "La tua risposta" })
       .fill(picks[run.questions[1]!.id]!);
@@ -161,6 +161,11 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page.evaluate((planId) => {
       window.location.hash = `/plans/${planId}/simulation`;
     }, plan.planId);
+    // It comes back on the question it was left on, question 2, with that answer; question 1 kept its own.
+    await expect(
+      page.getByRole("textbox", { name: "La tua risposta" }),
+    ).toHaveText(picks[run.questions[1]!.id]!);
+    await page.getByRole("button", { name: /^Domanda 1(,|$)/ }).click();
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
     ).toHaveText(picks[run.questions[0]!.id]!);

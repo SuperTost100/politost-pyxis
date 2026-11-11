@@ -158,7 +158,12 @@ const routes = [
   ["cards", "/plans/audit-plan/cards/audit-topic"],
   // The study bar's New flashcard form, open over the card.
   ["cards-new", "/plans/audit-plan/cards/audit-topic"],
+  // The answer sheet: an open answer with the formula keys, and Consegna's question with blank and marked answers.
+  ["quiz-open", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
+  ["quiz-handin", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
   ["simulation-setup", "/plans/audit-plan/simulation"],
+  // A simulation being answered, on the same sheet, with one question marked for later.
+  ["simulation-run", "/plans/audit-plan/exam/audit-run-attempt"],
   ["simulation-ready", "/plans/audit-ready-plan/simulation"],
   ["simulation-result", "/plans/audit-plan/exam/audit-exam-attempt"],
   ["map", "/plans/audit-plan/map/audit-topic"],
@@ -1355,7 +1360,83 @@ function preparePanelSources(name: string) {
   });
 }
 
+/** A quiz half answered (an answer, a "Non lo so", one marked) for the answer sheet, and a simulation under way. */
+function prepareAnswerSheet(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM attempt_answers WHERE attempt_id IN ('audit-sheet-attempt', 'audit-run-attempt');
+      DELETE FROM attempts WHERE id IN ('audit-sheet-attempt', 'audit-run-attempt');
+      DELETE FROM items WHERE id IN ('audit-sheet-quiz', 'audit-run-exam');`);
+    const now = Date.now();
+    const item = db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES(?,'audit-plan','audit-topic',?,?,'fixture','sources',?)",
+    );
+    const attempt = db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'audit-plan',?,?)");
+    if (name === "quiz-open" || name === "quiz-handin") {
+      const questions = [
+        {
+          id: "sheet-mcq",
+          stem: "Quale formula descrive la forza?",
+          options: ["$F=ma$", "$F=m/a$", "$F=a/m$", "$F=0$"],
+          answer: { kind: "mcq", correct: 0, picked: -1 },
+        },
+        {
+          id: "sheet-open",
+          stem: "La velocità di un punto è $v(t) = 3t^2 - 2t$ e all'istante $t = 0$ il punto è in $x = 1\\,m$. Scrivi la legge oraria $x(t)$.",
+          answer: { kind: "open", answer: "", reference: "$x(t) = t^3 - t^2 + 1$" },
+        },
+        {
+          id: "sheet-blank",
+          stem: "L'accelerazione si misura in {{1}}.",
+          answer: { kind: "completion", answers: [], accepted: [["m/s^2"]] },
+        },
+        {
+          id: "sheet-tf",
+          stem: "La forza è il prodotto di massa e accelerazione.",
+          answer: { kind: "tf", correct: true, picked: false },
+        },
+      ].map((question) => ({ ...question, topicId: "audit-topic", sourceIds: ["audit-passage"], explanation: "Seconda legge di Newton." }));
+      item.run(
+        "audit-sheet-quiz",
+        "quiz",
+        JSON.stringify({ questions, config: { count: 4, feedback: true, types: ["mcq", "open", "completion", "tf"] }, complete: true }),
+        now,
+      );
+      attempt.run("audit-sheet-attempt", "audit-sheet-quiz", now);
+      db.prepare(
+        "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-sheet-draft','audit-sheet-attempt',?,?)",
+      ).run(
+        JSON.stringify({
+          draft: {
+            picks: { "sheet-mcq": "0", "sheet-tf": "" },
+            index: name === "quiz-open" ? 1 : 0,
+            marked: ["sheet-blank"],
+          },
+        }),
+        now,
+      );
+    }
+    if (name === "simulation-run") {
+      item.run(
+        "audit-run-exam",
+        "simulation",
+        JSON.stringify({
+          minutes: 60,
+          questions: [
+            { id: "run-1", topicId: "audit-topic", stem: "Calcola la forza con $m=2$ e $a=3$.", answer: { kind: "completion", accepted: [["6 N"]] } },
+            { id: "run-2", topicId: "audit-topic", stem: "Spiega la seconda legge di Newton.", answer: { kind: "completion", accepted: [["F = ma"]] } },
+          ],
+          picks: { "run-1": "$F = ma = 6$ N", "run-2": "" },
+          marked: ["run-2"],
+        }),
+        now,
+      );
+      attempt.run("audit-run-attempt", "audit-run-exam", now);
+    }
+  });
+}
+
 function prepareState(name: string) {
+  prepareAnswerSheet(name);
   prepareEngines(name);
   prepareExamsEmpty(name);
   prepareExamsArchived(name);
@@ -1910,6 +1991,10 @@ async function openState(page: Page, name: string) {
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
+    case "quiz-handin":
+      await page.locator(".px-qz-handin > .px-btn").click();
+      await expect(page.locator(".px-qz-confirm")).toBeVisible();
+      break;
     case "onboarding-material":
     case "onboarding-material-folder":
     case "onboarding-material-subjects": {
@@ -2155,8 +2240,9 @@ async function openState(page: Page, name: string) {
           .or(page.getByText(/in preparazione|being prepared/))
           .first(),
       ).toBeVisible();
-      // The Review's questions are its own screen, not the diagnostic test's.
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(both("Ripasso", "Review"));
+      // The Review's questions are its own screen, not the diagnostic test's: the bar names it, over the question's
+      // own heading.
+      await expect(page.locator(".px-studybar-title b")).toHaveText(both("Ripasso", "Review"));
       break;
     case "rebuild-intro":
     case "rebuild-running":
@@ -3769,7 +3855,7 @@ test("M14 every application route in both languages, themes and supported widths
                 await page
                   .getByRole("button", { name: /Inizia|Start/, exact: true })
                   .click();
-                await expect(page.locator(".px-quiz-question")).toBeVisible();
+                await expect(page.locator(".px-qz-sheet")).toBeVisible();
               }
               if (name === "lesson")
                 await expect(

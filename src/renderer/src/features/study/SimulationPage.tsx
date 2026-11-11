@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
-import { Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Button } from "antd";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { useMenuLock } from "../../app/menu-state";
@@ -21,6 +20,9 @@ import { useDraftSaver } from "./draftSaver";
 import { ActivityChoice, ActivityIntro } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
+import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
+import { Button as PxButton } from "../../components/Button";
+import { resumeIndex, toggleMarked } from "./quizSheet";
 import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
@@ -43,15 +45,20 @@ export function SimulationPage() {
   const [format, setFormat] = useState<"past" | "generic">("past");
   const [source, setSource] = useState<"exam" | "mixed">("exam");
   const [picks, setPicks] = useState<Record<string, string>>({});
-  const [index, setIndex] = useState(0);
+  // Where the student moved to in this attempt; until they move, the exam opens where it was left.
+  const [moved, setMoved] = useState<{ attemptId: string; index: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [noEngine, setNoEngine] = useState(false);
-  const [confirm, setConfirm] = useState(false);
+  // Questions marked "Segna per dopo", once the student changes them; until then the saved list.
+  const [markedHere, setMarkedHere] = useState<string[] | null>(null);
+  // The Consegna question, open under the button that asked it.
+  const [confirmFrom, setConfirmFrom] = useState<HandInFrom | null>(null);
+  const card = useRef<HTMLElement>(null);
   const [exportOpen, setExportOpen] = useState(false);
   // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
   const drafts = useDraftSaver(
-    (draft: { attemptId: string; picks: Record<string, string> }) =>
+    (draft: { attemptId: string; picks: Record<string, string>; marked: string[]; current: string }) =>
       invoke("study.simulationDraft", draft),
     () => setNotice(t("simulation.saveFailed")),
     DRAFT_DELAY_MS,
@@ -103,6 +110,19 @@ export function SimulationPage() {
     building?.state ?? "",
   );
   const run = open.data?.planId === planId ? open.data : undefined;
+  // Worked out once per attempt, so a later read (every second) never moves the question the student is on.
+  const resumed = useMemo(
+    () =>
+      run
+        ? resumeIndex(
+            run.questions.map((q) => q.id),
+            run.current,
+            (id) => (run.picks[id] ?? "").trim() !== "",
+          )
+        : 0,
+    [run?.attemptId],
+  );
+  const index = run && moved?.attemptId === run.attemptId ? moved.index : resumed;
   function startFailed(err: unknown) {
     const text = String((err as { code?: string })?.code ?? err);
     setNotice(
@@ -152,7 +172,7 @@ export function SimulationPage() {
   }, [run?.attemptId, started, planId, navigate]);
   useEffect(() => {
     setPicks({});
-    setIndex(0);
+    setMarkedHere(null);
   }, [run?.attemptId]);
   const timeUp = useDeadlinePassed(run?.deadline, Boolean(run && !run.submitted));
   const locked = Boolean(
@@ -171,8 +191,41 @@ export function SimulationPage() {
     ? (run?.picks ?? {})
     : { ...(run?.picks ?? {}), ...picks };
   const question = run?.questions[index];
+  const marked = markedHere ?? run?.marked ?? [];
   const unanswered =
     run?.questions.filter((q) => !(shown[q.id] ?? "").trim()).length ?? 0;
+  // A new question takes focus, so a screen reader reads its position and its text; the card shows no focus box.
+  useEffect(() => {
+    if (question) card.current?.focus({ preventScroll: true });
+  }, [question?.id]);
+  // Every draft carries the open question, so the newest save is also the newest position.
+  function save(next: { picks?: Record<string, string>; marked?: string[]; current?: string }) {
+    const current = next.current ?? question?.id;
+    if (!run || !current) return;
+    drafts.schedule({ attemptId: run.attemptId, picks: next.picks ?? shown, marked: next.marked ?? marked, current });
+  }
+  function goTo(next: number) {
+    setConfirmFrom(null);
+    if (!run) return;
+    setMoved({ attemptId: run.attemptId, index: next });
+    const id = run.questions[next]?.id;
+    if (id && !locked) save({ current: id });
+  }
+  // Blank answers are handed in as blank; the question says how many when there are any, or any marked for later.
+  function requestHandIn(from: HandInFrom) {
+    if (!run || locked || busy) return;
+    if (unanswered || marked.length) setConfirmFrom(from);
+    else void submit();
+  }
+  function cancelHandIn() {
+    const from = confirmFrom;
+    setConfirmFrom(null);
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLElement>(from === "nav" ? ".px-qz-nav .px-btn-primary" : ".px-qz-handin > .px-btn")
+        ?.focus(),
+    );
+  }
   const provenance = [
     ...new Set(
       run?.results
@@ -184,7 +237,7 @@ export function SimulationPage() {
   const noAnswers = Boolean(run?.submitted) && run?.score === undefined && !run?.results?.length;
   async function submit() {
     if (!run || busy) return;
-    setConfirm(false);
+    setConfirmFrom(null);
     setBusy(true);
     setNotice("");
     try {
@@ -249,6 +302,8 @@ export function SimulationPage() {
       }),
     );
   }
+  // The exam is on: its questions are answered, or wait for an engine after time ran out.
+  const running = Boolean(run && !run.submitted && !run.grading);
   const setupLocked = busy || open.isPending || (Boolean(building) && !buildStopped);
   const topicCount = plan.data?.topics.length ?? 0;
   const noticeBox = notice ? (
@@ -343,23 +398,17 @@ export function SimulationPage() {
       }
       title={run?.submitted ? `${t("results.title")} \u00b7 ${t("simulation.title")}` : t("simulation.title")}
       subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+      wide={running}
+      // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
+      heading={!running}
       actions={
-        // The clock and Submit belong to the exam; once it is being graded the results screen takes over.
-        run && !run.submitted && !run.grading ? (
+        // The clock belongs to the exam; Consegna sits in the Domande card. Once graded the results take over.
+        running && run ? (
           <div className="px-sim-header-actions">
             <SimulationClock
               deadline={run.deadline}
               stopped={Boolean(run.locked) || timeUp}
             />
-            {!locked && (
-              <Button
-                shape="round"
-                disabled={busy}
-                onClick={() => setConfirm(true)}
-              >
-                {t("simulation.submit")}
-              </Button>
-            )}
           </div>
         ) : undefined
       }
@@ -376,8 +425,8 @@ export function SimulationPage() {
         ) : undefined
       }
     >
-      {run ? noticeBox : null}
-      {run && !run.submitted && run.blocked && !run.grading && (
+      {run && !running ? noticeBox : null}
+      {run && !running && run.blocked && (
         <Notice
           tone="warning"
           action={{
@@ -388,7 +437,7 @@ export function SimulationPage() {
           {t("simulation.noEngineLocked")}
         </Notice>
       )}
-      {generated && !(run && (run.submitted || run.grading)) && (
+      {generated && !run && (
         <Notice tone="warning">{generated}</Notice>
       )}
       {open.isError && (
@@ -661,67 +710,124 @@ export function SimulationPage() {
           }
         />
       ) : (
-        <section className="px-sim-run">
-          <nav
-            className="px-sim-questions"
-            aria-label={t("simulation.navigate")}
-          >
-            {run.questions.map((q, i) => (
-              <button
-                type="button"
-                className={`px-sim-question${shown[q.id]?.trim() ? " is-answered" : ""}`}
-                aria-current={index === i ? "step" : undefined}
-                aria-label={t("simulation.questionState", {
-                  count: i + 1,
-                  state: t(
-                    shown[q.id]?.trim()
-                      ? "simulation.answered"
-                      : "simulation.unanswered",
+        <QuizColumn
+          items={run.questions.map((q) => ({
+            id: q.id,
+            given: (shown[q.id] ?? "").trim() ? ("answer" as const) : ("none" as const),
+            marked: marked.includes(q.id),
+          }))}
+          current={index}
+          onJump={goTo}
+          handIn={{ disabled: locked || busy, onRequest: requestHandIn }}
+          confirm={
+            confirmFrom
+              ? {
+                  from: confirmFrom,
+                  content: (
+                    <HandInConfirm
+                      blank={unanswered}
+                      marked={marked.length}
+                      busy={busy}
+                      onConfirm={() => void submit()}
+                      onCancel={cancelHandIn}
+                    />
                   ),
-                })}
-                key={q.id}
-                onClick={() => setIndex(i)}
+                }
+              : undefined
+          }
+          before={
+            noticeBox || run.blocked || generated || open.isError ? (
+              <>
+                {noticeBox}
+                {run.blocked ? (
+                  <Notice
+                    tone="warning"
+                    action={{ label: t("simulation.openSettings"), onClick: () => navigate("/settings") }}
+                  >
+                    {t("simulation.noEngineLocked")}
+                  </Notice>
+                ) : null}
+                {generated ? <Notice tone="warning">{generated}</Notice> : null}
+                {open.isError ? <Notice tone="warning">{t("simulation.actionFailed")}</Notice> : null}
+              </>
+            ) : undefined
+          }
+          card={
+            question ? (
+              <section
+                ref={card}
+                tabIndex={-1}
+                className="px-qz-sheet"
+                aria-labelledby="sim-position"
+                aria-describedby="sim-stem"
               >
-                {i + 1}
-                {shown[q.id]?.trim() && <Check size={14} aria-hidden />}
-              </button>
-            ))}
-          </nav>
-          {question && (
+                <div className="px-qz-head">
+                  <h1 id="sim-position">
+                    {t("quiz.position", { current: index + 1, total: run.questions.length })}
+                  </h1>
+                  <span className="px-qz-kicker">{t("quiz.kinds.open")}</span>
+                </div>
+                <div id="sim-stem" className="px-qz-stem">
+                  <MarkdownView>{question.stem}</MarkdownView>
+                </div>
+                <MathInput
+                  ariaLabel={t("quiz.yourAnswer")}
+                  value={shown[question.id] ?? ""}
+                  disabled={locked || busy}
+                  autoSize={{ minRows: 7, maxRows: 16 }}
+                  maxLength={20000}
+                  onChange={(answer) => {
+                    const next = { ...shown, [question.id]: answer };
+                    setPicks(next);
+                    save({ picks: next });
+                  }}
+                />
+                <div className="px-qz-acts">
+                  <PxButton
+                    variant="ghost"
+                    icon="flag"
+                    className="is-mark"
+                    pressed={marked.includes(question.id)}
+                    disabled={locked || busy}
+                    onClick={() => {
+                      const next = toggleMarked(marked, question.id, run.questions.map((q) => q.id));
+                      setMarkedHere(next);
+                      save({ marked: next });
+                    }}
+                  >
+                    {t("quiz.sheet.mark")}
+                  </PxButton>
+                </div>
+              </section>
+            ) : null
+          }
+          nav={
             <>
-              <h2 className="small">
-                {t("quiz.position", {
-                  current: index + 1,
-                  total: run.questions.length,
-                })}
-              </h2>
-              <MarkdownView>{question.stem}</MarkdownView>
-              <MathInput
-                ariaLabel={t("quiz.yourAnswer")}
-                value={shown[question.id] ?? ""}
-                disabled={locked || busy}
-                autoSize={{ minRows: 7, maxRows: 16 }}
-                maxLength={20000}
-                onChange={(answer) => {
-                  const next = { ...shown, [question.id]: answer };
-                  setPicks(next);
-                  drafts.schedule({ attemptId: run.attemptId, picks: next });
-                }}
-              />
+              {index > 0 ? (
+                <PxButton variant="secondary" icon="chevron-left" onClick={() => goTo(index - 1)}>
+                  {t("nav.back")}
+                </PxButton>
+              ) : null}
+              <span className="px-qz-grow" />
+              {index + 1 < run.questions.length ? (
+                <PxButton key="next" size="lg" iconEnd="chevron-right" onClick={() => goTo(index + 1)}>
+                  {t("quiz.next")}
+                </PxButton>
+              ) : (
+                <PxButton
+                  key="handin"
+                  size="lg"
+                  disabled={locked || busy}
+                  expanded={confirmFrom === "nav"}
+                  onClick={() => requestHandIn("nav")}
+                >
+                  {t("quiz.sheet.handIn")}
+                </PxButton>
+              )}
             </>
-          )}
-        </section>
+          }
+        />
       )}
-      <Modal
-        title={t("simulation.deliver")}
-        open={confirm}
-        onCancel={() => setConfirm(false)}
-        okText={t("simulation.submit")}
-        cancelText={t("simulation.keepWriting")}
-        onOk={() => void submit()}
-      >
-        <p className="body">{t("simulation.confirm", { count: unanswered })}</p>
-      </Modal>
     </StudyLayout>
   );
 }

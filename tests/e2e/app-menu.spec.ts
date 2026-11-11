@@ -208,10 +208,10 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(dialog.getByText("Gira la flashcard")).toBeVisible();
     await expect(dialog.getByText("Annulla l'ultimo tratto")).toBeVisible();
     await expect(
-      dialog.getByText("Controlla una risposta scritta"),
+      dialog.getByText("Vai avanti da una risposta scritta"),
     ).toBeVisible();
     await expect(dialog.getByText("Rispondi \"Non lo so\"")).toBeVisible();
-    await expect(dialog.getByText("Salta la domanda")).toBeVisible();
+    await expect(dialog.getByText("Segna la domanda per dopo")).toBeVisible();
     await expect(dialog.getByText("Interrompi la risposta")).toBeVisible();
     // The sections' number keys follow the sidebar's order, in the Go menu, in this list and in the sidebar's hints.
     const order = ["Chiedi", "Esami", "Mappe", "Flashcard", "Libreria"];
@@ -424,7 +424,7 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
       location.hash =
         "/plans/menu-plan/quiz/menu-topic?attempt=menu-quiz-attempt";
     });
-    await expect(page.locator(".px-quiz-question")).toBeVisible();
+    await expect(page.locator(".px-qz-sheet")).toBeVisible();
     await settle(page);
     const quiz = page.url();
     for (const id of [

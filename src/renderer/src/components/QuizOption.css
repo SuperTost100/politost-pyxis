@@ -126,6 +126,37 @@
   color: var(--ink-muted);
 }
 
+/* The quiz's plain rows: no border, a fill on hover, the chosen one in the soft accent with a filled letter and a check. */
+.px-opt.is-plain {
+  column-gap: 14px;
+  min-height: 52px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  box-shadow: none;
+  font: 400 calc(17px * var(--text-scale, 1)) / 1.4 var(--font-sans);
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-opt.is-plain:hover:not(:disabled) {
+  background: var(--surface-raised);
+}
+.px-opt.is-plain .px-opt-key {
+  font: 650 13px/1 var(--font-sans);
+}
+.px-opt.is-plain.is-selected,
+.px-opt.is-plain.is-selected:hover:not(:disabled) {
+  box-shadow: none;
+  background: var(--primary-soft);
+  font-weight: 600;
+}
+.px-opt.is-plain .px-opt-check {
+  color: var(--primary-text);
+}
+.px-opt.is-plain:disabled:not(.is-selected) {
+  color: var(--ink-muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .px-opt {
     transition: none;

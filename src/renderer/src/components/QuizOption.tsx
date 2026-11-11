@@ -21,6 +21,7 @@ export function QuizOption({
   shortcut,
   math,
   disabled,
+  plain,
   onClick,
 }: {
   letter: string;
@@ -34,6 +35,11 @@ export function QuizOption({
    */
   math?: string;
   disabled?: boolean;
+  /**
+   * A plain row with no border, as the quiz draws its answers: the chosen one
+   * gets the soft accent, a filled letter and a check, and the number keys are told once under the question.
+   */
+  plain?: boolean;
   onClick?: () => void;
 }) {
   const { t } = useTranslation();
@@ -49,7 +55,7 @@ export function QuizOption({
   return (
     <button
       type="button"
-      className={["px-opt", state !== "idle" && `is-${state}`]
+      className={["px-opt", plain && "is-plain", state !== "idle" && `is-${state}`]
         .filter(Boolean)
         .join(" ")}
       aria-pressed={state === "idle" || state === "selected" ? state === "selected" : undefined}
@@ -71,6 +77,8 @@ export function QuizOption({
           <Icon name={feedback.icon} size={16} strokeWidth={2} />
           {feedback.word}
         </span>
+      ) : plain ? (
+        state === "selected" ? <Icon name="check" size={18} className="px-opt-check" /> : null
       ) : shortcut && state !== "muted" ? (
         // The key hint is drawn from data-key, so it is not text: aria-keyshortcuts already tells a screen reader.
         <kbd className="px-opt-shortcut" aria-hidden data-key={shortcut} />

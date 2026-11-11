@@ -163,7 +163,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     // The question screen continues the same queue: card count first, then the question.
     await expect(page.getByText(`6 di ${total}`)).toBeVisible();
     // It is the Review's own screen, not the diagnostic test's.
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ripasso");
+    await expect(page.locator(".px-studybar-title b")).toHaveText("Ripasso");
     // Each book exercise here has a short answer, so a multiple choice offers only answers of the same chapter.
     const firstChapter = ["risposta 1", "risposta 2", "risposta 3", "risposta 4"];
     for (const question of (await invoke<{ questions: Array<{ options?: string[] }> }>("study.reviewSession", { planId }))

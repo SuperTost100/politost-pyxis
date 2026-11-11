@@ -96,8 +96,8 @@ export function verdictLine(percent: number, diagnostic: boolean, goal = 75): st
 }
 
 /**
- * The order the student meets the questions in: skipped ones come back after all the others, in the order they were
- * skipped. A question is skipped at most once, so this is the last move any question makes.
+ * The order the student met the questions in before 0.5, when Skip moved a question behind the others: skipped ones
+ * came back after all the others, in the order they were skipped. Attempts and drafts from then still use it.
  */
 export function skipOrder<T extends { id: string }>(
   questions: T[],
@@ -110,13 +110,6 @@ export function skipOrder<T extends { id: string }>(
   ];
 }
 
-/**
- * The pick "Try again" sends after a failed check. The fields unlock on a failure, so an edited answer wins; an
- * untouched one resends what failed, which keeps an "I don't know" (an empty pick) as it was.
- */
-export function retryPick(failed: string, pickAtFailure: string, current: string): string {
-  return current === pickAtFailure ? failed : current;
-}
 
 /** Where closing a quiz goes: the Review page from a Review's questions, the notebook (narrowed as it was) from a redo, else the exam. */
 export function quizBack(input: { planId: string | undefined; redo?: boolean; review?: boolean; notebookExam?: string | null }): string {

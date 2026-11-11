@@ -396,11 +396,12 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       await page
         .getByRole("button", { name: "A Vero", exact: true })
         .click({ timeout: 120000 });
-      await page.getByRole("button", { name: "Verifica", exact: true }).click();
       if (i === 0) await clean(page);
+      // Avanti, and on the last question Consegna, which hands in at once with nothing blank.
       await page
+        .locator(".px-qz-nav")
         .getByRole("button", {
-          name: i === 9 ? "Vedi risultato" : "Avanti",
+          name: i === 9 ? "Consegna" : "Avanti",
           exact: true,
         })
         .click({ timeout: 120000 });
@@ -459,11 +460,15 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await page
       .getByRole("textbox", { name: "La tua risposta", exact: true })
       .fill("Velocity = 12 m / 3 s = 4 m/s.");
-    await page.getByRole("button", { name: "Consegna", exact: true }).click();
+    // One answer of the exam's: Consegna asks about the blank ones under itself.
     await page
-      .getByRole("dialog")
+      .getByRole("complementary", { name: "Domande" })
       .getByRole("button", { name: "Consegna", exact: true })
       .click();
+    const confirm = page.getByRole("group", { name: /^Consegni con/ });
+    await expect(page.locator(".px-res").or(confirm)).toBeVisible({ timeout: 120000 });
+    if (await confirm.count())
+      await confirm.getByRole("button", { name: "Consegna", exact: true }).click();
     await expect(page.locator(".px-res")).toBeVisible({
       timeout: 120000,
     });
