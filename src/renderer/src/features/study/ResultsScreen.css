@@ -147,6 +147,17 @@
   display: grid;
   gap: 6px;
 }
+/* The place of Ripasso mirato and of the ghost button under it while the outcome is read, at their sizes. */
+.px-res-wait {
+  gap: 6px;
+}
+.px-res-wait .px-skeleton-bar {
+  height: var(--control-md);
+  border-radius: var(--radius-field);
+}
+.px-res-wait .px-skeleton-bar.is-primary {
+  height: var(--control-lg);
+}
 .px-res-actions:empty {
   display: none;
 }

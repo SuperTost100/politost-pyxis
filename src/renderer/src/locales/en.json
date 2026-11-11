@@ -1337,6 +1337,7 @@
     "gapShort": "a gap to fill",
     "gapSevereShort": "a serious gap",
     "targeted": "Targeted review",
+    "reviewLoading": "Preparing the review",
     "redoWrong_one": "Redo only the one to review",
     "redoWrong_other": "Redo only the {{count}} to review",
     "questionsCount_one": "The question",

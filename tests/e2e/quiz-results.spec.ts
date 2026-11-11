@@ -84,9 +84,9 @@ function seed(db: DatabaseSync) {
   db.prepare("INSERT INTO gap_answers(gap_id,attempt_id,question_id) VALUES('g-1','a-quiz','q2'),('g-1','a-quiz','q7')").run();
 }
 
-async function launch() {
+async function launch(env: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-results-"));
-  const app = await launchPyxis({ userData });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
@@ -121,6 +121,8 @@ test("results list every question in order, right ones folded in green, the othe
     await open(page);
     // The grade is the title, in words; the tally, the topic that moved and what changes in the path follow.
     await expect(page.locator(".px-studybar-title")).toContainText("Risultati · Quiz · Cinematica");
+    // The attempt is over, so the bar has no progress line under it.
+    await expect(page.locator(".px-studybar-progress")).toHaveCount(0);
     await expect(page.locator(".px-res-title")).toHaveText(/^Hai preso \d+(,\d)?\/30$/);
     await expect(page.locator(".px-res-headline")).toContainText("3 giuste, 1 a metà, 3 sbagliate. 3,5 punti su 7. 1 domanda esclusa.");
     await expect(page.locator(".px-res-rises")).toContainText(/^Cinematica sale da \d+\/30 a \d+\/30$/);
@@ -173,11 +175,44 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
     await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis(\?|$)/);
+    // The exam page first takes the request out of the address (`?drill=`) and starts the drill. Leaving before it has
+    // would let its cleanup of the address land on the page opened next, and drop that page's `?attempt=`.
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     await open(page);
     // Its wrong answers can also be asked again on their own.
     await page.getByRole("button", { name: "Rifai solo le 4 da rivedere" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/review\?from=a-quiz$/);
+  } finally {
+    await done();
+  }
+});
+
+test("the next steps wait for the read that decides them, and stay once they are shown", async () => {
+  test.setTimeout(120_000);
+  // What the attempt did to the path (its open gap) comes a moment after the questions; hold it back for 2 seconds.
+  const { page, done } = await launch({ PYXIS_E2E_READ_DELAY: "study.attemptOutcome=2000" });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await open(page);
+    await expect(rows(page)).toHaveCount(8);
+    const actions = page.locator(".px-res-actions");
+    // Until the gap is known, Ripasso mirato would open the wrong answers instead of the gap's drill, so it is not
+    // offered yet: the place of both buttons is held by a placeholder.
+    await expect(actions).toHaveAttribute("aria-busy", "true");
+    await expect(page.getByRole("button", { name: "Ripasso mirato", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Rifai solo le/ })).toHaveCount(0);
+    // Once the read is in, both buttons are there, and from then on none of them is removed or relabelled.
+    const targeted = page.getByRole("button", { name: "Ripasso mirato", exact: true });
+    await expect(targeted).toBeVisible({ timeout: 10_000 });
+    await expect(actions).not.toHaveAttribute("aria-busy", "true");
+    await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
+    const handle = await targeted.elementHandle();
+    await page.waitForTimeout(1500);
+    expect(await handle!.evaluate((element) => element.isConnected), "Ripasso mirato stays in the page").toBe(true);
+    await expect(page.getByRole("button", { name: "Rifai solo le 4 da rivedere" })).toBeVisible();
+    // The first click lands on the gap's drill, from the exam's path.
+    await targeted.click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis(\?|$)/);
   } finally {
     await done();
   }

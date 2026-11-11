@@ -1337,6 +1337,7 @@
     "gapShort": "una lacuna da colmare",
     "gapSevereShort": "una lacuna seria",
     "targeted": "Ripasso mirato",
+    "reviewLoading": "Preparo il ripasso",
     "redoWrong_one": "Rifai solo quella da rivedere",
     "redoWrong_other": "Rifai solo le {{count}} da rivedere",
     "questionsCount_one": "La domanda",

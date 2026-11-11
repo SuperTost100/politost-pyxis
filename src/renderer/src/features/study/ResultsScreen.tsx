@@ -129,6 +129,10 @@ export function ResultsScreen({
     queryFn: () => invoke("study.attemptOutcome", { attemptId }),
   });
   const exercise = kind === "simulation";
+  // Ripasso mirato opens the gap's drill or, without a gap, the wrong answers, and "Rifai solo le N" exists only with a
+  // gap. Until the outcome says which, neither is offered, so a click never lands on the other one and nothing that is
+  // shown goes away. A read that failed leaves `gap` empty, and the page goes on without it.
+  const deciding = graded && Boolean(review) && outcome.isPending;
   const fallback = outcome.data?.fallback;
   const gap = graded && outcome.data ? drillGap(outcome.data.gaps) : undefined;
   const gapTopic = gap ? outcome.data?.topics.find((topic) => topic.id === gap.topicId)?.title : undefined;
@@ -214,8 +218,14 @@ export function ResultsScreen({
             </div>
           </section>
         ) : null}
-        <div className="px-res-actions">
-          {graded && review ? (
+        <div className="px-res-actions" aria-busy={deciding || undefined}>
+          {deciding ? (
+            <div className="px-skeleton px-res-wait" role="status">
+              <span className="visually-hidden">{t("results.reviewLoading")}</span>
+              <i className="px-skeleton-bar is-primary" aria-hidden />
+              <i className="px-skeleton-bar" aria-hidden />
+            </div>
+          ) : graded && review ? (
             <>
               <Button
                 size="lg"

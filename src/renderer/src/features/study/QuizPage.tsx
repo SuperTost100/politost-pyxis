@@ -1032,14 +1032,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             : t("quiz.position", { current: index + 1, total: requestedCount })
           : [plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined
       }
+      // The results screen, while grading or once graded, has no line: the attempt is over.
       progress={
-        questions.length
-          ? finalResult || noAnswers
+        !questions.length || finalResult || gradingStarted
+          ? undefined
+          : noAnswers
             ? 1
             : wholeReview
               ? (wholeReview.cardsTotal + answered) / wholeReview.total
               : answered / Math.max(1, requestedCount)
-          : undefined
       }
     >
       {owed > 0 && !finalResult ? (
