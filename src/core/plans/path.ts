@@ -249,6 +249,14 @@ export function suggestStep(input: {
   return exercise(weak, "weakest");
 }
 
+/**
+ * The path's next step as every screen names it: `suggestStep` with the due flashcards left out, because they have their
+ * own line (Oggi's cards item, the exam page's Flashcard block). The exam list, Oggi and the exam's page all read this.
+ */
+export function pathNext(input: Parameters<typeof suggestStep>[0]): Suggestion | null {
+  return suggestStep({ ...input, topics: input.topics.map((topic) => ({ ...topic, dueCards: 0 })) });
+}
+
 export function recommend(input: {
   dueCards: number;
   severeGaps: number;

@@ -2135,6 +2135,8 @@ export const requests = {
               topics: z.array(
                 z.object({ topicId: z.string(), title: z.string(), total: z.number().int(), due: z.number().int() }),
               ),
+              // The exam's cards with no topic, as one row after its topics.
+              noTopic: z.object({ total: z.number().int(), due: z.number().int() }).nullable(),
             }),
           ),
           examless: z.object({ total: z.number().int(), due: z.number().int() }).nullable(),
@@ -2144,8 +2146,14 @@ export const requests = {
   },
   "study.dueEverywhere": {
     // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review. With
-    // `subjectId`, one subject's (null: the cards with no subject), and with `examless` only its cards with no exam.
-    input: z.object({ subjectId: z.string().nullable().optional(), examless: z.boolean().optional() }),
+    // `subjectId`, one subject's (null: the cards with no subject), and with `examless` only its cards with no exam. With
+    // `planId`, one exam's (an exam's page counts them), and with `noTopic` only its cards with no topic.
+    input: z.object({
+      subjectId: z.string().nullable().optional(),
+      examless: z.boolean().optional(),
+      planId: z.string().optional(),
+      noTopic: z.boolean().optional(),
+    }),
     output: z.array(
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),

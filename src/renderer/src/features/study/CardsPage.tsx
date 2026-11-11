@@ -54,12 +54,18 @@ export function CardsPage() {
   const [searchParams] = useSearchParams();
   const looking = Boolean(topicId) && searchParams.get("review") === "1";
   // The Flashcard section narrows the daily review to one subject (`none`: the cards with no subject), and with
-  // `exam=none` to that subject's cards with no exam.
+  // `exam=none` to that subject's cards with no exam. Without a subject, `exam=<id>` is one exam's due cards, the ones its
+  // page counts, and `topic=none` those of them with no topic.
   const onlyParam = everywhere ? searchParams.get("subject") : null;
+  const examParam = everywhere ? searchParams.get("exam") : null;
+  const noTopic = searchParams.get("topic") === "none";
   const only =
-    onlyParam == null
-      ? null
-      : { subjectId: onlyParam === "none" ? null : onlyParam, examless: searchParams.get("exam") === "none" };
+    onlyParam != null
+      ? { subjectId: onlyParam === "none" ? null : onlyParam, examless: examParam === "none" }
+      : examParam != null && examParam !== "none"
+        ? { planId: examParam, noTopic }
+        : null;
+  const examOnly = only && "planId" in only ? only.planId : undefined;
   // Opened from the Flashcard section, every way out goes back there.
   const fromSection = (useLocation().state as { from?: unknown } | null)?.from === "flashcards";
   const reviewQueue = useReviewSession(planId, reviewing);
@@ -139,7 +145,7 @@ export function CardsPage() {
       invoke("study.cards", { planId: planId ?? "", topicId }),
   });
   const dueEverywhere = useQuery({
-    queryKey: ["cards-everywhere", only?.subjectId, only?.examless],
+    queryKey: ["cards-everywhere", onlyParam, examParam, noTopic],
     enabled: everywhere,
     queryFn: () => invoke("study.dueEverywhere", only ?? {}),
   });
@@ -150,7 +156,9 @@ export function CardsPage() {
   });
   const subjects = useSubjects();
   const subjectName = only
-    ? only.subjectId == null
+    ? "planId" in only
+      ? undefined
+      : only.subjectId == null
       ? t("cardBrowser.noSubject")
       : subjects.data?.find((item) => item.id === only.subjectId)?.name
     : subjects.data?.find((item) => item.id === subjectId)?.name;
@@ -237,6 +245,8 @@ export function CardsPage() {
     Array<{ reviewId: string; planId: string; topicId: string; rating: (typeof RATINGS)[number] }>
   >([]);
   const plan = usePlan(cardPlanId);
+  // The exam whose due cards these are, when its page opened them: the way back and the title name it.
+  const exam = usePlan(examOnly);
   const topicTitle = topicId ? plan.data?.topics.find((topic) => topic.id === topicId)?.title : undefined;
   // Until the deck arrives (and the topic's build is known) "No cards are due." would be a guess.
   const shown = everywhere ? dueEverywhere : bySubject ? subjectCards : reviewing ? reviewQueue : cards;
@@ -521,6 +531,7 @@ export function CardsPage() {
   function close() {
     // Oggi's session has no plan to go back to; it ends on the exams list. A subject's cards go back to the browser.
     if (fromSection) leaveTo("/flashcards");
+    else if (examOnly) leaveTo(`/plans/${examOnly}`);
     else leaveTo(everywhere ? "/exams" : bySubject ? "/exams/cards" : `/plans/${planId ?? ""}`);
   }
 
@@ -622,6 +633,8 @@ export function CardsPage() {
       back={
         fromSection
           ? { text: t("flashcards.title"), onClick: close }
+          : examOnly
+          ? { text: exam.data?.title ?? t("lesson.back"), label: exam.data ? t("lesson.back") : undefined, onClick: close }
           : everywhere
           ? { text: t("nav.exams"), onClick: close }
           : bySubject
@@ -630,7 +643,13 @@ export function CardsPage() {
       }
       title={
         everywhere
-          ? [t("oggi.cardsTitle"), only ? subjectName : null].filter(Boolean).join(" \u00b7 ")
+          ? [
+              t("oggi.cardsTitle"),
+              examOnly ? exam.data?.title : only ? subjectName : null,
+              examOnly && noTopic ? t("cardBrowser.noTopic") : null,
+            ]
+              .filter(Boolean)
+              .join(" \u00b7 ")
           : bySubject
             ? [t("cards.title"), subjectName].filter(Boolean).join(" \u00b7 ")
             : reviewing

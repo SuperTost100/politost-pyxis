@@ -67,13 +67,21 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
       examAt: Date.now() + 10 * 86_400_000,
       topics: [{ id: "t-atom", title: "Struttura dell’atomo" }],
     });
+    // A card of the exam with no topic gets a row of its own under the exam, so the rows add up to the subject's count.
     db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
-      ('e1','p-chem','t-atom','Che cos’è un orbitale?','La regione dove è probabile trovare l’elettrone.',20);`);
+      ('e1','p-chem','t-atom','Che cos’è un orbitale?','La regione dove è probabile trovare l’elettrone.',20),
+      ('e2','p-chem',NULL,'Che cos’è una mole?','Un numero di Avogadro di particelle.',21);`);
     db.close();
     await page.reload();
-    await expect(chem).toContainText("3 flashcard · 2 da ripassare oggi");
+    await expect(chem).toContainText("4 flashcard · 3 da ripassare oggi");
     const exam = chem.getByRole("list", { name: "Chimica generale" });
-    await expect(exam.getByRole("link")).toHaveText([/^Struttura dell’atomo1 flashcard/]);
+    await expect(exam.getByRole("link")).toHaveText([/^Struttura dell’atomo1 flashcard/, /^Nessun argomento1 flashcard/]);
+    await exam.getByRole("link", { name: /^Nessun argomento/ }).click();
+    await expect(page).toHaveURL(/#\/cards\/due\?exam=p-chem&topic=none$/);
+    await expect(page.getByText("Che cos’è una mole?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toHaveCount(0);
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
     await chem.getByRole("button", { name: "Ripassa le flashcard di Chimica", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due\?subject=chem$/);
     await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();

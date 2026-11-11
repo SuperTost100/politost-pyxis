@@ -135,7 +135,7 @@ function SubjectCard({ subject, go }: { subject: Subject; go: (path: string) => 
         )}
       </div>
       {subject.exams.map((exam) =>
-        exam.topics.length > 0 ? (
+        exam.topics.length > 0 || exam.noTopic ? (
           <Group key={exam.planId} label={exam.title}>
             {exam.topics.map((topic) => (
               <Row
@@ -146,6 +146,15 @@ function SubjectCard({ subject, go }: { subject: Subject; go: (path: string) => 
                 to={stepPath(exam.planId, "cards", topic.topicId) ?? `/plans/${exam.planId}`}
               />
             ))}
+            {/* The exam's cards with no topic, so the rows add up to the subject's count. */}
+            {exam.noTopic ? (
+              <Row
+                title={t("cardBrowser.noTopic")}
+                total={exam.noTopic.total}
+                due={exam.noTopic.due}
+                to={`/cards/due?exam=${encodeURIComponent(exam.planId)}&topic=none`}
+              />
+            ) : null}
           </Group>
         ) : null,
       )}

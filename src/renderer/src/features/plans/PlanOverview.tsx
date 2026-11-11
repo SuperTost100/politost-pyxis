@@ -639,7 +639,7 @@ function ExamAside({
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => navigate(`/plans/${planId}/review/cards`)}
+                    onClick={() => navigate(`/cards/due?exam=${encodeURIComponent(planId)}`)}
                   >
                     {t("examPage.cardsReview", { count: due })}
                   </Button>

@@ -21,9 +21,11 @@ function seed(
   ],
 ) {
   const examAt = Date.now() + 12 * day;
+  db.prepare("INSERT INTO subjects(id,name,position,created_at) VALUES('sub-fis','Fisica',0,1),('sub-chi','Chimica',1,1)").run();
   seedSource(db, { id: "s-book", kind: "smartbook", title: "Fisica I, Mazzoldi" });
   seedPlan(db, {
     id: "p-fis",
+    subjectId: "sub-fis",
     title: "Fisica I",
     language: "it",
     target: 0.75,
@@ -32,6 +34,8 @@ function seed(
     topics,
   });
   db.prepare("INSERT INTO plan_sessions(id,plan_id,date,label,created_at) VALUES('s-1','p-fis',?,'Written',1)").run(examAt);
+  // A second exam of a subject with no maps yet.
+  seedPlan(db, { id: "p-chi", subjectId: "sub-chi", title: "Chimica generale", language: "it", examAt: examAt + 20 * day });
   db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c-1','p-fis','t-vec','Unità della forza?','Il newton.',1)").run();
   const node = (id: string, label: string, parent: string | null) => ({ id, label, parent, x: 0, y: 0, pinned: false, sources: [] });
   db.prepare("INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('m-1','p-fis','t-vec',?,'sources',1)").run(
@@ -47,11 +51,17 @@ function seed(
   );
 }
 
-async function openExam(page: Page) {
-  await page.evaluate(() => {
-    location.hash = "/plans/p-fis";
-  });
-  await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
+async function openExam(page: Page, id = "p-fis", title = "Fisica I") {
+  await page.evaluate((id) => {
+    location.hash = `/plans/${id}`;
+  }, id);
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+}
+
+/** Nothing on the page says it failed or found nothing to show. */
+async function expectContent(page: Page, label: string) {
+  await expect(page.getByText(/^(No flashcards due|Nothing here|Page not found)/), label).toHaveCount(0);
+  await expect(page.locator(".px-error-state"), label).toHaveCount(0);
 }
 
 async function pickFromMenu(page: Page, item: string) {
@@ -84,19 +94,38 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(legend.getByRole("listitem")).toHaveText(["Preparationnot measured yet", "Path0%", "Today0%"]);
     await expectNoAxeViolations(page);
 
-    // Adesso: the path's suggestion with the one primary button. A due flashcard comes first.
+    // Adesso: the path's next step with the one primary button, the same step the exam list names. The due flashcard
+    // is not it: it has its own line in the Flashcard block.
+    await page.evaluate(() => {
+      location.hash = "/exams";
+    });
+    const row = page.locator(".px-exams-row", { hasText: "Fisica I" }).locator(".px-exams-next");
+    await expect(row).toContainText("Now");
+    const listed = await row.evaluate((element) =>
+      [...element.childNodes]
+        .filter((node) => !(node instanceof HTMLElement && node.classList.contains("px-exams-kicker")))
+        .map((node) => node.textContent)
+        .join("")
+        .trim(),
+    );
+    expect(listed).not.toMatch(/^Flashcards/);
+    await openExam(page);
     const now = page.locator(".px-exam-now");
     await expect(now.getByText("Now", { exact: true })).toBeVisible();
-    await expect(now.getByRole("heading")).toHaveText("Flashcards: Misure e vettori");
+    await expect(now.getByRole("heading")).toHaveText(listed);
     await now.getByRole("button", { name: "Start", exact: true }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis\/cards\/t-vec$/);
+    await expect(page).not.toHaveURL(/#\/plans\/p-fis$/);
+    await expectContent(page, "Adesso's Start");
     await openExam(page);
 
-    // The path holds every activity. The topic Adesso is on starts open with its steps; another opens from the keyboard.
+    // The path holds every activity. Adesso is on no topic, so none starts open; a click opens one with its steps, and
+    // another opens from the keyboard.
     const path = page.locator(".px-xpath-list");
     const steps = page.getByRole("list", { name: "Steps for Misure e vettori" });
+    await expect(steps).toHaveCount(0);
+    await path.getByRole("button", { name: /^Misure e vettori/ }).click();
     await expect(steps.getByRole("button", { name: /^Lesson/ })).toBeVisible();
-    await expect(steps.getByRole("button", { name: "Flashcards, now" })).toBeVisible();
+    await expect(steps.getByRole("button", { name: "Flashcards" })).toBeVisible();
     const second = path.getByRole("button", { name: /^Cinematica: moto rettilineo/ });
     await second.focus();
     await page.keyboard.press("Enter");
