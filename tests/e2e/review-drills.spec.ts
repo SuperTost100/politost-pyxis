@@ -388,3 +388,73 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     removeTestFolder(userData);
   }
 });
+
+test("a gap drill whose read fails says so and offers to read it again, instead of staying prepared forever", async () => {
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-read-"));
+  let app = await launch(userData, drillReplies());
+  let planId = "";
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    ({ planId } = await setupPlan(userData, page, app));
+  } finally {
+    await app.close();
+  }
+  // The model holds the drill's questions until the test releases them, so the order of the three events is fixed:
+  // the read fails while the job waits, the job finishes while the page is not reading, and only then does the read work.
+  const release = join(userData, "release-drill");
+  app = await launch(userData, { explanation: { explanation: EXPLANATION }, quizQuestions: { ...drillReply(), hold: release } });
+  // Reading a drill looks at the gaps; while that table is away the read fails, and it works again when it is back.
+  // The job needs the same table to save its questions, so it must not run its last step while the table is away.
+  const gaps = (away: boolean) => {
+    const db = new DatabaseSync(dbPath(userData), { timeout: 10000 });
+    try {
+      db.exec(away ? "ALTER TABLE gaps RENAME TO gaps_away" : "ALTER TABLE gaps_away RENAME TO gaps");
+    } finally {
+      db.close();
+    }
+  };
+  const drillJob = () => {
+    const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
+    try {
+      return db.prepare("SELECT state, params_json AS params FROM jobs WHERE kind = 'gap-drill'").get() as
+        | { state: string; params: string }
+        | undefined;
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    await goto(page, `/plans/${planId}`);
+    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    await fill.first().click();
+    await expect(fill.first()).toBeDisabled();
+    // The job has written its explanation and waits for the questions, so it does not look at the gaps again until released.
+    await expect.poll(() => drillJob()?.params.includes(EXPLANATION)).toBe(true);
+    gaps(true);
+    // The page says it cannot tell whether the review is ready, and the controls are free again.
+    const failed = page.getByRole("alert").filter({ hasText: "non riesco a controllare" });
+    await expect(failed).toBeVisible();
+    await expect(fill.first()).toBeEnabled();
+    await expect(page.getByText("Preparo il ripasso")).toHaveCount(0);
+    await saveShot(page, "review-drills-read-failed-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
+    // Trying again while it still fails keeps the message.
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toBeVisible();
+    // The drill is built while the page is not reading it, so the first read that works already finds it ready.
+    gaps(false);
+    writeFileSync(release, "");
+    await expect.poll(() => drillJob()?.state, { timeout: 30000 }).toBe("succeeded");
+    await expect(failed).toBeVisible();
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toHaveCount(0);
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

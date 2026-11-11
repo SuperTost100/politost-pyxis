@@ -308,14 +308,10 @@ export function PlanPath({
           tone="danger"
           action={{
             label: t("components.notice.retry"),
-            onClick: () => {
-              const topic = drill.stopped;
-              drill.dismiss();
-              if (topic) void drill.start(topic);
-            },
+            onClick: drill.retry,
           }}
         >
-          {t("examPage.reviewFailed")}
+          {t(drill.readFailed ? "examPage.reviewReadFailed" : "examPage.reviewFailed")}
         </Notice>
       ) : null}
       <ol
@@ -517,7 +513,7 @@ export function PlanPath({
           ? plain(
               "simulation",
               "simulation",
-              undefined,
+              simulationStep,
               name("simulation"),
               simulationStep
                 ? simulationStep.result
