@@ -1160,7 +1160,9 @@ export function MapPage() {
       ? lastChange
       : undefined;
   // The way back leads to Mappe at this map's subject, or to the whole list for the topic map of an exam with none.
-  const shownTitle = writingJob ? writingTitle : title;
+  // A map being written goes by its topic or subject in the head, as its working line says; the confirmation names its
+  // request, which tells it from the scope's other maps.
+  const shownTitle = title;
   // The head keeps its controls while another map of the scope loads, so the switcher keeps the focus it gave back.
   const hasMap = Boolean(activeMap) && !fresh && !working;
   return (
@@ -1169,7 +1171,10 @@ export function MapPage() {
       <header className="px-map-head">
         <div className="px-map-title-row">
           {renaming && activeId && graph && !fresh ? (
-            <MapNameField
+            <>
+              {/* The page keeps its heading while the field takes its place on screen. */}
+              <h1 className="visually-hidden">{title}</h1>
+              <MapNameField
               className="px-map-name-title"
               address={address}
               mapId={activeId}
@@ -1180,7 +1185,8 @@ export function MapPage() {
                 // Focus goes back to the title, which a screen reader then reads with its new name.
                 setTitleFocus(true);
               }}
-            />
+              />
+            </>
           ) : (
             <h1 ref={heading} tabIndex={-1} title={shownTitle}>
               {shownTitle}
@@ -1202,7 +1208,7 @@ export function MapPage() {
           ) : null}
         </div>
         <div className="px-map-actions" ref={dots}>
-          {hasMap ? (
+          {hasMap && !nothingMatched ? (
             <Button
               variant="secondary"
               size="sm"
@@ -1217,7 +1223,7 @@ export function MapPage() {
               <span className="px-map-cards-short">{t("map.makeCardsShort")}</span>
             </Button>
           ) : null}
-          {hasMap || writingJob ? (
+          {(hasMap && !nothingMatched) || writingJob ? (
             <MenuButton menu={actions.menu} label={t("map.more")} />
           ) : null}
         </div>

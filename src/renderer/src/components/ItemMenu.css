@@ -42,8 +42,10 @@
   background: var(--danger-soft);
   color: var(--danger);
 }
-.px-item-menu .ant-dropdown-menu .ant-dropdown-menu-item-disabled {
+.px-item-menu .ant-dropdown-menu .ant-dropdown-menu-item-disabled,
+.px-item-menu .ant-dropdown-menu .ant-dropdown-menu-submenu-disabled > .ant-dropdown-menu-submenu-title {
   color: var(--ink-subtle);
+  opacity: 0.7;
 }
 .px-item-menu .ant-dropdown-menu .ant-dropdown-menu-item-divider {
   margin: 4px 6px;
@@ -110,5 +112,5 @@
 }
 .px-menu-button .px-icon {
   flex: none;
-  margin-inline-start: 2px;
+  margin-inline-start: 4px;
 }

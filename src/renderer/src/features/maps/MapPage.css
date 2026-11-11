@@ -211,7 +211,9 @@
 [data-theme="dark"] .px-map-strip {
   background: var(--surface-raised);
 }
-.px-map-strip .px-ctl-seg {
+/* Two short words side by side: as wide as they are, also where a narrow window stretches settings choices. */
+.px-map-strip .px-ctl-seg.px-ctl-seg.px-ctl-seg {
+  flex: none;
   width: auto;
   gap: 2px;
   padding: 2px;
