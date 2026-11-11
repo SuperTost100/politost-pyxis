@@ -1,4 +1,9 @@
 import { z } from "zod";
+/**
+ * The most concepts and links one map holds. A part of long material gives up to 25 concepts, and all the parts of one
+ * request join into a single map, so the limit leaves room for many parts.
+ */
+export const MAP_LIMITS = { nodes: 2000, edges: 4000 } as const;
 const id = z.string().min(1).max(160);
 const label = z.string().trim().min(1).max(500);
 export const mapColors = [
@@ -30,19 +35,19 @@ const edge = z.object({
 });
 export const conceptGraphSchema = z.object({
   layout: z.enum(["tree", "radial"]),
-  nodes: z.array(node).max(25),
-  edges: z.array(edge).max(150),
+  nodes: z.array(node).max(MAP_LIMITS.nodes),
+  edges: z.array(edge).max(MAP_LIMITS.edges),
   undo: z
     .object({
-      nodes: z.array(node).max(25),
-      edges: z.array(edge).max(150),
+      nodes: z.array(node).max(MAP_LIMITS.nodes),
+      edges: z.array(edge).max(MAP_LIMITS.edges),
       layout: z.enum(["tree", "radial"]).optional(),
     })
     .nullable(),
   redo: z
     .object({
-      nodes: z.array(node).max(25),
-      edges: z.array(edge).max(150),
+      nodes: z.array(node).max(MAP_LIMITS.nodes),
+      edges: z.array(edge).max(MAP_LIMITS.edges),
       layout: z.enum(["tree", "radial"]).optional(),
     })
     .nullable()

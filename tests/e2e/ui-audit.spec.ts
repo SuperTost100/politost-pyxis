@@ -2375,7 +2375,7 @@ async function openState(page: Page, name: string) {
           list.getByRole("heading", { name: /^(Attività|Background tasks)$/ }),
         ).toBeVisible();
         await expect(
-          list.getByRole("heading", { name: /^(Ti serve|Needs you)$/ }),
+          list.getByRole("heading", { name: /^(C'è bisogno di te|Needs you)$/ }),
         ).toBeVisible();
         await expect(
           list.getByText(
@@ -2446,7 +2446,7 @@ async function openState(page: Page, name: string) {
       }
       break;
     case "map-building":
-      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo le tue mappe…|Building your maps…)$/);
+      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo la mappa…|Building the map…)$/);
       await expect(page.locator(".px-map-working .px-logo-working")).toBeVisible();
       break;
     case "ocr-settings-missing":

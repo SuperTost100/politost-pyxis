@@ -288,6 +288,30 @@ describe("reading a scan in core", () => {
     expect(runner.list().find((job) => job.id === again)?.error).toBe("source-file-missing");
   });
 
+  it("reads a scan from the copy Pyxis keeps, even when a linked folder whose file is gone holds it too", async () => {
+    const fixture = scan(4);
+    // A Library copy that a linked file took over, whose file was then removed from the folder.
+    fixture.db.prepare(`INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', ?, 'root', 1)`).run(
+      tempDir("pyxis-ocr-linked-"),
+    );
+    fixture.db
+      .prepare(
+        `INSERT INTO linked_files (folder_id, rel_path, subfolder, source_id, size, mtime_ms, missing_at)
+         VALUES ('f', 'scan.pdf', '', 'scan', 1, 1, 2)`,
+      )
+      .run();
+    const paths: string[] = [];
+    const { readPages } = reader(4);
+    const { runner, state } = start(fixture, (path, pages, signal) => {
+      paths.push(path);
+      return readPages(path, pages, signal);
+    });
+    const jobId = startScan(fixture.db, runner, "scan");
+    await until(() => state(jobId) === "succeeded");
+    expect(fixture.status()).toBe("ready");
+    expect(paths[0]).toContain(fixture.workspace);
+  });
+
   it("at startup, a scan queued without a job goes back to needs-ocr, and lists the scans waiting for text", () => {
     const fixture = scan(20);
     requestOcr(fixture.db, "scan");

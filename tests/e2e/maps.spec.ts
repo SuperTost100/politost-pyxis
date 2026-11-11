@@ -71,9 +71,9 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     "Tangente",
     "Variazione locale",
   ];
+  // The reply is looked up by the first property of the map's schema.
   const mapReplies = {
-    title: {
-      title: "Derivate",
+    nodes: {
       nodes: labels.map((label, i) => ({
         id: `n${i}`,
         label,
@@ -152,7 +152,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await page.evaluate(({ planId, topicId }) => {
       window.location.hash = `/plans/${planId}/map/${topicId}`;
     }, input);
-    await page.getByRole("button", { name: "Crea mappe", exact: true }).click();
+    await page.getByRole("button", { name: "Crea la mappa", exact: true }).click();
     await expect
       .poll(
         async () =>

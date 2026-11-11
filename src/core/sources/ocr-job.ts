@@ -74,8 +74,9 @@ export function registerOcrJob(
           const mine = currentOcrRun(db, sourceId)!;
           try {
             if (row.kind !== "pdf") throw new Error("ocr-not-scan");
-            // A scan in a linked folder is read where it is; any other from its stored copy.
-            const linked = linkedFile(db, sourceId) !== null;
+            // A scan Pyxis keeps a copy of is read from it, even when a linked folder holds the file too; any other
+            // scan in a linked folder is read where it is.
+            const linked = !row.blob_sha && linkedFile(db, sourceId) !== null;
             if (!linked && (!row.blob_sha || !hasBlob(workspace, row.blob_sha))) throw new Error("source-file-missing");
             await deps.requireData();
             const file = linked ? readableLinkedPath(db, sourceId) : readBlob(workspace, row.blob_sha!).file;
