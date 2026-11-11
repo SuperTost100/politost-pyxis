@@ -3142,6 +3142,7 @@
     "redoFailed": "Pyxis couldn't prepare the questions. Try again.",
     "mapsNone": "No maps of this subject yet.",
     "allMaps": "All maps",
+    "makeMap": "Make a map",
     "material": "Material",
     "allMaterial": "All material",
     "addMaterial": "Add material",

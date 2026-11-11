@@ -137,25 +137,42 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await openExam(page);
     await expect(path.getByText(/^Written$/)).toBeVisible();
 
-    // Flashcard: review today's, or browse every card.
+    // Flashcard: review this exam's due cards, or browse its cards. Each way back returns to the exam.
     const aside = page.getByRole("complementary", { name: "Flashcards, questions to redo, maps and material" });
     await expect(aside.getByRole("heading", { name: /^Flashcards/ })).toContainText("1 in all");
     await aside.getByRole("button", { name: "Review the flashcard" }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis\/review\/cards$/);
-    await openExam(page);
+    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await expectContent(page, "Review the flashcard");
+    await page.getByRole("button", { name: "Back to the exam: Fisica I" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     await aside.getByRole("button", { name: "Browse all" }).click();
-    await expect(page).toHaveURL(/#\/exams\/cards$/);
-    await openExam(page);
+    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Fisica I");
+    await page.getByRole("link", { name: "Fisica I", exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
 
     // Da rifare says when nothing is waiting.
     await expect(aside.getByText("No questions to redo.")).toBeVisible();
 
-    // Mappe: the subject's maps open, and so does the list of all maps.
+    // Mappe: the subject's maps open, and All maps opens Maps at this subject.
     await aside.getByRole("link", { name: /^Vettori/ }).click();
     await expect(page).toHaveURL(/#\/(maps|plans\/p-fis\/map)\//);
+    await expect(page.getByText("Componenti")).toBeVisible();
     await openExam(page);
     await aside.getByRole("link", { name: "All maps" }).click();
-    await expect(page).toHaveURL(/#\/maps$/);
+    await expect(page).toHaveURL(/#\/maps\?subject=sub-fis$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeInViewport();
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeFocused();
+    // A subject with no maps offers to make one, with the subject already chosen.
+    await openExam(page, "p-chi", "Chimica generale");
+    await expect(aside.getByText("No maps of this subject yet.")).toBeVisible();
+    await expect(aside.getByRole("link", { name: "All maps" })).toHaveCount(0);
+    await aside.getByRole("link", { name: "Make a map" }).click();
+    const newMap = page.getByRole("dialog", { name: "New map" });
+    await expect(newMap).toBeVisible();
+    await expect(newMap.locator("#new-map-subject").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Chimica");
+    await page.keyboard.press("Escape");
+    await expect(newMap).toBeHidden();
     await openExam(page);
 
     // Materiale: a file opens its details beside the page; all the material, with adding and past papers, is a page.

@@ -63,14 +63,15 @@ function dateText(at: number) {
   }).format(date);
 }
 
-export function CardBrowser() {
+/** `planId`: the exam the browser opens filtered to, such as when that exam's page opened it. */
+export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } = {}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
   const [modal, modalContext] = Modal.useModal();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
-  const [planId, setPlanId] = useState("");
+  const [planId, setPlanId] = useState(initialPlanId);
   const [topicId, setTopicId] = useState("");
   const [status, setStatus] = useState<Status>("all");
   const [page, setPage] = useState(1);
