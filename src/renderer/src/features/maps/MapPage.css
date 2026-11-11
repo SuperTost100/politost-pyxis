@@ -24,7 +24,7 @@
   margin: 0 0 calc(var(--space-1) - var(--space-3)) 10px;
 }
 
-/* The head (pyxis-mockups round after dev.8, variant A): the title with the map switcher beside it, the map's actions on
+/* The head: the title with the map switcher beside it, the map's actions on
    the right of the same row, and the line about the map under both. */
 .px-map-head {
   flex: none;
