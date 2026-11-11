@@ -21,6 +21,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { jobErrorEngine, jobErrorKey, requestJobError } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
@@ -178,6 +179,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   // A diagnostic and a Review save every question when they start; a quiz is written by a build job meanwhile.
   const fixed = diagnostic || reviewRoute;
   const [searchParams, setSearchParams] = useSearchParams();
+  const stillHere = useStillHere();
   const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
   // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
@@ -231,7 +233,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           })
         : invoke("study.diagnosticStart", { planId: planId ?? "" }),
     onSuccess: (session) => {
-      if (session.attemptId)
+      // The quiz was started a moment ago; the student may have left since, and the address is then another page's.
+      if (session.attemptId && stillHere())
         setSearchParams(
           { ...(paper ? { paper } : {}), attempt: session.attemptId },
           { replace: true },

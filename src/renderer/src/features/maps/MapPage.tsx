@@ -45,6 +45,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { MAP_INSTRUCTION_MAX, mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
@@ -214,9 +215,12 @@ export function MapPage() {
   // A request chosen by navigation wins over the kept one, which stands only when none arrived that way.
   const [kept, setKept] = useState<string>();
   const reviewed = jobId ? undefined : (arrival?.job ?? kept);
+  const stillHere = useStillHere();
+  // Taking `job` out of the entry applies to the router's current page, and this also runs after a wait: it is skipped
+  // once the student has gone elsewhere, or it would bring them back to this page.
   const leaveRequest = () => {
     setKept(undefined);
-    if (arrival?.job) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (arrival?.job && stillHere()) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   };
   // A map the student asked for in their own words is built next to the maps the scope has. Until it is, the page shows
   // its working state in place of those.
@@ -928,7 +932,7 @@ export function MapPage() {
     if (!starting || buildAsked.current || list.isPending || build.isPending) return;
     buildAsked.current = true;
     // The flag belongs to this arrival: going back to the page later must not start a build again.
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (stillHere()) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     // Without an instruction the page builds only when the scope has no map and no build; with one, the request is
     // for a map of its own and core decides whether the same request is already under way.
     const own = wanted.current;

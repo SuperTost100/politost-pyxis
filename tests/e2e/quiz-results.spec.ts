@@ -218,6 +218,45 @@ test("the next steps wait for the read that decides them, and stay once they are
   }
 });
 
+test("the exam page's cleanup of `?drill=` never lands on the page opened right after it", async () => {
+  test.setTimeout(120_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // The results are opened once, so the router already holds their code and can open them again without waiting.
+    await open(page);
+    // React draws a page first and runs its effects a moment later, and on a slow machine the student can already be on
+    // the next page by then. This puts the router's move to the results into that gap: the exam page has been drawn
+    // (its `?drill=` is in the address), and its first data request is the moment the page is leaving.
+    await page.evaluate(() => {
+      const RealAbortController = window.AbortController;
+      let armed = false;
+      window.AbortController = class extends RealAbortController {
+        constructor() {
+          super();
+          if (!armed) return;
+          armed = false;
+          history.pushState(null, "", "#/plans/p-fis/quiz/t-kin?attempt=a-quiz");
+          dispatchEvent(new PopStateEvent("popstate"));
+        }
+      };
+      const push = history.pushState.bind(history);
+      history.pushState = (...args: Parameters<History["pushState"]>) => {
+        armed ||= String(args[2]).includes("drill=");
+        push(...args);
+      };
+    });
+    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    await expect(page.locator(".px-res-title")).toBeVisible();
+    // Give a late cleanup time to land. It would drop `?attempt=` and show the intro of a new quiz in place of the results.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/quiz\/t-kin\?attempt=a-quiz$/);
+    await expect(page.locator(".px-res-title")).toBeVisible();
+  } finally {
+    await done();
+  }
+});
+
 /** Screenshots for review, in Italian dark and English light at 1280 and 960, when PYXIS_SHOTS is set. */
 async function shoot(page: Page, name: string) {
   if (!SHOTS) return;
