@@ -450,7 +450,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     expect((await read()).steps).toEqual(before);
 
     // Redo opens a new quiz; only handing it in adds a step, with its own attempt.
-    await page.getByRole("button", { name: "Rifai" }).click();
+    await page.getByRole("button", { name: "Rifai", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}$`));
     await expect(page.getByRole("button", { name: "Inizia", exact: true })).toBeVisible();
     expect((await read()).steps).toEqual(before);
@@ -467,7 +467,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.locator(".px-res-headline")).toContainText("10 punti su 10.");
     // A quiz just handed in is not a review: it continues the path and offers no Redo.
     await expect(page.getByRole("button", { name: "Continua" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Rifai" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Rifai", exact: true })).toHaveCount(0);
     const after = (await read()).steps;
     expect(after.slice(0, 3)).toEqual(before);
     expect(after.slice(3)).toMatchObject([{ activity: "quiz", topicId: topic.id }]);
@@ -561,7 +561,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       await window.pyxis.setAppearance("light");
     });
     await page.reload();
-    await page.getByRole("button", { name: "Rifai" }).click();
+    await page.getByRole("button", { name: "Rifai", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+$`));
     await expect(page.getByRole("button", { name: "Inizia", exact: true })).toBeVisible();
   } finally {

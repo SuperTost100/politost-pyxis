@@ -934,12 +934,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       stem: item?.stem ?? "",
       topic: topicTitle(row.id),
       mark,
+      value: row.score,
       ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
       answer: answerText(row.id),
       typed: answerSource(item?.grade.kind ?? ""),
       long,
       expected: expectedText(row),
-      expectedLabel: t(long ? "quiz.reference" : "quiz.expected"),
+      expectedLabel: t(long ? "quiz.reference" : "results.rightAnswer"),
       explanation: row.explanation,
       citations: row.citations,
       grader:
@@ -1008,15 +1009,19 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               onClick: () => void close(),
             }
       }
-      title={
+      title={[
+        // A handed-in attempt is its results.
+        finalResult ? t("results.title") : "",
         redo
           ? t("mistakes.redoTitle")
           : review
             ? t("cards.reviewTitle")
             : diagnostic
               ? t("quiz.diagnosticTitle")
-              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 ")
-      }
+              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 "),
+      ]
+        .filter(Boolean)
+        .join(" \u00b7 ")}
       subtitle={
         inQuestions
           ? wholeReview
@@ -1232,6 +1237,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         <ResultsScreen
           kind="quiz"
           attemptId={attemptId}
+          planId={planId ?? ""}
           eyebrow={
             !finalResult
               ? t("results.result")
@@ -1292,6 +1298,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               ? undefined
               : { done: grading.data?.done ?? 0, total: grading.data?.total ?? 0 }
           }
+          stopped={gradingStopped && !finalResult}
           notes={
             gradingStopped && !finalResult ? (
               grading.data?.error ? (
@@ -1332,20 +1339,18 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   {t(quizBackLabel({ redo, review: reviewRoute }))}
                 </Button>
               )
-            ) : hasMistakes ? (
-              <Button
-                type="primary"
-                shape="round"
-                size="large"
-                onClick={() =>
-                  navigate(`/plans/${planId ?? ""}/review?from=${encodeURIComponent(attemptId)}`)
-                }
-              >
-                {t("quiz.reviewMistakes")}
-              </Button>
-            ) : (
+            ) : hasMistakes ? undefined : (
               backButton("primary")
             )
+          }
+          // Ripasso mirato: a drill on the gap this quiz opened, or this quiz's wrong answers asked again.
+          review={
+            finalResult && hasMistakes
+              ? {
+                  count: countedResults.filter((row) => row.score < 1).length,
+                  onReview: () => navigate(`/plans/${planId ?? ""}/review?from=${encodeURIComponent(attemptId)}`),
+                }
+              : undefined
           }
           secondary={
             !finalResult ? (

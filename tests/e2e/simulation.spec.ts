@@ -208,7 +208,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       run.attemptId,
     );
     // Time is up: the results screen waits for the grade and says which exercises are graded.
-    await expect(page.locator(".px-res-headline")).toContainText("Grading your answers.");
+    await expect(page.locator(".px-res-title")).toContainText("Grading your answers.");
     await expect(page.getByRole("heading", { name: "Exercises" })).toBeVisible();
     await expect
       .poll(
@@ -269,8 +269,8 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       )
       .toBe(true);
     await expect(page.getByText(/Estimated grade by/)).toBeVisible();
-    // One meter for the grade against the goal; the topic list reads its bars as text.
-    await expect(page.getByRole("meter")).toHaveCount(1);
+    // The grade is the title, in words; the topic list reads its bars as text.
+    await expect(page.locator(".px-res-title")).toHaveText(/^You got \d+(\.\d)?\/30$/);
     await expect(page.locator(".px-res-topics li")).toHaveCount(2);
     const result = (await page.evaluate(
       (attemptId) => window.pyxis.invoke("study.simulationRead", { attemptId }),
@@ -291,11 +291,10 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       ),
     ).toBe(true);
     // Every exercise reads its answer and the grader's feedback; one with full marks opens from its row.
-    await page.locator(".px-res-filter .ant-segmented-item", { hasText: /^All/ }).click();
     const first = page.locator(".px-res-q").first();
     if ((await first.locator(".px-res-q-head").getAttribute("aria-expanded")) !== "true")
       await first.locator(".px-res-q-head").click();
-    await expect(first.locator(".px-res-answer.is-yours")).toContainText("Your answer");
+    await expect(first.locator(".px-res-ans")).toContainText("Your answer");
     await expect(first.locator(".px-res-grader")).toContainText("Graded by");
     await saveShot(page, "m11-results-en-light.png");
     await expectNoAxeViolations(page);

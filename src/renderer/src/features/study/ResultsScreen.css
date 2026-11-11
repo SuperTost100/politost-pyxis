@@ -1,223 +1,166 @@
-/* One results screen for quizzes and simulations: the summary on the left, the answers on the right. */
+/* One results screen for quizzes and simulations: the summary on the left, every question in order on the right. The
+   page is the container the grid answers to, so the window, large text and zoom all move the point where the summary
+   goes over the questions. */
 .focus-main .column:has(.px-res) {
-  width: min(1152px, calc(100% - var(--space-6) * 2));
+  width: min(1180px, calc(100% - 56px));
+}
+.focus-main:has(.px-res) {
+  padding-top: var(--space-2);
+}
+.column:has(> .px-res) {
+  container: px-results / inline-size;
 }
 .px-res {
   display: grid;
-  grid-template-columns: 384px minmax(0, 1fr);
-  gap: var(--space-12);
+  grid-template-columns: 350px minmax(0, 1fr);
+  gap: 26px;
   align-items: start;
 }
-@media (max-width: 1180px) {
-  .px-res {
-    grid-template-columns: 320px minmax(0, 1fr);
-    gap: var(--space-8);
-  }
-}
-/* The summary stays in view while the answers scroll, when the window is tall enough to hold all of it. */
-@media (min-height: 900px) {
-  .px-res-summary {
-    position: sticky;
-    top: var(--space-6);
-  }
-}
-
+/* The summary stays in view while the questions scroll, and scrolls on its own when it is taller than the window. */
 .px-res-summary {
-  display: flex;
-  flex-direction: column;
+  position: sticky;
+  top: var(--space-2);
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  display: grid;
+  gap: 26px;
+  align-content: start;
   min-width: 0;
+  padding: 18px 8px 28px 4px;
 }
-.px-res-eyebrow {
+.px-res-summary > * {
   margin: 0;
-  color: var(--ink-muted);
-  font-weight: 600;
 }
-.px-res-grade {
-  display: flex;
-  align-items: flex-end;
-  margin: var(--space-2) 0 0;
+.px-res-summary > .px-res-eyebrow {
+  margin-bottom: -18px;
+  color: var(--ink-muted);
+}
+.px-res-title {
+  margin: 0;
+  font: 400 calc(34px * var(--text-scale, 1)) / 1.12 var(--font-display);
+  letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
+  text-wrap: balance;
 }
-.px-res-grade-num {
-  font: 600 calc(64px * var(--text-scale, 1)) / calc(64px * var(--text-scale, 1)) var(--font-sans);
-  letter-spacing: -0.02em;
+.px-res-title.is-working {
+  font-size: calc(26px * var(--text-scale, 1));
 }
-.px-res-grade-scale {
-  padding-bottom: 6px;
-  color: var(--ink-muted);
-  font: 500 calc(24px * var(--text-scale, 1)) / 1 var(--font-sans);
-}
-.px-res-grade-wait {
-  display: inline-block;
-  width: 68px;
-  height: 52px;
-  margin-right: var(--space-1);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-}
-.px-res-headline {
-  margin: var(--space-2) 0 0;
-}
-.px-res-detail {
-  color: var(--ink-muted);
-}
-
-.px-res-scale-wrap {
-  margin-top: var(--space-4);
-}
-.px-res-meter {
-  position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--surface-raised);
-}
-[data-theme="dark"] .px-res-meter {
-  background: var(--border);
-}
-.px-res-meter.is-progress {
-  margin-top: var(--space-4);
-}
-.px-res-meter-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  background: var(--primary);
-}
-.px-res-goal {
-  position: absolute;
-  top: -4px;
-  width: 2px;
-  height: 16px;
-  border-radius: 1px;
-  background: var(--star);
-  transform: translateX(-1px);
-}
-.px-res-scale {
-  position: relative;
-  height: 16px;
-  margin-top: 6px;
-  color: var(--ink-subtle);
-}
-.px-res-scale span {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.px-res-scale .is-pass {
-  transform: translateX(-50%);
-}
-.px-res-scale .is-end {
-  left: auto;
-  right: 0;
-}
-.px-res-goal-note {
+.px-res-working {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  margin: var(--space-2) 0 0;
-  color: var(--ink-muted);
-}
-.px-res-goal-key {
-  width: 2px;
-  height: 12px;
-  border-radius: 1px;
-  background: var(--star);
-}
-
-.px-res-notes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-.px-res-notes > p {
-  margin: 0;
-  color: var(--ink-muted);
-}
-.px-res-fallback {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-.px-res-fallback .px-icon {
-  flex: none;
-  margin-top: 1px;
-  color: var(--info);
-}
-
-.px-res-changes {
-  margin-top: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-}
-.px-res-changes-title,
-.px-res-topics-title {
-  margin: 0;
-  color: var(--ink-muted);
-  font-weight: 600;
-}
-.px-res-changes ul {
-  display: grid;
   gap: var(--space-3);
-  margin: var(--space-2) 0 0;
+}
+.px-res-working .px-logo {
+  flex: none;
+}
+.px-res-summary > .px-res-progress {
+  height: 4px;
+  margin-top: -14px;
+  border-radius: 2px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.px-res-progress span {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+}
+.px-res-summary > .px-res-headline {
+  margin-top: -16px;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.px-res-summary > .px-res-rises {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: -16px;
   padding: 0;
   list-style: none;
 }
-.px-res-changes li {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-}
-.px-res-changes li .px-icon.is-danger {
-  color: var(--danger);
-}
-.px-res-changes li .px-icon.is-mastery {
-  color: var(--mastery-text);
-}
-.px-res-changes li .px-icon.is-primary {
-  color: var(--primary-text);
-}
-.px-res-change-what,
-.px-res-change-why,
-.px-res-change-values {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-.px-res-change-why {
-  color: var(--ink-muted);
-}
-.px-res-change-values {
-  margin-top: var(--space-1);
+.px-res-rises li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.45;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
-.px-res-changes-later {
-  margin: var(--space-3) 0 0;
+.px-res-rises .px-icon {
+  flex: none;
+  margin-top: 2px;
+}
+.px-res-notes {
+  display: grid;
+  gap: var(--space-3);
+}
+.px-res-fallback {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
   color: var(--ink-muted);
 }
-
-.px-res-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-top: var(--space-5);
+.px-res-fallback .px-icon {
+  flex: none;
+  margin-top: 2px;
 }
-.px-res-actions .ant-btn {
+
+/* What changes in the path: the model's reading of the mistakes, and the new step in the soft accent. */
+.px-res-changes {
+  display: grid;
+  gap: 10px;
+}
+.px-res-changes-title {
+  margin: 0;
+  font: 400 calc(19px * var(--text-scale, 1)) / 1.25 var(--font-display);
+  letter-spacing: -0.005em;
+}
+.px-res-changes-text {
+  margin: 0;
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+.px-res-newstep {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: var(--primary-soft);
+}
+.px-res-newstep .px-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary-text);
+}
+.px-res-newstep b {
+  display: block;
+  font: 650 calc(14px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  color: var(--ink);
+}
+.px-res-newstep span {
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-res-actions {
+  display: grid;
+  gap: 6px;
+}
+.px-res-actions:empty {
+  display: none;
+}
+.px-res-actions > .ant-btn {
   width: 100%;
 }
-.px-res-extra {
+.px-res-summary > .px-res-extra {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  margin-top: -14px;
 }
 .px-res-after {
-  margin: var(--space-3) 0 0;
   color: var(--ink-muted);
 }
 
@@ -285,229 +228,277 @@
   background: var(--danger);
 }
 
-/* The answers */
+/* The questions, in the order they were asked */
 .px-res-list {
   min-width: 0;
+  padding-bottom: 28px;
 }
-.px-res-filter {
+.px-res-list-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin: 6px 0 14px 2px;
 }
 .px-res-list-title {
   margin: 0;
+  font: 400 calc(24px * var(--text-scale, 1)) / 1.2 var(--font-display);
+  letter-spacing: -0.01em;
 }
 .px-res-list-note {
   color: var(--ink-muted);
 }
 .px-res-qs {
   display: grid;
-  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+/* An answer to review: an open card. */
 .px-res-q {
-  --tone: var(--danger);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  padding: 18px 22px;
+  border-radius: var(--radius-card);
   background: var(--surface);
-}
-.px-res-q.is-correct {
-  --tone: var(--mastery-text);
-}
-.px-res-q.is-partial {
-  --tone: var(--warning);
-}
-.px-res-q.is-flagged,
-.px-res-q.is-queued,
-.px-res-q.is-ungraded {
-  --tone: var(--ink-muted);
-}
-.px-res-q.is-grading {
-  --tone: var(--primary-text);
+  box-shadow: var(--shadow-raised);
 }
 .px-res-q-head {
-  display: grid;
-  grid-template-columns: 20px 24px minmax(0, 1fr) auto 18px;
-  gap: var(--space-3);
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-  min-height: 48px;
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--ink);
-  font: 500 calc(15px * var(--text-scale, 1)) / 22px var(--font-sans);
-  text-align: left;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
-button.px-res-q-head {
-  cursor: pointer;
-}
-button.px-res-q-head:hover {
-  background: var(--surface-raised);
-}
-.px-res-q.is-open button.px-res-q-head:hover {
-  background: transparent;
-}
-.px-res-mark {
-  display: grid;
-  color: var(--tone);
-}
-.px-res-n {
-  color: var(--ink-subtle);
-  font-variant-numeric: tabular-nums;
-}
-.px-res-stem {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
+.px-res-q-head.is-static .px-res-q-line {
+  flex: 1;
+  min-width: 0;
+  font: 650 calc(15px * var(--text-scale, 1)) / 1.35 var(--font-sans);
   overflow-wrap: anywhere;
 }
-.px-res-q.is-flagged .px-res-stem {
-  color: var(--ink-muted);
-}
-.px-res-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  color: var(--ink-muted);
-  white-space: nowrap;
-}
-.px-res-topic {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.px-res-word {
-  color: var(--tone);
-  font-weight: 600;
+.px-res-n {
   font-variant-numeric: tabular-nums;
 }
+/* A right answer: one line, folded, opened by its row. */
+.px-res-q.is-correct {
+  gap: 0;
+  padding: 0;
+  box-shadow: var(--shadow-card);
+}
+.px-res-q.is-correct .px-res-q-head {
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 18px 10px 22px;
+  border: 0;
+  border-radius: var(--radius-card);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 calc(14px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out);
+}
+.px-res-q.is-correct .px-res-q-head:hover {
+  background: var(--surface-sunken);
+  color: var(--ink);
+}
+.px-res-q.is-correct .px-res-q-line {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .px-res-chevron {
+  flex: none;
   color: var(--ink-subtle);
-  transition: transform 150ms ease-out;
+  transition: transform var(--duration-micro) var(--ease-out);
 }
 .px-res-q.is-open .px-res-chevron {
   transform: rotate(180deg);
 }
-@media (prefers-reduced-motion: reduce) {
-  .px-res-chevron {
-    transition: none;
-  }
+.px-res-q.is-correct .px-res-q-body {
+  padding: 0 22px 16px;
+}
+
+/* The state in a word: the quiet green with a check for a right answer, ink with an icon for the others. */
+.px-res-st {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font: 650 calc(13px * var(--text-scale, 1)) / 1.2 var(--font-sans);
+  color: var(--ink);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.px-res-st.is-correct {
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.px-res-st.is-queued,
+.px-res-st.is-ungraded,
+.px-res-st.is-grading {
+  color: var(--ink-muted);
 }
 
 .px-res-q-body {
   display: grid;
-  gap: var(--space-3);
-  padding: 0 var(--space-4) var(--space-4) calc(var(--space-4) + 20px + 24px + var(--space-3) * 2);
+  gap: 12px;
+  min-width: 0;
 }
-.px-res-q-body > .px-markdown > :last-child {
+.px-res-stem {
+  font-size: calc(14.5px * var(--text-scale, 1));
+  line-height: 1.55;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-res-stem .px-markdown > :last-child {
   margin-bottom: 0;
 }
-.px-res-answers {
+.px-res-ans {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--space-3);
-}
-.px-res-answers.is-long {
-  grid-template-columns: minmax(0, 1fr);
-}
-.px-res-answer {
-  min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--surface-raised);
-}
-.px-res-answer .body,
-.px-res-answer .px-markdown > :last-child {
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 6px 12px;
   margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.5;
 }
-.px-res-answer-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 2px;
-  font-weight: 600;
-  color: var(--ink-muted);
+.px-res-q.is-correct .px-res-ans {
+  padding: 0;
+  background: transparent;
 }
-.px-res-answer.is-wrong .px-res-answer-label {
-  color: var(--danger);
+.px-res-ans dt {
+  color: var(--ink-subtle);
 }
-.px-res-answer.is-partial .px-res-answer-label {
-  color: var(--warning);
+.px-res-ans dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
-.px-res-answer.is-correct .px-res-answer-label,
-.px-res-answer.is-expected .px-res-answer-label {
-  color: var(--mastery-text);
+.px-res-ans dd .px-markdown > :last-child {
+  margin-bottom: 0;
+}
+.px-res-ans.is-long {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.px-res-ans.is-long dd + dt {
+  margin-top: var(--space-2);
 }
 .px-res-answer-empty {
-  margin: 0;
   color: var(--ink-muted);
-  font-style: italic;
+}
+.px-res-ok-a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: -3px 0 -3px -8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--ok-soft);
+  color: var(--ok);
+  font-weight: 650;
+}
+.px-res-ans.is-long .px-res-ok-a {
+  display: flex;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+}
+.px-res-ok-a .px-icon {
+  flex: none;
+}
+.px-res-ans.is-long .px-res-ok-a .px-markdown {
+  flex: 1;
+  min-width: 0;
+  color: var(--ok);
+}
+.px-res-why {
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+.px-res-why .px-markdown > :last-child {
+  margin-bottom: 0;
+}
+.px-res-why ul {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-5);
 }
 .px-res-missing-label {
-  margin: 0 0 2px;
+  margin: var(--space-2) 0 0;
+  color: var(--ink-subtle);
   font-weight: 600;
 }
-.px-res-missing .px-markdown > :last-child {
-  margin-bottom: 0;
-}
-.px-res-missing ul {
-  display: grid;
-  gap: var(--space-1);
-  margin: 0;
-  padding-left: var(--space-4);
-}
-.px-res-missing li .px-markdown > :last-child {
-  margin-bottom: 0;
-}
-.px-res-q-foot {
+.px-res-acts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  margin-right: calc(-1 * var(--space-2));
+  gap: 6px;
+  margin-left: -2px;
+}
+.px-res-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--primary-text);
+  font: 600 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  cursor: pointer;
+}
+.px-res-src:hover {
+  text-decoration: underline;
 }
 .px-res-grader,
 .px-res-flag-note {
-  color: var(--ink-muted);
+  color: var(--ink-subtle);
 }
 .px-res-grow {
   flex: 1;
 }
-.px-res-q-foot .ant-btn {
-  color: var(--ink-muted);
+
+/* Narrow page (small window, large text, zoom): the summary goes over the questions. */
+@container px-results (max-width: 52em) {
+  .px-res {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+  .px-res-summary {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 8px 0 0;
+  }
+  .px-res-q {
+    padding: 16px;
+  }
+  .px-res-ans {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .px-res-ans dd + dt {
+    margin-top: var(--space-2);
+  }
 }
 
-.px-res-fold {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
-  border: 1px dashed var(--border-control);
-  border-radius: var(--radius-md);
-  color: var(--ink-muted);
-}
-.px-res-fold > .px-icon {
-  flex: none;
-  color: var(--mastery-text);
-}
-.px-res-fold .body {
-  flex: 1;
-  margin: 0;
-}
-.px-res-empty {
-  margin: 0;
-  padding: var(--space-4);
-  border: 1px dashed var(--border-control);
-  border-radius: var(--radius-md);
-  color: var(--ink-muted);
+@media (prefers-reduced-motion: reduce) {
+  .px-res-chevron,
+  .px-res-q.is-correct .px-res-q-head {
+    transition: none;
+  }
 }
