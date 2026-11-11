@@ -61,9 +61,60 @@
   text-decoration: none;
   transition: box-shadow 0.15s ease-out;
 }
-.px-maps-tile:hover {
+/* The tile and its dots: the dots show on hover and focus, on the drawing's corner, lifted like the map's canvas tools.
+   While the tile's menu is open the tile keeps its hover look. */
+.px-maps-tilew {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+.px-maps-tilew:hover .px-maps-tile,
+.px-maps-tilew.is-ctx .px-maps-tile {
   box-shadow: var(--shadow-overlay);
   color: var(--ink);
+}
+.px-maps-tile.is-renaming {
+  box-shadow: var(--shadow-overlay);
+}
+.ant-btn.px-maps-dots {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease-out,
+    background-color var(--duration-micro) var(--ease-out);
+}
+[data-theme="dark"] .ant-btn.px-maps-dots {
+  background: var(--surface-raised);
+}
+.px-maps-tilew:hover .px-maps-dots,
+.px-maps-tilew:focus-within .px-maps-dots,
+.px-maps-tilew.is-ctx .px-maps-dots {
+  opacity: 1;
+}
+.px-maps-name .px-map-name-field {
+  width: 100%;
+  height: calc(30px * var(--text-scale, 1));
+  padding: 0 8px;
+  font: 650 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
+}
+.px-maps-failed {
+  margin: 6px 4px 0;
+  color: var(--danger);
+}
+/* A deleted map's tile shrinks where it was, then the others close the gap (MapsHome moves them). */
+.px-maps-grid > li.is-leaving {
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition:
+    opacity 220ms var(--ease-in-out),
+    transform 220ms var(--ease-in-out);
 }
 .px-maps-tile:focus-visible {
   outline: 2px solid var(--focus-ring);

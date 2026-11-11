@@ -2,7 +2,7 @@ import { Modal } from "antd";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { goPages } from "@shared/menu";
-import { MAP_KEYS } from "../features/maps/MapMenu";
+import { MAP_KEYS } from "../features/maps/mapKeys";
 import "./ShortcutsDialog.css";
 
 /** Keys by name: `mod` is Command on macOS and Ctrl elsewhere. Anything else is shown as typed. */

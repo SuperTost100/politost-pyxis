@@ -339,23 +339,27 @@ export function Segmented<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   /** The id of the text that names the control. */
   label: string;
   value: T;
   options: Array<{ value: T; label: string }>;
   onChange: (value: T) => void;
+  /** While what it sets is busy, as a map being changed: the choice shows, keeps the focus and can't be moved. */
+  disabled?: boolean;
 }) {
   return (
     <div
       className="px-ctl-seg"
       role="radiogroup"
       aria-labelledby={label}
+      aria-disabled={disabled || undefined}
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
       onKeyDown={(event) => {
         // Arrows move the choice, as in any radio group.
         const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
-        if (!step) return;
+        if (!step || disabled) return;
         event.preventDefault();
         const at = options.findIndex((option) => option.value === value);
         const next = options[(at + step + options.length) % options.length]!;
@@ -371,7 +375,11 @@ export function Segmented<T extends string>({
           data-value={option.value}
           aria-checked={value === option.value}
           tabIndex={value === option.value ? 0 : -1}
-          onClick={() => onChange(option.value)}
+          // Not `disabled`, which would drop the focus of the student who just made the choice.
+          aria-disabled={disabled || undefined}
+          onClick={() => {
+            if (!disabled) onChange(option.value);
+          }}
         >
           {option.label}
         </button>

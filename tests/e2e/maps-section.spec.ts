@@ -150,6 +150,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     const exportAs = async (item: string) => {
       rmSync(saved, { force: true });
       await page.getByRole("button", { name: "Altro", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Esporta" }).click();
       await page.getByRole("menuitem", { name: item }).click();
       // The notice from the previous export may still show, so wait for the file itself.
       await expect
@@ -158,7 +159,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
       await expect(page.getByText("File salvato")).toBeVisible();
       return readFileSync(saved);
     };
-    const markdown = (await exportAs("Schema (Markdown)")).toString("utf8");
+    const markdown = (await exportAs("Schema in testo Markdown")).toString("utf8");
     expect(markdown).toBe(
       [
         "# Moto rettilineo",
@@ -175,11 +176,11 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
         "",
       ].join("\n"),
     );
-    const svg = (await exportAs("Mappa intera (SVG)")).toString("utf8");
+    const svg = (await exportAs("Mappa intera SVG")).toString("utf8");
     expect(svg).toMatch(/^<svg /);
     expect(svg).toContain(">Accelerazione</tspan>");
     expect(svg).toContain(">dipende da</tspan>");
-    const pdf = await exportAs("Mappa e schema (PDF)");
+    const pdf = await exportAs("Mappa e schema da stampare PDF");
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     // The drawing gets a page of its own size; the outline follows on A4.
     const boxes = new Set(
@@ -219,7 +220,7 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
       page.locator(".px-map-empty").getByRole("button", { name: "Crea la mappa" }),
     ).toBeVisible();
     // Before a map exists the line under the title names the exam alone, with no dot left hanging after it.
-    await expect(page.locator(".px-map-title p")).toHaveText("Meccanica");
+    await expect(page.locator(".px-map-sub")).toHaveText("Meccanica");
     expect(errors).toEqual([]);
   } finally {
     await app.close();

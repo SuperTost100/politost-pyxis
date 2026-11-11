@@ -32,7 +32,7 @@ A popover belongs to the button that opened it: it sits 8px from it, lines up wi
 
 ## Item menus
 
-Whatever has a three-dots menu opens the same menu on a right-click, at the pointer, and on the context-menu key and Shift+F10 under the focused element. Escape closes it and focus goes back to where it was. A menu holds actions on the item and nothing else. The behaviour is shared (`useItemMenu` and `MenuItemArea` in `components/ItemMenu.tsx`, the rules in `lib/itemMenu.ts`), so a new row wires it in one line and gives the dots and the right-click one `menu`. Text fields and anything marked `data-native-menu` keep the system's own menu.
+Whatever has a three-dots menu opens the same menu on a right-click, at the pointer, and on the context-menu key and Shift+F10 under the focused element. Escape closes it and focus goes back to where it was. A menu holds actions on the item and nothing else. The behaviour is shared (`useItemMenu`, `MenuItemArea` and the dots button `MenuButton` in `components/ItemMenu.tsx`, the rules in `lib/itemMenu.ts`), so a new row wires it in one line and gives the dots and the right-click one `menu`. An item with `children` opens a submenu, such as Esporta with its formats: the right arrow opens it, and the left arrow and Escape close it. What deletes goes last, after a hairline, in soft red with "…". A menu never lists keyboard shortcuts, which live in Help's shortcuts dialog. Text fields and anything marked `data-native-menu` keep the system's own menu.
 
 ## Empty states
 

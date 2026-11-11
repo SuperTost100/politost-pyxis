@@ -22,6 +22,7 @@ import {
 } from "./graph";
 import {
   listMaps,
+  deleteMap,
   readStoredMap,
   storeMap,
   type StoredMap,
@@ -379,9 +380,11 @@ function latestBuild<T>(
   instruction?: string,
   jobId?: string,
 ): T | undefined {
+  // Without a job named, a build the student gave up (cleared from Attività, or the build of a map they deleted) is not
+  // the scope's build any more: the page does not offer to resume it, and a new request starts afresh.
   const asked =
     (instruction === undefined ? "" : " AND COALESCE(json_extract(params_json, '$.instruction'), '') = ?") +
-    (jobId === undefined ? "" : " AND id = ?");
+    (jobId === undefined ? " AND NOT (dismissed = 1 AND state <> 'succeeded')" : " AND id = ?");
   const extra = [...(instruction === undefined ? [] : [instruction]), ...(jobId === undefined ? [] : [jobId])];
   return (
     isTopicScope(input)
@@ -411,17 +414,24 @@ export function enqueueMaps(
 ) {
   requireScope(db, input);
   const text = cleanInstruction(instruction);
-  const existing = latestBuild<{ id: string; state: string }>(db, input, "id, state", text ?? "");
-  if (existing && !(text && existing.state === "succeeded")) {
+  const existing = latestBuild<{ id: string; state: string; mapId: string | null }>(
+    db,
+    input,
+    "id, state, json_extract(params_json, '$.mapId') AS mapId",
+    text ?? "",
+  );
+  const maps = listMaps(db, input);
+  // A finished build answers a plain request only while its map is there: once the student deleted it, a new one is built.
+  const answered =
+    existing?.state === "succeeded" &&
+    !text &&
+    (existing.mapId ? maps.some((map) => map.id === existing.mapId) : maps.length > 0);
+  if (existing && (existing.state !== "succeeded" || answered)) {
     if (existing.state === "failed" || existing.state === "cancelled")
       runner.retry(existing.id);
     else if (existing.state === "interrupted") runner.resume(existing.id);
-    return {
-      jobId: existing.id,
-      maps: listMaps(db, input),
-    };
+    return { jobId: existing.id, maps };
   }
-  const maps = listMaps(db, input);
   const params = prepareMaps(db, input, text);
   const jobId = runner.start("map-build", params);
   return { jobId, maps };
@@ -487,6 +497,40 @@ function editConflict() {
   return new IpcError("map-edit-conflict", "map.editConflict");
 }
 
+/**
+ * Deletes one map of the scope and gives up every build of it, so a build still writing it or stopped on the way stops
+ * and leaves Attività, and none can bring it back. `jobId` names a map still being written, which has no map yet: its
+ * build's map is the one deleted. Says whether a stored map was removed.
+ */
+export function deleteMapAndBuilds(
+  db: Database.Database,
+  runner: Runner,
+  input: Input,
+  target: { mapId?: string; jobId?: string },
+): boolean {
+  requireScope(db, input);
+  const build = target.jobId
+    ? latestBuild<{ mapId: string | null }>(db, input, "json_extract(params_json, '$.mapId') AS mapId", undefined, target.jobId)
+    : undefined;
+  const mapId = target.mapId ?? build?.mapId ?? undefined;
+  const builds = isTopicScope(input)
+    ? (db
+        .prepare(
+          "SELECT id FROM jobs WHERE kind = 'map-build' AND state <> 'succeeded' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ? AND (id = ? OR json_extract(params_json, '$.mapId') = ?)",
+        )
+        .pluck()
+        .all(input.planId, input.topicId, target.jobId ?? null, mapId ?? null) as string[])
+    : (db
+        .prepare(
+          "SELECT id FROM jobs WHERE kind = 'map-build' AND state <> 'succeeded' AND json_extract(params_json, '$.input.subjectId') = ? AND json_extract(params_json, '$.input.topicId') IS NULL AND (id = ? OR json_extract(params_json, '$.mapId') = ?)",
+        )
+        .pluck()
+        .all(input.subjectId, target.jobId ?? null, mapId ?? null) as string[]);
+  // The builds stop first: a running one checks its signal right before it stores the map, so it never stores it now.
+  for (const id of builds) runner.discard(id);
+  // A map already gone counts as deleted: the student wanted it gone, and it is.
+  return mapId ? deleteMap(db, input, mapId) : false;
+}
 /**
  * How a map build is going: the build `jobId` when the page asks for one (the job `maps.generate` returned, which is not
  * always the scope's newest), else the scope's newest. `mapId` is the map a finished build stored; builds that finish in

@@ -991,9 +991,7 @@
     "radial": "Radial",
     "undo": "Undo",
     "add": "Add a branch",
-    "png": "On-screen view (PNG)",
     "layout": "Layout",
-    "choose": "Choose a map",
     "tools": "Map tools",
     "rename": "Rename node",
     "connect": "Connect nodes",
@@ -1011,6 +1009,8 @@
     "nothingMatchedBody": "Pyxis read the material and found nothing for “{{text}}”, so it built no map. Reword the request, or leave it empty for a map of all the material.",
     "stopped": "You stopped building the map",
     "stoppedBody": "You can resume it from where it stopped.",
+    "lastFailed": "The last build of this map did not finish",
+    "lastInterrupted": "The last build of this map stopped",
     "exportFailed": "The image could not be exported. Try again.",
     "empty": "Build a map of this topic",
     "emptyBody": "Your sources become one focused map that you can edit and keep offline.",
@@ -1031,7 +1031,6 @@
       "star-soft": "Gold",
       "danger-soft": "Rose"
     },
-    "buildSources": "Build from sources",
     "general": "General knowledge, not from your sources",
     "redo": "Redo",
     "svg": "Export SVG",
@@ -1039,15 +1038,11 @@
     "expand_other": "Show {{count}} hidden nodes",
     "collapse": "Hide branch",
     "export": "Export",
-    "exportMarkdown": "Outline (Markdown)",
-    "exportSvg": "Whole map (SVG)",
-    "exportPdf": "Map and outline (PDF)",
     "exporting": "Exporting…",
     "openExam": "Open the exam {{title}}",
     "hint": "click a concept to see where it comes from",
     "makeCards": "Make flashcards from this map",
     "more": "More",
-    "shortcuts": "Shortcuts",
     "keys": {
       "select": "Select a concept",
       "rename": "Rename",
@@ -1061,7 +1056,37 @@
     "sourceSlide": "{{title}}, slide {{slide}}",
     "lastAdded": "I added “{{label}}” under {{parent}}.",
     "lastChanged": "I changed the map as you asked.",
-    "editing": "Changing the map…"
+    "editing": "Changing the map…",
+    "open": "Open",
+    "renameMap": "Rename",
+    "deleteMap": "Delete map…",
+    "deleteTitle": "Delete the map “{{title}}”?",
+    "deleteBody": "The map leaves Maps, with the changes you made to it. The flashcards you made from this map stay with your flashcards.",
+    "deleteWritingBody": "Pyxis stops writing it and the map is not made. Your other maps stay as they are.",
+    "deleteConfirm": "Delete map",
+    "deleteFailed": "The map could not be deleted. Try again.",
+    "deleted": "Deleted the map “{{title}}”.",
+    "gone": "That map is no longer here: it was deleted.",
+    "renamed": "The map is now called “{{title}}”.",
+    "nameLabel": "Map name",
+    "nameEmpty": "Type a name for the map.",
+    "renameFailed": "The map could not be renamed. Try again.",
+    "exportAs": {
+      "markdown": "Outline as text",
+      "svg": "Whole map",
+      "pdf": "Map and outline to print",
+      "png": "Just what you see"
+    },
+    "exportFormat": {
+      "markdown": "Markdown",
+      "svg": "SVG",
+      "pdf": "PDF",
+      "png": "PNG"
+    },
+    "whole": "Whole map",
+    "switchMaps": "Maps of {{scope}}, now: {{current}}",
+    "conceptTools": "Concept tools",
+    "makeCardsShort": "Make flashcards"
   },
   "maps": {
     "title": "Maps",
@@ -1094,7 +1119,8 @@
     "instructionPlaceholder": "For example “only the theorems, with proofs”",
     "asked": "“{{text}}”",
     "create": "Build the map",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "actionsFor": "More for {{title}}"
   },
   "lesson": {
     "title": "Lesson",
