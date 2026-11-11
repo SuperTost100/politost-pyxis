@@ -11,6 +11,7 @@ const NAMED = [
   "cards-everywhere",
   "subject-cards",
   "card-browse",
+  "card-sections",
   "map-scope",
 ] as const;
 

@@ -4,6 +4,8 @@ const sourceKinds = new Set(["source-import", "source-import-vision", "source-in
 const planKinds = new Set(["plan-build", "plan-rebuild"]);
 /** Jobs that save items citing source passages, so a source's citation counts change when they end. */
 const citingKinds = new Set(["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"]);
+/** Jobs that save flashcards, so the Flashcard section's lists and due counts change when they end. */
+const cardKinds = new Set(["cards-build", "cards-propose", "plan-build", "plan-rebuild"]);
 const finished = new Set<JobView["state"]>(["succeeded", "failed", "cancelled", "interrupted"]);
 
 /** A query family to mark stale; `refetch: false` leaves the refetch to the next visit. */
@@ -27,6 +29,7 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   if (job.kind === "library-sort") keys.push("subjects");
   // A job that ends joins or leaves the jobs list's "finished today" group.
   if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
+  if (finished.has(job.state) && cardKinds.has(job.kind)) keys.push("card-sections");
   if (finished.has(job.state) && citingKinds.has(job.kind) && !keys.includes("source-details")) keys.push("source-details");
   const families = keys.map((key) => ({ key, refetch: true }));
   if (finished.has(job.state)) families.push({ key: "series", refetch: false });

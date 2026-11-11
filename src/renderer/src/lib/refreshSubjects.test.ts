@@ -16,6 +16,7 @@ describe("refreshSubjects", () => {
       ["cards-everywhere"],
       ["subject-cards", "s1"],
       ["card-browse", "", "", "", "all", 1],
+      ["card-sections"],
       ["map-scope", "subject:s1"],
     ];
     const other = [["profile"], ["jobs"], ["maps", "subject:s1"]];
