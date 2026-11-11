@@ -46,7 +46,7 @@ import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
-import { claimOnce, sessionOf, wasClaimed } from "../../lib/claimOnce";
+import { claimOnce, wasClaimed } from "../../lib/claimOnce";
 import { MAP_INSTRUCTION_MAX, mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
@@ -177,6 +177,14 @@ function CrossEdge({
   );
 }
 const nodeTypes = { concept: ConceptNode };
+/** The window's session storage, or nothing where the browser refuses it. */
+function sessionOf(): Storage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
 const edgeTypes = { cross: CrossEdge };
 
 export function MapPage() {

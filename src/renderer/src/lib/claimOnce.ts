@@ -33,12 +33,3 @@ export function wasClaimed(
     return false;
   }
 }
-
-/** The window's session storage, or nothing where the browser refuses it. */
-export function sessionOf(): Storage | undefined {
-  try {
-    return window.sessionStorage;
-  } catch {
-    return undefined;
-  }
-}
