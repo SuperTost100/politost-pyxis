@@ -1,4 +1,4 @@
-import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -160,4 +160,60 @@ test("Without an AI tool, files added from the Library wait in Da sistemare unti
     await app.close();
     removeTestFolder(userData);
   }
+});
+
+/**
+ * Runs a spec with the request to choose subjects failing (`PYXIS_E2E_SORT_FAILS`). An add must end as if nothing had
+ * gone wrong: the dialog closes as for any clean import and the new source is listed, waiting in "Da sistemare".
+ */
+async function withFailingSort(
+  run: (context: {
+    app: ElectronApplication;
+    page: Page;
+    files: ReturnType<typeof studyFiles>;
+    open: (tab?: string) => Promise<Locator>;
+    waiting: (title: string | RegExp) => Locator;
+  }) => Promise<void>,
+) {
+  test.setTimeout(180000);
+  const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined, PYXIS_E2E_SORT_FAILS: "1" });
+  try {
+    const open = async (tab?: string) => {
+      await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await animationsSettled(page);
+      if (tab) await dialog.getByRole("radio", { name: tab }).locator("..").click();
+      return dialog;
+    };
+    const waiting = (title: string | RegExp) =>
+      page.getByRole("region", { name: "Da sistemare" }).locator(".px-source-row", { hasText: title });
+    await run({ app, page, files, open, waiting });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+}
+
+test("A failed request to choose subjects leaves a file from the picker imported and listed", async () => {
+  await withFailingSort(async ({ app, files, open, waiting }) => {
+    await answerPicker(app, [files.limits]);
+    const dialog = await open();
+    await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(waiting("Esercizi sui limiti")).toBeVisible();
+  });
+});
+
+test("A failed request to choose subjects leaves pasted text imported and listed", async () => {
+  await withFailingSort(async ({ open, waiting }) => {
+    const dialog = await open("Testo");
+    await dialog.getByRole("textbox", { name: "Titolo" }).fill("Probabilità");
+    await dialog
+      .getByRole("textbox", { name: "Incolla gli appunti" })
+      .fill("La probabilità condizionata di A dato B è il rapporto tra P(A e B) e P(B). ".repeat(25));
+    await dialog.getByRole("button", { name: "Incolla gli appunti" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(waiting("Probabilità")).toBeVisible();
+  });
 });

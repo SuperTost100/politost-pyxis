@@ -36,6 +36,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 27             | The partial index `linked_files_hash`, which finds a file already read by its hash      |
 | 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam   |
 | 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library       |
+| 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash          |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -69,7 +70,9 @@ The Flashcard section reads every card in one request, `study.cardSections` (`sr
 
 Migration 29 records, for a file added from the Library page, where Pyxis is with its subject: `subject_sort` is `waiting` until the `library-sort` job has looked at it, then `sorted` (a subject the student had), `created` (a subject Pyxis made for it, until the student renames that subject), `unsure` (the AI tool could not tell) or `no-ai` (none set up), and `manual` once the student chose. Every source that existed before, and every source the Library page did not add, stays NULL and is never sorted. A partial index covers the states the Library and the job look up.
 
-Current version is 29. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 30 indexes `sources.blob_sha` where it is set, so the lookup that an import and a folder scan run for every file (`EXISTING_SOURCE_SQL` in `src/core/sources/quality.ts`) reads a few rows through `sources_blob_sha` and `linked_files_hash` instead of the whole table. The step only adds the index and changes no row.
+
+Current version is 30. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |

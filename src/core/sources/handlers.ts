@@ -82,6 +82,8 @@ import {
 const CATALOG_FRESH_MS = 5 * 60_000;
 /** Where an end-to-end run's OCR data comes from: a local server standing in for GitHub. Unset outside those runs. */
 const e2eOcrBase = () => (process.env.PYXIS_E2E === "1" ? process.env.PYXIS_E2E_OCR_BASE : undefined);
+/** Test seam: the request to choose subjects fails, so a spec can check that the import around it does not. */
+const e2eSortFails = () => process.env.PYXIS_E2E === "1" && process.env.PYXIS_E2E_SORT_FAILS === "1";
 
 function sourceError(err: unknown): never {
   const message = err instanceof Error ? err.message : "";
@@ -511,6 +513,7 @@ export function sourceHandlers(
     },
     /** Chooses the subjects of the files one Library add brought in, as one job (see `library-subjects.ts`). */
     sortSubjects(input: { sourceIds: string[] }) {
+      if (e2eSortFails()) throw new Error("sort refused");
       return { jobId: startLibrarySort(db, runner, input.sourceIds) };
     },
     /** Puts a source in the subject the student chose, existing or new. Errors: `source-linked`, `subject-missing`. */
