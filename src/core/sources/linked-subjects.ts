@@ -146,6 +146,43 @@ export async function detectSubjects(
 /** Loose file names one call sorts. */
 export const MAX_LOOSE_SENT = 100;
 
+/**
+ * One call of a sorter: the default feature's engine, the same time limit as naming folders, and the answer checked
+ * against `schema`. `no-engine` without a ready engine, `failed` when the call fails or takes too long. Only the
+ * caller's own cancel is passed on.
+ */
+async function askSorter<T>(
+  db: Database.Database,
+  template: "folders.sort" | "library.sort",
+  prompt: unknown,
+  schema: z.ZodType<T>,
+  options: { signal?: AbortSignal; run?: GenerateInput["run"]; timeoutMs?: number },
+): Promise<T | "no-engine" | "failed"> {
+  let selection: ReturnType<typeof selectionFor>;
+  try {
+    selection = selectionFor(db, "default");
+  } catch {
+    return "no-engine";
+  }
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? DETECT_TIMEOUT_MS);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+  try {
+    const result = await generate({
+      prompt: JSON.stringify(prompt),
+      system: systemPrompt(template, { contentLanguage: contentLanguage(db) }),
+      selection,
+      schema,
+      signal,
+      run: options.run,
+    });
+    return result.data as T;
+  } catch (err) {
+    if (options.signal?.aborted) throw err;
+    if (!timeout.aborted && !isAbort(err)) console.error("pyxis-core: file sorting failed", err instanceof Error ? err.message : "unknown");
+    return "failed";
+  }
+}
+
 const sortSchema = z.object({
   files: z
     .array(z.object({ file: z.string().max(400), folder: z.string().max(400) }))
@@ -166,38 +203,22 @@ export async function sortLooseFiles(
   options: { signal?: AbortSignal; run?: GenerateInput["run"]; timeoutMs?: number },
 ): Promise<Map<string, string | null> | "no-engine" | "failed"> {
   if (!subjects.length || !files.length) return new Map();
-  let selection: ReturnType<typeof selectionFor>;
-  try {
-    selection = selectionFor(db, "default");
-  } catch {
-    return "no-engine";
-  }
-  const timeout = AbortSignal.timeout(options.timeoutMs ?? DETECT_TIMEOUT_MS);
-  const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
   const sent = files.slice(0, MAX_LOOSE_SENT);
   const folders = new Set(subjects.map((subject) => subject.folder));
-  let answer: z.infer<typeof sortSchema>;
-  try {
-    const result = await generate({
-      prompt: JSON.stringify({
-        subjects: subjects.map((subject) => ({
-          folder: subject.folder.slice(0, MAX_NAME_SENT),
-          name: subject.name.slice(0, MAX_NAME_SENT),
-        })),
-        files: sent.map((file) => file.slice(0, MAX_NAME_SENT)),
-      }),
-      system: systemPrompt("folders.sort", { contentLanguage: contentLanguage(db) }),
-      selection,
-      schema: sortSchema,
-      signal,
-      run: options.run,
-    });
-    answer = result.data as z.infer<typeof sortSchema>;
-  } catch (err) {
-    if (options.signal?.aborted) throw err;
-    if (!timeout.aborted && !isAbort(err)) console.error("pyxis-core: file sorting failed", err instanceof Error ? err.message : "unknown");
-    return "failed";
-  }
+  const answer = await askSorter(
+    db,
+    "folders.sort",
+    {
+      subjects: subjects.map((subject) => ({
+        folder: subject.folder.slice(0, MAX_NAME_SENT),
+        name: subject.name.slice(0, MAX_NAME_SENT),
+      })),
+      files: sent.map((file) => file.slice(0, MAX_NAME_SENT)),
+    },
+    sortSchema,
+    options,
+  );
+  if (typeof answer === "string") return answer;
   // A folder name cut to what was sent is matched back to the folder it came from.
   const byShown = new Map(subjects.map((subject) => [subject.folder.slice(0, MAX_NAME_SENT), subject.folder]));
   const byFile = new Map(sent.map((file) => [file.slice(0, MAX_NAME_SENT), file]));
@@ -207,6 +228,81 @@ export async function sortLooseFiles(
     if (file === undefined) continue;
     const folder = byShown.get(item.folder);
     sorted.set(file, folder !== undefined && folders.has(folder) ? folder : null);
+  }
+  return sorted;
+}
+
+/** Existing subject names one Library sort sends, at most, and how much of what a file is about. */
+const MAX_SUBJECTS_SENT = 200;
+const MAX_ABOUT_SENT = 400;
+
+const librarySchema = z.object({
+  files: z
+    .array(z.object({ id: z.string().max(40), subject: z.string().max(400), newSubject: z.string().max(400) }))
+    .max(MAX_LOOSE_SENT),
+});
+
+/**
+ * Where a Library sort puts a file: a subject the student has (by the id it had when the call was made), a new one it
+ * proposes, or none (null).
+ */
+export type LibraryPlacement = { subjectId: string } | { proposed: string } | null;
+
+/**
+ * Sorts files the student added to the Library into their subjects, as `sortLooseFiles` does for a linked folder: one
+ * model call for at most `MAX_LOOSE_SENT` files, with the names of the subjects the student has. Each file goes with an
+ * `id` that is its place in the call ("1", "2", ...) and its title beside it, and the model answers by `id`, so two
+ * files with one title, or titles that only differ after the cut, never share an answer. Each file also goes with the
+ * start of its text (`about`) once it is read, so a file called "scan 3.pdf" can still be placed. When no subject fits
+ * but the file clearly belongs to one, the model proposes a new subject's name, the same name for files that belong
+ * together; a proposed name that matches a subject the student has (in any case) is that subject. Returns, by the
+ * file's place in `files`, where each answered file goes. A file the answer leaves out, or answers for with an `id`
+ * that was not sent, is not in the map, and one that fits nowhere is null. `no-engine` and `failed` as for
+ * `sortLooseFiles`.
+ */
+export async function sortLibraryFiles(
+  db: Database.Database,
+  subjects: Array<{ id: string; name: string }>,
+  files: Array<{ title: string; about?: string }>,
+  options: { signal?: AbortSignal; run?: GenerateInput["run"]; timeoutMs?: number },
+): Promise<Map<number, LibraryPlacement> | "no-engine" | "failed"> {
+  if (!files.length) return new Map();
+  const sentFiles = files.slice(0, MAX_LOOSE_SENT);
+  const sentSubjects = subjects.slice(0, MAX_SUBJECTS_SENT);
+  const answer = await askSorter(
+    db,
+    "library.sort",
+    {
+      subjects: sentSubjects.map((subject) => subject.name.slice(0, MAX_NAME_SENT)),
+      files: sentFiles.map((item, index) => ({
+        id: String(index + 1),
+        file: item.title.slice(0, MAX_NAME_SENT),
+        ...(item.about ? { about: item.about.replace(/\s+/g, " ").trim().slice(0, MAX_ABOUT_SENT) } : {}),
+      })),
+    },
+    librarySchema,
+    options,
+  );
+  if (typeof answer === "string") return answer;
+  const byName = new Map(sentSubjects.map((subject) => [subject.name.slice(0, MAX_NAME_SENT).toLocaleLowerCase(), subject.id]));
+  const sorted = new Map<number, LibraryPlacement>();
+  for (const item of answer.files) {
+    const id = item.id.trim();
+    const index = /^[1-9]\d*$/.test(id) ? Number(id) - 1 : -1;
+    if (index < 0 || index >= sentFiles.length || sorted.has(index)) continue;
+    const existing = byName.get(item.subject.trim().toLocaleLowerCase());
+    const proposed = item.newSubject.replace(/\s+/g, " ").trim();
+    const same = byName.get(proposed.toLocaleLowerCase());
+    sorted.set(
+      index,
+      existing !== undefined
+        ? { subjectId: existing }
+        : same !== undefined
+          ? { subjectId: same }
+          : proposed && proposed.length <= MAX_SUBJECT_NAME
+            ? { proposed }
+            : null,
+    );
   }
   return sorted;
 }

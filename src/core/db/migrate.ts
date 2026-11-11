@@ -348,6 +348,14 @@ CREATE TRIGGER plans_subject_to_cards AFTER UPDATE OF subject_id ON plans BEGIN
   UPDATE cards SET subject_id = new.subject_id WHERE plan_id = new.id;
 END;`,
   },
+  // Files added from the Library get a subject chosen by Pyxis, once (`sources.subject_sort`). NULL for every source
+  // that existed before, so nothing already in the Library is sorted.
+  {
+    version: 29,
+    sql: `ALTER TABLE sources ADD COLUMN subject_sort TEXT
+  CHECK (subject_sort IS NULL OR subject_sort IN ('waiting', 'sorted', 'created', 'unsure', 'no-ai', 'manual'));
+CREATE INDEX sources_subject_sort ON sources(subject_sort) WHERE subject_sort IN ('waiting', 'created', 'unsure', 'no-ai');`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

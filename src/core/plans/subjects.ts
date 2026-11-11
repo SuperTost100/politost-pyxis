@@ -34,6 +34,8 @@ export function renameSubject(db: Database.Database, id: string, name: string): 
     if (clash) throw new IpcError("invalid", "errors.subjectExists");
     db.prepare("UPDATE subjects SET name = ? WHERE id = ?").run(clean, id);
     db.prepare("UPDATE chats SET subject = ? WHERE subject = ?").run(clean, current.name);
+    // A subject Pyxis made for files added to the Library says so on their rows until the student names it.
+    db.prepare("UPDATE sources SET subject_sort = 'sorted' WHERE subject_id = ? AND subject_sort = 'created'").run(id);
     return { id, name: clean };
   })();
 }

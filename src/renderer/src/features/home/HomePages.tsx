@@ -127,7 +127,7 @@ function LibraryHome() {
   const { t } = useTranslation();
   return (
     <SubPage title={t("nav.library")}>
-      <LibraryPanel />
+      <LibraryPanel sortsSubjects />
     </SubPage>
   );
 }

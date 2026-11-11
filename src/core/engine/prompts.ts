@@ -26,6 +26,7 @@ import simulationGrade from "../../../resources/prompts/simulation.grade.md?raw"
 import simulationQuestions from "../../../resources/prompts/simulation.questions.md?raw";
 import foldersSubjects from "../../../resources/prompts/folders.subjects.md?raw";
 import foldersSort from "../../../resources/prompts/folders.sort.md?raw";
+import librarySort from "../../../resources/prompts/library.sort.md?raw";
 import citationPartial from "../../../resources/prompts/partials/citation.md?raw";
 import type Database from "better-sqlite3";
 
@@ -65,6 +66,7 @@ export const TEMPLATE_SOURCES = {
   "simulation.questions": simulationQuestions,
   "folders.subjects": foldersSubjects,
   "folders.sort": foldersSort,
+  "library.sort": librarySort,
 } as const;
 
 export type TemplateId = keyof typeof TEMPLATE_SOURCES;

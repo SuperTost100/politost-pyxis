@@ -107,6 +107,11 @@ const routes = [
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
+  // Files added from the Library: Pyxis choosing one's subject and a subject it made, the files the student places,
+  // and a row's "Sposta in".
+  ["library-sorting", "/exams/library"],
+  ["library-unsorted", "/exams/library"],
+  ["library-move-menu", "/exams/library"],
   ["library-details", "/exams/library"],
   // The source details panel on a PDF whose scanned pages OCR read, and on a scan being read now.
   ["library-panel-pdf", "/exams/library"],
@@ -1220,6 +1225,32 @@ function prepareLibraryEmpty(name: string) {
   });
 }
 
+/** Files added from the Library at each point of choosing their subject, for the states that show it only. */
+function prepareLibrarySubjects(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM jobs WHERE id = 'audit-sort-job';
+      DELETE FROM sources WHERE id LIKE 'audit-sort-%';
+      DELETE FROM subjects WHERE id = 'audit-sort-made';`);
+    if (!["library-sorting", "library-unsorted", "library-move-menu"].includes(name)) return;
+    const now = Date.now();
+    const source = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,subject_id,subject_sort,created_at,updated_at) VALUES(?,'pdf',?,?,?,?,?,?)",
+    );
+    if (name === "library-unsorted") {
+      source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
+      source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
+      return;
+    }
+    seedSubjects(db, [{ id: "audit-sort-made", name: "Probabilità e statistica", position: 5 }]);
+    source.run("audit-sort-made-file", "Calcolo delle probabilità, dispense", "ready", "audit-sort-made", "created", now, now);
+    // A sort job reading in Attività keeps the newest file in its working state.
+    source.run("audit-sort-working", "Esercizi sui limiti", "extracting", null, "waiting", now + 1, now);
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES('audit-sort-job','library-sort',?,'running',0,'sources.jobs.sortRead',?,?)",
+    ).run(JSON.stringify({ sourceIds: ["audit-sort-working"] }), now, now);
+  });
+}
+
 /** The empty Maps section: the maps move to a side table and come back for every other state. */
 function prepareMapsEmpty(name: string) {
   withDb((db) => {
@@ -1321,6 +1352,7 @@ function prepareState(name: string) {
   prepareExamsArchived(name);
   preparePanelSources(name);
   prepareLibraryEmpty(name);
+  prepareLibrarySubjects(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
@@ -2885,6 +2917,20 @@ async function openState(page: Page, name: string) {
     case "exams-import-menu":
       await page.getByRole("button", { name: both("Altro", "More") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
+    case "library-sorting":
+      await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
+      await expect(page.getByText(both("Materia nuova.", "New subject."))).toBeVisible();
+      break;
+    case "library-unsorted":
+      await expect(page.getByRole("region", { name: both("Da sistemare", "To sort") })).toBeVisible();
+      break;
+    case "library-move-menu":
+      await page
+        .getByRole("button", { name: /^(Azioni per|Actions for) Calcolo delle probabilità, dispense$/ })
+        .click();
+      await page.getByRole("menuitem", { name: both("Sposta in", "Move to") }).hover();
+      await expect(page.getByRole("menuitem", { name: both("Nuova materia…", "New subject…") })).toBeVisible();
       break;
     case "library-row-menu":
       await page

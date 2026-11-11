@@ -35,6 +35,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject     |
 | 27             | The partial index `linked_files_hash`, which finds a file already read by its hash      |
 | 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam   |
+| 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library       |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -66,7 +67,9 @@ Cards with no exam are reviewed in decks of their own, one per subject plus one 
 
 The Flashcard section reads every card in one request, `study.cardSections` (`src/core/study/cardSections.ts`). It counts the cards the card browser lists under all: every card not removed, suspended ones included, none from an archived exam or topic, and none from an exam still being built. It groups them by subject, then by exam and topic, with each subject's cards with no exam last and the cards with no subject in a final group. Its due counts come from the review queues: `countDueCards` for an exam and for each topic, `countDeckDue` for a subject's cards with no exam. The section's total is therefore what the daily review goes through. A subject's review is the daily review narrowed to that subject (`study.dueEverywhere` with `subjectId`, `null` for no subject, and `examless` for only its cards with no exam). An exam's card whose topic was deleted counts in its exam and subject but has no topic row.
 
-Current version is 28. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 29 records, for a file added from the Library page, where Pyxis is with its subject: `subject_sort` is `waiting` until the `library-sort` job has looked at it, then `sorted` (a subject the student had), `created` (a subject Pyxis made for it, until the student renames that subject), `unsure` (the AI tool could not tell) or `no-ai` (none set up), and `manual` once the student chose. Every source that existed before, and every source the Library page did not add, stays NULL and is never sorted. A partial index covers the states the Library and the job look up.
+
+Current version is 29. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |

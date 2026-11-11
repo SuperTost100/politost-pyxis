@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, Input, Modal, Progress, Select, Skeleton } from "antd";
-import { FileText, CheckCircle2 } from "lucide-react";
+import { Check, FileText, CheckCircle2 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
@@ -16,7 +16,7 @@ import {
 import { SourceRow, sizeText } from "../../components/SourceRow";
 import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
-import { memo, useEffect, useRef, useState, type RefObject } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
@@ -43,7 +43,8 @@ import {
   REPLACE_EXTENSIONS,
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
-import { useSources } from "../../lib/queries";
+import { useSources, useSubjects } from "../../lib/queries";
+import { isUnsorted, NewSubjectDialog, SortNote, SubjectPicker, UnsortedGroup, useMoveSource } from "./LibrarySubjects";
 import { Logo } from "../../components/Logo";
 
 const messageKeyOf = (err: unknown): string =>
@@ -82,8 +83,11 @@ export function LibraryPanel({
   onClose,
   onImported,
   tab = "file",
+  sortsSubjects = false,
 }: {
   importOnly?: boolean;
+  /** The Library page itself: what it adds gets a subject chosen by Pyxis. Exam pages add for their exam. */
+  sortsSubjects?: boolean;
   /** Files dropped on a zone outside the panel: it imports them as soon as it opens. */
   droppedFiles?: File[];
   /** The way of adding the dialog opens on, such as "folder" when the student chose a folder. */
@@ -149,6 +153,14 @@ export function LibraryPanel({
     name: string;
   } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // The source "Nuova materia…" names a subject for, from its row menu or from "Da sistemare".
+  const [naming, setNaming] = useState<LibrarySource | null>(null);
+  const subjects = useSubjects();
+  const move = useMoveSource();
+  /** Starts choosing the subjects of what an add brought in, on the Library page only. */
+  const sortAdded = async (ids: string[]) => {
+    if (sortsSubjects && ids.length) await invoke("sources.sortSubjects", { sourceIds: ids });
+  };
   // A folder scan stops at a file count, a depth and an entry count. The student is told when it did.
   const [folderCut, setFolderCut] = useState<{
     files: boolean;
@@ -238,13 +250,14 @@ export function LibraryPanel({
       }
       if (!paths.length && skipped) throw { messageKey: "sources.dropSkipped" };
       if (!paths.length) return null;
-      const outcome: ImportResult & { ids: string[]; done: string[] } = {
+      const outcome: ImportResult & { ids: string[]; done: string[]; added: string[] } = {
         imported: 0,
         notes: [],
         failed: [],
         skipped,
         ids: [],
         done: [],
+        added: [],
       };
       let firstError: unknown;
       // Files added together are one request, which Attività shows as one row.
@@ -270,11 +283,18 @@ export function LibraryPanel({
               });
               outcome.ids.push(preview.existingSourceId);
             } else {
-              const value = await invoke("sources.import", { path, ...(batch ? { batch } : {}) });
+              const value = await invoke("sources.import", {
+                path,
+                ...(batch ? { batch } : {}),
+                ...(sortsSubjects ? { sort: true } : {}),
+              });
               outcome.ids.push(value.sourceId);
               // Core found the same bytes already there after the preview, or in a linked folder: no second copy.
               if (value.existing) outcome.notes.push({ name: fileName(path), text: t("sources.reused") });
-              else outcome.imported += 1;
+              else {
+                outcome.imported += 1;
+                outcome.added.push(value.sourceId);
+              }
             }
             outcome.done.push(path);
           } catch (err) {
@@ -297,6 +317,8 @@ export function LibraryPanel({
         }
       } finally {
         setProgress(null);
+        // One sort for the files the run added, also when a refusal stopped it: those files are in.
+        await sortAdded(outcome.added);
         // Files already in stay out of the checklist, whether the run finished or stopped on a refusal.
         const imported = new Set(outcome.done);
         if (imported.size)
@@ -387,7 +409,11 @@ export function LibraryPanel({
   });
   const linkPreviewMatches = linkPreview.data?.url === linkUrl.trim();
   const linkSave = useMutation({
-    mutationFn: (url: string) => invoke("sources.link", { url }),
+    mutationFn: async (url: string) => {
+      const value = await invoke("sources.link", { url, ...(sortsSubjects ? { sort: true } : {}) });
+      if (!value.existing) await sortAdded([value.sourceId]);
+      return value;
+    },
     onSuccess: (value) => {
       setLinkUrl("");
       void client.invalidateQueries({ queryKey: ["sources"] });
@@ -549,11 +575,34 @@ export function LibraryPanel({
   });
   const kindOf = new Map(sources.map((source) => [source.id, source.kind]));
   const titleMatches = searchMatcher(scope === "titles" ? searchText : "");
-  const shown = sources.filter(
+  const matching = sources.filter(
     (source) =>
       (filterType === "all" || source.kind === filterType) &&
       titleMatches(source.title),
   );
+  // Files waiting for the student's choice of subject sit in "Da sistemare" above the list, not in it.
+  const unsorted = sortsSubjects ? matching.filter(isUnsorted) : [];
+  const shown = sortsSubjects ? matching.filter((source) => !isUnsorted(source)) : matching;
+  // A file that just got its subject, from Pyxis or from "Da sistemare", lands in the list with a tint that fades.
+  const lastSort = useRef(new Map<string, string | null>());
+  const [arrived, setArrived] = useState<ReadonlySet<string>>(() => new Set());
+  useEffect(() => {
+    if (!sortsSubjects || !list.data) return;
+    const landed = list.data.filter((source) => {
+      const before = lastSort.current.get(source.id);
+      return before != null && before !== "created" && !isUnsorted(source) && source.sort !== "working";
+    });
+    lastSort.current = new Map(list.data.map((source) => [source.id, source.sort]));
+    if (!landed.length) return;
+    setArrived(new Set(landed.map((source) => source.id)));
+    const timer = window.setTimeout(() => setArrived(new Set()), 1_400);
+    return () => window.clearTimeout(timer);
+  }, [list.data, sortsSubjects]);
+  // How many files share each subject Pyxis just made, so its note can say "these 3 files".
+  const madeFor = new Map<string, number>();
+  for (const source of sources)
+    if (source.sort === "created" && source.subjectId)
+      madeFor.set(source.subjectId, (madeFor.get(source.subjectId) ?? 0) + 1);
   // A hit whose source was removed since the search would open nothing.
   const hits = (passages.data ?? []).filter(
     (hit) =>
@@ -919,8 +968,13 @@ export function LibraryPanel({
           onSubmit={(event) => {
             event.preventDefault();
             setError(null);
-            void invoke("sources.paste", { title: pasteTitle, text: pasteText })
-              .then((value) => {
+            void invoke("sources.paste", {
+              title: pasteTitle,
+              text: pasteText,
+              ...(sortsSubjects ? { sort: true } : {}),
+            })
+              .then(async (value) => {
+                if (!value.existing) await sortAdded([value.sourceId]);
                 setPasteText("");
                 void client.invalidateQueries({ queryKey: ["sources"] });
                 setSourceId(value.sourceId);
@@ -978,6 +1032,8 @@ export function LibraryPanel({
       else if (key === "reextract") void reextract(source).catch(fail);
       else if (key === "refresh") void refresh(source).catch(fail);
       else if (key === "remove") void remove(source).catch(fail);
+      else if (key === "move-new") setNaming(source);
+      else if (key.startsWith("move:")) void move(source.id, { subjectId: key.slice(5) }).catch(fail);
       else {
         setRenameOnOpen(key === "rename");
         setDetailsOpen(true);
@@ -991,6 +1047,7 @@ export function LibraryPanel({
   return (
     <div className="px-library">
       {addModal}
+      <NewSubjectDialog source={naming} onClose={() => setNaming(null)} />
       <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
       <PdfPasswordDialog
         target={unlocking}
@@ -1103,11 +1160,38 @@ export function LibraryPanel({
             </ul>
           ) : null}
         </section>
-      ) : loadFailed ? null : list.isPending ? (
+      ) : null}
+      {!showHits && unsorted.length ? (
+        <UnsortedGroup sources={unsorted}>
+          {unsorted.map((source) => (
+            <LibraryRow
+              key={source.id}
+              source={source}
+              selected={source.id === sourceId}
+              newVersion={newVersions.get(source.id)}
+              bookBusy={bookUpdate.busy}
+              refreshBusy={refreshing !== null}
+              handlers={rowHandlers}
+              subjects={subjects.data}
+              shared={0}
+              arrived={false}
+              aside={
+                <SubjectPicker
+                  source={source}
+                  subjects={subjects.data ?? []}
+                  onNewSubject={setNaming}
+                  onError={(key) => setError(key)}
+                />
+              }
+            />
+          ))}
+        </UnsortedGroup>
+      ) : null}
+      {showHits ? null : loadFailed ? null : list.isPending ? (
         <div className="px-list-surface px-library-loading" aria-hidden>
           <Skeleton active title={false} paragraph={{ rows: 2 }} />
         </div>
-      ) : empty ? null : shown.length === 0 ? (
+      ) : empty || (shown.length === 0 && unsorted.length) ? null : shown.length === 0 ? (
         <p className="body">{t("sources.noMatch")}</p>
       ) : (
         <ul className="px-list-surface" aria-label={t("exams.sources")}>
@@ -1120,6 +1204,9 @@ export function LibraryPanel({
               bookBusy={bookUpdate.busy}
               refreshBusy={refreshing !== null}
               handlers={rowHandlers}
+              subjects={sortsSubjects ? subjects.data : undefined}
+              shared={source.subjectId ? (madeFor.get(source.subjectId) ?? 0) : 0}
+              arrived={arrived.has(source.id)}
             />
           ))}
         </ul>
@@ -1186,8 +1273,20 @@ const LibraryRow = memo(function LibraryRow({
   bookBusy,
   refreshBusy,
   handlers,
+  subjects,
+  shared,
+  arrived,
+  aside,
 }: {
   source: LibrarySource;
+  /** In place of the state, such as the subject picker in "Da sistemare". */
+  aside?: ReactNode;
+  /** The subjects "Sposta in" offers, on the Library page. */
+  subjects?: RequestOutput<"subjects.list">;
+  /** How many files share the subject Pyxis made for this one. */
+  shared: number;
+  /** The file just got its subject. */
+  arrived: boolean;
   selected: boolean;
   /** The free book's new version, when one is out. */
   newVersion: string | undefined;
@@ -1200,6 +1299,7 @@ const LibraryRow = memo(function LibraryRow({
   const { t } = useTranslation();
   const notes = (
     <>
+      <SortNote source={source} shared={shared} />
       {source.linked?.missing ? (
         <p className="small px-library-flag">
           {t("sources.linked.missing", { folder: source.linked.folder })}
@@ -1264,6 +1364,26 @@ const LibraryRow = memo(function LibraryRow({
     items: [
       { key: "details", label: t("sources.details") },
       { key: "rename", label: t("sources.rename") },
+      // A file read in place from a linked folder takes its folder's subject.
+      ...(subjects
+        ? [
+            {
+              key: "move",
+              label: t("sources.sort.moveTo"),
+              disabled: source.linked !== null,
+              children: [
+                ...subjects.map((subject) => ({
+                  key: `move:${subject.id}`,
+                  label: subject.name,
+                  icon: subject.id === source.subjectId ? <Check size={14} aria-hidden /> : undefined,
+                  disabled: subject.id === source.subjectId,
+                })),
+                ...(subjects.length ? [{ type: "divider" as const }] : []),
+                { key: "move-new", label: t("sources.sort.newSubject") },
+              ],
+            },
+          ]
+        : []),
       // A file read in place from a linked folder changes there, and Pyxis reads it again by itself.
       { key: "replace", label: t("sources.replace"), disabled: source.linked !== null },
       {
@@ -1291,6 +1411,8 @@ const LibraryRow = memo(function LibraryRow({
     <SourceRow
       source={source}
       selected={selected}
+      className={arrived ? "is-arrived" : undefined}
+      aside={aside}
       onOpen={() => handlers.current?.open(source)}
       notes={notes}
       actions={actions}
