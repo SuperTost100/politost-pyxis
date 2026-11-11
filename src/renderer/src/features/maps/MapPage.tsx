@@ -14,6 +14,7 @@ import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Link as RouterLink,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
@@ -51,6 +52,7 @@ import {
   layoutTree,
   parentIds,
   startViewport,
+  revealViewport,
   visibleNodes,
 } from "./mapLayout";
 import { describeChange } from "./mapChange";
@@ -190,12 +192,19 @@ export function MapPage() {
   const [search, setSearch] = useSearchParams();
   const openMap = search.get("map") ?? undefined;
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useQueryClient();
   const [selected, setSelected] = useState<string>();
   const [instruction, setInstruction] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [jobId, setJobId] = useState<string>();
+  // The Nuova mappa dialog opens this page with `build` set, so the map is built without a second click. It waits for
+  // the page to know the scope has no map and no build, then starts one; the working mark shows meanwhile.
+  const [starting, setStarting] = useState(
+    () => (location.state as { build?: boolean } | null)?.build === true,
+  );
+  const buildAsked = useRef(false);
   const [dialog, setDialog] = useState<"add" | "rename" | "connect" | null>(
     null,
   );
@@ -216,6 +225,8 @@ export function MapPage() {
   // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
   // `map` is the map the fold happened on, so switching maps mid-move cuts to the new one.
   const motion = useRef<{ origin?: string; map?: string; frame: number }>({ frame: 0 });
+  // The branch that was just unfolded, until the view has been moved to show it.
+  const reveal = useRef<{ id: string; map?: string } | undefined>(undefined);
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
   // Their widths too, which only the fold's motion needs: a branch grows out of its node's right edge.
@@ -375,8 +386,12 @@ export function MapPage() {
   }, [sourceOpen, closeSource]);
   // Another map, or another scope, starts without the panel.
   useEffect(() => setSourceOpen(false), [scopeKey, activeId]);
+  // The finished map is named after the topic, or the subject for a whole-subject map, so the page shows that name from
+  // the first frame, before the map exists.
   const title =
-    list.data?.find((m) => m.id === activeId)?.title ?? t("map.title");
+    list.data?.find((m) => m.id === activeId)?.title ??
+    (wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ??
+    t("map.title");
   const job = build.data;
   const building = Boolean(job && ["queued", "running"].includes(job.state));
   useEffect(() => {
@@ -395,9 +410,15 @@ export function MapPage() {
     ) {
       setJobId(undefined);
       void client.invalidateQueries({ queryKey: listKey });
-      if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
+      // A build the student stopped is not a failure. Without a map the empty state says so and offers to resume it.
+      if (job.state === "cancelled") setNotice(graph ? t("map.stopped") : "");
+      else if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
     }
   }, [job?.state, jobId, client, scopeKey, t]);
+  // A build that starts again, here or from Attività, clears what the last one left.
+  useEffect(() => {
+    if (building) setNotice("");
+  }, [building]);
   const radial = graph?.layout === "radial";
   const folded = useMemo(
     () =>
@@ -411,7 +432,8 @@ export function MapPage() {
       motion.current.origin = id;
       motion.current.map = activeId;
       const ids = new Set(foldedRef.current);
-      if (!ids.delete(id)) ids.add(id);
+      if (ids.delete(id)) reveal.current = { id, map: activeId };
+      else ids.add(id);
       setFold({ mapId: activeId, ids });
     },
     [activeId],
@@ -563,6 +585,40 @@ export function MapPage() {
       canvas.current?.removeAttribute("data-moving");
     };
   }, [spots, shown, heights, selected, folded, parents, levels, toggle, activeId]);
+  // After an unfold, the view moves so the branch and its parent are on screen, once the new concepts are measured.
+  useEffect(() => {
+    const asked = reveal.current;
+    const instance = flow.current;
+    const size = canvas.current?.getBoundingClientRect();
+    if (!asked || asked.map !== activeId || !instance || !size) return;
+    const inside = new Set([asked.id]);
+    const members = spots.filter(({ node }) => {
+      if (node.id !== asked.id && !(node.parent && inside.has(node.parent))) return false;
+      inside.add(node.id);
+      return true;
+    });
+    if (members.length < 2 || members.some(({ node }) => !heights.has(node.id))) return;
+    reveal.current = undefined;
+    const boxes = members.map(({ node, at }) => ({ ...at, height: heights.get(node.id)! }));
+    const left = Math.min(...boxes.map((box) => box.x));
+    const top = Math.min(...boxes.map((box) => box.y));
+    const parent = members.find(({ node }) => node.id === asked.id)!;
+    const next = revealViewport(
+      {
+        x: left,
+        y: top,
+        width: Math.max(...boxes.map((box) => box.x)) + NODE_WIDTH - left,
+        height: Math.max(...boxes.map((box) => box.y + box.height)) - top,
+      },
+      parent.at.y + (heights.get(asked.id) ?? NODE_MIN_HEIGHT) / 2,
+      instance.getViewport(),
+      size,
+    );
+    if (next)
+      void instance.setViewport(next, {
+        duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : MOTION_MS,
+      });
+  }, [spots, heights, activeId]);
   useEffect(() => {
     setSelected(undefined);
     setPaletteOpen(false);
@@ -716,6 +772,21 @@ export function MapPage() {
     },
     [address, activeId, client],
   );
+  // Starts a stopped build again from the step it reached, as Attività's Riprendi does.
+  async function resumeBuild() {
+    if (!job) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await invoke("jobs.resumeAll", { jobIds: [job.jobId] });
+      setJobId(job.jobId);
+      await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
+    } catch {
+      setNotice(t("map.generateFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
   async function generateMaps() {
     setBusy(true);
     setNotice("");
@@ -732,6 +803,15 @@ export function MapPage() {
       setBusy(false);
     }
   }
+  useEffect(() => {
+    if (!starting || buildAsked.current || list.isPending || build.isPending) return;
+    buildAsked.current = true;
+    // The flag belongs to this arrival: going back to the page later must not start a build again.
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    if (!list.isError && !build.isError && !list.data?.length && !building)
+      void generateMaps().finally(() => setStarting(false));
+    else setStarting(false);
+  });
   // The view on screen as a picture, without the fit button over it.
   async function exportPng() {
     if (!canvas.current) return;
@@ -1044,8 +1124,16 @@ export function MapPage() {
       ) : null}
       <div className="px-map-body">
       <div className="px-map-card">
-        {!graph && building ? (
+        {!graph && (building || starting || busy) ? (
           <Working slot className="px-map-working" line={t("map.building")} />
+        ) : !graph && job?.state === "cancelled" ? (
+          <div className="px-map-empty">
+            <h2 className="title-2">{t("map.stopped")}</h2>
+            <p className="small">{t("map.stoppedBody")}</p>
+            <Button disabled={disabled} onClick={() => void resumeBuild()}>
+              {t("jobs.resume")}
+            </Button>
+          </div>
         ) : !graph ? (
           <div className="px-map-empty">
             <h2 className="title-2">{t(wholeSubject ? "map.emptySubject" : "map.empty")}</h2>

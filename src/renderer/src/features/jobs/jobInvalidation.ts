@@ -17,6 +17,10 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   const keys = ["jobs"];
   if (sourceKinds.has(job.kind)) keys.push("sources", "source-chapters", "source-meta", "source-details");
   if (planKinds.has(job.kind)) keys.push("plan-build");
+  // An open map page reads its build and its maps from these, so a build that starts, is stopped or resumed in Attività
+  // shows there at once, and the finished map appears without a reload.
+  if (job.kind === "map-build") keys.push("map-build");
+  if (job.kind === "map-build" && finished.has(job.state)) keys.push("maps", "map", "maps-all");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
   // Choosing the subjects of Library files can make new subjects.

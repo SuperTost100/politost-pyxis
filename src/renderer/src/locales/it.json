@@ -991,15 +991,17 @@
     "editFailed": "Non riesco a modificare la mappa. Riprova.",
     "editConflict": "La mappa è cambiata mentre Pyxis la modificava e quella modifica non si adatta più. Le tue modifiche restano. Ripeti la richiesta.",
     "loadFailed": "Non è stato possibile caricare la mappa.",
-    "generateFailed": "Non riesco a creare le mappe. Riprova.",
+    "generateFailed": "Non riesco a creare la mappa. Riprova.",
+    "stopped": "Hai fermato la creazione della mappa",
+    "stoppedBody": "Puoi riprenderla da dove si era fermata.",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
     "empty": "Crea una mappa di questo argomento",
-    "emptyBody": "Le tue fonti diventano mappe mirate, da modificare e usare anche offline.",
+    "emptyBody": "Le tue fonti diventano una mappa mirata, da modificare e usare anche offline.",
     "emptySubject": "Crea una mappa di questa materia",
     "emptySubjectBody": "Pyxis legge il materiale della materia e ne fa una mappa, da modificare e usare anche offline.",
-    "generate": "Crea mappe",
+    "generate": "Crea la mappa",
     "generateSubject": "Crea la mappa",
-    "building": "Creo le tue mappe…",
+    "building": "Creo la mappa…",
     "save": "Salva",
     "cancel": "Annulla",
     "target": "Collega a",
@@ -1070,7 +1072,7 @@
     "topicMaps_one": "{{topic}} · {{count}} mappa",
     "topicMaps_other": "{{topic}} · {{count}} mappe",
     "noTopics": "Gli esami di questa materia non hanno ancora argomenti, quindi la mappa copre tutta la materia.",
-    "continue": "Continua",
+    "create": "Crea la mappa",
     "cancel": "Annulla"
   },
   "lesson": {
@@ -2181,7 +2183,7 @@
     "doneToday_one": "{{count}} finita oggi",
     "doneToday_other": "{{count}} finite oggi",
     "group": {
-      "toFix": "Ti serve",
+      "toFix": "C'è bisogno di te",
       "running": "In corso",
       "done": "Finite oggi"
     },
@@ -2268,7 +2270,7 @@
       "cancelled": "Annullato",
       "succeeded": "Completato"
     },
-    "maps": "Creo le mappe",
+    "maps": "Creo la mappa",
     "simulationGrading": "Correggo la prova",
     "paperReading": "Leggo un appello passato",
     "quizGrading": "Correggo il quiz",
