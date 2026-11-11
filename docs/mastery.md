@@ -129,11 +129,11 @@ The caller syncs the gap rows first, then passes only the open gaps that Progres
 
 ## Oggi and the session planner
 
-Oggi is the block at the top of Esami. It lists today's study across every exam that is not archived: due flashcards from all plans as one item, then one item per plan, each opening that plan's next step directly. The step comes from `suggestStep`, the same path rules as the plan page, except that due cards are left out because the flashcards item covers them. Dated exams come first, the closest first; plans without a date come after them; exams already past are left out. The first item not done carries the Suggested tag. `todayPlan` in `src/core/plans/planner.ts` builds the list, and the flashcards item opens `/cards/due`, one session over the due cards of every plan, the closest exam's first. Rating cards there records a cards step on each topic it touched.
+Oggi is today's work on each exam that is not archived, and the inner ring of the [exam rings](#exam-rings). Each exam's next step comes from `suggestStep`, the same path rules as the exam page, except that due cards are left out because the exam list shows them on their own line: the due flashcards of every exam, which opens `/cards/due`, one session over the due cards of every plan, the closest exam's first. Rating cards there records a cards step on each topic it touched. `todayPlan` in `src/core/plans/planner.ts` computes the day per exam; exams already past have no work today.
 
-An item ticks off for the day once today's steps cover it. Without hours set in the planner, one step on the path today is enough. With hours set, the plan's steps today must add up to the minutes the planner gave the plan today, counted with the step estimates below, and at least one step must be done; a plan the planner gives under 2.5 minutes today stays out of the list unless it was studied today. The flashcards item is done when no card is due and at least one was rated today. Ticked items stay in place until the next day.
+An exam's day is done once today's steps cover it. Without weekly hours, one step on the path today is enough. With hours, the exam's steps today must add up to the minutes the planner gave it today, counted with the step estimates below, and at least one step must be done; an exam the planner gives under 2.5 minutes today has nothing planned unless it was studied today.
 
-The session planner (`/exams/planner`, `sessionPlan`) takes every exam with a date after today, the hours the student can study each week and each plan's remaining work, and spreads that work over the days before each exam. The student sets the usual hours once and can change any single week. Both are stored in the `planner` settings row.
+The session planner (`sessionPlan`) takes every exam with a date after today, the hours the student can study each week and each plan's remaining work, and spreads that work over the days before each exam. The student sets the usual hours in an exam's settings, and they apply to every exam. The planner had a page of its own until 0.5, where a single week could get other hours; such a week still counts until it is over. Both are stored in the `planner` settings row.
 
 ### Remaining work
 
@@ -166,3 +166,13 @@ The exam page shows, for each topic below the target and for the simulation, the
 ### Falling behind
 
 An exam is behind when work is still left on its exam day. The warning gives two numbers. At the pace the exam got, it reaches its target that many days after the exam: the work left divided by its average minutes a day. By the exam it gets the share of the way from its current mastery to the target that matches the share of its work done: an exam at 10% with a 75% target that gets half its work done shows about 42%. This assumes mastery grows in step with the work, which is a simplification; it says which exam needs more time, not what the exam result will be.
+
+## Exam rings
+
+Each exam shows three rings, computed together by `examRings` in `src/core/plans/planner.ts` (`plans.rings`). None of them adds a scoring model; each reads a number the planner or Oggi already computes.
+
+- **Preparazione** is the exam's mastery as the exam list shows it, topics weighted by their passages, read on the student's grade scale. While there is no evidence at all (no answer counted, no topic with mastery and no graded step; reading a lesson or the introduction measures nothing), it shows "ancora da misurare" and its ring stays empty. Evidence that scores zero, such as a wrong answer to a lesson's quick check, is measured and shows 0.
+- **Percorso** is the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over the work the same path had with nothing studied. Reading a lesson moves it, and so does mastery reaching the target; mastery that decays below the target moves it back. An exam without topics has no path.
+- **Oggi** is the share of today's planned work done, with Oggi's own rules. With weekly hours, it is the minutes of today's steps over the minutes the planner gives the exam today, full once Oggi ticks the exam off. Without hours, without a date or on the exam day, one step is the day's work. Nothing is planned for an archived or past exam, for a share under 2.5 minutes, or when the path has no next step, unless something was done today anyway.
+
+The rings draw each share from the top; an empty value leaves its track bare. Percentages round down, so a ring never reads 100% before it closes.

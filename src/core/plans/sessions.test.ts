@@ -88,6 +88,25 @@ describe("exam sessions", () => {
     db.close();
   });
 
+  it("lists the next session's date and label for the exam list", () => {
+    const db = fixture();
+    saveSessions(
+      db,
+      "p",
+      [
+        { date: noon(2026, 10, 20), label: "Scritto" },
+        { date: noon(2026, 11, 20), label: "Orale" },
+      ],
+      NOW,
+    );
+    expect(listPlans(db, NOW)[0]).toMatchObject({ examAt: noon(2026, 10, 20), examLabel: "Scritto" });
+    const later = new Date(2026, 9, 25, 9).getTime();
+    expect(listPlans(db, later)[0]).toMatchObject({ examAt: noon(2026, 11, 20), examLabel: "Orale" });
+    saveSessions(db, "p", [{ date: noon(2026, 11, 20) }], NOW);
+    expect(listPlans(db, NOW)[0]!.examLabel).toBeNull();
+    db.close();
+  });
+
   it("moves exam_at to the oral part once the written part is over", () => {
     const db = fixture();
     saveSessions(db, "p", [{ date: noon(2026, 10, 20) }, { date: noon(2026, 11, 20) }], NOW);
@@ -150,7 +169,7 @@ describe("migration 22", () => {
     const file = join(mkdtempSync(join(tmpdir(), "pyxis-sessions-")), "pyxis.db");
     const db = openDatabase(file);
     db.exec(
-      "DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json; DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders; DROP TRIGGER plans_subject_to_maps; DROP TRIGGER plans_subject_to_cards;",
+      "DROP TABLE plan_sessions; ALTER TABLE plans DROP COLUMN archived_at; ALTER TABLE jobs DROP COLUMN fallback_json; DROP TABLE linked_files; DROP TABLE linked_subfolders; DROP TABLE linked_folders; DROP TRIGGER plans_subject_to_maps; DROP TRIGGER plans_subject_to_cards; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;",
     );
     db.pragma("user_version = 21");
     db.prepare("INSERT INTO plans(id,title,status,exam_at,created_at,updated_at) VALUES('dated','A','ready',?,1,1)").run(noon(2026, 11, 20));
@@ -159,7 +178,7 @@ describe("migration 22", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(readSessions(again, "dated")).toEqual([
       { id: "dated", date: noon(2026, 11, 20), time: null, place: null, label: null },
     ]);

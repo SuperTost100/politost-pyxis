@@ -46,7 +46,7 @@ import {
   deleteLoosePassages,
   removeUnreferencedBlobs,
 } from "../chat/delete";
-import { dueEverywhere, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
+import { dueEverywhere, examRings, examlessDue, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
 import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
@@ -316,14 +316,24 @@ export function planHandlers(
     planner() {
       return sessionPlan(db);
     },
+    rings() {
+      return examRings(db);
+    },
+    examlessDue() {
+      return { count: examlessDue(db) };
+    },
     schedule(input: { planId: string }) {
       return planSchedule(db, input.planId);
     },
     plannerHours(input: { week?: string; hours: number | null }) {
       return savePlannerHours(db, input);
     },
-    dueEverywhere() {
-      return dueEverywhere(db);
+    dueEverywhere(input: { subjectId?: string | null; examless?: boolean } = {}) {
+      return dueEverywhere(
+        db,
+        Date.now(),
+        input.subjectId === undefined ? undefined : { subjectId: input.subjectId, examless: input.examless },
+      );
     },
     complete(input: {
       planId: string;

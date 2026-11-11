@@ -34,8 +34,17 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Puts `cards` back as it was before migration 28: an exam on every card, no subject and no subject triggers. */
+/** Removes what migration 29 adds, so a test can rewind the version past it. */
+function undoSubjectSort(db: Database.Database) {
+  db.exec("DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
+}
+
+/**
+ * Puts `cards` back as it was before migration 28 (and removes migration 29 after it): an exam on every card, no subject
+ * and no subject triggers.
+ */
 function undoCardSubjects(db: Database.Database) {
+  undoSubjectSort(db);
   db.pragma("foreign_keys = OFF");
   db.exec(`DROP TRIGGER plans_subject_to_cards;
 CREATE TABLE cards_before (
@@ -176,7 +185,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(28);
+    expect(db.pragma("user_version", { simple: true })).toBe(29);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -191,7 +200,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -208,7 +217,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(
       again
         .prepare(
@@ -238,7 +247,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -266,7 +275,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -316,8 +325,11 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
-    expect(again.prepare("SELECT * FROM sources").all()).toEqual(before);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    // Migration 29 adds an empty `subject_sort`; nothing else of the source changes.
+    expect(again.prepare("SELECT * FROM sources").all()).toEqual(
+      (before as Array<Record<string, unknown>>).map((row) => ({ ...row, subject_sort: null })),
+    );
     expect(again.prepare("SELECT COUNT(*) AS n FROM linked_files").get()).toEqual({ n: 0 });
     again.prepare("INSERT INTO linked_folders (id, path, mode, created_at) VALUES ('f', '/study', 'root', 1)").run();
     again.prepare(
@@ -348,7 +360,7 @@ describe("linked folders read in full", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
     expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
     // The queue finds waiting files of a folder through its own index.
@@ -369,7 +381,7 @@ describe("the linked-file hash lookup", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     // The two queries the import and the folder scan run: a hash among present files, alone and next to a source's own hash.
     for (const sql of [
       "SELECT source_id FROM linked_files WHERE content_hash = 'abc' AND missing_at IS NULL",
@@ -403,7 +415,7 @@ describe("maps by subject", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(
       again.prepare("SELECT id, subject_id, plan_id, topic_id, grounding, prompt_version, created_at FROM maps ORDER BY id").all(),
     ).toEqual([
@@ -453,7 +465,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(28);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,
@@ -663,5 +675,21 @@ describe("flashcards by subject", () => {
     expect(snapshot(raw)).toEqual(before);
     // The failed upgrade left foreign keys on for the next open.
     expect(raw.pragma("foreign_keys", { simple: true })).toBe(1);
+  });
+});
+
+describe("the subject Pyxis chooses for a Library file", () => {
+  it("leaves every existing source unsorted, and takes only the known states", () => {
+    const { db, file } = workspaceAt(28);
+    db.prepare(
+      "INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s', 'pdf', 'Dispense', 'ready', 1, 2)",
+    ).run();
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.prepare("SELECT subject_sort FROM sources").get()).toEqual({ subject_sort: null });
+    again.prepare("UPDATE sources SET subject_sort = 'waiting'").run();
+    expect(() => again.prepare("UPDATE sources SET subject_sort = 'guessed'").run()).toThrow();
   });
 });

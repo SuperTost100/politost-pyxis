@@ -29,7 +29,7 @@ function seed(db: DatabaseSync) {
   `);
 }
 
-test("flashcards with no exam: Oggi's count follows them, and Undo on one leaves an exam card's rating alone", async () => {
+test("flashcards with no exam: the due line on Esami follows them, and Undo on one leaves an exam card's rating alone", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-cards-no-exam-"));
   const app = await launchPyxis({ userData });
@@ -43,25 +43,30 @@ test("flashcards with no exam: Oggi's count follows them, and Undo on one leaves
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     await page.reload();
 
-    const first = page.getByRole("region", { name: "Today" }).getByRole("listitem").first();
-    await expect(first).toContainText("4 flashcards due");
+    // The line above the exams counts what the daily review will show: the exam's card and the subject's three.
+    const line = page.locator(".px-exams-due");
+    await expect(line).toContainText("You have 4 flashcards to review today");
+    await expect(line).toContainText("1 from Fisica 1 and 3 with no exam");
 
-    // Reviewing the subject's own deck changes what is due today, and Oggi, still fresh in the app's cache, says so.
+    // Reviewing the subject's own deck changes what is due today, and the line, still fresh in the app's cache, says so.
     await page.evaluate(() => {
       location.hash = "#/cards/subject/chem";
     });
     await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
+    // The way back names the browser's page now that Esami has no Flashcards tab.
+    await expect(page.getByRole("banner").getByRole("button", { name: "All flashcards", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Flip/ }).click();
     await page.getByRole("button", { name: "Easy", exact: true }).click();
     await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
     await page.evaluate(() => {
       location.hash = "#/exams";
     });
-    await expect(first).toContainText("3 flashcards due");
+    await expect(line).toContainText("You have 3 flashcards to review today");
+    await expect(line).toContainText("1 from Fisica 1 and 2 with no exam");
 
     // The daily review: the exam's card, then the subject's. Undo takes back only the last rating, the subject's, so
     // the exam's rating still reaches its path when the session closes.
-    await first.getByRole("button").click();
+    await line.getByRole("button", { name: "Review 3", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due$/);
     await expect(page.getByText("Unità della forza?", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Flip/ }).click();

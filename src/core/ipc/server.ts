@@ -299,6 +299,7 @@ const routes = {
   "study.gapDrillRead": ["study", "gapDrillRead"],
   "study.queue": ["study", "queue"],
   "study.subjectCards": ["study", "subjectCards"],
+  "study.cardSections": ["study", "cardSections", "bare"],
   "study.cardSettings": ["study", "cardSettings", "bare"],
   "study.saveCardSettings": ["study", "saveCardSettings"],
   "study.save": ["study", "save"],
@@ -341,6 +342,8 @@ const routes = {
   "plans.import": ["plans", "import"],
   "plans.series": ["plans", "series"],
   "plans.planner": ["plans", "planner", "bare"],
+  "plans.rings": ["plans", "rings", "bare"],
+  "plans.examlessDue": ["plans", "examlessDue", "bare"],
   "plans.schedule": ["plans", "schedule"],
   "plans.plannerHours": ["plans", "plannerHours"],
   "plans.complete": ["plans", "complete"],
@@ -378,6 +381,8 @@ const routes = {
   "sources.paste": ["sources", "paste"],
   "sources.linkPreview": ["sources", "linkPreview", "signal"],
   "sources.link": ["sources", "link"],
+  "sources.sortSubjects": ["sources", "sortSubjects"],
+  "sources.move": ["sources", "move"],
   "sources.importBook": ["sources", "importBook", "signal"],
   "sources.updateBook": ["sources", "updateBook", "signal"],
   "sources.scanFolder": ["sources", "scanFolder", "signal"],
@@ -627,8 +632,7 @@ async function dispatchValidated(
       requests["plans.today"].input.parse(input);
       return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
     case "study.dueEverywhere":
-      requests["study.dueEverywhere"].input.parse(input);
-      return plans?.dueEverywhere() ?? [];
+      return plans?.dueEverywhere(requests["study.dueEverywhere"].input.parse(input)) ?? [];
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.rebuildState":

@@ -97,7 +97,7 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     // Cmd+K (Ctrl+K elsewhere) opens the search over everything, empty again; Esc closes it.
     await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
     await expect(search).toHaveValue("");
-    await expect(search).toHaveAttribute("placeholder", "Cerca chat, esami, mappe e materiale");
+    await expect(search).toHaveAttribute("placeholder", "Cerca chat, esami, mappe, flashcard e materiale");
     await page.keyboard.press("Escape");
     await expect(finder).toBeHidden();
     // Esc and Cmd+K at once, as a quick hand does: the search opens again and stays.

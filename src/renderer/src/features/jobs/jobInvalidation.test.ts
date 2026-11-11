@@ -13,6 +13,7 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "source-details",
       "series:later",
     ]);
@@ -22,8 +23,17 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "series:later",
     ]);
+  });
+
+  it("refreshes the Flashcard section when a job that makes flashcards ends, and not before", () => {
+    for (const kind of ["cards-build", "cards-propose", "plan-build", "plan-rebuild"]) {
+      expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("card-sections");
+      expect(keys(staleFamilies({ kind, state: "running" }))).not.toContain("card-sections");
+    }
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "succeeded" }))).not.toContain("card-sections");
   });
 
   it("tells an open map page about its build from every update, and about its maps when the build ends", () => {
@@ -47,6 +57,17 @@ describe("job update invalidation", () => {
       expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("source-details");
     expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).not.toContain("source-details");
     expect(keys(staleFamilies({ kind: "cards-build", state: "succeeded" }))).not.toContain("source-details");
+  });
+
+  it("refreshes sources and subjects while the subjects of Library files are chosen", () => {
+    expect(keys(staleFamilies({ kind: "library-sort", state: "running" }))).toEqual([
+      "jobs",
+      "sources",
+      "source-chapters",
+      "source-meta",
+      "source-details",
+      "subjects",
+    ]);
   });
 
   it("refreshes sources for imports and each download its own state", () => {
@@ -86,6 +107,7 @@ describe("stale batcher", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "series:later",
     ]);
   });

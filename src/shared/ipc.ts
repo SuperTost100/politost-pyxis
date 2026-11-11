@@ -1725,6 +1725,9 @@ export const requests = {
         archived: z.boolean(),
         subject: z.string().nullable(),
         daysToExam: z.number().nullable(),
+        /** The next exam session, or the last one once all are past, and its label ("Scritto"). */
+        examAt: z.number().nullable(),
+        examLabel: z.string().nullable(),
         mastery: z.number(),
         target: z.number(),
         imported: z.boolean(),
@@ -2031,6 +2034,33 @@ export const requests = {
       ),
     }),
   },
+  "plans.rings": {
+    // The three exam rings of every built exam, archived ones last: see `examRings` in core/plans/planner.ts. Each value
+    // is a fraction from 0 to 1, or null when there is nothing to show (nothing measured, no path, nothing planned today).
+    input: z.object({}),
+    output: z.array(
+      z.object({
+        planId: z.string(),
+        preparation: z.number().min(0).max(1).nullable(),
+        path: z.number().min(0).max(1).nullable(),
+        today: z.number().min(0).max(1).nullable(),
+        // The path's next step, due cards aside.
+        next: z
+          .object({
+            activity: PathActivity,
+            topicId: z.string().nullable(),
+            topicTitle: z.string().nullable(),
+          })
+          .nullable(),
+        dueCards: z.number().int().nonnegative(),
+      }),
+    ),
+  },
+  "plans.examlessDue": {
+    // Flashcards due that belong to no exam, which the daily review shows with the exams' own and the rings do not count.
+    input: z.object({}),
+    output: z.object({ count: z.number().int().nonnegative() }),
+  },
   "plans.planner": {
     input: z.object({}),
     output: z.object({
@@ -2083,9 +2113,39 @@ export const requests = {
     input: z.object({ subjectId: z.string() }),
     output: z.array(dueCardSchema),
   },
-  "study.dueEverywhere": {
-    // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review.
+  "study.cardSections": {
+    // The Flashcard section: every card by subject, exam and topic, the cards with no exam last in each subject, with
+    // their due counts. `due` is what the daily review holds today.
     input: z.object({}),
+    output: z.object({
+      due: z.number().int(),
+      total: z.number().int(),
+      subjects: z.array(
+        z.object({
+          subjectId: z.string().nullable(),
+          name: z.string().nullable(),
+          total: z.number().int(),
+          due: z.number().int(),
+          exams: z.array(
+            z.object({
+              planId: z.string(),
+              title: z.string(),
+              total: z.number().int(),
+              due: z.number().int(),
+              topics: z.array(
+                z.object({ topicId: z.string(), title: z.string(), total: z.number().int(), due: z.number().int() }),
+              ),
+            }),
+          ),
+          examless: z.object({ total: z.number().int(), due: z.number().int() }).nullable(),
+        }),
+      ),
+    }),
+  },
+  "study.dueEverywhere": {
+    // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review. With
+    // `subjectId`, one subject's (null: the cards with no subject), and with `examless` only its cards with no exam.
+    input: z.object({ subjectId: z.string().nullable().optional(), examless: z.boolean().optional() }),
     output: z.array(
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),
@@ -2417,6 +2477,13 @@ export const requests = {
         subject: z.string().nullable(),
         /** A file read in place from a linked folder: the folder's name, and whether the file was moved or deleted. */
         linked: z.object({ folderId: z.string(), folder: z.string(), missing: z.boolean() }).nullable(),
+        subjectId: z.string().nullable(),
+        /**
+         * Where Pyxis is with the subject of a file added from the Library: `working` while a sort will place it,
+         * `stopped` when that sort stopped, `created` when it made the subject (until the subject is renamed), `unsure`
+         * and `no-ai` when the student has to choose. Null otherwise.
+         */
+        sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
       }),
     ),
   },
@@ -2425,8 +2492,23 @@ export const requests = {
       path: z.string(),
       /** Files the Library imports together: one id for the request, and the folder they were picked from. */
       batch: z.object({ id: z.string().min(1).max(64), folder: z.string().max(255).optional() }).optional(),
+      /** Added from the Library page: Pyxis chooses its subject once the add is over (`sources.sortSubjects`). */
+      sort: z.boolean().optional(),
     }),
     output: importResultSchema,
+  },
+  /** Chooses the subjects of files the Library just added, as one background job. Null when none is left to sort. */
+  "sources.sortSubjects": {
+    input: z.object({ sourceIds: z.array(z.string()).min(1).max(2000) }),
+    output: z.object({ jobId: z.string().nullable() }),
+  },
+  /** Puts a source in a subject the student chose: one they have, or a new one by name. Pyxis never moves it again. */
+  "sources.move": {
+    input: z.union([
+      z.object({ sourceId: z.string(), subjectId: z.string() }),
+      z.object({ sourceId: z.string(), name: z.string().trim().min(1).max(120) }),
+    ]),
+    output: z.object({ id: z.string(), name: z.string() }),
   },
   "sources.search": {
     input: z.object({ query: z.string() }),
@@ -2715,7 +2797,7 @@ export const requests = {
     output: z.object({ status: z.literal("ocr-queued"), jobId: z.string() }),
   },
   "sources.paste": {
-    input: z.object({ title: z.string(), text: z.string() }),
+    input: z.object({ title: z.string(), text: z.string(), sort: z.boolean().optional() }),
     output: importResultSchema,
   },
   "sources.books": {
@@ -2767,7 +2849,7 @@ export const requests = {
     }),
   },
   "sources.link": {
-    input: z.object({ url: z.string() }),
+    input: z.object({ url: z.string(), sort: z.boolean().optional() }),
     output: importResultSchema,
   },
   "sources.scanFolder": {

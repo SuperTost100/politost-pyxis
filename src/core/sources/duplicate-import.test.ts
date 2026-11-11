@@ -10,7 +10,7 @@ import { enqueueSourceData, enqueueSourceFile, registerSourceJobs, SourceExists,
 import { linkedFolders } from "./linked";
 import { extractByExt, extractPlain } from "./documents";
 import { EXISTING_LINK_SQL, existingLinkFor, hashFiles } from "./quality";
-import { hasBlob } from "../blobs";
+import { blobSize, hasBlob } from "../blobs";
 import { commitStaged } from "../chat/attach";
 import { deleteChat } from "../chat/turn";
 import { promoteSource, removeSource } from "./manage";
@@ -192,6 +192,7 @@ describe("the same material imported twice", () => {
       runner: app.runner,
       protectedPaths: [app.workspace],
       hash: (paths, maxBytes) => hashFiles(paths, maxBytes),
+      storedSize: (sha) => blobSize(app.workspace, sha),
       ocrReady: async () => false,
       watch: null,
       pumpMs: 10,

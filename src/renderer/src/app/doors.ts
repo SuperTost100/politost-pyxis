@@ -57,8 +57,12 @@ export function rememberDoorPath(pathname: string): void {
   );
 }
 
-/** Where a door leads from `pathname`: back to where it was left, or to its root when it is already open. */
+/**
+ * Where a door leads from `pathname`: back to where it was left, or to its root when it is already open. The Library
+ * has its own row and menu item, so Exams never leads back into it.
+ */
 export function doorTarget(door: Door, pathname: string): string {
   if (doorForPath(pathname) === door) return doorRoots[door];
-  return readLast()[door];
+  const last = readLast()[door];
+  return door === "exams" && last.startsWith("/exams/library") ? doorRoots.exams : last;
 }

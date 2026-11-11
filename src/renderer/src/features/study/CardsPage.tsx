@@ -5,7 +5,7 @@ import { Ellipsis, MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -53,6 +53,15 @@ export function CardsPage() {
   // student rates a card.
   const [searchParams] = useSearchParams();
   const looking = Boolean(topicId) && searchParams.get("review") === "1";
+  // The Flashcard section narrows the daily review to one subject (`none`: the cards with no subject), and with
+  // `exam=none` to that subject's cards with no exam.
+  const onlyParam = everywhere ? searchParams.get("subject") : null;
+  const only =
+    onlyParam == null
+      ? null
+      : { subjectId: onlyParam === "none" ? null : onlyParam, examless: searchParams.get("exam") === "none" };
+  // Opened from the Flashcard section, every way out goes back there.
+  const fromSection = (useLocation().state as { from?: unknown } | null)?.from === "flashcards";
   const reviewQueue = useReviewSession(planId, reviewing);
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -130,9 +139,9 @@ export function CardsPage() {
       invoke("study.cards", { planId: planId ?? "", topicId }),
   });
   const dueEverywhere = useQuery({
-    queryKey: ["cards-everywhere"],
+    queryKey: ["cards-everywhere", only?.subjectId, only?.examless],
     enabled: everywhere,
-    queryFn: () => invoke("study.dueEverywhere", {}),
+    queryFn: () => invoke("study.dueEverywhere", only ?? {}),
   });
   const subjectCards = useQuery({
     queryKey: ["subject-cards", subjectId],
@@ -140,7 +149,11 @@ export function CardsPage() {
     queryFn: () => invoke("study.subjectCards", { subjectId: subjectId ?? "" }),
   });
   const subjects = useSubjects();
-  const subjectName = subjects.data?.find((item) => item.id === subjectId)?.name;
+  const subjectName = only
+    ? only.subjectId == null
+      ? t("cardBrowser.noSubject")
+      : subjects.data?.find((item) => item.id === only.subjectId)?.name
+    : subjects.data?.find((item) => item.id === subjectId)?.name;
   const deck = everywhere ? dueEverywhere : bySubject ? subjectCards : cards;
   const parked = useQuery({
     queryKey: ["card-suspended", planId, topicId],
@@ -507,7 +520,8 @@ export function CardsPage() {
   }
   function close() {
     // Oggi's session has no plan to go back to; it ends on the exams list. A subject's cards go back to the browser.
-    leaveTo(everywhere ? "/exams" : bySubject ? "/exams/cards" : `/plans/${planId ?? ""}`);
+    if (fromSection) leaveTo("/flashcards");
+    else leaveTo(everywhere ? "/exams" : bySubject ? "/exams/cards" : `/plans/${planId ?? ""}`);
   }
 
   useEffect(() => {
@@ -606,15 +620,17 @@ export function CardsPage() {
   return (
     <StudyLayout
       back={
-        everywhere
+        fromSection
+          ? { text: t("flashcards.title"), onClick: close }
+          : everywhere
           ? { text: t("nav.exams"), onClick: close }
           : bySubject
-            ? { text: t("exams.cards"), onClick: close }
+            ? { text: t("exams.allCards"), onClick: close }
             : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
       }
       title={
         everywhere
-          ? t("oggi.cardsTitle")
+          ? [t("oggi.cardsTitle"), only ? subjectName : null].filter(Boolean).join(" \u00b7 ")
           : bySubject
             ? [t("cards.title"), subjectName].filter(Boolean).join(" \u00b7 ")
             : reviewing

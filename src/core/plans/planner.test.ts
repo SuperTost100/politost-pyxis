@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
+  examRings,
+  examlessDue,
   finishDays,
   neededHours,
   planSchedule,
@@ -402,5 +405,131 @@ describe("Oggi", () => {
     expect(todayPlan(db, now).cards).toEqual({ due: 3, plans: 2, ratedToday: 0 });
     rateCard(db, "c-free", "good", now);
     expect(todayPlan(db, now).cards).toEqual({ due: 2, plans: 2, ratedToday: 1 });
+  });
+});
+
+describe("flashcards due with no exam", () => {
+  it("counts the ones the daily review adds to the exams' own, with or without an exam", () => {
+    const db = openDatabase(":memory:");
+    expect(examlessDue(db, now)).toBe(0);
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1), ('chem', 'Chimica', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c1', 'phys', 'Campo', 'E', 1),
+        ('c2', 'chem', 'Mole', 'n', 1), ('c-gone', 'phys', 'Rimossa', 'x', 1);
+      UPDATE cards SET removed = 1 WHERE id = 'c-gone';`);
+    // No exam at all: the review still has these two.
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(2);
+    // An exam's own card is not counted here, and rating one of the two takes it out.
+    addPlan(db, "near", { examIn: 4 });
+    dueCard(db, "c-near", "near", "near-t0");
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(3);
+    rateCard(db, "c1", "good", now);
+    expect(examlessDue(db, now)).toBe(1);
+  });
+});
+
+describe("exam rings", () => {
+  const ringOf = (db: Db, id: string) => examRings(db, now).find((ring) => ring.planId === id)!;
+
+  it("shows no preparation until something is measured, then the exam list's mastery", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    expect(ringOf(db, "a").preparation).toBeNull();
+    // A lesson read measures nothing.
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBeNull();
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBe(0);
+  });
+
+  it("counts a wrong quick-check answer as measured, at zero", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // What a wrong answer to a lesson's quick check records: evidence with score 0 and no graded step.
+    appendEvent(db, {
+      kind: "answer_given",
+      planId: "a",
+      topicId: "a-t0",
+      payload: { blockId: "q1", pick: 1, shown: true, score: 0, evidenceKind: "check" },
+      at: day(0, 9),
+    });
+    expect(ringOf(db, "a").preparation).toBe(0);
+  });
+
+  it("counts the path in the planner's minutes of work, from nothing studied to the target", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // Nothing studied: 15 diagnostic + 2 * (30 lesson + 3 * 20) + 60 simulation = 255 minutes left of 255.
+    expect(ringOf(db, "a").path).toBe(0);
+    // A lesson read ends the start (15) and the lesson (30): 210 left.
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
+    expect(ringOf(db, "a").path).toBeCloseTo(45 / 255);
+  });
+
+  it("has no path for an exam without topics", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4, topics: 0 });
+    expect(ringOf(db, "a").path).toBeNull();
+  });
+
+  it("counts one step as today's work when no weekly hours are set", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    addPlan(db, "undated");
+    expect(ringOf(db, "a").today).toBe(0);
+    expect(ringOf(db, "undated").today).toBe(0);
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").today).toBe(1);
+    // A step yesterday is not today's.
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(-1));
+    expect(ringOf(db, "undated").today).toBe(0);
+  });
+
+  it("counts today's minutes against the planner's share with weekly hours", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // 3.5 h a week gives the exam 30 minutes today; exercises take 20.
+    savePlannerHours(db, { hours: 3.5 }, now);
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").today).toBeCloseTo(20 / 30);
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
+    expect(ringOf(db, "a").today).toBe(1);
+  });
+
+  it("plans nothing today for a share too small to ask for, a past exam or an archived one", () => {
+    const db = openDatabase(":memory:");
+    for (const id of ["a", "b", "c", "d"]) addPlan(db, id, { examIn: 4 });
+    addPlan(db, "past", { examIn: -2 });
+    addPlan(db, "old", { examIn: 3 });
+    db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'old'").run();
+    dueCard(db, "c1", "old", "old-t0");
+    savePlannerHours(db, { hours: 0.5 }, now);
+    expect(ringOf(db, "a").today).toBeNull();
+    expect(ringOf(db, "past").today).toBeNull();
+    // A past exam keeps its path and its preparation.
+    expect(ringOf(db, "past").path).toBe(0);
+    const old = ringOf(db, "old");
+    expect(old.today).toBeNull();
+    expect(old.dueCards).toBe(0);
+    expect(examRings(db, now).at(-1)!.planId).toBe("old");
+  });
+
+  it("names the next step without due cards and counts each exam's due cards", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    dueCard(db, "c1", "a", "a-t0");
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
+    const ring = ringOf(db, "a");
+    expect(ring.dueCards).toBe(1);
+    expect(ring.next?.activity).not.toBe("cards");
+    expect(ring.next?.topicTitle).toBe(ring.next?.topicId ? `Topic ${ring.next.topicId.slice(-1)} of a` : null);
+  });
+
+  it("leaves out an exam still building", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    db.prepare("UPDATE plans SET status = 'building' WHERE id = 'a'").run();
+    expect(examRings(db, now)).toEqual([]);
   });
 });

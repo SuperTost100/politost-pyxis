@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { isMapPath } from "./doors";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { doorTarget, isMapPath, rememberDoorPath } from "./doors";
 
 describe("isMapPath", () => {
   it("tells a map's page from the exam pages around it", () => {
@@ -11,5 +11,24 @@ describe("isMapPath", () => {
     expect(isMapPath("/maps/")).toBe(false);
     expect(isMapPath("/maps/s1")).toBe(true);
     expect(isMapPath("/maps/s1/t1")).toBe(true);
+  });
+});
+
+describe("doorTarget", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("goes back to where a door was left, but never from Exams into the Library", () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+    });
+    rememberDoorPath("/exams/cards");
+    expect(doorTarget("exams", "/flashcards")).toBe("/exams/cards");
+    rememberDoorPath("/exams/library");
+    expect(doorTarget("exams", "/flashcards")).toBe("/exams");
+    expect(doorTarget("exams", "/exams/library")).toBe("/exams");
+    rememberDoorPath("/maps/s1");
+    expect(doorTarget("maps", "/flashcards")).toBe("/maps/s1");
   });
 });

@@ -402,12 +402,11 @@ export function ExamSettingsPage() {
                 })}
               </p>
             ) : null}
-            <p className="small ink-muted">
-              {thisWeek > 0 && !changed.hours
-                ? `${t("examSettings.hoursThisWeek", { time: formatMinutes(t, thisWeek) })} `
-                : null}
-              <Link to="/exams/planner">{t("examSettings.openPlanner")}</Link>
-            </p>
+            {thisWeek > 0 && !changed.hours ? (
+              <p className="small ink-muted">
+                {t("examSettings.hoursThisWeek", { time: formatMinutes(t, thisWeek) })}
+              </p>
+            ) : null}
           </Group>
 
           <Group id="sources" title={t("examSettings.sourcesHeading")} help={t("examSettings.sourcesHelp")}>

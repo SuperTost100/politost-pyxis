@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 /**
  * The native picker is answered by main's real handler, so grants for files and folders go through the same path
@@ -72,7 +72,7 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
   test.setTimeout(180000);
   const { app, page, userData, notes, files } = await start();
   try {
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
 
     // A file already in the library comes back unticked when its folder is read.
     await answerPicker(app, [files.cinematica]);
@@ -130,7 +130,7 @@ test("SRC-07 the file picker takes several files and the result lists them", asy
   test.setTimeout(180000);
   const { app, page, userData, files } = await start();
   try {
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     await answerPicker(app, [files.cinematica, files.dinamica, files.cinematica]);
     const dialog = await openAdd(page);
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
@@ -161,7 +161,7 @@ test("SRC-07 pasting the same text twice keeps one source and says it is already
   test.setTimeout(180000);
   const { page, app, userData } = await start();
   try {
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     const paste = async (title: string) => {
       const dialog = await openAdd(page, "Testo");
       await dialog.getByRole("textbox", { name: "Titolo" }).fill(title);
@@ -193,7 +193,7 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
   try {
     // One older source sits in the library, unrelated to the plan, and is not offered until asked for.
     await answerPicker(app, [files.vecchio]);
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     let dialog = await openAdd(page);
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog).toBeHidden();
