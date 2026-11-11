@@ -1,12 +1,13 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Dropdown, Modal } from "antd";
+import { Button, Dropdown, Modal, type MenuProps } from "antd";
 import { Ellipsis, MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
+import { MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
@@ -628,6 +629,28 @@ export function CardsPage() {
       {t("jobs.cancel")}
     </Button>
   ) : null;
+  // The three-dots menu of the card on show, which a right-click on the card opens too.
+  const cardMenu: MenuProps = {
+    items: [
+      {
+        key: "edit",
+        label: t("cards.edit"),
+        extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
+      },
+      {
+        key: "suspend",
+        label: t("cards.suspend"),
+        extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
+      },
+      {
+        key: "delete",
+        label: t("cards.delete"),
+        danger: true,
+        extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
+      },
+    ],
+    onClick: ({ key }) => (key === "edit" ? startEdit() : key === "suspend" ? suspend() : remove()),
+  };
   return (
     <StudyLayout
       back={
@@ -825,7 +848,10 @@ export function CardsPage() {
               </div>
             ) : null}
             {/* The card turns over when it shows its other face: data-turn is "out" until it is edge-on, then "in". */}
-            <article
+            <MenuItemArea
+              as="article"
+              menu={cardMenu}
+              disabled={ratingPending || editing}
               className="px-card"
               aria-label={t("cards.card")}
               data-face={face ? "back" : "front"}
@@ -835,32 +861,7 @@ export function CardsPage() {
                 <Dropdown
                   trigger={["click"]}
                   disabled={ratingPending || editing}
-                  menu={{
-                    items: [
-                      {
-                        key: "edit",
-                        label: t("cards.edit"),
-                        extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
-                      },
-                      {
-                        key: "suspend",
-                        label: t("cards.suspend"),
-                        extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
-                      },
-                      {
-                        key: "delete",
-                        label: t("cards.delete"),
-                        danger: true,
-                        extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
-                      },
-                    ],
-                    onClick: ({ key }) =>
-                      key === "edit"
-                        ? startEdit()
-                        : key === "suspend"
-                          ? suspend()
-                          : remove(),
-                  }}
+                  menu={cardMenu}
                 >
                   <Button
                     type="text"
@@ -955,7 +956,7 @@ export function CardsPage() {
                   )}
                 </div>
               )}
-            </article>
+            </MenuItemArea>
             {editing ? null : showBack ? (
               <>
                 <div className="px-cards-actions" role="group" aria-label={t("cards.rateLabel")}>

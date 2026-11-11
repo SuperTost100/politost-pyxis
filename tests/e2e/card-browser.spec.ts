@@ -174,6 +174,15 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await expect(edited).toContainText("Next review");
     expect(reviewRows(db)).toEqual(before);
 
+    // A right-click on a card's row opens the same menu as its dots, and a pick acts the same way.
+    const speedRow = page.getByRole("listitem").filter({ hasText: "Velocità media?" });
+    await speedRow.click({ button: "right" });
+    await expect(page.getByRole("region", { name: "More actions" }).getByRole("menuitem")).toHaveText(["Suspend", "Delete"]);
+    await page.getByRole("menuitem", { name: "Suspend", exact: true }).click();
+    await expect(speedRow).toContainText("Suspended");
+    await cardAction(page, "Velocità media\\?", "Resume");
+    await expect(speedRow).not.toContainText("Suspended");
+
     // Suspend, find it under Suspended, resume.
     await cardAction(page, "Velocità media\\?", "Suspend");
     const speed = page

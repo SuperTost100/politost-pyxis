@@ -1,0 +1,8 @@
+/* The point a right-click menu hangs from: nothing to see, just the spot the pointer or the focused element gives. One
+   pixel, because the popup aligns to a target only once the target has a size. */
+.px-menu-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}

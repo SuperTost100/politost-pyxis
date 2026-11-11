@@ -22,6 +22,8 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
 | `Chip`                               | A small rounded choice or filter                                                                         |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
+| `ItemMenu`                           | `useItemMenu` and `MenuItemArea`: a right-click or the menu key opens an item's three-dots menu          |
+| `BackLink`                           | The way back above a page's title: an arrow and the name of the place it leads to                        |
 | `ListToolbar`                        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
 | `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
 | `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
@@ -29,7 +31,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
 | `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                             |
 
-Context menus are the system's own, through `window.pyxis.contextMenu` (see `features/ask/ChatPanel.tsx`). Don't build a dropdown menu for actions on a row.
+A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right-click open the same `menu`, so both show the same items ([item menus](layout.md#item-menus) has the rules). Wire `useItemMenu` or `MenuItemArea` rather than building another dropdown for a row. Chats are the exception: their menu is the system's own, through `window.pyxis.contextMenu` (see `features/ask/chatActions.tsx`), in the sidebar and in the search, which is a modal dialog that a menu drawn in the page would sit behind. Text fields and anything marked `data-native-menu` keep the system's menu for copy, paste and spelling.
 
 ## Status and feedback
 

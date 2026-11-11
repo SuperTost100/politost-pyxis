@@ -18,6 +18,12 @@
   --map-node-shadow: var(--shadow-raised);
 }
 
+/* The way back sits over the head, 10px in like the title, with only the page's gap under it. */
+.px-map-page > .px-subpage-back {
+  align-self: flex-start;
+  margin: 0 0 calc(var(--space-1) - var(--space-3)) 10px;
+}
+
 .px-map-head {
   flex: none;
   display: flex;
