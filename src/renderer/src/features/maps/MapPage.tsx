@@ -210,8 +210,9 @@ export function MapPage() {
   // a reload or Back and Forward come back to it, and anything the student does on the page (another map, a new request)
   // takes `job` out of the entry. A request whose job is gone leaves it too.
   // A request that found nothing on this page stays the same way, in `kept`, until the student changes it or chooses a map.
+  // A request chosen by navigation wins over the kept one, which stands only when none arrived that way.
   const [kept, setKept] = useState<string>();
-  const reviewed = jobId ? undefined : (kept ?? arrival?.job);
+  const reviewed = jobId ? undefined : (arrival?.job ?? kept);
   const leaveRequest = () => {
     setKept(undefined);
     if (arrival?.job) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -281,6 +282,8 @@ export function MapPage() {
   // The map id lives in the URL, so the first render already shows the map the Maps section opened.
   const pickMap = useCallback(
     (id: string) => {
+      // Choosing the map the address already names changes nothing there, so the kept request is dropped here.
+      setKept(undefined);
       setSearch(
         (current) => {
           const next = new URLSearchParams(current);
@@ -451,6 +454,7 @@ export function MapPage() {
   // with nothing matched, focus moves to the result's heading, which a screen reader then reads.
   const announce = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement>(null);
+  const working = (!graph || fresh) && (building || starting || busy);
   // A request whose job is gone (cleared from Attività, or from an older workspace) leaves the scope's normal view.
   useEffect(() => {
     if (reviewed && build.isSuccess && build.data === null) leaveRequest();
@@ -508,10 +512,11 @@ export function MapPage() {
     }
   }, [job?.state, jobId, client, scopeKey, t]);
   useEffect(() => {
-    if (!nothingMatched || !announce.current) return;
+    // The heading is not there while the working state shows; the announcement waits for it.
+    if (!nothingMatched || !announce.current || !resultHeading.current) return;
     announce.current = false;
-    resultHeading.current?.focus();
-  }, [nothingMatched, job?.jobId]);
+    resultHeading.current.focus();
+  }, [nothingMatched, job?.jobId, working]);
   // A build that starts again, here or from Attività, clears what the last one left.
   useEffect(() => {
     if (building) setNotice("");
@@ -890,9 +895,10 @@ export function MapPage() {
   async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "") {
     setBusy(true);
     setNotice("");
-    leaveRequest();
     try {
       const result = await invoke("maps.generate", { ...address, ...(instruction ? { instruction } : {}) });
+      // The request the page kept goes only now that the new one has started; a failure leaves it, with the words changed.
+      leaveRequest();
       // The page follows the job `maps.generate` returned. Its first read is in place before the page switches to it, so
       // the working state does not drop out for a frame.
       if (result.jobId)
@@ -1242,7 +1248,7 @@ export function MapPage() {
       ) : null}
       <div className="px-map-body">
       <div className="px-map-card">
-        {(!graph || fresh) && (building || starting || busy) ? (
+        {working ? (
           <Working
             slot
             className="px-map-working"

@@ -559,3 +559,124 @@ test("asking again from a request opened in Attività builds the new map next to
     removeTestFolder(userData);
   }
 });
+
+test("a request that cannot be sent again keeps the student's edited words, and the form to send them again", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels), nothing, focused(conceptsOf("B"))]);
+  // Asking for a map reads the topic's passages; while their table is away that read fails, and works when it is back.
+  const breakRead = (on: boolean) => {
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      db.exec(
+        on
+          ? "ALTER TABLE topic_passages RENAME TO topic_passages_away"
+          : "ALTER TABLE topic_passages_away RENAME TO topic_passages",
+      );
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const { ask } = dialogs(page);
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await ask("solo i teoremi sulle onde gravitazionali", "Limiti · 1 mappa");
+    const field = page.getByLabel("Come la vuoi?");
+    await expect(field).toHaveValue("solo i teoremi sulle onde gravitazionali", { timeout: 60_000 });
+
+    // The student edits the words and sends them while the request cannot start: the page says so and keeps the words.
+    breakRead(true);
+    await field.fill(second);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    await expect(page.getByText("Non riesco a creare la mappa. Riprova.")).toBeVisible();
+    await expect(field).toHaveValue(second);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toBeEnabled();
+
+    // Once it works again, the same words are sent from the same form.
+    breakRead(false);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    await expect(conceptOf(page, "B")).toBeVisible({ timeout: 60_000 });
+    expect((await listOf(page)).map((map) => map.instruction)).toEqual([first, second]);
+    await expect(field).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a request opened from Attività replaces the one this page kept after it found nothing", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([nothing, nothing, nothing]);
+  try {
+    const { ask } = dialogs(page);
+    const older = "solo i teoremi sulle onde gravitazionali";
+    const newer = "solo le dimostrazioni sulla relatività";
+    const latest = "solo gli esempi sulla meccanica quantistica";
+    const field = page.getByLabel("Come la vuoi?");
+    await ask(older);
+    await expect(field).toHaveValue(older, { timeout: 60_000 });
+    await ask(newer);
+    await expect(field).toHaveValue(newer, { timeout: 60_000 });
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+
+    // The page opens on the older request, and a request made from it finds nothing too: the page keeps that one.
+    let rows = await openActivity(page);
+    await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(older);
+    await field.fill(latest);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    await expect(page.locator(".px-map-working")).toHaveCount(0, { timeout: 60_000 });
+    await expect(field).toHaveValue(latest);
+
+    // The row of another request opens this same page on that request, and the kept one gives way.
+    rows = await openActivity(page);
+    await expect(rows).toHaveCount(3);
+    await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(newer);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the only map of a topic is one choice away from a request that found nothing", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels), nothing]);
+  try {
+    const { ask } = dialogs(page);
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await ask("solo i teoremi sulle onde gravitazionali", "Limiti · 1 mappa");
+    const field = page.getByLabel("Come la vuoi?");
+    await expect(field).toBeVisible({ timeout: 60_000 });
+    // The page's menu offers the one map, and choosing it shows the map and takes the request away.
+    await page.getByRole("button", { name: "Altro" }).click();
+    await page.getByRole("group", { name: "Scegli una mappa" }).getByRole("menuitemradio").first().click();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(field).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a build that ends while the page still shows its working state moves focus to the result once it appears", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([nothing], { PYXIS_E2E_MAP_DELAY: "0" });
+  try {
+    const { ask } = dialogs(page);
+    await ask("solo i teoremi sulle onde gravitazionali");
+    const heading = page.getByRole("heading", { name: "Nel materiale non c’è niente per la tua richiesta" });
+    await expect(heading).toBeVisible({ timeout: 60_000 });
+    await expect(heading).toBeFocused();
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
