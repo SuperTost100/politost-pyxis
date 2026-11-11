@@ -79,6 +79,7 @@ async function choose(page: Page, label: string, option: string) {
 test("the flashcard browser groups, searches, edits, suspends, deletes and restores", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-"));
+  let opened: DatabaseSync | undefined;
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -88,6 +89,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
     });
+    opened = db;
     seed(db);
 
     // Reached from the Esami menu.
@@ -221,6 +223,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     ).toEqual({ n: 0 });
     db.close();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

@@ -329,6 +329,9 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         )
         .not.toBe(pinned.x);
     }).toPass({ timeout: 20000 });
+    // Opening a source above moved the view to show its concept, and on a short window that can leave
+    // this one above the canvas, under the page header. The student brings the whole map back with the fit button.
+    await page.getByRole("button", { name: "Adatta la mappa" }).click();
     await actual.click();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();
