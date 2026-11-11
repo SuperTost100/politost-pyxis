@@ -15,6 +15,8 @@ import { hashFiles } from "./quality";
 import { listSources } from "./smartbook";
 import { waitingScans } from "./ocr-job";
 import { linkedFile, readableLinkedPath } from "./linked-file";
+import { moveSource } from "./library-subjects";
+import { removeSubject, renameSubject } from "../plans/subjects";
 
 type Run = NonNullable<GenerateInput["run"]>;
 
@@ -1077,3 +1079,121 @@ describe("a linked scan", () => {
     expect(() => readableLinkedPath(db, "other")).toThrow("source-file-missing");
   });
 });
+
+describe("the subjects of a linked folder, changed by the student in the Library", () => {
+  /** Links the study tree, confirms what setup offered and waits until every file is read. */
+  async function linkedTree(options: Parameters<typeof setup>[0] = {}) {
+    const root = studyTree();
+    const app = setup(options);
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    const confirm = (names: Record<string, string> = {}) =>
+      app.linked.confirm({
+        folders: [
+          {
+            folderId: folder!.id,
+            subjects: folder!.subjects.map((s) => ({ key: s.key, name: names[s.key] ?? s.name, skipped: s.skipped })),
+          },
+        ],
+      });
+    await confirm();
+    await app.settled();
+    const names = () => app.db.prepare(`SELECT name FROM subjects ORDER BY name`).pluck().all() as string[];
+    return { root, app, folder: folder!, confirm, names };
+  }
+
+  it("puts a loose file Pyxis could not place in a subject, in Pyxis only, and no later look or setup again undoes it", async () => {
+    const { root, app, folder, confirm } = await linkedTree();
+    const orario = app.source("orario")!;
+    expect(orario.subjectId).toBeNull();
+    const gal = app.source("appunti")!.subjectId!;
+    const physics = app.source("Mazzoldi cap 2")!.subjectId!;
+    const before = snapshot(root);
+    moveSource(app.db, orario.id, { subjectId: gal });
+    // A file inside a subject folder can be put elsewhere too.
+    moveSource(app.db, app.source("Mazzoldi cap 2")!.id, { subjectId: gal });
+    expect(snapshot(root)).toEqual(before);
+
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(app.source("orario")!.subjectId).toBe(gal);
+    expect(app.source("Mazzoldi cap 2")!.subjectId).toBe(gal);
+    // Setup again, with the folder's subject renamed, gives the folder's other files that subject but not this one.
+    await confirm({ "Fisica 1": "Fisica" });
+    await app.settled();
+    expect(app.source("Mazzoldi cap 2")!.subjectId).toBe(gal);
+    expect(app.source("febbraio")!.subjectId).toBe(physics);
+    expect(app.subjectName(physics)).toBe("Fisica");
+    expect(app.source("orario")!.subjectId).toBe(gal);
+    expect(snapshot(root)).toEqual(before);
+  });
+
+  it("keeps a file's subject chosen by hand when the file is moved on disk into another subject's folder", async () => {
+    const { root, app, folder } = await linkedTree();
+    const gal = app.source("appunti")!.subjectId!;
+    const mazzoldi = app.source("Mazzoldi cap 2")!;
+    const own = moveSource(app.db, mazzoldi.id, { name: "Meccanica" });
+    renameSync(join(root, "Fisica 1", "Mazzoldi cap 2.md"), join(root, "GAL", "Mazzoldi cap 2.md"));
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(app.source("Mazzoldi cap 2")).toMatchObject({ id: mazzoldi.id, rel: join("GAL", "Mazzoldi cap 2.md"), subjectId: own.id });
+    // A file nobody chose a subject for still follows its folder.
+    renameSync(join(root, "Fisica 1", "Temi d'esame", "febbraio.txt"), join(root, "GAL", "febbraio.txt"));
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(app.source("febbraio")!.subjectId).toBe(gal);
+  });
+
+  it("does not ask the AI tool about a loose file the student placed while none was set up", async () => {
+    const calls: string[][] = [];
+    const { app, folder } = await linkedTree({ engine: false, run: async (input) => (isSorting(input) ? sortByPrefix(calls)(input) : tidyFolders(input)) });
+    const orario = app.source("orario")!;
+    expect(orario.subjectId).toBeNull();
+    moveSource(app.db, orario.id, { subjectId: app.source("appunti")!.subjectId! });
+    app.db.prepare("INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)").run(
+      JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }),
+    );
+    writeFileSync(join(studyRootOf(app, folder.id), "GAL esercizi.txt"), "Una base di uno spazio vettoriale genera tutto lo spazio.");
+    await app.linked.sync(folder.id);
+    await app.settled();
+    // The new loose file was asked about; the placed one was not.
+    expect(calls.flat()).toEqual(["GAL esercizi.txt"]);
+    expect(app.source("orario")!.subjectId).toBe(app.source("appunti")!.subjectId);
+  });
+
+  it("keeps a renamed subject for its folder: a later look makes no second subject with the old name", async () => {
+    const { root, app, folder, names } = await linkedTree();
+    const physics = app.source("Mazzoldi cap 2")!.subjectId!;
+    renameSubject(app.db, physics, "Fisica generale");
+    expect(() => renameSubject(app.db, physics, "geometria e algebra lineare")).toThrow();
+    writeFileSync(join(root, "Fisica 1", "moto circolare.txt"), "Nel moto circolare uniforme l'accelerazione è centripeta.");
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(app.source("moto circolare")!.subjectId).toBe(physics);
+    expect(names()).toEqual(["Fisica generale", "Geometria e algebra lineare"]);
+    expect(app.linked.view(folder.id).subjects.find((subject) => subject.key === "Fisica 1")!.name).toBe("Fisica generale");
+  });
+
+  it("deletes only a subject nothing has, and a later look neither makes it again nor files its folder's new files under another", async () => {
+    const { root, app, folder, names } = await linkedTree();
+    const gal = app.source("appunti")!.subjectId!;
+    const physics = app.source("Mazzoldi cap 2")!.subjectId!;
+    expect(() => removeSubject(app.db, gal, { onlyEmpty: true })).toThrow();
+    expect(names()).toContain("Geometria e algebra lineare");
+    moveSource(app.db, app.source("appunti")!.id, { subjectId: physics });
+    removeSubject(app.db, gal, { onlyEmpty: true });
+    expect(names()).toEqual(["Fisica I"]);
+
+    writeFileSync(join(root, "GAL", "esercizi.txt"), "Una base di uno spazio vettoriale genera tutto lo spazio.");
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(names()).toEqual(["Fisica I"]);
+    // The new file waits for the student in "Da sistemare"; the moved one stays where it was put.
+    expect(app.source("esercizi")!.subjectId).toBeNull();
+    expect(app.source("appunti")!.subjectId).toBe(physics);
+  });
+});
+
+/** The folder a linked folder reads, from its row. */
+function studyRootOf(app: ReturnType<typeof setup>, folderId: string): string {
+  return app.db.prepare(`SELECT path FROM linked_folders WHERE id = ?`).pluck().get(folderId) as string;
+}

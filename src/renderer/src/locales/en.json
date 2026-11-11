@@ -747,7 +747,6 @@
       "chooseFor": "Subject of {{title}}",
       "failed": "I couldn't choose the subject. Try again from Background tasks, or choose it yourself.",
       "linkedFailed": "I couldn't choose the subjects of the loose files in this folder, so they have none yet. Try again from Background tasks.",
-      "linked": "This file is in a linked folder, so its subject is the folder's.",
       "subjectMissing": "This subject no longer exists. Choose another one."
     }
   },

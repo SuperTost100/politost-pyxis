@@ -1773,8 +1773,9 @@ export const requests = {
     }),
     output: z.object({ id: z.string(), name: z.string() }),
   },
+  /** `onlyEmpty`, as the Library asks: refuses a subject that anything still has (`inUse`) and changes nothing. */
   "subjects.remove": {
-    input: z.object({ id: z.string() }),
+    input: z.object({ id: z.string(), onlyEmpty: z.boolean().optional() }),
     output: z.object({ ok: z.literal(true) }),
   },
   "subjects.list": {
@@ -2493,6 +2494,8 @@ export const requests = {
         bytes: z.number().nullable(),
         sections: z.number().int().nonnegative(),
         planCount: z.number().int().nonnegative(),
+        /** An exam uses it as a past exam paper, so the Library draws it as one. */
+        pastPaper: z.boolean(),
         /** Sections a stored comparison flags as off the syllabus of the plans that use the source. Absent when none or not yet compared. */
         syllabusOff: z.number().int().positive().optional(),
         /** The error code a failed import stopped with, while its job is still listed. */

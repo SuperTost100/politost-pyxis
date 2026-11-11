@@ -516,7 +516,7 @@ export function sourceHandlers(
       if (e2eSortFails()) throw new Error("sort refused");
       return { jobId: startLibrarySort(db, runner, input.sourceIds) };
     },
-    /** Puts a source in the subject the student chose, existing or new. Errors: `source-linked`, `subject-missing`. */
+    /** Puts a source in the subject the student chose, existing or new. Errors: `subject-missing`. */
     move(input: { sourceId: string; subjectId: string } | { sourceId: string; name: string }) {
       try {
         return moveSource(db, input.sourceId, "name" in input ? { name: input.name } : { subjectId: input.subjectId });

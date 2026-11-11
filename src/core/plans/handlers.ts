@@ -91,8 +91,8 @@ export function planHandlers(
     renameSubject(input: { id: string; name: string }) {
       return renameSubject(db, input.id, input.name);
     },
-    removeSubject(input: { id: string }) {
-      removeSubject(db, input.id);
+    removeSubject(input: { id: string; onlyEmpty?: boolean }) {
+      removeSubject(db, input.id, { onlyEmpty: input.onlyEmpty });
       return { ok: true as const };
     },
     usage() {
