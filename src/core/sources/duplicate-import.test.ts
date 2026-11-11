@@ -9,7 +9,7 @@ import { sourceHandlers } from "./handlers";
 import { enqueueSourceData, enqueueSourceFile, registerSourceJobs, SourceExists, type Extraction } from "./jobs";
 import { linkedFolders } from "./linked";
 import { extractByExt, extractPlain } from "./documents";
-import { EXISTING_LINK_SQL, existingLinkFor, hashFiles } from "./quality";
+import { EXISTING_LINK_SQL, EXISTING_SOURCE_SQL, existingLinkFor, hashFiles } from "./quality";
 import { blobSize, hasBlob } from "../blobs";
 import { commitStaged } from "../chat/attach";
 import { deleteChat } from "../chat/turn";
@@ -324,6 +324,23 @@ describe("finding a saved link", () => {
       .map((step) => step.detail)
       .join(" | ");
     expect(plan).not.toMatch(/CORRELATED/);
+  });
+});
+
+describe("the lookup by hash", () => {
+  it("reads a hash through indexes on both sides, never the whole sources table", () => {
+    const db = openDatabase(":memory:");
+    for (const libraryOnly of [0, 1]) {
+      const plan = (db.prepare(`EXPLAIN QUERY PLAN ${EXISTING_SOURCE_SQL}`).all("abc", "abc", libraryOnly) as Array<{
+        detail: string;
+      }>)
+        .map((step) => step.detail)
+        .join(" | ");
+      expect(plan).toContain("sources_blob_sha");
+      expect(plan).toContain("linked_files_hash");
+      expect(plan).not.toMatch(/SCAN sources/);
+    }
+    db.close();
   });
 });
 

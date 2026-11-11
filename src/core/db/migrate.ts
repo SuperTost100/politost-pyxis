@@ -356,6 +356,13 @@ END;`,
   CHECK (subject_sort IS NULL OR subject_sort IN ('waiting', 'sorted', 'created', 'unsure', 'no-ai', 'manual'));
 CREATE INDEX sources_subject_sort ON sources(subject_sort) WHERE subject_sort IN ('waiting', 'created', 'unsure', 'no-ai');`,
   },
+  // Importing a file looks its hash up among the stored originals, once per file and up to 2,000 files in a scan, and
+  // `sources.blob_sha` had no index, so each look read the whole table. Only rows that hold a stored original are
+  // indexed: a link, a pasted text or a book read in place has none. The step only adds the index.
+  {
+    version: 30,
+    sql: `CREATE INDEX sources_blob_sha ON sources(blob_sha) WHERE blob_sha IS NOT NULL;`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

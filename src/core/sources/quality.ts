@@ -74,6 +74,18 @@ export async function hashFiles(paths: string[], maxBytes: number): Promise<Arra
 }
 
 /**
+ * The query behind `existingSourceFor`. Each side of the `OR` has an index (`sources_blob_sha` for the first, the
+ * primary key for the ids that `linked_files_hash` finds), so SQLite reads a few rows per call. A folder scan runs it
+ * for up to 2,000 files in a row, and without `sources_blob_sha` every call read the whole `sources` table.
+ */
+export const EXISTING_SOURCE_SQL = `SELECT id FROM sources
+  WHERE (blob_sha = ?
+         OR id IN (SELECT source_id FROM linked_files WHERE content_hash = ? AND missing_at IS NULL))
+    AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
+    AND (? = 0 OR library = 1)
+  ORDER BY created_at DESC, rowid DESC LIMIT 1`;
+
+/**
  * The newest source whose current file has this hash and that is still usable: reading, waiting or ready.
  * A removed, failed, cancelled or interrupted source does not count, so importing that file again starts over.
  * A file a linked folder reads in place has no stored copy, so its hash is on the folder's row, and counts while the
@@ -86,16 +98,7 @@ export function existingSourceFor(
   sha: string,
   libraryOnly = false,
 ): string | null {
-  const row = db
-    .prepare(
-      `SELECT id FROM sources
-       WHERE (blob_sha = ?
-              OR id IN (SELECT source_id FROM linked_files WHERE content_hash = ? AND missing_at IS NULL))
-         AND status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')
-         AND (? = 0 OR library = 1)
-       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
-    )
-    .get(sha, sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
+  const row = db.prepare(EXISTING_SOURCE_SQL).get(sha, sha, libraryOnly ? 1 : 0) as { id: string } | undefined;
   return row?.id ?? null;
 }
 
