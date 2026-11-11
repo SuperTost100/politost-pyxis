@@ -27,7 +27,7 @@ const stepMinutes: Record<Activity, number> = {
 };
 
 /** Plans Oggi and the planner look at: every built plan that is not archived. */
-const studyPlans = `SELECT id, title, exam_at, target, updated_at,
+const studyPlans = `SELECT id, title, exam_at, target, updated_at, subject_id,
   (SELECT name FROM subjects s WHERE s.id = p.subject_id) AS subject
   FROM plans p WHERE status <> 'building' AND archived_at IS NULL`;
 
@@ -37,6 +37,7 @@ type PlanRow = {
   exam_at: number | null;
   target: number;
   updated_at: number;
+  subject_id: string | null;
   subject: string | null;
 };
 
@@ -493,10 +494,19 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
 /**
  * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, then plans without a date
  * and each subject's cards with no exam, past exams last; at most 20 at a time, like a plan's own session.
+ *
+ * `only` narrows it to one subject (`subjectId: null` for the cards with no subject), and with `examless` to that
+ * subject's cards with no exam: the Flashcard section's review of a subject.
  */
-export function dueEverywhere(db: Database.Database, now = Date.now()) {
+export function dueEverywhere(
+  db: Database.Database,
+  now = Date.now(),
+  only?: { subjectId: string | null; examless?: boolean },
+) {
   const today = startOfDay(now);
-  const rows = db.prepare(studyPlans).all() as PlanRow[];
+  const rows = (db.prepare(studyPlans).all() as PlanRow[]).filter(
+    (row) => !only || (!only.examless && row.subject_id === only.subjectId),
+  );
   const rank = (row: PlanRow) =>
     row.exam_at == null ? 1 : startOfDay(row.exam_at) < today ? 2 : 0;
   const ordered = rows.sort(
@@ -516,14 +526,16 @@ export function dueEverywhere(db: Database.Database, now = Date.now()) {
       .map((row) => () =>
         dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
       ),
-    ...examlessDecks(db).map((deck) => () =>
-      deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
-        ...card,
-        planId: null,
-        planTitle: null,
-        subject: deck.subject,
-      })),
-    ),
+    ...examlessDecks(db)
+      .filter((deck) => !only || deck.subjectId === only.subjectId)
+      .map((deck) => () =>
+        deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
+          ...card,
+          planId: null,
+          planTitle: null,
+          subject: deck.subject,
+        })),
+      ),
     ...ordered
       .filter((row) => rank(row) === 2)
       .map((row) => () =>

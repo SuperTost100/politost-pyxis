@@ -86,6 +86,7 @@ export const router = createHashRouter([
       { path: "exams/planner", loader: () => replace("/exams") },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
+      { path: "flashcards", lazy: page(() => import("../features/flashcards/FlashcardsHome"), "FlashcardsHome") },
       { path: "plans/:planId/settings", lazy: page(plans, "ExamSettingsPage") },
       // A map belongs to Maps and opens inside the shell, by its subject and, for a topic's map, the topic. The exam's
       // address still opens a topic's map, for older links and for an exam that has no subject.

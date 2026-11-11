@@ -53,6 +53,7 @@ const replayable = new Set([
   "subjects.list",
   "study.queue",
   "study.subjectCards",
+  "study.cardSections",
   "study.cardSettings",
   "study.cardsBuild",
   "study.cardsPlaces",

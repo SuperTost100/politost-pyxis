@@ -18,6 +18,7 @@ import {
   undoRating,
 } from "./cards";
 import { browseCards } from "./cardBrowser";
+import { cardSections } from "./cardSections";
 import { mistakesNotebook, startRedo } from "./notebook";
 import {
   enqueueTopicCards,
@@ -446,6 +447,9 @@ export function studyHandlers(
     // Reads never generate: building cards is a durable job started by cardsGenerate.
     cards(input: { planId: string; topicId?: string }) {
       return dueCards(db, input.planId, Date.now(), input.topicId);
+    },
+    cardSections() {
+      return cardSections(db, Date.now());
     },
     subjectCards(input: { subjectId: string }) {
       return deckDueCards(db, { subjectId: input.subjectId }, Date.now());

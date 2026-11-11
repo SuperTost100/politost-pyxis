@@ -77,6 +77,12 @@ export const examlessDueQuery = queryOptions({
 });
 
 /** The session planner: the weekly hours, the hours the exams need, and the weeks. */
+/** The Flashcard section's subjects, exams, topics and due counts, also listed by the search. */
+export const cardSectionsQuery = queryOptions({
+  queryKey: ["card-sections"],
+  queryFn: () => invoke("study.cardSections", {}),
+});
+
 export const plannerQuery = queryOptions({
   queryKey: ["plans", "planner"],
   queryFn: () => invoke("plans.planner", {}),

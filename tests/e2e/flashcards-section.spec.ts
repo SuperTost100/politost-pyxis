@@ -1,0 +1,106 @@
+import { expect, test } from "@playwright/test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { launchPyxis } from "./app-under-test";
+import { removeTestFolder } from "./cleanup";
+import { seedPlan, seedSubjects } from "./seed";
+
+test("the Flashcard section lists each subject's flashcards and starts every review from them, with no exam at all", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-flashcards-section-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // Two subjects and no exam: the flashcards made from a map or a lesson, filed under their subject.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [
+      { id: "chem", name: "Chimica", position: 0 },
+      { id: "phys", name: "Fisica 2", position: 1 },
+    ]);
+    db.exec(`INSERT INTO cards(id,subject_id,front,back,created_at) VALUES
+      ('s1','chem','Numero atomico?','Protoni nel nucleo.',10),
+      ('s2','chem','Massa molare?','Grammi per mole.',11),
+      ('s3','phys','Legge di Gauss?','Il flusso di E è la carica su ε₀.',12);`);
+
+    const sections = page.getByRole("navigation", { name: "Sezioni" });
+    await sections.getByRole("link", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(sections.getByRole("link", { name: "Flashcard", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
+    const chem = page.getByRole("region", { name: "Chimica" });
+    await expect(chem).toContainText("2 flashcard · 2 da ripassare oggi");
+    await expect(chem.getByRole("heading", { level: 3, name: "Senza esame" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Fisica 2" })).toContainText("1 flashcard · 1 da ripassare oggi");
+
+    // The daily review holds every subject's flashcards, though there is no exam, and closing it comes back here.
+    await page.getByRole("button", { name: "Ripassa le 3 di oggi", exact: true }).click();
+    await expect(page).toHaveURL(/#\/cards\/due$/);
+    await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Gira/ }).click();
+    await page.getByRole("button", { name: "Facile", exact: true }).click();
+    await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(page.getByRole("button", { name: "Ripassa le 2 di oggi", exact: true })).toBeVisible();
+    await expect(chem).toContainText("2 flashcard · 1 da ripassare oggi");
+
+    // Fisica 2's review is its own flashcards only.
+    await page.getByRole("button", { name: "Ripassa le flashcard di Fisica 2", exact: true }).click();
+    await expect(page).toHaveURL(/#\/cards\/due\?subject=phys$/);
+    await expect(page.getByText("Legge di Gauss?", { exact: true })).toBeVisible();
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+
+    // An exam for Chimica: its topic gets a row under the exam's name, the subject's review takes in its cards too, and
+    // the topic opens as on the exam's page.
+    seedPlan(db, {
+      id: "p-chem",
+      subjectId: "chem",
+      title: "Chimica generale",
+      language: "it",
+      target: 0.75,
+      examAt: Date.now() + 10 * 86_400_000,
+      topics: [{ id: "t-atom", title: "Struttura dell’atomo" }],
+    });
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
+      ('e1','p-chem','t-atom','Che cos’è un orbitale?','La regione dove è probabile trovare l’elettrone.',20);`);
+    db.close();
+    await page.reload();
+    await expect(chem).toContainText("3 flashcard · 2 da ripassare oggi");
+    const exam = chem.getByRole("list", { name: "Chimica generale" });
+    await expect(exam.getByRole("link")).toHaveText([/^Struttura dell’atomo1 flashcard/]);
+    await chem.getByRole("button", { name: "Ripassa le flashcard di Chimica", exact: true }).click();
+    await expect(page).toHaveURL(/#\/cards\/due\?subject=chem$/);
+    await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await exam.getByRole("link", { name: /^Struttura dell’atomo/ }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-chem\/cards\/t-atom$/);
+    await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+
+    // The row of Chimica's flashcards with no exam opens them on their own.
+    await chem.getByRole("list", { name: "Senza esame" }).getByRole("link").click();
+    await expect(page).toHaveURL(/#\/cards\/subject\/chem$/);
+    await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+
+    // The search finds a subject's flashcards and opens the section on it.
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("button", { name: /^Cerca/ }).click();
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    await finder.getByRole("combobox", { name: "Cerca" }).fill("fisica");
+    await finder.getByRole("group", { name: "Flashcard" }).getByRole("option", { name: /^Fisica 2/ }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica 2" })).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

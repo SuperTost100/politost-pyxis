@@ -3359,11 +3359,12 @@
   },
   "finder": {
     "label": "Search",
-    "placeholder": "Search chats, exams, maps and material",
+    "placeholder": "Search chats, exams, maps, flashcards and material",
     "chatsPlaceholder": "Search your chats",
     "chats": "Chats",
     "exams": "Exams",
     "maps": "Maps",
+    "flashcards": "Flashcards",
     "material": "Material",
     "none": "Nothing matches these words.",
     "close": "esc"
@@ -3382,5 +3383,23 @@
       "path": "How much of the path you've done",
       "today": "How much of today's steps you've done"
     }
+  },
+  "flashcards": {
+    "title": "Flashcards",
+    "lead": "Every subject's flashcards, with or without an exam.",
+    "reviewToday_one": "Review today's flashcard",
+    "reviewToday_other": "Review today's {{count}}",
+    "noneDue": "Nothing to review today",
+    "dueToday_one": "{{count}} due today",
+    "dueToday_other": "{{count}} due today",
+    "dueShort_one": "{{count}} today",
+    "dueShort_other": "{{count}} today",
+    "review": "Review",
+    "reviewSubject": "Review the flashcards of {{subject}}",
+    "examless": "Flashcards with no exam",
+    "emptyTitle": "No flashcards yet",
+    "emptyBody": "You make them from a map, from text you select in a lesson, or from a topic on an exam's page.",
+    "emptyAction": "Open Maps",
+    "loadFailed": "The flashcards didn't load."
   }
 }

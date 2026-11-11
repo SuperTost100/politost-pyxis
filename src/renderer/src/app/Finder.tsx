@@ -9,7 +9,7 @@ import { openSourceViewer } from "../components/SourceViewer";
 import { RenameField, type ChatActions } from "../features/ask/chatActions";
 import { groupChats, titleMatches, type ChatGroup } from "../features/ask/chatList";
 import { invoke } from "../lib/ipc";
-import { useChats, usePlans, useSources } from "../lib/queries";
+import { cardSectionsQuery, useChats, usePlans, useSources } from "../lib/queries";
 import "./Finder.css";
 
 /** "all" searches everything; "chats" lists every chat by date, as "All chats" in the sidebar opens it. */
@@ -87,6 +87,7 @@ export function Finder({
     placeholderData: keepPreviousData,
   });
 
+  const flashcards = useQuery({ ...cardSectionsQuery, enabled: open && view === "all" });
   const done = () => onClose();
   const allChats = chats.data ?? [];
   const subjectOf = new Map(allChats.map((chat) => [chat.id, chat.subject]));
@@ -147,6 +148,24 @@ export function Finder({
           sub: map.subjectName ?? map.planTitle,
           go: () => navigate(mapPath(map)),
         })),
+      },
+      {
+        label: t("finder.flashcards"),
+        // Each subject's flashcards; the section's own name lists them all.
+        rows: (flashcards.data?.subjects ?? [])
+          .filter((subject) => matches(subject.name ?? t("cardBrowser.noSubject"), t("flashcards.title")))
+          .slice(0, PER_KIND)
+          .map((subject) => ({
+            key: `flashcards:${subject.subjectId ?? "none"}`,
+            title: subject.name ?? t("cardBrowser.noSubject"),
+            sub: [
+              t("cardBrowser.count", { count: subject.total }),
+              subject.due > 0 ? t("flashcards.dueToday", { count: subject.due }) : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+            go: () => navigate("/flashcards", { state: { subject: subject.subjectId ?? "none" } }),
+          })),
       },
       {
         label: t("finder.material"),

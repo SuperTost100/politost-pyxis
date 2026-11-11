@@ -328,8 +328,12 @@ export function planHandlers(
     plannerHours(input: { week?: string; hours: number | null }) {
       return savePlannerHours(db, input);
     },
-    dueEverywhere() {
-      return dueEverywhere(db);
+    dueEverywhere(input: { subjectId?: string | null; examless?: boolean } = {}) {
+      return dueEverywhere(
+        db,
+        Date.now(),
+        input.subjectId === undefined ? undefined : { subjectId: input.subjectId, examless: input.examless },
+      );
     },
     complete(input: {
       planId: string;

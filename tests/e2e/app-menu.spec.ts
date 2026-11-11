@@ -161,7 +161,8 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await pick(app, "library");
     await expect(page).toHaveURL(/#\/exams\/library$/);
     await pick(app, "flashcards");
-    await expect(page).toHaveURL(/#\/exams\/cards$/);
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
     await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
     // The Exams door remembers where it was left after the page renders; on a slow runner the next picks can come first.

@@ -101,6 +101,11 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await expect(door("Esami")).not.toHaveAttribute("aria-current", "page");
     await door("Mappe").click();
     await expect(page).toHaveURL(/#\/maps$/);
+    // Flashcard sits between Mappe and Libreria and is a section of its own.
+    await expect(doors.getByRole("link")).toHaveText(["Nuova chat", "Esami", "Mappe", "Flashcard", "Libreria"].map((name) => new RegExp(`^${name}`)));
+    await door("Flashcard").click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(selected).toHaveAccessibleName("Flashcard");
     await door("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(library).not.toHaveAttribute("aria-current", "page");
@@ -114,6 +119,7 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
       "#/exams",
       "#/ask",
       "#/maps",
+      "#/flashcards",
       "#/settings",
       "#/settings/appearance",
       "#/exams/get",
