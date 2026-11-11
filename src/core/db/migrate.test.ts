@@ -34,9 +34,9 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migration 29 adds, so a test can rewind the version past it. */
+/** Removes what migrations 29 and 30 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
-  db.exec("DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
+  db.exec("DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
 }
 
 /**
@@ -185,7 +185,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(29);
+    expect(db.pragma("user_version", { simple: true })).toBe(30);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -200,7 +200,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -217,7 +217,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(
       again
         .prepare(
@@ -247,7 +247,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -275,7 +275,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -325,7 +325,7 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     // Migration 29 adds an empty `subject_sort`; nothing else of the source changes.
     expect(again.prepare("SELECT * FROM sources").all()).toEqual(
       (before as Array<Record<string, unknown>>).map((row) => ({ ...row, subject_sort: null })),
@@ -360,7 +360,7 @@ describe("linked folders read in full", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
     expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
     // The queue finds waiting files of a folder through its own index.
@@ -381,7 +381,7 @@ describe("the linked-file hash lookup", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     // The two queries the import and the folder scan run: a hash among present files, alone and next to a source's own hash.
     for (const sql of [
       "SELECT source_id FROM linked_files WHERE content_hash = 'abc' AND missing_at IS NULL",
@@ -415,7 +415,7 @@ describe("maps by subject", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(
       again.prepare("SELECT id, subject_id, plan_id, topic_id, grounding, prompt_version, created_at FROM maps ORDER BY id").all(),
     ).toEqual([
@@ -465,7 +465,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,
@@ -687,9 +687,47 @@ describe("the subject Pyxis chooses for a Library file", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(29);
+    expect(again.pragma("user_version", { simple: true })).toBe(30);
     expect(again.prepare("SELECT subject_sort FROM sources").get()).toEqual({ subject_sort: null });
     again.prepare("UPDATE sources SET subject_sort = 'waiting'").run();
     expect(() => again.prepare("UPDATE sources SET subject_sort = 'guessed'").run()).toThrow();
   });
+});
+
+describe("the index on a source's stored file", () => {
+  for (const [release, version] of [
+    ["0.4.x", 23],
+    ["0.5.0-dev.7", 26],
+    ["a build of next with the linked-file index", 27],
+    ["a build of next before the subject sort", 28],
+    ["0.5.0-dev.8", 29],
+  ] as const)
+    it(`keeps every source of a ${release} workspace as it was and adds the index once`, () => {
+      const { db, file } = workspaceAt(version);
+      db.exec(`
+        INSERT INTO sources (id, kind, title, blob_sha, mime, status, created_at, updated_at) VALUES
+          ('a', 'pdf', 'Dispense', 'abc', 'application/pdf', 'ready', 1, 2),
+          ('b', 'pdf', 'Copia', 'abc', 'application/pdf', 'ready', 3, 4),
+          ('c', 'text', 'Appunti', NULL, NULL, 'ready', 5, 6);
+      `);
+      const before = db.prepare("SELECT * FROM sources ORDER BY rowid").all() as Array<Record<string, unknown>>;
+      db.close();
+
+      const again = openDatabase(file);
+      opened.push(again);
+      expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+      expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+      // Every row is unchanged. Migration 29 adds an empty `subject_sort` to a workspace older than it.
+      const after = again.prepare("SELECT * FROM sources ORDER BY rowid").all() as Array<Record<string, unknown>>;
+      expect(after).toEqual(version < 29 ? before.map((row) => ({ ...row, subject_sort: null })) : before);
+      expect(
+        again.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'sources_blob_sha'").pluck().get(),
+      ).toBe(1);
+      // The index holds the rows that have a stored file and none of the others.
+      const rows = again
+        .prepare("SELECT id FROM sources INDEXED BY sources_blob_sha WHERE blob_sha IS NOT NULL ORDER BY id")
+        .pluck()
+        .all();
+      expect(rows).toEqual(["a", "b"]);
+    });
 });
