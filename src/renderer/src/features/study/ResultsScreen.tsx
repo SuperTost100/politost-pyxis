@@ -13,7 +13,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { questionPoints, stemText, type AnswerSource, type Citation } from "./quizText";
-import { drillGap, tally, type ResultMark } from "./resultsSummary";
+import { drillGap, statusWordKey, tally, type ResultMark } from "./resultsSummary";
 import { TypedAnswer } from "./TypedAnswer";
 import "./ResultsScreen.css";
 
@@ -137,7 +137,7 @@ export function ResultsScreen({
   const fallback = outcome.data?.fallback;
   const gap = graded && outcome.data ? drillGap(outcome.data.gaps) : undefined;
   const gapTopic = gap ? outcome.data?.topics.find((topic) => topic.id === gap.topicId)?.title : undefined;
-  const parts = tally(items.map((item) => item.mark));
+  const parts = tally(items);
   const titleId = useId();
   return (
     <div className="px-res">
@@ -334,21 +334,10 @@ const STATUS_ICON: Record<Exclude<ResultMark, "grading">, IconName> = {
   ungraded: "circle-dashed",
 };
 
-const STATUS_WORD: Record<ResultMark, string> = {
-  correct: "results.right",
-  partial: "results.half",
-  wrong: "results.wrong",
-  flagged: "quiz.excluded",
-  grading: "results.grading",
-  queued: "results.queued",
-  ungraded: "results.ungraded",
-};
-
 /** The answer's state in a word, its icon and its points: "Giusta · 1/1" in the quiet green, the others in ink. */
 function Status({ item }: { item: ResultItem }) {
   const { t, i18n } = useTranslation();
-  const dontKnow = item.mark === "wrong" && !item.answer;
-  const word = t(dontKnow ? "results.dontKnow" : STATUS_WORD[item.mark]);
+  const word = t(statusWordKey(item));
   const points =
     item.value !== undefined && item.mark !== "flagged" && item.mark !== "grading" && item.mark !== "queued"
       ? `${questionPoints(item.value, i18n.language)}/1`

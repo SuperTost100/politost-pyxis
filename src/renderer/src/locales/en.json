@@ -1327,8 +1327,10 @@
     "tally": {
       "right_one": "1 right",
       "right_other": "{{count}} right",
-      "partial_one": "1 half right",
-      "partial_other": "{{count}} half right",
+      "half_one": "1 half right",
+      "half_other": "{{count}} half right",
+      "partly_one": "1 partly right",
+      "partly_other": "{{count}} partly right",
       "wrong_one": "1 wrong",
       "wrong_other": "{{count}} wrong"
     },
@@ -1347,6 +1349,7 @@
     "exercisesCount_one": "The exercise",
     "exercisesCount_other": "The {{count}} exercises",
     "half": "Half right",
+    "partly": "Partly right",
     "wrong": "Wrong",
     "dontKnow": "I don't know",
     "dontKnowAnswer": "I don't know",
