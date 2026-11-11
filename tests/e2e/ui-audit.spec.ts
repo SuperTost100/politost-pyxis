@@ -2877,14 +2877,16 @@ async function openState(page: Page, name: string) {
     case "simulation-result-changes": {
       // What the exam changed comes from mastery before and after it and the gap its wrong answer counts for.
       const changes = page.locator(".px-res-changes");
-      await expect(changes).toContainText(/Lacuna seria su Force|Serious gap in Force/);
       await expect(changes).toContainText("You leave the weight out");
-      await expect(changes).toContainText(/Energy (migliora|went up)/);
+      await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
+      await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
+      await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
       await expect(page.locator(".px-res-fallback")).toContainText("Codex");
-      // One primary button, the next step; the list opens on the one exercise to review.
+      // One primary button, Ripasso mirato; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
-      await expect(page.locator(".px-res-q")).toHaveCount(1);
-      await expect(page.locator(".px-res-q")).toContainText(/Sbagliato|Wrong/);
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
+      await expect(page.locator(".px-res-q:not(.is-correct)")).toHaveCount(1);
+      await expect(page.locator(".px-res-q:not(.is-correct)")).toContainText(/Sbagliata|Wrong/);
       break;
     }
     case "simulation-grading":
@@ -2895,7 +2897,8 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-res-q.is-partial")).toContainText(/Cosa manca|What was missed/);
       await expect(page.locator(".px-res-q.is-grading")).toContainText(/In correzione|Grading/);
       await expect(page.locator(".px-res-q.is-queued")).toContainText(/In coda|Queued/);
-      await expect(page.locator(".px-res-changes-later")).toBeVisible();
+      await expect(page.locator(".px-res-working .px-logo-working")).toBeVisible();
+      await expect(page.locator(".px-res-changes")).toContainText(/Lo vedi a correzione finita|once grading is done/);
       await expect(page.locator(".px-res-fallback")).toContainText("Codex");
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
       break;

@@ -27,6 +27,7 @@ import {
   bindProfile,
   bindSources,
   broadcast,
+  holdReads,
 } from "./ipc/server";
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
@@ -277,6 +278,7 @@ if (!parent) {
       booted = true;
       const dev = data.dev === true;
       developmentSeam = dev && process.env["PYXIS_E2E"] === "1";
+      if (developmentSeam && process.env["PYXIS_E2E_READ_DELAY"]) holdReads(process.env["PYXIS_E2E_READ_DELAY"]);
       // Deterministic slow-start seam for the recovery E2E; needs PYXIS_E2E=1.
       const delay =
         dev && process.env["PYXIS_E2E"] === "1"

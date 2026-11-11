@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { readDrillRequest, stoppedTopic } from "./gapDrillRequest";
 
 /**
@@ -13,6 +14,7 @@ export function useGapDrill(planId: string) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const stillHere = useStillHere();
   const requestedDrill = searchParams.get("drill");
   const startedDrill = useRef<string | null>(null);
   const [drill, setDrill] = useState<{
@@ -73,14 +75,17 @@ export function useGapDrill(planId: string) {
     const request = readDrillRequest(requestedDrill, startedDrill.current);
     startedDrill.current = request.started;
     if (!request.begin) return;
-    setSearchParams(
-      (current) => {
-        const next = new URLSearchParams(current);
-        next.delete("drill");
-        return next;
-      },
-      { replace: true },
-    );
+    // The address is cleaned only while this page is the one the router shows: this effect can run after the student
+    // has moved on, and the cleanup would then replace that page's address.
+    if (stillHere())
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.delete("drill");
+          return next;
+        },
+        { replace: true },
+      );
     void start(request.begin);
   }, [requestedDrill]);
 

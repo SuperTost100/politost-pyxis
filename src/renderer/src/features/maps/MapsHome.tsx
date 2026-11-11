@@ -11,6 +11,7 @@ import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
 import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { MapThumb } from "./MapThumb";
 import "./MapsHome.css";
 import { planQuery, usePlans, useSubjects } from "../../lib/queries";
@@ -24,11 +25,12 @@ export function MapsHome() {
   const [query, setQuery] = useState("");
   // An exam's page opens Maps at its subject (`?subject=<id>`), and with `new=1` at a new map of that subject.
   const [params, setParams] = useSearchParams();
+  const stillHere = useStillHere();
   const atSubject = params.get("subject") ?? undefined;
   const [creating, setCreating] = useState(params.get("new") === "1");
   useEffect(() => {
     // Asked once: closing the dialog, or coming back to this page, does not open it again.
-    if (params.has("new"))
+    if (params.has("new") && stillHere())
       setParams(
         (next) => {
           next.delete("new");
