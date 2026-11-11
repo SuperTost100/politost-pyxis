@@ -14,6 +14,7 @@ import { i18n } from "../locales/i18n";
 import "./SourceRow.css";
 import { formatBytes } from "@shared/format-bytes";
 import { Logo } from "./Logo";
+import { useItemMenu } from "./ItemMenu";
 
 export const sizeText = (bytes: number) => formatBytes(bytes, i18n.language);
 
@@ -74,10 +75,19 @@ export function SourceRow(props: {
     .filter(Boolean)
     .join(" · ");
   const problem = PROBLEM.has(source.status);
+  // The three-dots menu, which a right-click on the row opens too.
+  const menu: MenuProps = {
+    items: props.actions.items,
+    // A submenu's arrow is drawn, not read: its title is named by its label alone.
+    expandIcon: <ChevronRight size={14} strokeWidth={1.75} aria-hidden className="px-source-row-submenu" />,
+    onClick: ({ key }) => props.actions.onSelect(key),
+  };
+  const rowMenu = useItemMenu({ menu, region: t("sources.actionsColumn"), disabled: props.actions.disabled });
   return (
     <li
       className={["px-source-row", props.selected ? "is-selected" : "", props.className ?? ""].filter(Boolean).join(" ")}
       data-source-id={source.id}
+      {...rowMenu.bind}
     >
       <span className="px-source-row-icon" aria-hidden>
         {source.kind === "smartbook" ? (
@@ -136,12 +146,7 @@ export function SourceRow(props: {
             {menu}
           </div>
         )}
-        menu={{
-          items: props.actions.items,
-          // A submenu's arrow is drawn, not read: its title is named by its label alone.
-          expandIcon: <ChevronRight size={14} strokeWidth={1.75} aria-hidden className="px-source-row-submenu" />,
-          onClick: ({ key }) => props.actions.onSelect(key),
-        }}
+        menu={menu}
       >
         <Button
           type="text"
@@ -151,6 +156,7 @@ export function SourceRow(props: {
           icon={<MoreHorizontal size={18} strokeWidth={1.75} />}
         />
       </Dropdown>
+      {rowMenu.popup}
     </li>
   );
 }

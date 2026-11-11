@@ -272,6 +272,14 @@ export function buildMenuTemplate(
   return [...appMenu, file, edit, go, view, ...windowMenu, help];
 }
 
+/** Where a context menu opens when the window names a place: two finite coordinates inside a window, rounded; else null. */
+export function contextMenuAnchor(raw: unknown): { x: number; y: number } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { x, y } = raw as Record<string, unknown>;
+  const inside = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 20_000;
+  return inside(x) && inside(y) ? { x: Math.round(x), y: Math.round(y) } : null;
+}
+
 /**
  * The items of a context menu the window asked for, or null when the request is not one: at most 20 items, each a
  * separator (null) or an id and a label of plain text.

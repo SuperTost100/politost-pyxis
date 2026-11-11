@@ -143,6 +143,17 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await expect(page.locator(".px-cards-undo")).toHaveCount(0);
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
 
+    // A right-click on the card opens the same menu as its dots, and a pick acts the same way.
+    await page.locator(".px-card").click({ button: "right", position: { x: 60, y: 60 } });
+    const open = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    for (const item of [/^Edit/, /^Suspend/, /^Delete/]) await expect(open.getByRole("menuitem", { name: item })).toBeVisible();
+    await open.getByRole("menuitem", { name: /^Suspend/ }).click();
+    await expect(page.locator(".px-cards-undo")).toContainText("Flashcard suspended.");
+    await undoLast.click();
+    await expect(front).toHaveText("Seconda legge di Newton?");
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
+    expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
+
     // D removes a card Pyxis wrote with Undo at hand.
     await page.keyboard.press("d");
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard removed.");

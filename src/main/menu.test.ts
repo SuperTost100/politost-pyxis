@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { goPages, isMenuCommand, type MenuCommand } from "../shared/menu";
-import { buildMenuTemplate, contextMenuItems } from "./menu";
+import { buildMenuTemplate, contextMenuAnchor, contextMenuItems } from "./menu";
 
 type Item = MenuItemConstructorOptions;
 
@@ -234,6 +234,17 @@ describe("application menu", () => {
       );
       expect(new Set(accelerators).size).toBe(accelerators.length);
     }
+  });
+});
+
+describe("contextMenuAnchor", () => {
+  it("keeps a place inside a window, rounded", () => {
+    expect(contextMenuAnchor({ x: 12.4, y: 99.6 })).toEqual({ x: 12, y: 100 });
+  });
+
+  it("refuses anything that is not two finite coordinates", () => {
+    for (const raw of [undefined, null, "10,10", { x: 1 }, { x: "1", y: 2 }, { x: NaN, y: 1 }, { x: -1, y: 4 }, { x: 1, y: 1e9 }])
+      expect(contextMenuAnchor(raw)).toBeNull();
   });
 });
 
