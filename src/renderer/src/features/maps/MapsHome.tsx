@@ -1,10 +1,10 @@
-import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Modal, Select } from "antd";
 import { Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate, useSearchParams } from "react-router";
-import { MAP_INSTRUCTION_MAX, type MapEntry } from "@shared/concept-map";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { MAP_INSTRUCTION_MAX, type MapAddress, type MapEntry } from "@shared/concept-map";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -16,6 +16,22 @@ import { MapThumb } from "./MapThumb";
 import "./MapsHome.css";
 import { planQuery, usePlans, useSubjects } from "../../lib/queries";
 import { mapPath } from "./mapPath";
+import { MenuButton, useItemMenu } from "../../components/ItemMenu";
+import { forgetMaps, MapNameField, useMapActions } from "./MapActions";
+import { focusAfterRemoval } from "./mapMenu";
+
+/** What the map page hands over when the student deletes the map they were looking at: it leaves from its tile here. */
+type Handover = {
+  gone?: boolean;
+  remove?: { mapId: string; title: string; subjectId?: string | null; planId?: string; topicId?: string };
+};
+/** The scope a tile's map belongs to: a topic of an exam, or a whole subject. */
+function addressOf(map: Pick<MapEntry, "subjectId" | "planId" | "topicId">): MapAddress {
+  return map.topicId ? { topicId: map.topicId, ...(map.planId ? { planId: map.planId } : {}) } : { subjectId: map.subjectId ?? "" };
+}
+/** An item removed shrinks in place, then the gap closes (docs/design-system/motion.md). */
+const SHRINK_MS = 220;
+const CLOSE_MS = 200;
 
 /** The Maps section: every map, grouped by subject, with search and a way to start a new one. */
 export function MapsHome() {
@@ -53,8 +69,86 @@ export function MapsHome() {
   });
   const plans = usePlans();
   const subjects = useSubjects();
+  const client = useQueryClient();
+  const location = useLocation();
+  const arrival = location.state as Handover | null;
+  // A link to a map deleted since lands here and says so, until the student goes on.
+  const [goneNotice] = useState(() => arrival?.gone === true);
+  // Tiles on their way out: shrinking, then out of the list while the list is read again.
+  const [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
+  const [removed, setRemoved] = useState<ReadonlySet<string>>(new Set());
+  const [failed, setFailed] = useState<string>();
+  const [said, setSaid] = useState("");
+  const page = useRef<HTMLDivElement>(null);
+  // Where every tile was before one left, so the others glide into the gap rather than jump.
+  const before = useRef<Map<string, DOMRect> | null>(null);
+  const handed = useRef(false);
 
-  const data = maps.data;
+  const tiles = () => [...(page.current?.querySelectorAll<HTMLElement>("[data-map-id]") ?? [])];
+  async function removeMap(map: { id: string; title: string } & Pick<MapEntry, "subjectId" | "planId" | "topicId">) {
+    setFailed(undefined);
+    try {
+      await invoke("maps.delete", { ...addressOf(map), mapId: map.id });
+    } catch {
+      setFailed(map.id);
+      return;
+    }
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const order = tiles().map((tile) => tile.dataset.mapId!);
+    setLeaving((current) => new Set(current).add(map.id));
+    setSaid(t("map.deleted", { title: map.title }));
+    window.setTimeout(() => {
+      before.current = reduced ? null : new Map(tiles().map((tile) => [tile.dataset.mapId!, tile.getBoundingClientRect()]));
+      setRemoved((current) => new Set(current).add(map.id));
+      const next = focusAfterRemoval(order, map.id);
+      requestAnimationFrame(() => {
+        const target = next
+          ? page.current?.querySelector<HTMLElement>(`[data-map-id="${CSS.escape(next)}"] .px-maps-tile`)
+          : page.current?.querySelector<HTMLElement>("button:not([disabled]), a[href], input");
+        target?.focus({ preventScroll: true });
+      });
+      void forgetMaps(client);
+    }, SHRINK_MS);
+  }
+  // The others move from where they were into the gap.
+  useLayoutEffect(() => {
+    const was = before.current;
+    before.current = null;
+    if (!was) return;
+    for (const tile of tiles()) {
+      const from = was.get(tile.dataset.mapId!);
+      const to = tile.getBoundingClientRect();
+      if (!from || (from.left === to.left && from.top === to.top)) continue;
+      tile.animate([{ transform: `translate(${from.left - to.left}px, ${from.top - to.top}px)` }, { transform: "none" }], {
+        duration: CLOSE_MS,
+        easing: "cubic-bezier(0.77, 0, 0.175, 1)",
+      });
+    }
+  }, [removed]);
+
+  const data = maps.data?.filter((map) => !removed.has(map.id));
+  // The map page hands over the map the student deleted there, once its tile is on screen.
+  useEffect(() => {
+    const asked = arrival?.remove;
+    if (arrival?.gone && !asked && !handed.current) {
+      // The notice is in the page; a reload or Back does not show it again.
+      handed.current = true;
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }
+    if (!asked || handed.current || !data) return;
+    handed.current = true;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    const shown = data.find((map) => map.id === asked.mapId);
+    void removeMap(
+      shown ?? {
+        id: asked.mapId,
+        title: asked.title,
+        subjectId: asked.subjectId ?? null,
+        planId: asked.planId ?? null,
+        topicId: asked.topicId ?? null,
+      },
+    );
+  }, [data]);
   const dialog = (
     <NewMapDialog
       open={creating}
@@ -171,8 +265,17 @@ export function MapsHome() {
             </header>
             <ul className="px-maps-grid">
               {group.maps.map((map) => (
-                <li key={`${map.subjectId}-${map.planId}-${map.topicId}-${map.id}`}>
-                  <MapCard map={map} />
+                <li
+                  key={`${map.subjectId}-${map.planId}-${map.topicId}-${map.id}`}
+                  data-map-id={map.id}
+                  className={leaving.has(map.id) ? "is-leaving" : undefined}
+                >
+                  <MapCard
+                    map={map}
+                    failed={failed === map.id}
+                    onDelete={() => void removeMap(map)}
+                    onRenamed={(title) => setSaid(t("map.renamed", { title }))}
+                  />
                 </li>
               ))}
             </ul>
@@ -182,8 +285,12 @@ export function MapsHome() {
     );
 
   return (
-    <div className="px-maps">
+    <div className="px-maps" ref={page}>
       <h1 className="title-1">{t("maps.title")}</h1>
+      {goneNotice ? <Notice tone="info">{t("map.gone")}</Notice> : null}
+      <p className="visually-hidden" aria-live="polite">
+        {said}
+      </p>
       {body}
       {dialog}
     </div>
@@ -212,33 +319,115 @@ function groups(maps: MapEntry[]) {
   return result;
 }
 
-/** A map's tile: a small drawing of the map, its title and where it belongs. The whole tile opens the map. */
-function MapCard({ map }: { map: MapEntry }) {
+/**
+ * A map's tile: a small drawing of the map, its title and where it belongs. The whole tile opens the map. Its dots, on
+ * the drawing's corner on hover and focus, and a right-click anywhere on it open the same menu; the tile keeps its hover
+ * look while the menu is open. Rinomina edits the title in place.
+ */
+function MapCard({
+  map,
+  failed,
+  onDelete,
+  onRenamed,
+}: {
+  map: MapEntry;
+  failed: boolean;
+  onDelete: () => void;
+  onRenamed: (title: string) => void;
+}) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [renaming, setRenaming] = useState(false);
+  const [dotsOpen, setDotsOpen] = useState(false);
+  const link = useRef<HTMLAnchorElement>(null);
+  // After a rename the tile takes the focus back, once it is a link again.
+  const [linkFocus, setLinkFocus] = useState(false);
+  useEffect(() => {
+    if (!linkFocus || renaming) return;
+    setLinkFocus(false);
+    link.current?.focus({ preventScroll: true });
+  }, [linkFocus, renaming]);
+  const address = addressOf(map);
+  const actions = useMapActions({
+    address,
+    mapId: map.id,
+    title: map.title,
+    state: { tile: true },
+    onOpen: () => navigate(mapPath(map)),
+    onRename: () => setRenaming(true),
+    onDelete,
+  });
+  const menu = useItemMenu({ menu: actions.menu, region: t("map.more"), disabled: renaming });
+  const caption = (
+    <div className="px-maps-cap">
+      {renaming ? (
+        <MapNameField
+          className="px-maps-name"
+          address={address}
+          mapId={map.id}
+          value={map.title}
+          onDone={(saved) => {
+            setRenaming(false);
+            setLinkFocus(true);
+            if (saved) onRenamed(saved);
+          }}
+        />
+      ) : (
+        <h3 className="px-maps-card-title" title={map.title}>
+          {map.title}
+        </h3>
+      )}
+      {map.instruction ? (
+        // Maps of one topic share a title, so what the student asked for tells them apart. One line, the rest on hover.
+        <p className="px-maps-card-ask" title={map.instruction}>
+          {t("maps.asked", { text: map.instruction })}
+        </p>
+      ) : null}
+      <p className="px-maps-card-origin">
+        {map.planTitle && map.topicTitle ? `${map.planTitle} · ${map.topicTitle}` : t("maps.wholeSubject")}
+      </p>
+      <p className="px-maps-card-meta">
+        {t("maps.concepts", { count: map.nodeCount })}
+        {map.grounding === "general" ? <Tag tone="general">{t("maps.general")}</Tag> : null}
+      </p>
+    </div>
+  );
+  const thumb = (
+    <span className="px-maps-thumb">
+      <MapThumb shape={map.shape} />
+    </span>
+  );
   return (
-    <Link className="px-maps-tile" to={mapPath(map)}>
-      <span className="px-maps-thumb">
-        <MapThumb shape={map.shape} />
-      </span>
-      <div className="px-maps-cap">
-        <h3 className="px-maps-card-title">{map.title}</h3>
-        {map.instruction ? (
-          // Maps of one topic share a title, so what the student asked for tells them apart. One line, the rest on hover.
-          <p className="px-maps-card-ask" title={map.instruction}>
-            {t("maps.asked", { text: map.instruction })}
-          </p>
-        ) : null}
-        <p className="px-maps-card-origin">
-          {map.planTitle && map.topicTitle
-            ? `${map.planTitle} · ${map.topicTitle}`
-            : t("maps.wholeSubject")}
+    <div className={`px-maps-tilew${dotsOpen || menu.open ? " is-ctx" : ""}`} {...menu.bind}>
+      {renaming ? (
+        // A field can't sit inside a link, so the tile stops being one while its name is edited.
+        <div className="px-maps-tile is-renaming">
+          {thumb}
+          {caption}
+        </div>
+      ) : (
+        <Link className="px-maps-tile" to={mapPath(map)} ref={link}>
+          {thumb}
+          {caption}
+        </Link>
+      )}
+      {renaming ? null : (
+        <MenuButton
+          className="px-maps-dots"
+          size="sm"
+          menu={actions.menu}
+          label={t("maps.actionsFor", { title: map.title })}
+         
+          onOpenChange={setDotsOpen}
+        />
+      )}
+      {menu.popup}
+      {failed ? (
+        <p className="small px-maps-failed" role="alert">
+          {t("map.deleteFailed")}
         </p>
-        <p className="px-maps-card-meta">
-          {t("maps.concepts", { count: map.nodeCount })}
-          {map.grounding === "general" ? <Tag tone="general">{t("maps.general")}</Tag> : null}
-        </p>
-      </div>
-    </Link>
+      ) : null}
+    </div>
   );
 }
 

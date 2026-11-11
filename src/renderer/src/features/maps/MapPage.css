@@ -24,20 +24,26 @@
   margin: 0 0 calc(var(--space-1) - var(--space-3)) 10px;
 }
 
+/* The head: the title with the map switcher beside it, the map's actions on
+   the right of the same row, and the line about the map under both. */
 .px-map-head {
   flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  padding: 2px var(--space-1) 0 10px;
+  container: map-head / inline-size;
+}
+.px-map-title-row {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 2px var(--space-1) 0 10px;
-}
-.px-map-title {
-  display: grid;
-  gap: var(--space-1);
+  gap: var(--space-3);
   min-width: 0;
-  flex: 1;
 }
-.px-map-title h1 {
+.px-map-title-row h1 {
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
   /* Whole-pixel line heights keep the canvas a whole number of pixels tall, which the PNG export copies. */
   font: 400 calc(28px * var(--text-scale, 1)) / calc(34px * var(--text-scale, 1))
@@ -47,8 +53,37 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The exam link, a dot and the hint on one centred line, with the dot only between two parts. */
-.px-map-title p {
+.px-map-title-row h1:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+/* The switcher shares the row with the title and gives way first, down to its chevron and a few letters. */
+.px-map-title-row .px-map-switch {
+  flex: 0 1 auto;
+  min-width: 72px;
+  max-width: 340px;
+}
+.px-map-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The short name of the flashcard button when the head is narrow. */
+.px-map-cards-short {
+  display: none;
+}
+@container map-head (max-width: 820px) {
+  .px-map-cards-long {
+    display: none;
+  }
+  .px-map-cards-short {
+    display: inline;
+  }
+}
+/* The exam link, a dot and the hint on one line under the head, with the dot only between two parts. */
+.px-map-sub {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -58,23 +93,23 @@
   line-height: calc(18px * var(--text-scale, 1));
   color: var(--ink-subtle);
 }
-.px-map-title p > a {
+.px-map-sub > a {
   flex: 0 1 auto;
   max-width: 60%;
 }
-.px-map-title p > span {
+.px-map-sub > span {
   flex: 0 1 auto;
 }
-.px-map-title p > a,
-.px-map-title p span {
+.px-map-sub > a,
+.px-map-sub span {
   min-width: 0;
 }
-.px-map-title p span:not([aria-hidden]) {
+.px-map-sub span:not([aria-hidden]) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.px-map-title a {
+.px-map-sub a {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -83,135 +118,44 @@
   text-decoration-color: var(--border-control);
   text-underline-offset: 3px;
 }
-.px-map-title a:hover {
+.px-map-sub a:hover {
   color: var(--ink);
   text-decoration-color: currentColor;
 }
-.px-map-title a svg {
+.px-map-sub a svg {
   flex: none;
+}
+/* The name field's own look is in MapActions.css, where the field is; these are the title's. */
+.px-map-name-title {
+  flex: 0 1 420px;
+}
+/* As tall as the title it replaces, so nothing under it moves. */
+.px-map-name-title .px-map-name-field {
+  width: 100%;
+  height: calc(34px * var(--text-scale, 1));
+  font: 400 calc(24px * var(--text-scale, 1)) / 1 var(--font-display);
+}
+.px-map-name-title .px-map-name-error {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 2px;
+  z-index: 6;
 }
 .px-map-notice {
   margin: 0;
   padding-inline: 10px;
 }
 
-/* The "…" menu grows out of its button. */
-.px-map-more {
-  position: relative;
-}
-.px-map-more-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 30;
-  display: grid;
-  gap: var(--space-1);
-  width: 264px;
-  padding: 6px;
-  border-radius: var(--radius-card);
-  background: var(--surface-overlay);
-  box-shadow: var(--shadow-overlay);
-  transform-origin: top right;
-  animation: px-map-grow 0.18s var(--map-ease);
-}
-.px-map-more-group {
-  display: grid;
-  gap: 1px;
-}
-.px-map-more-group + .px-map-more-group,
-.px-map-keys {
-  margin-top: var(--space-1);
-  padding-top: var(--space-1);
-  border-top: 1px solid var(--border);
-}
-.px-map-more-label {
-  padding: 6px 10px 4px;
-  font: 600 calc(11.5px * var(--text-scale, 1)) / 1.2 var(--font-sans);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--ink-subtle);
-}
-.px-map-more-group button {
+/* How the last build ended, with its way back: the words, then Riprova or Riprendi and Chiudi as quiet buttons. */
+.px-map-recover {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink);
-  font: 500 calc(13.5px * var(--text-scale, 1)) / 1.2 var(--font-sans);
-  text-align: left;
-  cursor: pointer;
+  gap: 0 var(--space-2);
 }
-.px-map-more-group button:hover:not(:disabled),
-.px-map-more-group button:focus-visible {
-  background: var(--surface-raised);
-  outline: none;
-}
-.px-map-more-group button:disabled {
-  color: var(--ink-subtle);
-  cursor: default;
-}
-/* A map's own request under its title, so maps of one topic can be told apart. */
-.px-map-more-text {
-  display: grid;
-  min-width: 0;
-  padding-block: 5px;
-}
-.px-map-more-detail {
-  overflow: hidden;
-  color: var(--ink-muted);
-  font-weight: 400;
-  font-size: calc(12px * var(--text-scale, 1));
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.px-map-more-group button svg {
-  flex: none;
-  color: var(--ink-muted);
-}
-.px-map-more-check {
-  display: inline-flex;
-  width: 15px;
-  flex: none;
-}
-.px-map-keys dl {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0 10px 6px;
-}
-.px-map-keys dl > div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 26px;
-  font-size: calc(13px * var(--text-scale, 1));
-}
-.px-map-keys dt {
-  color: var(--ink-muted);
-}
-.px-map-keys dd {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin: 0;
-  color: var(--ink-subtle);
-}
-.px-map-keys kbd {
-  display: grid;
-  place-items: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border: 1px solid var(--border-control);
-  border-radius: 6px;
-  background: var(--surface-raised);
-  color: var(--ink);
-  font: 400 11.5px/1 var(--font-mono);
+
+.px-map-error {
+  color: var(--danger);
 }
 
 .px-map-card {
@@ -230,16 +174,46 @@
   min-height: 220px;
   background: var(--map-canvas);
 }
-.px-map-fit {
+/* The tools that act on the whole canvas, in one strip at its bottom-right corner: the layout, undo and redo, and fit.
+   It floats over the map, so it keeps a card's lift where other controls sit flat. */
+.px-map-strip {
   position: absolute;
   right: var(--space-3);
   bottom: var(--space-3);
   z-index: 5;
-}
-/* It floats over the map, so it keeps a card's shadow where other secondary buttons sit flat. */
-.px-map-fit .px-btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card), 0 6px 16px -8px rgb(0 0 0 / 0.25);
+}
+[data-theme="dark"] .px-map-strip {
+  background: var(--surface-raised);
+}
+/* Two short words side by side: as wide as they are, also where a narrow window stretches settings choices. */
+.px-map-strip .px-ctl-seg.px-ctl-seg.px-ctl-seg {
+  flex: none;
+  width: auto;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+}
+.px-map-strip .px-ctl-seg > button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: calc(13px * var(--text-scale, 1));
+}
+[data-theme="dark"] .px-map-strip .px-ctl-seg {
+  background: var(--bg);
+}
+.px-map-strip-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--border);
 }
 
 /* Concepts: compact pills, the root in the display face, the selected one in the accent's soft colour. */
@@ -547,7 +521,6 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .px-map-more-panel,
   .px-map-palette,
   .px-map-node,
   .px-map-change {

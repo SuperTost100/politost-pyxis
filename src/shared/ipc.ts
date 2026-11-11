@@ -1730,6 +1730,27 @@ export const requests = {
     }),
     output: conceptGraph,
   },
+  /** Gives one map a name of the student's own; another map may have the same name. */
+  "maps.rename": {
+    input: mapAddressInput({
+      mapId: z.string().min(1).max(160),
+      title: z.string().trim().min(1).max(500),
+    }),
+    output: mapSummarySchema,
+  },
+  /**
+   * Deletes one map, and stops and drops every build of it, so none can bring it back. A map still being written has no
+   * id on the page yet and is named by its build's `jobId`. A map already gone is not an error (`deleted: false`).
+   */
+  "maps.delete": {
+    input: mapAddressInput({
+      mapId: z.string().min(1).max(160).optional(),
+      jobId: z.string().min(1).max(160).optional(),
+    }).refine((value) => Boolean(value.mapId) !== Boolean(value.jobId), {
+      message: "Name the map or the build that writes it",
+    }),
+    output: z.object({ deleted: z.boolean() }),
+  },
   "maps.redo": {
     input: mapAddressInput({
       mapId: z.string().optional(),

@@ -132,6 +132,37 @@ function save(
       Date.now(),
     );
 }
+/**
+ * Gives one map of the scope a name of the student's own. Another map may have the same name. A map that is gone throws
+ * `map-missing`; an empty name, or one longer than 500 characters, throws `map-title`.
+ */
+export function renameMap(db: Database.Database, scope: MapScope, mapId: string, title: string): MapSummary {
+  const name = title.trim();
+  if (!name || name.length > 500) throw new Error("map-title");
+  return db.transaction(() => {
+    const { rowId, value } = collectionRow(db, scope);
+    const index = value.maps.findIndex((map) => map.id === mapId);
+    if (index < 0 || !rowId) throw new Error("map-missing");
+    const stored = value.maps[index]!;
+    value.maps[index] = { ...stored, title: name };
+    save(db, scope, rowId, value);
+    return listMaps(db, scope).find((map) => map.id === mapId)!;
+  })();
+}
+/**
+ * Removes one map of the scope, with its undo history, and says whether it was there. The row goes with its last map,
+ * so a subject with no maps left counts as unused. Flashcards made from the map belong to the subject and stay.
+ */
+export function deleteMap(db: Database.Database, scope: MapScope, mapId: string): boolean {
+  return db.transaction(() => {
+    const { rowId, value } = collectionRow(db, scope);
+    const maps = value.maps.filter((map) => map.id !== mapId);
+    if (!rowId || maps.length === value.maps.length) return false;
+    if (maps.length) save(db, scope, rowId, { ...value, maps });
+    else db.prepare("DELETE FROM maps WHERE id = ?").run(rowId);
+    return true;
+  })();
+}
 export function readStoredMap(
   db: Database.Database,
   scope: MapScope,
