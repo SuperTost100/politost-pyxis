@@ -58,7 +58,8 @@ async function language(page: Page, value: "it" | "en", theme: "light" | "dark")
     { value, theme },
   );
   await page.reload();
-  await expect(page.locator(".px-exam-now")).toBeVisible();
+  // The loading skeleton is also a `.px-exam-now`; the real suggested step is the one whose heading has text.
+  await expect(page.locator(".px-exam-now").getByRole("heading")).toHaveText(/\S/);
 }
 
 /** Opens a topic's row on the path, unless it is open already, and returns the list of its steps. */

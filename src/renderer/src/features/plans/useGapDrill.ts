@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
+import { readDrillRequest, stoppedTopic } from "./gapDrillRequest";
 
 /**
  * Ripasso mirato: a targeted drill on a topic's gaps, built by a durable job. The page watches the job and opens the
@@ -18,7 +19,8 @@ export function useGapDrill(planId: string) {
     topicId: string;
     gapId?: string;
   } | null>(null);
-  const [failed, setFailed] = useState(false);
+  // The topic of a drill that could not be started: there is no job to read, so Retry needs it kept here.
+  const [failedTopic, setFailedTopic] = useState<string | null>(null);
   const drillRead = useQuery({
     queryKey: ["gap-drill", planId, drill?.topicId, drill?.gapId],
     enabled: Boolean(drill),
@@ -36,11 +38,8 @@ export function useGapDrill(planId: string) {
   });
   const state = drill ? (drillRead.data?.state ?? "queued") : null;
   const preparing = state === "queued" || state === "running";
-  const stopped =
-    failed ||
-    state === "failed" ||
-    state === "cancelled" ||
-    state === "interrupted";
+  const jobStopped =
+    state === "failed" || state === "cancelled" || state === "interrupted";
   const readyAttempt =
     drill && state === "succeeded" ? drillRead.data?.attemptId : null;
   useEffect(() => {
@@ -51,7 +50,7 @@ export function useGapDrill(planId: string) {
 
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
-    setFailed(false);
+    setFailedTopic(null);
     setDrill({ topicId, gapId });
     try {
       await invoke("study.gapDrillStart", {
@@ -62,13 +61,14 @@ export function useGapDrill(planId: string) {
       await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
     } catch {
       setDrill(null);
-      setFailed(true);
+      setFailedTopic(topicId);
     }
   }
 
   useEffect(() => {
-    if (!requestedDrill || startedDrill.current === requestedDrill) return;
-    startedDrill.current = requestedDrill;
+    const request = readDrillRequest(requestedDrill, startedDrill.current);
+    startedDrill.current = request.started;
+    if (!request.begin) return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
@@ -77,7 +77,7 @@ export function useGapDrill(planId: string) {
       },
       { replace: true },
     );
-    void start(requestedDrill);
+    void start(request.begin);
   }, [requestedDrill]);
 
   return {
@@ -85,9 +85,9 @@ export function useGapDrill(planId: string) {
     /** The topic whose drill is being prepared, while it is. */
     preparing: preparing ? (drill?.topicId ?? null) : null,
     /** The topic whose drill stopped, with nothing to open. */
-    stopped: stopped ? (drill?.topicId ?? "") : null,
+    stopped: stoppedTopic(failedTopic, jobStopped, drill?.topicId ?? null),
     dismiss: () => {
-      setFailed(false);
+      setFailedTopic(null);
       setDrill(null);
     },
   };
