@@ -13,6 +13,7 @@ import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
 import { errorProvider, useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
+import { saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
 import "./NewCardDialog.css";
 
 /** Who writes the new flashcards: the student ("Scrivila tu") or Pyxis ("Falla fare a Pyxis"). */
@@ -88,7 +89,7 @@ export function NewCardDialog({
   const [side, setSide] = useState<NewCardSide>(openSide);
   const [subjectId, setSubjectId] = useState("");
   // Asking before something is lost: what would be lost decides the words.
-  const [leaving, setLeaving] = useState<"typed" | "working" | "review" | null>(null);
+  const [leaving, setLeaving] = useState<Loss | null>(null);
   const [closing, setClosing] = useState(false);
 
   // Scrivila tu
@@ -109,11 +110,27 @@ export function NewCardDialog({
   const [count, setCount] = useState<number>(NEW_CARDS.start);
   const [step, setStep] = useState<"form" | "working" | "review">("form");
   const [rows, setRows] = useState<ProposedRow[]>([]);
-  const [made, setMade] = useState<(Pick<Proposal, "provider" | "model" | "repeats"> & { asked: number }) | null>(null);
+  // What Pyxis was asked and wrote, fixed when the proposals arrive: the fields on the form can change after that, and
+  // the proposals still belong to the request that wrote them.
+  const [made, setMade] = useState<
+    | (Pick<Proposal, "provider" | "model" | "repeats"> & {
+        asked: number;
+        /** How many cards Pyxis wrote, the repeats included; dropping a proposal does not change it. */
+        wrote: number;
+        target: ProposalTarget;
+        /** The subject's name, or the topic's, and the focus, as the request had them. */
+        place: string;
+        subjectName: string;
+        focus: string;
+      })
+    | null
+  >(null);
   const [failure, setFailure] = useState<{ key: string; provider?: string } | null>(null);
   const [savingProposed, setSavingProposed] = useState(false);
   const cancel = useRef<(() => void) | null>(null);
   const run = useRef(0);
+  // Counts the times the dialog has been opened. A reply that comes back from an earlier opening is not this one's.
+  const opening = useRef(0);
 
   const subject = subjects.find((item) => item.id === subjectId);
   const isNew = subjectId === NEW_SUBJECT;
@@ -130,6 +147,7 @@ export function NewCardDialog({
   // Everything starts again each time it opens, on the side and the subject it was asked for.
   useEffect(() => {
     if (!open) return;
+    opening.current += 1;
     setSide(openSide);
     setSubjectId(openSubject ?? "");
     setPlanId("");
@@ -210,19 +228,22 @@ export function NewCardDialog({
     });
   }
 
-  /** Escape, the backdrop or Annulla: asks first when typed text, Pyxis's work or its proposals would be lost. */
+  /**
+   * Escape, the backdrop or Annulla: asks first when Pyxis's work, its proposals or typed text would be lost, whichever side
+   * is showing. While a card is being saved the dialog stays: closing then would leave the student unsure what was saved.
+   */
   function askClose() {
-    if (closing) return;
+    if (closing || busy.current) return;
     if (leaving) return stay();
-    const typed = side === "hand" ? [front, back, isNew ? newName : ""] : [focusText];
-    const ask =
-      side === "pyxis" && step === "working"
-        ? "working"
-        : side === "pyxis" && step === "review" && rows.length
-          ? "review"
-          : typed.some((value) => value.trim())
-            ? "typed"
-            : null;
+    const ask = whatWouldBeLost({
+      step,
+      proposals: rows.length,
+      front,
+      back,
+      newName,
+      naming: isNew,
+      focus: focusText,
+    });
     if (!ask) return close();
     asked.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setLeaving(ask);
@@ -286,6 +307,8 @@ export function NewCardDialog({
     }
     busy.current = true;
     setSaving(true);
+    const mine = opening.current;
+    let shutting = false;
     try {
       let target = subjectId;
       let targetName = subject?.name ?? name;
@@ -295,23 +318,33 @@ export function NewCardDialog({
         targetName = made.name;
         void client.invalidateQueries({ queryKey: ["subjects"] });
         await client.invalidateQueries({ queryKey: ["new-card-places"] });
-        setSubjectId(made.id);
-        setNewName("");
+        if (mine === opening.current) {
+          setSubjectId(made.id);
+          setNewName("");
+        }
       }
       await invoke("study.cardCreate", { subjectId: target, planId: planId || null, front, back });
       await refreshCards(client, planId);
+      // The card is saved: the page hears of it even when the dialog is not this save's any more.
       onSaved({ subjectId: target, name: targetName, count: 1, closing: !more });
-      if (!more) return close();
+      if (mine !== opening.current) return;
+      if (!more) {
+        // The dialog stays locked until it is gone: Salva is not enabled again for a second click during the closing.
+        shutting = true;
+        return close();
+      }
       setFront("");
       setBack("");
       setAdded((n) => n + 1);
       setAnnounce(t("flashcards.new.addedTo", { subject: targetName }));
       refocus.current = true;
     } catch {
-      setHandFailed(true);
+      if (mine === opening.current) setHandFailed(true);
     } finally {
-      busy.current = false;
-      setSaving(false);
+      if (mine === opening.current && !shutting) {
+        busy.current = false;
+        setSaving(false);
+      }
     }
   }
 
@@ -344,12 +377,22 @@ export function NewCardDialog({
     setStep("working");
     setRows([]);
     const asked = count;
+    // The request as it is now: the proposals that come back are kept with it.
+    const request = {
+      target: {
+        subjectId: subject.id,
+        ...(topicId ? { planId: topicPlan, topicId } : {}),
+      },
+      place: topicTitle ?? subject.name,
+      subjectName: subject.name,
+      focus: focusText.trim(),
+    };
     const handle = window.pyxis.stream(
       "study.cardsForSubject",
       {
         subjectId: subject.id,
         ...(topicId ? { planId: topicPlan, topicId } : {}),
-        ...(focusText.trim() ? { focus: focusText.trim() } : {}),
+        ...(request.focus ? { focus: request.focus } : {}),
         count: asked,
       },
       () => {},
@@ -358,7 +401,14 @@ export function NewCardDialog({
     try {
       const result = (await handle.result) as Proposal;
       if (id !== run.current) return;
-      setMade({ provider: result.provider, model: result.model, repeats: result.repeats, asked });
+      setMade({
+        provider: result.provider,
+        model: result.model,
+        repeats: result.repeats,
+        asked,
+        wrote: result.cards.length + result.repeats,
+        ...request,
+      });
       setRows(result.cards.map((card, key) => ({ key, ...card })));
       setStep("review");
     } catch (err) {
@@ -375,32 +425,31 @@ export function NewCardDialog({
   const incomplete = rows.some((row) => !row.front.trim() || !row.back.trim());
 
   async function saveProposed() {
-    if (!subject || !made || !rows.length || incomplete || busy.current) return;
+    if (!made || !rows.length || incomplete || busy.current) return;
     busy.current = true;
     setSavingProposed(true);
     setFailure(null);
+    const mine = opening.current;
+    let shutting = false;
     try {
-      const result = await invoke("study.cardsSaveProposed", {
-        ...(topicId ? { planId: topicPlan, topicId } : { subjectId: subject.id }),
-        cards: rows.map(({ front: f, back: b, passageId }) => ({ front: f, back: b, passageId })),
-        provider: made.provider,
-        model: made.model,
-        prompt: "cards.subject",
-      });
-      await refreshCards(client, topicId ? topicPlan : null);
-      onSaved({ subjectId: subject.id, name: subject.name, count: result.saved, closing: true });
+      const result = await invoke("study.cardsSaveProposed", saveProposedInput(made, rows));
+      await refreshCards(client, made.target.topicId ? made.target.planId : null);
+      onSaved({ subjectId: made.target.subjectId, name: made.subjectName, count: result.saved, closing: true });
+      if (mine !== opening.current) return;
+      shutting = true;
       close();
     } catch {
-      setFailure({ key: "flashcards.new.saveProposedFailed" });
+      if (mine === opening.current) setFailure({ key: "flashcards.new.saveProposedFailed" });
     } finally {
-      busy.current = false;
-      setSavingProposed(false);
+      if (mine === opening.current && !shutting) {
+        busy.current = false;
+        setSavingProposed(false);
+      }
     }
   }
 
   const failureView = failure ? describeEngineError(failure.key, failure.provider) : null;
   const retry = { label: t("flashcards.new.retry"), onClick: () => void (step === "review" ? saveProposed() : make()) };
-  const place = topicTitle ?? subject?.name ?? "";
 
   // ---------- Layout ----------
 
@@ -428,10 +477,10 @@ export function NewCardDialog({
   else if (side === "hand")
     actions = (
       <>
-        <Button variant="ghost" onClick={askClose}>
+        <Button variant="ghost" disabled={saving || closing} onClick={askClose}>
           {t("flashcards.new.cancel")}
         </Button>
-        <Button variant="secondary" disabled={saving || !places.data} onClick={() => void saveByHand(true)}>
+        <Button variant="secondary" disabled={saving || closing || !places.data} onClick={() => void saveByHand(true)}>
           <span className="px-nc-swap">
             <span data-off={added ? "" : undefined}>{t("flashcards.new.saveMore")}</span>
             <span data-off={added ? undefined : ""}>
@@ -440,7 +489,7 @@ export function NewCardDialog({
             </span>
           </span>
         </Button>
-        <Button disabled={saving || !places.data} onClick={() => void saveByHand(false)}>
+        <Button disabled={saving || closing || !places.data} onClick={() => void saveByHand(false)}>
           {t("flashcards.new.save")}
         </Button>
       </>
@@ -448,11 +497,11 @@ export function NewCardDialog({
   else
     actions = (
       <>
-        <Button variant="ghost" onClick={askClose}>
+        <Button variant="ghost" disabled={savingProposed || closing} onClick={askClose}>
           {t("flashcards.new.cancel")}
         </Button>
         {reviewing ? (
-          <Button variant="secondary" disabled={savingProposed} onClick={() => void make()}>
+          <Button variant="secondary" disabled={savingProposed || closing} onClick={() => void make()}>
             {t("flashcards.new.again")}
           </Button>
         ) : null}
@@ -463,7 +512,7 @@ export function NewCardDialog({
           </Button>
         ) : reviewing ? (
           <Button
-            disabled={!rows.length || incomplete || savingProposed}
+            disabled={!rows.length || incomplete || savingProposed || closing}
             onClick={() => void saveProposed()}
           >
             {t("flashcards.new.saveProposed", { count: rows.length })}
@@ -748,36 +797,26 @@ export function NewCardDialog({
               {reviewing && made ? (
                 <>
                   <p className="small px-nc-lead" role="status">
-                    {rows.length || made.repeats === 0 ? (
-                      <>
-                        <Trans
-                          i18nKey={focusText.trim() ? "flashcards.new.reviewLeadFocus" : "flashcards.new.reviewLead"}
-                          count={rows.length + made.repeats}
-                          values={{ place, focus: focusText.trim() }}
-                          components={{ b: <b /> }}
-                        />
-                        {rows.length + made.repeats < made.asked
-                          ? ` ${t("flashcards.new.short", { asked: made.asked })}`
-                          : ""}
-                        {made.repeats ? ` ${t("flashcards.new.repeats", { count: made.repeats })}` : ""}
-                        {rows.length ? ` ${t("flashcards.new.reviewHint")}` : ` ${t("flashcards.new.allDropped")}`}
-                      </>
-                    ) : (
-                      t("flashcards.new.allRepeats")
-                    )}
-                  </p>
-                  {rows.length ? (
-                    <ProposedCards
-                      rows={rows}
-                      idPrefix="nc-pc"
-                      disabled={savingProposed}
-                      onChange={(key, patch) =>
-                        setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
-                      }
-                      onDrop={(key) => setRows((current) => current.filter((row) => row.key !== key))}
-                      onEmptied={() => document.querySelector<HTMLElement>("#nc-change-wrap button")?.focus()}
+                    <Trans
+                      i18nKey={made.focus ? "flashcards.new.reviewLeadFocus" : "flashcards.new.reviewLead"}
+                      count={made.wrote}
+                      values={{ place: made.place, focus: made.focus }}
+                      components={{ b: <b /> }}
                     />
-                  ) : null}
+                    {made.wrote < made.asked ? ` ${t("flashcards.new.short", { asked: made.asked })}` : ""}
+                    {made.repeats ? ` ${t("flashcards.new.repeats", { count: made.repeats })}` : ""}
+                    {rows.length ? ` ${t("flashcards.new.reviewHint")}` : ` ${t("flashcards.new.allDropped")}`}
+                  </p>
+                  <ProposedCards
+                    rows={rows}
+                    idPrefix="nc-pc"
+                    disabled={savingProposed}
+                    onChange={(key, patch) =>
+                      setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+                    }
+                    onDrop={(key) => setRows((current) => current.filter((row) => row.key !== key))}
+                    onEmptied={() => document.querySelector<HTMLElement>("#nc-change-wrap button")?.focus()}
+                  />
                   {rows.length === 0 ? (
                     <div className="px-nc-block">
                       <span id="nc-change-wrap">

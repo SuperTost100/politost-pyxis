@@ -390,3 +390,274 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     removeTestFolder(userData);
   }
 });
+
+/** A card whose fact is in the nth passage Pyxis was given. */
+const cardAt = (n: number, front: string, passage = 0) => ({
+  kind: "qa",
+  front,
+  back: `La risposta numero ${n}.`,
+  passageId: `{{passage:${passage}}}`,
+});
+
+const LONG_SOURCE = "Dispense complete di analisi matematica per ingegneria informatica, secondo volume";
+
+/** Analisi 1 with an exam, a topic "Limiti" read from two sources (one with pages, one with a very long name) and one old card. */
+function seedAnalisi(userData: string) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  try {
+    seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    seedSource(db, {
+      id: "bramanti",
+      subjectId: "ana",
+      title: "Bramanti",
+      document: { id: "d-bramanti" },
+      passages: [{ id: "pa0", text: PASSAGES[0]!, locator: { page: 112 }, section: "Capitolo 3" }],
+    });
+    seedSource(db, {
+      id: "dispense",
+      subjectId: "ana",
+      title: LONG_SOURCE,
+      document: { id: "d-dispense" },
+      passages: [{ id: "pa1", text: PASSAGES[1]!, section: "Capitolo 4" }],
+    });
+    seedPlan(db, {
+      id: "gennaio",
+      subjectId: "ana",
+      title: "Appello del 14 gennaio",
+      language: "it",
+      target: 0.75,
+      sourceIds: ["bramanti", "dispense"],
+      topics: [{ id: "limiti", title: "Limiti" }],
+    });
+    db.exec(`INSERT INTO topic_passages(topic_id,passage_id) VALUES('limiti','pa0'),('limiti','pa1');
+      INSERT INTO cards(id,subject_id,front,back,created_at) VALUES('old','ana','Che cos''è un limite?','Già scritta.',1);`);
+  } finally {
+    db.close();
+  }
+}
+
+test("proposals name their source, a dropped one can no longer be saved, and Pyxis's count stays what it wrote", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-review-"));
+  const env = {
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+      subjectCards: [
+        // Every card repeats the one the subject has: a failure with a way out, not an empty list to check.
+        { cards: [cardAt(1, "che cos'è un LIMITE?")] },
+        { cards: [cardAt(1, "Primo?", 0), cardAt(2, "Secondo?", 1), cardAt(3, "Terzo?", 0)] },
+        { cards: [cardAt(4, "Quarto?", 0), cardAt(5, "Quinto?", 1), cardAt(6, "Sesto?", 0)] },
+      ],
+    }),
+  };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    seedAnalisi(userData);
+    await toFlashcards(page);
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const open = page.getByRole("button", { name: "Nuova flashcard", exact: true });
+    const list = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
+    const ask = async () => {
+      await open.click();
+      await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+      await dialog.getByRole("combobox", { name: "Argomento" }).selectOption({ label: "Limiti" });
+      await dialog.getByRole("button", { name: "Crea le flashcard" }).click();
+    };
+
+    // Finding 3: every proposed front repeats one the subject has, so there is nothing to check.
+    await ask();
+    const failed = dialog.getByRole("alert");
+    await expect(failed).toContainText("Tutte le flashcard che Pyxis ha scritto le avevi già");
+    await expect(dialog.getByRole("list", { name: "Flashcard proposte" })).toHaveCount(0);
+    await failed.getByRole("button", { name: "Riprova" }).click();
+
+    await expect(list).toHaveCount(3);
+    const lead = dialog.getByRole("status").filter({ hasText: "Ne ho scritte 3 su Limiti" });
+    await expect(lead).toBeVisible();
+    // Step 4: each proposal names its source, with the page when the source has pages, cut when long, whole to a reader.
+    await expect(list.nth(0).getByRole("button", { name: "Bramanti, p. 112" })).toBeVisible();
+    const longChip = list.nth(1).getByRole("button", { name: LONG_SOURCE });
+    await expect(longChip).toBeVisible();
+    const cut = longChip.locator(".px-pc-source");
+    await expect(cut).toHaveAttribute("title", LONG_SOURCE);
+    expect(await cut.evaluate((node) => node.scrollWidth > node.clientWidth), "the long name is cut with an ellipsis").toBe(true);
+    expect(await cut.evaluate((node) => getComputedStyle(node).textOverflow)).toBe("ellipsis");
+
+    // Finding 5: with the exit slowed down, the dropped card is out of what Salva will save and of its count at once.
+    await page.evaluate(() => {
+      const real = Element.prototype.animate;
+      Element.prototype.animate = function (keyframes, options) {
+        const slow = typeof options === "number" ? options * 40 : { ...options, duration: Number(options?.duration ?? 0) * 40 };
+        return real.call(this, keyframes, slow);
+      };
+      (window as unknown as { restoreAnimate: () => void }).restoreAnimate = () => {
+        Element.prototype.animate = real;
+      };
+    });
+    await list.nth(1).getByRole("button", { name: "Scarta la flashcard 2" }).click();
+    await page.evaluate(() => (window as unknown as { restoreAnimate: () => void }).restoreAnimate());
+    await expect(dialog.getByRole("button", { name: "Salva 2 flashcard" })).toBeVisible();
+    await expect(dialog.locator(".px-pc-card[data-leaving]")).toHaveCount(1);
+    await expect(list).toHaveCount(2);
+    // Finding 11: Pyxis still says how many it wrote, not how many are left.
+    await expect(lead).toBeVisible();
+    await expect(dialog.getByRole("status").filter({ hasText: "Ne ho scritte 2" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Salva 2 flashcard" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(cards(userData).slice(1).map((row) => row.front)).toEqual(["Primo?", "Terzo?"]);
+
+    // Finding 4's twin here: with every proposal dropped, the focus lands on a button that is still there.
+    await ask();
+    await expect(list).toHaveCount(3);
+    for (const n of [3, 2, 1]) {
+      await dialog.getByRole("button", { name: `Scarta la flashcard ${n}` }).click();
+      await expect(list).toHaveCount(n - 1);
+    }
+    await expect(dialog.getByRole("button", { name: "Cambia la richiesta" })).toBeFocused();
+    await expect(dialog.getByRole("status").filter({ hasText: "Ne ho scritte 3 su Limiti" })).toContainText(
+      "Hai scartato tutte le flashcard",
+    );
+    await expect(dialog.locator(".px-pc-card")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    expect(cards(userData)).toHaveLength(3);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a card is saved once, the dialog stays while it saves, and each save is announced", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-saving-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    seedAnalisi(userData);
+    await toFlashcards(page);
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const open = page.getByRole("button", { name: "Nuova flashcard", exact: true });
+    const save = dialog.getByRole("button", { name: "Salva", exact: true });
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    const back = dialog.getByRole("textbox", { name: "Retro" });
+    const written = (text: string) => cards(userData).filter((row) => row.front === text).length;
+    // What a screen reader would be told: every time the page's status line gets words.
+    await page.evaluate(() => {
+      const line = document.querySelector<HTMLElement>(".px-fc > p[role=status]")!;
+      const heard: string[] = [];
+      (window as unknown as { heard: string[] }).heard = heard;
+      new MutationObserver(() => line.textContent && heard.push(line.textContent)).observe(line, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    });
+
+    // Finding 7: while a save is pending the dialog does not close, however the student asks.
+    const lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    lock.exec("BEGIN IMMEDIATE");
+    try {
+      await open.click();
+      await front.fill("In attesa?");
+      await back.fill("Sì.");
+      await save.click();
+      await expect(save).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(dialog.getByText("Butti via quello che hai scritto?")).toHaveCount(0);
+      await expect(dialog.getByRole("button", { name: "Annulla" })).toBeDisabled();
+      await dialog.click({ position: { x: 1, y: 1 } });
+      await expect(dialog).toBeVisible();
+      expect(written("In attesa?")).toBe(0);
+    } finally {
+      lock.exec("ROLLBACK");
+      lock.close();
+    }
+    await expect(dialog).toHaveCount(0);
+    expect(written("In attesa?")).toBe(1);
+
+    // Finding 10: Salva stays off while the dialog closes, so clicks that keep coming save the card once.
+    await open.click();
+    await front.fill("Una sola volta?");
+    await back.fill("Una.");
+    await page.evaluate(async () => {
+      const button = [...document.querySelectorAll<HTMLButtonElement>("dialog button")].find(
+        (node) => node.textContent?.trim() === "Salva",
+      )!;
+      for (let i = 0; i < 40; i += 1) {
+        button.click();
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+    });
+    await expect(dialog).toHaveCount(0);
+    expect(written("Una sola volta?")).toBe(1);
+
+    // Reopened, the dialog is a fresh one: its buttons work.
+    await open.click();
+    await expect(save).toBeEnabled();
+    await front.fill("Terza?");
+    await back.fill("Sì.");
+    await save.click();
+    await expect(dialog).toHaveCount(0);
+    expect(written("Terza?")).toBe(1);
+
+    // Finding 6: three saves of one card each to the same subject say the same words, and each is said.
+    const heard = await page.evaluate(() => (window as unknown as { heard: string[] }).heard);
+    expect(heard).toEqual(Array(3).fill("1 flashcard salvata in Analisi 1."));
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the Flashcard page's cleanup of `?new=` never lands on the page opened right after it", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-leave-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    seedAnalisi(userData);
+    // React draws a page first and runs its effects a moment later, and the student can already be on the next page by
+    // then. This puts the move to the Library into that gap: the Flashcard page has been drawn (its `?new=` is in the
+    // address) and the router leaves it before its effects run.
+    await page.evaluate(() => {
+      let armed = false;
+      const push = history.pushState.bind(history);
+      history.pushState = (...args: Parameters<History["pushState"]>) => {
+        armed ||= String(args[2]).includes("new=");
+        push(...args);
+      };
+      new MutationObserver(() => {
+        if (!armed || !document.querySelector(".px-fc")) return;
+        armed = false;
+        history.pushState(null, "", "#/exams/library?stay=1");
+        dispatchEvent(new PopStateEvent("popstate"));
+      }).observe(document.body, { childList: true, subtree: true });
+      history.pushState(null, "", "#/flashcards?new=pyxis&subject=ana");
+      dispatchEvent(new PopStateEvent("popstate"));
+    });
+    // Give a late cleanup time to land: it would take the student back here, or drop the Library's own parameter.
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
+    await expect(page).toHaveURL(/#\/exams\/library\?stay=1$/);
+    await expect(page.getByRole("dialog", { name: "Nuova flashcard" })).toHaveCount(0);
+    // The request was never seen by a page the student stayed on: the same address, asked for properly, opens it once.
+    await page.evaluate(() => {
+      location.hash = "/flashcards?new=pyxis&subject=ana";
+    });
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(dialog.getByRole("combobox", { name: "Materia" })).toHaveValue("ana");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

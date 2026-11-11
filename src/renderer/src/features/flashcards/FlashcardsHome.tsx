@@ -9,7 +9,9 @@ import { Button } from "../../components/Button";
 import { LoadError } from "../../components/LoadError";
 import { SkeletonRows } from "../../components/Skeleton";
 import { errorDetails } from "../../lib/errorDetails";
+import { claimOnce } from "../../lib/claimOnce";
 import { cardSectionsQuery } from "../../lib/queries";
+import { useStillHere } from "../../lib/useStillHere";
 import { stepPath } from "../plans/reopen";
 import { NewCardDialog, type NewCardSide } from "./NewCardDialog";
 import "./FlashcardsHome.css";
@@ -39,6 +41,15 @@ export function newCardPath(side: NewCardSide, subjectId?: string): string {
   return `/flashcards?${params.toString()}`;
 }
 
+/** The window's session storage, or nothing where the browser refuses it. */
+function sessionOf(): Storage | undefined {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The id of a subject's heading, so the search can bring it into view. */
 const headingId = (subjectId: string | null) => `px-fc-${subjectId ?? "none"}`;
 
@@ -58,11 +69,17 @@ export function FlashcardsHome() {
   const [params, setParams] = useSearchParams();
   const [dialog, setDialog] = useState<{ side: NewCardSide; subjectId?: string } | null>(null);
   const newButton = useRef<HTMLSpanElement>(null);
+  const stillHere = useStillHere();
   useEffect(() => {
     const side = params.get("new");
     if (side !== "hand" && side !== "pyxis") return;
+    // Taking the two parameters out applies to the router's current page, and this effect can run after the student has
+    // gone on: then it opens nothing and cleans nothing, or it would pull them back here. A request that arrives while
+    // another navigation is under way is dropped the same way.
+    if (!stillHere()) return;
+    // Asked once per history entry: Back and Forward to this entry, or a reload of it, do not open the dialog again.
+    if (!claimOnce(sessionOf(), "new-card", location.key)) return;
     setDialog({ side, subjectId: params.get("subject") ?? undefined });
-    // Asked once: closing the dialog, or coming back to this page, does not open it again.
     setParams(
       (next) => {
         next.delete("new");
@@ -75,6 +92,15 @@ export function FlashcardsHome() {
   // The subject that just got flashcards is tinted for a moment, and a screen reader hears how many.
   const [landed, setLanded] = useState<{ subjectId: string; at: number } | null>(null);
   const [said, setSaid] = useState("");
+  // A screen reader speaks a live region when its text changes, so a second save that says the same words is first
+  // cleared and then said again.
+  const sayTimer = useRef(0);
+  function say(text: string) {
+    setSaid("");
+    window.clearTimeout(sayTimer.current);
+    sayTimer.current = window.setTimeout(() => setSaid(text), 60);
+  }
+  useEffect(() => () => window.clearTimeout(sayTimer.current), []);
   const newCard = (variant: "primary" | "secondary") => (
     <span className="px-fc-new" ref={newButton}>
       <Button variant={variant} icon="plus" onClick={() => setDialog({ side: "hand" })}>
@@ -163,7 +189,7 @@ export function FlashcardsHome() {
         onSaved={({ subjectId, name, count, closing }) => {
           setLanded({ subjectId, at: Date.now() });
           // The dialog says "Aggiunta" itself while it stays open.
-          if (closing) setSaid(t("flashcards.new.savedTo", { count, subject: name }));
+          if (closing) say(t("flashcards.new.savedTo", { count, subject: name }));
         }}
       />
     </div>
