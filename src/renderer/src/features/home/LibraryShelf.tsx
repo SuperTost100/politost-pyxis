@@ -17,7 +17,7 @@ import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
-import { useItemMenu } from "../../components/ItemMenu";
+import { useCloseWhenMoved, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
@@ -173,6 +173,12 @@ export function LibraryShelf({
       const subject = await invoke("sources.move", { sourceId: source.id, ...to });
       landing.current.set(source.id, { from, focus });
       setSaid(t("sources.shelf.moved", { name: subject.name }));
+      // A shelf shows its first covers only: when the file sorts past them, the shelf opens so the cover is there.
+      const there = [...(bySubject.get(subject.id) ?? []).filter((item) => item.id !== source.id), source].sort(byTitle);
+      if (there.findIndex((item) => item.id === source.id) >= SHELF_CAP)
+        setExpanded((current) => new Set(current).add(subject.id));
+      // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
+      if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
       await Promise.all([
         client.invalidateQueries({ queryKey: ["sources"] }),
         client.invalidateQueries({ queryKey: ["subjects"] }),
@@ -193,8 +199,6 @@ export function LibraryShelf({
   function onLanded(id: string): Landing | undefined {
     const land = landing.current.get(id);
     landing.current.delete(id);
-    if (land && land.focus && land.focus !== "cover")
-      pendingFocus.current = `[data-unsorted-id="${CSS.escape(land.focus.picker)}"] select`;
     return land;
   }
   const fileAct = (source: LibrarySource, key: string, fromUnsorted: boolean) => {
@@ -409,6 +413,9 @@ function fileMenu(
 /** The dots that open an item's menu: the same `menu` a right-click on the item opens. */
 function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: string; region: string; className: string }) {
   const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  // The menu closes when its dots move (the page scrolled, the layout shifted), so it never floats over other files.
+  useCloseWhenMoved(open, () => button.current, () => setOpen(false));
   return (
     <Dropdown
       trigger={["click"]}
@@ -423,6 +430,7 @@ function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: 
       menu={menu}
     >
       <AntButton
+        ref={button}
         type="text"
         shape="circle"
         className={["px-dots", className].join(" ")}

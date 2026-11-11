@@ -25,9 +25,11 @@ const focused = { ...plain, getBoundingClientRect: () => ({ left: 30, bottom: 90
 describe("item menu behaviour", () => {
   it("opens the menu at the pointer on a right-click and keeps the browser's own menu away", () => {
     const open = vi.fn();
-    const event = click(plain);
+    const item = {};
+    const event = click(plain, { currentTarget: item });
     menuTrigger(open).onContextMenu(event);
-    expect(open).toHaveBeenCalledWith({ x: 120, y: 48 }, false);
+    // The item the handler is on comes along, so the menu can close when that item moves.
+    expect(open).toHaveBeenCalledWith({ x: 120, y: 48 }, false, item);
     expect((event as { preventDefault: () => void }).preventDefault).toHaveBeenCalled();
   });
 
@@ -45,9 +47,10 @@ describe("item menu behaviour", () => {
   it("opens under the focused element for the context-menu key and Shift+F10, and for nothing else", () => {
     const open = vi.fn();
     const trigger = menuTrigger(open);
-    const key = press(focused, "ContextMenu");
+    const item = {};
+    const key = press(focused, "ContextMenu", { currentTarget: item });
     trigger.onKeyDown(key);
-    expect(open).toHaveBeenLastCalledWith({ x: 38, y: 90 }, true);
+    expect(open).toHaveBeenLastCalledWith({ x: 38, y: 90 }, true, item);
     expect((key as { preventDefault: () => void }).preventDefault).toHaveBeenCalled();
     trigger.onKeyDown(press(focused, "F10", { shiftKey: true }));
     expect(open).toHaveBeenCalledTimes(2);

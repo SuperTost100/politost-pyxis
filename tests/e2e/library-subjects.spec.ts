@@ -295,3 +295,290 @@ test("A failed request to choose subjects leaves pasted text imported and listed
     await expect(waiting("Probabilità")).toBeVisible();
   });
 });
+
+/** Pastes plain notes with no subject, so they wait in "Da sistemare" (no AI tool is connected in these specs). */
+async function pasteLoose(page: Page, title: string): Promise<string> {
+  const { sourceId } = await page.evaluate(
+    (title) =>
+      window.pyxis.invoke("sources.paste", {
+        title,
+        text: `${title}: la probabilità condizionata di A dato B è il rapporto tra P(A e B) e P(B).\n\n`.repeat(20),
+      }),
+    title,
+  );
+  return sourceId;
+}
+
+test("A file moved behind \"Mostra tutti\" shows where it went and keeps the keyboard's place", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const analysis = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
+      (subject) => subject.name === "Analisi 1",
+    )!;
+    // Fifteen covers that sort before "Zeta" and "Zulu": the shelf shows fourteen, so a moved file lands behind the button.
+    for (let n = 1; n <= 15; n++) {
+      const id = await pasteLoose(page, `Appunti ${String(n).padStart(2, "0")}`);
+      await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
+        id,
+        subjectId: analysis.id,
+      });
+    }
+    await pasteLoose(page, "Zeta");
+    await pasteLoose(page, "Zulu");
+    const group = page.getByRole("region", { name: "Da sistemare" });
+    await expect(group.locator(".px-unsorted-row")).toHaveCount(2);
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+
+    // Chosen in "Da sistemare": the shelf opens so the cover is there, and focus goes to the next row's choice.
+    await group.getByRole("combobox", { name: "Materia di Zeta" }).selectOption({ label: "Analisi 1" });
+    await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+    await expect(group.getByRole("combobox", { name: "Materia di Zulu" })).toBeFocused();
+
+    // By the file's menu, with the shelf folded again: the cover is shown and takes focus.
+    await shelf(page, "Analisi 1").getByRole("button", { name: "Mostra meno" }).click();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+    await page.getByRole("button", { name: "Azioni per Zulu" }).click();
+    await moveTo(page, "Analisi 1");
+    const zulu = cover(page, "Analisi 1", "Zulu");
+    await expect(zulu).toBeVisible();
+    await expect(zulu.getByRole("button", { name: "Zulu", exact: true })).toBeFocused();
+    await expect(group).toBeHidden();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("A subject offers its delete as soon as its last file is removed", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    const physics = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
+      (subject) => subject.name === "Fisica 2",
+    )!;
+    const id = await pasteLoose(page, "Dinamica");
+    await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
+      id,
+      subjectId: physics.id,
+    });
+    // Another file keeps the Library from showing its empty page once Dinamica is gone.
+    const other = await pasteLoose(page, "Limiti");
+    await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
+      id: other,
+      subjectId: (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
+        (subject) => subject.name === "Analisi 1",
+      )!.id,
+    });
+    // The page reads the subjects again, as when the student opens it with the file already there.
+    await page.reload();
+    await expect(cover(page, "Fisica 2", "Dinamica")).toBeVisible();
+    // With a file the subject cannot be deleted.
+    await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await expect(page.getByRole("menuitem", { name: "Rinomina", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    // The file goes; the page is not reopened, and the delete is there.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Azioni per Dinamica" }).click();
+    await page.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
+    await expect(shelf(page, "Fisica 2")).toContainText("nessun file");
+    await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** How far a point is from a box, in px: 0 inside it. */
+const gap = (box: { x: number; y: number; width: number; height: number }, at: { x: number; y: number }) =>
+  Math.hypot(Math.max(box.x - at.x, 0, at.x - (box.x + box.width)), Math.max(box.y - at.y, 0, at.y - (box.y + box.height)));
+
+/** The menu that is open: the one with `item`, whatever the page scrolled or did while it opened. */
+const openMenu = (page: Page, item: string) =>
+  page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").filter({ has: page.getByRole("menuitem", { name: item, exact: true }) });
+
+test("At 960 px a file's and a subject's menu open at the dots or the pointer after the page scrolled, and only their owner looks hovered", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 960, height: 900 });
+    for (const name of ["Chimica", "Geometria", "Algebra", "Statistica"])
+      await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
+    const subjects = await page.evaluate(() => window.pyxis.invoke("subjects.list", {}));
+    const idOf = (name: string) => subjects.find((subject) => subject.name === name)!.id;
+    // Six shelves and some files with no subject, so the page is taller than the window.
+    for (const [subject, titles] of [
+      ["Analisi 1", ["Limiti", "Derivate", "Integrali", "Serie", "Successioni", "Funzioni"]],
+      ["Fisica 2", ["Dinamica", "Cinematica", "Circuiti", "Ottica", "Onde", "Termologia"]],
+      ["Chimica", ["Legami", "Reazioni"]],
+      ["Geometria", ["Vettori", "Matrici"]],
+      ["Algebra", ["Gruppi", "Anelli"]],
+      ["Statistica", ["Medie", "Varianza"]],
+    ] as const)
+      for (const title of titles) {
+        const id = await pasteLoose(page, title);
+        await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
+          id,
+          subjectId: idOf(subject),
+        });
+      }
+    for (const title of ["Appunti sciolti", "Esercizi sciolti", "Lezione sciolta"]) await pasteLoose(page, title);
+    await expect(cover(page, "Fisica 2", "Termologia")).toBeVisible();
+    await animationsSettled(page);
+
+    // Scrolls the page the way a student does, and says how far it went.
+    const scrolled = async () => {
+      await page.mouse.move(480, 450);
+      await page.mouse.wheel(0, 260);
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            for (let el: Element | null = document.querySelector(".px-shelves"); el; el = el.parentElement)
+              if (el.scrollTop > 0) return el.scrollTop;
+            return 0;
+          }),
+        )
+        .toBeGreaterThan(100);
+      await animationsSettled(page);
+    };
+    await scrolled();
+
+    /** The files whose cover has the hover fill, and the dots, rows and cards that show their hover look. */
+    const hovered = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>(".px-cover")]
+          .filter((el) => getComputedStyle(el.querySelector(".px-cover-open")!).backgroundColor !== "rgba(0, 0, 0, 0)")
+          .map((el) => el.dataset["sourceId"]),
+      );
+    /** Fails when the menu is off the window or far from where it was asked, or when a cover but the owner looks hovered. */
+    const expectMenuAt = async (menu: Locator, at: { x: number; y: number }, owner: string | null, shot: string) => {
+      await expect(menu).toBeVisible();
+      await animationsSettled(page);
+      const box = (await menu.boundingBox())!;
+      const view = page.viewportSize()!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+      expect(box.y + box.height).toBeLessThanOrEqual(view.height);
+      expect(gap(box, at), `menu ${JSON.stringify(box)} for ${JSON.stringify(at)}`).toBeLessThan(40);
+      await expect.poll(hovered).toEqual(owner ? [owner] : []);
+      await saveShot(page, shot);
+    };
+    const centre = (box: { x: number; y: number; width: number; height: number }) => ({
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    });
+    /** Where the pointer rests between steps: in the gutter, over no cover. */
+    const rest = () => page.mouse.move(930, 450);
+    const sourceId = async (item: Locator) => (await item.getAttribute("data-source-id"))!;
+    const fileMenu = openMenu(page, "Dettagli della fonte");
+    const subjectMenu = openMenu(page, "Nuova mappa di questa materia");
+
+    // A file's menu by its dots.
+    const target = cover(page, "Analisi 1", "Integrali");
+    await target.scrollIntoViewIfNeeded();
+    await target.hover();
+    const dots = page.getByRole("button", { name: "Azioni per Integrali" });
+    await expect(dots).toBeVisible();
+    await dots.click();
+    await expectMenuAt(fileMenu, centre((await dots.boundingBox())!), await sourceId(target), "library-menu/960-file-dots.png");
+    // Sposta in opens beside the menu, inside the window.
+    await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
+    const sub = page.locator(".ant-dropdown-menu-submenu-popup:not(.ant-dropdown-menu-submenu-hidden)").filter({
+      has: page.getByRole("menuitem", { name: "Fisica 2", exact: true }),
+    });
+    await expect(sub).toBeVisible();
+    await animationsSettled(page);
+    const parent = (await fileMenu.boundingBox())!;
+    const child = (await sub.boundingBox())!;
+    expect(child.x).toBeGreaterThanOrEqual(0);
+    expect(child.x + child.width).toBeLessThanOrEqual(960);
+    expect(child.y + child.height).toBeLessThanOrEqual(900);
+    expect(gap(parent, { x: child.x, y: child.y + 10 })).toBeLessThan(24);
+    await saveShot(page, "library-menu/960-file-move.png");
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(fileMenu).toHaveCount(0);
+
+    // By a right-click, at the pointer.
+    const second = cover(page, "Fisica 2", "Onde");
+    await second.scrollIntoViewIfNeeded();
+    const at = centre((await second.boundingBox())!);
+    await page.mouse.click(at.x, at.y, { button: "right" });
+    await expectMenuAt(fileMenu, at, await sourceId(second), "library-menu/960-file-right-click.png");
+    await page.keyboard.press("Escape");
+    await expect(fileMenu).toHaveCount(0);
+
+    // By the keyboard: Shift+F10 on the cover that has focus.
+    await rest();
+    const third = cover(page, "Fisica 2", "Ottica");
+    await third.scrollIntoViewIfNeeded();
+    await third.getByRole("button", { name: "Ottica", exact: true }).focus();
+    await page.keyboard.press("Shift+F10");
+    const focusedBox = (await third.getByRole("button", { name: "Ottica", exact: true }).boundingBox())!;
+    await expectMenuAt(fileMenu, { x: focusedBox.x + 8, y: focusedBox.y + focusedBox.height }, await sourceId(third), "library-menu/960-file-key.png");
+    await page.keyboard.press("Escape");
+    await expect(third.getByRole("button", { name: "Ottica", exact: true })).toBeFocused();
+
+    // A subject's menu, by its dots, by a right-click on its name and by the keyboard.
+    await rest();
+    const subjectDots = page.getByRole("button", { name: "Azioni sulla materia Fisica 2" });
+    await subjectDots.scrollIntoViewIfNeeded();
+    await subjectDots.click();
+    await expectMenuAt(subjectMenu, centre((await subjectDots.boundingBox())!), null, "library-menu/960-subject-dots.png");
+    await page.keyboard.press("Escape");
+    await expect(subjectMenu).toHaveCount(0);
+    const heading = shelf(page, "Analisi 1").getByRole("heading", { name: "Analisi 1" });
+    await heading.scrollIntoViewIfNeeded();
+    const headAt = centre((await heading.boundingBox())!);
+    await page.mouse.click(headAt.x, headAt.y, { button: "right" });
+    await expectMenuAt(subjectMenu, headAt, null, "library-menu/960-subject-right-click.png");
+    await page.keyboard.press("Escape");
+    await expect(subjectMenu).toHaveCount(0);
+    await rest();
+    const keyDots = page.getByRole("button", { name: "Azioni sulla materia Analisi 1" });
+    await keyDots.focus();
+    await page.keyboard.press("Shift+F10");
+    const keyBox = (await keyDots.boundingBox())!;
+    await expectMenuAt(subjectMenu, { x: keyBox.x + 8, y: keyBox.y + keyBox.height }, null, "library-menu/960-subject-key.png");
+    await page.keyboard.press("Escape");
+    await expect(subjectMenu).toHaveCount(0);
+
+    // A menu never stays behind when what it belongs to moves: the page scrolling, or the layout shifting (a group
+    // appearing above the shelves), closes it, by the dots or by a right-click, instead of leaving it over other files.
+    for (const way of ["dots", "right-click"] as const) {
+      for (const move of ["scroll", "shift"] as const) {
+        const file = cover(page, "Analisi 1", "Serie");
+        await file.scrollIntoViewIfNeeded();
+        if (way === "dots") {
+          await file.hover();
+          await page.getByRole("button", { name: "Azioni per Serie" }).click();
+        } else {
+          const point = centre((await file.boundingBox())!);
+          await page.mouse.click(point.x, point.y, { button: "right" });
+        }
+        await expect(fileMenu).toBeVisible();
+        if (move === "scroll") {
+          await page.mouse.move(480, 450);
+          await page.mouse.wheel(0, -200);
+        } else
+          await page.evaluate(() => {
+            const spacer = document.createElement("div");
+            spacer.id = "e2e-spacer";
+            spacer.style.height = "180px";
+            document.querySelector(".px-shelves")!.prepend(spacer);
+          });
+        await expect(fileMenu, `${way} menu after ${move}`).toHaveCount(0);
+        await page.evaluate(() => document.getElementById("e2e-spacer")?.remove());
+        await rest();
+      }
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

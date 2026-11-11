@@ -575,7 +575,9 @@ export function LibraryPanel({
       await invoke("sources.remove", { sourceId: source.id, confirmed: true });
     }
     if (sourceId === source.id) setSourceId(null);
+    // A subject whose last file this was is no longer in use, so its card can offer the delete.
     void client.invalidateQueries({ queryKey: ["sources"] });
+    void client.invalidateQueries({ queryKey: ["subjects"] });
   }
   // The Content scope asks once typing pauses; Enter asks at once.
   useEffect(() => {

@@ -36,6 +36,7 @@ export function pointBelow(box: { left: number; bottom: number; right: number })
 type MenuMouseEvent = {
   clientX: number;
   clientY: number;
+  currentTarget?: EventTarget | null;
   target: EventTarget | Targetable;
   defaultPrevented: boolean;
   preventDefault(): void;
@@ -46,22 +47,23 @@ type MenuKeyEvent = {
   ctrlKey: boolean;
   altKey: boolean;
   metaKey: boolean;
+  currentTarget?: EventTarget | null;
   target: EventTarget | Targetable;
   defaultPrevented: boolean;
   preventDefault(): void;
 };
 
 /**
- * The handlers an item takes so its menu answers a right-click and the menu keys. `open` receives the point and whether
- * a key asked (to give focus back to where it was). Pass `enabled: false` for an item whose menu is disabled, which
+ * The handlers an item takes so its menu answers a right-click and the menu keys. `open` receives the point, whether
+ * a key asked (to give focus back to where it was) and the item the handler is on. Pass `enabled: false` for an item whose menu is disabled, which
  * leaves its events alone.
  */
-export function menuTrigger(open: (at: MenuPoint, byKey: boolean) => void, enabled = true) {
+export function menuTrigger(open: (at: MenuPoint, byKey: boolean, item: EventTarget | null) => void, enabled = true) {
   return {
     onContextMenu(event: MenuMouseEvent) {
       if (!enabled || event.defaultPrevented || keepsSystemMenu(event.target as Targetable)) return;
       event.preventDefault();
-      open({ x: event.clientX, y: event.clientY }, false);
+      open({ x: event.clientX, y: event.clientY }, false, event.currentTarget ?? null);
     },
     onKeyDown(event: MenuKeyEvent) {
       if (!enabled || event.defaultPrevented || !isMenuKey(event) || keepsSystemMenu(event.target as Targetable)) return;
@@ -69,7 +71,7 @@ export function menuTrigger(open: (at: MenuPoint, byKey: boolean) => void, enabl
       if (!focused?.getBoundingClientRect) return;
       // Handling the key press keeps Chromium from also sending a `contextmenu` event for it.
       event.preventDefault();
-      open(pointBelow(focused.getBoundingClientRect()), true);
+      open(pointBelow(focused.getBoundingClientRect()), true, event.currentTarget ?? null);
     },
   };
 }

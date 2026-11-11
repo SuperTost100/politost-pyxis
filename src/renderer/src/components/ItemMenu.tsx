@@ -1,8 +1,34 @@
 import { Dropdown, type MenuProps } from "antd";
-import { useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { menuTrigger, type MenuPoint } from "../lib/itemMenu";
 import "./ItemMenu.css";
+
+/**
+ * Closes a menu once what it hangs from has moved on the screen: the page scrolled, the window was resized or the layout
+ * shifted (a group appearing above it). A menu left behind would float over other items, away from the one it acts on.
+ * `anchor` reads the element when the menu is open; `close` is called at most once.
+ */
+export function useCloseWhenMoved(open: boolean, anchor: () => Element | null | undefined, close: () => void): void {
+  const latest = useRef({ anchor, close });
+  latest.current = { anchor, close };
+  useEffect(() => {
+    const element = open ? latest.current.anchor() : null;
+    if (!element) return;
+    const start = element.getBoundingClientRect();
+    let frame = 0;
+    const check = () => {
+      const now = element.getBoundingClientRect();
+      if (!element.isConnected || Math.abs(now.left - start.left) > 1 || Math.abs(now.top - start.top) > 1) {
+        latest.current.close();
+        return;
+      }
+      frame = requestAnimationFrame(check);
+    };
+    frame = requestAnimationFrame(check);
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+}
 
 /**
  * Opens an item's three-dots menu on a right-click, at the pointer, and on the context-menu key and Shift+F10, under the
@@ -28,10 +54,14 @@ export function useItemMenu({
     origin.current = null;
     if (restoreFocus && back?.isConnected) back.focus();
   };
-  const bind = menuTrigger((point, byKey) => {
+  // The item the menu belongs to, read when it opens: the menu closes when the item moves.
+  const item = useRef<Element | null>(null);
+  const bind = menuTrigger((point, byKey, target) => {
     origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    item.current = target instanceof Element ? target : null;
     setAt(point);
   }, !disabled);
+  useCloseWhenMoved(at !== null, () => item.current, () => close(true));
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
   const popup: ReactNode = at
