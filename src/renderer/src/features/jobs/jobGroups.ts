@@ -247,22 +247,23 @@ function batchOf(batches: Map<string, JobBatch>, job: JobView): JobBatch | undef
 /**
  * Sorts the jobs into what the list shows: what needs the student (stopped jobs, those that stopped for the same reason
  * merged into one, and each request that found nothing, on its own), work in progress, and what finished today.
- * `active` is the runner's list in creation order; `done` the jobs that ended today, newest first: those that succeeded
- * and those that found nothing for their request (`endedEmpty`), which wait under the first group until the student
- * changes or dismisses them. A succeeded job of a kind with no finished-job wording stays out of the list.
+ * `active` is the runner's list in creation order, which holds the requests that found nothing for their request
+ * (`endedEmpty`) until the student changes or dismisses them, whatever day they ended on; `done` the jobs that
+ * succeeded today, newest first. A succeeded job of a kind with no finished-job wording stays out of the list.
  * Jobs of one kind from one request form one row from two jobs up; while some of them run, those that finished are
  * counted on that row rather than listed under finished.
  */
 export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
   const problems = new Map<string, Problem>();
   const running: JobView[] = [];
-  // A request that found nothing is in `done`; a list read before core moved it has it in `active`.
-  const unmatched = new Map<string, JobView>();
-  for (const job of [...active, ...done]) if (endedEmpty(job)) unmatched.set(job.id, job);
+  // A request that found nothing is kept by core, on any day, until it is dismissed, so it comes with `active`.
+  const unmatched: JobView[] = [];
   for (const job of active) {
     if (job.state === "queued" || job.state === "running") {
       running.push(job);
-    } else if (job.state !== "succeeded" && !endedEmpty(job)) {
+    } else if (endedEmpty(job)) {
+      unmatched.push(job);
+    } else if (job.state !== "succeeded") {
       const found = problemOf(job);
       const known = problems.get(found.key);
       if (known) known.jobs.push(job);
@@ -286,7 +287,7 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
   const ended = new Map<string, JobBatch>();
   for (const job of finished) batchOf(ended, job)?.done.push(job);
   // Newest first, each its own row: every request leads to its own words.
-  const requests = [...unmatched.values()]
+  const requests = unmatched
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .map<Problem>((job) => ({
       key: `nothing-found:${job.id}`,

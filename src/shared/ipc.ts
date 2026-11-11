@@ -303,8 +303,8 @@ export type JobView = z.infer<typeof JobView>;
 
 /**
  * Errors that end a job with nothing to make, not with a failure: it read everything and found nothing for the
- * student's request, such as a map asked for in words the material has nothing on. The jobs list shows such a job as
- * finished, with its own line and no retry, and it never counts as a problem.
+ * student's request, such as a map asked for in words the material has nothing on. The jobs list shows such a job under
+ * what needs the student, on any day, with its own line and no retry, until it is changed or dismissed.
  */
 export const EMPTY_RESULT_ERRORS: readonly string[] = ["map-nothing-matched"];
 

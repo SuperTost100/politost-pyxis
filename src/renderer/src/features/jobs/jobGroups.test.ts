@@ -52,16 +52,12 @@ describe("jobs list groups", () => {
       error: "map-nothing-matched",
       ref: "map:p1:t1",
     });
-    const fromCore = groupJobs([job("b", { state: "running" })], [nothing, job("f", { state: "succeeded" })]);
+    const fromCore = groupJobs([job("b", { state: "running" }), nothing], [job("f", { state: "succeeded" })]);
     expect(fromCore.problems.map((problem) => [problem.kind, problem.messageKey, problem.jobs.map((item) => item.id)])).toEqual([
       ["nothing-found", "map.nothingMatched", ["m"]],
     ]);
     expect(fromCore.finished.map((item) => item.id)).toEqual(["f"]);
     expect(fromCore.finishedItems.map((item) => item.job?.id)).toEqual(["f"]);
-    // A list read before core moved it shows it once, in the same place.
-    const stale = groupJobs([nothing], [nothing]);
-    expect(stale.problems.map((problem) => problem.key)).toEqual(["nothing-found:m"]);
-    expect(stale.finished).toEqual([]);
     expect(requestPath(nothing)).toEqual({ to: "/plans/p1/map/t1", state: { job: "m" } });
     expect(requestPath({ ...nothing, ref: "map:s1" })).toEqual({ to: "/maps/s1", state: { job: "m" } });
     // Two requests of one topic lead to one page, and each names its own job.
@@ -78,18 +74,24 @@ describe("jobs list groups", () => {
   it("keeps each request that found nothing as its own item, newest first, after the jobs that stopped", () => {
     const nothing = (id: string, updatedAt: number) =>
       job(id, { kind: "map-build", state: "failed", error: "map-nothing-matched", ref: "map:s1", updatedAt });
-    const groups = groupJobs(
-      [job("stopped", { state: "cancelled" })],
-      [nothing("newer", 20), nothing("older", 10)],
-    );
+    const groups = groupJobs([job("stopped", { state: "cancelled" }), nothing("newer", 20), nothing("older", 10)], []);
     expect(groups.problems.map((problem) => [problem.kind, problem.jobs.map((item) => item.id)])).toEqual([
       ["stopped", ["stopped"]],
       ["nothing-found", ["newer"]],
       ["nothing-found", ["older"]],
     ]);
     // Dismissing one takes it out and leaves the other.
-    expect(groupJobs([], [nothing("older", 10)]).problems.map((problem) => problem.jobs[0]?.id)).toEqual(["older"]);
+    expect(groupJobs([nothing("older", 10)], []).problems.map((problem) => problem.jobs[0]?.id)).toEqual(["older"]);
     expect(groupJobs([], []).problems).toEqual([]);
+  });
+
+  it("keeps a request that found nothing under what needs the student however old it is, and out of the finished list", () => {
+    // Core lists it until it is dismissed, whatever day it ended on; the day's window only limits what finished.
+    const aDayAgo = Date.now() - 36 * 3_600_000;
+    const old = job("old", { kind: "map-build", state: "failed", error: "map-nothing-matched", ref: "map:s1", updatedAt: aDayAgo });
+    const groups = groupJobs([old], []);
+    expect(groups.problems.map((problem) => [problem.kind, problem.jobs.map((item) => item.id)])).toEqual([["nothing-found", ["old"]]]);
+    expect(groups.finished).toEqual([]);
   });
 
   it("merges jobs that stopped for the same reason into one problem, in the order they started", () => {

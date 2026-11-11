@@ -756,22 +756,27 @@ describe("job runner", () => {
     expect(database.prepare("SELECT id, dismissed FROM jobs ORDER BY id").all()).toEqual([{ id: "done", dismissed: 1 }]);
   });
 
-  it("lists a job that found nothing for its request with the finished ones, not with the problems", () => {
+  it("lists a job that found nothing for its request with the ones that need the student, on any day, until it is dismissed", () => {
     const database = db();
     const runner = createRunner(database, () => {});
     const add = database.prepare(
       `INSERT INTO jobs (id, kind, params_json, state, error, progress, created_at, updated_at) VALUES (?, 'map-build', '{}', 'failed', ?, 1, ?, ?)`,
     );
     const now = Date.now();
-    add.run("nothing", "map-nothing-matched", now, now);
-    add.run("broken", "cli-failed", now, now);
-    expect(runner.list().map((job) => job.id)).toEqual(["broken"]);
-    expect(runner.finished().map((job) => [job.id, job.state, job.error])).toEqual([
+    add.run("nothing", "map-nothing-matched", now - 2, now - 2);
+    add.run("broken", "cli-failed", now - 1, now - 1);
+    expect(runner.list().map((job) => [job.id, job.state, job.error])).toEqual([
       ["nothing", "failed", "map-nothing-matched"],
+      ["broken", "failed", "cli-failed"],
     ]);
-    // Yesterday's is gone from the day's list, as a finished job is.
-    database.prepare("UPDATE jobs SET updated_at = ? WHERE id = 'nothing'").run(now - 2 * 86_400_000);
+    // It is not one of the day's finished jobs, so "Finished today" never holds it.
     expect(runner.finished()).toEqual([]);
+    // Yesterday's request still waits for the student: the day's window only limits the finished list.
+    database.prepare("UPDATE jobs SET created_at = ?, updated_at = ? WHERE id = 'nothing'").run(now - 2 * 86_400_000, now - 2 * 86_400_000);
+    expect(runner.list().map((job) => job.id)).toEqual(["nothing", "broken"]);
+    // Dismissing it takes it off the list.
+    runner.dismiss("nothing");
+    expect(runner.list().map((job) => job.id)).toEqual(["broken"]);
   });
 
   it("drops a dismissed job from listeners", () => {
