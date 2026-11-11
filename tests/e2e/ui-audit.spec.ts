@@ -1578,7 +1578,8 @@ function prepareState(name: string) {
   // The jobs list's running group: two jobs under way, one of them named after the photo it reads. Only the jobs list
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
-    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%'");
+    // The requests that found nothing go too: one stays in every later state's Attività button until it is dismissed.
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%'");
     db.exec(
       "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
     );
@@ -1897,6 +1898,15 @@ async function selectText(page: Page, selector: string) {
 }
 
 async function openState(page: Page, name: string) {
+  // A map request that found nothing waits under C'è bisogno di te, in every page's Attività button, until it is
+  // dismissed, so only the states that seed one have one, and the others do not inherit it.
+  const requests = { n: 0 };
+  withDb((db) => {
+    requests.n = (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE error = 'map-nothing-matched'").get() as { n: number }).n;
+  });
+  expect(requests.n, `${name}: requests left over from another state`).toBe(
+    ["jobs-popover", "map-nothing-matched"].includes(name) ? 1 : 0,
+  );
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
