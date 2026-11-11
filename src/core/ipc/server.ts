@@ -327,6 +327,8 @@ const routes = {
   "maps.move": ["maps", "move"],
   "maps.patch": ["maps", "patch"],
   "maps.redo": ["maps", "redo"],
+  "maps.rename": ["maps", "rename"],
+  "maps.delete": ["maps", "delete"],
   "maps.undo": ["maps", "undo"],
   "plans.build": ["plans", "build"],
   "plans.intro": ["plans", "intro"],

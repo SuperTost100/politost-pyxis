@@ -991,9 +991,7 @@
     "radial": "Radiale",
     "undo": "Annulla",
     "add": "Aggiungi un ramo",
-    "png": "Vista sullo schermo (PNG)",
     "layout": "Disposizione",
-    "choose": "Scegli una mappa",
     "tools": "Strumenti della mappa",
     "rename": "Rinomina nodo",
     "connect": "Collega nodi",
@@ -1031,7 +1029,6 @@
       "star-soft": "Oro",
       "danger-soft": "Rosa"
     },
-    "buildSources": "Costruisci dalle fonti",
     "general": "Conoscenza generale, non dalle tue fonti",
     "redo": "Ripeti",
     "svg": "Esporta SVG",
@@ -1039,15 +1036,11 @@
     "expand_other": "Mostra {{count}} nodi nascosti",
     "collapse": "Nascondi il ramo",
     "export": "Esporta",
-    "exportMarkdown": "Schema (Markdown)",
-    "exportSvg": "Mappa intera (SVG)",
-    "exportPdf": "Mappa e schema (PDF)",
     "exporting": "Esporto…",
     "openExam": "Apri l’esame {{title}}",
     "hint": "clicca un concetto per vedere da dove viene",
     "makeCards": "Crea flashcard da questa mappa",
     "more": "Altro",
-    "shortcuts": "Scorciatoie",
     "keys": {
       "select": "Seleziona un concetto",
       "rename": "Rinomina",
@@ -1061,7 +1054,37 @@
     "sourceSlide": "{{title}}, slide {{slide}}",
     "lastAdded": "Ho aggiunto «{{label}}» sotto {{parent}}.",
     "lastChanged": "Ho modificato la mappa come hai chiesto.",
-    "editing": "Modifico la mappa…"
+    "editing": "Modifico la mappa…",
+    "open": "Apri",
+    "renameMap": "Rinomina",
+    "deleteMap": "Elimina la mappa…",
+    "deleteTitle": "Elimini la mappa «{{title}}»?",
+    "deleteBody": "La mappa sparisce da Mappe con le modifiche che ci hai fatto. Le flashcard che hai creato da questa mappa restano tra le tue flashcard.",
+    "deleteWritingBody": "Pyxis smette di scriverla e la mappa non viene creata. Le altre mappe restano come sono.",
+    "deleteConfirm": "Elimina la mappa",
+    "deleteFailed": "Non riesco a eliminare la mappa. Riprova.",
+    "deleted": "Ho eliminato la mappa «{{title}}».",
+    "gone": "Quella mappa non c’è più: è stata eliminata.",
+    "renamed": "Ora la mappa si chiama «{{title}}».",
+    "nameLabel": "Nome della mappa",
+    "nameEmpty": "Scrivi un nome per la mappa.",
+    "renameFailed": "Non riesco a rinominare la mappa. Riprova.",
+    "exportAs": {
+      "markdown": "Schema in testo",
+      "svg": "Mappa intera",
+      "pdf": "Mappa e schema da stampare",
+      "png": "Solo quello che vedi"
+    },
+    "exportFormat": {
+      "markdown": "Markdown",
+      "svg": "SVG",
+      "pdf": "PDF",
+      "png": "PNG"
+    },
+    "whole": "Mappa completa",
+    "switchMaps": "Mappe di {{scope}}, ora: {{current}}",
+    "conceptTools": "Strumenti del concetto",
+    "makeCardsShort": "Crea flashcard"
   },
   "maps": {
     "title": "Mappe",
@@ -1094,7 +1117,8 @@
     "instructionPlaceholder": "Per esempio «solo i teoremi, con le dimostrazioni»",
     "asked": "«{{text}}»",
     "create": "Crea la mappa",
-    "cancel": "Annulla"
+    "cancel": "Annulla",
+    "actionsFor": "Altro su {{title}}"
   },
   "lesson": {
     "title": "Lezione",

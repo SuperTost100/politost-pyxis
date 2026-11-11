@@ -3,6 +3,7 @@ import type { MapOp } from "./graph";
 import type { Runner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
 import {
+  deleteMapAndBuilds,
   editMap,
   mapBuild,
   enqueueMaps,
@@ -16,6 +17,7 @@ import {
   setMapLayout,
   undoMap,
   redoMap,
+  renameMap,
 } from "./store";
 import { listAllMaps } from "./library";
 import { exportMap, type MapExportLanguage } from "./export";
@@ -67,6 +69,12 @@ export function mapHandlers(
     },
     patch(input: MapAddress & { mapId?: string; ops: MapOp[] }) {
       return patchMap(db, scope(input), input.ops, input.mapId);
+    },
+    rename(input: MapAddress & { mapId: string; title: string }) {
+      return renameMap(db, scope(input), input.mapId, input.title);
+    },
+    delete(input: MapAddress & { mapId?: string; jobId?: string }) {
+      return { deleted: deleteMapAndBuilds(db, runner, scope(input), input) };
     },
     redo(input: MapAddress & { mapId?: string }) {
       return redoMap(db, scope(input), input.mapId);

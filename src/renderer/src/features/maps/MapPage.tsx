@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Input, Modal, Select } from "antd";
+import { Input, Modal, Select, type MenuProps } from "antd";
 import { ChevronLeft, ChevronRight, GraduationCap, Library } from "lucide-react";
 import {
   useCallback,
@@ -39,6 +39,9 @@ import { toPng } from "html-to-image";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
 import { IconButton } from "../../components/IconButton";
+import { Icon } from "../../components/Icon";
+import { MenuButton, useItemMenu } from "../../components/ItemMenu";
+import { Segmented } from "../../components/Controls";
 import { LoadError } from "../../components/LoadError";
 import { Working } from "../../components/Working";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -58,9 +61,8 @@ import {
   visibleNodes,
 } from "./mapLayout";
 import { describeChange } from "./mapChange";
-import { useMapExport } from "./MapExport";
-import { MAP_KEYS, MapMenu, type MapMenuGroup } from "./MapMenu";
-import { KeyCombo } from "../../app/ShortcutsDialog";
+import { MapNameField, useMapActions } from "./MapActions";
+import { requestName } from "./mapMenu";
 import { useNodeSources, type NodeSource } from "./nodeSources";
 import { useSourceView } from "../../components/SourceViewer";
 import "./MapPage.css";
@@ -330,6 +332,7 @@ export function MapPage() {
   const sourcePanel = useRef<HTMLElement>(null);
   const sourceSlot = useRef<HTMLDivElement>(null);
   const sourceTitleId = useId();
+  const layoutLabel = useId();
   // Picking another concept meanwhile removes that button, so focus goes to the concept selected now.
   const closeSource = useCallback(() => {
     setSourceOpen(false);
@@ -937,7 +940,7 @@ export function MapPage() {
       void generateMaps(own).finally(() => setStarting(false));
     } else setStarting(false);
   });
-  // The view on screen as a picture, without the fit button over it.
+  // The view on screen as a picture, without the canvas tools over it.
   async function exportPng() {
     if (!canvas.current) return;
     setBusy(true);
@@ -950,7 +953,7 @@ export function MapPage() {
         filter: (el) =>
           !(
             el instanceof HTMLElement &&
-            (el.classList.contains("px-map-fit") ||
+            (el.classList.contains("px-map-strip") ||
               el.classList.contains("react-flow__attribution"))
           ),
       });
@@ -1062,127 +1065,90 @@ export function MapPage() {
     void commit(() =>
       invoke("maps.redo", { ...address, mapId: activeId }),
     );
-  const mapExport = useMapExport({
+  // The map on show, which a tile, the switcher or a finished build chose.
+  const activeMap = list.data?.find((m) => m.id === activeId);
+  const [renaming, setRenaming] = useState(false);
+  // What a rename or a failed delete says, read out by screen readers.
+  const [said, setSaid] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const dots = useRef<HTMLDivElement>(null);
+  useEffect(() => setRenaming(false), [activeId]);
+  // After a rename the title takes the focus back, once it is drawn again.
+  const [titleFocus, setTitleFocus] = useState(false);
+  useEffect(() => {
+    if (!titleFocus || renaming) return;
+    setTitleFocus(false);
+    heading.current?.focus({ preventScroll: true });
+  }, [titleFocus, renaming]);
+  // A map still being written has no map to show yet; its menu offers only to delete it, which stops its build.
+  const writingJob = working ? (jobId ?? (building ? job?.jobId : undefined)) : undefined;
+  // A map asked for in words goes by its request until it has a name, as the working line says.
+  const writingTitle =
+    (writingJob ? job?.instruction?.trim() : undefined) ||
+    ((wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ?? t("map.title"));
+  const backTo = (scope.data?.subjectId ?? params.subjectId)
+    ? `/maps?subject=${encodeURIComponent(scope.data?.subjectId ?? params.subjectId ?? "")}`
+    : "/maps";
+  const actions = useMapActions({
     address,
-    mapId: activeId,
+    mapId: writingJob ? undefined : activeId,
+    jobId: writingJob,
+    title: writingJob ? writingTitle : title,
+    state: { writing: Boolean(writingJob), busy: disabled },
     settle: () => moves.current.catch(() => undefined),
+    exportView: writingJob ? undefined : () => void exportPng(),
+    onRename: () => setRenaming(true),
+    // A stored map leaves from its tile on Mappe, which shrinks away where it was; a map still being written has none.
+    onDelete: writingJob
+      ? undefined
+      : () =>
+          navigate(backTo, {
+            state: { remove: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } },
+          }),
+    onDeleted: () => navigate(backTo),
   });
-  const menu: MapMenuGroup[] = graph
-    ? [
-        {
-          key: "layout",
-          label: t("map.layout"),
-          items: (["tree", "radial"] as const).map((layout) => ({
-            key: layout,
-            label: t(`map.${layout}`),
-            checked: (graph.layout ?? "tree") === layout,
+  // A right-click on the empty canvas opens the same menu at the pointer.
+  const canvasMenu = useItemMenu({ menu: actions.menu, region: t("map.more"), disabled: !graph || fresh });
+  // A concept keeps what a right-click or the menu key did on it, and the tools on the canvas keep theirs.
+  const onCanvas = (target: EventTarget) => !(target instanceof Element && target.closest(".react-flow__node, .px-map-strip"));
+  const canvasBind: typeof canvasMenu.bind = {
+    onContextMenu: (event) => {
+      if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onContextMenu(event);
+    },
+    onKeyDown: (event) => {
+      if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onKeyDown(event);
+    },
+  };
+  // A link to a map that was deleted since lands on Mappe, which says so, rather than on another map of the scope.
+  useEffect(() => {
+    if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId)
+      navigate(backTo, { replace: true, state: { gone: true } });
+  }, [openMap, list.isSuccess, list.isFetching, list.data, jobId]);
+  // Several maps of one topic, or of one subject, are told apart by what the student asked for each.
+  const switcher: MenuProps | undefined =
+    list.data && (list.data.length > 1 || (nothingMatched && list.data.length > 0))
+      ? {
+          items: list.data.map((m) => ({
+            key: m.id,
+            role: "menuitemradio",
+            "aria-checked": m.id === activeId,
+            icon: (
+              <span className="px-item-menu-check" aria-hidden>
+                {m.id === activeId ? <Icon name="check" size={15} /> : null}
+              </span>
+            ),
+            label: (
+              <span className="px-item-menu-choice" title={m.instruction ?? undefined}>
+                <span>{requestName(m, t("map.whole"))}</span>
+                <small>{m.title}</small>
+              </span>
+            ),
             disabled,
-            onSelect: () => {
-              if ((graph.layout ?? "tree") !== layout)
-                void commit(() =>
-                  invoke("maps.layout", {
-                    ...address,
-                    mapId: activeId,
-                    layout,
-                  }),
-                );
-            },
           })),
-        },
-        // Several maps need choosing between; so does the one map of a scope whose request field is on the page instead.
-        ...(list.data && (list.data.length > 1 || nothingMatched)
-          ? [
-              {
-                key: "maps",
-                label: t("map.choose"),
-                items: list.data.map((m) => ({
-                  key: m.id,
-                  label: m.title,
-                  detail: m.instruction ? t("maps.asked", { text: m.instruction }) : undefined,
-                  checked: m.id === activeId,
-                  disabled,
-                  onSelect: () => pickMap(m.id),
-                })),
-              },
-            ]
-          : []),
-        {
-          key: "edit",
-          items: [
-            // Offered while no map came from a model yet, or after the last build stopped.
-            ...(!list.data?.some((m) => m.provider) ||
-            (job && ["failed", "cancelled", "interrupted"].includes(job.state))
-              ? [
-                  {
-                    key: "build",
-                    label: t("map.buildSources"),
-                    icon: "refresh-cw" as const,
-                    disabled,
-                    onSelect: () => void generateMaps(),
-                  },
-                ]
-              : []),
-            {
-              key: "undo",
-              label: t("map.undo"),
-              icon: "undo-2" as const,
-              disabled: disabled || !graph.undo,
-              onSelect: undo,
-            },
-            {
-              key: "redo",
-              label: t("map.redo"),
-              icon: "redo-2" as const,
-              disabled: disabled || !graph.redo,
-              onSelect: redo,
-            },
-          ],
-        },
-        {
-          key: "export",
-          label: t("map.export"),
-          items: [
-            ...(["markdown", "svg", "pdf"] as const).map((format) => ({
-              key: format,
-              label: t(
-                format === "markdown"
-                  ? "map.exportMarkdown"
-                  : format === "svg"
-                    ? "map.exportSvg"
-                    : "map.exportPdf",
-              ),
-              icon: "download" as const,
-              disabled: disabled || mapExport.busy,
-              onSelect: () => void mapExport.save(format),
-            })),
-            {
-              key: "png",
-              label: t("map.png"),
-              icon: "image" as const,
-              disabled,
-              onSelect: () => void exportPng(),
-            },
-          ],
-        },
-      ]
-    : [];
-  const shortcuts = (
-    <section className="px-map-keys" aria-label={t("map.shortcuts")}>
-      <div className="px-map-more-label" aria-hidden>
-        {t("map.shortcuts")}
-      </div>
-      <dl>
-        {MAP_KEYS.map((row) => (
-          <div key={row.id}>
-            <dt>{t(`map.keys.${row.id}`)}</dt>
-            <dd>
-              <KeyCombo keys={row.keys} either={row.either} />
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
+          onClick: ({ key }) => pickMap(key),
+        }
+      : undefined;
+  const scopeName = (wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ?? t("map.title");
   // The working state names the map being built, which is the scope's own name until the map has a title.
   const workingLine = t("map.buildingOf", {
     title: (wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ?? t("map.title"),
@@ -1194,56 +1160,111 @@ export function MapPage() {
       ? lastChange
       : undefined;
   // The way back leads to Mappe at this map's subject, or to the whole list for the topic map of an exam with none.
-  const backSubject = scope.data?.subjectId ?? params.subjectId;
+  const shownTitle = writingJob ? writingTitle : title;
+  // The head keeps its controls while another map of the scope loads, so the switcher keeps the focus it gave back.
+  const hasMap = Boolean(activeMap) && !fresh && !working;
   return (
     <div className="px-map-page">
-      <BackLink to={backSubject ? `/maps?subject=${encodeURIComponent(backSubject)}` : "/maps"}>
-        {t("doors.maps")}
-      </BackLink>
+      <BackLink to={backTo}>{t("doors.maps")}</BackLink>
       <header className="px-map-head">
-        <div className="px-map-title">
-          <h1>{title}</h1>
-          <p>
-            {scope.data?.planTitle ? (
-              <RouterLink
-                to={`/plans/${planId}`}
-                aria-label={t("map.openExam", { title: scope.data.planTitle })}
-              >
-                <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
-                <span>{scope.data.planTitle}</span>
-              </RouterLink>
-            ) : subjectName ? (
-              <span className="px-map-subject">
-                <Library size={14} strokeWidth={1.75} aria-hidden />
-                <span>{subjectName}</span>
-              </span>
-            ) : null}
-            {scope.data && (scope.data.planTitle || subjectName) && graph && !fresh ? (
-              <span aria-hidden>·</span>
-            ) : null}
-            {graph && !fresh ? <span>{t("map.hint")}</span> : null}
-          </p>
+        <div className="px-map-title-row">
+          {renaming && activeId && graph && !fresh ? (
+            <MapNameField
+              className="px-map-name-title"
+              address={address}
+              mapId={activeId}
+              value={title}
+              onDone={(saved) => {
+                setRenaming(false);
+                if (saved) setSaid(t("map.renamed", { title: saved }));
+                // Focus goes back to the title, which a screen reader then reads with its new name.
+                setTitleFocus(true);
+              }}
+            />
+          ) : (
+            <h1 ref={heading} tabIndex={-1} title={shownTitle}>
+              {shownTitle}
+            </h1>
+          )}
+          {switcher && hasMap && !renaming ? (
+            <MenuButton
+              menu={switcher}
+              size="sm"
+              align="start"
+              className="px-map-switch"
+              label={t("map.switchMaps", {
+                scope: scopeName,
+                current: requestName(activeMap ?? {}, t("map.whole")),
+              })}
+            >
+              {requestName(activeMap ?? {}, t("map.whole"))}
+            </MenuButton>
+          ) : null}
         </div>
-        {graph && !fresh ? (
-          <>
+        <div className="px-map-actions" ref={dots}>
+          {hasMap ? (
             <Button
               variant="secondary"
               size="sm"
               icon="layers"
               // The cards go under the map's subject, and a topic map's exam and topic, which come with the scope.
-              disabled={!scope.data}
+              disabled={!scope.data || !graph}
               onClick={makeCards}
+              // A narrow head shows the short label; the name stays whole.
+              aria-label={t("map.makeCards")}
             >
-              {t("map.makeCards")}
+              <span className="px-map-cards-long">{t("map.makeCards")}</span>
+              <span className="px-map-cards-short">{t("map.makeCardsShort")}</span>
             </Button>
-            <MapMenu label={t("map.more")} groups={menu} footer={shortcuts} />
-          </>
-        ) : null}
+          ) : null}
+          {hasMap || writingJob ? (
+            <MenuButton menu={actions.menu} label={t("map.more")} />
+          ) : null}
+        </div>
+        <p className="px-map-sub">
+          {scope.data?.planTitle ? (
+            <RouterLink
+              to={`/plans/${planId}`}
+              aria-label={t("map.openExam", { title: scope.data.planTitle })}
+            >
+              <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
+              <span>{scope.data.planTitle}</span>
+            </RouterLink>
+          ) : subjectName ? (
+            <span className="px-map-subject">
+              <Library size={14} strokeWidth={1.75} aria-hidden />
+              <span>{subjectName}</span>
+            </span>
+          ) : null}
+          {scope.data && (scope.data.planTitle || subjectName) && graph && !fresh ? (
+            <span aria-hidden>·</span>
+          ) : null}
+          {graph && !fresh ? <span>{t("map.hint")}</span> : null}
+        </p>
       </header>
+      <p className="visually-hidden" aria-live="polite">
+        {said}
+      </p>
+      {actions.failed ? (
+        <p className="small px-map-notice px-map-error" role="alert">
+          {t("map.deleteFailed")}
+        </p>
+      ) : null}
       {building && graph && !fresh ? <Working className="px-map-notice" line={workingLine} /> : null}
       {notice ? (
         <p className="small px-map-notice" role="status">
           {notice}
+          {/* A build that stopped or failed next to a map already there is picked up again from here. */}
+          {graph && retrying && !building ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={disabled}
+              onClick={() => void (job?.state === "failed" ? generateMaps() : resumeBuild())}
+            >
+              {t(job?.state === "failed" ? "maps.retry" : "jobs.resume")}
+            </Button>
+          ) : null}
         </p>
       ) : null}
       {map.isError || list.isError || scope.isError ? (
@@ -1324,7 +1345,7 @@ export function MapPage() {
           </div>
         ) : (
           <>
-            <div className="px-map-canvas" ref={canvas}>
+            <div className="px-map-canvas" ref={canvas} {...canvasBind}>
               <ReactFlow<FlowNode>
                 key={activeId}
                 nodes={nodes}
@@ -1400,14 +1421,28 @@ export function MapPage() {
                   }
                 }}
               />
-              <div className="px-map-fit">
-                <IconButton
-                  icon="scan"
-                  size="sm"
-                  label={t("map.fit")}
-                  onClick={startView}
+              {/* The tools that act on the whole canvas sit on it, at its bottom-right corner. */}
+              <div className="px-map-strip" role="toolbar" aria-label={t("map.tools")}>
+                <span className="visually-hidden" id={layoutLabel}>
+                  {t("map.layout")}
+                </span>
+                <Segmented
+                  label={layoutLabel}
+                  value={graph.layout ?? "tree"}
+                  disabled={disabled}
+                  options={(["tree", "radial"] as const).map((layout) => ({ value: layout, label: t(`map.${layout}`) }))}
+                  onChange={(layout) => {
+                    if ((graph.layout ?? "tree") !== layout)
+                      void commit(() => invoke("maps.layout", { ...address, mapId: activeId, layout }));
+                  }}
                 />
+                <span className="px-map-strip-sep" aria-hidden />
+                <IconButton icon="undo-2" size="sm" variant="ghost" label={t("map.undo")} disabled={disabled || !graph.undo} onClick={undo} />
+                <IconButton icon="redo-2" size="sm" variant="ghost" label={t("map.redo")} disabled={disabled || !graph.redo} onClick={redo} />
+                <span className="px-map-strip-sep" aria-hidden />
+                <IconButton icon="scan" size="sm" variant="ghost" label={t("map.fit")} onClick={startView} />
               </div>
+              {canvasMenu.popup}
             </div>
             <footer className="px-map-foot">
               <div className="px-map-node" key={selectedNode?.id ?? ""}>
@@ -1455,7 +1490,7 @@ export function MapPage() {
                     <div
                       className="px-map-tools"
                       role="toolbar"
-                      aria-label={t("map.tools")}
+                      aria-label={t("map.conceptTools")}
                     >
                       <IconButton
                         icon="plus"

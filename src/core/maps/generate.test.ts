@@ -7,6 +7,7 @@ import { createRunner } from "../jobs/runner";
 import type { GenerateInput } from "../engine/generate";
 import { partialText, templateVersion } from "../engine/prompts";
 import {
+  deleteMapAndBuilds,
   editMap,
   enqueueMaps,
   mapBuild,
@@ -19,6 +20,7 @@ import {
   openMap,
   patchMap,
   readStoredMap,
+  renameMap,
   undoMap,
 } from "./store";
 import type { MapScope } from "./scope";
@@ -956,6 +958,126 @@ describe("whole-subject maps", () => {
     const { db } = subjectFixture(1);
     expect(() => prepareMaps(db, { subjectId: "nope" })).toThrow("subject-missing");
     expect(() => listMaps(db, { subjectId: "nope" })).toThrow("subject-missing");
+    db.close();
+  });
+});
+
+describe("renaming and deleting a map", () => {
+  it("renames one map of a topic, allows a name another map has, and finds it by the new name", async () => {
+    const { db, input } = fixture(4);
+    await generateMaps(db, input, run);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, run);
+    enqueueMaps(db, runner, input, "solo i teoremi");
+    await until(db, input, "succeeded");
+    const [plain, focusedMap] = listMaps(db, input);
+    expect(renameMap(db, input, focusedMap!.id, "  Teoremi sui limiti ").title).toBe("Teoremi sui limiti");
+    expect(renameMap(db, input, plain!.id, "Teoremi sui limiti").title).toBe("Teoremi sui limiti");
+    expect(listMaps(db, input).map((map) => map.title)).toEqual(["Teoremi sui limiti", "Teoremi sui limiti"]);
+    // The request it was built from stays, so the switcher still tells the two apart.
+    expect(listMaps(db, input)[1]!.instruction).toBe("solo i teoremi");
+    expect(listAllMaps(db, "teoremi limiti")).toHaveLength(2);
+    expect(() => renameMap(db, input, "gone", "Altro")).toThrow("map-missing");
+    expect(() => renameMap(db, input, plain!.id, "   ")).toThrow("map-title");
+    db.close();
+  });
+
+  it("deletes one map and keeps the others, and the row goes with the last map", async () => {
+    const { db, input } = fixture(4);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, run);
+    enqueueMaps(db, runner, input);
+    await until(db, input, "succeeded");
+    enqueueMaps(db, runner, input, "solo i teoremi");
+    await until(db, input, "succeeded");
+    const [plain, focusedMap] = listMaps(db, input);
+    expect(deleteMapAndBuilds(db, runner, input, { mapId: focusedMap!.id })).toBe(true);
+    expect(listMaps(db, input).map((map) => map.id)).toEqual([plain!.id]);
+    // Deleting it again is not an error: the map is gone, as asked.
+    expect(deleteMapAndBuilds(db, runner, input, { mapId: focusedMap!.id })).toBe(false);
+    expect(deleteMapAndBuilds(db, runner, input, { mapId: plain!.id })).toBe(true);
+    expect(listMaps(db, input)).toEqual([]);
+    expect(listAllMaps(db)).toEqual([]);
+    expect(db.prepare("SELECT COUNT(*) FROM maps").pluck().get()).toBe(0);
+    db.close();
+  });
+
+  it("builds a new map for a plain request once the map its finished build made was deleted", async () => {
+    const { db, input } = fixture(4);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, run);
+    const first = enqueueMaps(db, runner, input);
+    await until(db, input, "succeeded");
+    // While the map is there, a plain request is answered by it.
+    expect(enqueueMaps(db, runner, input).jobId).toBe(first.jobId);
+    deleteMapAndBuilds(db, runner, input, { mapId: listMaps(db, input)[0]!.id });
+    const again = enqueueMaps(db, runner, input);
+    expect(again.jobId).not.toBe(first.jobId);
+    await until(db, input, "succeeded");
+    expect(listMaps(db, input)).toHaveLength(1);
+    db.close();
+  });
+
+  it("stops a map still being written, and the build ending later does not bring it back", async () => {
+    const { db, input } = fixture(4);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const slow: GenerateInput["run"] = async (call) => {
+      await gate;
+      return response(generated(call.prompt));
+    };
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, slow);
+    const { jobId } = enqueueMaps(db, runner, input, "solo i teoremi");
+    await until(db, input, "running");
+    // The page names a map being written by its build.
+    expect(deleteMapAndBuilds(db, runner, input, { jobId: jobId! })).toBe(false);
+    release();
+    for (let i = 0; i < 100 && mapBuild(db, input, jobId)?.state === "running"; i++)
+      await new Promise((r) => setTimeout(r, 5));
+    expect(mapBuild(db, input, jobId)?.state).toBe("cancelled");
+    expect(listMaps(db, input)).toEqual([]);
+    // It left Attività, so nothing offers to resume it, and the scope has no build to show.
+    expect(runner.list().some((job) => job.id === jobId)).toBe(false);
+    expect(mapBuild(db, input)).toBeNull();
+    db.close();
+  });
+
+  it("gives up a stopped build of the map, so resuming it cannot bring the map back", async () => {
+    const { db, input } = fixture(4);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, run);
+    const { jobId } = enqueueMaps(db, runner, input);
+    await until(db, input, "succeeded");
+    const mapId = listMaps(db, input)[0]!.id;
+    // A second build that names the same map, stopped on its way, as after a quit.
+    const stopped = runner.start("map-build", { ...prepareMaps(db, input), mapId, built: [], next: 0 });
+    runner.cancel(stopped);
+    deleteMapAndBuilds(db, runner, input, { mapId });
+    expect(runner.list().some((job) => job.id === stopped)).toBe(false);
+    // Riprendi in Attività resumes what it lists; a build given up is not resumed, even when asked for by id.
+    expect(runner.resumeAll([stopped])).toEqual([]);
+    expect(mapBuild(db, input, stopped)?.state).toBe("cancelled");
+    expect(listMaps(db, input)).toEqual([]);
+    // The finished build that made the map stays in today's list as what happened.
+    expect(mapBuild(db, input, jobId)?.state).toBe("succeeded");
+    db.close();
+  });
+
+  it("makes an AI edit that ends after its map was deleted fail, without storing the map again", async () => {
+    const { db, input } = fixture(4);
+    await generateMaps(db, input, run);
+    const mapId = listMaps(db, input)[0]!.id;
+    const runner = createRunner(db, () => {});
+    let deleted = false;
+    const edit = editMap(db, { ...input, mapId, instruction: "aggiungi un esempio" }, async () => {
+      deleteMapAndBuilds(db, runner, input, { mapId });
+      deleted = true;
+      return response({ ops: [{ op: "add_node", id: "x", label: "Esempio", parent: "n0" }] });
+    });
+    await expect(edit).rejects.toThrow("map-missing");
+    expect(deleted).toBe(true);
+    expect(listMaps(db, input)).toEqual([]);
     db.close();
   });
 });

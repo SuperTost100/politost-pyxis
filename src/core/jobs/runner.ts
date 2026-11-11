@@ -125,6 +125,11 @@ export type Runner = {
   resume: (jobId: string) => void;
   resumeLocal: (kinds: string[]) => string[];
   dismiss: (jobId: string) => void;
+  /**
+   * Gives a job up for good, for work whose result is no longer wanted (a map deleted while it was built): a queued or
+   * running job is cancelled, and the job leaves the list in every state but done, so nothing offers to resume it.
+   */
+  discard: (jobId: string) => void;
   /** Jobs that are running or stopped and were not dismissed, with the requests that found nothing (`endedEmpty`), on any day. */
   list: () => JobView[];
   /**
@@ -542,6 +547,13 @@ export function createRunner(
       return jobId;
     },
     cancel,
+    discard(jobId) {
+      const hidden = db
+        .prepare(`UPDATE jobs SET dismissed = 1 WHERE id = ? AND state <> 'succeeded'`)
+        .run(jobId);
+      cancel(jobId);
+      if (hidden.changes > 0) publish(jobId);
+    },
     stopAll() {
       const ids = db
         .prepare(`SELECT id FROM jobs WHERE state IN ('queued', 'running') ORDER BY created_at, rowid`)
@@ -556,7 +568,7 @@ export function createRunner(
       // Read in the order the jobs were made, so the queue keeps it.
       const rows = db
         .prepare(
-          `SELECT id, state FROM jobs WHERE state IN ('cancelled', 'interrupted') ORDER BY created_at, rowid`,
+          `SELECT id, state FROM jobs WHERE state IN ('cancelled', 'interrupted') AND dismissed = 0 ORDER BY created_at, rowid`,
         )
         .all() as Array<{ id: string; state: string }>;
       const resumed: string[] = [];
