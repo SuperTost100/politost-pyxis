@@ -21,6 +21,7 @@ import { Link, useNavigate } from "react-router";
 import type { ThemeSource } from "@shared/bridge";
 import { goPages, type GoCommand } from "@shared/menu";
 import { RenameField, type ChatActions } from "../../features/ask/chatActions";
+import { menuTrigger } from "../../lib/itemMenu";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
 import { doorTarget, isMapPath } from "../doors";
@@ -238,7 +239,12 @@ export function Sidebar({
                 const edit = actions.editing(chat);
                 const title = actions.nameOf(chat);
                 return (
-                  <li key={chat.id} className={edit ? "px-side-chat is-editing" : "px-side-chat"}>
+                  // A right-click on the row, or the menu key on the link or the dots, opens the chat's menu.
+                  <li
+                    key={chat.id}
+                    className={edit ? "px-side-chat is-editing" : "px-side-chat"}
+                    {...menuTrigger((at, byKey) => void actions.openMenu(chat, byKey ? at : undefined), !edit)}
+                  >
                     {edit ? (
                       <RenameField edit={edit} label={t("ask.renameLabel")} />
                     ) : (
@@ -246,10 +252,6 @@ export function Sidebar({
                         <Link
                           to={`/ask/${chat.id}`}
                           aria-current={pathname === `/ask/${chat.id}` ? "page" : undefined}
-                          onContextMenu={(event) => {
-                            event.preventDefault();
-                            void actions.openMenu(chat);
-                          }}
                         >
                           <span className="px-side-chat-title">{title}</span>
                           {chat.subject ? <span className="px-side-chat-sub">{chat.subject}</span> : null}
@@ -347,6 +349,8 @@ function ProfileFoot() {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(!open)}
+        // A right-click on the button opens the same menu.
+        {...menuTrigger(() => setOpen(true))}
       >
         <span className="px-side-avatar" aria-hidden>
           {name ? name.charAt(0).toLocaleUpperCase() : <UserRound size={16} strokeWidth={1.75} />}

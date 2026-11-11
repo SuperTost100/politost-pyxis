@@ -6,6 +6,7 @@ import {
 import {
   Button,
   Dropdown,
+  type MenuProps,
   Modal,
   Pagination,
   Select,
@@ -17,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -356,9 +358,47 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
     const name = cardName(card);
     const label = (key: string) =>
       t("cardBrowser.action", { action: t(key), card: name });
+    // The three-dots menu, which a right-click on the row opens too. A removed card has none, only Restore.
+    const menu: MenuProps = {
+      items: [
+        ...(card.leech && card.passageId
+          ? [
+              {
+                key: "source",
+                label: t("cardBrowser.openSource"),
+              },
+            ]
+          : []),
+        {
+          key: "suspend",
+          label: t(card.suspended ? "cards.resume" : "cards.suspend"),
+        },
+        { type: "divider" },
+        { key: "delete", label: t("cards.delete"), danger: true },
+      ],
+      onClick: ({ key }) => {
+        if (key === "delete") ask(card);
+        else if (key === "source")
+          openSourceViewer({
+            passageId: card.passageId ?? undefined,
+            sourceId: card.sourceId ?? undefined,
+          });
+        else
+          void change(
+            invoke("study.suspend", {
+              cardId: card.id,
+              suspended: !card.suspended,
+            }),
+            "",
+          );
+      },
+    };
     return (
-      <li
+      <MenuItemArea
         key={card.id}
+        menu={menu}
+        region={t("cardBrowser.moreActions")}
+        disabled={card.removed}
         className={
           card.suspended || card.removed || card.leech
             ? "px-cardbrowser-row has-tags"
@@ -439,47 +479,12 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
               <Dropdown
                 trigger={["click"]}
                 autoFocus
-                popupRender={(menu) => (
+                popupRender={(list) => (
                   <div role="region" aria-label={t("cardBrowser.moreActions")}>
-                    {menu}
+                    {list}
                   </div>
                 )}
-                menu={{
-                  items: [
-                    ...(card.leech && card.passageId
-                      ? [
-                          {
-                            key: "source",
-                            label: t("cardBrowser.openSource"),
-                          },
-                        ]
-                      : []),
-                    {
-                      key: "suspend",
-                      label: t(
-                        card.suspended ? "cards.resume" : "cards.suspend",
-                      ),
-                    },
-                    { type: "divider" },
-                    { key: "delete", label: t("cards.delete"), danger: true },
-                  ],
-                  onClick: ({ key }) => {
-                    if (key === "delete") ask(card);
-                    else if (key === "source")
-                      openSourceViewer({
-                        passageId: card.passageId ?? undefined,
-                        sourceId: card.sourceId ?? undefined,
-                      });
-                    else
-                      void change(
-                        invoke("study.suspend", {
-                          cardId: card.id,
-                          suspended: !card.suspended,
-                        }),
-                        "",
-                      );
-                  },
-                }}
+                menu={menu}
               >
                 <Button
                   size="small"
@@ -492,7 +497,7 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
             </>
           )}
         </div>
-      </li>
+      </MenuItemArea>
     );
   }
 

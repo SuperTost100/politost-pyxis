@@ -69,3 +69,16 @@ describe("recorded quiz replies", () => {
     expect(await stems(run, 3, ["a", "b", "c", "d"])).toEqual(["Q4", "Q5", "Q6"]);
   });
 });
+
+describe("a call with no recorded reply", () => {
+  it("fails with the name of the missing reply instead of a TypeError", async () => {
+    const run = recordedPlanRun(JSON.stringify({ folders: { folders: [] } }));
+    await expect(
+      run({
+        system: "Sort files.",
+        prompt: "{}",
+        responseSchema: { name: "folder-sort", schema: { properties: { files: {} } } },
+      } as never),
+    ).rejects.toThrow('no recorded reply for "files"');
+  });
+});

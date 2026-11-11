@@ -68,7 +68,8 @@
       "suspendCard": "Sospendi la flashcard",
       "deleteCard": "Elimina la flashcard",
       "goMaps": "Vai alle Mappe",
-      "search": "Cerca ovunque"
+      "search": "Cerca ovunque",
+      "searchMenu": "Apri il menu di una chat nella ricerca"
     },
     "keys": {
       "enter": "Invio",
@@ -745,6 +746,7 @@
       "choose": "Scegli la materia",
       "chooseFor": "Materia di {{title}}",
       "failed": "Non sono riuscito a scegliere la materia. Riprova da Attività, oppure sceglila tu.",
+      "linkedFailed": "Non sono riuscito a scegliere le materie dei file sciolti di questa cartella, quindi per ora non ne hanno una. Riprova da Attività.",
       "linked": "Questo file sta in una cartella collegata, quindi la sua materia è quella della cartella.",
       "subjectMissing": "Questa materia non c'è più. Scegline un'altra."
     }

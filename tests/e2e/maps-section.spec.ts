@@ -189,8 +189,14 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     );
     expect(boxes.size).toBeGreaterThanOrEqual(2);
 
-    const mapsDoor = page.getByRole("link", { name: /^Mappe/ });
+    const mapsDoor = page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ });
     await expect(mapsDoor).toHaveAttribute("aria-current", "page");
+    // The page has its own way back, named for the section, which leads to Mappe at this map's subject.
+    const back = page.locator(".px-map-page").getByRole("link", { name: "Mappe", exact: true });
+    await expect(back).toBeVisible();
+    await back.click();
+    await expect(page).toHaveURL(/#\/maps\?subject=phys$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeFocused();
     await mapsDoor.click();
     await expect(page).toHaveURL(/#\/maps$/);
 

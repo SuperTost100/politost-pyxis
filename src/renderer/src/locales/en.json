@@ -68,7 +68,8 @@
       "suspendCard": "Suspend the flashcard",
       "deleteCard": "Delete the flashcard",
       "goMaps": "Go to Maps",
-      "search": "Search everywhere"
+      "search": "Search everywhere",
+      "searchMenu": "Open a chat's menu in the search"
     },
     "keys": {
       "enter": "Enter",
@@ -745,6 +746,7 @@
       "choose": "Choose the subject",
       "chooseFor": "Subject of {{title}}",
       "failed": "I couldn't choose the subject. Try again from Background tasks, or choose it yourself.",
+      "linkedFailed": "I couldn't choose the subjects of the loose files in this folder, so they have none yet. Try again from Background tasks.",
       "linked": "This file is in a linked folder, so its subject is the folder's.",
       "subjectMissing": "This subject no longer exists. Choose another one."
     }

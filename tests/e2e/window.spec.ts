@@ -189,6 +189,8 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
         explanation: "Velocity measures displacement over time.",
       })),
     },
+    // The Library asks the AI tool for the subject of the book it just added. It has nothing to say about it.
+    files: { files: [] },
     quizQuestions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         kind: "tf",
@@ -222,8 +224,13 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   };
   const packaged = process.env.PYXIS_DIST_APP;
   const app = await launchPyxis({ userData, env });
+  // What core logs while the loop runs. A line such as "file sorting failed" is an error it swallowed.
+  let coreLog = "";
   if (!live)
-    app.process().stderr?.on("data", (chunk) => console.error(String(chunk)));
+    app.process().stderr?.on("data", (chunk) => {
+      coreLog += String(chunk);
+      console.error(String(chunk));
+    });
   try {
     console.log("release: window");
     const page = await app.firstWindow();
@@ -558,6 +565,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .click();
     await expect(page.getByText(/12 metres/).first()).toBeVisible();
     await clean(page);
+    if (!live) expect(coreLog.split("\n").filter((line) => /failed/.test(line))).toEqual([]);
     if (live)
       writeFileSync(
         ".tmp/m15-live-release.json",

@@ -1578,7 +1578,8 @@ function prepareState(name: string) {
   // The jobs list's running group: two jobs under way, one of them named after the photo it reads. Only the jobs list
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
-    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%'");
+    // The requests that found nothing go too: one stays in every later state's Attività button until it is dismissed.
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%'");
     db.exec(
       "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
     );
@@ -1656,6 +1657,17 @@ function prepareState(name: string) {
       JSON.stringify({ sourceId: "audit-photo" }),
       0.75,
       "sources.jobs.extract",
+      now,
+      now,
+    );
+    // A map request that found nothing waits for the student under C'è bisogno di te, with its own line.
+    db.prepare(
+      "INSERT OR REPLACE INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-empty-popover','map-build',?,'failed',1,'map-nothing-matched',?,?)",
+    ).run(
+      JSON.stringify({
+        input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
+        instruction: "solo i teoremi sulle onde gravitazionali",
+      }),
       now,
       now,
     );
@@ -1886,6 +1898,15 @@ async function selectText(page: Page, selector: string) {
 }
 
 async function openState(page: Page, name: string) {
+  // A map request that found nothing waits under C'è bisogno di te, in every page's Attività button, until it is
+  // dismissed, so only the states that seed one have one, and the others do not inherit it.
+  const requests = { n: 0 };
+  withDb((db) => {
+    requests.n = (db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE error = 'map-nothing-matched'").get() as { n: number }).n;
+  });
+  expect(requests.n, `${name}: requests left over from another state`).toBe(
+    ["jobs-popover", "map-nothing-matched"].includes(name) ? 1 : 0,
+  );
   const dialog = page.getByRole("dialog");
   const source = /^Appunti di fisica$/;
   switch (name) {
@@ -2418,6 +2439,18 @@ async function openState(page: Page, name: string) {
           ),
         ).toBeVisible();
         await expect(list.getByText(/troppi pixel|too many pixels/)).toBeVisible();
+        // A request that found nothing sits in the same group, with its way to the page where it can be changed, and
+        // with no retry and no technical details of its own.
+        const request = list
+          .getByRole("region", { name: /^(C'è bisogno di te|Needs you)$/ })
+          .locator(".px-jobs-problem", {
+            hasText: /Nel materiale non c’è niente per la tua richiesta|Nothing in the material matches your request/,
+          })
+          .first();
+        await expect(request).toBeVisible();
+        await expect(request.getByRole("button", { name: /^(Cambia la richiesta|Change the request)$/ })).toBeVisible();
+        await expect(request.getByRole("button", { name: /^(Riprova|Retry)/ })).toHaveCount(0);
+        await expect(request.getByText(/Dettagli tecnici|Technical details/)).toHaveCount(0);
         await expect(
           list.getByRole("heading", { name: /^(In corso|Running)$/ }),
         ).toBeVisible();
