@@ -181,6 +181,8 @@ const routes = [
   ["map-building", "/plans/audit-ready-plan/map/audit-ready-topic"],
   // The same build asked for in the student's own words, which the working state shows in a line under its own.
   ["map-building-asked", "/plans/audit-ready-plan/map/audit-ready-topic"],
+  // A request whose words matched nothing in the material: no map, the message and the words ready to change.
+  ["map-nothing-matched", "/plans/audit-ready-plan/map/audit-ready-topic"],
   [
     "quiz-grading-failed",
     "/plans/audit-plan/quiz/audit-topic?attempt=audit-grading-attempt",
@@ -1570,6 +1572,19 @@ function prepareState(name: string) {
       );
       return;
     }
+    if (name === "map-nothing-matched") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-empty-map','map-build',?,'failed',1,'map-nothing-matched',?,?)",
+      ).run(
+        JSON.stringify({
+          input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
+          instruction: "solo i teoremi sulle onde gravitazionali",
+        }),
+        now,
+        now,
+      );
+      return;
+    }
     if (name !== "jobs-popover") return;
     const running = db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES(?,?,?,'running',?,?,?,?)",
@@ -2458,6 +2473,19 @@ async function openState(page: Page, name: string) {
       );
       await expect(page.locator(".px-map-asked")).toBeVisible();
       break;
+    case "map-nothing-matched": {
+      await expect(
+        page.getByRole("heading", {
+          name: /^(Nel materiale non c’è niente per la tua richiesta|Nothing in the material matches your request)$/,
+        }),
+      ).toBeVisible();
+      await expect(page.locator(".px-map-empty")).toContainText("solo i teoremi sulle onde gravitazionali");
+      await expect(page.getByLabel(/^(Come la vuoi\?|How do you want it\?)/)).toHaveValue(
+        "solo i teoremi sulle onde gravitazionali",
+      );
+      await expect(page.locator(".px-map-working")).toHaveCount(0);
+      break;
+    }
     case "ocr-settings-missing":
       await expect(
         page.getByText(

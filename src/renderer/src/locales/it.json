@@ -965,6 +965,8 @@
     "editConflict": "La mappa è cambiata mentre Pyxis la modificava e quella modifica non si adatta più. Le tue modifiche restano. Ripeti la richiesta.",
     "loadFailed": "Non è stato possibile caricare la mappa.",
     "generateFailed": "Non riesco a creare la mappa. Riprova.",
+    "nothingMatched": "Nel materiale non c’è niente per la tua richiesta",
+    "nothingMatchedBody": "Pyxis ha letto il materiale e non ha trovato niente su «{{text}}», quindi non ha creato nessuna mappa. Riformula la richiesta, oppure lasciala vuota per una mappa di tutto il materiale.",
     "stopped": "Hai fermato la creazione della mappa",
     "stoppedBody": "Puoi riprenderla da dove si era fermata.",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",

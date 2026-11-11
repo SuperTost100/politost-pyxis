@@ -965,6 +965,8 @@
     "editConflict": "The map changed while Pyxis was editing it, and that edit no longer fits. Your changes are kept. Try the request again.",
     "loadFailed": "The map could not be loaded.",
     "generateFailed": "The map could not be built. Try again.",
+    "nothingMatched": "Nothing in the material matches your request",
+    "nothingMatchedBody": "Pyxis read the material and found nothing for “{{text}}”, so it built no map. Reword the request, or leave it empty for a map of all the material.",
     "stopped": "You stopped building the map",
     "stoppedBody": "You can resume it from where it stopped.",
     "exportFailed": "The image could not be exported. Try again.",

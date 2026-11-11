@@ -67,7 +67,11 @@ function response(data: unknown) {
     inputTokens: 1,
   };
 }
-function generated(prompt: string) {
+/** What a request with an instruction is answered with: the map, or that this part has nothing for the request. */
+function focused(answer: { nodes: unknown[]; edges: unknown[] } | "nothing") {
+  return { result: answer === "nothing" ? { kind: "nothing" } : { kind: "map", ...answer } };
+}
+function plainMap(prompt: string) {
   const data = JSON.parse(prompt) as { passages: { id: string }[] };
   const ids = [...new Set(data.passages.map((p) => p.id))];
   return {
@@ -79,6 +83,11 @@ function generated(prompt: string) {
     })),
     edges: [],
   };
+}
+/** A part's answer: the map, in the shape its request asks for. */
+function generated(prompt: string) {
+  const map = plainMap(prompt);
+  return (JSON.parse(prompt) as { instruction?: string }).instruction ? focused(map) : map;
 }
 const run: GenerateInput["run"] = async (input) =>
   response(generated(input.prompt));
@@ -144,7 +153,7 @@ describe("M10 model maps", () => {
     const calls: Array<{ title: string; part?: number; of?: number; passages: unknown[] }> = [];
     await generateMaps(db, input, async (call) => {
       calls.push(JSON.parse(call.prompt));
-      const data = generated(call.prompt);
+      const data = plainMap(call.prompt);
       const at = ++part;
       return response({
         ...data,
@@ -641,7 +650,7 @@ describe("maps made on request", () => {
     // Eight concepts that all cite only the first passage of the part, whatever was asked.
     registerMapJobs(many, runner, async (call) => {
       const { passages } = JSON.parse(call.prompt) as { passages: Array<{ id: string }> };
-      return response({
+      const plain = {
         nodes: Array.from({ length: 8 }, (_, i) => ({
           id: `n${i}`,
           label: `Concetto ${i}`,
@@ -649,7 +658,8 @@ describe("maps made on request", () => {
           sources: [passages[0]!.id],
         })),
         edges: [],
-      });
+      };
+      return response(JSON.parse(call.prompt).instruction ? focused(plain) : plain);
     });
     enqueueMaps(many, runner, input);
     await until(many, input, "failed");
@@ -660,6 +670,210 @@ describe("maps made on request", () => {
     // Only what the concepts cite is listed as the map's passages.
     expect(map).toMatchObject({ passageCount: 1, instruction: "solo il primo" });
     many.close();
+  });
+});
+
+describe("a focused request and the parts that have nothing for it", () => {
+  const asked = "solo i teoremi sui limiti";
+  /** A part's reply: the map, a small one, or that the part has nothing. */
+  type Reply = "nothing" | "map" | "small";
+  function reply(call: { prompt: string }, kind: Reply, root = "Ramo") {
+    const { passages, part } = JSON.parse(call.prompt) as { passages: Array<{ id: string }>; part?: number };
+    const ids = [...new Set(passages.map((p) => p.id))];
+    if (kind === "nothing") return response(focused("nothing"));
+    const count = kind === "small" ? 3 : 8;
+    return response(
+      focused({
+        nodes: Array.from({ length: count }, (_, i) => ({
+          id: `n${i}`,
+          label: i ? `${root} ${part ?? 1}, concetto ${i}` : `${root} ${part ?? 1}`,
+          parent: i ? "n0" : null,
+          sources: i ? ids.slice(0, 1) : ids,
+        })),
+        edges: [],
+      }),
+    );
+  }
+
+  it("leaves out the parts that answer they have nothing, and keeps the others as the map's branches", async () => {
+    const { db, input } = fixture();
+    const parts = prepareMaps(db, input).parts;
+    expect(parts).toHaveLength(3);
+    let call = 0;
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (item) => reply(item, ++call === 2 ? "nothing" : "map"));
+    enqueueMaps(db, runner, input, asked);
+    await until(db, input, "succeeded");
+    const [map] = listMaps(db, input);
+    const stored = readStoredMap(db, input, map!.id)!;
+    const root = stored.graph.nodes.find((node) => node.parent === null)!;
+    const branches = stored.graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label);
+    expect(branches).toEqual(["Ramo 1", "Ramo 3"]);
+    // Only the passages of the parts that had something are the map's.
+    expect(new Set(stored.passageIds)).toEqual(
+      new Set([...parts[0]!.passages, ...parts[2]!.passages].map((passage) => passage.id)),
+    );
+    db.close();
+  });
+
+  it("accepts a small result when little is relevant, and only for a request with an instruction", async () => {
+    const { db, input } = fixture(1);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (item) => {
+      const sent = JSON.parse(item.prompt) as { instruction?: string };
+      const plain = reply(item, "small").structured as { result: { nodes: unknown[]; edges: unknown[] } };
+      return sent.instruction ? response(focused(plain.result)) : response(plain.result);
+    });
+    enqueueMaps(db, runner, input);
+    await until(db, input, "failed");
+    expect(listMaps(db, input)).toEqual([]);
+    enqueueMaps(db, runner, input, asked);
+    await until(db, input, "succeeded");
+    expect(readStoredMap(db, input)!.graph.nodes).toHaveLength(3);
+    db.close();
+  });
+
+  it("does not take a nothing-answer from a request without an instruction", async () => {
+    const { db, input } = fixture(1);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async () => response(focused("nothing")));
+    enqueueMaps(db, runner, input);
+    await until(db, input, "failed");
+    expect(mapBuild(db, input)!.error).not.toBe("map-nothing-matched");
+    expect(listMaps(db, input)).toEqual([]);
+    db.close();
+  });
+
+  it("stores no map and says nothing matched when every part answers it has nothing, and retry does not read again", async () => {
+    const { db, input } = fixture();
+    let calls = 0;
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (item) => {
+      calls++;
+      return reply(item, "nothing");
+    });
+    const first = enqueueMaps(db, runner, input, asked);
+    await until(db, input, "failed");
+    expect(calls).toBe(3);
+    expect(listMaps(db, input)).toEqual([]);
+    expect(mapBuild(db, input)).toMatchObject({ state: "failed", error: "map-nothing-matched", instruction: asked });
+    // The parts that came back empty are done: asking again with the same words retries without calling the model.
+    expect(enqueueMaps(db, runner, input, asked).jobId).toBe(first.jobId);
+    await until(db, input, "failed");
+    expect(calls).toBe(3);
+    expect(mapBuild(db, input)).toMatchObject({ error: "map-nothing-matched" });
+    expect(listMaps(db, input)).toEqual([]);
+    // Other words are another request, which reads the material again.
+    enqueueMaps(db, runner, input, "solo le definizioni");
+    await until(db, input, "failed");
+    expect(calls).toBe(6);
+    db.close();
+  });
+
+  it("follows the same rule when the request has a single part", async () => {
+    const { db, input } = fixture(1);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (item) => reply(item, "nothing"));
+    enqueueMaps(db, runner, input, asked);
+    await until(db, input, "failed");
+    expect(mapBuild(db, input)).toMatchObject({ error: "map-nothing-matched" });
+    expect(listMaps(db, input)).toEqual([]);
+    db.close();
+  });
+
+  it("resumes after a failed part without reading the parts that were done, the empty ones included", async () => {
+    const { db, input } = fixture();
+    const parts: number[] = [];
+    let fail = true;
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (item) => {
+      const { part } = JSON.parse(item.prompt) as { part: number };
+      parts.push(part);
+      if (part === 2 && fail) throw new Error("offline");
+      return reply(item, part === 1 ? "nothing" : "map");
+    });
+    const job = enqueueMaps(db, runner, input, asked);
+    await until(db, input, "failed");
+    expect(mapBuild(db, input)).toMatchObject({ state: "failed", progress: 1 / 3 });
+    fail = false;
+    expect(enqueueMaps(db, runner, input, asked).jobId).toBe(job.jobId);
+    await until(db, input, "succeeded");
+    // Part 1 (nothing) was not read again.
+    expect(parts).toEqual([1, 2, 2, 3]);
+    const stored = readStoredMap(db, input)!;
+    const root = stored.graph.nodes.find((node) => node.parent === null)!;
+    expect(stored.graph.nodes.filter((node) => node.parent === root.id).map((node) => node.label)).toEqual([
+      "Ramo 2",
+      "Ramo 3",
+    ]);
+    db.close();
+  });
+});
+
+describe("reading a build by its job, and the map it made", () => {
+  /** Builds whose model call fails when the instruction starts with "fail", and waits for `release` when it starts with "hold". */
+  function twoBuilds() {
+    const { db, input } = fixture(1);
+    const runner = createRunner(db, () => {});
+    const held = new Map<string, () => void>();
+    registerMapJobs(db, runner, async (call) => {
+      const { instruction } = JSON.parse(call.prompt) as { instruction?: string };
+      if (instruction?.startsWith("fail")) throw new Error("offline");
+      if (instruction?.startsWith("hold"))
+        await new Promise<void>((resolve) => {
+          held.set(instruction, resolve);
+        });
+      return response(generated(call.prompt));
+    });
+    const waitFor = async (check: () => boolean) => {
+      for (let i = 0; i < 400 && !check(); i++) await new Promise((r) => setTimeout(r, 5));
+      expect(check()).toBe(true);
+    };
+    return { db, input, runner, held, waitFor };
+  }
+
+  it("reads the build the student asked for, not the newest one of the scope", async () => {
+    const { db, input, runner } = twoBuilds();
+    const a = enqueueMaps(db, runner, input, "fail: solo A");
+    await until(db, input, "failed");
+    const b = enqueueMaps(db, runner, input, "solo B");
+    await until(db, input, "succeeded");
+    // The newest build is B's...
+    expect(mapBuild(db, input)).toMatchObject({ jobId: b.jobId, state: "succeeded" });
+    // ...but A's progress is A's, and asking for A again retries A.
+    expect(mapBuild(db, input, a.jobId)).toMatchObject({ jobId: a.jobId, state: "failed", instruction: "fail: solo A" });
+    expect(enqueueMaps(db, runner, input, "fail: solo A").jobId).toBe(a.jobId);
+    expect(mapBuild(db, input, a.jobId)!.jobId).toBe(a.jobId);
+    db.close();
+  });
+
+  it("reads no build by a job that is not one of the scope's map builds", async () => {
+    const { db, input, runner } = twoBuilds();
+    const a = enqueueMaps(db, runner, input, "solo A");
+    await until(db, input, "succeeded");
+    expect(mapBuild(db, input, "missing")).toBeNull();
+    const other = fixture(1);
+    expect(mapBuild(other.db, other.input, a.jobId)).toBeNull();
+    db.close();
+    other.db.close();
+  });
+
+  it("returns the id of the map a finished build made, whatever order two builds finish in", async () => {
+    const { db, input, runner, held, waitFor } = twoBuilds();
+    const a = enqueueMaps(db, runner, input, "hold A");
+    const b = enqueueMaps(db, runner, input, "hold B");
+    await waitFor(() => held.size === 2);
+    expect(mapBuild(db, input, a.jobId)!.mapId).toBeNull();
+    // The newer request finishes first, the older one after it, so the older map is the last the scope holds.
+    held.get("hold B")!();
+    await waitFor(() => mapBuild(db, input, b.jobId)?.state === "succeeded");
+    held.get("hold A")!();
+    await waitFor(() => mapBuild(db, input, a.jobId)?.state === "succeeded");
+    const maps = listMaps(db, input);
+    expect(maps.map((map) => map.instruction)).toEqual(["hold B", "hold A"]);
+    expect(mapBuild(db, input, a.jobId)!.mapId).toBe(maps[1]!.id);
+    expect(mapBuild(db, input, b.jobId)!.mapId).toBe(maps[0]!.id);
+    db.close();
   });
 });
 

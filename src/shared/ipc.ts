@@ -1650,9 +1650,13 @@ export const requests = {
     }),
   },
   "maps.build": {
-    input: mapAddress,
-    // What the student asked for when they started this build, which its working page shows.
-    output: jobProgressSchema.extend({ instruction: z.string().nullable() }).nullable(),
+    // The build of the job `maps.generate` returned; without one, the scope's newest build.
+    input: mapAddressInput({ jobId: z.string().optional() }),
+    // What the student asked for when they started this build, which its working page shows, and the map a finished
+    // build made.
+    output: jobProgressSchema
+      .extend({ instruction: z.string().nullable(), mapId: z.string().nullable() })
+      .nullable(),
   },
   "maps.generate": {
     // An instruction makes the request a new map of its own, even when the topic or subject has one (see `enqueueMaps`).

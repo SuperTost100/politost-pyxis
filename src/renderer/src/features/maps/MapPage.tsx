@@ -43,7 +43,7 @@ import { MarkdownView } from "../../components/MarkdownView";
 import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
-import { mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
+import { MAP_INSTRUCTION_MAX, mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
   NODE_MIN_HEIGHT,
@@ -248,9 +248,14 @@ export function MapPage() {
     queryFn: () => invoke("maps.list", address),
     refetchInterval: jobId ? 500 : false,
   });
+  // The page reads the build it waits for by its job: `maps.generate` returns the job it started or resumed, which is not
+  // always the scope's newest build (a retried request has older jobs than a build the student asked for since). Without
+  // one, as when the page is opened with no request, it reads the scope's newest build.
+  const buildKey = (id?: string) => ["map-build", scopeKey, id ?? "newest"];
+  const readBuild = (id?: string) => invoke("maps.build", id ? { ...address, jobId: id } : address);
   const build = useQuery({
-    queryKey: ["map-build", scopeKey],
-    queryFn: () => invoke("maps.build", address),
+    queryKey: buildKey(jobId),
+    queryFn: () => readBuild(jobId),
     refetchInterval: (query) =>
       query.state.data && ["queued", "running"].includes(query.state.data.state)
         ? 500
@@ -397,8 +402,19 @@ export function MapPage() {
     t("map.title");
   const job = build.data;
   const building = Boolean(job && ["queued", "running"].includes(job.state));
+  // The request found nothing in the material and no map was built. With a map to show, the notice says it instead.
+  const nothingMatched = !graph && job?.state === "failed" && job.error === "map-nothing-matched";
+  // The words the student can change, which start as the ones that found nothing.
+  const [reask, setReask] = useState("");
   useEffect(() => {
-    if (job && ["queued", "running"].includes(job.state)) setJobId(job.jobId);
+    if (nothingMatched) setReask(job?.instruction ?? "");
+  }, [nothingMatched, job?.jobId]);
+  useEffect(() => {
+    if (job && ["queued", "running"].includes(job.state) && job.jobId !== jobId) {
+      // The build is read by its job from now on; its first read is the one the page has, so the working state stays.
+      client.setQueryData(buildKey(job.jobId), job);
+      setJobId(job.jobId);
+    }
   }, [job?.jobId, job?.state]);
   const disabled =
     busy ||
@@ -413,18 +429,28 @@ export function MapPage() {
       job.jobId === jobId &&
       ["succeeded", "failed", "cancelled", "interrupted"].includes(job.state)
     ) {
+      // The page goes back to the scope's newest build, which until it is read is the build that just ended.
+      client.setQueryData(buildKey(), job);
       setJobId(undefined);
       setFresh(false);
-      // A map built on request is the one the student wants to see, so it opens, and it is the last the scope holds.
-      const { state, instruction } = job;
+      // The map this build made is the one the student wants to see, so it opens. Another build of the scope may have
+      // finished since, so the build's own map id says which it is, not the last map of the list. A build saved before
+      // it kept one still opens the last map of a request with an instruction.
+      const { state, instruction, mapId } = job;
       void client
         .fetchQuery({ queryKey: listKey, queryFn: () => invoke("maps.list", address), staleTime: 0 })
         .then((maps) => {
-          if (state === "succeeded" && instruction && maps.length > 1) pickMap(maps[maps.length - 1]!.id);
+          if (state !== "succeeded") return;
+          if (mapId && maps.some((map) => map.id === mapId)) pickMap(mapId);
+          else if (!mapId && instruction && maps.length > 1) pickMap(maps[maps.length - 1]!.id);
         })
         .catch(() => undefined);
       // A build the student stopped is not a failure. Without a map the empty state says so and offers to resume it.
+      // One that found nothing for the request says so, and with no map to show the empty state does it, next to the
+      // request.
       if (job.state === "cancelled") setNotice(graph ? t("map.stopped") : "");
+      else if (job.state === "failed" && job.error === "map-nothing-matched")
+        setNotice(graph ? t("map.nothingMatchedBody", { text: instruction ?? "" }) : "");
       else if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
     }
   }, [job?.state, jobId, client, scopeKey, t]);
@@ -792,6 +818,7 @@ export function MapPage() {
     setNotice("");
     try {
       await invoke("jobs.resumeAll", { jobIds: [job.jobId] });
+      client.setQueryData(buildKey(job.jobId), job);
       setJobId(job.jobId);
       await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
     } catch {
@@ -807,6 +834,10 @@ export function MapPage() {
     setNotice("");
     try {
       const result = await invoke("maps.generate", { ...address, ...(instruction ? { instruction } : {}) });
+      // The page follows the job `maps.generate` returned. Its first read is in place before the page switches to it, so
+      // the working state does not drop out for a frame.
+      if (result.jobId)
+        client.setQueryData(buildKey(result.jobId), await readBuild(result.jobId));
       setJobId(result.jobId);
       await client.invalidateQueries({ queryKey: listKey });
       await client.invalidateQueries({
@@ -1164,6 +1195,33 @@ export function MapPage() {
               ) : undefined
             }
           />
+        ) : nothingMatched ? (
+          <div className="px-map-empty">
+            <h2 className="title-2">{t("map.nothingMatched")}</h2>
+            <p className="small">{t("map.nothingMatchedBody", { text: job?.instruction ?? "" })}</p>
+            <form
+              className="px-map-reask px-form-field"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void generateMaps(reask.trim());
+              }}
+            >
+              <label className="label" htmlFor="map-reask">
+                {t("maps.instruction")} <span className="px-map-optional">{t("maps.optional")}</span>
+              </label>
+              <Input.TextArea
+                id="map-reask"
+                value={reask}
+                maxLength={MAP_INSTRUCTION_MAX}
+                autoSize={{ minRows: 2, maxRows: 6 }}
+                placeholder={t("maps.instructionPlaceholder")}
+                onChange={(event) => setReask(event.target.value)}
+              />
+              <Button type="submit" disabled={disabled}>
+                {t("maps.create")}
+              </Button>
+            </form>
+          </div>
         ) : !graph && job?.state === "cancelled" ? (
           <div className="px-map-empty">
             <h2 className="title-2">{t("map.stopped")}</h2>

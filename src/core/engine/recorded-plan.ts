@@ -83,11 +83,27 @@ export function recordedPlanRun(
       batch != null ? previous.filter((stem) => recordedStems(recorded!.questions!).some((re) => re.test(stem))).length : 0;
     const from =
       batch != null && recorded!.questions!.length >= generated + batch ? generated : 0;
+    // A recorded reply may fail (`"fail": "text"`), take longer than the others (`"delayMs"`) or wait until the test
+    // creates a file (`"hold": "path"`), so a test can make one of two builds that run side by side fail, or finish
+    // after the other. None of these keys is part of the reply.
+    const { fail, delayMs: extra, hold, ...answer } = (recorded ?? {}) as {
+      fail?: string;
+      delayMs?: number;
+      hold?: string;
+    };
+    // The reply is taken before the wait, so a call that comes in while this one waits gets the next reply.
+    calls++;
+    if (extra) await delay(Math.min(Math.max(extra, 0), 10000), undefined, { signal: input.signal });
+    while (hold && !existsSync(hold)) await delay(50, undefined, { signal: input.signal });
+    if (typeof fail === "string") throw new Error(fail);
     const reply =
-      batch != null ? { ...recorded, questions: recorded!.questions!.slice(from, from + batch) } : recorded;
+      batch != null
+        ? { ...recorded, questions: recorded!.questions!.slice(from, from + batch) }
+        : recorded && typeof recorded === "object" && !Array.isArray(recorded)
+          ? answer
+          : recorded;
     // `{{question:N}}` names a recorded question's place in the whole quiz.
     const questionShift = written - from;
-    calls++;
     const text = JSON.stringify(reply)
       .replaceAll(
         '"{{allPassages}}"',

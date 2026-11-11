@@ -58,6 +58,17 @@ describe("job error text", () => {
     });
   });
 
+  it("says that nothing in the material matched a map request", () => {
+    expect(jobErrorKey("map-nothing-matched")).toBe("map.nothingMatched");
+    for (const lang of ["en", "it"]) {
+      const messages = JSON.parse(
+        readFileSync(resolve(import.meta.dirname, `../../locales/${lang}.json`), "utf8"),
+      ) as { map: Record<string, unknown> };
+      expect(typeof messages.map.nothingMatched, lang).toBe("string");
+      expect(String(messages.map.nothingMatchedBody), lang).toContain("{{text}}");
+    }
+  });
+
   it("keeps the messages it already had", () => {
     expect(jobErrorKey("demo-step-failed")).toBe("jobs.demoFailed");
     expect(jobErrorKey("model failed: engine-missing")).toBe("engines.errors.engine-missing");

@@ -36,7 +36,8 @@ type Part = { title: string; passages: Passage[] };
 /** What a part's model call gave, kept in the job until every part is read and the parts join into one map. */
 type Built = {
   passageIds: string[];
-  graph: ConceptGraph;
+  /** Null when a part of a focused request answered that it has nothing for the request. */
+  graph: ConceptGraph | null;
   provider: string;
   model: string;
 };
@@ -54,29 +55,33 @@ type Params = {
   /** What the student asked for ("only the theorems, with proofs"), trimmed and never empty. It goes to every part's call. */
   instruction?: string;
 };
-const generatedSchema = z.object({
-  nodes: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(160),
-        label: z.string().trim().min(1).max(500),
-        parent: z.string().nullable(),
-        sources: z.array(z.string()).max(24),
-      }),
-    )
-    .min(8)
-    .max(25),
-  edges: z
-    .array(
-      z.object({
-        from: z.string(),
-        to: z.string(),
-        label: z.string().max(160).optional(),
-      }),
-    )
-    .max(150),
-});
-function graphOf(value: z.infer<typeof generatedSchema>): ConceptGraph {
+/** What a map is made of. A request without an instruction needs at least eight concepts; one with it may be smaller. */
+function mapShape(minNodes: number) {
+  return z.object({
+    nodes: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(160),
+          label: z.string().trim().min(1).max(500),
+          parent: z.string().nullable(),
+          sources: z.array(z.string()).max(24),
+        }),
+      )
+      .min(minNodes)
+      .max(25),
+    edges: z
+      .array(
+        z.object({
+          from: z.string(),
+          to: z.string(),
+          label: z.string().max(160).optional(),
+        }),
+      )
+      .max(150),
+  });
+}
+type Generated = z.infer<ReturnType<typeof mapShape>>;
+function graphOf(value: Generated): ConceptGraph {
   const edges = [...value.edges];
   for (const node of value.nodes)
     if (
@@ -201,7 +206,7 @@ async function buildPart(
   signal?: AbortSignal,
 ) {
   const ids = new Set(part.passages.map((passage) => passage.id));
-  const schema = generatedSchema.superRefine((value, ctx) => {
+  const check = (value: Generated, ctx: z.RefinementCtx) => {
     try {
       validateGraph(graphOf(value));
     } catch {
@@ -224,7 +229,18 @@ async function buildPart(
         code: "custom",
         message: "Each grounded node needs source passages",
       });
-  });
+  };
+  // A request with an instruction may find nothing for it in this part, so its answer is either a (possibly small) map
+  // or an explicit "nothing". The answer sits under `result` because a strict structured-output schema needs an object
+  // at its root. A request without one keeps the plain schema: every part must give a map of at least eight concepts.
+  const schema = params.instruction
+    ? z.object({
+        result: z.discriminatedUnion("kind", [
+          mapShape(2).extend({ kind: z.literal("map") }).superRefine(check),
+          z.object({ kind: z.literal("nothing") }),
+        ]),
+      })
+    : mapShape(8).superRefine(check);
   const result = await generate({
     selection: params.selection,
     run,
@@ -243,7 +259,12 @@ async function buildPart(
       passages: part.passages,
     }),
   });
-  const value = result.data as z.infer<typeof generatedSchema>;
+  const answer = params.instruction
+    ? (result.data as { result: { kind: "map" | "nothing" } & Partial<Generated> }).result
+    : (result.data as Generated);
+  if ("kind" in answer && answer.kind === "nothing")
+    return { passageIds: [], graph: null, provider: result.provider, model: result.model };
+  const value = answer as Generated;
   return {
     // A map made on request lists only the passages its concepts cite.
     passageIds: params.instruction
@@ -262,9 +283,11 @@ function scopeTitle(db: Database.Database, input: Input): string {
       : db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId)
   ) as string;
 }
+/** Joins the parts that gave a map; a part of a focused request that found nothing is left out. */
 function joinParts(db: Database.Database, params: Params, built: Built[]): StoredMap {
   const title = scopeTitle(db, params.input);
-  const passageIds = [...new Set(built.flatMap((part) => part.passageIds))];
+  const given = built.filter((part): part is Built & { graph: ConceptGraph } => part.graph !== null);
+  const passageIds = [...new Set(given.flatMap((part) => part.passageIds))];
   return {
     id: params.mapId!,
     title,
@@ -272,11 +295,11 @@ function joinParts(db: Database.Database, params: Params, built: Built[]): Store
     graph: layoutGraph(
       mergeGraphs(
         title,
-        built.map((part) => part.graph),
+        given.map((part) => part.graph),
       ),
     ),
-    provider: built[0]!.provider,
-    model: built[0]!.model,
+    provider: given[0]!.provider,
+    model: given[0]!.model,
     prompt: promptProvenance("map.generate"),
     grounding: passageIds.length ? "sources" : "general",
     ...(params.instruction ? { instruction: params.instruction } : {}),
@@ -320,6 +343,9 @@ export function registerMapJobs(
             ctx.setParams(params);
           }
           ctx.signal.throwIfAborted();
+          // Every part of a focused request found nothing for it: no map is stored, and the build ends saying so. A retry
+          // reads nothing again, since the parts are done; other words are another request.
+          if (params.built.every((part) => part.graph === null)) throw new Error("map-nothing-matched");
           storeMap(db, params.input, joinParts(db, params, params.built));
           return true;
         },
@@ -336,12 +362,21 @@ function aboutScope(db: Database.Database, input: Input) {
   return subject ? { topic: subject } : {};
 }
 /**
- * The scope's newest map-build job, as `columns`. A subject's job has no topic in its params. `instruction` narrows it to
- * the builds that were asked for with that instruction ("" for none); left out, any build counts.
+ * The scope's newest map-build job, as `columns`, or the scope's job `jobId` when one is given. A subject's job has no
+ * topic in its params. `instruction` narrows it to the builds that were asked for with that instruction ("" for none);
+ * left out, any build counts.
  */
-function latestBuild<T>(db: Database.Database, input: Input, columns: string, instruction?: string): T | undefined {
-  const asked = instruction === undefined ? "" : " AND COALESCE(json_extract(params_json, '$.instruction'), '') = ?";
-  const extra = instruction === undefined ? [] : [instruction];
+function latestBuild<T>(
+  db: Database.Database,
+  input: Input,
+  columns: string,
+  instruction?: string,
+  jobId?: string,
+): T | undefined {
+  const asked =
+    (instruction === undefined ? "" : " AND COALESCE(json_extract(params_json, '$.instruction'), '') = ?") +
+    (jobId === undefined ? "" : " AND id = ?");
+  const extra = [...(instruction === undefined ? [] : [instruction]), ...(jobId === undefined ? [] : [jobId])];
   return (
     isTopicScope(input)
       ? db
@@ -446,7 +481,12 @@ function editConflict() {
   return new IpcError("map-edit-conflict", "map.editConflict");
 }
 
-export function mapBuild(db: Database.Database, input: Input) {
+/**
+ * How a map build is going: the build `jobId` when the page asks for one (the job `maps.generate` returned, which is not
+ * always the scope's newest), else the scope's newest. `mapId` is the map a finished build stored; builds that finish in
+ * another order than they started add their maps in that order, so the last map of the scope is not this build's.
+ */
+export function mapBuild(db: Database.Database, input: Input, jobId?: string) {
   requireScope(db, input);
   const row = latestBuild<{
     jobId: string;
@@ -455,10 +495,13 @@ export function mapBuild(db: Database.Database, input: Input) {
     stepLabel: string | null;
     error: string | null;
     instruction: string | null;
+    mapId: string | null;
   }>(
     db,
     input,
-    "id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error, json_extract(params_json, '$.instruction') AS instruction",
+    "id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error, json_extract(params_json, '$.instruction') AS instruction, CASE WHEN state = 'succeeded' THEN json_extract(params_json, '$.mapId') END AS mapId",
+    undefined,
+    jobId,
   );
   return row ?? null;
 }

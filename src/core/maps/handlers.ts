@@ -33,8 +33,8 @@ export function mapHandlers(
     scope(input: MapAddress) {
       return describeScope(db, scope(input));
     },
-    build(input: MapAddress) {
-      return mapBuild(db, scope(input));
+    build(input: MapAddress & { jobId?: string }) {
+      return mapBuild(db, scope(input), input.jobId);
     },
     all(input: { query?: string }) {
       return listAllMaps(db, input.query);

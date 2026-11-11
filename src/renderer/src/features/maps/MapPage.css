@@ -477,6 +477,23 @@
 .px-map-empty p {
   margin: 0;
 }
+/* Asking again after a request found nothing: the words are in a field, ready to change. */
+.px-map-reask {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  width: min(56ch, 100%);
+  text-align: start;
+}
+.px-map-reask .ant-btn {
+  align-self: center;
+  margin-top: var(--space-2);
+}
+.px-map-optional {
+  color: var(--ink-subtle);
+  font-weight: 400;
+}
 
 /* Maps being built: the working mark where the map will appear. */
 .px-map-working {
