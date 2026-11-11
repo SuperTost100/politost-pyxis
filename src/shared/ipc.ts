@@ -2470,6 +2470,13 @@ export const requests = {
         subject: z.string().nullable(),
         /** A file read in place from a linked folder: the folder's name, and whether the file was moved or deleted. */
         linked: z.object({ folderId: z.string(), folder: z.string(), missing: z.boolean() }).nullable(),
+        subjectId: z.string().nullable(),
+        /**
+         * Where Pyxis is with the subject of a file added from the Library: `working` while a sort will place it,
+         * `stopped` when that sort stopped, `created` when it made the subject (until the subject is renamed), `unsure`
+         * and `no-ai` when the student has to choose. Null otherwise.
+         */
+        sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
       }),
     ),
   },
@@ -2478,8 +2485,23 @@ export const requests = {
       path: z.string(),
       /** Files the Library imports together: one id for the request, and the folder they were picked from. */
       batch: z.object({ id: z.string().min(1).max(64), folder: z.string().max(255).optional() }).optional(),
+      /** Added from the Library page: Pyxis chooses its subject once the add is over (`sources.sortSubjects`). */
+      sort: z.boolean().optional(),
     }),
     output: importResultSchema,
+  },
+  /** Chooses the subjects of files the Library just added, as one background job. Null when none is left to sort. */
+  "sources.sortSubjects": {
+    input: z.object({ sourceIds: z.array(z.string()).min(1).max(2000) }),
+    output: z.object({ jobId: z.string().nullable() }),
+  },
+  /** Puts a source in a subject the student chose: one they have, or a new one by name. Pyxis never moves it again. */
+  "sources.move": {
+    input: z.union([
+      z.object({ sourceId: z.string(), subjectId: z.string() }),
+      z.object({ sourceId: z.string(), name: z.string().trim().min(1).max(120) }),
+    ]),
+    output: z.object({ id: z.string(), name: z.string() }),
   },
   "sources.search": {
     input: z.object({ query: z.string() }),
@@ -2768,7 +2790,7 @@ export const requests = {
     output: z.object({ status: z.literal("ocr-queued"), jobId: z.string() }),
   },
   "sources.paste": {
-    input: z.object({ title: z.string(), text: z.string() }),
+    input: z.object({ title: z.string(), text: z.string(), sort: z.boolean().optional() }),
     output: importResultSchema,
   },
   "sources.books": {
@@ -2820,7 +2842,7 @@ export const requests = {
     }),
   },
   "sources.link": {
-    input: z.object({ url: z.string() }),
+    input: z.object({ url: z.string(), sort: z.boolean().optional() }),
     output: importResultSchema,
   },
   "sources.scanFolder": {

@@ -10,6 +10,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./SubjectPicker.css";
 import { useSubjects } from "../../lib/queries";
+import { refreshSubjects } from "../../lib/refreshSubjects";
 
 type Subject = { id: string; name: string; wholeMaps?: number };
 function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disabled: boolean; remove: () => void; rename: (name: string) => Promise<void> }) {
@@ -68,7 +69,7 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
         if (value === action.item.name) onChange("");
       } else await invoke("subjects.reorder", { ids: action.ids });
     },
-    onSuccess: () => { void client.invalidateQueries({ queryKey: ["subjects"] }); void client.invalidateQueries({ queryKey: ["plans"] }); void client.invalidateQueries({ queryKey: ["chats"] }); },
+    onSuccess: () => void refreshSubjects(client),
   });
   const rows = subjects.data ?? [];
   return <>

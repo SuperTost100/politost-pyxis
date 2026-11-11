@@ -396,6 +396,7 @@ export function listSources(db: Database.Database) {
          ${latestDocument("sources.id")} AS documentId,
          (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount,
          (SELECT name FROM subjects WHERE subjects.id = sources.subject_id) AS subject,
+         sources.subject_id AS subjectId, sources.subject_sort AS subjectSort,
          lf.folder_id AS linkedFolderId, lf.missing_at AS linkedMissingAt, f.path AS linkedRoot
        FROM sources
        LEFT JOIN linked_files lf ON lf.source_id = sources.id
@@ -414,6 +415,8 @@ export function listSources(db: Database.Database) {
     documentId: string | null;
     planCount: number;
     subject: string | null;
+    subjectId: string | null;
+    subjectSort: string | null;
     linkedFolderId: string | null;
     linkedMissingAt: number | null;
     linkedRoot: string | null;

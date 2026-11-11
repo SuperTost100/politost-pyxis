@@ -506,7 +506,9 @@
       "vectors": "Index passages",
       "download": "Download search model",
       "ocrData": "Download scan-reading data",
-      "ocr": "Read scanned pages"
+      "ocr": "Read scanned pages",
+      "sortRead": "Waiting for the files to be read",
+      "sortSubjects": "Choosing the subject"
     },
     "copySelection": "Copy",
     "embedQueued": "The download is in your background tasks. You can cancel or resume it.",
@@ -720,6 +722,31 @@
         "handouts": "lecture notes"
       },
       "missing": "Moved or deleted from the folder {{folder}}. Its quotes stay."
+    },
+    "sort": {
+      "working": "Choosing its subject",
+      "createdTitle": "New subject.",
+      "created_one": "I made it for this file because it didn't fit any of the others.",
+      "created_other": "I made it for these {{count}} files because they didn't fit any of the others.",
+      "rename": "Rename",
+      "renameNamed": "Rename the subject {{name}}",
+      "renameLabel": "Name of the subject {{name}}",
+      "moveTo": "Move to",
+      "newSubject": "New subject…",
+      "newSubjectTitle": "Move to a new subject",
+      "newSubjectName": "Subject name",
+      "newSubjectMove": "Move",
+      "cancel": "Cancel",
+      "unsortedTitle": "To sort",
+      "noAi": "You haven't connected an AI tool, so you choose the subject of these files.",
+      "noAiLink": "Connect a tool",
+      "unsure": "I couldn't tell which subject these files belong to, so you choose.",
+      "stopped": "You stopped choosing their subject. Resume it from Background tasks, or choose it yourself.",
+      "choose": "Choose the subject",
+      "chooseFor": "Subject of {{title}}",
+      "failed": "I couldn't choose the subject. Try again from Background tasks, or choose it yourself.",
+      "linked": "This file is in a linked folder, so its subject is the folder's.",
+      "subjectMissing": "This subject no longer exists. Choose another one."
     }
   },
   "cards": {
@@ -2232,7 +2259,8 @@
       "mapBuild_topic": "Map of {{topic}} ready",
       "ocrData": "Scan reading data downloaded",
       "embedding": "Search model downloaded",
-      "python": "Python downloaded"
+      "python": "Python downloaded",
+      "librarySort": "Subjects chosen"
     },
     "cancel": "Cancel",
     "stop": "Stop",
@@ -2301,7 +2329,9 @@
       "mapBuild": "Building the map",
       "mapBuild_topic": "Building the map of {{topic}}",
       "simulationBuild": "Preparing the mock exam",
-      "simulationGrade": "Grading the mock exam"
+      "simulationGrade": "Grading the mock exam",
+      "librarySort_one": "Choosing the subject of a file",
+      "librarySort_other": "Choosing the subject of {{count}} files"
     },
     "debug": {
       "title": "Technical details and debug",
