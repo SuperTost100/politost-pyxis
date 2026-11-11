@@ -1,6 +1,7 @@
 import { Modal } from "antd";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
+import { goPages } from "@shared/menu";
 import { MAP_KEYS } from "../features/maps/MapMenu";
 import "./ShortcutsDialog.css";
 
@@ -19,11 +20,11 @@ function groups(mac: boolean): Group[] {
         { id: "newChat", keys: ["mod", "shift", "N"] },
         { id: "search", keys: ["mod", "K"] },
         { id: "settings", keys: ["mod", "comma"] },
-        { id: "goAsk", keys: ["mod", "1"] },
-        { id: "goExams", keys: ["mod", "2"] },
-        { id: "goLibrary", keys: ["mod", "3"] },
-        { id: "goFlashcards", keys: ["mod", "4"] },
-        { id: "goMaps", keys: ["mod", "5"] },
+        // The sections' number keys, in the sidebar's order (`goPages`): goAsk, goExams, goMaps…
+        ...goPages.map((page) => ({
+          id: `go${page.command[0]!.toUpperCase()}${page.command.slice(1)}`,
+          keys: ["mod", page.accelerator.split("+").at(-1)!],
+        })),
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },

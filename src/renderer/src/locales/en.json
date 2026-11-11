@@ -2153,6 +2153,7 @@
     "retry": "Retry",
     "resume": "Resume",
     "dismiss": "Dismiss",
+    "changeRequest": "Change the request",
     "actionFailed": "Pyxis could not change this task. Try again.",
     "demoFailed": "Step two failed.",
     "demo": {
@@ -3142,6 +3143,7 @@
     "redoFailed": "Pyxis couldn't prepare the questions. Try again.",
     "mapsNone": "No maps of this subject yet.",
     "allMaps": "All maps",
+    "makeMap": "Make a map",
     "material": "Material",
     "allMaterial": "All material",
     "addMaterial": "Add material",

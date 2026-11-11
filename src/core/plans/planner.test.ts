@@ -3,6 +3,7 @@ import { openDatabase } from "../db/connection";
 import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
+import { planGuide } from "./create";
 import {
   dueEverywhere,
   examRings,
@@ -375,6 +376,20 @@ describe("Oggi", () => {
     ]);
   });
 
+  it("narrows the review to one exam's due cards, and to those with no topic", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    addPlan(db, "b", { examIn: 9 });
+    dueCard(db, "a1", "a", "a-t0");
+    dueCard(db, "b1", "b", "b-t0");
+    db.exec(`INSERT INTO cards (id, plan_id, front, back, created_at) VALUES ('b-loose', 'b', 'Loose', 'x', 2)`);
+    expect(dueEverywhere(db, now, { planId: "b" }).map((card) => card.id)).toEqual(["b1", "b-loose"]);
+    expect(dueEverywhere(db, now, { planId: "b", noTopic: true }).map((card) => [card.id, card.planId])).toEqual([
+      ["b-loose", "b"],
+    ]);
+    expect(dueEverywhere(db, now, { planId: "a" }).map((card) => card.id)).toEqual(["a1"]);
+  });
+
   it("applies the daily limit of new cards to each plan on its own", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
@@ -524,6 +539,19 @@ describe("exam rings", () => {
     expect(ring.dueCards).toBe(1);
     expect(ring.next?.activity).not.toBe("cards");
     expect(ring.next?.topicTitle).toBe(ring.next?.topicId ? `Topic ${ring.next.topicId.slice(-1)} of a` : null);
+  });
+
+  it("names the same next step as the exam's page, which also leaves the due cards to their own line", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    dueCard(db, "c1", "a", "a-t1");
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
+    recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(-1));
+    const listed = ringOf(db, "a").next;
+    const page = planGuide(db, "a", now)?.next;
+    expect(listed).toEqual({ activity: "quiz", topicId: "a-t0", topicTitle: "Topic 0 of a" });
+    expect(page).toMatchObject({ activity: listed?.activity, topicId: listed?.topicId });
+    expect(ringOf(db, "a").dueCards).toBe(1);
   });
 
   it("leaves out an exam still building", () => {

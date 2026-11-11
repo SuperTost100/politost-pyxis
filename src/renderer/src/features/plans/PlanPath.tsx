@@ -297,7 +297,7 @@ export function PlanPath({
           tone="info"
           action={{
             label: t("plans.path.hoursAction"),
-            onClick: () => navigate(`/plans/${planId}/settings`),
+            onClick: () => navigate(`/plans/${planId}/settings`, { state: { focus: "hours" } }),
           }}
         >
           {t("plans.path.hoursHint")}

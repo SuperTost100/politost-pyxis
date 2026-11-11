@@ -46,6 +46,9 @@ const ACTIVE = `c.suspended = 0
  */
 export type CardDeck = { planId: string } | { subjectId: string | null };
 
+/** The topic filter for an exam's cards that have no topic, where the due queries take a topic. No topic id is empty. */
+export const NO_TOPIC = "";
+
 /** The deck's cards, as SQL on `c` with its parameters. An archived exam's deck is empty. */
 function deckWhere(deck: CardDeck): { sql: string; params: unknown[] } {
   return "planId" in deck
@@ -64,7 +67,7 @@ function deckWhere(deck: CardDeck): { sql: string; params: unknown[] } {
 const dueFrom = (where: string) => `FROM cards c
        WHERE ${where}
          AND ${ACTIVE}
-         AND (? IS NULL OR c.topic_id = ?)
+         AND (? IS NULL OR COALESCE(c.topic_id, '') = ?)
          AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
          AND COALESCE(
            CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER),
@@ -136,7 +139,7 @@ function newCardsAllowed(
         `SELECT c.id FROM cards c
          WHERE ${where.sql}
            AND ${ACTIVE}
-           AND (? IS NULL OR c.topic_id = ?)
+           AND (? IS NULL OR COALESCE(c.topic_id, '') = ?)
            AND NOT EXISTS (SELECT 1 FROM card_reviews r WHERE r.card_id = c.id)
          ORDER BY c.created_at, c.rowid
          LIMIT ?`,

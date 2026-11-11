@@ -312,6 +312,12 @@ export function registerMapJobs(
 ): void {
   runner.register("map-build", {
     about: (params) => aboutScope(db, (params as Params).input),
+    // The scope, so the jobs list can open the map page of a request that found nothing: `map:<subjectId>` or
+    // `map:<planId>:<topicId>`.
+    ref: (params) => {
+      const input = (params as Params).input;
+      return isTopicScope(input) ? `map:${input.planId}:${input.topicId}` : `map:${input.subjectId}`;
+    },
     retryParams: (params) => ({ ...(params as Params), selection: selectionFor(db, "map") }),
     jobClass: "model-cli",
     steps: [

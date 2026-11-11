@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { ThemeSource } from "@shared/bridge";
+import { goPages, type GoCommand } from "@shared/menu";
 import { RenameField, type ChatActions } from "../../features/ask/chatActions";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
@@ -84,6 +85,33 @@ export function Sidebar({
   const library = pathname.startsWith("/exams/library");
   const map = isMapPath(pathname);
 
+  // Each section's row; Chiedi has no row of its own, since the sidebar starts a new chat and lists the recent ones.
+  const sections: Partial<Record<GoCommand, Omit<Item, "key" | "accelerator">>> = {
+    exams: {
+      to: doorTarget("exams", pathname),
+      icon: GraduationCap,
+      label: t("doors.exams"),
+      current: simulation || (!library && !map && (pathname.startsWith("/exams") || pathname.startsWith("/plans"))),
+    },
+    maps: {
+      to: doorTarget("maps", pathname),
+      icon: Network,
+      label: t("doors.maps"),
+      current: map || pathname.startsWith("/maps"),
+    },
+    flashcards: {
+      to: "/flashcards",
+      icon: Layers,
+      label: t("flashcards.title"),
+      current: pathname.startsWith("/flashcards"),
+    },
+    library: {
+      to: "/exams/library",
+      icon: BookOpen,
+      label: t("nav.library"),
+      current: library,
+    },
+  };
   const items: Item[] = [
     ...(simulation
       ? []
@@ -97,38 +125,11 @@ export function Sidebar({
             current: pathname === "/ask",
           },
         ]),
-    {
-      key: "exams",
-      to: doorTarget("exams", pathname),
-      icon: GraduationCap,
-      label: t("doors.exams"),
-      accelerator: "CmdOrCtrl+2",
-      current: simulation || (!library && !map && (pathname.startsWith("/exams") || pathname.startsWith("/plans"))),
-    },
-    {
-      key: "maps",
-      to: doorTarget("maps", pathname),
-      icon: Network,
-      label: t("doors.maps"),
-      accelerator: "CmdOrCtrl+5",
-      current: map || pathname.startsWith("/maps"),
-    },
-    {
-      key: "flashcards",
-      to: "/flashcards",
-      icon: Layers,
-      label: t("flashcards.title"),
-      accelerator: "CmdOrCtrl+4",
-      current: pathname.startsWith("/flashcards"),
-    },
-    {
-      key: "library",
-      to: "/exams/library",
-      icon: BookOpen,
-      label: t("nav.library"),
-      accelerator: "CmdOrCtrl+3",
-      current: library,
-    },
+    // The sections in the Go menu's order, which gives each its number key.
+    ...goPages.flatMap((page) => {
+      const section = sections[page.command];
+      return section ? [{ ...section, key: page.command, accelerator: page.accelerator }] : [];
+    }),
   ];
 
   // Folding swaps the button for the mark and back, so a click that swaps them brings the focus along.
