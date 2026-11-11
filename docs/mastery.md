@@ -20,11 +20,16 @@ Each quiz answer contributes one observation with weight 1, or 1.5 for open answ
 | Self-rating of an exercise     | 0.5    |
 | Reviewed card (retrievability) | 0.5    |
 
-## "I don't know" and Skip in quizzes
+## Answering and handing in a quiz
 
-A student can answer "I don't know" (key `0`) to any question of a quiz, diagnostic or review. The page checks an empty pick; core scores an empty pick 0 for every question type, shows the correct answer, and stores it like any checked answer. It becomes a normal wrong answer: the same `answer_given` evidence with score 0, counted for gaps, and it replaces the 0 a blank would also get at submit. Simulations have no per-question check, so they have no such button.
+A quiz, diagnostic, review, gap drill or redo is answered first and graded when the student hands it in with Consegna. Until then every answer is a draft: it can change, and nothing is graded or counted.
 
-Skip (key `S`) moves a question behind the others. It comes back once; the second time it can only be answered or marked "I don't know". The skipped ids and their order are saved in the answer draft, so closing and reopening keeps the order. Skipping changes only the order shown: grading, the timer deadline and the stored question order do not change. Skip waits until every question of the quiz exists.
+- **Non lo so** (key `0`) saves an empty answer, and pressing it again takes it back. An answer typed and then erased goes back to blank, so only the button sets "Non lo so".
+- **Segna per dopo** (key `S`) marks a question for later. The Domande card shows the mark on its number, and Consegna counts the marked questions. The marked ids are kept in the answer draft (`marked` in `study.quizDraft`, and in the simulation's body through `study.simulationDraft`), so closing and reopening keeps them. A draft saved before 0.5 kept skipped questions instead; an unanswered skipped question opens marked for later. Marking changes nothing in grading, the timer or the question order.
+- **Consegna** sends every question: a blank one goes as an empty answer, the same as "Non lo so". When some are blank or marked, it first asks, with how many of each. Core scores an empty answer 0 for every question type and shows the right answer in the results. It is a normal wrong answer: the same `answer_given` evidence with score 0, counted for gaps.
+- **Segnala la domanda** flags the question as wrong (`study.quizWrong`) while the quiz is open. It leaves the score and every later quiz, and a model-written diagnostic question gets a new one in its place.
+
+Answers corrected one at a time before 0.5 stay as they were checked: the page keeps them read-only, and Consegna hands in the checked answer. A simulation has the same Domande card, Segna per dopo and Consegna, but no "Non lo so", because its blank answers are already handed in empty.
 
 ## What a topic's number is made of
 

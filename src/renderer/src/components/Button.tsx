@@ -11,11 +11,15 @@ export function Button({
   variant = "primary",
   size = "md",
   icon,
+  iconEnd,
   block,
   className,
   children,
   disabled,
   expanded,
+  pressed,
+  keyShortcuts,
+  title,
   onClick,
   type = "button",
 }: {
@@ -23,12 +27,19 @@ export function Button({
   variant?: Variant;
   size?: Size;
   icon?: IconName;
+  /** An icon after the label, such as the chevron of Avanti. */
+  iconEnd?: IconName;
   block?: boolean;
   className?: string;
   children?: ReactNode;
   disabled?: boolean;
   /** For a button that opens a panel: whether the panel it opened is open now. */
   expanded?: boolean;
+  /** For a button that toggles a state, such as "Segna per dopo": whether it is on. */
+  pressed?: boolean;
+  /** The key that presses it, for assistive technology (`aria-keyshortcuts`). */
+  keyShortcuts?: string;
+  title?: string;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
   type?: "button" | "submit" | "reset";
 }) {
@@ -43,6 +54,9 @@ export function Button({
     <AntButton
       aria-label={ariaLabel}
       aria-expanded={expanded}
+      aria-pressed={pressed}
+      aria-keyshortcuts={keyShortcuts}
+      title={title}
       htmlType={type}
       type={antType}
       danger={variant === "danger"}
@@ -64,6 +78,7 @@ export function Button({
       }
     >
       {children}
+      {iconEnd ? <Icon name={iconEnd} size={size === "sm" ? 14 : 16} /> : null}
     </AntButton>
   );
 }

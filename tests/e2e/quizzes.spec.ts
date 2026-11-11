@@ -99,7 +99,11 @@ async function axe(page: Page) {
 const score = (page: Page) => page.locator(".px-res-headline");
 const grade = (page: Page) => page.locator(".px-res-grade-num");
 
-test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each answer, back, keys and results", async () => {
+// The question's own card: "Domanda 3 di 10" is its heading, and it takes focus when the question changes.
+const card = (page: Page) => page.locator(".px-qz-sheet");
+const sheet = (page: Page) => page.getByRole("complementary", { name: /^(Domande|Questions)$/ });
+
+test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed in, back, keys and results", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, userData, done } = await launch({
     markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
@@ -118,7 +122,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}`);
     await expect(page.getByRole("heading", { name: "Moti", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
-    await expect(page.getByText("Correzione dopo ogni risposta", { exact: true })).toBeVisible();
+    await expect(page.getByText("Correzione alla consegna", { exact: true })).toBeVisible();
     await axe(page);
     await page.getByRole("button", { name: "Personalizza" }).click();
     await page.getByRole("button", { name: "Solo vero o falso", exact: true }).click();
@@ -131,13 +135,13 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     ).toHaveAttribute("aria-valuenow", "0");
     const vero = page.getByRole("button", { name: "A Vero", exact: true });
     const falso = page.getByRole("button", { name: "B Falso", exact: true });
-    // Number keys pick, and the pick can change freely until Check.
+    // Number keys pick, and the pick can change freely until the quiz is handed in.
     await page.keyboard.press("2");
     await expect(falso).toHaveAttribute("aria-pressed", "true");
-    // Picking by key draws no focus box around the question.
+    // The question's card takes focus for screen readers but draws no focus box.
     expect(
-      await page.locator(".px-quiz-stem").evaluate(
-        (stem) => document.activeElement === stem && getComputedStyle(stem).outlineStyle,
+      await card(page).evaluate(
+        (element) => document.activeElement === element && getComputedStyle(element).outlineStyle,
       ),
     ).toBe("none");
     await page.keyboard.press("1");
@@ -145,13 +149,10 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await expect(falso).toHaveAttribute("aria-pressed", "false");
     // On the first question there is nothing to go back to.
     await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
-    await expect(page.getByRole("button", { name: "Avanti", exact: true })).toBeFocused();
-    await expect(page.getByRole("button", { name: /^A Vero Corretta$/ })).toBeDisabled();
-    await axe(page);
+    // Enter goes on: no correction until Consegna.
     await page.keyboard.press("Enter");
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
+    await expect(card(page)).toBeFocused();
     await page.clock.runFor(600);
     await expect
       .poll(async () => {
@@ -166,31 +167,25 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
     await page.clock.resume();
     await falso.click();
-    await page.getByRole("button", { name: "Verifica", exact: true }).click();
-    await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
-    await expect(page.getByRole("button", { name: /^A Vero Risposta giusta$/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^B Falso Sbagliata$/ })).toBeVisible();
-    // Back shows the previous question as answered, read-only, on the left of the same row.
+    // Back and Avanti sit on one row under the card, Back on the left; the previous answer can still change.
     const back = page.getByRole("button", { name: "Indietro", exact: true });
     const next = page.getByRole("button", { name: "Avanti", exact: true });
     const [backBox, nextBox] = [await back.boundingBox(), await next.boundingBox()];
-    expect(Math.abs(backBox!.y - nextBox!.y)).toBeLessThan(2);
+    expect(Math.abs(backBox!.y + backBox!.height / 2 - (nextBox!.y + nextBox!.height / 2))).toBeLessThan(2);
     expect(backBox!.x).toBeLessThan(nextBox!.x);
     await back.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    await expect(page.locator(".px-quiz-feedback")).toContainText("Corretto");
-    await expect(page.getByRole("button", { name: /^A Vero Corretta$/ })).toBeDisabled();
+    await expect(vero).toHaveAttribute("aria-pressed", "true");
+    await expect(vero).toBeEnabled();
     await next.click();
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
-    await expect(page.locator(".px-quiz-feedback")).toContainText("Sbagliato");
+    await expect(falso).toHaveAttribute("aria-pressed", "true");
     await next.click();
     for (let i = 2; i < 10; i++) {
       await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
       await vero.click();
-      await page.getByRole("button", { name: "Verifica", exact: true }).click();
-      await page
-        .getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true })
-        .click();
+      // The last question's step forward is Consegna; with nothing blank or marked it hands in at once.
+      await page.locator(".px-qz-nav .px-btn-primary").click();
     }
     await expect(score(page)).toContainText("9 punti su 10.");
     await expect(grade(page)).toHaveText("27");
@@ -251,7 +246,10 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
       );
     await expect.poll(async () => (await read()).state).toBe("succeeded");
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${timed.attemptId}`);
-    await expect(page.locator(".px-quiz-question")).toBeVisible();
+    await expect(card(page)).toBeVisible();
+    // The time left sits in the bar, and the line under the title says how long the quiz is.
+    await expect(page.getByRole("timer", { name: "Tempo rimasto" })).toBeVisible();
+    await expect(page.locator(".px-studybar-title p")).toHaveText("Fisica 1 · limite di 1 minuto");
     await expect.poll(async () => (await read()).deadlineAt).toBeGreaterThan(0);
     const deadline = (await read()).deadlineAt;
     await page.reload();
@@ -259,7 +257,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
     // Move the deadline into the past while no quiz page is open, since an open page saves its draft on a timer and
     // keeps the session it loaded. Leave, reload so nothing of that page is left, then write.
     await go(page, "/exams");
-    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
+    await expect(card(page)).toHaveCount(0);
     await page.reload();
     const past = Date.now() - 1000;
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
@@ -280,7 +278,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions, feedback after each a
   }
 });
 
-test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S) moves it to the end, once", async () => {
+test("Non lo so (key 0) and Segna per dopo (key S) are saved, counted at Consegna, and a blank answer scores 0", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, done } = await launch({
     markdown: { markdown: "## Il moto\nLa velocità descrive il moto [P1]." },
@@ -311,65 +309,55 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     const read = () =>
       invoke<{
         state: string;
-        draft?: { index: number; skipped?: string[] };
+        draft?: { index: number; picks: Record<string, string>; marked?: string[] };
         questions: Array<{ id: string; stem: string }>;
       }>(page, "study.quizRead", { attemptId: started.attemptId });
     await expect.poll(async () => (await read()).state).toBe("succeeded");
+    const ids = (await read()).questions.map((question) => question.id);
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${started.attemptId}`);
-    const stem = page.locator(".px-quiz-stem");
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    const skippedStem = await stem.innerText();
     await axe(page);
     await shoot("question", "it");
 
-    // S moves the first question to the end: the next one takes its place in the count.
-    await page.keyboard.press("s");
-    await expect(stem).not.toHaveText(skippedStem);
-    await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    // 0 on the second question: scored wrong, no pick, the right option is shown.
+    // 0 on the first question: an empty answer, said under the actions. S marks it for later.
     await page.keyboard.press("0");
-    const feedback = page.locator(".px-quiz-feedback.is-wrong");
-    await expect(feedback).toContainText("Ancora da imparare");
-    await expect(feedback).toContainText("Vale 0, come una risposta sbagliata.");
-    await expect(page.getByRole("button", { name: /^A Vero Risposta giusta$/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Non lo so" })).toHaveCount(0);
+    await page.keyboard.press("s");
+    const dontKnow = page.getByRole("button", { name: "Non lo so", exact: true });
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    await expect(dontKnow).toHaveAttribute("aria-pressed", "true");
+    await expect(mark).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Conta come una risposta sbagliata, e quella giusta la vedi nei risultati.")).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: "Domanda 1, non lo so, segnata per dopo" })).toBeVisible();
+    await expect.poll(async () => (await read()).draft).toMatchObject({ picks: { [ids[0]!]: "" }, marked: [ids[0]] });
     await axe(page);
     await shoot("dont-know", "it");
-    await page.keyboard.press("Enter");
-    await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
-    await expect.poll(async () => (await read()).draft?.skipped).toHaveLength(1);
+    // Pressed again, each takes itself back.
+    await page.keyboard.press("0");
+    await expect(dontKnow).toHaveAttribute("aria-pressed", "false");
+    await page.keyboard.press("0");
 
+    // Every other question but the last is answered; the last stays blank.
+    await page.keyboard.press("Enter");
     for (let i = 2; i <= 9; i++) {
       await expect(page.getByText(`Domanda ${i} di 10`, { exact: true })).toBeVisible();
       await page.keyboard.press("1");
       await page.keyboard.press("Enter");
-      await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
-      await page.keyboard.press("Enter");
     }
-    // The skipped question comes back last, says so, and cannot be skipped again.
     await expect(page.getByText("Domanda 10 di 10", { exact: true })).toBeVisible();
-    await expect(stem).toHaveText(skippedStem);
-    await expect(page.getByText(/Già saltata/)).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Salta/ })).toHaveCount(0);
-    await page.keyboard.press("s");
-    await expect(stem).toHaveText(skippedStem);
-    await expect(page.getByRole("button", { name: /^Non lo so/ })).toBeVisible();
-    await shoot("skipped-back", "it");
-    // The order survives a reload.
-    await expect.poll(async () => (await read()).draft?.index).toBe(9);
-    await page.reload();
-    await expect(page.getByText("Domanda 10 di 10", { exact: true })).toBeVisible();
-    await expect(stem).toHaveText(skippedStem);
-    await page.keyboard.press("1");
+    await expect(sheet(page).locator(".px-qz-count")).toHaveText("9 di 10 date");
+    // Enter on the last question asks Consegna's question: one blank, one marked.
     await page.keyboard.press("Enter");
-    await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
-    await page.getByRole("button", { name: "Vedi risultato", exact: true }).click();
-    // Nine right answers; the one "I don't know" is a wrong answer with no pick.
-    await expect(score(page)).toContainText("9 punti su 10.");
+    const confirm = page.getByRole("group", { name: /^Consegni con/ });
+    await expect(confirm).toHaveAccessibleName(
+      "Consegni con 1 domanda vuota e 1 domanda segnata per dopo? Quella vuota conta come «non lo so».",
+    );
+    await shoot("handin", "it");
+    await confirm.getByRole("button", { name: "Consegna", exact: true }).click();
+    // Eight right answers; the "Non lo so" and the blank one are wrong answers with no pick.
+    await expect(score(page)).toContainText("8 punti su 10.");
     // The filter counts this quiz only; the mistakes notebook also collects quick checks and simulations.
-    await expect(page.locator(".px-res-q")).toHaveCount(1);
+    await expect(page.locator(".px-res-q")).toHaveCount(2);
     await page.locator(".px-res-filter .ant-segmented-item", { hasText: /^Tutte/ }).click();
-    // Results are numbered as the questions were met: the "I don't know" one came first, the skipped one last.
     const rows = page.locator(".px-res-q");
     await expect(rows).toHaveCount(10);
     const first = rows.nth(0);
@@ -377,9 +365,9 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     await expect(first.locator(".px-res-answer-empty")).toHaveText("Nessuna risposta");
     await expect(first.locator(".px-res-answer.is-expected")).toContainText("Vero");
     await expect(rows.nth(9).locator(".px-res-n")).toHaveText("10");
-    await expect(rows.nth(9).locator(".px-res-stem")).toHaveText(skippedStem);
+    await expect(rows.nth(9).locator(".px-res-answer-empty")).toHaveText("Nessuna risposta");
 
-    // The same three screens in English.
+    // The same screens in English.
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     const english = await invoke<{ attemptId: string }>(page, "study.quizStart", {
       planId,
@@ -389,22 +377,20 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     await go(page, "/exams");
     await page.reload();
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${english.attemptId}`);
-    await expect(page.getByRole("button", { name: /^I don't know/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "I don't know", exact: true })).toBeVisible();
     await shoot("question", "en");
     await page.setViewportSize({ width: 480, height: 800 });
     await shoot("question-narrow", "en");
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.keyboard.press("0");
-    await expect(page.locator(".px-quiz-feedback.is-wrong")).toContainText("Not known yet");
-    await shoot("dont-know", "en");
-    await page.keyboard.press("Enter");
     await page.keyboard.press("s");
-    await expect(page.getByRole("button", { name: /^Skip/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mark for later", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await shoot("dont-know", "en");
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
     await go(page, "/exams");
     await page.reload();
 
-    // On a timed quiz Skip leaves the deadline alone and still saves the order.
+    // On a timed quiz marking leaves the deadline alone and still saves.
     const timed = await invoke<{ attemptId: string }>(page, "study.quizStart", {
       planId,
       topicId: topics[0]!.id,
@@ -412,7 +398,7 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
       timerMinutes: 5,
     });
     const timedRead = () =>
-      invoke<{ state: string; deadlineAt?: number; draft?: { skipped?: string[] } }>(
+      invoke<{ state: string; deadlineAt?: number; draft?: { marked?: string[] } }>(
         page,
         "study.quizRead",
         { attemptId: timed.attemptId },
@@ -426,14 +412,14 @@ test("I don't know (key 0) scores a question 0 and shows the answer; Skip (key S
     const deadline = (await timedRead()).deadlineAt;
     await expect(page.getByRole("timer")).toBeVisible();
     await page.keyboard.press("s");
-    await expect.poll(async () => (await timedRead()).draft?.skipped).toHaveLength(1);
+    await expect.poll(async () => (await timedRead()).draft?.marked).toHaveLength(1);
     expect((await timedRead()).deadlineAt).toBe(deadline);
   } finally {
     await done();
   }
 });
 
-test("diagnostic: feedback after each answer, where to start, source chips and a wrong question replaced", async () => {
+test("diagnostic: answered then handed in, where to start, source chips and a reported question replaced", async () => {
   test.setTimeout(120000);
   const { page, planId, userData, done } = await launch({
     markdown: { markdown: "## Fisica\nIl moto e il lavoro [P1]." },
@@ -463,32 +449,30 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    // The page header says what the page is, not "Quiz".
-    await expect(page.getByRole("heading", { level: 1, name: "Test diagnostico" })).toBeVisible();
+    // The bar says what the page is, not "Quiz".
+    await expect(page.locator(".px-studybar-title")).toContainText("Test diagnostico");
     // The options are shown in a shuffled order, so each answer is picked by its text.
     const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D] ${text}$`) });
     await expect(option("La velocità")).toBeEnabled();
     await option("La velocità").click();
     await page.keyboard.press("Enter");
-    const feedback = page.locator(".px-quiz-feedback");
-    await expect(feedback).toContainText("Corretto");
-    // The passage the model cited is a source chip, never a raw ID.
-    await expect(feedback.locator(".px-cite")).toHaveCount(1);
-    expect(await feedback.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
-    await page.keyboard.press("Enter");
     await option("La massa").click();
     await page.keyboard.press("Enter");
-    await expect(feedback).toContainText("Sbagliato");
-    await page.keyboard.press("Enter");
-    for (let i = 2; i < 10; i++) {
+    // "Segnala la domanda" takes the third question out of the score at once and says so; pressed again it would undo.
+    await option("La velocità").click();
+    await page.getByRole("button", { name: "Segnala la domanda" }).click();
+    await expect(page.getByRole("button", { name: "Domanda segnalata" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("Domanda tolta dal punteggio e dai prossimi quiz.")).toBeVisible();
+    // Focus stays on the pressed button, where Enter would undo the report, so this step goes on with Avanti.
+    await page.getByRole("button", { name: "Avanti", exact: true }).click();
+    for (let i = 3; i < 10; i++) {
       await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
       await option("La velocità").click();
-      await page.keyboard.press("Enter");
-      await expect(feedback).toContainText("Corretto");
-      await page.keyboard.press("Enter");
+      await page.locator(".px-qz-nav .px-btn-primary").click();
     }
     await expect(page.getByText("Test diagnostico completato", { exact: true })).toBeVisible();
-    await expect(score(page)).toContainText("9 punti su 10.");
+    // Nine questions count; the reported one is left out.
+    await expect(score(page)).toContainText("8 punti su 9.");
     const topics = page.locator(".px-res-topics li");
     await expect(topics).toHaveCount(2);
     await expect(topics.nth(0)).toContainText("Moti");
@@ -499,10 +483,8 @@ test("diagnostic: feedback after each answer, where to start, source chips and a
     const second = page.locator(".px-res-q").first();
     await expect(second.locator(".px-res-n")).toHaveText("2");
     await expect(second.locator(".px-cite")).toHaveCount(1);
-    await second.getByRole("button", { name: "Domanda sbagliata?" }).click();
-    await expect(score(page)).toContainText("9 punti su 9.");
-    await expect(second).toContainText("Domanda tolta dal punteggio");
-    // A new question takes its place in the next diagnostic.
+    expect(await second.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+    // A new question takes the reported one's place in the next diagnostic.
     await expect
       .poll(
         () => {
@@ -546,7 +528,7 @@ function openReplies() {
   };
 }
 
-test("open answer: checked right away, the check can be cancelled and the answer edited", async () => {
+test("open answer: written with formulas, graded by the AI tool after Consegna with the work shown in place", async () => {
   test.setTimeout(120000);
   const { page, planId, topics, done } = await launch(openReplies(), 1500);
   try {
@@ -555,32 +537,34 @@ test("open answer: checked right away, the check can be cancelled and the answer
       topicId: topics[0]!.id,
       types: ["open"],
     });
+    // While the questions are written, the sheet shows the work in place: the working mark in the question's card, or
+    // beside the numbers once some questions are ready, with the ones still to come drawn and Consegna waiting.
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    await expect(page.locator(".px-qz-sheet .px-working-slot, .px-qz-busy").first()).toBeVisible();
+    await expect(page.locator(".px-qz-num.is-waiting").first()).toBeVisible();
+    await expect(sheet(page).getByRole("button", { name: "Consegna", exact: true })).toBeDisabled();
+    await expect(sheet(page)).toContainText("Potrai consegnare quando tutte le domande saranno pronte.");
+    await saveShot(page, "quiz-writing-it-light.png", { animations: "disabled" });
     // Ten questions are written in three calls, each with the recorded model's delay.
     await expect
       .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
         timeout: 20000,
       })
       .toBe("succeeded");
-    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    await expect(page.locator(".px-qz-kicker")).toHaveText("Risposta aperta");
     const answer = page.getByRole("textbox", { name: "La tua risposta" });
-    await answer.fill("È lo spostamento.");
-    await page.getByRole("button", { name: "Verifica", exact: true }).click();
-    await expect(page.getByText("Correggo…", { exact: true })).toBeVisible();
-    // While it checks, the button keeps its name and says it is busy. Its spinner is no part of the name: in a hidden
-    // window on a slow runner the spinner's exit can lag, and the button would be "loading Verifica" after the check.
-    await expect(page.getByRole("button", { name: "Verifica", exact: true })).toHaveAttribute("aria-busy", "true");
-    await expect(answer).toBeDisabled();
-    await page.locator(".px-quiz-checking").getByRole("button", { name: "Annulla" }).click();
-    await expect(page.getByText("Correggo…", { exact: true })).toHaveCount(0);
-    await expect(answer).toBeEnabled();
-    await expect(page.getByRole("alert")).toHaveCount(0);
     await answer.fill("È lo spostamento diviso il tempo.");
-    await page.getByRole("button", { name: "Verifica", exact: true }).click();
-    const feedback = page.locator(".px-quiz-feedback");
-    await expect(feedback).toContainText("Parzialmente corretto", { timeout: 15000 });
-    await expect(feedback).toContainText("0,6 su 1");
-    await expect(feedback).toContainText("Risposta modello");
-    await expect(answer).toBeDisabled();
+    await expect(sheet(page).getByRole("button", { name: "Domanda 1, risposta data" })).toBeVisible();
+    // An answer erased to nothing is blank again, not "Non lo so".
+    await answer.fill("");
+    await expect(sheet(page).getByRole("button", { name: "Domanda 1", exact: true })).toBeVisible();
+    await answer.fill("È lo spostamento diviso il tempo.");
+    await sheet(page).getByRole("button", { name: "Consegna", exact: true }).click();
+    await page.getByRole("group", { name: /^Consegni con 9 domande vuote/ }).getByRole("button", { name: "Consegna" }).click();
+    // The written answer is graded by the model while the results wait with the working mark.
+    await expect(score(page)).toContainText("Correggo le tue risposte.");
+    await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
+    await expect(score(page)).toContainText(/0,6 punt[io] su 10\./, { timeout: 15000 });
     await axe(page);
   } finally {
     await done();
@@ -623,49 +607,26 @@ test("quiz screens in both languages and themes", async () => {
         planId,
         picks: { [ids[0]!]: "1" },
         index: 0,
+        marked: [ids[2]!],
       });
       await go(page, view);
       await expect(page.locator(".px-opt.is-selected")).toHaveCount(1);
+      await expect(sheet(page).locator(".px-qz-flag")).toHaveCount(1);
       await shoot("question");
-      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[0], pick: right[0] });
-      await page.reload();
-      await expect(page.locator(".px-quiz-feedback.is-correct")).toBeVisible();
-      await shoot("correct");
-      await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: ids[1], pick: wrong[1] });
-      // An open quiz page saves its own draft shortly after loading and again when it closes, so a draft set while it
-      // is open can be overwritten on a slow runner. Set it with no quiz page open: leave, wait until the page is gone,
-      // and reload. The reload also drops the session the page cached: opened again from that cache, the quiz page
-      // would save the old draft half a second later, over ours.
+      await sheet(page).getByRole("button", { name: lang === "it" ? "Consegna" : "Hand in", exact: true }).click();
+      await expect(page.locator(".px-qz-confirm")).toBeVisible();
+      await shoot("handin");
+      const picks: Record<string, string> = Object.fromEntries(
+        ids.map((id, index) => [id, index === 1 || index === 4 ? wrong[index]! : right[index]!]),
+      );
       await go(page, "/exams");
       await expect(page.locator(".px-opt")).toHaveCount(0);
       await page.reload();
-      // A closing save sent just before the reload can still land after ours, so save until the stored draft holds.
-      const wanted = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
-      await expect(async () => {
-        await invoke(page, "study.quizDraft", {
-          attemptId: started.attemptId,
-          planId,
-          picks: wanted,
-          index: 1,
-        });
-        const stored = (await invoke(page, "study.quizRead", { attemptId: started.attemptId, planId })) as {
-          draft?: { picks: Record<string, string>; index: number };
-        };
-        expect(stored.draft).toEqual({ picks: wanted, index: 1 });
-      }).toPass({ timeout: 15000 });
-      await go(page, view);
-      await expect(page.locator(".px-quiz-feedback.is-wrong")).toBeVisible();
-      await shoot("wrong");
-      const picks: Record<string, string> = { [ids[0]!]: right[0]!, [ids[1]!]: wrong[1]! };
-      for (const [offset, id] of ids.slice(2).entries()) {
-        picks[id] = id === ids[4] ? wrong[offset + 2]! : right[offset + 2]!;
-        await invoke(page, "study.quizCheck", { attemptId: started.attemptId, questionId: id, pick: picks[id] });
-      }
       await invoke(page, "study.quizSubmit", { attemptId: started.attemptId, picks });
       await expect
         .poll(async () => (await invoke<{ result?: unknown }>(page, "study.quizRead", { attemptId: started.attemptId })).result)
         .toBeTruthy();
-      await page.reload();
+      await go(page, view);
       await expect(page.locator(".px-res")).toBeVisible();
       await shoot("results", true);
       // A right answer stays folded until it is opened.
@@ -691,10 +652,12 @@ test("quiz screens in both languages and themes", async () => {
       await page.locator(".px-quiz-open").getByRole("textbox").fill(
         lang === "it" ? "È lo spostamento diviso il tempo." : "Displacement over time.",
       );
-      await page.locator(".px-quiz-nav .ant-btn-primary").click();
-      await expect(page.locator(".px-quiz-checking")).toBeVisible();
-      await shoot("open-checking");
-      await expect(page.locator(".px-quiz-feedback.is-partial")).toBeVisible({ timeout: 15000 });
+      await shoot("open");
+      await sheet(page).locator(".px-qz-handin > .px-btn").click();
+      await page.locator(".px-qz-confirm .px-btn-primary").click();
+      await expect(page.locator(".px-res")).toBeVisible();
+      await shoot("open-grading");
+      await expect(score(page)).toContainText(/0,6|0\.6/, { timeout: 15000 });
       await shoot("open-graded");
     }
   } finally {

@@ -204,7 +204,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     expect(again.questions.map((question) => question.id)).toEqual(adopted.questions.map((question) => question.id));
     await page.getByRole("button", { name: "Continua il ripasso" }).click();
     await expect(page).toHaveURL(/\/review\/questions\?attempt=/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Ripasso");
+    await expect(page.locator(".px-studybar-title b")).toHaveText("Ripasso");
     // LES-03: the adopted drill brings its short explanation, shown above the first question.
     expect(adopted.explanations.map((note) => note.text)).toEqual([EXPLANATION]);
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
@@ -347,7 +347,7 @@ test("LES-03 a single gap drill started from the exam page opens its quiz with t
     await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 60000 });
     await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
     await expect(page.getByText(EXPLANATION)).toBeVisible();
-    await expect(page.locator(".px-quiz-question")).toBeVisible();
+    await expect(page.locator(".px-qz-sheet")).toBeVisible();
     await saveShot(page, "progress-drill-explanation-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
   } finally {

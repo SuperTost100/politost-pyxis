@@ -1,0 +1,340 @@
+/* The quiz in one column: a 720px question card and the 232px Domande card
+   beside it, their top edges level, Indietro and Avanti under the question card on its edges. The page is the container
+   the grid answers to, so the window, large text and zoom all move the point where the Domande card becomes a strip. */
+.px-qz-page {
+  container: px-quiz / inline-size;
+  width: 100%;
+}
+.px-qz {
+  display: grid;
+  grid-template-columns: minmax(0, 720px) 232px;
+  grid-template-areas:
+    "before ."
+    "card side"
+    "nav side"
+    "confirm side"
+    "hint side";
+  grid-template-rows: auto auto auto auto 1fr;
+  justify-content: center;
+  gap: 0 24px;
+  padding: 0 32px;
+}
+.px-qz-before {
+  grid-area: before;
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.px-qz-card {
+  grid-area: card;
+  min-width: 0;
+}
+
+/* The Domande card: sticky beside the question, the numbers four to a row. */
+.px-qz-side {
+  grid-area: side;
+  align-self: start;
+  position: sticky;
+  top: 6px;
+  display: grid;
+  gap: 14px;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-qz-side-head h2 {
+  margin: 0;
+  font: 650 calc(14px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.px-qz-count {
+  display: block;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.45;
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.px-qz-nums {
+  display: grid;
+  grid-template-columns: repeat(4, 36px);
+  justify-content: space-between;
+  gap: 6px 0;
+}
+.px-qz-num {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 650 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-qz-num:hover {
+  background: var(--surface-raised);
+}
+.px-qz-num.is-given {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-qz-num.is-current {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  box-shadow: inset 0 0 0 2px var(--primary-text);
+}
+.px-qz-num.is-waiting {
+  cursor: default;
+  color: var(--ink-subtle);
+  box-shadow: inset 0 0 0 1px var(--border);
+  background: transparent;
+  opacity: 0.7;
+}
+.px-qz-num.is-loading {
+  cursor: default;
+  background: var(--surface-raised);
+  opacity: 0.6;
+}
+.px-qz-flag {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 15px;
+  height: 15px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ring-today);
+}
+.px-qz-busy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+.px-qz-busy .px-logo {
+  flex: none;
+}
+.px-qz-handin {
+  display: grid;
+  gap: var(--space-3);
+}
+.px-qz-note {
+  margin: 0;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.45;
+  color: var(--ink-subtle);
+}
+
+/* Consegna's question, grown out of the button that asked it. */
+.px-qz-confirm {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.px-qz-confirm p {
+  margin: 0;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: 1.5;
+  color: var(--ink);
+}
+.px-qz-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+/* In the Domande card the two buttons take its width, one over the other. */
+.px-qz-side .px-qz-confirm-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+/* Indietro on the left edge of the card, Avanti on the right. */
+.px-qz-nav {
+  grid-area: nav;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.px-qz-nav > .px-qz-grow {
+  flex: 1;
+}
+.px-qz-nav-confirm {
+  grid-area: confirm;
+  justify-self: end;
+  width: min(100%, 420px);
+  margin-top: var(--space-3);
+}
+.px-qz-hint {
+  grid-area: hint;
+  margin: var(--space-3) 0 0;
+  text-align: center;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+
+/* The question card: a white sheet, the heading with its kind beside it, the stem, the answers and the quiet actions. */
+.px-qz-sheet {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  padding: 28px 40px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+/* The card takes focus only so a screen reader reads the new question; it never draws a box. */
+.px-qz-sheet:focus,
+.px-qz-sheet:focus-visible {
+  outline: none;
+}
+.px-qz-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+}
+.px-qz-head h1 {
+  margin: 0;
+  font: 400 calc(30px * var(--text-scale, 1)) / 1.1 var(--font-display);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  text-wrap: balance;
+}
+.px-qz-kicker {
+  font: 600 calc(12.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  color: var(--ink-subtle);
+}
+.px-qz-stem {
+  font: 400 calc(18px * var(--text-scale, 1)) / 1.55 var(--font-sans);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.px-qz-stem .px-markdown.is-reading {
+  font: inherit;
+  max-width: none;
+}
+.px-qz-stem .px-markdown > :last-child {
+  margin-bottom: 0;
+}
+.px-qz-stem img {
+  max-width: 100%;
+  height: auto;
+}
+.px-qz-options {
+  display: grid;
+  gap: 6px;
+  margin: 0 -14px;
+}
+.px-qz-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: -10px;
+}
+.px-qz-acts .px-btn[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+.px-qz-said {
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+
+/* Below about 1000px of page the cards tighten. */
+@container px-quiz (max-width: 62em) {
+  .px-qz {
+    padding: 0 24px;
+  }
+  .px-qz-sheet {
+    gap: 16px;
+    padding: 22px 32px 16px;
+  }
+  .px-qz-head h1 {
+    font-size: calc(26px * var(--text-scale, 1));
+  }
+  .px-qz-options {
+    gap: 2px;
+  }
+  .px-qz-nav {
+    margin-top: 14px;
+  }
+}
+
+/* Narrow: one column, the Domande card a strip over the question with the numbers, the count and Consegna. */
+@container px-quiz (max-width: 46em) {
+  .px-qz {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "before" "side" "card" "nav" "confirm" "hint";
+    grid-template-rows: none;
+    padding: 0 16px;
+  }
+  .px-qz-side {
+    position: static;
+    max-height: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px 14px;
+    margin-bottom: var(--space-3);
+    padding: 12px 16px;
+    box-shadow: var(--shadow-card);
+  }
+  .px-qz-side-head {
+    grid-column: 1;
+  }
+  .px-qz-handin {
+    display: contents;
+  }
+  .px-qz-handin > .px-btn {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+  }
+  .px-qz-nums {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+  .px-qz-busy,
+  .px-qz-handin > .px-ctl-reveal {
+    grid-column: 1 / -1;
+  }
+  .px-qz-note {
+    display: none;
+  }
+  .px-qz-sheet {
+    padding: 20px 20px 14px;
+  }
+  .px-qz-options {
+    margin: 0 -10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-qz-num {
+    transition: none;
+  }
+}

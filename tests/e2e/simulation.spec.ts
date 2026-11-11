@@ -138,7 +138,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page
       .getByRole("textbox", { name: "La tua risposta" })
       .fill(picks[run.questions[0]!.id]!);
-    await page.getByRole("button", { name: /Domanda 2,/ }).click();
+    await page.getByRole("button", { name: "Domanda 2", exact: true }).click();
     await page
       .getByRole("textbox", { name: "La tua risposta" })
       .fill(picks[run.questions[1]!.id]!);

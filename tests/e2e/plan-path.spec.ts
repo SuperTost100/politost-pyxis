@@ -423,7 +423,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.locator(".px-res-headline")).toContainText("6 punti su 10.");
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
-    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
+    await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],
@@ -461,8 +461,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     for (let i = 0; i < 10; i++) {
       await expect(page.getByText(`Domanda ${i + 1} di 10`, { exact: true })).toBeVisible();
       await vero.click();
-      await page.getByRole("button", { name: "Verifica", exact: true }).click();
-      await page.getByRole("button", { name: i === 9 ? "Vedi risultato" : "Avanti", exact: true }).click();
+      // Avanti, and on the last question Consegna, which hands in at once with nothing blank.
+      await page.locator(".px-qz-nav .px-btn-primary").click();
     }
     await expect(page.locator(".px-res-headline")).toContainText("10 punti su 10.");
     // A quiz just handed in is not a review: it continues the path and offers no Redo.
@@ -532,7 +532,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await done.getByRole("button", { name: /^Quiz, 10\/10/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
     await expect(page.getByText("Le risposte di questo tentativo non erano incluse nell'esame condiviso.")).toBeVisible();
-    await expect(page.locator(".px-quiz-question")).toHaveCount(0);
+    await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await expect(page.locator(".px-res")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
     await expectNoAxeViolations(page);
