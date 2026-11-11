@@ -63,6 +63,16 @@ export function needsWeeklyHours(input: {
 }
 
 /**
+ * Whether a step chip opens what was done, rather than starting the activity. A chip shown as to do starts it, whatever
+ * is on record (an imported quiz step can have no score, and due flashcards sit beside an earlier review). The suggested
+ * step reopens only a scored quiz; Adesso starts a new one otherwise.
+ */
+export function reopensFinished(chip: StepChip): boolean {
+  if (chip.state === "done" || chip.state === "missed") return true;
+  return chip.state === "now" && Boolean(chip.result);
+}
+
+/**
  * The path's topic rows: each topic in the plan's order with its mastery against the goal, its open gaps, the day the
  * planner expects it done, and its steps. Lesson, exercises and quiz always show; flashcards when some are due or a review
  * of them was done, and

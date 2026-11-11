@@ -12,6 +12,7 @@ import { useGradeScale } from "../../lib/useGradeScale";
 import { plannerQuery } from "../../lib/queries";
 import {
   needsWeeklyHours,
+  reopensFinished,
   topicRows,
   type StepChip,
   type TopicRow,
@@ -211,8 +212,8 @@ export function PlanPath({
         (step) => step.topicId === topicId && step.activity === chip.activity,
       )
       .at(-1);
-    // A step with a score reopens it even when it is the suggestion; Adesso starts the new one.
-    if (done && (chip.state !== "now" || chip.result))
+    // A step shown as to do starts, whatever is on record; one done or scored reopens it, even when it is the suggestion.
+    if (done && reopensFinished(chip))
       reopen(done, chip.activity, topicId);
     else go(chip.activity, topicId);
   }
