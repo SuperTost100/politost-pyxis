@@ -179,9 +179,9 @@ export function ShortcutsDialog({
         </p>
         {groups(mac).map((group) => (
           <section key={group.id} aria-labelledby={`px-shortcuts-${group.id}`}>
-            <h3 id={`px-shortcuts-${group.id}`} className="label">
+            <h2 id={`px-shortcuts-${group.id}`} className="label">
               {t(`shortcuts.groups.${group.id}`)}
-            </h3>
+            </h2>
             <dl>
               {group.rows.map((row) => (
                 <div className="px-shortcuts-row" key={row.id}>
