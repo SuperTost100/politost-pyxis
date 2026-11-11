@@ -88,9 +88,9 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     ["n2", `n${chapters + 3}`, "applica il teorema"],
     [`n${chapters + 2}`, `n${total - 2}`, "caso particolare"],
   ] as const;
+  // The reply is looked up by the first property of the map's schema.
   const mapReplies = {
-    title: {
-      title: "Derivate",
+    nodes: {
       nodes: nodes.map((node) => ({ ...node, sources: "{{allPassages}}" })),
       edges: [
         ...nodes.slice(1).map((node) => ({
@@ -159,7 +159,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
     await page.evaluate(({ planId, topicId }) => {
       window.location.hash = `/plans/${planId}/map/${topicId}`;
     }, input);
-    await page.getByRole("button", { name: "Crea mappe", exact: true }).click();
+    await page.getByRole("button", { name: "Crea la mappa", exact: true }).click();
     await expect
       .poll(
         async () =>

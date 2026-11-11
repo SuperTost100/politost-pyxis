@@ -439,7 +439,7 @@ test("LAYOUT-06 Attività sits in the top-right corner, and a long list stays in
     const list = page.locator(".px-jobs");
     await expect(list).toBeFocused();
     await expect(list.getByRole("heading", { level: 2, name: "Attività" })).toBeInViewport();
-    await expect(list.getByRole("heading", { name: "Ti serve" })).toBeVisible();
+    await expect(list.getByRole("heading", { name: "C'è bisogno di te" })).toBeVisible();
     const box = (await list.boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.y + box.height).toBeLessThanOrEqual(800 - 16 + 1);

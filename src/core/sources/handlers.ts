@@ -166,6 +166,7 @@ export function sourceHandlers(
     runner,
     protectedPaths,
     hash: hashInWorker,
+    storedSize: (sha) => blobSize(workspace, sha),
     ocrReady: async () => (await ocrDataStatus(tess)).state === "ready",
     run: linkOptions.run,
     watch: linkOptions.watch === undefined ? watchFolder : linkOptions.watch,

@@ -36,6 +36,22 @@ describe("job update invalidation", () => {
     expect(keys(staleFamilies({ kind: "quiz-build", state: "succeeded" }))).not.toContain("card-sections");
   });
 
+  it("tells an open map page about its build from every update, and about its maps when the build ends", () => {
+    // The page polls its build only while it runs, so a build resumed or retried elsewhere reaches it through this.
+    expect(keys(staleFamilies({ kind: "map-build", state: "running" }))).toEqual(["jobs", "map-build"]);
+    expect(keys(staleFamilies({ kind: "map-build", state: "succeeded" }))).toEqual([
+      "jobs",
+      "map-build",
+      "maps",
+      "map",
+      "maps-all",
+      "jobs-finished",
+      "plans",
+      "plan",
+      "series:later",
+    ]);
+  });
+
   it("refreshes a source's citation counts when a job that cites passages ends", () => {
     for (const kind of ["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"])
       expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("source-details");

@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
-import { mapOpSchema } from "../../shared/concept-map";
+import { MAP_LIMITS, mapOpSchema } from "../../shared/concept-map";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
   contentLanguage,
@@ -24,22 +24,35 @@ import {
   listMaps,
   readStoredMap,
   storeMap,
+  type StoredMap,
 } from "./store";
+import { mergeGraphs } from "./merge";
 import { isTopicScope, requireScope, type MapScope } from "./scope";
 import { subjectPassages } from "./subject-sources";
 
 type Input = MapScope;
 type Passage = { id: string; text: string; section: string };
-type Part = { id: string; title: string; passages: Passage[] };
+type Part = { title: string; passages: Passage[] };
+/** What a part's model call gave, kept in the job until every part is read and the parts join into one map. */
+type Built = {
+  passageIds: string[];
+  graph: ConceptGraph;
+  provider: string;
+  model: string;
+};
 type Params = {
   input: Input;
   parts: Part[];
   selection: StoredSelection;
   language: string;
+  /** How many parts are read; the next one is `parts[next]`. */
   next: number;
+  /** The ID the finished map gets, so a resumed build writes the same map. Jobs saved before one map per request have none. */
+  mapId?: string;
+  /** The read parts, in order. Jobs saved before one map per request have none. */
+  built?: Built[];
 };
 const generatedSchema = z.object({
-  title: z.string().trim().min(1).max(200),
   nodes: z
     .array(
       z.object({
@@ -118,7 +131,6 @@ export function prepareMaps(db: Database.Database, input: Input): Params {
   const push = () => {
     if (current.length)
       parts.push({
-        id: uuidv7(),
         title: current[0]!.section,
         passages: current,
       });
@@ -138,32 +150,41 @@ export function prepareMaps(db: Database.Database, input: Input): Params {
   }
   push();
   if (!parts.length)
-    parts.push({ id: uuidv7(), title: topic.title, passages: [] });
+    parts.push({ title: topic.title, passages: [] });
+  // One part is the whole topic, so its root is the topic; the model names the root of each of several parts itself.
+  if (parts.length === 1) parts[0]!.title = topic.title;
   return {
     input,
     parts,
     selection: selectionFor(db, "map"),
     language: contentLanguage(db, topic.language),
     next: 0,
+    mapId: uuidv7(),
+    built: [],
   };
 }
 /**
- * A whole subject gets one map, built in one call from passages spread over all its sources (`subjectPassages`). The
+ * A request gets one map. A topic's material may be read in several parts, which join into that one map afterwards. A
+ * whole subject gets its map built in one call from passages spread over all its sources (`subjectPassages`). The
  * profile's content language is used, since a subject has no exam that sets one.
  */
 function prepareSubjectMap(db: Database.Database, input: { subjectId: string }): Params {
   const name = db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId) as string;
   return {
     input,
-    parts: [{ id: uuidv7(), title: name, passages: subjectPassages(db, input.subjectId) }],
+    parts: [{ title: name, passages: subjectPassages(db, input.subjectId) }],
     selection: selectionFor(db, "map"),
     language: contentLanguage(db),
     next: 0,
+    mapId: uuidv7(),
+    built: [],
   };
 }
 async function buildPart(
   part: Part,
   params: Params,
+  title: string,
+  position: number,
   run?: GenerateInput["run"],
   signal?: AbortSignal,
 ) {
@@ -198,22 +219,48 @@ async function buildPart(
     system: systemPrompt("map.generate", {
       contentLanguage: languageName(params.language),
     }),
+    // The topic's title always goes in. Several parts add which one this is, and the model then names its root for what
+    // the part covers, since the root becomes a main branch of the map with that title.
     prompt: JSON.stringify({
-      title: part.title,
+      title,
+      ...(params.parts.length > 1 ? { part: position + 1, of: params.parts.length } : {}),
       language: params.language,
       passages: part.passages,
     }),
   });
   const value = result.data as z.infer<typeof generatedSchema>;
   return {
-    id: part.id,
-    title: value.title,
     passageIds: [...ids],
-    graph: layoutGraph(graphOf(value)),
+    graph: graphOf(value),
     provider: result.provider,
     model: result.model,
+  };
+}
+/** The topic's or subject's own name, which the finished map's root and title take. */
+function scopeTitle(db: Database.Database, input: Input): string {
+  return (
+    isTopicScope(input)
+      ? db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId)
+      : db.prepare("SELECT name FROM subjects WHERE id = ?").pluck().get(input.subjectId)
+  ) as string;
+}
+function joinParts(db: Database.Database, params: Params, built: Built[]): StoredMap {
+  const title = scopeTitle(db, params.input);
+  const passageIds = [...new Set(built.flatMap((part) => part.passageIds))];
+  return {
+    id: params.mapId!,
+    title,
+    passageIds,
+    graph: layoutGraph(
+      mergeGraphs(
+        title,
+        built.map((part) => part.graph),
+      ),
+    ),
+    provider: built[0]!.provider,
+    model: built[0]!.model,
     prompt: promptProvenance("map.generate"),
-    grounding: ids.size ? ("sources" as const) : ("general" as const),
+    grounding: passageIds.length ? "sources" : "general",
   };
 }
 export function registerMapJobs(
@@ -231,25 +278,30 @@ export function registerMapJobs(
         label: "jobs.maps",
         async run(ctx) {
           const params = ctx.params as Params;
+          // A job saved before one map per request has parts stored as maps of their own; it reads every part again.
+          if (!params.built || !params.mapId) {
+            params.built = [];
+            params.mapId = uuidv7();
+            params.next = 0;
+          }
+          const title = scopeTitle(db, params.input);
           while (params.next < params.parts.length) {
             ctx.signal.throwIfAborted();
-            const part = params.parts[params.next]!;
-            const done = listMaps(db, params.input).some(
-              (map) => map.id === part.id,
+            const built = await buildPart(
+              params.parts[params.next]!,
+              params,
+              title,
+              params.next,
+              run,
+              ctx.signal,
             );
-            if (!done) {
-              const map = await buildPart(part, params, run, ctx.signal);
-              ctx.signal.throwIfAborted();
-              db.transaction(() => {
-                storeMap(db, params.input, map);
-                params.next++;
-                ctx.setParams(params);
-              })();
-            } else {
-              params.next++;
-              ctx.setParams(params);
-            }
+            ctx.signal.throwIfAborted();
+            params.built.push(built);
+            params.next++;
+            ctx.setParams(params);
           }
+          ctx.signal.throwIfAborted();
+          storeMap(db, params.input, joinParts(db, params, params.built));
           return true;
         },
       },
@@ -320,7 +372,7 @@ export async function editMap(
         ctx.addIssue({
           code: "custom",
           message:
-            "Patch refers to invalid IDs, removes the root, or exceeds the 25-node limit",
+            `Patch refers to invalid IDs, removes the root, or exceeds the ${MAP_LIMITS.nodes}-node limit`,
         });
       }
     });

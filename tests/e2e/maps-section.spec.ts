@@ -207,10 +207,10 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     };
     await choose("Materia", "Fisica");
     await choose("Argomento", "Forze");
-    await dialog.getByRole("button", { name: "Continua" }).click();
+    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\/t-forces\?from=maps$/);
     await expect(
-      page.getByRole("button", { name: "Crea mappe" }),
+      page.locator(".px-map-empty").getByRole("button", { name: "Crea la mappa" }),
     ).toBeVisible();
     // Before a map exists the line under the title names the exam alone, with no dot left hanging after it.
     await expect(page.locator(".px-map-title p")).toHaveText("Meccanica");
