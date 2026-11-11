@@ -8,22 +8,8 @@
   margin: 0;
   color: var(--warning);
 }
-.px-library-update {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  margin: var(--space-1) 0 0;
-  color: var(--primary-text);
-}
-.px-library-unlock {
-  margin: var(--space-1) 0 0;
-}
 .px-library-count {
   margin: 0 0 var(--space-3);
-}
-.px-library-loading {
-  padding: var(--space-4) var(--space-5);
 }
 .px-library-hit {
   display: flex;
@@ -281,17 +267,6 @@ select.px-ctl-field.px-library-picker {
   from {
     opacity: 0;
     transform: translateY(-4px);
-  }
-}
-/* A file that just got its subject lands in the list tinted, and the tint fades. */
-.px-source-row.is-arrived {
-  animation:
-    px-library-open var(--duration-small) var(--ease-out),
-    px-library-tint 1200ms var(--ease-out);
-}
-@keyframes px-library-tint {
-  from {
-    background: var(--primary-soft);
   }
 }
 .px-library-newsubject-form {
