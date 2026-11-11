@@ -517,7 +517,7 @@ export function PlanPath({
           ? plain(
               "simulation",
               "simulation",
-              undefined,
+              simulationStep,
               name("simulation"),
               simulationStep
                 ? simulationStep.result

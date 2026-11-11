@@ -137,6 +137,20 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await openExam(page);
     await expect(path.getByText(/^Written$/)).toBeVisible();
 
+    // A finished simulation shows its score and reopens its graded attempt; only Redo starts another.
+    const finished = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    finished
+      .prepare(
+        "INSERT INTO learning_events(id,kind,plan_id,payload_json,created_at) VALUES('ev-sim','lesson_completed','p-fis',?,?)",
+      )
+      .run(JSON.stringify({ activity: "simulation", attemptId: "a-sim", result: { correct: 6, total: 10 } }), Date.now());
+    finished.close();
+    await page.reload();
+    await expect(path.getByRole("button", { name: /^Exam simulation/ })).toContainText("6/10");
+    await path.getByRole("button", { name: /^Exam simulation/ }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/exam\/a-sim$/);
+    await openExam(page);
+
     // Flashcard: review this exam's due cards, or browse its cards. Each way back returns to the exam.
     const aside = page.getByRole("complementary", { name: "Flashcards, questions to redo, maps and material" });
     await expect(aside.getByRole("heading", { name: /^Flashcards/ })).toContainText("1 in all");
