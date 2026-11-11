@@ -32,6 +32,7 @@ function seed(db: DatabaseSync) {
 test("flashcards with no exam: the due line on Esami follows them, and Undo on one leaves an exam card's rating alone", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-cards-no-exam-"));
+  let opened: DatabaseSync | undefined;
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -39,6 +40,7 @@ test("flashcards with no exam: the due line on Esami follows them, and Undo on o
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    opened = db;
     seed(db);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     await page.reload();
@@ -89,6 +91,7 @@ test("flashcards with no exam: the due line on Esami follows them, and Undo on o
       .toEqual(["p-near:t-dyn"]);
     db.close();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

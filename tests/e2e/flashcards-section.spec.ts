@@ -11,6 +11,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-flashcards-section-"));
   const app = await launchPyxis({ userData });
+  let opened: DatabaseSync | undefined;
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -18,6 +19,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     // Two subjects and no exam: the flashcards made from a map or a lesson, filed under their subject.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    opened = db;
     seedSubjects(db, [
       { id: "chem", name: "Chimica", position: 0 },
       { id: "phys", name: "Fisica 2", position: 1 },
@@ -30,7 +32,9 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     const sections = page.getByRole("navigation", { name: "Sezioni" });
     await sections.getByRole("link", { name: "Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
-    await expect(sections.getByRole("link", { name: "Flashcard", exact: true })).toHaveAttribute("aria-current", "page");
+    // A folded sidebar (under 1100 CSS px) shows the link's name as a tooltip under the pointer, which the link's own
+    // name then repeats ("Flashcard Flashcard"), so the name is matched from its start.
+    await expect(sections.getByRole("link", { name: /^Flashcard\b/ })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
     const chem = page.getByRole("region", { name: "Chimica" });
     await expect(chem).toContainText("2 flashcard · 2 da ripassare oggi");
@@ -100,6 +104,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(page.getByRole("heading", { level: 2, name: "Fisica 2" })).toBeFocused();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

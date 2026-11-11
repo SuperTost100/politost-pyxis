@@ -32,6 +32,7 @@ function seed(db: DatabaseSync) {
 
 test("Esami lists each exam with its rings, date and next step, the due flashcards as one line, and the archived ones", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-exams-list-"));
+  let opened: DatabaseSync | undefined;
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -39,6 +40,7 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    opened = db;
     seed(db);
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
     await page.reload();
@@ -126,6 +128,7 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     await expect(page).toHaveURL(/#\/plans\/p-near$/);
     db.close();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }
@@ -133,6 +136,7 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
 
 test("the due line counts the flashcards with no exam, with exams or without any", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-exams-due-free-"));
+  let opened: DatabaseSync | undefined;
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -140,6 +144,7 @@ test("the due line counts the flashcards with no exam, with exams or without any
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    opened = db;
     seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
     db.exec(`INSERT INTO cards(id,subject_id,front,back,created_at) VALUES
       ('c-free-1','phys','Che cos’è il campo?','Una grandezza in ogni punto.',1),
@@ -175,6 +180,7 @@ test("the due line counts the flashcards with no exam, with exams or without any
     await expect(page.getByText("Fisica 1 · 1 of 3")).toBeVisible();
     db.close();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

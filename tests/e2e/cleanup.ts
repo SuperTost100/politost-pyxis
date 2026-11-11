@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 /**
  * Removes a test folder once Pyxis has quit. Retries for about five seconds, since a virus scanner can still have a new
- * file open, then fails naming every file still held.
+ * file open, then fails naming every file still held. A spec that opens the database itself closes its handle in the
+ * same `finally`, before this: Windows refuses to delete an open file, and the error would replace the test's own.
  */
 export function removeTestFolder(root: string) {
   try {
