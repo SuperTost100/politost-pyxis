@@ -36,6 +36,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { toPng } from "html-to-image";
+import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
 import { IconButton } from "../../components/IconButton";
 import { LoadError } from "../../components/LoadError";
@@ -1184,8 +1185,13 @@ export function MapPage() {
     lastChange && lastChange.mapId === activeId && graph?.undo
       ? lastChange
       : undefined;
+  // The way back leads to Mappe at this map's subject, or to the whole list for the topic map of an exam with none.
+  const backSubject = scope.data?.subjectId ?? params.subjectId;
   return (
     <div className="px-map-page">
+      <BackLink to={backSubject ? `/maps?subject=${encodeURIComponent(backSubject)}` : "/maps"}>
+        {t("doors.maps")}
+      </BackLink>
       <header className="px-map-head">
         <div className="px-map-title">
           <h1>{title}</h1>

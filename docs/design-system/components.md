@@ -22,6 +22,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
 | `Chip`                               | A small rounded choice or filter                                                                         |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
+| `BackLink`                           | The way back above a page's title: an arrow and the name of the place it leads to                        |
 | `ListToolbar`                        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
 | `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
 | `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
