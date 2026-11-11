@@ -73,6 +73,9 @@ test("Files added from the Library go into a subject the student has, or a new o
   test.setTimeout(180000);
   const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: replies });
   try {
+    // The sidebar lists recent chats only while it is open, from 1100 CSS px; a smaller window folds it. The check on the
+    // chat's subject below needs the open sidebar, so the page gets that width whatever the window is.
+    await page.setViewportSize({ width: 1280, height: 800 });
     await addFiles(app, page, [files.limits, files.notes]);
     const limits = row(page, "Esercizi sui limiti");
     const notes = row(page, "Calcolo delle probabilita, dispense");
