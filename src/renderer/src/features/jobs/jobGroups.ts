@@ -127,15 +127,19 @@ export function finishedJobKey(job: Pick<JobView, "kind" | "state" | "error">): 
 
 /**
  * Where a finished job's row leads, when it has somewhere to go: a map request that found nothing opens its map page,
- * where the request can be changed. `ref` is `map:<subjectId>` or `map:<planId>:<topicId>` (core's map build).
+ * where the request can be changed. The page is the scope's, shared by every request of it, so the navigation state
+ * names the job whose row was pressed. `ref` is `map:<subjectId>` or `map:<planId>:<topicId>` (core's map build).
  */
-export function finishedPath(job: Pick<JobView, "kind" | "state" | "error" | "ref">): string | undefined {
+export function finishedPath(
+  job: Pick<JobView, "id" | "kind" | "state" | "error" | "ref">,
+): { to: string; state: { job: string } } | undefined {
   if (job.kind !== "map-build" || !endedEmpty(job) || !job.ref?.startsWith("map:")) return undefined;
   const [first, topicId] = job.ref.slice(4).split(":");
   if (!first) return undefined;
-  return topicId
+  const to = topicId
     ? `/plans/${encodeURIComponent(first)}/map/${encodeURIComponent(topicId)}`
     : `/maps/${encodeURIComponent(first)}`;
+  return { to, state: { job: job.id } };
 }
 
 /** The message key for running study work of this kind, or undefined when its step says what it does. */

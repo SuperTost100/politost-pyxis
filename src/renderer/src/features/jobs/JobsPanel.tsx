@@ -400,11 +400,19 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
  * A finished job: what it made, or, for a request that found nothing in the material, that it found nothing, with the
  * way to the page where the request can be changed.
  */
-function FinishedRow({ job, act, onNavigate }: { job: JobView; act: Act; onNavigate: (to: string) => void }) {
+function FinishedRow({
+  job,
+  act,
+  onNavigate,
+}: {
+  job: JobView;
+  act: Act;
+  onNavigate: (to: string, state?: object) => void;
+}) {
   const { t, i18n } = useTranslation();
   const topicOf = useJobTopic();
   const empty = endedEmpty(job);
-  const to = finishedPath(job);
+  const target = finishedPath(job);
   const what = t(finishedJobKey(job) ?? "jobs.state.succeeded", {
     context: jobContext(job),
     topic: topicOf(job),
@@ -421,9 +429,9 @@ function FinishedRow({ job, act, onNavigate }: { job: JobView; act: Act; onNavig
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         {where ? <p className="px-jobs-sub">{where}</p> : null}
-        {to ? (
+        {target ? (
           <div className="px-jobs-acts">
-            <Button size="sm" variant="secondary" onClick={() => onNavigate(to)}>
+            <Button size="sm" variant="secondary" onClick={() => onNavigate(target.to, target.state)}>
               {t("jobs.changeRequest")}
             </Button>
           </div>
@@ -573,9 +581,9 @@ export const JobsPanel = forwardRef<
                 key={item.job.id}
                 job={item.job}
                 act={act}
-                onNavigate={(to) => {
+                onNavigate={(to, state) => {
                   onClose();
-                  void navigate(to);
+                  void navigate(to, { state });
                 }}
               />
             ),

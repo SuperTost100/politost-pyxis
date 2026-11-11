@@ -202,9 +202,17 @@ export function MapPage() {
   const [jobId, setJobId] = useState<string>();
   // The Nuova mappa dialog opens this page with `build` set, so the map is built without a second click. It waits for
   // the page to know the scope has no map and no build, then starts one; the working mark shows meanwhile.
-  const arrival = location.state as { build?: boolean; instruction?: string } | null;
+  const arrival = location.state as { build?: boolean; instruction?: string; job?: string } | null;
   const [starting, setStarting] = useState(() => arrival?.build === true);
   const wanted = useRef(arrival?.instruction?.trim() ?? "");
+  // Attività's "Cambia la richiesta" opens this page with `job` set to the request whose row was pressed, since a scope can
+  // have several requests that found nothing. The page shows that request for as long as this history entry says so:
+  // a reload or Back and Forward come back to it, and anything the student does on the page (another map, a new request)
+  // takes `job` out of the entry. A request whose job is gone leaves it too.
+  const reviewed = jobId ? undefined : arrival?.job;
+  const leaveRequest = () => {
+    if (arrival?.job) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  };
   // A map the student asked for in their own words is built next to the maps the scope has. Until it is, the page shows
   // its working state in place of those.
   const [fresh, setFresh] = useState(false);
@@ -254,9 +262,12 @@ export function MapPage() {
   // one, as when the page is opened with no request, it reads the scope's newest build.
   const buildKey = (id?: string) => ["map-build", scopeKey, id ?? "newest"];
   const readBuild = (id?: string) => invoke("maps.build", id ? { ...address, jobId: id } : address);
+  // A request opened from Attività is read afresh under a key of its own: `buildKey(id)` holds what the page read when
+  // that build started, which says it is running.
+  const followed = jobId ?? reviewed;
   const build = useQuery({
-    queryKey: buildKey(jobId),
-    queryFn: () => readBuild(jobId),
+    queryKey: reviewed ? ["map-build", scopeKey, "request", reviewed] : buildKey(jobId),
+    queryFn: () => readBuild(followed),
     refetchInterval: (query) =>
       query.state.data && ["queued", "running"].includes(query.state.data.state)
         ? 500
@@ -424,12 +435,18 @@ export function MapPage() {
   const job = build.data;
   const building = Boolean(job && ["queued", "running"].includes(job.state));
   // The request found nothing in the material and no map was built. With a map to show, the notice says it instead.
-  const nothingMatched = !graph && job?.state === "failed" && job.error === "map-nothing-matched";
+  // The request the student came to change from Attività shows even when the scope has maps; they stay in the page's menu.
+  const nothingMatched =
+    job?.state === "failed" && job.error === "map-nothing-matched" && (!graph || job.jobId === reviewed);
   // The words the student can change, which start as the ones that found nothing.
   const [reask, setReask] = useState("");
   useEffect(() => {
     if (nothingMatched) setReask(job?.instruction ?? "");
   }, [nothingMatched, job?.jobId]);
+  // A request whose job is gone (cleared from Attività, or from an older workspace) leaves the scope's normal view.
+  useEffect(() => {
+    if (reviewed && build.isSuccess && build.data === null) leaveRequest();
+  }, [reviewed, build.isSuccess, build.data]);
   useEffect(() => {
     if (job && ["queued", "running"].includes(job.state) && job.jobId !== jobId) {
       // The build is read by its job from now on; its first read is the one the page has, so the working state stays.
@@ -451,6 +468,7 @@ export function MapPage() {
       ["succeeded", "failed", "cancelled", "interrupted"].includes(job.state)
     ) {
       // The page goes back to the scope's newest build, which until it is read is the build that just ended.
+      leaveRequest();
       client.setQueryData(buildKey(), job);
       setJobId(undefined);
       setFresh(false);
@@ -853,6 +871,7 @@ export function MapPage() {
   async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "") {
     setBusy(true);
     setNotice("");
+    leaveRequest();
     try {
       const result = await invoke("maps.generate", { ...address, ...(instruction ? { instruction } : {}) });
       // The page follows the job `maps.generate` returned. Its first read is in place before the page switches to it, so
@@ -1036,7 +1055,8 @@ export function MapPage() {
             },
           })),
         },
-        ...(list.data && list.data.length > 1
+        // Several maps need choosing between; so does the one map of a scope whose request field is on the page instead.
+        ...(list.data && (list.data.length > 1 || nothingMatched)
           ? [
               {
                 key: "maps",
@@ -1224,6 +1244,8 @@ export function MapPage() {
               className="px-map-reask px-form-field"
               onSubmit={(event) => {
                 event.preventDefault();
+                // With maps to show, the working state replaces them until the new map is ready.
+                if (graph) setFresh(true);
                 void generateMaps(reask.trim());
               }}
             >

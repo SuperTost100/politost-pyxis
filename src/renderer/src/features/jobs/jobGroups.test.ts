@@ -60,8 +60,14 @@ describe("jobs list groups", () => {
     expect(groupJobs([nothing], []).problems).toEqual([]);
     expect(finishedJobKey(nothing)).toBe("map.nothingMatched");
     expect(finishedJobKey(job("f", { kind: "map-build", state: "succeeded" }))).toBe("jobs.done.mapBuild");
-    expect(finishedPath(nothing)).toBe("/plans/p1/map/t1");
-    expect(finishedPath({ ...nothing, ref: "map:s1" })).toBe("/maps/s1");
+    expect(finishedPath(nothing)).toEqual({ to: "/plans/p1/map/t1", state: { job: "m" } });
+    expect(finishedPath({ ...nothing, ref: "map:s1" })).toEqual({ to: "/maps/s1", state: { job: "m" } });
+    // Two requests of one topic lead to one page, and each names its own job.
+    const older = finishedPath({ ...nothing, id: "old" });
+    const newer = finishedPath({ ...nothing, id: "new" });
+    expect(older?.to).toBe(newer?.to);
+    expect(older?.state).toEqual({ job: "old" });
+    expect(newer?.state).toEqual({ job: "new" });
     // A map that was built opens nothing from the list, as before; nor does any other failure.
     expect(finishedPath({ ...nothing, state: "succeeded", error: null })).toBeUndefined();
     expect(groupJobs([job("x", { kind: "map-build", error: "cli-failed" })], []).problems).toHaveLength(1);
