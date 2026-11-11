@@ -675,6 +675,46 @@ test("a request opened from Attività replaces the one this page kept after it f
   }
 });
 
+test("coming back to the entry a build was asked from, or reloading it, builds nothing again", async () => {
+  test.setTimeout(180_000);
+  // The second reply is there for a second build to use, so a repeat shows as a second map.
+  const { app, page, userData, prompts, errors } = await startApp([focused(labels), focused(conceptsOf("B"))]);
+  try {
+    // When the student is already on their way elsewhere the page cannot take `build` out of its entry. This makes
+    // every attempt to do so fail, which leaves the entry as it would be then.
+    await page.evaluate(() => {
+      const replace = history.replaceState.bind(history);
+      history.replaceState = (state: unknown, ...rest: [string, (string | URL | null)?]) => {
+        const entry = history.state as { usr?: { build?: boolean } } | null;
+        if (entry?.usr?.build && (state as { usr?: unknown } | null)?.usr == null) return;
+        replace(state, ...rest);
+      };
+    });
+    const { ask } = dialogs(page);
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    expect(await page.evaluate(() => (history.state as { usr?: { build?: boolean } } | null)?.usr?.build)).toBe(true);
+    const builds = () => readFileSync(prompts, "utf8").trim().split("\n").length;
+    expect(builds()).toBe(1);
+
+    // Away from the page and Back: the page opens on the map, and nothing is asked of the engine.
+    await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
+    await expect(page.getByRole("button", { name: "Nuova mappa" })).toBeVisible();
+    await page.evaluate(() => history.back());
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    // The same after a reload of that entry.
+    await page.reload();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+    expect(builds()).toBe(1);
+    expect((await listOf(page)).map((map) => map.instruction)).toEqual([first]);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a late answer to a request does not take the request of the entry opened at the same address out of it", async () => {
   test.setTimeout(180_000);
   // Asking for a map waits four seconds for its answer, which is time enough to open another request's row meanwhile.

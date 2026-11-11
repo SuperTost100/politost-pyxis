@@ -46,6 +46,7 @@ import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
+import { claimOnce, sessionOf, wasClaimed } from "../../lib/claimOnce";
 import { MAP_INSTRUCTION_MAX, mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
@@ -205,7 +206,11 @@ export function MapPage() {
   // The Nuova mappa dialog opens this page with `build` set, so the map is built without a second click. It waits for
   // the page to know the scope has no map and no build, then starts one; the working mark shows meanwhile.
   const arrival = location.state as { build?: boolean; instruction?: string; job?: string } | null;
-  const [starting, setStarting] = useState(() => arrival?.build === true);
+  // The entry keeps `build` until something takes it out, and that is skipped while the student is already on their way
+  // elsewhere. So the arrival is noted as acted on under the entry's key (see `claimOnce`), which Back and a reload keep.
+  const [starting, setStarting] = useState(
+    () => arrival?.build === true && !wasClaimed(sessionOf(), "map-build", location.key),
+  );
   const wanted = useRef(arrival?.instruction?.trim() ?? "");
   // Attività's "Cambia la richiesta" opens this page with `job` set to the request whose row was pressed, since a scope can
   // have several requests that found nothing. The page shows that request for as long as this history entry says so:
@@ -931,7 +936,12 @@ export function MapPage() {
   useEffect(() => {
     if (!starting || buildAsked.current || list.isPending || build.isPending) return;
     buildAsked.current = true;
-    // The flag belongs to this arrival: going back to the page later must not start a build again.
+    // The flag belongs to this arrival: going back to the page later, or reloading it, must not start a build again.
+    // A refused claim means an earlier visit to this entry already asked; the page is just opened.
+    if (!claimOnce(sessionOf(), "map-build", location.key)) {
+      setStarting(false);
+      return;
+    }
     if (stillHere()) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     // Without an instruction the page builds only when the scope has no map and no build; with one, the request is
     // for a map of its own and core decides whether the same request is already under way.
