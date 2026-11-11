@@ -118,9 +118,9 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    const about = page.locator(".px-path-about").first();
+    const about = page.locator(".px-xpath-about").first();
     if (!(await about.isVisible())) {
-      await page.locator(".px-path-rows button[aria-expanded='false']").first().click();
+      await page.locator(".px-xpath-list button[aria-expanded='false']").first().click();
     }
     await expect(about).toBeVisible();
     await expect(about).toContainText("Misurare");

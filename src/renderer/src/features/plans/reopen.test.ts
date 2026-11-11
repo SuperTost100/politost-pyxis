@@ -44,7 +44,7 @@ describe("opening a step to do", () => {
     expect(stepPath("p", "simulation", null)).toBe("/plans/p/simulation");
     expect(stepPath("p", "lesson", "t1")).toBe("/plans/p/lesson/t1");
     expect(stepPath("p", "cards", "t1")).toBe("/plans/p/cards/t1");
-    expect(stepPath("p", "gaps", "t 1")).toBe("/plans/p/progress?drill=t%201");
+    expect(stepPath("p", "gaps", "t 1")).toBe("/plans/p?drill=t%201");
     expect(stepPath("p", "quiz", null)).toBeNull();
   });
 });

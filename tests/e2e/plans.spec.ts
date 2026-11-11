@@ -122,7 +122,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}$`));
     // The topics are the path: a topic's row opens to show its steps and what it covers.
     await page.getByRole("button", { name: /^Moto/ }).click();
-    await expect(page.locator(".px-path-about")).toContainText("Accelerazione");
+    await expect(page.locator(".px-xpath-about")).toContainText("Accelerazione");
     const result = (await page.evaluate(
       (id) => window.pyxis.invoke("plans.read", { planId: id }),
       created.planId,
@@ -130,7 +130,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     expect(result.topics).toHaveLength(1);
     // A new plan suggests the introduction first.
     await page
-      .locator(".px-path-next")
+      .locator(".px-exam-now")
       .getByRole("button", { name: "Inizia", exact: true })
       .click();
     // The introduction is its own page, without the passage references the model was given.

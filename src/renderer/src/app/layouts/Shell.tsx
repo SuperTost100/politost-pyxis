@@ -6,7 +6,7 @@ import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { useChatActions } from "../../features/ask/chatActions";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
-import { isMapPath } from "../doors";
+import { isExamPagePath, isMapPath } from "../doors";
 import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
@@ -138,7 +138,7 @@ export function Shell() {
               : // The exam list and an exam's page set their own widths (ExamsList.css, ExamPage.css).
                 target.pathname === "/exams"
                 ? "px-shell-container px-shell-exams"
-                : /^\/plans\/[^/]+\/?$/.test(target.pathname)
+                : isExamPagePath(target.pathname)
                   ? "px-shell-container px-shell-exam"
                   : "px-shell-container"
         }

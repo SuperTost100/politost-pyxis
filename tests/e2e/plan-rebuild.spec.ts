@@ -100,7 +100,7 @@ test("PLAN-10 to PLAN-12 guided flow builds an editable draft plan whose general
     await expect(
       page.getByText("dalla conoscenza generale del modello", { exact: false }),
     ).toBeVisible();
-    await expect(page.getByText("Nessuna data d'esame", { exact: false })).toBeVisible();
+    await expect(page.locator(".px-exam-date")).toHaveText("Data da scegliere");
 
     const planId = await page.evaluate(async () => {
       const list = await window.pyxis.invoke("plans.list", {});

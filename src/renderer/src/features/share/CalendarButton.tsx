@@ -20,33 +20,8 @@ export function CalendarButton({
   disabled?: boolean;
   icon?: boolean;
 }) {
-  const { t, i18n } = useTranslation();
-  const { message } = App.useApp();
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setBusy(true);
-    try {
-      const file = await invoke("plans.calendar", {
-        planId,
-        language: i18n.language.startsWith("it") ? "it" : "en",
-      });
-      // A date can pass between the page loading and the click.
-      if (file.count === 0) {
-        void message.info(t("calendar.nothing"));
-        return;
-      }
-      const result = await window.pyxis.saveArtifact({
-        filename: file.filename,
-        base64: file.base64,
-      });
-      if (result === "saved") void message.success(t("calendar.saved"));
-    } catch {
-      void message.error(t("calendar.failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { t } = useTranslation();
+  const { busy, save } = useSaveCalendar(planId);
 
   if (icon)
     return (
@@ -74,4 +49,36 @@ export function CalendarButton({
   ) : (
     button
   );
+}
+
+/** Saves one plan's sessions as an .ics file, saying in a message whether it worked. Shared by the button and the exam page's menu. */
+export function useSaveCalendar(planId: string) {
+  const { t, i18n } = useTranslation();
+  const { message } = App.useApp();
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      const file = await invoke("plans.calendar", {
+        planId,
+        language: i18n.language.startsWith("it") ? "it" : "en",
+      });
+      // A date can pass between the page loading and the click.
+      if (file.count === 0) {
+        void message.info(t("calendar.nothing"));
+        return;
+      }
+      const result = await window.pyxis.saveArtifact({
+        filename: file.filename,
+        base64: file.base64,
+      });
+      if (result === "saved") void message.success(t("calendar.saved"));
+    } catch {
+      void message.error(t("calendar.failed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, save };
 }

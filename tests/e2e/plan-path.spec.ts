@@ -58,15 +58,19 @@ async function language(page: Page, value: "it" | "en", theme: "light" | "dark")
     { value, theme },
   );
   await page.reload();
-  await expect(page.locator(".px-path-next")).toBeVisible();
+  // The loading skeleton is also a `.px-exam-now`; the real suggested step is the one whose heading has text.
+  await expect(page.locator(".px-exam-now").getByRole("heading")).toHaveText(/\S/);
 }
 
-/** Finished steps fold into one line above the suggested step; open it to reach them. */
-async function showDone(page: Page) {
-  const summary = page.locator(".px-path-summary");
-  await expect(summary).toBeVisible();
-  if ((await summary.getAttribute("aria-expanded")) === "false") await summary.click();
-  await expect(summary).toHaveAttribute("aria-expanded", "true");
+/** Opens a topic's row on the path, unless it is open already, and returns the list of its steps. */
+async function topicSteps(page: Page, title: string) {
+  const head = page.locator(".px-xpath-list").getByRole("button", { name: new RegExp(`^${title}`) });
+  await expect(head).toBeVisible();
+  if ((await head.getAttribute("aria-expanded")) === "false") await head.click();
+  await expect(head).toHaveAttribute("aria-expanded", "true");
+  const steps = page.getByRole("list", { name: new RegExp(`^(Passi di|Steps for) ${title}$`) });
+  await expect(steps).toBeVisible();
+  return steps;
 }
 
 /** A full-page shot from the top, so the sticky app bar stays at the top of the image. */
@@ -75,7 +79,7 @@ async function shoot(page: Page, name: string) {
   await saveShot(page, name, { fullPage: true });
 }
 
-test("plan path: nothing locked, the next step offers every activity, any topic's lesson records a step", async () => {
+test("plan path: nothing locked, every activity is on the path, any topic's lesson records a step", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-path-"));
   const book = join(userData, "fisica.ptsb");
@@ -153,21 +157,20 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     const topics = (await read()).topics;
     expect(topics.map((topic) => topic.title)).toEqual(chapters.map((c) => c.title));
 
-    // A new plan: the introduction is suggested, every topic is a row with its mastery, nothing is locked.
+    // A new plan: the introduction is suggested, every topic is a row, nothing is locked.
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    const next = page.locator(".px-path-next");
+    const next = page.locator(".px-exam-now");
     await expect(next.getByText("Adesso")).toBeVisible();
     await expect(next.getByRole("heading", { name: "Introduzione" })).toBeVisible();
     await expect(page.getByText(/Si sblocca|Unlocks/)).toHaveCount(0);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
     const path = page.getByRole("list", { name: `Percorso: ${topics.length} argomenti` });
-    await expect(path.getByRole("meter")).toHaveCount(topics.length);
-    // Mastery on the path is a whole mark, never a decimal: the goal tick stays the only precise number.
-    await expect(path.getByRole("meter").first()).toHaveAttribute("aria-valuetext", /^\d+\/30$/);
-    // No topic is open while the path suggests the introduction.
+    // Each topic is a row that opens; none is open while the path suggests the introduction, and nothing was measured.
+    await expect(path.getByRole("button", { expanded: false })).toHaveCount(topics.length);
     await expect(path.getByRole("button", { expanded: true })).toHaveCount(0);
+    await expect(path.getByText(/^\d+\/30$/)).toHaveCount(0);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
       await shoot(page, `plan-path/new-plan-${lang}-${theme}.png`);
@@ -175,14 +178,12 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await language(page, "it", "light");
     await expectNoAxeViolations(page);
 
-    // The chooser lets the student skip the introduction and the diagnostic.
-    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
-    const forFirst = page.getByRole("list", { name: `Attività su ${topics[0]!.title}` });
-    for (const name of ["Lezione", "Esercizio assistito", "Quiz", "Flashcard"])
+    // Every activity is on the path, so the student can skip the introduction and the diagnostic.
+    for (const name of ["Introduzione", "Test diagnostico", "Simulazione d'esame"])
+      await expect(path.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
+    const forFirst = await topicSteps(page, topics[0]!.title);
+    for (const name of ["Lezione", "Esercizi", "Quiz"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-    const whole = page.getByRole("list", { name: "Tutto l'esame" });
-    for (const name of ["Simulazione d'esame", "Test diagnostico", "Introduzione"])
-      await expect(whole.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     await forFirst.getByRole("button", { name: /^Lezione/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[0]!.id}$`));
     // Opening records nothing.
@@ -197,48 +198,27 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect((await read()).steps).toMatchObject([{ activity: "lesson", topicId: topics[0]!.id }]);
 
-    // After the first lesson the next box suggests work on it, with every alternative next to it.
+    // After the first lesson Adesso suggests work on it.
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(next.getByText("Adesso")).toBeVisible();
-    await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito su ${topics[0]!.title}`);
+    await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito: ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
-    const done = page.getByRole("list", { name: "Passi fatti" });
-    await showDone(page);
-    await expect(done.getByRole("button", { name: new RegExp(`^Lezione, ${topics[0]!.title}, letto`) })).toBeVisible();
     // The topic the path is on opens with its steps, and the suggested one says so.
     const firstSteps = page.getByRole("list", { name: `Passi di ${topics[0]!.title}` });
-    await expect(firstSteps.getByRole("button", { name: "Lezione, fatto" })).toBeVisible();
+    await expect(firstSteps.getByRole("button", { name: "Lezione, letto" })).toBeVisible();
     await expect(firstSteps.getByRole("button", { name: "Esercizi, adesso" })).toBeVisible();
     await expect(firstSteps.getByRole("button", { name: "Quiz, da fare" })).toBeVisible();
-    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
-    for (const name of ["Lezione", "Quiz", "Flashcard"])
-      await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-    await expect(forFirst.getByRole("button", { name: /^Esercizio assistito.*Consigliato/ })).toBeVisible();
 
-    // "Change topic" retargets the options; the picker searches the plan's topics.
-    await next.getByRole("button", { name: "Cambia argomento" }).click();
-    const search = page.getByRole("textbox", { name: "Cerca un argomento" });
-    await expect(search).toBeFocused();
-    await search.fill("onde");
-    const topicList = page.getByRole("list", { name: "Argomenti dell'esame" });
-    await expect(topicList.getByRole("button")).toHaveCount(1);
-    await search.fill("");
+    // Another topic opens on a click, and closes the one before.
+    const forThird = await topicSteps(page, topics[2]!.title);
+    await expect(firstSteps).toHaveCount(0);
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
-      await next.getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ }).click();
-      await next.getByRole("button", { name: /^(Cambia argomento|Change topic)$/ }).click();
-      await shoot(page, `plan-path/topic-picker-${lang}-${theme}.png`);
+      await topicSteps(page, topics[2]!.title);
+      await shoot(page, `plan-path/another-topic-${lang}-${theme}.png`);
     }
     await language(page, "it", "light");
-    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
-    await next.getByRole("button", { name: "Cambia argomento" }).click();
-    await search.fill("onde");
-    await topicList.getByRole("button", { name: new RegExp(topics[2]!.title) }).click();
-    const forThird = page.getByRole("list", { name: `Attività su ${topics[2]!.title}` });
-    await expect(forThird).toBeVisible();
-    // For a topic not read yet the smart text is what fits.
-    await expect(forThird.getByRole("button", { name: /^Lezione.*Consigliato/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Cambia argomento" })).toBeFocused();
+    await topicSteps(page, topics[2]!.title);
 
     // A lesson on a topic the path did not suggest still records a done step.
     await forThird.getByRole("button", { name: /^Lezione/ }).click();
@@ -266,11 +246,8 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    // Finished steps fold into one line above the suggestion until the student opens them.
-    await expect(page.locator(".px-path-summary")).toHaveText("2 attività fatte · Mostra");
-    await expect(done).toHaveCount(0);
-    await showDone(page);
-    await expect(done.getByRole("listitem")).toHaveCount(2);
+    // Both lessons are done steps on their topics.
+    await expect((await topicSteps(page, topics[2]!.title)).getByRole("button", { name: /^Lezione, letto/ })).toBeVisible();
     // Any topic opens on a click, and its steps go straight to the activity; still nothing is locked.
     await path.getByRole("button", { name: new RegExp(`^${topics[1]!.title}`) }).click();
     const secondSteps = page.getByRole("list", { name: `Passi di ${topics[1]!.title}` });
@@ -281,14 +258,7 @@ test("plan path: nothing locked, the next step offers every activity, any topic'
     for (const [lang, theme] of combos) {
       await language(page, lang, theme);
       await shoot(page, `plan-path/mid-way-${lang}-${theme}.png`);
-      await next.getByRole("button", { name: /^(Scegli un'altra attività|Choose another activity)$/ }).click();
-        await shoot(page, `plan-path/chooser-${lang}-${theme}.png`);
     }
-    // Narrow window.
-    await language(page, "it", "light");
-    await page.setViewportSize({ width: 560, height: 900 });
-    await next.getByRole("button", { name: "Scegli un'altra attività" }).click();
-    await shoot(page, `plan-path/chooser-narrow-it-light.png`);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -415,11 +385,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    const done = page.getByRole("list", { name: "Passi fatti" });
-    await showDone(page);
-    await expect(done.getByRole("listitem")).toHaveCount(3);
     // The path stays on the topic: after exercises, a quiz to check them.
-    await expect(page.locator(".px-path-next").getByRole("heading")).toHaveText(`Quiz su ${topic.title}`);
+    await expect(page.locator(".px-exam-now").getByRole("heading")).toHaveText(`Quiz: ${topic.title}`);
+    const done = await topicSteps(page, topic.title);
 
     // The lesson opens as it was read, by its item, even after the profile's wording changed; no chooser opens, no
     // lesson is written and nothing is recorded.
@@ -437,7 +405,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     db.prepare("UPDATE profile SET wording_level = 'technical'").run();
     db.close();
-    await done.getByRole("button", { name: new RegExp(`^Lezione, ${topic.title}`) }).click();
+    await done.getByRole("button", { name: /^Lezione, letto/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topic.id}\\?item=${lessonItem}$`));
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
       timeout: 20000,
@@ -449,8 +417,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.goBack();
 
     // The quiz opens read-only on its own attempt, with the score and Redo.
-    await showDone(page);
-    await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
+    await topicSteps(page, topic.title);
+    await done.getByRole("button", { name: /^Quiz, 6\/10/ }).click();
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
     await expect(page.locator(".px-res-headline")).toContainText("6 punti su 10.");
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
@@ -507,9 +475,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.getByRole("button", { name: "Continua" }).click();
 
     // Finished exercises open without "Mark as done"; going back records nothing.
-    await showDone(page);
-    await expect(done.getByRole("listitem")).toHaveCount(4);
-    await done.getByRole("button", { name: new RegExp(`^Esercizio assistito, ${topic.title}`) }).click();
+    await topicSteps(page, topic.title);
+    await done.getByRole("button", { name: "Esercizi, fatto" }).click();
     await expect(page).toHaveURL(new RegExp(`practice/${topic.id}\\?review=1$`));
     await expect(page.getByText("Hai già finito questi esercizi.", { exact: false })).toBeVisible();
     await expect(page.getByText("Quanto vale la forza", { exact: false })).toBeVisible();
@@ -534,9 +501,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     };
     expect(cardJobs()).toBe(0);
     await page.reload();
-    await showDone(page);
-    await expect(done.getByRole("listitem")).toHaveCount(withCards.length);
-    await done.getByRole("button", { name: new RegExp(`^Flashcard, ${topic.title}`) }).click();
+    await topicSteps(page, topic.title);
+    await done.getByRole("button", { name: "Flashcard, fatto" }).click();
     await expect(page).toHaveURL(new RegExp(`cards/${topic.id}\\?review=1$`));
     await expect(page.getByText("Hai già fatto queste flashcard.", { exact: false })).toBeVisible();
     await expect(page.getByText("Nessuna flashcard in scadenza.")).toBeVisible();
@@ -561,8 +527,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, copy.planId);
-    await showDone(page);
-    await done.getByRole("button", { name: new RegExp(`^Quiz, ${topic.title}, 6/10`) }).click();
+    // The topic's quiz step reopens the latest one handed in.
+    await topicSteps(page, topic.title);
+    await done.getByRole("button", { name: /^Quiz, 10\/10/ }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${copy.planId}/quiz/[^/?]+\\?attempt=`));
     await expect(page.getByText("Le risposte di questo tentativo non erano incluse nell'esame condiviso.")).toBeVisible();
     await expect(page.locator(".px-quiz-question")).toHaveCount(0);

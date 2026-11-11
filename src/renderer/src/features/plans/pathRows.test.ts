@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { needsWeeklyHours, topicRows } from "./pathRows";
+import { needsWeeklyHours, reopensFinished, topicRows } from "./pathRows";
 
 const topics = [
   { id: "a", title: "Limits" },
@@ -56,6 +56,27 @@ describe("topicRows", () => {
       { activity: "cards", state: "todo", count: 3 },
     ]);
     expect(a).toMatchObject({ atGoal: true, current: false, date: undefined });
+  });
+
+  it("keeps a done flashcards step once none is due, so its review can be reopened", () => {
+    const [a] = topicRows({
+      topics,
+      steps: [step("cards", "a", 1)],
+      status: [{ topicId: "a", mastery: 0.2, dueCards: 0, gaps: 0 }],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    });
+    expect(a!.steps.at(-1)).toEqual({ activity: "cards", state: "done" });
+    const [b] = topicRows({
+      topics,
+      steps: [],
+      status: [{ topicId: "a", mastery: 0.2, dueCards: 0, gaps: 0 }],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    });
+    expect(b!.steps.map((chip) => chip.activity)).toEqual(["lesson", "practice", "quiz"]);
   });
 
   it("drops a leading number that repeats the row's own, since the row draws it", () => {
@@ -118,5 +139,44 @@ describe("needsWeeklyHours", () => {
     expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 30, 18).getTime() })).toBe(false);
     expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 29, 9).getTime() })).toBe(false);
     expect(needsWeeklyHours({ ...base, examAt: new Date(2026, 9, 31, 9).getTime() })).toBe(true);
+  });
+});
+
+describe("reopensFinished", () => {
+  const rowFor = (steps: ReturnType<typeof step>[], dueCards = 0) =>
+    topicRows({
+      topics,
+      steps,
+      status: [
+        { topicId: "a", mastery: 0, dueCards, gaps: 0 },
+        { topicId: "b", mastery: 0, dueCards: 0, gaps: 0 },
+      ],
+      next: null,
+      goal: 0.75,
+      schedule: null,
+    })[0]!;
+  const chipOf = (row: ReturnType<typeof rowFor>, activity: string) => row.steps.find((chip) => chip.activity === activity)!;
+
+  it("reopens a done step and a scored quiz, even one below the goal", () => {
+    const row = rowFor([step("lesson", "a", 1), step("quiz", "a", 2, [1, 4])]);
+    expect(reopensFinished(chipOf(row, "lesson"))).toBe(true);
+    expect(reopensFinished(chipOf(row, "quiz"))).toBe(true);
+  });
+
+  it("starts a quiz step shown as to do, such as an imported one that has no score", () => {
+    const chip = chipOf(rowFor([step("quiz", "a", 1)]), "quiz");
+    expect(chip.state).toBe("todo");
+    expect(reopensFinished(chip)).toBe(false);
+  });
+
+  it("starts the due flashcards of a topic whose earlier review is a step", () => {
+    const chip = chipOf(rowFor([step("cards", "a", 1)], 3), "cards");
+    expect(chip).toMatchObject({ state: "todo", count: 3 });
+    expect(reopensFinished(chip)).toBe(false);
+  });
+
+  it("reopens the suggested step only when it has a score; Adesso starts a new one otherwise", () => {
+    expect(reopensFinished({ activity: "quiz", state: "now", result: { correct: 2, total: 4 } })).toBe(true);
+    expect(reopensFinished({ activity: "practice", state: "now" })).toBe(false);
   });
 });

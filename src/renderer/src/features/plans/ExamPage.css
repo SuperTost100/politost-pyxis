@@ -1,0 +1,449 @@
+/* An exam's page: the head with the rings, then Adesso and the path beside a column of sections (Shell.tsx sets
+   px-shell-exam on /plans/:planId). */
+.px-shell-container.px-shell-exam {
+  max-width: calc(1068px + 48px);
+}
+
+/* The page is the container the grid answers to: its own width, which the sidebar, the window and the zoom all change,
+   not the window's. */
+.px-exam {
+  container: px-exam / inline-size;
+}
+
+.px-exam-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5) var(--space-12);
+}
+.px-exam-name {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.px-exam-name h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.px-exam-date {
+  margin: 0;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-exam-rings {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+/* Pushes the actions to the right on the head's line, and leaves them at the left when they wrap under it. */
+.px-exam-grow {
+  flex: 1 1 0;
+}
+.px-exam-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.px-exam-sessions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-exam-origin {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-exam-notice {
+  margin-top: var(--space-4);
+}
+
+.px-exam-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas: "now aside" "path aside";
+  gap: 26px var(--space-8);
+  align-items: start;
+  margin-top: 26px;
+}
+.px-exam-now {
+  grid-area: now;
+}
+.px-exam-path {
+  grid-area: path;
+  min-width: 0;
+}
+.px-exam-aside {
+  grid-area: aside;
+}
+
+/* Adesso: the one card with the page's primary button. */
+.px-exam-now {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) 18px;
+  padding: 22px var(--space-6) 22px 26px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-exam-now-text {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.px-exam-kicker {
+  display: block;
+  font-weight: 600;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: calc(16px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-exam-now h2 {
+  margin: 6px 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: calc(25px * var(--text-scale, 1));
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.px-exam-now p {
+  margin: 6px 0 0;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: calc(19px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+.px-exam-now .px-skeleton-bar.is-title {
+  width: 60%;
+  height: 22px;
+}
+
+.px-exam-sech {
+  margin: 0 0 var(--space-2) 2px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: calc(22px * var(--text-scale, 1));
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+}
+
+/* The column beside the path: one card of sections split by hairlines. */
+.px-exam-aside {
+  display: grid;
+  padding: var(--space-1) 22px var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-exam-asec {
+  display: grid;
+  gap: 9px;
+  align-content: start;
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+.px-exam-asec:first-child {
+  border-top: 0;
+}
+.px-exam-asec h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 650;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+}
+.px-exam-asec h2 span {
+  font-weight: 400;
+  font-size: calc(12.5px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.px-exam-asec p {
+  margin: 0;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: calc(19px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-exam-asec-error {
+  color: var(--danger) !important;
+}
+.px-exam-asec-note {
+  color: var(--ink-subtle) !important;
+}
+.px-exam-asec-skeleton {
+  display: grid;
+  gap: var(--space-2);
+}
+.px-exam-arow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.px-exam-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.px-exam-alink {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  justify-self: start;
+  font-weight: 600;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--primary-text);
+  text-decoration: none;
+}
+.px-exam-alink:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.px-exam-maps {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-exam-mthumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-exam-mthumb:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-exam-mthumb-art {
+  display: grid;
+  flex: none;
+  width: 64px;
+  height: 42px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+.px-exam-mthumb-art svg {
+  width: 100%;
+  height: 100%;
+}
+.px-exam-mthumb > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+.px-exam-mthumb b {
+  overflow: hidden;
+  font-weight: 500;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.px-exam-mthumb small {
+  overflow: hidden;
+  font-size: calc(12px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Materiale: a small drawing per kind of file, as on a shelf. */
+.px-exam-mats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-2);
+  align-items: start;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-exam-cov {
+  display: grid;
+  grid-template-rows: 58px auto;
+  gap: 6px;
+  width: calc(100% + 12px);
+  margin: -6px;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-exam-cov:hover {
+  background: var(--surface-raised);
+}
+.px-exam-cov-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-weight: 500;
+  font-size: calc(12px * var(--text-scale, 1));
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.px-exam-art {
+  position: relative;
+  align-self: end;
+  overflow: hidden;
+}
+.px-exam-art.is-book {
+  width: 40px;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 6px 5px 6px 8px;
+  border-radius: 3px 6px 6px 3px;
+  background: var(--ink-muted);
+  color: var(--surface);
+  font: 400 8.5px/1.1 var(--font-display);
+  overflow-wrap: anywhere;
+}
+.px-exam-art.is-book::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.px-exam-art.is-slides {
+  width: 58px;
+  height: 38px;
+  margin-right: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  box-shadow: 3px -3px 0 -1px var(--surface), 3px -3px 0 0 var(--border-control);
+  overflow: visible;
+}
+.px-exam-art.is-slides::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ink-subtle);
+}
+.px-exam-art.is-exam,
+.px-exam-art.is-notebook {
+  width: 40px;
+  height: 54px;
+  border: 1px solid var(--border-control);
+  border-radius: 3px;
+  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 16px / 28px 32px no-repeat;
+}
+.px-exam-art.is-exam::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 3px;
+  width: 9px;
+  height: 2px;
+  background: var(--ink-subtle);
+  transform: rotate(-35deg);
+}
+.px-exam-art.is-notebook {
+  border-radius: 3px 6px 6px 3px;
+  background: var(--surface-sunken) repeating-linear-gradient(transparent 0 5px, var(--border) 5px 6px);
+}
+.px-exam-art.is-photo {
+  width: 54px;
+  height: 42px;
+  box-sizing: border-box;
+  padding: 3px 3px 9px;
+  border: 1px solid var(--border-control);
+  border-radius: 2px;
+  background: var(--surface);
+  transform: rotate(-2deg);
+}
+.px-exam-art.is-photo::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: color-mix(in srgb, var(--ink-subtle) 55%, var(--surface-sunken));
+}
+
+/* The material page under /plans/:planId/sources. */
+.px-exam-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+  font-size: calc(13px * var(--text-scale, 1));
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.px-exam-back:hover {
+  color: var(--ink);
+}
+.px-exam-sub > h1 {
+  margin-bottom: var(--space-6);
+}
+
+.px-exam .px-skeleton-bar.is-ring {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+}
+
+@media (max-width: 1200px) {
+  .px-exam-head {
+    gap: 18px var(--space-8);
+  }
+  .px-exam-grid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 22px;
+  }
+  .px-exam-aside {
+    padding: 2px 18px 6px;
+  }
+}
+
+/* One column when the path would be squeezed: it needs about 26em for a topic's title, marker and steps beside the
+   260px column of sections, which with the gaps is 44em. In em, so large text moves the point with the path's text
+   (the sections' column stays 260px). At 200% zoom in a 960px window the page is about 350px wide. */
+@container px-exam (max-width: 44em) {
+  .px-exam-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "now" "path" "aside";
+  }
+}
