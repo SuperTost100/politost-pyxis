@@ -613,8 +613,9 @@ export function studyHandlers(
       attemptId: string;
       picks: Record<string, string>;
       marked?: string[];
+      current?: string;
     }) {
-      return saveSimulationDraft(db, input.attemptId, input.picks, undefined, input.marked);
+      return saveSimulationDraft(db, input.attemptId, input.picks, undefined, input.marked, input.current);
     },
     simulationRead(input: { attemptId: string }) {
       return readSimulation(db, input.attemptId);

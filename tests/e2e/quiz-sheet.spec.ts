@@ -116,6 +116,7 @@ async function launch() {
   return {
     app,
     page,
+    userData,
     done: async () => {
       await app.close();
       removeTestFolder(userData);
@@ -307,6 +308,41 @@ test("the exam simulation runs on the same sheet, with its clock, Segna per dopo
     );
     await page.getByRole("button", { name: "Torna alle domande" }).click();
     await expect(page.getByRole("group", { name: /^Consegni con/ })).toHaveCount(0);
+  } finally {
+    await done();
+  }
+});
+
+test("a running exam reopens on the question it was left on, with its clock still running", async () => {
+  test.setTimeout(90_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // The exam started ten minutes ago, so a restarted clock would show about 30 minutes, not about 20.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare("UPDATE attempts SET started_at=? WHERE id='a-sim'").run(Date.now() - 10 * 60_000);
+    db.close();
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await expect(heading(page)).toHaveText("Domanda 3 di 3");
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" })).then((run) => run.current),
+      )
+      .toBe("e-3");
+    const left = (text: string | null) => Number(text?.split(":")[0]);
+    const before = left(await page.getByRole("timer", { name: "Tempo rimanente" }).textContent());
+    expect(before).toBeLessThanOrEqual(20);
+    await page.reload();
+    await expect(heading(page)).toHaveText("Domanda 3 di 3");
+    await expect(tile(page, "Domanda 3")).toHaveAttribute("aria-current", "step");
+    expect(left(await page.getByRole("timer", { name: "Tempo rimanente" }).textContent())).toBeLessThanOrEqual(before);
+    // Leaving the page and coming back opens the same question too.
+    await go(page, "/plans/p-fis");
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 3 di 3");
   } finally {
     await done();
   }

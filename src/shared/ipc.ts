@@ -211,6 +211,8 @@ const simulationViewSchema = z.object({
   picks: z.record(z.string(), z.string()),
   /** Questions marked "Segna per dopo" while the exam runs. */
   marked: z.array(z.string()),
+  /** The question the student had open at the last save; absent until they move. */
+  current: z.string().optional(),
   topics: z.array(
     z.object({ id: z.string(), title: z.string(), score: z.number() }),
   ),
@@ -1272,6 +1274,8 @@ export const requests = {
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
       marked: z.array(z.string()).max(100).optional(),
+      /** The question open now, as an id; left as it was when not sent. */
+      current: z.string().max(200).optional(),
     }),
     output: simulationViewSchema,
   },

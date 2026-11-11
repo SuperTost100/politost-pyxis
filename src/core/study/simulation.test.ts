@@ -172,6 +172,21 @@ describe("M11 model-graded simulations", () => {
     saveSimulationDraft(db, opened.attemptId, {}, undefined, []);
     expect(readSimulation(db, opened.attemptId).marked).toEqual([]);
   });
+  it("keeps the question the student has open, and ignores one that is not in this exam", () => {
+    const { db, planId } = fixture();
+    const opened = startSimulation(db, planId, 30, Date.now(), "exam");
+    const [first, second] = opened.questions;
+    expect(readSimulation(db, opened.attemptId).current).toBeUndefined();
+    saveSimulationDraft(db, opened.attemptId, {}, undefined, undefined, second!.id);
+    expect(readSimulation(db, opened.attemptId).current).toBe(second!.id);
+    // A save without it keeps it, and an unknown id leaves the saved one as it was.
+    saveSimulationDraft(db, opened.attemptId, { [first!.id]: "dieci" });
+    expect(readSimulation(db, opened.attemptId).current).toBe(second!.id);
+    saveSimulationDraft(db, opened.attemptId, {}, undefined, undefined, "nope");
+    expect(readSimulation(db, opened.attemptId).current).toBe(second!.id);
+    saveSimulationDraft(db, opened.attemptId, {}, undefined, undefined, first!.id);
+    expect(readSimulation(db, opened.attemptId).current).toBe(first!.id);
+  });
   it("uses exam material, preserves the deadline and freezes saved answers at expiry", async () => {
     const { db, planId } = fixture();
     const runner = createRunner(db, () => {});

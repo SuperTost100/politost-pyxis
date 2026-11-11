@@ -6,6 +6,7 @@ import {
   handInCount,
   handInPicks,
   restoredMarked,
+  resumeIndex,
   toggleMarked,
 } from "./quizSheet";
 
@@ -78,5 +79,21 @@ describe("restoredMarked", () => {
   it("turns an old draft's unanswered skipped questions into marked ones", () => {
     expect(restoredMarked({ skipped: ["c", "a"], picks: { a: "1" } }, questions)).toEqual(["c"]);
     expect(restoredMarked(undefined, questions)).toEqual([]);
+  });
+});
+
+describe("resumeIndex", () => {
+  const order = ["a", "b", "c", "d"];
+  it("opens the saved question", () => {
+    expect(resumeIndex(order, "c", () => true)).toBe(2);
+  });
+  it("falls back to the first unanswered question when the saved one is gone or was never saved", () => {
+    const answered = (id: string) => id === "a" || id === "b";
+    expect(resumeIndex(order, "gone", answered)).toBe(2);
+    expect(resumeIndex(order, undefined, answered)).toBe(2);
+  });
+  it("falls back to the first question when every question is answered", () => {
+    expect(resumeIndex(order, "gone", () => true)).toBe(0);
+    expect(resumeIndex([], undefined, () => false)).toBe(0);
   });
 });

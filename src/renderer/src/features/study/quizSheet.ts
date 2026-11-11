@@ -48,6 +48,16 @@ export function toggleMarked(marked: string[], id: string, order: string[]): str
 
 type Asked = { id: string; kind: string };
 
+/**
+ * The question an exam opens on when the student comes back: the one it was left on, else the first one without an
+ * answer (an older draft saved no position), else the first.
+ */
+export function resumeIndex(order: string[], saved: string | undefined, answered: (id: string) => boolean): number {
+  const at = saved === undefined ? -1 : order.indexOf(saved);
+  if (at >= 0) return at;
+  return Math.max(0, order.findIndex((id) => !answered(id)));
+}
+
 /** How many questions Consegna would hand in blank, and how many are still marked for later. */
 export function handInCount(
   questions: Asked[],

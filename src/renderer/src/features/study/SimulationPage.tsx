@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 import { useMenuLock } from "../../app/menu-state";
@@ -22,7 +22,7 @@ import { ResultsScreen, type ResultItem } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
 import { Button as PxButton } from "../../components/Button";
-import { toggleMarked } from "./quizSheet";
+import { resumeIndex, toggleMarked } from "./quizSheet";
 import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
@@ -45,7 +45,8 @@ export function SimulationPage() {
   const [format, setFormat] = useState<"past" | "generic">("past");
   const [source, setSource] = useState<"exam" | "mixed">("exam");
   const [picks, setPicks] = useState<Record<string, string>>({});
-  const [index, setIndex] = useState(0);
+  // Where the student moved to in this attempt; until they move, the exam opens where it was left.
+  const [moved, setMoved] = useState<{ attemptId: string; index: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [noEngine, setNoEngine] = useState(false);
@@ -57,7 +58,7 @@ export function SimulationPage() {
   const [exportOpen, setExportOpen] = useState(false);
   // Typing saves at most every DRAFT_DELAY_MS; time-up, submit and leaving the page save at once.
   const drafts = useDraftSaver(
-    (draft: { attemptId: string; picks: Record<string, string>; marked: string[] }) =>
+    (draft: { attemptId: string; picks: Record<string, string>; marked: string[]; current: string }) =>
       invoke("study.simulationDraft", draft),
     () => setNotice(t("simulation.saveFailed")),
     DRAFT_DELAY_MS,
@@ -109,6 +110,19 @@ export function SimulationPage() {
     building?.state ?? "",
   );
   const run = open.data?.planId === planId ? open.data : undefined;
+  // Worked out once per attempt, so a later read (every second) never moves the question the student is on.
+  const resumed = useMemo(
+    () =>
+      run
+        ? resumeIndex(
+            run.questions.map((q) => q.id),
+            run.current,
+            (id) => (run.picks[id] ?? "").trim() !== "",
+          )
+        : 0,
+    [run?.attemptId],
+  );
+  const index = run && moved?.attemptId === run.attemptId ? moved.index : resumed;
   function startFailed(err: unknown) {
     const text = String((err as { code?: string })?.code ?? err);
     setNotice(
@@ -159,7 +173,6 @@ export function SimulationPage() {
   useEffect(() => {
     setPicks({});
     setMarkedHere(null);
-    setIndex(0);
   }, [run?.attemptId]);
   const timeUp = useDeadlinePassed(run?.deadline, Boolean(run && !run.submitted));
   const locked = Boolean(
@@ -185,13 +198,18 @@ export function SimulationPage() {
   useEffect(() => {
     if (question) card.current?.focus({ preventScroll: true });
   }, [question?.id]);
-  function save(next: { picks?: Record<string, string>; marked?: string[] }) {
-    if (!run) return;
-    drafts.schedule({ attemptId: run.attemptId, picks: next.picks ?? shown, marked: next.marked ?? marked });
+  // Every draft carries the open question, so the newest save is also the newest position.
+  function save(next: { picks?: Record<string, string>; marked?: string[]; current?: string }) {
+    const current = next.current ?? question?.id;
+    if (!run || !current) return;
+    drafts.schedule({ attemptId: run.attemptId, picks: next.picks ?? shown, marked: next.marked ?? marked, current });
   }
   function goTo(next: number) {
     setConfirmFrom(null);
-    setIndex(next);
+    if (!run) return;
+    setMoved({ attemptId: run.attemptId, index: next });
+    const id = run.questions[next]?.id;
+    if (id && !locked) save({ current: id });
   }
   // Blank answers are handed in as blank; the question says how many when there are any, or any marked for later.
   function requestHandIn(from: HandInFrom) {
