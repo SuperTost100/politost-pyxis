@@ -244,6 +244,9 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
       location.hash = "/ask";
     });
     await page.reload();
+    // The window renders nothing until the theme has come back, and the dialog listens from then on. An event sent
+    // before that is lost, so wait for the shell.
+    await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
     const dialog = page.getByRole("dialog", { name: "Make flashcards" });
     const cards = dialog.getByRole("list", { name: "Proposed flashcards" }).getByRole("listitem");
     const ask = async () => {
