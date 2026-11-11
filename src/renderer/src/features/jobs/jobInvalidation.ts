@@ -1,6 +1,6 @@
 import type { JobView } from "../../../../shared/ipc";
 
-const sourceKinds = new Set(["source-import", "source-import-vision", "source-index", "source-ocr", "library-sort"]);
+const sourceKinds = new Set(["source-import", "source-import-vision", "source-index", "source-ocr", "library-sort", "linked-folder-sort"]);
 const planKinds = new Set(["plan-build", "plan-rebuild"]);
 /** Jobs that save items citing source passages, so a source's citation counts change when they end. */
 const citingKinds = new Set(["plan-build", "plan-rebuild", "quiz-build", "quiz-replace", "gap-drill"]);

@@ -285,6 +285,26 @@ export function linkedFolders(deps: LinkedDeps) {
         (waitingFiles.all() as Array<{ folder_id: string; n: number }>).map((row) => [`folder:${row.folder_id}`, row.n]),
       ),
   );
+  runner.register("linked-folder-sort", {
+    jobClass: "model-cli",
+    title: (params) => {
+      const folder = folderRow((params as { folderId: string }).folderId);
+      return folder ? basename(folder.path) : null;
+    },
+    steps: [
+      {
+        name: "sort",
+        label: "sources.jobs.sortSubjects",
+        async run(ctx) {
+          const { folderId } = ctx.params as { folderId: string };
+          // Riprova asks again, whatever failed before.
+          sortGaveUp.delete(folderId);
+          await sortLoose(folderId, true);
+          return {};
+        },
+      },
+    ],
+  });
   const excludes = () =>
     deps.protectedPaths.map((place) => {
       try {
@@ -798,16 +818,21 @@ export function linkedFolders(deps: LinkedDeps) {
     if (scope === null || fresh.some((file) => file.subfolder === "")) await sortLoose(folderId);
   }
 
-  /** Folders whose loose files the AI tool failed to sort since this start: they are not asked again until the next. */
+  /**
+   * Folders whose loose files the AI tool failed to sort since this start: they are not asked again until the next
+   * start, or until the student presses Riprova on the failed `linked-folder-sort` job in Attività.
+   */
   const sortGaveUp = new Set<string>();
 
   /**
    * Asks the AI tool which subject each file lying loose at the top of a `root` folder belongs to, by its name alone,
    * `MAX_LOOSE_SENT` names a call. A file it sorts takes that subfolder, so it follows that subject from then on, as if
    * it lay inside it; one it cannot place stays without a subject and is not asked about again. Without an AI tool the
-   * files stay without a subject, and the next look asks again.
+   * files stay without a subject, and the next look asks again. When the call fails, the files stay without a subject
+   * and a `linked-folder-sort` job asks once more, so a failure that lasts ends as a failed job in Attività; with
+   * `strict` (that job) the failure is thrown as `linked-sort-failed` instead.
    */
-  async function sortLoose(folderId: string): Promise<void> {
+  async function sortLoose(folderId: string, strict = false): Promise<void> {
     const folder = folderRow(folderId);
     if (!folder || folder.mode !== "root" || sortGaveUp.has(folderId)) return;
     const rows = subfolderRows(folderId);
@@ -836,6 +861,8 @@ export function linkedFolders(deps: LinkedDeps) {
         if (answer === "no-engine") return;
         if (answer === "failed") {
           sortGaveUp.add(folderId);
+          if (strict) throw new Error("linked-sort-failed");
+          runner.start("linked-folder-sort", { folderId });
           return;
         }
         if (!db.open) return;

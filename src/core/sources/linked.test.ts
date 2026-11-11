@@ -817,6 +817,43 @@ describe("a large linked folder", () => {
     expect(calls).toHaveLength(3);
   }, 60_000);
 
+  it("lists a failed sort of loose files in Attività as a job, leaves the files without a subject, and Riprova sorts them", async () => {
+    const root = bigTree(20, ["Materia 3 appunti.txt", "orario.txt"]);
+    let failing = true;
+    const asked: boolean[] = [];
+    const app = bulk({
+      run: async (input) => {
+        if (!isSorting(input)) return answer([])(input);
+        asked.push(failing);
+        if (failing) throw new Error("engine down");
+        return sortByPrefix()(input);
+      },
+    });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    await app.settled();
+    const job = app.db.prepare(`SELECT id, state, error FROM jobs WHERE kind = 'linked-folder-sort'`).get() as
+      | { id: string; state: string; error: string | null }
+      | undefined;
+    expect(job).toMatchObject({ state: "failed", error: "linked-sort-failed" });
+    // The files wait without a subject, and a later look does not ask again until the student asks in Attività.
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE subfolder = '' AND sorted_at IS NULL`)).toBe(2);
+    const asks = asked.length;
+    await app.linked.sync(folder!.id);
+    await app.settled();
+    expect(asked).toHaveLength(asks);
+    failing = false;
+    app.runner.retry(job!.id);
+    await app.settled();
+    await expect
+      .poll(() => app.db.prepare(`SELECT state FROM jobs WHERE id = ?`).pluck().get(job!.id), { timeout: 10_000 })
+      .toBe("succeeded");
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE subfolder = '' AND sorted_at IS NULL`)).toBe(0);
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE rel_path = 'Materia 3 appunti.txt' AND subfolder = 'Materia 3'`)).toBe(1);
+    expect(app.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'linked-folder-sort'`)).toBe(1);
+  }, 30_000);
+
   it("without an AI tool, reads every file, keeps the folder names and leaves loose files without a subject", async () => {
     const root = bigTree(200, ["Analisi esercizi.txt", "orario.txt"]);
     const app = bulk({ engine: false });
