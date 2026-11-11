@@ -70,6 +70,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   Star,
+  Contrast,
 } from "lucide-react";
 
 export type IconName =
@@ -142,7 +143,8 @@ export type IconName =
   | "diamond"
   | "rotate-ccw"
   | "sliders-horizontal"
-  | "star";
+  | "star"
+  | "contrast";
 
 export const ICON_MAP: Record<IconName, LucideIcon> = {
   "message-circle": MessageCircle,
@@ -215,4 +217,5 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "rotate-ccw": RotateCcw,
   "sliders-horizontal": SlidersHorizontal,
   star: Star,
+  contrast: Contrast,
 };

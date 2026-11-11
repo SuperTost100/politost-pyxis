@@ -30,6 +30,9 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   // A job that ends joins or leaves the jobs list's "finished today" group.
   if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
   if (finished.has(job.state) && cardKinds.has(job.kind)) keys.push("card-sections");
+  // The results screen reads what an attempt changed, gaps included, once. A gap-insight job adds a gap's misconception and
+  // severity, which the screen shows, so a job that ends while the screen is open makes it read again.
+  if (job.kind === "gap-insight" && finished.has(job.state)) keys.push("attempt-outcome");
   if (finished.has(job.state) && citingKinds.has(job.kind) && !keys.includes("source-details")) keys.push("source-details");
   const families = keys.map((key) => ({ key, refetch: true }));
   if (finished.has(job.state)) families.push({ key: "series", refetch: false });

@@ -366,6 +366,7 @@ export function SimulationPage() {
       stem: q.stem,
       topic,
       mark: verdict(result.score),
+      value: result.score,
       ...(verdict(result.score) === "partial"
         ? { score: t("quiz.questionPoints", { points: questionPoints(result.score, i18n.language) }) }
         : {}),
@@ -395,7 +396,7 @@ export function SimulationPage() {
             }
           : undefined
       }
-      title={t("simulation.title")}
+      title={run?.submitted ? `${t("results.title")} \u00b7 ${t("simulation.title")}` : t("simulation.title")}
       subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
       wide={running}
       // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
@@ -575,6 +576,16 @@ export function SimulationPage() {
         <ResultsScreen
           kind="simulation"
           attemptId={run.attemptId}
+          planId={planId}
+          // Ripasso mirato: a drill on the gap this exam opened, or its wrong answers asked again.
+          review={
+            run.submitted && simMistakes
+              ? {
+                  count: run.results?.filter((result) => result.score < 1).length ?? 0,
+                  onReview: () => navigate(`/plans/${planId}/review?from=${encodeURIComponent(run.attemptId)}`),
+                }
+              : undefined
+          }
           eyebrow={
             run.submitted && run.submittedAt
               ? t("results.resultOn", {
@@ -610,6 +621,7 @@ export function SimulationPage() {
           grading={
             run.submitted ? undefined : { done: gradedCount, total: run.questions.length }
           }
+          stopped={gradingStopped}
           notes={
             <>
               {run.submitted ? (
@@ -649,16 +661,7 @@ export function SimulationPage() {
               <Button type="primary" shape="round" size="large" disabled={busy} onClick={() => void submit()}>
                 {t("simulation.retryGrade")}
               </Button>
-            ) : run.submitted && simMistakes ? (
-              <Button
-                type="primary"
-                shape="round"
-                size="large"
-                onClick={() => navigate(`/plans/${planId}/review?from=${encodeURIComponent(run.attemptId)}`)}
-              >
-                {t("quiz.reviewMistakes")}
-              </Button>
-            ) : (
+            ) : run.submitted && simMistakes ? undefined : (
               <Button type="primary" shape="round" size="large" onClick={() => navigate(`/plans/${planId}`)}>
                 {t("lesson.backToPath")}
               </Button>
