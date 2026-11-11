@@ -33,6 +33,7 @@ import {
   type NodeProps,
   type ReactFlowInstance,
   type NodeChange,
+  type Viewport,
 } from "@xyflow/react";
 import { toPng } from "html-to-image";
 import { Button } from "../../components/Button";
@@ -332,6 +333,23 @@ export function MapPage() {
     setOpenSourceAt(picked);
     setSourceOpen(true);
   }
+  // The view before the panel moved it and the view it moved to, so closing the panel can put the map back.
+  const shiftedFrom = useRef<{ before: Viewport; after: Viewport } | undefined>(undefined);
+  // Closing the panel puts the view back where it was before the panel moved it, unless the student moved it since.
+  useEffect(() => {
+    const shifted = shiftedFrom.current;
+    const instance = flow.current;
+    if (sourceOpen || !shifted || !instance) return;
+    shiftedFrom.current = undefined;
+    const now = instance.getViewport();
+    const moved =
+      Math.abs(now.x - shifted.after.x) > 1 ||
+      Math.abs(now.y - shifted.after.y) > 1 ||
+      Math.abs(now.zoom - shifted.after.zoom) > 0.001;
+    if (moved) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    void instance.setViewport(shifted.before, { duration: reduced ? 0 : 200 });
+  }, [sourceOpen]);
   // Focus moves into the panel once it is no longer inert, so the keyboard and screen readers follow it there. When the
   // narrower canvas has hidden the concept whose source is open, the view moves just enough to show it, at the same
   // zoom, once the panel's slot has finished growing; the rest of the map stays where it was.
@@ -361,8 +379,11 @@ export function MapPage() {
       const top = at.y * zoom + y;
       const dx = shift(left, left + width * zoom, box.width);
       const dy = shift(top, top + height * zoom, box.height);
-      if (dx || dy)
-        void instance.setViewport({ x: x + dx, y: y + dy, zoom }, { duration: reduced ? 0 : 200 });
+      if (!dx && !dy) return;
+      const after = { x: x + dx, y: y + dy, zoom };
+      // Kept from the first move only, so a second source opened meanwhile still leads back to the view before both.
+      shiftedFrom.current = { before: shiftedFrom.current?.before ?? { x, y, zoom }, after };
+      void instance.setViewport(after, { duration: reduced ? 0 : 200 });
     };
     const slot = sourceSlot.current;
     // A slot that was open already, or under reduced motion, does not move, so no transition ends.

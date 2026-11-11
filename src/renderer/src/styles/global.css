@@ -183,6 +183,10 @@ html[data-platform="darwin"] {
 :root {
   --px-message-top: 56px;
 }
+/* A map's title and subtitle fill the top of its page, so its notices open below them, over the top of the canvas. */
+:root:has(.px-map-page) {
+  --px-message-top: 132px;
+}
 .px-message-host {
   position: sticky;
   top: 0;

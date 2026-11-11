@@ -11,8 +11,9 @@
   flex: 1 1 280px;
   min-width: 0;
 }
+/* The title keeps its top margin, so it sits where the other sections' titles do. */
 .px-fc-head h1 {
-  margin: 0;
+  margin-bottom: 0;
   text-wrap: balance;
 }
 .px-fc-lead {
