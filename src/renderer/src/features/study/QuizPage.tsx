@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, InputNumber, Select } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -531,10 +531,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       setActionError(true);
     }
   }
+  const queryClient = useQueryClient();
   const markWrong = useMutation({
     mutationFn: (input: { questionId: string; wrong: boolean }) =>
       invoke("study.quizWrong", { attemptId, ...input }),
     onSuccess: (_, input) => {
+      // Marking a question wrong recomputes the exam's gaps, which the results screen's change panel shows.
+      void queryClient.invalidateQueries({ queryKey: ["attempt-outcome", attemptId] });
       setWrongMarks((current) => ({
         ...current,
         [input.questionId]: input.wrong,

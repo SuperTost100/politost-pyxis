@@ -97,6 +97,7 @@ async function launch(env: Record<string, string> = {}) {
   return {
     app,
     page,
+    userData,
     done: async () => {
       await app.close();
       removeTestFolder(userData);
@@ -213,6 +214,34 @@ test("the next steps wait for the read that decides them, and stay once they are
     // The first click lands on the gap's drill, from the exam's path.
     await targeted.click();
     await expect(page).toHaveURL(/#\/plans\/p-fis(\?|$)/);
+  } finally {
+    await done();
+  }
+});
+
+test("the change in the path shows a gap's later description without a reload once a question is marked wrong", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await open(page);
+    const changes = page.locator(".px-res-changes");
+    await expect(changes).toContainText("confondi lo spostamento con la distanza percorsa");
+
+    // The grading can finish before the gap-insight job has written its reading of the mistake, so the page may have
+    // read the gap without it. Writing the reading now stands for the job's end; marking a question wrong recomputes
+    // the gaps and makes the page read the outcome again.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      db.prepare("UPDATE gaps SET misconception = ?, severity = 'minor' WHERE id = 'g-1'").run(
+        "Dopo una seconda lettura: sommi le aree senza tenere conto del segno della velocità.",
+      );
+    } finally {
+      db.close();
+    }
+    await page.getByRole("button", { name: "Domanda sbagliata?" }).first().click();
+    await expect(changes).toContainText("sommi le aree senza tenere conto del segno della velocità");
+    await expect(changes).not.toContainText("confondi lo spostamento con la distanza percorsa");
   } finally {
     await done();
   }

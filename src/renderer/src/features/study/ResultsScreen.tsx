@@ -123,7 +123,8 @@ export function ResultsScreen({
   const navigate = useNavigate();
   const graded = grade !== undefined;
   const outcome = useQuery({
-    // Asked again as grading moves (an engine may answer instead) and once the grade is in.
+    // Asked again as grading moves (an engine may answer instead) and once the grade is in. Marked stale by the key's first
+    // two parts when a gap-insight job ends (`jobInvalidation`) and when a question is marked wrong (`QuizPage`).
     queryKey: ["attempt-outcome", attemptId, graded, grading?.done],
     enabled: Boolean(attemptId),
     queryFn: () => invoke("study.attemptOutcome", { attemptId }),
