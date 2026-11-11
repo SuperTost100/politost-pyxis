@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
@@ -439,6 +440,20 @@ describe("exam rings", () => {
     recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
     expect(ringOf(db, "a").preparation).toBeNull();
     recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBe(0);
+  });
+
+  it("counts a wrong quick-check answer as measured, at zero", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // What a wrong answer to a lesson's quick check records: evidence with score 0 and no graded step.
+    appendEvent(db, {
+      kind: "answer_given",
+      planId: "a",
+      topicId: "a-t0",
+      payload: { blockId: "q1", pick: 1, shown: true, score: 0, evidenceKind: "check" },
+      at: day(0, 9),
+    });
     expect(ringOf(db, "a").preparation).toBe(0);
   });
 

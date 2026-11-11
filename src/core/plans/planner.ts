@@ -3,7 +3,7 @@ import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
 import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks } from "../study/cards";
-import { topicPassageCounts, weightedPlanMastery } from "./progress";
+import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
@@ -553,7 +553,8 @@ const measuring = (activity: Activity) => activity !== "intro" && activity !== "
  * The three rings of each built exam, from what the planner and Oggi already compute:
  *
  * - `preparation`: the mastery the exam list shows (topics weighted by passages), which the renderer reads on the
- *   student's grade scale. Null while nothing is measured: no topic has mastery and no graded step was done.
+ *   student's grade scale. Null while nothing is measured: no topic has mastery or evidence and no graded step was
+ *   done.
  * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
  *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
  * - `today`: the share of today's planned work done, as Oggi counts it. With weekly hours the planner gives the exam
@@ -578,9 +579,13 @@ export function examRings(db: Database.Database, now = Date.now()) {
   const titles = db.prepare("SELECT title FROM topics WHERE id = ?");
   const ring = (plan: Studied, isArchived: boolean) => {
     const { state } = plan;
+    // Measured means there is evidence, whatever its score: a wrong quick-check answer is evidence worth zero.
     const measured =
       state.topics.some((topic) => topic.mastery > 0) ||
-      state.steps.some((step) => measuring(step.activity));
+      state.steps.some((step) => measuring(step.activity)) ||
+      planMasteryBreakdown(db, plan.row.id, now).some((topic) =>
+        Object.values(topic.parts).some((part) => part.count > 0),
+      );
     const fresh = remainingMinutes({
       topics: state.topics.map((topic) => ({ id: topic.id, mastery: 0 })),
       steps: [],
