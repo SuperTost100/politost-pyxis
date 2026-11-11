@@ -1,5 +1,6 @@
 import { Dropdown, type MenuProps } from "antd";
 import { useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { menuTrigger, type MenuPoint } from "../lib/itemMenu";
 import "./ItemMenu.css";
 
@@ -31,36 +32,45 @@ export function useItemMenu({
     origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setAt(point);
   }, !disabled);
-  const popup: ReactNode = at ? (
-    <Dropdown
-      open
-      autoFocus
-      // The anchor is never clicked: the trigger only makes a click away close the menu.
-      trigger={["click"]}
-      onOpenChange={(next) => {
-        if (!next) close(true);
-      }}
-      popupRender={
-        region
-          ? (list) => (
-              <div role="region" aria-label={region}>
-                {list}
-              </div>
-            )
-          : undefined
-      }
-      menu={{
-        ...menu,
-        onClick: (info) => {
-          // Focus goes back before the item acts, so a dialog it opens returns focus there on close.
-          close(true);
-          menu.onClick?.(info);
-        },
-      }}
-    >
-      <span className="px-menu-anchor" style={{ left: at.x, top: at.y }} aria-hidden />
-    </Dropdown>
-  ) : null;
+  // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
+  // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
+  const popup: ReactNode = at
+    ? createPortal(
+        <Dropdown
+          open
+          autoFocus
+          // The anchor is never clicked: the trigger only makes a click away close the menu.
+          trigger={["click"]}
+          onOpenChange={(next) => {
+            if (!next) close(true);
+          }}
+          popupRender={
+            region
+              ? (list) => (
+                  <div role="region" aria-label={region}>
+                    {list}
+                  </div>
+                )
+              : undefined
+          }
+          menu={{
+            ...menu,
+            onClick: (info) => {
+              // Focus goes back before the item acts, so a dialog it opens returns focus there on close.
+              close(true);
+              menu.onClick?.(info);
+            },
+          }}
+        >
+          <span
+            className="px-menu-anchor"
+            style={{ left: at.x, top: at.y }}
+            aria-hidden
+          />
+        </Dropdown>,
+        document.body,
+      )
+    : null;
   return { bind, popup };
 }
 
