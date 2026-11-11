@@ -7,6 +7,7 @@ import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
+import { refreshSubjects } from "../../lib/refreshSubjects";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
@@ -186,8 +187,7 @@ export function SortNote({ source, shared }: { source: LibrarySource; shared: nu
     } catch (err) {
       setError(messageKeyOf(err));
     }
-    void client.invalidateQueries({ queryKey: ["sources"] });
-    void client.invalidateQueries({ queryKey: ["subjects"] });
+    void refreshSubjects(client);
   };
   return (
     <div className="px-library-newsubject">

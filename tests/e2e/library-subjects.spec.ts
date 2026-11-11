@@ -9,12 +9,12 @@ import { fromChiediToExams } from "./doors";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 
-/** Recorded answers of the AI tool that chooses subjects: one file fits a subject the student has, one needs a new one. */
+/** Recorded answers of the AI tool that chooses subjects, by the `id` each file is sent with (its place in the call): file 1 fits a subject the student has, file 2 needs a new one. */
 const replies = JSON.stringify({
   files: {
     files: [
-      { file: "Esercizi sui limiti", subject: "Analisi 1", newSubject: "" },
-      { file: "Calcolo delle probabilita, dispense", subject: "", newSubject: "Probabilità e statistica" },
+      { id: "1", subject: "Analisi 1", newSubject: "" },
+      { id: "2", subject: "", newSubject: "Probabilità e statistica" },
     ],
   },
 });
@@ -87,6 +87,14 @@ test("Files added from the Library go into a subject the student has, or a new o
     await expectNoAxeViolations(page);
     await saveShot(page, "library-subjects/1-sorted.png");
 
+    // A chat in the new subject: the sidebar names the subject under its title.
+    await page.evaluate(() =>
+      window.pyxis.invoke("chats.seed", { kind: "answer", title: "Teorema di Bayes", body: "Bayes.", subject: "Probabilità e statistica" }),
+    );
+    await page.reload();
+    const sidebarChat = page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Teorema di Bayes/ });
+    await expect(sidebarChat).toHaveText("Teorema di BayesProbabilità e statistica");
+
     // The new subject is renamed in place, and the note goes.
     await notes.getByRole("button", { name: "Rinomina la materia Probabilità e statistica" }).click();
     const field = notes.getByRole("textbox", { name: "Nome della materia Probabilità e statistica" });
@@ -95,6 +103,8 @@ test("Files added from the Library go into a subject the student has, or a new o
     await field.press("Enter");
     await expect(notes.locator(".px-source-row-meta")).toContainText("Probabilità");
     await expect(notes).not.toContainText("Materia nuova.");
+    // Everything else that names the subject follows without a reload: the sidebar's chat says the new name.
+    await expect(sidebarChat).toHaveText("Teorema di BayesProbabilità");
     const subjects = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).map((subject) => subject.name);
     expect(subjects.sort()).toEqual(["Analisi 1", "Fisica 2", "Probabilità"]);
 
