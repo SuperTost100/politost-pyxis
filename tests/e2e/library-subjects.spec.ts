@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 
@@ -48,7 +48,7 @@ async function start(env: Record<string, string | undefined>) {
   await fromChiediToExams(page);
   for (const name of ["Analisi 1", "Fisica 2"])
     await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
-  await page.getByText("Fonti", { exact: true }).click();
+  await toLibrary(page);
   return { app, page, userData, files };
 }
 

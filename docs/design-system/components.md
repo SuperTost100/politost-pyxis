@@ -48,19 +48,19 @@ Context menus are the system's own, through `window.pyxis.contextMenu` (see `fea
 
 ## Study
 
-| Component         | What it's for                                                                    |
-| ----------------- | -------------------------------------------------------------------------------- |
-| `PathNode`        | One step of an exam's path: done, current or ahead                               |
-| `LessonTile`      | A study activity on an exam page, optionally marked Consigliato                  |
-| `PlanCard`        | An exam in the Esami list, with its mastery                                      |
-| `MasteryBar`      | A bar from 0 to 100 with an optional target mark                                 |
-| `StatTile`        | A number with its label and a small bar                                          |
-| `QuizOption`      | One answer of a multiple-choice question, before and after the check             |
-| `GapItem`         | A gap to fill, named after its topic                                             |
-| `CardFaceFields`  | A flashcard's front and back while it is edited                                  |
-| `MakeCardsDialog` | Makes flashcards from a selection, a reply or a map                              |
-| `SmartText`       | A lesson's text with its inline checks                                           |
-| `SelectionMenu`   | The actions on selected text in lessons and sources: ask, make a flashcard, copy |
+| Component         | What it's for                                                                          |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `PathNode`        | One step of an exam's path: done, current or ahead                                     |
+| `LessonTile`      | A study activity on an exam page, optionally marked Consigliato                        |
+| `ExamRings`       | An exam's three rings, Preparazione, Percorso and Oggi, with `RingLegend` for its page |
+| `MasteryBar`      | A bar from 0 to 100 with an optional target mark                                       |
+| `StatTile`        | A number with its label and a small bar                                                |
+| `QuizOption`      | One answer of a multiple-choice question, before and after the check                   |
+| `GapItem`         | A gap to fill, named after its topic                                                   |
+| `CardFaceFields`  | A flashcard's front and back while it is edited                                        |
+| `MakeCardsDialog` | Makes flashcards from a selection, a reply or a map                                    |
+| `SmartText`       | A lesson's text with its inline checks                                                 |
+| `SelectionMenu`   | The actions on selected text in lessons and sources: ask, make a flashcard, copy       |
 
 ## Messages and content
 

@@ -625,7 +625,7 @@ export function CardsPage() {
           : everywhere
           ? { text: t("nav.exams"), onClick: close }
           : bySubject
-            ? { text: t("exams.cards"), onClick: close }
+            ? { text: t("exams.allCards"), onClick: close }
             : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
       }
       title={

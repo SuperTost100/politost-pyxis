@@ -46,6 +46,8 @@ const routes = [
   ["exams", "/exams"],
   ["exams-empty", "/exams"],
   ["exams-import-menu", "/exams"],
+  // An archived exam under the open Archiviati toggle.
+  ["exams-archived", "/exams"],
   ["library", "/exams/library"],
   // The Library with no sources: the empty state and its two ways in, no search or filters.
   ["library-empty", "/exams/library"],
@@ -62,10 +64,9 @@ const routes = [
   ["flashcards-none-due", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
-  // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
+  // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
-  ["planner", "/exams/planner"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -1184,6 +1185,15 @@ function prepareEngines(name: string) {
   });
 }
 
+/** One exam archived for the archived list's state only; every other state has it back. */
+function prepareExamsArchived(name: string) {
+  withDb((db) =>
+    db
+      .prepare("UPDATE plans SET archived_at = ? WHERE id = 'audit-review-plan'")
+      .run(name === "exams-archived" ? 1 : null),
+  );
+}
+
 function prepareExamsEmpty(name: string) {
   withDb((db) => {
     db.exec("PRAGMA foreign_keys = OFF");
@@ -1344,6 +1354,7 @@ function preparePanelSources(name: string) {
 function prepareState(name: string) {
   prepareEngines(name);
   prepareExamsEmpty(name);
+  prepareExamsArchived(name);
   preparePanelSources(name);
   prepareLibraryEmpty(name);
   prepareLibrarySubjects(name);
@@ -2942,6 +2953,10 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
+    case "exams-archived":
+      await page.getByRole("button", { name: both("Archiviati", "Archived") }).click();
+      await expect(page.getByRole("list", { name: both("Esami archiviati", "Archived exams") })).toBeVisible();
+      break;
     case "exams-import-menu":
       await page.getByRole("button", { name: both("Altro", "More") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
@@ -3331,8 +3346,6 @@ async function openState(page: Page, name: string) {
  */
 async function focusRingChecks(page: Page, name: string) {
   const cases: { field: string; frame: string }[] = [];
-  if (name === "exams")
-    cases.push({ field: "#plan-subject-filter", frame: ".ant-select-focused" });
   if (name === "ask-new")
     cases.push({ field: ".px-composer-field", frame: ".px-composer" });
   if (name.startsWith("wizard-") && (await page.locator("#plan-date").isVisible()))
@@ -3460,8 +3473,7 @@ async function keyboardCheck(page: Page, name: string) {
     ).toBe(true);
     await expect(code).toHaveCSS("outline-style", "solid");
   }
-  if (name === "exams" || name === "ask-new" || name.startsWith("wizard-"))
-    await focusRingChecks(page, name);
+  if (name === "ask-new" || name.startsWith("wizard-")) await focusRingChecks(page, name);
   if (name === "quiz") {
     const first = page.locator("button[aria-keyshortcuts='1']");
     const second = page.locator("button[aria-keyshortcuts='2']");

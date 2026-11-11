@@ -12,7 +12,7 @@ import { seedPlan, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, fromExamsMenu } from "./doors";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -90,14 +90,12 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     });
     seed(db);
 
-    // Reached as a tab next to Sources.
+    // Reached from the Esami menu.
     await page.evaluate(() => {
       location.hash = "#/exams";
     });
     await page.reload();
-    await page
-      .locator(".ant-segmented-item-label", { hasText: "Flashcards" })
-      .click();
+    await fromExamsMenu(page, "All flashcards");
     await expect(page).toHaveURL(/#\/exams\/cards$/);
     await expect(page.getByRole("status")).toHaveText("6 flashcards");
 

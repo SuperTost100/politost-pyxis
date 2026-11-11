@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 test("SRC-07 a dropped file gets a native grant and nothing else does", async () => {
   test.setTimeout(120000);
@@ -36,7 +36,7 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
     );
     expect(early).toBe("file-access-denied");
 
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     await page.getByRole("button", { name: "Aggiungi fonti" }).click();
     const dialog = page.getByRole("dialog");
     // The dialog mounts after the click; a slow runner reaches the drop before the zone exists.
