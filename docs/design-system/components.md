@@ -31,7 +31,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
 | `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                             |
 
-Context menus are the system's own, through `window.pyxis.contextMenu` (see `features/ask/ChatPanel.tsx`). Don't build a dropdown menu for actions on a row.
+A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right-click open the same `menu`, so both show the same items ([item menus](layout.md#item-menus) has the rules). Wire `useItemMenu` or `MenuItemArea` rather than building another dropdown for a row. Chats are the exception: their menu is the system's own, through `window.pyxis.contextMenu` (see `features/ask/chatActions.tsx`), in the sidebar and in the search, which is a modal dialog that a menu drawn in the page would sit behind. Text fields and anything marked `data-native-menu` keep the system's menu for copy, paste and spelling.
 
 ## Status and feedback
 
