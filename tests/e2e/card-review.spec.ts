@@ -143,6 +143,37 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await expect(page.locator(".px-cards-undo")).toHaveCount(0);
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
 
+    // A right-click on the card opens the same menu as its dots, and a pick acts the same way. A menu that was just
+    // closed fades out first, so the test waits until none is open before it opens the next one.
+    const open = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    await expect(open).toHaveCount(0);
+    const cardBox = (await page.locator(".px-card").boundingBox())!;
+    const pointer = { x: cardBox.x + 60, y: cardBox.y + 60 };
+    await page.mouse.click(pointer.x, pointer.y, { button: "right" });
+    await expect(open).toHaveCount(1);
+    for (const item of [/^Edit/, /^Suspend/, /^Delete/]) await expect(open.getByRole("menuitem", { name: item })).toBeVisible();
+    // The stage turns the card in perspective, which must not move the menu: its corner is at the pointer.
+    await expect
+      .poll(async () => {
+        const menuBox = (await open.boundingBox())!;
+        return [Math.abs(menuBox.x - pointer.x) < 8, Math.abs(menuBox.y - pointer.y) < 12];
+      })
+      .toEqual([true, true]);
+    // Opening the dots' menu while this one is open leaves only the dots', and a right-click then leaves only this one.
+    const dots = page.getByRole("button", { name: "Flashcard actions" });
+    await dots.click();
+    await expect(open).toHaveCount(1);
+    await expect(open.getByRole("menuitem", { name: /^Edit/ })).toBeVisible();
+    await page.mouse.click(pointer.x, pointer.y, { button: "right" });
+    await expect(open).toHaveCount(1);
+    await expect(open.getByRole("menuitem", { name: /^Edit/ })).toBeVisible();
+    await open.getByRole("menuitem", { name: /^Suspend/ }).click();
+    await expect(page.locator(".px-cards-undo")).toContainText("Flashcard suspended.");
+    await undoLast.click();
+    await expect(front).toHaveText("Seconda legge di Newton?");
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
+    expect(count("SELECT COUNT(*) AS n FROM cards WHERE suspended = 1")).toBe(0);
+
     // D removes a card Pyxis wrote with Undo at hand.
     await page.keyboard.press("d");
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard removed.");

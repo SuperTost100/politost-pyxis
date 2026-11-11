@@ -30,6 +30,10 @@ What opens beside a screen, such as a source at its page, is a sheet along the r
 
 A popover belongs to the button that opened it: it sits 8px from it, lines up with its edge and grows out of it. Escape and a click outside close it, and focus goes back to the button.
 
+## Item menus
+
+Whatever has a three-dots menu opens the same menu on a right-click, at the pointer, and on the context-menu key and Shift+F10 under the focused element. Escape closes it and focus goes back to where it was. A menu holds actions on the item and nothing else. The behaviour is shared (`useItemMenu` and `MenuItemArea` in `components/ItemMenu.tsx`, the rules in `lib/itemMenu.ts`), so a new row wires it in one line and gives the dots and the right-click one `menu`. Text fields and anything marked `data-native-menu` keep the system's own menu.
+
 ## Empty states
 
 One line on what will appear here and the action that starts it, in the place where the content will be. No illustration, no joke, no second button.

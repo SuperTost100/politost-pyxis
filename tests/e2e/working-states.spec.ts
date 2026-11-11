@@ -201,3 +201,70 @@ test("the maps page shows the Pyxis mark at work while the maps are built", asyn
     removeTestFolder(userData);
   }
 });
+
+test("nothing inside the Attività button moves while the pointer is over it, pressed on it, focused on it or it is open", async () => {
+  test.setTimeout(90_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-jobs-hover-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    const now = Date.now();
+    const job = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,error,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
+    );
+    // One job running and one stopped for a problem, so the button shows both counts and the divider.
+    job.run("j-run", "source-import", JSON.stringify({ sourceId: "a" }), "running", 0.4, "sources.jobs.extract", null, now, now);
+    job.run("j-failed", "ocr-data-download", "{}", "failed", 0.5, "sources.jobs.ocrData", "ocr-data-offline", now, now);
+    db.close();
+    await page.reload();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const button = corner(page);
+    await expect(button.locator(".px-jobs-sep")).toBeVisible();
+
+    // The button and everything in it: both parts, the clock, the alert icon, both counts and the divider.
+    const boxes = () =>
+      button.evaluate((element) =>
+        [element, ...element.querySelectorAll(".px-jobs-part, .px-jobs-sep, svg, .meta")].map((child) => {
+          const rect = child.getBoundingClientRect();
+          return [rect.x, rect.y, rect.width, rect.height].map((n) => Math.round(n * 100) / 100);
+        }),
+      );
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((next) => window.pyxis.setAppearance(next), theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await page.mouse.move(640, 400);
+      await page.waitForTimeout(300);
+      const idle = await boxes();
+      expect(idle).toHaveLength(8);
+
+      await button.hover();
+      await expect(button).toHaveCSS("background-color", /^rgb\(/);
+      await page.waitForTimeout(300);
+      expect(await boxes(), `${theme}: hovered`).toEqual(idle);
+
+      await page.mouse.down();
+      await page.waitForTimeout(300);
+      expect(await boxes(), `${theme}: pressed`).toEqual(idle);
+      await page.mouse.up();
+      await expect(button).toHaveAttribute("aria-expanded", "true");
+      await page.waitForTimeout(300);
+      expect(await boxes(), `${theme}: open`).toEqual(idle);
+      await page.keyboard.press("Escape");
+      await expect(button).toHaveAttribute("aria-expanded", "false");
+
+      await page.mouse.move(640, 400);
+      await page.waitForTimeout(300);
+      await expect(button).toBeFocused();
+      await expect(button).toHaveCSS("outline-style", "solid");
+      expect(await boxes(), `${theme}: keyboard focus`).toEqual(idle);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

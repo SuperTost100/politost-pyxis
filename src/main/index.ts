@@ -31,7 +31,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { buildMenuTemplate, contextMenuItems } from "./menu";
+import { buildMenuTemplate, contextMenuAnchor, contextMenuItems } from "./menu";
 import {
   isMenuLanguage,
   type MenuCommand,
@@ -1104,10 +1104,12 @@ function registerIpc(): void {
   });
   // The window's context menus are the system's own: the page sends the labels, main shows them and says which was
   // picked. Labels are plain text; ids are echoed back and mean nothing to main.
-  ipcMain.handle(mainChannels.contextMenu, (event, raw: unknown) => {
+  ipcMain.handle(mainChannels.contextMenu, (event, raw: unknown, place?: unknown) => {
     requireMainSender(event, "menu-untrusted-sender");
     const items = contextMenuItems(raw);
     if (!items || !mainWindow) return null;
+    // Opened from the keyboard, the menu hangs from the focused item; opened by a click, it opens at the pointer.
+    const at = contextMenuAnchor(place);
     return new Promise<string | null>((resolve) => {
       let picked: string | null = null;
       Menu.buildFromTemplate(
@@ -1116,7 +1118,7 @@ function registerIpc(): void {
             ? { label: item.label, enabled: item.enabled !== false, click: () => (picked = item.id) }
             : { type: "separator" as const },
         ),
-      ).popup({ window: mainWindow!, callback: () => setImmediate(() => resolve(picked)) });
+      ).popup({ window: mainWindow!, ...(at ?? {}), callback: () => setImmediate(() => resolve(picked)) });
     });
   });
   // Only a job id names a file, and only inside the workspace's debug log folder (core/debug/log.ts).

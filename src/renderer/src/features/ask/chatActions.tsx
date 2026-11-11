@@ -75,15 +75,18 @@ export function useChatActions() {
     }
   }
 
-  /** Opens the chat's menu and acts on the pick, which it returns. */
-  async function openMenu(chat: ChatRef): Promise<string | null> {
-    const picked = await window.pyxis.contextMenu([
-      { id: "rename", label: t("ask.rename") },
-      { id: "markdown", label: t("ask.exportMarkdown") },
-      { id: "pdf", label: t("ask.exportPdf") },
-      null,
-      { id: "delete", label: t("ask.delete") },
-    ]);
+  /** Opens the chat's menu, at the pointer or at `at` when a key asked, and acts on the pick, which it returns. */
+  async function openMenu(chat: ChatRef, at?: { x: number; y: number }): Promise<string | null> {
+    const picked = await window.pyxis.contextMenu(
+      [
+        { id: "rename", label: t("ask.rename") },
+        { id: "markdown", label: t("ask.exportMarkdown") },
+        { id: "pdf", label: t("ask.exportPdf") },
+        null,
+        { id: "delete", label: t("ask.delete") },
+      ],
+      at,
+    );
     if (picked === "rename") setRenaming({ id: chat.id, title: chat.title ?? "" });
     if (picked === "markdown" || picked === "pdf") void exportChat(chat.id, picked);
     // Deleting asks first, in Pyxis's own dialog: a system menu can't mark the item red.
