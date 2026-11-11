@@ -1,6 +1,5 @@
-/* "Nuova flashcard" (pyxis-mockups app/round-dev8.html, "flashcard-nuova-a-tu", "-pyxis", "flashcard-pyxis-lavoro" and
-   "flashcard-pyxis-controlla"): a card near the top of the window, its title, the switch, the fields in a body that
-   scrolls on its own, and the buttons at the bottom right, always in reach. */
+/* "Nuova flashcard": a card near the top of the window, its title, the switch, the fields in a body that scrolls on
+   its own, and the buttons at the bottom right, always in reach. */
 .px-nc {
   width: min(520px, calc(100vw - 32px));
   max-width: none;

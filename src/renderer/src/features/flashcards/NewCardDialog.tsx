@@ -53,7 +53,7 @@ async function refreshCards(client: QueryClient, planId?: string | null) {
 }
 
 /**
- * "Nuova flashcard" (pyxis-mockups app/round-dev8.html, variant A): one dialog with a switch between writing a card by
+ * "Nuova flashcard": one dialog with a switch between writing a card by
  * hand and having Pyxis write some from the subject's material. It grows out of the button that opened it and shrinks
  * back into it; Escape, the backdrop and Annulla ask first when something would be lost. `onSaved` tells the page which
  * subject got how many cards, so it can show them.

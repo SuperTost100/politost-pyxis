@@ -140,7 +140,7 @@
   color: var(--ink-subtle);
 }
 
-/* "Nuova flashcard" beside the review, or alone when nothing is due (round-dev8.html, "flashcard-nuova-a"). */
+/* "Nuova flashcard" beside the review, or alone when nothing is due. */
 .px-fc-head > .px-fc-actions {
   display: flex;
   flex: none;
@@ -154,7 +154,7 @@
 .px-fc-new {
   display: inline-flex;
 }
-/* The empty page: one line on what will appear and the button that starts it (round-dev8.html, "flashcard-vuota"). */
+/* The empty page: one line on what will appear and the button that starts it. */
 .px-fc > .empty {
   padding-top: 56px;
 }
