@@ -148,7 +148,7 @@ export function readQuiz(
     .get(attemptId) as { payload_json: string } | undefined;
   const savedBody = saved
     ? (JSON.parse(saved.payload_json) as {
-        draft: { picks: Record<string, string>; index: number; skipped?: string[] };
+        draft: { picks: Record<string, string>; index: number; skipped?: string[]; marked?: string[] };
         deadlineAt?: number;
       })
     : undefined;
@@ -188,6 +188,8 @@ export function saveQuizDraft(
   now = Date.now(),
   /** Questions the student skipped, in the order they were skipped; the page asks them again after the others. */
   skipped: string[] = [],
+  /** Questions marked "Segna per dopo". */
+  marked: string[] = [],
 ) {
   const row = db
     .prepare(
@@ -214,7 +216,8 @@ export function saveQuizDraft(
   if (
     Object.keys(picks).length > 100 ||
     Object.keys(picks).some((id) => !ids.has(id)) ||
-    skipped.some((id) => !ids.has(id))
+    skipped.some((id) => !ids.has(id)) ||
+    marked.some((id) => !ids.has(id))
   )
     throw new Error("question-missing");
   // A timed quiz takes answers only once its clock can run, so none are given while the rest is still being written.
@@ -240,6 +243,7 @@ export function saveQuizDraft(
       picks,
       index: Math.min(index, Math.max(0, body.questions.length - 1)),
       ...(skipped.length ? { skipped } : {}),
+      ...(marked.length ? { marked: [...new Set(marked)] } : {}),
     },
     ...(deadlineAt != null ? { deadlineAt } : {}),
   });

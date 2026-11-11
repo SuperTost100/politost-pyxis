@@ -138,3 +138,8 @@ html[data-platform="darwin"] .px-studybar {
     transition: none;
   }
 }
+
+/* A wide study screen lays out its own columns right under the bar, as the quiz does. */
+.focus-main.is-wide {
+  padding: 6px 0 28px;
+}

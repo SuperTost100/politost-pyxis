@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerSource, questionPoints, quizBack, quizBackLabel, retryPick, skipOrder, verdict, verdictLine } from "./quizText";
+import { answerSource, questionPoints, quizBack, quizBackLabel, skipOrder, verdict, verdictLine } from "./quizText";
 
 describe("where closing a quiz goes", () => {
   it("goes back to the Review page from a Review's questions, to the notebook from a redo, else to the exam", () => {
@@ -28,20 +28,6 @@ describe("skipOrder", () => {
   });
   it("ignores skipped ids that are not (yet) in the quiz", () => {
     expect(ids(skipOrder(questions.slice(0, 2), ["z", "a"]))).toEqual(["b", "a"]);
-  });
-});
-
-describe("retryPick", () => {
-  it("resends the failed pick when the answer was not touched", () => {
-    expect(retryPick("", "", "")).toBe("");
-    expect(retryPick("42", "42", "42")).toBe("42");
-  });
-  it("keeps an \"I don't know\" that failed even when an earlier draft is still in the field", () => {
-    expect(retryPick("", "draft", "draft")).toBe("");
-  });
-  it("sends the edited answer after a failed check", () => {
-    expect(retryPick("", "", "new answer")).toBe("new answer");
-    expect(retryPick("old", "old", "new")).toBe("new");
   });
 });
 

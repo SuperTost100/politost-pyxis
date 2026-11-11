@@ -1,6 +1,5 @@
-/* Quiz: one calm column. Intro (ActivityIntro), one question at a time, then the results. */
-.px-quiz-wait,
-.px-quiz-question {
+/* Quiz: the intro (ActivityIntro), the answer sheet (QuizColumn.css), then the results. */
+.px-quiz-wait {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -55,17 +54,22 @@
   margin-bottom: var(--space-4);
 }
 
-/* Question */
-.px-quiz-question {
-  gap: var(--space-5);
+/* The time left, in the study bar; its last minute turns to the star colour. */
+.px-quiz-timer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 .px-quiz-timer output {
-  color: var(--star-text);
-  font: 500 20px/1.2 var(--font-sans);
+  font: 600 calc(16px * var(--text-scale, 1)) / 1.2 var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
+.px-quiz-timer output.is-low {
+  color: var(--star-text);
+}
 .px-quiz-timer p {
-  margin: var(--space-2) 0 0;
+  margin: 0;
+  color: var(--ink-muted);
 }
 .px-quiz-explain {
   display: flex;
@@ -77,31 +81,6 @@
 }
 .px-quiz-explain .label {
   margin: 0;
-}
-.px-quiz-kicker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 16px;
-  color: var(--ink-subtle);
-}
-.px-quiz-stem {
-  margin-top: calc(-1 * var(--space-3));
-  font: 500 calc(20px * var(--text-scale, 1)) / 1.55 var(--font-sans);
-  letter-spacing: -0.005em;
-}
-.px-quiz-stem .px-markdown.is-reading {
-  font: inherit;
-  max-width: none;
-}
-.px-quiz-stem .px-markdown > :last-child {
-  margin-bottom: 0;
-}
-/* The stem takes focus only so screen readers start there; it never draws a box. */
-.px-quiz-stem:focus,
-.px-quiz-stem:focus-visible {
-  outline: none;
 }
 .px-quiz-soft-time {
   margin-top: calc(-1 * var(--space-2));
@@ -121,11 +100,6 @@
 .px-quiz-soft-time p {
   margin: var(--space-2) 0 0;
   color: var(--ink-subtle);
-}
-.px-quiz-options-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 .px-quiz-matching,
 .px-quiz-blanks {
@@ -170,71 +144,6 @@
   gap: var(--space-2);
 }
 
-.px-quiz-checking {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--ink-muted);
-}
-
-/* Correction after Check */
-.px-quiz-feedback {
-  --tone: var(--ink);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-}
-.px-quiz-feedback.is-correct {
-  --tone: var(--mastery-text);
-}
-.px-quiz-feedback.is-partial {
-  --tone: var(--warning);
-}
-.px-quiz-feedback.is-wrong {
-  --tone: var(--danger);
-}
-.px-quiz-verdict {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--tone);
-}
-.px-quiz-feedback .px-markdown > :last-child {
-  margin-bottom: 0;
-}
-.px-quiz-graded {
-  margin: 0;
-  color: var(--ink-subtle);
-}
-.px-quiz-feedback-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: calc(-1 * var(--space-2));
-}
-.px-quiz-wrong {
-  color: var(--ink-muted);
-}
-.px-quiz-flag-note {
-  padding-left: var(--space-2);
-  color: var(--ink-muted);
-}
-.px-quiz-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-3);
-}
-.px-quiz-nav .ant-btn {
-  min-width: 120px;
-}
 .px-quiz-toast {
   display: inline-flex;
   align-items: center;
@@ -287,38 +196,20 @@
   margin-left: auto;
 }
 
-/* A locked answer stays readable while it is checked and after. */
-.px-quiz-open textarea:disabled,
-.px-quiz-blanks input:disabled {
-  color: var(--ink);
-}
-
-/* "I don't know" and Skip: quiet actions under the answer, so Check stays the one filled button */
-.px-quiz-pass {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: calc(-1 * var(--space-2)) 0 0 calc(-1 * var(--space-2));
-}
-.px-quiz-pass .ant-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--ink-muted);
-}
-.px-quiz-dont-know {
-  margin: 0;
-  color: var(--ink-muted);
-}
-.px-quiz-keycap {
-  display: inline-grid;
-  place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 var(--space-1);
+/* A fill-in blank: a bordered field, the one kind of box a question keeps. A locked answer stays readable. */
+.px-qz-field {
+  width: 100%;
+  height: 42px;
   box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  color: var(--ink-subtle);
-  font: 400 11px/1 var(--font-mono);
+  padding: 0 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 calc(16px * var(--text-scale, 1)) / 1.4 var(--font-sans);
+}
+.px-qz-field:disabled,
+.px-quiz-open textarea:disabled {
+  color: var(--ink);
+  opacity: 0.8;
 }

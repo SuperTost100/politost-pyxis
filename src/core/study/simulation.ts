@@ -35,6 +35,10 @@ import {
 type Stored = {
   minutes: number;
   picks?: Record<string, string>;
+  /** Questions marked "Segna per dopo" while the exam runs. */
+  marked?: string[];
+  /** The question the student had open at the last draft save, so the exam comes back to it. */
+  current?: string;
   gradingStartedAt?: number;
   gradingJobId?: string;
   result?: { score: number; results: SimulationGrade[] };
@@ -860,6 +864,8 @@ export function readSimulation(
       ...(q.topicId ? { topicId: q.topicId } : {}),
     })),
     picks: row.body.picks ?? {},
+    marked: row.body.marked ?? [],
+    ...(row.body.current ? { current: row.body.current } : {}),
     topics: topicScores(db, row.body, attemptId, row.submitted_at != null),
     grading,
     score: row.body.result?.score,
@@ -886,6 +892,10 @@ export function saveSimulationDraft(
   attemptId: string,
   picks: Record<string, string>,
   now = Date.now(),
+  /** Questions marked "Segna per dopo"; left as they are when not sent. */
+  marked?: string[],
+  /** The question open now; left as it was when not sent or not in this exam. */
+  current?: string,
 ) {
   const row = simulationRow(db, attemptId);
   if (
@@ -896,6 +906,13 @@ export function saveSimulationDraft(
     row.body.picks = Object.fromEntries(
       row.body.questions.map((q) => [q.id, picks[q.id] ?? ""]),
     );
+    if (marked) {
+      const ids = new Set(row.body.questions.map((q) => q.id));
+      const kept = [...new Set(marked)].filter((id) => ids.has(id));
+      if (kept.length) row.body.marked = kept;
+      else delete row.body.marked;
+    }
+    if (current && row.body.questions.some((q) => q.id === current)) row.body.current = current;
     db.prepare("UPDATE items SET body_json=? WHERE id=?").run(
       JSON.stringify(row.body),
       row.item_id,

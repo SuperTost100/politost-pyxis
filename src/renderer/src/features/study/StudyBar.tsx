@@ -64,29 +64,38 @@ export function StudyBar({
   );
 }
 
-/** A study screen that is not a reading: the bar over one centred column, with an optional row of actions at its end. */
+/**
+ * A study screen that is not a reading: the bar over one centred column, with an optional row of actions at its end.
+ * `wide` gives the content the whole width under the bar, for a screen that lays out its own columns, such as the quiz.
+ */
 export function StudyLayout({
   children,
   primary,
   secondary,
+  wide,
   ...bar
 }: Parameters<typeof StudyBar>[0] & {
   children: ReactNode;
   primary?: ReactNode;
   secondary?: ReactNode;
+  wide?: boolean;
 }) {
   return (
     <div className="focus">
       <StudyBar {...bar} />
-      <main className="focus-main">
-        <div className="column">
-          {children}
-          <div className="focus-actions-bar">
-            <span>{secondary}</span>
-            <span>{primary}</span>
+      {wide ? (
+        <main className="focus-main is-wide">{children}</main>
+      ) : (
+        <main className="focus-main">
+          <div className="column">
+            {children}
+            <div className="focus-actions-bar">
+              <span>{secondary}</span>
+              <span>{primary}</span>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      )}
     </div>
   );
 }

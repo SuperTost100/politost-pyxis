@@ -4,10 +4,9 @@
   gap: var(--space-3);
 }
 .px-sim-timer {
-  font-size: 16px;
+  font: 600 calc(16px * var(--text-scale, 1)) / 1.2 var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
-.px-sim-run,
 .px-sim-results {
   display: flex;
   flex-direction: column;
@@ -17,36 +16,6 @@
   align-self: flex-start;
   white-space: nowrap;
 }
-.px-sim-questions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-.px-sim-question {
-  min-width: 40px;
-  height: 36px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: var(--space-1);
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-}
-.px-sim-question.is-answered {
-  background: var(--surface-raised);
-}
-.px-sim-question[aria-current] {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-.px-sim-run .ant-input {
-  border-radius: var(--radius-md);
-  font: 400 17px/28px var(--font-sans);
-}
-.px-sim-run h2,
 .px-sim-results h2 {
   margin: 0;
 }
