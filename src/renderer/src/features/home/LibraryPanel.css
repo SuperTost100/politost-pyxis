@@ -234,9 +234,6 @@
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
-.px-library-unsorted > ul {
-  margin-top: var(--space-2);
-}
 /* The picker sits where a row shows its state, above the title button that covers the row. */
 .px-library-picker {
   position: relative;
@@ -307,4 +304,73 @@ select.px-ctl-field.px-library-picker {
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* The Library page is wider than the usual column, so short shelves sit side by side (Shell.tsx sets the class). */
+.px-shell-container.px-shell-library {
+  --shell-max: calc(1140px + 48px);
+}
+/* The page head: the title with the folders Pyxis reads under it, and "Aggiungi file" on the right. */
+.px-library-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+}
+.px-library-head-text {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.px-library-head h1 {
+  margin: 0;
+}
+.px-library-add-button {
+  flex: none;
+}
+.px-library-folders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--space-4);
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.4;
+}
+.px-library-folders-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.px-library-folders-text > svg {
+  flex: none;
+  color: var(--ink-subtle);
+}
+.px-library-folders b {
+  color: var(--ink);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.px-library-link-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--primary-text);
+  font: 600 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  cursor: pointer;
+}
+.px-library-link-folder:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.px-library-link-folder:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }

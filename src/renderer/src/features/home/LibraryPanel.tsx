@@ -5,20 +5,21 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select, Skeleton } from "antd";
-import { Check, FileText, CheckCircle2 } from "lucide-react";
+import { Button, Input, Modal, Progress, Select } from "antd";
+import { FileText, CheckCircle2, Folder, FolderPlus } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
   ToolbarMenu,
   ToolbarSearch,
 } from "../../components/ListToolbar";
-import { SourceRow, sizeText } from "../../components/SourceRow";
+import { sizeText } from "../../components/SourceRow";
 import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
-import { memo, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Trans } from "react-i18next";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -33,10 +34,8 @@ import {
   useBookUpdate,
   useFreeBooks,
 } from "../../components/FreeBooks";
-import { jobErrorKey } from "../jobs/jobErrors";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
 import type { RequestOutput } from "@shared/ipc";
-import { isPdfPasswordError } from "@shared/source-errors";
 import {
   MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
@@ -45,7 +44,9 @@ import {
   SOURCE_EXTENSIONS,
 } from "@shared/source-types";
 import { useSources, useSubjects } from "../../lib/queries";
-import { isUnsorted, NewSubjectDialog, SortNote, SubjectPicker, UnsortedGroup, useMoveSource } from "./LibrarySubjects";
+import { LibraryShelf, type LibrarySource, type ShelfHandlers } from "./LibraryShelf";
+import { Button as PxButton } from "../../components/Button";
+import { SkeletonRows } from "../../components/Skeleton";
 import { Logo } from "../../components/Logo";
 
 const messageKeyOf = (err: unknown): string =>
@@ -135,8 +136,10 @@ export function LibraryPanel({
     title: string;
   } | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
-  // The rows' actions, read when a row's button is used, so the rows can skip renders the list does not need.
-  const rowHandlers = useRef<RowHandlers | null>(null);
+  // What a file's cover, row and menu do, read when one is used, so the covers can skip renders the shelf does not need.
+  const rowHandlers = useRef<ShelfHandlers | null>(null);
+  const addButton = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [searchPicked, setSearchPicked] = useState(false);
   const [pasteTitle, setPasteTitle] = useState("");
@@ -154,10 +157,13 @@ export function LibraryPanel({
     name: string;
   } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
-  // The source "Nuova materia…" names a subject for, from its row menu or from "Da sistemare".
-  const [naming, setNaming] = useState<LibrarySource | null>(null);
   const subjects = useSubjects();
-  const move = useMoveSource();
+  // The linked folders the Library's first line names, on the Library page only.
+  const linkedFolders = useQuery({
+    queryKey: ["linked-folders"],
+    enabled: sortsSubjects,
+    queryFn: () => invoke("sources.linkedFolders", {}),
+  });
   /**
    * Starts choosing the subjects of what an add brought in, on the Library page only. The files are in before this
    * runs, so a refused request is reported and nothing more: they stay `waiting` and "Da sistemare" tells the student
@@ -590,29 +596,6 @@ export function LibraryPanel({
       (filterType === "all" || source.kind === filterType) &&
       titleMatches(source.title),
   );
-  // Files waiting for the student's choice of subject sit in "Da sistemare" above the list, not in it.
-  const unsorted = sortsSubjects ? matching.filter(isUnsorted) : [];
-  const shown = sortsSubjects ? matching.filter((source) => !isUnsorted(source)) : matching;
-  // A file that just got its subject, from Pyxis or from "Da sistemare", lands in the list with a tint that fades.
-  const lastSort = useRef(new Map<string, string | null>());
-  const [arrived, setArrived] = useState<ReadonlySet<string>>(() => new Set());
-  useEffect(() => {
-    if (!sortsSubjects || !list.data) return;
-    const landed = list.data.filter((source) => {
-      const before = lastSort.current.get(source.id);
-      return before != null && before !== "created" && !isUnsorted(source) && source.sort !== "working";
-    });
-    lastSort.current = new Map(list.data.map((source) => [source.id, source.sort]));
-    if (!landed.length) return;
-    setArrived(new Set(landed.map((source) => source.id)));
-    const timer = window.setTimeout(() => setArrived(new Set()), 1_400);
-    return () => window.clearTimeout(timer);
-  }, [list.data, sortsSubjects]);
-  // How many files share each subject Pyxis just made, so its note can say "these 3 files".
-  const madeFor = new Map<string, number>();
-  for (const source of sources)
-    if (source.sort === "created" && source.subjectId)
-      madeFor.set(source.subjectId, (madeFor.get(source.subjectId) ?? 0) + 1);
   // A hit whose source was removed since the search would open nothing.
   const hits = (passages.data ?? []).filter(
     (hit) =>
@@ -1042,22 +1025,18 @@ export function LibraryPanel({
       else if (key === "reextract") void reextract(source).catch(fail);
       else if (key === "refresh") void refresh(source).catch(fail);
       else if (key === "remove") void remove(source).catch(fail);
-      else if (key === "move-new") setNaming(source);
-      else if (key.startsWith("move:")) void move(source.id, { subjectId: key.slice(5) }).catch(fail);
+      else if (key === "update-book") void updateBook(source);
+      else if (key === "unlock" && source.errorJobId) setUnlocking({ jobId: source.errorJobId, title: source.title });
       else {
         setRenameOnOpen(key === "rename");
         setDetailsOpen(true);
       }
     },
-    unlock: setUnlocking,
-    updateBook(source) {
-      void updateBook(source);
-    },
   };
+  const filtering = filterType !== "all" || (scope === "titles" && searchText.trim().length > 0);
   return (
     <div className="px-library">
       {addModal}
-      <NewSubjectDialog source={naming} onClose={() => setNaming(null)} />
       <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
       <PdfPasswordDialog
         target={unlocking}
@@ -1066,6 +1045,20 @@ export function LibraryPanel({
           void client.invalidateQueries({ queryKey: ["sources"] });
         }}
       />
+      <div className="px-library-head">
+        <div className="px-library-head-text">
+          <h1 className="title-1">{t("nav.library")}</h1>
+          <FolderLine
+            folders={linkedFolders.data}
+            onLink={() => navigate("/onboarding?again=1&step=material&from=library")}
+          />
+        </div>
+        <div ref={addButton} className="px-library-add-button">
+          <PxButton icon="file-plus" onClick={() => setAddOpen(true)}>
+            {t("sources.shelf.addFiles")}
+          </PxButton>
+        </div>
+      </div>
       {loadFailed ? (
         <LoadError onRetry={() => void list.refetch()}>
           {t("sources.loadFailed")}
@@ -1073,19 +1066,14 @@ export function LibraryPanel({
       ) : empty ? (
         <EmptyState
           title={t("exams.sourcesEmptyTitle")}
-          body={t("exams.sourcesEmptyBody")}
+          body={t("sources.shelf.emptyBody")}
           action={
-            <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
-              {t("exams.addSources")}
-            </Button>
-          }
-          secondary={
-            <Button shape="round" onClick={() => setBooksOpen(true)}>
+            <PxButton variant="secondary" onClick={() => setBooksOpen(true)}>
               {t("books.open")}
-            </Button>
+            </PxButton>
           }
         />
-      ) : (
+      ) : list.isPending ? null : (
         <ListToolbar
           search={
             <ToolbarSearch
@@ -1135,13 +1123,11 @@ export function LibraryPanel({
               onSelect={() => setBooksOpen(true)}
             />
           }
-          primary={
-            <Button type="primary" shape="round" onClick={() => setAddOpen(true)}>
-              {t("exams.addSources")}
-            </Button>
-          }
         />
       )}
+      {warning ? <Notice tone="warning">{warning}</Notice> : null}
+      {errorView}
+      {info ? <Notice tone="info">{info}</Notice> : null}
       {showHits ? (
         <section aria-label={t("sources.searchPassages")}>
           <p className="small ink-muted px-library-count" role="status">
@@ -1170,56 +1156,24 @@ export function LibraryPanel({
             </ul>
           ) : null}
         </section>
-      ) : null}
-      {!showHits && unsorted.length ? (
-        <UnsortedGroup sources={unsorted}>
-          {unsorted.map((source) => (
-            <LibraryRow
-              key={source.id}
-              source={source}
-              selected={source.id === sourceId}
-              newVersion={newVersions.get(source.id)}
-              bookBusy={bookUpdate.busy}
-              refreshBusy={refreshing !== null}
-              handlers={rowHandlers}
-              subjects={subjects.data}
-              shared={0}
-              arrived={false}
-              aside={
-                <SubjectPicker
-                  source={source}
-                  subjects={subjects.data ?? []}
-                  onNewSubject={setNaming}
-                  onError={(key) => setError(key)}
-                />
-              }
-            />
-          ))}
-        </UnsortedGroup>
-      ) : null}
-      {showHits ? null : loadFailed ? null : list.isPending ? (
-        <div className="px-list-surface px-library-loading" aria-hidden>
-          <Skeleton active title={false} paragraph={{ rows: 2 }} />
-        </div>
-      ) : empty || (shown.length === 0 && unsorted.length) ? null : shown.length === 0 ? (
-        <p className="body">{t("sources.noMatch")}</p>
+      ) : loadFailed || empty ? null : list.isPending || subjects.isPending ? (
+        <SkeletonRows label={t("components.loading")} />
+      ) : matching.length === 0 && filtering ? (
+        <p className="body" role="status">{t("sources.noMatch")}</p>
       ) : (
-        <ul className="px-list-surface" aria-label={t("exams.sources")}>
-          {shown.map((source) => (
-            <LibraryRow
-              key={source.id}
-              source={source}
-              selected={source.id === sourceId}
-              newVersion={newVersions.get(source.id)}
-              bookBusy={bookUpdate.busy}
-              refreshBusy={refreshing !== null}
-              handlers={rowHandlers}
-              subjects={sortsSubjects ? subjects.data : undefined}
-              shared={source.subjectId ? (madeFor.get(source.subjectId) ?? 0) : 0}
-              arrived={arrived.has(source.id)}
-            />
-          ))}
-        </ul>
+        <LibraryShelf
+          sources={matching}
+          all={sources}
+          subjects={subjects.data ?? []}
+          filtering={filtering}
+          selectedId={sourceId}
+          newVersions={newVersions}
+          refreshBusy={refreshing !== null}
+          bookBusy={bookUpdate.busy}
+          handlers={rowHandlers}
+          addButton={addButton}
+          onError={(key) => setError(key)}
+        />
       )}
       {/* Only the Content scope uses the model, so the offer waits there, under the results. */}
       {scope === "content" && !empty && !embedding.data?.ready ? (
@@ -1237,9 +1191,6 @@ export function LibraryPanel({
           </Button>
         </div>
       ) : null}
-      {warning ? <Notice tone="warning">{warning}</Notice> : null}
-      {errorView}
-      {info ? <Notice tone="info">{info}</Notice> : null}
       {sources.filter(scanPending).map((source) => (
         <ScanNotice
           key={source.id}
@@ -1264,168 +1215,37 @@ export function LibraryPanel({
   );
 }
 
-type LibrarySource = RequestOutput<"sources.list">[number];
-type RowHandlers = {
-  open: (source: LibrarySource) => void;
-  act: (source: LibrarySource, key: string) => void;
-  unlock: (target: { jobId: string; title: string }) => void;
-  updateBook: (source: LibrarySource) => void;
-};
+/** The folder a linked folder is, as the student knows it: its parent and its own name ("Documenti › Università"). */
+const folderLabel = (path: string) => path.split(/[\\/]/).filter(Boolean).slice(-2).join(" › ");
 
 /**
- * One Library row. It renders again only when its source, its selection or a busy state it shows changes, so typing
- * in the search or opening a source does not redraw the whole list.
+ * The Library's first line: which folders Pyxis reads, and that it only reads them, with the way to link another. With
+ * no linked folder it is the way to link one.
  */
-const LibraryRow = memo(function LibraryRow({
-  source,
-  selected,
-  newVersion,
-  bookBusy,
-  refreshBusy,
-  handlers,
-  subjects,
-  shared,
-  arrived,
-  aside,
+function FolderLine({
+  folders,
+  onLink,
 }: {
-  source: LibrarySource;
-  /** In place of the state, such as the subject picker in "Da sistemare". */
-  aside?: ReactNode;
-  /** The subjects "Sposta in" offers, on the Library page. */
-  subjects?: RequestOutput<"subjects.list">;
-  /** How many files share the subject Pyxis made for this one. */
-  shared: number;
-  /** The file just got its subject. */
-  arrived: boolean;
-  selected: boolean;
-  /** The free book's new version, when one is out. */
-  newVersion: string | undefined;
-  /** The source whose book update is starting, if any. */
-  bookBusy: string | null;
-  /** A link source is being fetched again, so no other can start. */
-  refreshBusy: boolean;
-  handlers: RefObject<RowHandlers | null>;
+  folders: RequestOutput<"sources.linkedFolders"> | undefined;
+  onLink: () => void;
 }) {
-  const { t } = useTranslation();
-  const notes = (
-    <>
-      <SortNote source={source} shared={shared} />
-      {source.linked?.missing ? (
-        <p className="small px-library-flag">
-          {t("sources.linked.missing", { folder: source.linked.folder })}
-        </p>
-      ) : null}
-      {source.syllabusOff ? (
-        <p className="small px-library-flag">
-          {t("sources.offSyllabusListed", { count: source.syllabusOff })}
-        </p>
-      ) : null}
-      {source.error ? (
-        <p className="small px-library-flag">
-          {t(jobErrorKey(source.error))}
-        </p>
-      ) : null}
-      {source.errorJobId && isPdfPasswordError(source.error) ? (
-        <p className="small px-library-unlock">
-          <Button
-            shape="round"
-            size="small"
-            aria-label={t("sources.pdfPassword.enterNamed", {
-              title: source.title,
-            })}
-            onClick={() =>
-              handlers.current?.unlock({
-                jobId: source.errorJobId!,
-                title: source.title,
-              })
-            }
-          >
-            {t("sources.pdfPassword.enter")}
-          </Button>
-        </p>
-      ) : null}
-      {newVersion !== undefined ? (
-        <p className="small px-library-update">
-          <span>
-            {t("books.newVersionNamed", {
-              version: newVersion,
-            })}
-          </span>
-          <Button
-            shape="round"
-            size="small"
-            loading={bookBusy === source.id}
-            disabled={bookBusy !== null && bookBusy !== source.id}
-            aria-label={t(
-              bookBusy === source.id
-                ? "books.updatingNamed"
-                : "books.updateNamed",
-              { title: source.title },
-            )}
-            onClick={() => handlers.current?.updateBook(source)}
-          >
-            {t(bookBusy === source.id ? "books.adding" : "books.update")}
-          </Button>
-        </p>
-      ) : null}
-    </>
-  );
-  const actions = {
-    items: [
-      { key: "details", label: t("sources.details") },
-      { key: "rename", label: t("sources.rename") },
-      // A file read in place from a linked folder takes its folder's subject.
-      ...(subjects
-        ? [
-            {
-              key: "move",
-              label: t("sources.sort.moveTo"),
-              disabled: source.linked !== null,
-              children: [
-                ...subjects.map((subject) => ({
-                  key: `move:${subject.id}`,
-                  label: subject.name,
-                  icon: subject.id === source.subjectId ? <Check size={14} aria-hidden /> : undefined,
-                  disabled: subject.id === source.subjectId,
-                })),
-                ...(subjects.length ? [{ type: "divider" as const }] : []),
-                { key: "move-new", label: t("sources.sort.newSubject") },
-              ],
-            },
-          ]
-        : []),
-      // A file read in place from a linked folder changes there, and Pyxis reads it again by itself.
-      { key: "replace", label: t("sources.replace"), disabled: source.linked !== null },
-      {
-        key: "reextract",
-        label: t("sources.reextract"),
-        // A smartbook is read from its package and has no stored file to read again.
-        disabled: source.kind === "smartbook" || !source.blobSha,
-      },
-      // Only a source saved from a link has a page to fetch again.
-      ...(source.originUrl
-        ? [
-            {
-              key: "refresh",
-              label: t("sources.refresh"),
-              disabled: refreshBusy,
-            },
-          ]
-        : []),
-      { type: "divider" as const },
-      { key: "remove", label: t("sources.remove"), danger: true },
-    ],
-    onSelect: (key: string) => handlers.current?.act(source, key),
-  };
+  const { t, i18n } = useTranslation();
+  if (!folders) return <p className="px-library-folders" aria-hidden>{"\u00a0"}</p>;
+  const names = new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(folders.map((folder) => folderLabel(folder.path)));
   return (
-    <SourceRow
-      source={source}
-      selected={selected}
-      className={arrived ? "is-arrived" : undefined}
-      aside={aside}
-      onOpen={() => handlers.current?.open(source)}
-      notes={notes}
-      actions={actions}
-    />
+    <p className="px-library-folders">
+      {folders.length ? (
+        <span className="px-library-folders-text">
+          <Folder size={16} strokeWidth={1.75} aria-hidden />
+          <span>
+            <Trans i18nKey="sources.shelf.reads" values={{ folders: names }} components={{ b: <b /> }} />
+          </span>
+        </span>
+      ) : null}
+      <button type="button" className="px-library-link-folder" onClick={onLink}>
+        <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
+        {t(folders.length ? "sources.shelf.linkAnother" : "sources.shelf.linkFolder")}
+      </button>
+    </p>
   );
-});
+}

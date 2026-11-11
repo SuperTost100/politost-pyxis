@@ -112,6 +112,10 @@ const routes = [
   ["library-sorting", "/exams/library"],
   ["library-unsorted", "/exams/library"],
   ["library-move-menu", "/exams/library"],
+  // The shelf by subject: a subject's menu by its dots, and an empty subject's menu by a right-click on its name, with
+  // Elimina only there.
+  ["library-subject-menu", "/exams/library"],
+  ["library-empty-subject", "/exams/library"],
   ["library-details", "/exams/library"],
   // The source details panel on a PDF whose scanned pages OCR read, and on a scan being read now.
   ["library-panel-pdf", "/exams/library"],
@@ -880,7 +884,7 @@ async function openAdvancedEngines(page: Page) {
 
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
-    .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
+    .getByRole("button", { name: both("Aggiungi file", "Add files") })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -1265,6 +1269,33 @@ function prepareLibrarySubjects(name: string) {
   });
 }
 
+/**
+ * The Library's shelves: the audit's own sources in Fisica, three files of Analisi 1 (a free book, slides and a past
+ * exam paper) and an empty Probabilità e statistica, for the Library states except the empty one. Every other state
+ * starts without them, and the audit's sources lose the subject again.
+ */
+function prepareLibraryShelf(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM plan_sources WHERE source_id LIKE 'audit-shelf-%';
+      DELETE FROM sources WHERE id LIKE 'audit-shelf-%';
+      DELETE FROM subjects WHERE id LIKE 'audit-shelf-%';
+      UPDATE sources SET subject_id = NULL WHERE id IN ('audit-source', 'audit-photo');`);
+    if (!name.startsWith("library") || name === "library-empty") return;
+    seedSubjects(db, [
+      { id: "audit-shelf-analysis", name: "Analisi 1", position: 6 },
+      { id: "audit-shelf-empty", name: "Probabilità e statistica", position: 7 },
+    ]);
+    db.exec(`UPDATE sources SET subject_id = 'audit-subject' WHERE id IN ('audit-source', 'audit-photo');`);
+    const file = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,subject_id,created_at,updated_at) VALUES(?,?,?,'ready',1,'audit-shelf-analysis',1,1)",
+    );
+    file.run("audit-shelf-book", "smartbook", "Analisi matematica 1");
+    file.run("audit-shelf-slides", "pptx", "Slide del corso");
+    file.run("audit-shelf-paper", "pdf", "Temi d'esame 2022-2025");
+    db.prepare("INSERT INTO plan_sources(plan_id,source_id,role) VALUES('audit-plan','audit-shelf-paper','past_paper')").run();
+  });
+}
+
 /** The empty Maps section: the maps move to a side table and come back for every other state. */
 function prepareMapsEmpty(name: string) {
   withDb((db) => {
@@ -1443,6 +1474,7 @@ function prepareState(name: string) {
   preparePanelSources(name);
   prepareLibraryEmpty(name);
   prepareLibrarySubjects(name);
+  prepareLibraryShelf(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
@@ -3125,6 +3157,17 @@ async function openState(page: Page, name: string) {
         .click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
+    case "library-subject-menu":
+      await page.getByRole("button", { name: both("Azioni sulla materia Analisi 1", "Actions for the subject Analisi 1") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Nuova mappa di questa materia", "New map of this subject") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toHaveCount(0);
+      break;
+    case "library-empty-subject":
+      await page
+        .getByRole("heading", { name: "Probabilità e statistica", exact: true })
+        .click({ button: "right" });
+      await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toBeVisible();
+      break;
     case "library-vision":
       await page
         .getByRole("button", { name: "Photo notes", exact: true })
@@ -3830,7 +3873,7 @@ test("M14 every application route in both languages, themes and supported widths
               if (name === "library-import") {
                 await page
                   .getByRole("button", {
-                    name: /Aggiungi fonti|Add sources/,
+                    name: /Aggiungi file|Add files/,
                     exact: true,
                   })
                   .click();
@@ -3870,6 +3913,8 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  name === "library-subject-menu" ||
+                  name === "library-empty-subject" ||
                   name === "exams-import-menu" ||
                   name === "map-export") &&
                 !(await page.getByRole("menuitem").first().isVisible())

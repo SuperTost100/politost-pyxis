@@ -39,11 +39,12 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     `);
     db.close();
 
-    // A Library row: the dots open the menu under the button, a right-click opens the same items at the pointer.
+    // A Library file (here in "Da sistemare", since it has no subject): the dots open the menu under the button, a
+    // right-click opens the same items at the pointer.
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    const row = page.locator(".px-source-row", { hasText: "Appunti di fisica" });
+    const row = page.locator(".px-unsorted-row", { hasText: "Appunti di fisica" });
     await expect(row).toBeVisible();
     const dots = row.getByRole("button", { name: "Azioni per Appunti di fisica" });
     await dots.click();

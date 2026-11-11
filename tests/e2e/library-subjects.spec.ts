@@ -55,7 +55,7 @@ async function start(env: Record<string, string | undefined>) {
 /** Adds files through the Library's file picker and closes the result. */
 async function addFiles(app: ElectronApplication, page: Page, paths: string[]) {
   await answerPicker(app, paths);
-  await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
+  await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
   if (paths.length > 1) {
@@ -65,27 +65,38 @@ async function addFiles(app: ElectronApplication, page: Page, paths: string[]) {
   await expect(dialog).toBeHidden();
 }
 
-/** A row of the Library's list, below "Da sistemare". */
-const row = (page: Page, title: string) =>
-  page.getByRole("list", { name: "Fonti", exact: true }).locator(".px-source-row", { hasText: title });
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** A subject's card on the Library page: a region named by the subject and its count. */
+const shelf = (page: Page, subject: string) =>
+  page.getByRole("region", { name: new RegExp(`^${escaped(subject)} (\\d+ file|nessun file)$`) });
+/** A file's cover on a subject's shelf. */
+const cover = (page: Page, subject: string, title: string) => shelf(page, subject).locator(".px-cover", { hasText: title });
+/** The menu items Sposta in opens, from a menu that is open. */
+async function moveTo(page: Page, subject: string) {
+  await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
+  await page.getByRole("menuitem", { name: subject, exact: true }).click();
+}
+const subjectNames = async (page: Page) =>
+  (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).map((subject) => subject.name).sort();
 
-test("Files added from the Library go into a subject the student has, or a new one Pyxis says it made", async () => {
-  test.setTimeout(180000);
+test("Files added from the Library go on the shelf of a subject the student has, or of a new one Pyxis says it made", async () => {
+  test.setTimeout(240000);
   const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: replies });
   try {
     // The sidebar lists recent chats only while it is open, from 1100 CSS px; a smaller window folds it. The check on the
     // chat's subject below needs the open sidebar, so the page gets that width whatever the window is.
     await page.setViewportSize({ width: 1280, height: 800 });
+    // Before any file, the Library says what goes in it.
+    await expect(page.getByRole("heading", { name: "Nessuna fonte ancora" })).toBeVisible();
     await addFiles(app, page, [files.limits, files.notes]);
-    const limits = row(page, "Esercizi sui limiti");
-    const notes = row(page, "Calcolo delle probabilita, dispense");
-    // One lands in Analisi 1; the other in a subject made for it, which the row says is new.
-    await expect(limits.locator(".px-source-row-meta")).toContainText("Analisi 1", { timeout: 60000 });
-    await expect(notes.locator(".px-source-row-meta")).toContainText("Probabilità e statistica");
-    await expect(notes).toContainText(
+    // One lands in Analisi 1; the other in a subject made for it, whose card says it is new.
+    await expect(cover(page, "Analisi 1", "Esercizi sui limiti")).toBeVisible({ timeout: 60000 });
+    await expect(cover(page, "Probabilità e statistica", "Calcolo delle probabilita, dispense")).toBeVisible();
+    await expect(shelf(page, "Probabilità e statistica")).toContainText(
       "Materia nuova. L'ho creata per questo file, perché non andava in nessuna delle altre.",
     );
-    await expect(limits).not.toContainText("Materia nuova.");
+    await expect(shelf(page, "Analisi 1")).not.toContainText("Materia nuova.");
+    await expect(shelf(page, "Analisi 1")).toContainText("1 file");
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "library-subjects/1-sorted.png");
@@ -98,38 +109,98 @@ test("Files added from the Library go into a subject the student has, or a new o
     const sidebarChat = page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Teorema di Bayes/ });
     await expect(sidebarChat).toHaveText("Teorema di BayesProbabilità e statistica");
 
-    // The new subject is renamed in place, and the note goes.
-    await notes.getByRole("button", { name: "Rinomina la materia Probabilità e statistica" }).click();
-    const field = notes.getByRole("textbox", { name: "Nome della materia Probabilità e statistica" });
+    // The new subject is renamed in place, the note goes, and focus is back on the subject's dots.
+    await shelf(page, "Probabilità e statistica").getByRole("button", { name: "Rinomina la materia Probabilità e statistica" }).click();
+    const field = page.getByRole("textbox", { name: "Nome della materia Probabilità e statistica" });
     await expect(field).toBeFocused();
     await field.fill("Probabilità");
     await field.press("Enter");
-    await expect(notes.locator(".px-source-row-meta")).toContainText("Probabilità");
-    await expect(notes).not.toContainText("Materia nuova.");
+    await expect(shelf(page, "Probabilità")).not.toContainText("Materia nuova.");
+    await expect(page.getByRole("button", { name: "Azioni sulla materia Probabilità", exact: true })).toBeFocused();
     // Everything else that names the subject follows without a reload: the sidebar's chat says the new name.
     await expect(sidebarChat).toHaveText("Teorema di BayesProbabilità");
-    const subjects = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).map((subject) => subject.name);
-    expect(subjects.sort()).toEqual(["Analisi 1", "Fisica 2", "Probabilità"]);
+    expect(await subjectNames(page)).toEqual(["Analisi 1", "Fisica 2", "Probabilità"]);
 
-    // A file is moved by hand from its row's menu.
+    // A file is moved by its dots: its cover lands on the other shelf with focus, and a screen reader hears where.
     await page.getByRole("button", { name: "Azioni per Esercizi sui limiti" }).click();
-    await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Fisica 2" }).click();
-    await expect(limits.locator(".px-source-row-meta")).toContainText("Fisica 2");
-    // And into a subject it names there.
-    await page.getByRole("button", { name: "Azioni per Esercizi sui limiti" }).click();
+    await moveTo(page, "Fisica 2");
+    const limits = cover(page, "Fisica 2", "Esercizi sui limiti");
+    await expect(limits).toBeVisible();
+    await expect(limits.getByRole("button", { name: "Esercizi sui limiti", exact: true })).toBeFocused();
+    await expect(page.getByRole("status").filter({ hasText: "Spostato in Fisica 2." })).toHaveCount(1);
+    // The subject it left is an empty card that says how to fill it.
+    await expect(shelf(page, "Analisi 1")).toContainText("nessun file");
+    await expect(shelf(page, "Analisi 1")).toContainText("Ancora niente. Sposta qui un file dai suoi tre puntini.");
+    // And by a right-click, into a subject it names there.
+    await limits.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
     await page.getByRole("menuitem", { name: "Nuova materia…" }).click();
     const named = page.getByRole("dialog", { name: "Sposta in una materia nuova" });
     await named.getByLabel("Nome della materia").fill("Analisi matematica");
     await named.getByRole("button", { name: "Sposta", exact: true }).click();
     await expect(named).toBeHidden();
-    await expect(limits.locator(".px-source-row-meta")).toContainText("Analisi matematica");
+    await expect(cover(page, "Analisi matematica", "Esercizi sui limiti")).toBeVisible();
     const listed = await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
     expect(listed.map((source) => [source.title, source.subject, source.sort]).sort()).toEqual([
       ["Calcolo delle probabilita, dispense", "Probabilità", null],
       ["Esercizi sui limiti", "Analisi matematica", null],
     ]);
+
+    // Two subjects cannot share a name: the refusal sits next to the field, and Escape keeps the old name.
+    await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    const rename = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await rename.fill("probabilità");
+    await rename.press("Enter");
+    await expect(shelf(page, "Fisica 2").getByRole("alert")).toHaveText("Esiste già una materia con questo nome.");
+    await expect(rename).toHaveAttribute("aria-invalid", "true");
+    await rename.press("Escape");
+    await expect(page.getByRole("button", { name: "Azioni sulla materia Fisica 2" })).toBeFocused();
+    expect(await subjectNames(page)).toEqual(["Analisi 1", "Analisi matematica", "Fisica 2", "Probabilità"]);
+
+    // A subject with a file, or a chat, offers no delete.
+    await page.getByRole("button", { name: "Azioni sulla materia Probabilità", exact: true }).click();
+    await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    // An empty one does, from a right-click on its name, and asks once with Annulla focused.
+    await shelf(page, "Fisica 2").getByRole("heading", { name: "Fisica 2" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    const confirm = page.getByRole("dialog", { name: "Eliminare la materia Fisica 2?" });
+    await expect(confirm.getByRole("button", { name: "Annulla" })).toBeFocused();
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "library-subjects/2-delete.png");
+    await confirm.getByRole("button", { name: "Elimina", exact: true }).click();
+    await expect(shelf(page, "Fisica 2")).toHaveCount(0);
+    expect(await subjectNames(page)).toEqual(["Analisi 1", "Analisi matematica", "Probabilità"]);
+
+    // Search narrows the shelves to the files that match, and says when nothing does.
+    const search = page.getByRole("textbox", { name: "Cerca una fonte per titolo" });
+    await search.fill("limiti");
+    await expect(cover(page, "Analisi matematica", "Esercizi sui limiti")).toBeVisible();
+    await expect(shelf(page, "Probabilità")).toHaveCount(0);
+    await expect(shelf(page, "Analisi 1")).toHaveCount(0);
+    await search.fill("termodinamica");
+    await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
+    await search.fill("");
+    await expect(shelf(page, "Analisi 1")).toBeVisible();
+    // The type filter keeps the files of that type.
+    await page.getByRole("combobox", { name: "Tipo" }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Testo" }).click();
+    await expect(cover(page, "Probabilità", "Calcolo delle probabilita, dispense")).toBeVisible();
+    await expect(shelf(page, "Analisi 1")).toHaveCount(0);
+
+    // A new map of a subject opens the new-map dialog with that subject chosen.
+    await page.getByRole("combobox", { name: "Tipo" }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Tutti i tipi" }).click();
+    await page.getByRole("button", { name: "Azioni sulla materia Probabilità", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Nuova mappa di questa materia" }).click();
+    await expect(page).toHaveURL(/#\/maps\?subject=/);
+    const newMap = page.getByRole("dialog", { name: "Nuova mappa" });
+    await expect(newMap).toBeVisible();
+    await expect(newMap.getByText("Probabilità", { exact: true }).first()).toBeVisible();
+    await expect(newMap.getByText("Scegli una materia", { exact: true })).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -147,15 +218,22 @@ test("Without an AI tool, files added from the Library wait in Da sistemare unti
       "Non hai collegato uno strumento AI, quindi la materia di questi file la scegli tu.",
     );
     await expect(group.getByRole("link", { name: "Collega uno strumento" })).toBeVisible();
-    // Nothing was guessed: the file has no subject and waits in its own row there, not in the list below.
-    await expect(group.locator(".px-source-row", { hasText: "Esercizi sui limiti" })).toBeVisible();
-    await expect(row(page, "Esercizi sui limiti")).toHaveCount(0);
+    // Nothing was guessed: the file has no subject and waits in its own row there, on no shelf.
+    await expect(group.locator(".px-unsorted-row", { hasText: "Esercizi sui limiti" })).toBeVisible();
+    await expect(page.locator(".px-cover", { hasText: "Esercizi sui limiti" })).toHaveCount(0);
     await animationsSettled(page);
     await expectNoAxeViolations(page);
-    await saveShot(page, "library-subjects/2-unsorted.png");
+    await saveShot(page, "library-subjects/3-unsorted.png");
+    // Its menu, by a right-click on the row, offers Sposta in like a cover's.
+    await group.locator(".px-unsorted-row", { hasText: "Esercizi sui limiti" }).click({ button: "right", position: { x: 30, y: 30 } });
+    await expect(page.getByRole("menuitem", { name: "Sposta in", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
     await group.getByRole("combobox", { name: "Materia di Esercizi sui limiti" }).selectOption({ label: "Analisi 1" });
     await expect(group).toBeHidden();
-    await expect(row(page, "Esercizi sui limiti").locator(".px-source-row-meta")).toContainText("Analisi 1");
+    // The row leaves, the file lands on its shelf, and focus goes with it.
+    await expect(
+      cover(page, "Analisi 1", "Esercizi sui limiti").getByRole("button", { name: "Esercizi sui limiti", exact: true }),
+    ).toBeFocused();
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -179,7 +257,7 @@ async function withFailingSort(
   const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined, PYXIS_E2E_SORT_FAILS: "1" });
   try {
     const open = async (tab?: string) => {
-      await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
+      await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await animationsSettled(page);
@@ -187,7 +265,7 @@ async function withFailingSort(
       return dialog;
     };
     const waiting = (title: string | RegExp) =>
-      page.getByRole("region", { name: "Da sistemare" }).locator(".px-source-row", { hasText: title });
+      page.getByRole("region", { name: "Da sistemare" }).locator(".px-unsorted-row", { hasText: title });
     await run({ app, page, files, open, waiting });
   } finally {
     await app.close();

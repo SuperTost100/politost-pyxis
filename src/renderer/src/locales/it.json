@@ -748,6 +748,33 @@
       "failed": "Non sono riuscito a scegliere la materia. Riprova da Attività, oppure sceglila tu.",
       "linkedFailed": "Non sono riuscito a scegliere le materie dei file sciolti di questa cartella, quindi per ora non ne hanno una. Riprova da Attività.",
       "subjectMissing": "Questa materia non c'è più. Scegline un'altra."
+    },
+    "shelf": {
+      "addFiles": "Aggiungi file",
+      "reads": "Pyxis legge <b>{{folders}}</b> e non modifica niente.",
+      "linkFolder": "Collega una cartella",
+      "linkAnother": "Collega un'altra cartella",
+      "emptyBody": "PDF, appunti, slide e libri restano qui, divisi per materia. Aggiungi un file o collega la cartella dove tieni il materiale.",
+      "count_one": "{{count}} file",
+      "count_other": "{{count}} file",
+      "countNone": "nessun file",
+      "files": "File di {{name}}",
+      "subjectActions": "Azioni sulla materia {{name}}",
+      "newMap": "Nuova mappa di questa materia",
+      "delete": "Elimina la materia…",
+      "deleteTitle": "Eliminare la materia {{name}}?",
+      "deleteBody": "Non ha file, esami, mappe, flashcard né chat, quindi eliminarla non toglie nient'altro.",
+      "deleteConfirm": "Elimina",
+      "deleted": "Materia {{name}} eliminata.",
+      "moved": "Spostato in {{name}}.",
+      "renamed": "Materia rinominata in {{name}}.",
+      "emptySubject": "Ancora niente. Sposta qui un file dai suoi tre puntini, oppure scegli questa materia in «Da sistemare».",
+      "emptySubjectNoUnsorted": "Ancora niente. Sposta qui un file dai suoi tre puntini.",
+      "showAll": "Mostra tutti i {{count}} file",
+      "showFewer": "Mostra meno",
+      "working": "Sto scegliendo la materia di questi file.",
+      "updateBook": "Aggiorna il libro",
+      "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino."
     }
   },
   "cards": {

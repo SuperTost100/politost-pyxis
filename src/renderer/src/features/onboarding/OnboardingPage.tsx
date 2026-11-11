@@ -41,9 +41,12 @@ type StepId = (typeof steps)[number];
 /**
  * First setup, or with `?again=1` (Settings > Profile > Run setup again) the same three steps for a student who already
  * has a profile. A rerun waits for the stored profile so the screens open filled in, and its material step opens on the
- * folders linked already. Mappe, with no subject yet, opens a rerun on the material step (`step=material&from=maps`),
- * and leaving it goes back to Mappe.
+ * folders linked already. Mappe, with no subject yet, and the Library's "Collega un'altra cartella" open a rerun on the
+ * material step (`step=material&from=maps` or `from=library`), and leaving it goes back to the page that opened it.
  */
+/** Where a rerun of the material step goes back to, by the page that opened it. */
+const LEAVE_TO: Record<string, string> = { maps: "/maps", library: "/exams/library" };
+
 export function OnboardingPage() {
   const [params] = useSearchParams();
   const again = params.get("again") === "1";
@@ -56,7 +59,7 @@ export function OnboardingPage() {
     <Setup
       stored={stored}
       start={material ? steps.indexOf("material") : 0}
-      leaveTo={material && params.get("from") === "maps" ? "/maps" : "/settings/profile"}
+      leaveTo={material ? (LEAVE_TO[params.get("from") ?? ""] ?? "/settings/profile") : "/settings/profile"}
     />
   );
 }
