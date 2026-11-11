@@ -9,7 +9,7 @@ import { openSourceViewer } from "../components/SourceViewer";
 import { RenameField, type ChatActions } from "../features/ask/chatActions";
 import { groupChats, titleMatches, type ChatGroup } from "../features/ask/chatList";
 import { invoke } from "../lib/ipc";
-import { isMenuKey, menuTrigger, pointBelow, type MenuPoint } from "../lib/itemMenu";
+import { menuTrigger, pointBelow, type MenuPoint } from "../lib/itemMenu";
 import { cardSectionsQuery, useChats, usePlans, useSources } from "../lib/queries";
 import "./Finder.css";
 
@@ -301,14 +301,13 @@ export function Finder({
                 }
                 if (event.key === "Enter" && rows[current]) {
                   event.preventDefault();
-                  pick(rows[current]);
-                }
-                // The focus stays in the field, so the menu keys open the menu of the row that Enter would open.
-                const chosen = rows[current];
-                if (isMenuKey(event) && chosen?.chat) {
-                  event.preventDefault();
-                  const box = document.getElementById(optionId(current))?.getBoundingClientRect();
-                  openChatMenu(chosen, box ? pointBelow(box) : undefined);
+                  if (!event.altKey) pick(rows[current]);
+                  else {
+                    // The focus stays in the field, whose own menu keeps the context-menu key and Shift+F10, so
+                    // Alt+Enter (Option+Enter on a Mac) opens the menu of the row that Enter would open.
+                    const box = document.getElementById(optionId(current))?.getBoundingClientRect();
+                    openChatMenu(rows[current], box ? pointBelow(box) : undefined);
+                  }
                 }
               }}
             />

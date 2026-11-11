@@ -68,7 +68,8 @@
       "suspendCard": "Sospendi la flashcard",
       "deleteCard": "Elimina la flashcard",
       "goMaps": "Vai alle Mappe",
-      "search": "Cerca ovunque"
+      "search": "Cerca ovunque",
+      "searchMenu": "Apri il menu di una chat nella ricerca"
     },
     "keys": {
       "enter": "Invio",

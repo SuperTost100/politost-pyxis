@@ -140,10 +140,28 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     await answerNextMenu(app, null);
     await finder.getByRole("option", { name: /Analisi/ }).click({ button: "right" });
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
+    // The menu keys stay with the search field, whose own menu (copy, paste, spelling) they open: the chat's menu does
+    // not take them, and nothing is prevented.
+    const search = finder.getByRole("combobox", { name: "Cerca" });
     await answerNextMenu(app, null);
-    await finder.getByRole("combobox", { name: "Cerca" }).press("Shift+F10");
+    for (const keys of [{ key: "ContextMenu" }, { key: "F10", shiftKey: true }]) {
+      const prevented = await search.evaluate((input, init) => {
+        const event = new KeyboardEvent("keydown", { ...init, bubbles: true, cancelable: true });
+        input.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, keys);
+      expect(prevented, keys.key).toBe(false);
+      expect(await lastMenuLabels(app), keys.key).toBeUndefined();
+    }
+    // The chat's menu has its own key there, Alt+Enter (Option+Enter on a Mac), which opens the row Enter would open.
+    await search.press("Alt+Enter");
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
-    expect(await lastMenuAt(app)).toBeDefined();
+    const optionBox = (await finder.getByRole("option", { selected: true }).boundingBox())!;
+    const askedFor = (await lastMenuAt(app))!;
+    expect(askedFor).toBeDefined();
+    expect(Math.abs(askedFor.y - (optionBox.y + optionBox.height))).toBeLessThan(4);
+    // The search is still open: Alt+Enter did not open the chat.
+    await expect(finder).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -8,6 +8,9 @@ export async function answerNextMenu(app: ElectronApplication, label: string | s
   const labels = label === null ? [] : Array.isArray(label) ? label : [label];
   await app.evaluate(({ Menu }, labels) => {
     const shown = globalThis as unknown as { menuLabels?: string[]; menuAt?: { x: number; y: number } };
+    // What the last menu showed is forgotten, so a test can tell that no menu came.
+    shown.menuLabels = undefined;
+    shown.menuAt = undefined;
     const build = Menu.buildFromTemplate.bind(Menu);
     // Menus built meanwhile without popping up, like the app menu after a language change, are left alone.
     Menu.buildFromTemplate = (template) => {
