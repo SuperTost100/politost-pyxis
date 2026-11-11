@@ -8,6 +8,31 @@ import type Database from "better-sqlite3";
 export const SUBJECT_MAP = { passages: 24, chars: 750 } as const;
 
 type Row = { id: string; section_path: string | null; source_id: string; title: string };
+
+/** The study material of the subject's exams, which a subject's sources take in (bound as `@subject`). */
+const STUDIED = `WITH studied AS (
+  SELECT ps.source_id FROM plan_sources ps JOIN plans p ON p.id = ps.plan_id
+  WHERE p.subject_id = @subject AND ps.role = 'material'
+)`;
+/** Which sources `s` count as the subject's readable material; the rules are in `subjectPassages`. */
+const OF_SUBJECT = `(s.subject_id = @subject OR s.id IN studied) AND s.library = 1 AND s.status = 'ready'
+  AND (s.blob_sha IS NOT NULL
+       OR NOT EXISTS (SELECT 1 FROM linked_files lf WHERE lf.source_id = s.id AND lf.missing_at IS NOT NULL))
+  AND (s.id IN studied OR NOT EXISTS (
+    SELECT 1 FROM plan_sources ps WHERE ps.source_id = s.id AND ps.role = 'past_paper'))`;
+
+/** The subject's sources that `subjectPassages` reads from and that have any text, in title order. */
+export function subjectSourceIds(db: Database.Database, subjectId: string): string[] {
+  return db
+    .prepare(
+      `${STUDIED}
+       SELECT s.id FROM sources s
+       WHERE ${OF_SUBJECT} AND EXISTS (SELECT 1 FROM passages WHERE source_id = s.id)
+       ORDER BY s.title COLLATE NOCASE, s.id`,
+    )
+    .pluck()
+    .all({ subject: subjectId }) as string[];
+}
 export type SubjectPassage = { id: string; text: string; section: string };
 
 /**
@@ -23,19 +48,12 @@ export type SubjectPassage = { id: string; text: string; section: string };
 export function subjectPassages(db: Database.Database, subjectId: string): SubjectPassage[] {
   const rows = db
     .prepare(
-      `WITH studied AS (
-         SELECT ps.source_id FROM plan_sources ps JOIN plans p ON p.id = ps.plan_id
-         WHERE p.subject_id = @subject AND ps.role = 'material'
-       )
+      `${STUDIED}
        SELECT p.id, p.section_path, s.id AS source_id, s.title
        FROM sources s
        JOIN passages p ON p.source_id = s.id
          AND p.version = (SELECT MAX(version) FROM passages WHERE source_id = s.id)
-       WHERE (s.subject_id = @subject OR s.id IN studied) AND s.library = 1 AND s.status = 'ready'
-         AND (s.blob_sha IS NOT NULL
-              OR NOT EXISTS (SELECT 1 FROM linked_files lf WHERE lf.source_id = s.id AND lf.missing_at IS NOT NULL))
-         AND (s.id IN studied OR NOT EXISTS (
-           SELECT 1 FROM plan_sources ps WHERE ps.source_id = s.id AND ps.role = 'past_paper'))
+       WHERE ${OF_SUBJECT}
        ORDER BY s.title COLLATE NOCASE, s.id, p.rowid`,
     )
     .all({ subject: subjectId }) as Row[];

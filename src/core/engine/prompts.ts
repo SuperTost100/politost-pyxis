@@ -2,6 +2,7 @@ import sourceTranscribe from "../../../resources/prompts/source.transcribe.md?ra
 import exerciseGenerate from "../../../resources/prompts/exercise.generate.md?raw";
 import cardsGenerate from "../../../resources/prompts/cards.generate.md?raw";
 import cardsText from "../../../resources/prompts/cards.text.md?raw";
+import cardsSubject from "../../../resources/prompts/cards.subject.md?raw";
 import gapDrill from "../../../resources/prompts/gap.drill.md?raw";
 import gapExplain from "../../../resources/prompts/gap.explain.md?raw";
 import gapInsight from "../../../resources/prompts/gap.insight.md?raw";
@@ -42,6 +43,7 @@ export const TEMPLATE_SOURCES = {
   "exercise.generate": exerciseGenerate,
   "cards.generate": cardsGenerate,
   "cards.text": cardsText,
+  "cards.subject": cardsSubject,
   "gap.drill": gapDrill,
   "gap.explain": gapExplain,
   "gap.insight": gapInsight,

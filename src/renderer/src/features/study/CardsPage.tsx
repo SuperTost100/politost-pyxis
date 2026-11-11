@@ -629,25 +629,13 @@ export function CardsPage() {
       {t("jobs.cancel")}
     </Button>
   ) : null;
-  // The three-dots menu of the card on show, which a right-click on the card opens too.
+  // The three-dots menu of the card on show, which a right-click on the card opens too. It holds the actions only: their
+  // keys are in Help's shortcuts dialog.
   const cardMenu: MenuProps = {
     items: [
-      {
-        key: "edit",
-        label: t("cards.edit"),
-        extra: <kbd>{MENU_KEYS.edit.toUpperCase()}</kbd>,
-      },
-      {
-        key: "suspend",
-        label: t("cards.suspend"),
-        extra: <kbd>{MENU_KEYS.suspend.toUpperCase()}</kbd>,
-      },
-      {
-        key: "delete",
-        label: t("cards.delete"),
-        danger: true,
-        extra: <kbd>{MENU_KEYS.delete.toUpperCase()}</kbd>,
-      },
+      { key: "edit", label: t("cards.edit") },
+      { key: "suspend", label: t("cards.suspend") },
+      { key: "delete", label: t("cards.delete"), danger: true },
     ],
     onClick: ({ key }) => (key === "edit" ? startEdit() : key === "suspend" ? suspend() : remove()),
   };

@@ -10,6 +10,7 @@ import {
   newCardsPerDay,
   queueCounts,
   rateCard,
+  createCard,
   restoreCard,
   saveCard,
   setNewCardsPerDay,
@@ -27,6 +28,7 @@ import {
   registerCardJobs,
 } from "./cardsFromBook";
 import { cardPlaces, proposeCards, saveProposedCards } from "./cardsFromText";
+import { newCardPlaces, proposeSubjectCards, type SubjectCardsInput } from "./cardsForSubject";
 import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
 import { registerGapInsightJobs } from "./gapInsight";
 import { exerciseView, topicExercises } from "./exercises";
@@ -494,6 +496,19 @@ export function studyHandlers(
     },
     cardsSaveProposed(input: Parameters<typeof saveProposedCards>[1]) {
       return saveProposedCards(db, input);
+    },
+    newCardPlaces() {
+      return newCardPlaces(db);
+    },
+    cardCreate(input: Parameters<typeof createCard>[1]) {
+      return createCard(db, input);
+    },
+    cardsForSubject(input: SubjectCardsInput, signal?: AbortSignal) {
+      // Listed in Attività like the cards proposed from a map: the dialog that asked stops it when it closes.
+      return tracked("cards-propose", input, "jobs.cards", (start) => {
+        start();
+        return proposeSubjectCards(db, input, run, signal);
+      });
     },
     gapDrillStart(input: { planId: string; topicId: string; gapId?: string }) {
       if (!runner) throw new Error("jobs-unavailable");

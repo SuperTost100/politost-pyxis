@@ -1,0 +1,75 @@
+/* The flashcards to check: one after the other, split
+   by hairlines rather than boxed, each with its number, its source, a drop button and its two faces. */
+.px-pc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-pc-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0 16px;
+  border-top: 1px solid var(--border);
+}
+.px-pc-card:first-child {
+  border-top: 0;
+}
+.px-pc-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+}
+.px-pc-head .label {
+  color: var(--ink);
+}
+.px-pc-spacer {
+  flex: 1;
+}
+.px-pc-face {
+  margin-top: 2px;
+  color: var(--ink-subtle);
+  font-weight: 500;
+}
+/* Several lines of text: the field grows with what it holds, up to six lines, then scrolls. */
+.px-pc-field {
+  display: block;
+  width: 100%;
+  min-height: calc(20px * var(--text-scale, 1) + 18px);
+  max-height: calc(6 * 20px * var(--text-scale, 1) + 18px);
+  padding: 8px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 calc(14px * var(--text-scale, 1)) / calc(20px * var(--text-scale, 1)) var(--font-sans);
+  field-sizing: content;
+  resize: none;
+  overflow-wrap: anywhere;
+  transition: border-color var(--duration-micro) var(--ease-out);
+}
+.px-pc-field:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+.px-pc-field:focus {
+  border-color: transparent;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+.px-pc-field:disabled {
+  border-color: var(--border);
+  background: var(--surface-raised);
+  color: var(--ink-muted);
+}
+.px-pc-cloze {
+  margin: 0;
+  color: var(--ink-muted);
+}
+/* The source's name, cut with an ellipsis when it is long; its full name is the chip's name and its tooltip. */
+.px-pc-source {
+  display: block;
+  max-width: min(24ch, 40vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

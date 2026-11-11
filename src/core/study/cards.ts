@@ -448,6 +448,36 @@ export function saveCard(
   return { id };
 }
 
+/**
+ * A card the student writes by hand from the Flashcard page. It belongs to `subjectId`; `planId`, when given, files it
+ * under that exam with no topic, and the exam has to be one of the subject's. It starts like any new card.
+ */
+export function createCard(
+  db: Database.Database,
+  input: { subjectId: string; planId?: string | null; front: string; back: string },
+  now = Date.now(),
+): { id: string } {
+  const front = input.front.trim();
+  const back = input.back.trim();
+  if (!front || !back) throw new Error("card-blank");
+  if (!db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(input.subjectId)) throw new Error("subject-missing");
+  const planId = input.planId || null;
+  if (planId) {
+    const plan = db.prepare("SELECT archived_at FROM plans WHERE id = ? AND subject_id = ?").get(planId, input.subjectId) as
+      | { archived_at: number | null }
+      | undefined;
+    if (!plan) throw new Error("plan-not-in-subject");
+    // The dialog offers only the subject's exams that are not archived.
+    if (plan.archived_at !== null) throw new Error("plan-archived");
+  }
+  const id = uuidv7(now);
+  // An exam's card takes the exam's subject from the trigger `cards_take_plan_subject`, which is the same one.
+  db.prepare(
+    `INSERT INTO cards (id, plan_id, subject_id, front, back, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, planId, input.subjectId, front, back, now);
+  return { id };
+}
+
 export function deleteCard(db: Database.Database, cardId: string): void {
   const row = db
     .prepare(`SELECT seed_key FROM cards WHERE id = ?`)
