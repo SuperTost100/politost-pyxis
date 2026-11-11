@@ -207,6 +207,16 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
 
+    // Set the hours brings the weekly hours field into view and puts the focus in it, also in the smallest window.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(960, 700));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(960);
+    await openExam(page);
+    await page.getByRole("button", { name: "Set the hours" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
+    const hours = page.getByRole("spinbutton", { name: "Hours a week" });
+    await expect(hours).toBeFocused();
+    await expect(hours).toBeInViewport();
+
     // Old addresses of the removed tabs open the page.
     await page.evaluate(() => {
       location.hash = "/plans/p-fis/progress";
