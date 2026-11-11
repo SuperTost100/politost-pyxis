@@ -17,7 +17,7 @@ import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
-import { useCloseWhenMoved, useItemMenu } from "../../components/ItemMenu";
+import { useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
@@ -414,8 +414,8 @@ function fileMenu(
 function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: string; region: string; className: string }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
-  // The menu closes when its dots move (the page scrolled, the layout shifted), so it never floats over other files.
-  useCloseWhenMoved(open, () => button.current, () => setOpen(false));
+  // The menu closes when the page scrolls, and follows its dots when the window is resized or the layout shifts them.
+  useMenuLifetime(open, () => button.current, () => setOpen(false), true);
   return (
     <Dropdown
       trigger={["click"]}
