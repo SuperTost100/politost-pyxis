@@ -380,8 +380,11 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     expect(cards(userData).filter((row) => row.subject === "Fisica 2")).toHaveLength(1);
 
     // The hand side opens the same way.
+    // As the router's own navigation does: an entry with a key of its own. A hash typed by hand has none, so every such
+    // entry shares one key, and the page opens the dialog once for it.
     await page.evaluate(() => {
-      location.hash = "/flashcards?new=hand&subject=phys";
+      history.pushState({ key: "hand-entry", idx: 99, usr: null }, "", "#/flashcards?new=hand&subject=phys");
+      dispatchEvent(new PopStateEvent("popstate", { state: history.state }));
     });
     await expect(dialog.getByRole("radio", { name: "Scrivila tu" })).toHaveAttribute("aria-checked", "true");
     await expect(subject).toHaveValue("phys");
