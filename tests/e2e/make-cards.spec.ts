@@ -228,3 +228,77 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     removeTestFolder(userData);
   }
 });
+
+test("in the map's dialog a dropped flashcard cannot be saved, its source is named, and the focus has somewhere to go", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-make-cards-drop-"));
+  const env = { PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ cards: { cards: CARDS } }) };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    seed(userData);
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      location.hash = "/ask";
+    });
+    await page.reload();
+    const dialog = page.getByRole("dialog", { name: "Make flashcards" });
+    const cards = dialog.getByRole("list", { name: "Proposed flashcards" }).getByRole("listitem");
+    const ask = async () => {
+      await page.evaluate(() =>
+        window.dispatchEvent(
+          new CustomEvent("pyxis:make-cards", {
+            detail: { text: "L'integrale per parti", origin: "selection", planId: "p-an", topicId: "t-int", passageIds: ["pa1"] },
+          }),
+        ),
+      );
+      await dialog.getByRole("button", { name: "Make flashcards" }).click();
+      await expect(cards).toHaveCount(3);
+    };
+
+    await ask();
+    // The two linked cards name their source; the concept with no passage has no chip.
+    await expect(cards.nth(0).getByRole("button", { name: "Appunti di analisi" })).toBeVisible();
+    await expect(cards.nth(2).getByRole("button")).toHaveCount(1);
+
+    // With the exit slowed down, the dropped card is out of Save and its count at once.
+    await page.evaluate(() => {
+      const real = Element.prototype.animate;
+      Element.prototype.animate = function (keyframes, options) {
+        const slow = typeof options === "number" ? options * 40 : { ...options, duration: Number(options?.duration ?? 0) * 40 };
+        return real.call(this, keyframes, slow);
+      };
+      (window as unknown as { restoreAnimate: () => void }).restoreAnimate = () => {
+        Element.prototype.animate = real;
+      };
+    });
+    await cards.nth(0).getByRole("button", { name: "Drop flashcard 1" }).click();
+    await page.evaluate(() => (window as unknown as { restoreAnimate: () => void }).restoreAnimate());
+    await expect(dialog.getByRole("button", { name: "Save 2 flashcards" })).toBeVisible();
+    await expect(dialog.locator(".px-pc-card[data-leaving]")).toHaveCount(1);
+    await expect(cards).toHaveCount(2);
+    await dialog.getByRole("button", { name: "Save 2 flashcards" }).click();
+    await expect(dialog).toHaveCount(0);
+    // The rows come back by front: the first card, which was dropped, is not among them.
+    expect(rows(userData).map((row) => row.front)).toEqual([
+      "Integrando",
+      "L'integrale per parti vale {{c1::uv}} meno l'integrale di v du.",
+    ]);
+
+    // Every card dropped: the focus goes to "Make again", which is still there.
+    await ask();
+    for (const n of [3, 2, 1]) {
+      await dialog.getByRole("button", { name: `Drop flashcard ${n}` }).click();
+      await expect(cards).toHaveCount(n - 1);
+    }
+    await expect(dialog.getByRole("button", { name: "Make again" })).toBeFocused();
+    await expect(dialog.getByText("You dropped every flashcard")).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

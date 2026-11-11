@@ -195,11 +195,36 @@ function proposalSchema(passages: Passage[], text: string) {
     });
 }
 
+/** Where a card's fact is stated: the source's title and, for a source with pages, the page. */
+export type PassageSource = { title: string; page: number | null };
+
 export type ProposedCard = {
   front: string;
   back: string;
   passageId: string | null;
+  /** Read from the passage when the card is proposed, for the chip that names it; saving does not need it. */
+  source?: PassageSource | null;
 };
+
+/** `cards` with the title and page of the passage each one names, so the student can see where a card comes from. */
+export function withSources(db: Database.Database, cards: ProposedCard[]): ProposedCard[] {
+  const ids = [...new Set(cards.flatMap((card) => (card.passageId ? [card.passageId] : [])))];
+  if (!ids.length) return cards;
+  const rows = db
+    .prepare(
+      `SELECT p.id, s.title, json_extract(p.locator_json, '$.page') AS page
+       FROM passages p JOIN sources s ON s.id = p.source_id
+       WHERE p.id IN (SELECT value FROM json_each(?))`,
+    )
+    .all(JSON.stringify(ids)) as Array<{ id: string; title: string; page: unknown }>;
+  const found = new Map(
+    rows.map((row) => [
+      row.id,
+      { title: row.title, page: typeof row.page === "number" && Number.isInteger(row.page) ? row.page : null },
+    ]),
+  );
+  return cards.map((card) => ({ ...card, source: (card.passageId && found.get(card.passageId)) || null }));
+}
 
 /** Cards the model proposes for a piece of text. Nothing is stored: the student reviews them first. */
 export async function proposeCards(
@@ -249,10 +274,13 @@ export async function proposeCards(
   if (signal?.aborted) throw new DOMException("Cancelled", "AbortError");
   const data = result.data as z.infer<typeof schema>;
   return {
-    cards: data.cards.map((row) => ({
-      ...faces(row),
-      passageId: row.passageId,
-    })),
+    cards: withSources(
+      db,
+      data.cards.map((row) => ({
+        ...faces(row),
+        passageId: row.passageId,
+      })),
+    ),
     provider: result.provider,
     model: result.model,
   };

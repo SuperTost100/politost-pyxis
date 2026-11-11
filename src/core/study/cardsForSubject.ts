@@ -9,7 +9,7 @@ import { spread, subjectPassages, subjectSourceIds, SUBJECT_MAP } from "../maps/
 import { interestsLine } from "../profile/context";
 import { retrieveWithModel } from "../sources/retrieve";
 import { cardIssues, cardOf, faces, norm } from "./cardsFromBook";
-import type { ProposedCard } from "./cardsFromText";
+import { withSources, type ProposedCard } from "./cardsFromText";
 import { requireTopic } from "./openLesson";
 
 const TEMPLATE = "cards.subject";
@@ -221,5 +221,5 @@ export async function proposeSubjectCards(
   if (!data.cards.length) throw new IpcError("cards-nothing-matched", "flashcards.new.errors.nothingMatched");
   // Every card repeats one the subject has: nothing to check, so the dialog gets a way out, not an empty list.
   if (!cards.length) throw new IpcError("cards-all-repeats", "flashcards.new.errors.allRepeats");
-  return { cards, provider: result.provider, model: result.model, repeats: data.cards.length - cards.length };
+  return { cards: withSources(db, cards), provider: result.provider, model: result.model, repeats: data.cards.length - cards.length };
 }

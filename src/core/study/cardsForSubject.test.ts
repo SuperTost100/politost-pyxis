@@ -144,7 +144,14 @@ describe("proposeSubjectCards", () => {
     expect(request.passages[0]!.section).toBe("Mazzoldi › Capitolo 1");
     expect(seen[0]!.system).toContain("Write flashcards for a student from the course passages of one subject");
     expect(result).toEqual({
-      cards: [{ front: "Che cos'è l'accelerazione?", back: "Risposta a Che cos'è l'accelerazione?", passageId: "p2" }],
+      cards: [
+        {
+          front: "Che cos'è l'accelerazione?",
+          back: "Risposta a Che cos'è l'accelerazione?",
+          passageId: "p2",
+          source: { title: "Mazzoldi", page: null },
+        },
+      ],
       provider: "claude",
       model: "test-model",
       repeats: 0,
@@ -178,6 +185,17 @@ describe("proposeSubjectCards", () => {
         grounding: "sources",
         subject_id: "phys",
       },
+    ]);
+  });
+
+  it("names the source of each card, with its page when the source has pages", async () => {
+    const db = fixture();
+    db.exec(`UPDATE passages SET locator_json = '{"page":112}' WHERE id = 'p3'`);
+    const { run } = recorded([card("Velocità?", "p1"), card("Forza?", "p3")]);
+    const result = await proposeSubjectCards(db, { subjectId: "phys", count: 5 }, run);
+    expect(result.cards.map((row) => row.source)).toEqual([
+      { title: "Mazzoldi", page: null },
+      { title: "Mazzoldi", page: 112 },
     ]);
   });
 

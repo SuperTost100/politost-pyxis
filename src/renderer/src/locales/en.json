@@ -3382,6 +3382,7 @@
     "review": "Review",
     "reviewSubject": "Review the flashcards of {{subject}}",
     "examless": "Flashcards with no exam",
+    "sourcePage": "{{title}}, p. {{page}}",
     "new": {
       "action": "New flashcard",
       "title": "New flashcard",
@@ -3436,7 +3437,6 @@
       "repeats_one": "You already had one, so I left it out.",
       "repeats_other": "You already had {{count}}, so I left them out.",
       "reviewHint": "Change what you need and drop the ones you don’t want.",
-      "allRepeats": "You already had every flashcard I wrote. Change the request to get new ones.",
       "allDropped": "You dropped every flashcard. Make them again for others, or change the request.",
       "again": "Make again",
       "changeRequest": "Change the request",

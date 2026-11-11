@@ -226,6 +226,7 @@ export function MakeCardsDialog() {
           {t("makeCards.cancel")}
         </Button>
         <Button
+          id="mc-again"
           shape="round"
           onClick={() => void make()}
           disabled={saving || !placed}
@@ -402,17 +403,18 @@ export function MakeCardsDialog() {
             <Working slot className="px-mc-working" line={t("makeCards.working")} />
           ) : null}
           {step === "review" ? (
-            rows.length ? (
+            <>
               <ProposedCards
                 rows={rows}
                 idPrefix="mc"
                 disabled={saving}
                 onChange={update}
                 onDrop={(key) => setRows((current) => current.filter((item) => item.key !== key))}
+                // With no card left, "Make again" is the way on, and it is enabled; the focus goes there.
+                onEmptied={() => document.getElementById("mc-again")?.focus()}
               />
-            ) : (
-              <p className="small px-mc-hint">{t("makeCards.allDropped")}</p>
-            )
+              {rows.length ? null : <p className="small px-mc-hint">{t("makeCards.allDropped")}</p>}
+            </>
           ) : null}
         </div>
       ) : null}

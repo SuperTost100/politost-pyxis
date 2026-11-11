@@ -141,16 +141,19 @@ describe("cards proposed from a text", () => {
         front: "What is velocity?",
         back: "Displacement per unit of time.",
         passageId: "p1",
+        source: { title: "Notes", page: null },
       },
       {
         front: "{{c1::Acceleration}} is the rate of change of velocity.",
         back: "A vector.",
         passageId: "p2",
+        source: { title: "Notes", page: null },
       },
       {
         front: "Inertia",
         back: "Resistance to a change of motion.",
         passageId: null,
+        source: null,
       },
     ]);
     expect(db.prepare("SELECT COUNT(*) AS n FROM cards").get()).toEqual({

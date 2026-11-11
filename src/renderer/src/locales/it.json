@@ -3382,6 +3382,7 @@
     "review": "Ripassa",
     "reviewSubject": "Ripassa le flashcard di {{subject}}",
     "examless": "Le flashcard senza esame",
+    "sourcePage": "{{title}}, p. {{page}}",
     "new": {
       "action": "Nuova flashcard",
       "title": "Nuova flashcard",
@@ -3436,7 +3437,6 @@
       "repeats_one": "Una l’avevi già, quindi l’ho tolta.",
       "repeats_other": "{{count}} le avevi già, quindi le ho tolte.",
       "reviewHint": "Cambia quello che serve e scarta quelle che non vuoi.",
-      "allRepeats": "Le flashcard che ho scritto le avevi già tutte. Cambia la richiesta per averne di nuove.",
       "allDropped": "Hai scartato tutte le flashcard. Crea di nuovo per averne altre, o cambia la richiesta.",
       "again": "Crea di nuovo",
       "changeRequest": "Cambia la richiesta",

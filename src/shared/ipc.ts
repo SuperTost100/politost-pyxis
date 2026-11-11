@@ -94,6 +94,8 @@ const proposedCardSchema = z.object({
   front: z.string().max(NEW_CARDS.face),
   back: z.string().max(NEW_CARDS.face),
   passageId: z.string().nullable(),
+  // Where the passage comes from, for the chip that names it; a reply carries it, saving does not read it.
+  source: z.object({ title: z.string(), page: z.number().int().nullable() }).nullish(),
 });
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
