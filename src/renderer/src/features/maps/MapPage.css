@@ -148,6 +148,20 @@
   color: var(--ink-subtle);
   cursor: default;
 }
+/* A map's own request under its title, so maps of one topic can be told apart. */
+.px-map-more-text {
+  display: grid;
+  min-width: 0;
+  padding-block: 5px;
+}
+.px-map-more-detail {
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-weight: 400;
+  font-size: calc(12px * var(--text-scale, 1));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .px-map-more-group button svg {
   flex: none;
   color: var(--ink-muted);
@@ -468,6 +482,19 @@
 .px-map-working {
   flex: 1;
   background: var(--map-canvas);
+}
+/* The student's request under the working line: one quiet line, the rest on hover. */
+.px-map-working .px-working-text {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: min(56ch, 100%);
+}
+.px-map-asked {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 1000px) {

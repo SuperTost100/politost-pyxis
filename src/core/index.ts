@@ -211,6 +211,7 @@ if (!parent) {
         ? recordedPlanRun(
             mapFixture,
             Number(process.env["PYXIS_E2E_MAP_DELAY"] ?? 0),
+            process.env["PYXIS_E2E_MAP_PROMPTS"],
           )
         : undefined,
     );

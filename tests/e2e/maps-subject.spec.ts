@@ -105,9 +105,10 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
     await dialog.getByLabel("Materia").click();
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]').click();
-    // No exam means no topics: the map covers the whole subject.
-    await expect(dialog.getByText("Gli esami di questa materia non hanno ancora argomenti")).toBeVisible();
-    await expect(dialog.getByLabel("Argomento")).toBeDisabled();
+    // No exam means no topics: the dialog has no topic select, no disabled one and no note about it.
+    await expect(dialog.getByLabel("Argomento")).toBeHidden();
+    await expect(dialog.getByText("non hanno ancora argomenti")).toHaveCount(0);
+    await expect(dialog.getByLabel("Come la vuoi?")).toBeVisible();
     await saveShot(page, "maps-subject/new-map-subject.png");
     await dialog.getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\/phys\?from=maps$/);
@@ -555,7 +556,7 @@ test("a stopped build is not a failure, and the open page follows a build that i
     await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
     await page.locator(".px-map-empty").getByRole("button", { name: "Crea la mappa" }).click();
     await expect(page.locator(".px-map-working")).toBeVisible();
-    await expect(page.locator(".px-map-working").getByRole("status")).toHaveText("Creo la mappa…");
+    await expect(page.locator(".px-map-working").getByRole("status")).toHaveText("Creo la mappa «Moto»…");
     await expect(page.getByRole("heading", { level: 1, name: "Moto" })).toBeVisible();
     await saveShot(page, "maps-subject/building-title.png");
 

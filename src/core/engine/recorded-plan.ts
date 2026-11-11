@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import type { GenerateInput } from "./generate";
 
@@ -12,10 +12,14 @@ function recordedStems(questions: unknown[]): RegExp[] {
   });
 }
 
-/** Unpackaged integration fixture only; the caller must enforce the dev flag. */
+/**
+ * Unpackaged integration fixture only; the caller must enforce the dev flag. With `promptLog`, every structured call
+ * adds its prompt to that file as one line of JSON, so a test can read what the engine was sent.
+ */
 export function recordedPlanRun(
   fixture: string,
   delayMs = 0,
+  promptLog?: string,
 ): NonNullable<GenerateInput["run"]> {
   const replies = JSON.parse(fixture) as Record<string, unknown>;
   // A reply given as a list answers the structured calls in turn, round and round, so a build in parts can answer each
@@ -42,6 +46,7 @@ export function recordedPlanRun(
         inputTokens: 0,
       };
     }
+    if (promptLog) appendFileSync(promptLog, `${JSON.stringify(input.prompt)}\n`);
     const schema = input.responseSchema?.schema as
       { properties?: Record<string, unknown> } | undefined;
     // A past paper's reply is the whole object, so it cannot be told apart by its first property.

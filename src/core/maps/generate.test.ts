@@ -484,6 +484,185 @@ describe("M10 model maps", () => {
   });
 });
 
+describe("maps made on request", () => {
+  /** A runner whose model call is `model`, and a way to ask for a map the way the dialog does. */
+  function asking(model: GenerateInput["run"]) {
+    const { db, input } = fixture(1);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, model);
+    const settled = async () => {
+      for (let i = 0; i < 400; i++) {
+        const open = db.prepare("SELECT COUNT(*) FROM jobs WHERE state IN ('queued', 'running')").pluck().get();
+        if (!open) return;
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error("jobs did not settle");
+    };
+    return { db, input, runner, settled };
+  }
+
+  it("sends the instruction, trimmed, with every part's call, and keeps it through a resume", async () => {
+    const { db, input } = fixture();
+    const sent: Array<{ part?: number; instruction?: string }> = [];
+    let fail = true;
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, async (call) => {
+      sent.push(JSON.parse(call.prompt));
+      if (sent.length === 2 && fail) throw new Error("offline");
+      return response(generated(call.prompt));
+    });
+    const asked = "solo le definizioni, con un esempio ciascuna";
+    const first = enqueueMaps(db, runner, input, `  ${asked}\n`);
+    await until(db, input, "failed");
+    expect(mapBuild(db, input)).toMatchObject({ state: "failed", instruction: asked });
+    fail = false;
+    // Asking again with the same words picks the stopped build up instead of starting another.
+    expect(enqueueMaps(db, runner, input, asked).jobId).toBe(first.jobId);
+    await until(db, input, "succeeded");
+    // Parts 1, 2 (failed), then 2 and 3 again: every call carried the instruction.
+    expect(sent.map((call) => call.part)).toEqual([1, 2, 2, 3]);
+    expect(sent.every((call) => call.instruction === asked)).toBe(true);
+    // The map keeps the words, in its own JSON, for the lists to show.
+    expect(readStoredMap(db, input)!.instruction).toBe(asked);
+    expect(listMaps(db, input)).toEqual([expect.objectContaining({ instruction: asked })]);
+    expect(listAllMaps(db)).toEqual([expect.objectContaining({ instruction: asked })]);
+    expect(db.prepare("SELECT COUNT(*) FROM jobs WHERE kind = 'map-build'").pluck().get()).toBe(1);
+    db.close();
+  });
+
+  it("sends no instruction when the request has none or only blanks", async () => {
+    const prompts: Array<Record<string, unknown>> = [];
+    const { db, input, runner, settled } = asking(async (call) => {
+      prompts.push(JSON.parse(call.prompt));
+      return response(generated(call.prompt));
+    });
+    enqueueMaps(db, runner, input, " \n\t ");
+    await settled();
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).not.toHaveProperty("instruction");
+    expect(readStoredMap(db, input)!.instruction).toBeUndefined();
+    expect(mapBuild(db, input)!.instruction).toBeNull();
+    // A blank request is the same as none: the map that exists is the answer, and nothing is built again.
+    expect(enqueueMaps(db, runner, input, "  ").maps).toHaveLength(1);
+    expect(db.prepare("SELECT COUNT(*) FROM jobs WHERE kind = 'map-build'").pluck().get()).toBe(1);
+    db.close();
+  });
+
+  it("refuses an instruction longer than an edit's", () => {
+    const { db, input, runner } = asking(run);
+    expect(() => enqueueMaps(db, runner, input, "x".repeat(2001))).toThrow("map-instruction");
+    expect(() => enqueueMaps(db, runner, input, "x".repeat(2000))).not.toThrow();
+    db.close();
+  });
+
+  it("builds a new map for a request with an instruction even when the scope has one, and keeps the first", async () => {
+    const { db, input, runner, settled } = asking(run);
+    enqueueMaps(db, runner, input);
+    await settled();
+    const [plain] = listMaps(db, input);
+    // Without an instruction the map that exists is the answer.
+    expect(enqueueMaps(db, runner, input).maps).toHaveLength(1);
+    expect(db.prepare("SELECT COUNT(*) FROM jobs WHERE kind = 'map-build'").pluck().get()).toBe(1);
+    // With one, the same scope gets a second map, and the first stays as it was.
+    const stored = readStoredMap(db, input, plain!.id)!;
+    enqueueMaps(db, runner, input, "solo i teoremi");
+    await settled();
+    const maps = listMaps(db, input);
+    expect(maps.map((map) => map.instruction)).toEqual([undefined, "solo i teoremi"]);
+    expect(readStoredMap(db, input, plain!.id)).toEqual(stored);
+    // The same words again, once that map is there, ask for another one.
+    enqueueMaps(db, runner, input, "solo i teoremi");
+    await settled();
+    expect(listMaps(db, input)).toHaveLength(3);
+    expect(new Set(listMaps(db, input).map((map) => map.id)).size).toBe(3);
+    // A request without words still opens the first map and builds nothing.
+    expect(enqueueMaps(db, runner, input).maps).toHaveLength(3);
+    expect(db.prepare("SELECT COUNT(*) FROM jobs WHERE kind = 'map-build'").pluck().get()).toBe(3);
+    expect(listAllMaps(db).map((entry) => entry.instruction)).toEqual([null, "solo i teoremi", "solo i teoremi"]);
+    db.close();
+  });
+
+  it("treats the same scope and instruction under way as one job, and another instruction as another", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = 0;
+    const { db, input, runner, settled } = asking(async (call) => {
+      started++;
+      await gate;
+      return response(generated(call.prompt));
+    });
+    const first = enqueueMaps(db, runner, input, "solo i teoremi");
+    while (!started) await new Promise((r) => setTimeout(r, 1));
+    expect(enqueueMaps(db, runner, input, " solo i teoremi ").jobId).toBe(first.jobId);
+    // Another request is not the same job, and a request without words is not either.
+    const other = enqueueMaps(db, runner, input, "con gli esempi");
+    const plain = enqueueMaps(db, runner, input);
+    expect(new Set([first.jobId, other.jobId, plain.jobId]).size).toBe(3);
+    expect(enqueueMaps(db, runner, input).jobId).toBe(plain.jobId);
+    expect(enqueueMaps(db, runner, input, "con gli esempi").jobId).toBe(other.jobId);
+    // The page follows the newest build of the scope, and shows its words.
+    expect(mapBuild(db, input)).toMatchObject({ jobId: plain.jobId, instruction: null });
+    expect(mapBuild(db, input)).not.toBeNull();
+    release();
+    await settled();
+    expect(listMaps(db, input).map((map) => map.instruction).sort()).toEqual([
+      "con gli esempi",
+      "solo i teoremi",
+      undefined,
+    ]);
+    db.close();
+  });
+
+  it("asks again with the instruction a stopped build had", async () => {
+    let fail = true;
+    const { db, input, runner, settled } = asking(async (call) => {
+      if (fail) throw new Error("offline");
+      return response(generated(call.prompt));
+    });
+    const plain = enqueueMaps(db, runner, input);
+    await settled();
+    const asked = enqueueMaps(db, runner, input, "solo i teoremi");
+    await settled();
+    expect(mapBuild(db, input)).toMatchObject({ jobId: asked.jobId, state: "failed", instruction: "solo i teoremi" });
+    fail = false;
+    // Retrying the request that failed does not retry the plain one, which failed too.
+    expect(enqueueMaps(db, runner, input, "solo i teoremi").jobId).toBe(asked.jobId);
+    await settled();
+    expect(listMaps(db, input).map((map) => map.instruction)).toEqual(["solo i teoremi"]);
+    expect(plain.jobId).not.toBe(asked.jobId);
+    db.close();
+  });
+
+  it("lets a request with an instruction leave out passages it does not ask for, and one without may not", async () => {
+    const { db: many, input } = fixture(4);
+    const runner = createRunner(many, () => {});
+    // Eight concepts that all cite only the first passage of the part, whatever was asked.
+    registerMapJobs(many, runner, async (call) => {
+      const { passages } = JSON.parse(call.prompt) as { passages: Array<{ id: string }> };
+      return response({
+        nodes: Array.from({ length: 8 }, (_, i) => ({
+          id: `n${i}`,
+          label: `Concetto ${i}`,
+          parent: i ? "n0" : null,
+          sources: [passages[0]!.id],
+        })),
+        edges: [],
+      });
+    });
+    enqueueMaps(many, runner, input);
+    await until(many, input, "failed");
+    expect(listMaps(many, input)).toEqual([]);
+    enqueueMaps(many, runner, input, "solo il primo");
+    await until(many, input, "succeeded");
+    const [map] = listMaps(many, input);
+    // Only what the concepts cite is listed as the map's passages.
+    expect(map).toMatchObject({ passageCount: 1, instruction: "solo il primo" });
+    many.close();
+  });
+});
+
 describe("whole-subject maps", () => {
   /** A subject with one book of `count` passages and no exam. */
   function subjectFixture(count: number) {

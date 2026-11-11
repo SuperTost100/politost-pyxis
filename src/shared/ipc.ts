@@ -12,6 +12,7 @@ import {
   mapEntrySchema,
   mapAddressSchema as mapAddress,
   mapAddressInput,
+  MAP_INSTRUCTION_MAX,
 } from "./concept-map";
 import {
   CHAT_SEED_BODY_MAX,
@@ -1650,10 +1651,12 @@ export const requests = {
   },
   "maps.build": {
     input: mapAddress,
-    output: jobProgressSchema.nullable(),
+    // What the student asked for when they started this build, which its working page shows.
+    output: jobProgressSchema.extend({ instruction: z.string().nullable() }).nullable(),
   },
   "maps.generate": {
-    input: mapAddress,
+    // An instruction makes the request a new map of its own, even when the topic or subject has one (see `enqueueMaps`).
+    input: mapAddressInput({ instruction: z.string().trim().max(MAP_INSTRUCTION_MAX).optional() }),
     output: z.object({
       jobId: z.string().optional(),
       maps: z.array(mapSummarySchema),
@@ -1662,7 +1665,7 @@ export const requests = {
   "maps.edit": {
     input: mapAddressInput({
       mapId: z.string().optional(),
-      instruction: z.string().trim().min(1).max(2000),
+      instruction: z.string().trim().min(1).max(MAP_INSTRUCTION_MAX),
     }),
     output: conceptGraph,
   },

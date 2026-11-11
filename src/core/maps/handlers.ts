@@ -45,8 +45,8 @@ export function mapHandlers(
     list(input: MapAddress) {
       return listMaps(db, scope(input));
     },
-    generate(input: MapAddress) {
-      return enqueueMaps(db, runner, scope(input));
+    generate(input: MapAddress & { instruction?: string }) {
+      return enqueueMaps(db, runner, scope(input), input.instruction);
     },
     edit(input: MapAddress & { mapId?: string; instruction: string }, signal?: AbortSignal) {
       return editMap(

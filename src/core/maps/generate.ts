@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
-import { MAP_LIMITS, mapOpSchema } from "../../shared/concept-map";
+import { MAP_INSTRUCTION_MAX, MAP_LIMITS, mapOpSchema } from "../../shared/concept-map";
 import { generate, type GenerateInput } from "../engine/generate";
 import {
   contentLanguage,
@@ -51,6 +51,8 @@ type Params = {
   mapId?: string;
   /** The read parts, in order. Jobs saved before one map per request have none. */
   built?: Built[];
+  /** What the student asked for ("only the theorems, with proofs"), trimmed and never empty. It goes to every part's call. */
+  instruction?: string;
 };
 const generatedSchema = z.object({
   nodes: z
@@ -89,9 +91,19 @@ function graphOf(value: z.infer<typeof generatedSchema>): ConceptGraph {
     edges,
   };
 }
-export function prepareMaps(db: Database.Database, input: Input): Params {
+/** The instruction as a request carries it: trimmed, with an empty one meaning none, and no longer than an edit's. */
+function cleanInstruction(instruction: string | undefined): string | undefined {
+  const text = instruction?.trim();
+  if (text && text.length > MAP_INSTRUCTION_MAX) throw new Error("map-instruction");
+  return text || undefined;
+}
+export function prepareMaps(db: Database.Database, input: Input, instruction?: string): Params {
   requireScope(db, input);
-  if (!isTopicScope(input)) return prepareSubjectMap(db, input);
+  const params = isTopicScope(input) ? prepareTopicMap(db, input) : prepareSubjectMap(db, input);
+  const text = cleanInstruction(instruction);
+  return text ? { ...params, instruction: text } : params;
+}
+function prepareTopicMap(db: Database.Database, input: Input & { planId: string; topicId: string }): Params {
   const topic = db
     .prepare(
       "SELECT t.title, p.content_language AS language FROM topics t JOIN plans p ON p.id = t.plan_id WHERE t.id = ? AND p.id = ?",
@@ -200,9 +212,11 @@ async function buildPart(
       });
     }
     const covered = new Set(value.nodes.flatMap((node) => node.sources));
-    for (const id of ids)
-      if (!covered.has(id))
-        ctx.addIssue({ code: "custom", message: `Missing passage ${id}` });
+    // A map made on request may leave out what the request does not ask for; one without covers every passage.
+    if (!params.instruction)
+      for (const id of ids)
+        if (!covered.has(id))
+          ctx.addIssue({ code: "custom", message: `Missing passage ${id}` });
     if ([...covered].some((id) => !ids.has(id)))
       ctx.addIssue({ code: "custom", message: "Unknown passage ID" });
     if (ids.size && value.nodes.some((node) => !node.sources.length))
@@ -224,13 +238,17 @@ async function buildPart(
     prompt: JSON.stringify({
       title,
       ...(params.parts.length > 1 ? { part: position + 1, of: params.parts.length } : {}),
+      ...(params.instruction ? { instruction: params.instruction } : {}),
       language: params.language,
       passages: part.passages,
     }),
   });
   const value = result.data as z.infer<typeof generatedSchema>;
   return {
-    passageIds: [...ids],
+    // A map made on request lists only the passages its concepts cite.
+    passageIds: params.instruction
+      ? [...ids].filter((id) => value.nodes.some((node) => node.sources.includes(id)))
+      : [...ids],
     graph: graphOf(value),
     provider: result.provider,
     model: result.model,
@@ -261,6 +279,7 @@ function joinParts(db: Database.Database, params: Params, built: Built[]): Store
     model: built[0]!.model,
     prompt: promptProvenance("map.generate"),
     grounding: passageIds.length ? "sources" : "general",
+    ...(params.instruction ? { instruction: params.instruction } : {}),
   };
 }
 export function registerMapJobs(
@@ -316,30 +335,43 @@ function aboutScope(db: Database.Database, input: Input) {
     | undefined;
   return subject ? { topic: subject } : {};
 }
-/** The scope's newest map-build job, as `columns`. A subject's job has no topic in its params. */
-function latestBuild<T>(db: Database.Database, input: Input, columns: string): T | undefined {
+/**
+ * The scope's newest map-build job, as `columns`. A subject's job has no topic in its params. `instruction` narrows it to
+ * the builds that were asked for with that instruction ("" for none); left out, any build counts.
+ */
+function latestBuild<T>(db: Database.Database, input: Input, columns: string, instruction?: string): T | undefined {
+  const asked = instruction === undefined ? "" : " AND COALESCE(json_extract(params_json, '$.instruction'), '') = ?";
+  const extra = instruction === undefined ? [] : [instruction];
   return (
     isTopicScope(input)
       ? db
           .prepare(
-            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ? ORDER BY created_at DESC LIMIT 1`,
+            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.planId') = ? AND json_extract(params_json, '$.input.topicId') = ?${asked} ORDER BY created_at DESC, rowid DESC LIMIT 1`,
           )
-          .get(input.planId, input.topicId)
+          .get(input.planId, input.topicId, ...extra)
       : db
           .prepare(
-            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.subjectId') = ? AND json_extract(params_json, '$.input.topicId') IS NULL ORDER BY created_at DESC LIMIT 1`,
+            `SELECT ${columns} FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.input.subjectId') = ? AND json_extract(params_json, '$.input.topicId') IS NULL${asked} ORDER BY created_at DESC, rowid DESC LIMIT 1`,
           )
-          .get(input.subjectId)
+          .get(input.subjectId, ...extra)
   ) as T | undefined;
 }
+/**
+ * Starts the build of a request. A request without an instruction gets one map per topic or subject: an earlier build of
+ * the scope is returned, or retried or resumed when it stopped. A request with an instruction asks for a different map,
+ * so a build that finished does not answer it and a new map is added next to the others; only a build still waiting or
+ * running for the same scope and the same instruction is the same request, and one that stopped is picked up again.
+ */
 export function enqueueMaps(
   db: Database.Database,
   runner: Runner,
   input: Input,
+  instruction?: string,
 ) {
   requireScope(db, input);
-  const existing = latestBuild<{ id: string; state: string }>(db, input, "id, state");
-  if (existing) {
+  const text = cleanInstruction(instruction);
+  const existing = latestBuild<{ id: string; state: string }>(db, input, "id, state", text ?? "");
+  if (existing && !(text && existing.state === "succeeded")) {
     if (existing.state === "failed" || existing.state === "cancelled")
       runner.retry(existing.id);
     else if (existing.state === "interrupted") runner.resume(existing.id);
@@ -349,7 +381,7 @@ export function enqueueMaps(
     };
   }
   const maps = listMaps(db, input);
-  const params = prepareMaps(db, input);
+  const params = prepareMaps(db, input, text);
   const jobId = runner.start("map-build", params);
   return { jobId, maps };
 }
@@ -361,7 +393,7 @@ export async function editMap(
 ) {
   const stored = readStoredMap(db, input, input.mapId);
   if (!stored) throw new Error("map-missing");
-  if (!input.instruction.trim() || input.instruction.length > 2000)
+  if (!input.instruction.trim() || input.instruction.length > MAP_INSTRUCTION_MAX)
     throw new Error("map-instruction");
   const schema = z
     .object({ ops: z.array(mapOpSchema).min(1).max(50) })
@@ -422,10 +454,11 @@ export function mapBuild(db: Database.Database, input: Input) {
     progress: number;
     stepLabel: string | null;
     error: string | null;
+    instruction: string | null;
   }>(
     db,
     input,
-    "id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error",
+    "id AS jobId, state, CASE WHEN state = 'succeeded' THEN 1 ELSE COALESCE(1.0 * json_extract(params_json, '$.next') / NULLIF(json_array_length(params_json, '$.parts'), 0), progress) END AS progress, step_label AS stepLabel, error, json_extract(params_json, '$.instruction') AS instruction",
   );
   return row ?? null;
 }

@@ -127,16 +127,60 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.px-maps-new-lead {
-  margin: 0 0 var(--space-4);
+.px-maps-card-ask {
+  margin: 0;
+  overflow: hidden;
   color: var(--ink-muted);
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .px-maps-new-fields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
 }
-.px-maps-new-note {
-  margin: 0;
-  color: var(--ink-muted);
+/* The blocks carry the space between them, so a block that folds away takes its space with it. */
+.px-maps-new-block {
+  padding-top: var(--space-4);
+}
+.px-maps-new-fields > .px-maps-new-block:first-child {
+  padding-top: var(--space-2);
+}
+.px-maps-optional {
+  color: var(--ink-subtle);
+  font-weight: 400;
+}
+/* The topic select folds out of the subject select, and back into it. */
+.px-maps-coll {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.px-maps-coll > div {
+  min-height: 0;
+  /* Room for the focus ring of the select at the edge. */
+  overflow: clip;
+  overflow-clip-margin: 6px;
+}
+.px-maps-coll[data-shut] {
+  grid-template-rows: 0fr;
+}
+.px-maps-coll[data-shut] > div {
+  opacity: 0;
+  /* Out of the tab order and the accessibility tree once folded. */
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .px-maps-coll {
+    transition: grid-template-rows var(--duration-small) var(--ease-out);
+  }
+  .px-maps-coll > div {
+    transition: opacity var(--duration-small) var(--ease-out);
+  }
+  /* It stays visible while it folds away, and hides when the fold is done. */
+  .px-maps-coll[data-shut] > div {
+    transition:
+      opacity var(--duration-small) var(--ease-out),
+      visibility 0s linear var(--duration-small);
+  }
 }

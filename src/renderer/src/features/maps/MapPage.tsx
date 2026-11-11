@@ -201,9 +201,12 @@ export function MapPage() {
   const [jobId, setJobId] = useState<string>();
   // The Nuova mappa dialog opens this page with `build` set, so the map is built without a second click. It waits for
   // the page to know the scope has no map and no build, then starts one; the working mark shows meanwhile.
-  const [starting, setStarting] = useState(
-    () => (location.state as { build?: boolean } | null)?.build === true,
-  );
+  const arrival = location.state as { build?: boolean; instruction?: string } | null;
+  const [starting, setStarting] = useState(() => arrival?.build === true);
+  const wanted = useRef(arrival?.instruction?.trim() ?? "");
+  // A map the student asked for in their own words is built next to the maps the scope has. Until it is, the page shows
+  // its working state in place of those.
+  const [fresh, setFresh] = useState(false);
   const buildAsked = useRef(false);
   const [dialog, setDialog] = useState<"add" | "rename" | "connect" | null>(
     null,
@@ -403,13 +406,23 @@ export function MapPage() {
     list.isPending ||
     Boolean(activeId && map.isPending);
   useEffect(() => {
+    // The job the page waits for; until the build query has caught up with a build just started, `job` is the last one.
     if (
       jobId &&
       job &&
+      job.jobId === jobId &&
       ["succeeded", "failed", "cancelled", "interrupted"].includes(job.state)
     ) {
       setJobId(undefined);
-      void client.invalidateQueries({ queryKey: listKey });
+      setFresh(false);
+      // A map built on request is the one the student wants to see, so it opens, and it is the last the scope holds.
+      const { state, instruction } = job;
+      void client
+        .fetchQuery({ queryKey: listKey, queryFn: () => invoke("maps.list", address), staleTime: 0 })
+        .then((maps) => {
+          if (state === "succeeded" && instruction && maps.length > 1) pickMap(maps[maps.length - 1]!.id);
+        })
+        .catch(() => undefined);
       // A build the student stopped is not a failure. Without a map the empty state says so and offers to resume it.
       if (job.state === "cancelled") setNotice(graph ? t("map.stopped") : "");
       else if (job.state !== "succeeded") setNotice(t("map.generateFailed"));
@@ -787,17 +800,20 @@ export function MapPage() {
       setBusy(false);
     }
   }
-  async function generateMaps() {
+  // A stopped build asks again with the instruction it had, so it is picked up and not built anew without it.
+  const retrying = Boolean(job && ["failed", "cancelled", "interrupted"].includes(job.state));
+  async function generateMaps(instruction = retrying ? (job?.instruction ?? "") : "") {
     setBusy(true);
     setNotice("");
     try {
-      const result = await invoke("maps.generate", address);
+      const result = await invoke("maps.generate", { ...address, ...(instruction ? { instruction } : {}) });
       setJobId(result.jobId);
       await client.invalidateQueries({ queryKey: listKey });
       await client.invalidateQueries({
         queryKey: ["map-build", scopeKey],
       });
     } catch {
+      setFresh(false);
       setNotice(t("map.generateFailed"));
     } finally {
       setBusy(false);
@@ -808,9 +824,13 @@ export function MapPage() {
     buildAsked.current = true;
     // The flag belongs to this arrival: going back to the page later must not start a build again.
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-    if (!list.isError && !build.isError && !list.data?.length && !building)
-      void generateMaps().finally(() => setStarting(false));
-    else setStarting(false);
+    // Without an instruction the page builds only when the scope has no map and no build; with one, the request is
+    // for a map of its own and core decides whether the same request is already under way.
+    const own = wanted.current;
+    if (!list.isError && !build.isError && (own || (!list.data?.length && !building))) {
+      if (own && list.data?.length) setFresh(true);
+      void generateMaps(own).finally(() => setStarting(false));
+    } else setStarting(false);
   });
   // The view on screen as a picture, without the fit button over it.
   async function exportPng() {
@@ -972,6 +992,7 @@ export function MapPage() {
                 items: list.data.map((m) => ({
                   key: m.id,
                   label: m.title,
+                  detail: m.instruction ? t("maps.asked", { text: m.instruction }) : undefined,
                   checked: m.id === activeId,
                   disabled,
                   onSelect: () => pickMap(m.id),
@@ -1056,6 +1077,12 @@ export function MapPage() {
       </dl>
     </section>
   );
+  // The working state names the map being built, which is the scope's own name until the map has a title.
+  const workingLine = t("map.buildingOf", {
+    title: (wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ?? t("map.title"),
+  });
+  // What the student asked for, in one quiet line under the working line, so they see the request was taken.
+  const workingAsk = building ? job?.instruction : starting ? wanted.current : undefined;
   const change =
     lastChange && lastChange.mapId === activeId && graph?.undo
       ? lastChange
@@ -1080,13 +1107,13 @@ export function MapPage() {
                 <span>{subjectName}</span>
               </span>
             ) : null}
-            {scope.data && (scope.data.planTitle || subjectName) && graph ? (
+            {scope.data && (scope.data.planTitle || subjectName) && graph && !fresh ? (
               <span aria-hidden>·</span>
             ) : null}
-            {graph ? <span>{t("map.hint")}</span> : null}
+            {graph && !fresh ? <span>{t("map.hint")}</span> : null}
           </p>
         </div>
-        {graph ? (
+        {graph && !fresh ? (
           <>
             <Button
               variant="secondary"
@@ -1102,7 +1129,7 @@ export function MapPage() {
           </>
         ) : null}
       </header>
-      {building && graph ? <Working className="px-map-notice" line={t("map.building")} /> : null}
+      {building && graph && !fresh ? <Working className="px-map-notice" line={workingLine} /> : null}
       {notice ? (
         <p className="small px-map-notice" role="status">
           {notice}
@@ -1124,8 +1151,19 @@ export function MapPage() {
       ) : null}
       <div className="px-map-body">
       <div className="px-map-card">
-        {!graph && (building || starting || busy) ? (
-          <Working slot className="px-map-working" line={t("map.building")} />
+        {(!graph || fresh) && (building || starting || busy) ? (
+          <Working
+            slot
+            className="px-map-working"
+            line={workingLine}
+            detail={
+              workingAsk ? (
+                <span className="px-map-asked" title={workingAsk}>
+                  {t("maps.asked", { text: workingAsk })}
+                </span>
+              ) : undefined
+            }
+          />
         ) : !graph && job?.state === "cancelled" ? (
           <div className="px-map-empty">
             <h2 className="title-2">{t("map.stopped")}</h2>

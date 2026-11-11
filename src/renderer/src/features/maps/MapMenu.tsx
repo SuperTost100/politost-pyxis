@@ -26,6 +26,8 @@ export const MAP_KEYS: ReadonlyArray<{
 export type MapMenuItem = {
   key: string;
   label: string;
+  /** A quieter second line under the label, cut to one line; the whole text is the item's tooltip. */
+  detail?: string;
   icon?: IconName;
   /** Set for a choice among the group's items (a radio item), such as the layout. */
   checked?: boolean;
@@ -152,7 +154,14 @@ export function MapMenu({
                     ) : item.icon ? (
                       <Icon name={item.icon} size={15} />
                     ) : null}
-                    {item.label}
+                    {item.detail ? (
+                      <span className="px-map-more-text" title={item.detail}>
+                        {item.label}
+                        <span className="px-map-more-detail">{item.detail}</span>
+                      </span>
+                    ) : (
+                      item.label
+                    )}
                   </button>
                 ))}
               </div>

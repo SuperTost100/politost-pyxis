@@ -63,9 +63,14 @@ describe("prompt templates", () => {
     for (const id of ["plan.synopsis", "map.edit"] as const) {
       expect(loadTemplate(id).version, id).toBe("2");
     }
-    // Version 4: a part of a map names its own root and becomes one main branch of the request's map.
-    expect(loadTemplate("map.generate").version).toBe("4");
+    // Version 5: the student's instruction guides focus and style, and never the grounding, the schema or the language.
+    expect(loadTemplate("map.generate").version).toBe("5");
     expect(loadTemplate("map.generate").body).toContain("one main branch");
+    const mapPrompt = loadTemplate("map.generate").body;
+    expect(mapPrompt).toContain("`instruction`");
+    expect(mapPrompt).toMatch(/never overrides the rules above/);
+    expect(mapPrompt).toMatch(/grounded in the supplied passage IDs/);
+    expect(mapPrompt).toMatch(/stays in \{\{contentLanguage\}\}/);
     expect(loadTemplate("map.generate").body).not.toContain("title that distinguishes");
     // Version 3 reads the SymPy mathCheck.
     expect(loadTemplate("simulation.grade").version).toBe("4");
