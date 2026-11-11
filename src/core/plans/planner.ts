@@ -1,8 +1,8 @@
 import type Database from "better-sqlite3";
 import { z } from "zod";
-import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
+import { pathNext, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
-import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks } from "../study/cards";
+import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks, NO_TOPIC } from "../study/cards";
 import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
@@ -385,9 +385,8 @@ export function planSchedule(db: Database.Database, planId: string, now = Date.n
 
 /** Oggi lists due flashcards as one item, then one item per plan; this is the plan item's next step. */
 function nextStep(state: PlanState) {
-  // Due cards from every plan are their own item, so here the path looks past them.
-  return suggestStep({
-    topics: state.topics.map((topic) => ({ ...topic, dueCards: 0 })),
+  return pathNext({
+    topics: state.topics,
     steps: state.steps,
     hasIntro: state.hasIntro,
     target: state.target,
@@ -496,16 +495,18 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
  * and each subject's cards with no exam, past exams last; at most 20 at a time, like a plan's own session.
  *
  * `only` narrows it to one subject (`subjectId: null` for the cards with no subject), and with `examless` to that
- * subject's cards with no exam: the Flashcard section's review of a subject.
+ * subject's cards with no exam: the Flashcard section's review of a subject. With `planId` it is one exam's due cards,
+ * the ones its page counts, and with `noTopic` that exam's cards with no topic.
  */
 export function dueEverywhere(
   db: Database.Database,
   now = Date.now(),
-  only?: { subjectId: string | null; examless?: boolean },
+  only?: { subjectId: string | null; examless?: boolean } | { planId: string; noTopic?: boolean },
 ) {
   const today = startOfDay(now);
-  const rows = (db.prepare(studyPlans).all() as PlanRow[]).filter(
-    (row) => !only || (!only.examless && row.subject_id === only.subjectId),
+  const topicId = only && "planId" in only && only.noTopic ? NO_TOPIC : undefined;
+  const rows = (db.prepare(studyPlans).all() as PlanRow[]).filter((row) =>
+    !only ? true : "planId" in only ? row.id === only.planId : !only.examless && row.subject_id === only.subjectId,
   );
   const rank = (row: PlanRow) =>
     row.exam_at == null ? 1 : startOfDay(row.exam_at) < today ? 2 : 0;
@@ -524,10 +525,10 @@ export function dueEverywhere(
     ...ordered
       .filter((row) => rank(row) < 2)
       .map((row) => () =>
-        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+        dueCards(db, row.id, now, topicId).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
       ),
     ...examlessDecks(db)
-      .filter((deck) => !only || deck.subjectId === only.subjectId)
+      .filter((deck) => !only || ("subjectId" in only && deck.subjectId === only.subjectId))
       .map((deck) => () =>
         deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
           ...card,
@@ -539,7 +540,7 @@ export function dueEverywhere(
     ...ordered
       .filter((row) => rank(row) === 2)
       .map((row) => () =>
-        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+        dueCards(db, row.id, now, topicId).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
       ),
   ];
   const cards: Due[] = [];

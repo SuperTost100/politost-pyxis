@@ -176,6 +176,29 @@ describe("cardSections", () => {
     expect(cardSections(db, NOW).subjects.map((subject) => subject.due)).toEqual([0, 2, 0]);
   });
 
+  it("gives an exam's cards with no topic a row of their own, so the rows add up to the subject's count", () => {
+    const db = workspace();
+    db.prepare(`INSERT INTO cards (id, plan_id, front, back, created_at) VALUES ('loose', 'p-ana', 'Senza argomento', 'b', 999)`).run();
+    // A topic deleted later leaves its cards with no topic.
+    topic(db, "t-del", "p-ana", "Argomento cancellato", 3);
+    cards(db, 1, { planId: "p-ana", topicId: "t-del" });
+    db.prepare("DELETE FROM topics WHERE id = 't-del'").run();
+    const ana = cardSections(db, NOW).subjects.find((subject) => subject.subjectId === "s-ana")!;
+    const exam = ana.exams[0]!;
+    expect(exam.noTopic).toEqual({ total: 2, due: 2 });
+    const rows = [
+      ...exam.topics.map((topic) => topic.total),
+      exam.noTopic?.total ?? 0,
+      ana.examless?.total ?? 0,
+    ];
+    expect(rows.reduce((sum, count) => sum + count, 0)).toBe(ana.total);
+    // The row's review holds exactly the cards it counts.
+    expect(drain(db, () => dueEverywhere(db, NOW, { planId: "p-ana", noTopic: true }))).toBe(2);
+    expect(cardSections(db, NOW).subjects[0]!.exams[0]!.noTopic).toEqual({ total: 2, due: 0 });
+    // An exam whose cards all have a topic has no such row.
+    expect(cardSections(db, NOW).subjects.at(-1)!.exams[0]!.noTopic).toBeNull();
+  });
+
   it("serves a workspace with flashcards and no exam at all", () => {
     const db = openDatabase(":memory:");
     subject(db, "s-chem", "Chimica", 0);

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { countDeckDue, countDueCards } from "./cards";
+import { countDeckDue, countDueCards, NO_TOPIC } from "./cards";
 
 export type CardSectionTopic = { topicId: string; title: string; total: number; due: number };
 export type CardSectionExam = {
@@ -8,6 +8,8 @@ export type CardSectionExam = {
   total: number;
   due: number;
   topics: CardSectionTopic[];
+  /** The exam's cards with no topic (never given one, or their topic was deleted), as one row after its topics. */
+  noTopic: { total: number; due: number } | null;
 };
 export type CardSectionSubject = {
   /** Null for the cards that have no subject: their exam has none, or their subject was removed. */
@@ -42,7 +44,8 @@ type Row = {
  * (`dueEverywhere`) goes through. A topic counts its own new cards within the exam's daily limit, so the topics of an
  * exam can add up to more than the exam's due count, the same as when each topic is opened from the exam's page.
  *
- * An exam's card whose topic was deleted counts in its exam and subject, and has no topic row.
+ * An exam's cards with no topic, such as a card whose topic was deleted, are the exam's `noTopic` row, so an exam's rows
+ * always add up to its count.
  */
 export function cardSections(
   db: Database.Database,
@@ -83,12 +86,14 @@ export function cardSections(
     let exam = subject.exams.at(-1);
     if (!exam || exam.planId !== row.plan_id) {
       const due = countDueCards(db, row.plan_id, now);
-      exam = { planId: row.plan_id, title: row.plan_title ?? "", total: 0, due, topics: [] };
+      exam = { planId: row.plan_id, title: row.plan_title ?? "", total: 0, due, topics: [], noTopic: null };
       subject.exams.push(exam);
       subject.due += due;
     }
     exam.total += row.n;
-    if (row.topic_id != null)
+    if (row.topic_id == null)
+      exam.noTopic = { total: row.n, due: countDueCards(db, row.plan_id, now, NO_TOPIC) };
+    else
       exam.topics.push({
         topicId: row.topic_id,
         title: row.topic_title ?? "",

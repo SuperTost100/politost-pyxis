@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useBlocker, useNavigate, useParams } from "react-router";
+import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -130,6 +130,18 @@ export function ExamSettingsPage() {
     queryKey: ["plan-footprint", planId],
     queryFn: () => invoke("plans.footprint", { planId }),
     enabled: deleteOpen && !!planId,
+  });
+
+  // "Set the hours" on the exam's page opens this page at the weekly hours, with the focus in the field once it can take
+  // it (it waits for the planner).
+  const arrival = useLocation().state as { focus?: string } | null;
+  const focusHours = useRef(arrival?.focus === "hours");
+  useEffect(() => {
+    const field = focusHours.current ? document.getElementById("set-weekly-hours") : null;
+    if (!(field instanceof HTMLInputElement) || field.disabled) return;
+    focusHours.current = false;
+    field.scrollIntoView({ block: "center" });
+    field.focus({ preventScroll: true });
   });
 
   const data = plan.data;
@@ -364,7 +376,7 @@ export function ExamSettingsPage() {
           <Group id="hours" title={t("examSettings.hoursHeading")} help={t("examSettings.hoursHelp")} changed={changed.hours}>
             <div className="px-set-hours">
               <InputNumber
-                id="set-hours"
+                id="set-weekly-hours"
                 aria-label={t("examSettings.hoursLabel")}
                 min={0}
                 max={MAX_WEEKLY_HOURS}
@@ -376,7 +388,7 @@ export function ExamSettingsPage() {
                 disabled={busy || !planner.isSuccess}
                 onChange={(value) => setHours({ value: typeof value === "number" ? value : null })}
               />
-              <label htmlFor="set-hours" className="body">
+              <label htmlFor="set-weekly-hours" className="body">
                 {t("examSettings.hoursUnit")}
               </label>
               {suggestion?.kind === "hours" ? (

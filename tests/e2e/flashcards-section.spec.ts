@@ -11,6 +11,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-flashcards-section-"));
   const app = await launchPyxis({ userData });
+  let opened: DatabaseSync | undefined;
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -18,6 +19,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     // Two subjects and no exam: the flashcards made from a map or a lesson, filed under their subject.
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    opened = db;
     seedSubjects(db, [
       { id: "chem", name: "Chimica", position: 0 },
       { id: "phys", name: "Fisica 2", position: 1 },
@@ -30,7 +32,9 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     const sections = page.getByRole("navigation", { name: "Sezioni" });
     await sections.getByRole("link", { name: "Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
-    await expect(sections.getByRole("link", { name: "Flashcard", exact: true })).toHaveAttribute("aria-current", "page");
+    // A folded sidebar (under 1100 CSS px) shows the link's name as a tooltip under the pointer, which the link's own
+    // name then repeats ("Flashcard Flashcard"), so the name is matched from its start.
+    await expect(sections.getByRole("link", { name: /^Flashcard\b/ })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
     const chem = page.getByRole("region", { name: "Chimica" });
     await expect(chem).toContainText("2 flashcard · 2 da ripassare oggi");
@@ -67,13 +71,21 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
       examAt: Date.now() + 10 * 86_400_000,
       topics: [{ id: "t-atom", title: "Struttura dell’atomo" }],
     });
+    // A card of the exam with no topic gets a row of its own under the exam, so the rows add up to the subject's count.
     db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
-      ('e1','p-chem','t-atom','Che cos’è un orbitale?','La regione dove è probabile trovare l’elettrone.',20);`);
+      ('e1','p-chem','t-atom','Che cos’è un orbitale?','La regione dove è probabile trovare l’elettrone.',20),
+      ('e2','p-chem',NULL,'Che cos’è una mole?','Un numero di Avogadro di particelle.',21);`);
     db.close();
     await page.reload();
-    await expect(chem).toContainText("3 flashcard · 2 da ripassare oggi");
+    await expect(chem).toContainText("4 flashcard · 3 da ripassare oggi");
     const exam = chem.getByRole("list", { name: "Chimica generale" });
-    await expect(exam.getByRole("link")).toHaveText([/^Struttura dell’atomo1 flashcard/]);
+    await expect(exam.getByRole("link")).toHaveText([/^Struttura dell’atomo1 flashcard/, /^Nessun argomento1 flashcard/]);
+    await exam.getByRole("link", { name: /^Nessun argomento/ }).click();
+    await expect(page).toHaveURL(/#\/cards\/due\?exam=p-chem&topic=none$/);
+    await expect(page.getByText("Che cos’è una mole?", { exact: true })).toBeVisible();
+    await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toHaveCount(0);
+    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
     await chem.getByRole("button", { name: "Ripassa le flashcard di Chimica", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due\?subject=chem$/);
     await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();
@@ -100,6 +112,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(page.getByRole("heading", { level: 2, name: "Fisica 2" })).toBeFocused();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

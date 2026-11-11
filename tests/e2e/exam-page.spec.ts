@@ -21,9 +21,11 @@ function seed(
   ],
 ) {
   const examAt = Date.now() + 12 * day;
+  db.prepare("INSERT INTO subjects(id,name,position,created_at) VALUES('sub-fis','Fisica',0,1),('sub-chi','Chimica',1,1)").run();
   seedSource(db, { id: "s-book", kind: "smartbook", title: "Fisica I, Mazzoldi" });
   seedPlan(db, {
     id: "p-fis",
+    subjectId: "sub-fis",
     title: "Fisica I",
     language: "it",
     target: 0.75,
@@ -32,6 +34,8 @@ function seed(
     topics,
   });
   db.prepare("INSERT INTO plan_sessions(id,plan_id,date,label,created_at) VALUES('s-1','p-fis',?,'Written',1)").run(examAt);
+  // A second exam of a subject with no maps yet.
+  seedPlan(db, { id: "p-chi", subjectId: "sub-chi", title: "Chimica generale", language: "it", examAt: examAt + 20 * day });
   db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('c-1','p-fis','t-vec','Unità della forza?','Il newton.',1)").run();
   const node = (id: string, label: string, parent: string | null) => ({ id, label, parent, x: 0, y: 0, pinned: false, sources: [] });
   db.prepare("INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('m-1','p-fis','t-vec',?,'sources',1)").run(
@@ -47,11 +51,17 @@ function seed(
   );
 }
 
-async function openExam(page: Page) {
-  await page.evaluate(() => {
-    location.hash = "/plans/p-fis";
-  });
-  await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
+async function openExam(page: Page, id = "p-fis", title = "Fisica I") {
+  await page.evaluate((id) => {
+    location.hash = `/plans/${id}`;
+  }, id);
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+}
+
+/** Nothing on the page says it failed or found nothing to show. */
+async function expectContent(page: Page, label: string) {
+  await expect(page.getByText(/^(No flashcards due|Nothing here|Page not found)/), label).toHaveCount(0);
+  await expect(page.locator(".px-error-state"), label).toHaveCount(0);
 }
 
 async function pickFromMenu(page: Page, item: string) {
@@ -84,19 +94,38 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(legend.getByRole("listitem")).toHaveText(["Preparationnot measured yet", "Path0%", "Today0%"]);
     await expectNoAxeViolations(page);
 
-    // Adesso: the path's suggestion with the one primary button. A due flashcard comes first.
+    // Adesso: the path's next step with the one primary button, the same step the exam list names. The due flashcard
+    // is not it: it has its own line in the Flashcard block.
+    await page.evaluate(() => {
+      location.hash = "/exams";
+    });
+    const row = page.locator(".px-exams-row", { hasText: "Fisica I" }).locator(".px-exams-next");
+    await expect(row).toContainText("Now");
+    const listed = await row.evaluate((element) =>
+      [...element.childNodes]
+        .filter((node) => !(node instanceof HTMLElement && node.classList.contains("px-exams-kicker")))
+        .map((node) => node.textContent)
+        .join("")
+        .trim(),
+    );
+    expect(listed).not.toMatch(/^Flashcards/);
+    await openExam(page);
     const now = page.locator(".px-exam-now");
     await expect(now.getByText("Now", { exact: true })).toBeVisible();
-    await expect(now.getByRole("heading")).toHaveText("Flashcards: Misure e vettori");
+    await expect(now.getByRole("heading")).toHaveText(listed);
     await now.getByRole("button", { name: "Start", exact: true }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis\/cards\/t-vec$/);
+    await expect(page).not.toHaveURL(/#\/plans\/p-fis$/);
+    await expectContent(page, "Adesso's Start");
     await openExam(page);
 
-    // The path holds every activity. The topic Adesso is on starts open with its steps; another opens from the keyboard.
+    // The path holds every activity. Adesso is on no topic, so none starts open; a click opens one with its steps, and
+    // another opens from the keyboard.
     const path = page.locator(".px-xpath-list");
     const steps = page.getByRole("list", { name: "Steps for Misure e vettori" });
+    await expect(steps).toHaveCount(0);
+    await path.getByRole("button", { name: /^Misure e vettori/ }).click();
     await expect(steps.getByRole("button", { name: /^Lesson/ })).toBeVisible();
-    await expect(steps.getByRole("button", { name: "Flashcards, now" })).toBeVisible();
+    await expect(steps.getByRole("button", { name: "Flashcards" })).toBeVisible();
     const second = path.getByRole("button", { name: /^Cinematica: moto rettilineo/ });
     await second.focus();
     await page.keyboard.press("Enter");
@@ -108,25 +137,42 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await openExam(page);
     await expect(path.getByText(/^Written$/)).toBeVisible();
 
-    // Flashcard: review today's, or browse every card.
+    // Flashcard: review this exam's due cards, or browse its cards. Each way back returns to the exam.
     const aside = page.getByRole("complementary", { name: "Flashcards, questions to redo, maps and material" });
     await expect(aside.getByRole("heading", { name: /^Flashcards/ })).toContainText("1 in all");
     await aside.getByRole("button", { name: "Review the flashcard" }).click();
-    await expect(page).toHaveURL(/#\/plans\/p-fis\/review\/cards$/);
-    await openExam(page);
+    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await expectContent(page, "Review the flashcard");
+    await page.getByRole("button", { name: "Back to the exam: Fisica I" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     await aside.getByRole("button", { name: "Browse all" }).click();
-    await expect(page).toHaveURL(/#\/exams\/cards$/);
-    await openExam(page);
+    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Fisica I");
+    await page.getByRole("link", { name: "Fisica I", exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
 
     // Da rifare says when nothing is waiting.
     await expect(aside.getByText("No questions to redo.")).toBeVisible();
 
-    // Mappe: the subject's maps open, and so does the list of all maps.
+    // Mappe: the subject's maps open, and All maps opens Maps at this subject.
     await aside.getByRole("link", { name: /^Vettori/ }).click();
     await expect(page).toHaveURL(/#\/(maps|plans\/p-fis\/map)\//);
+    await expect(page.getByText("Componenti")).toBeVisible();
     await openExam(page);
     await aside.getByRole("link", { name: "All maps" }).click();
-    await expect(page).toHaveURL(/#\/maps$/);
+    await expect(page).toHaveURL(/#\/maps\?subject=sub-fis$/);
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeInViewport();
+    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeFocused();
+    // A subject with no maps offers to make one, with the subject already chosen.
+    await openExam(page, "p-chi", "Chimica generale");
+    await expect(aside.getByText("No maps of this subject yet.")).toBeVisible();
+    await expect(aside.getByRole("link", { name: "All maps" })).toHaveCount(0);
+    await aside.getByRole("link", { name: "Make a map" }).click();
+    const newMap = page.getByRole("dialog", { name: "New map" });
+    await expect(newMap).toBeVisible();
+    await expect(newMap.locator("#new-map-subject").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Chimica");
+    await page.keyboard.press("Escape");
+    await expect(newMap).toBeHidden();
     await openExam(page);
 
     // Materiale: a file opens its details beside the page; all the material, with adding and past papers, is a page.
@@ -160,6 +206,16 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(share).toBeHidden();
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
+
+    // Set the hours brings the weekly hours field into view and puts the focus in it, also in the smallest window.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(960, 700));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(960);
+    await openExam(page);
+    await page.getByRole("button", { name: "Set the hours" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
+    const hours = page.getByRole("spinbutton", { name: "Hours a week" });
+    await expect(hours).toBeFocused();
+    await expect(hours).toBeInViewport();
 
     // Old addresses of the removed tabs open the page.
     await page.evaluate(() => {
@@ -258,6 +314,10 @@ test("the exam page keeps its path readable in the smallest window, at 200% zoom
         const path = await box(".px-exam-path");
         const aside = await box(".px-exam-aside");
         const fontSize = await title.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+        // Attività stays in the window's top-right corner, and the page's content never runs under it.
+        const corner = (await page.locator(".px-corner-tools").boundingBox())!;
+        const right = await page.locator(".px-exam").evaluate((element) => element.getBoundingClientRect().right);
+        expect(right, `${label}: the page stays clear of Attività`).toBeLessThanOrEqual(corner.x);
         // The path has room for a topic's title and its marker: about 20 letters of the title's own size.
         expect(path.width, `${label}: the path is not squeezed`).toBeGreaterThanOrEqual(20 * fontSize);
         expect(

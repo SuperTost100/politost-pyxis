@@ -26,6 +26,7 @@ import {
   scheduleQuery,
   usePlan,
   useRecommend,
+  useSubjects,
 } from "../../lib/queries";
 import { mapPath } from "../maps/mapPath";
 import { MapThumb } from "../maps/MapThumb";
@@ -567,6 +568,11 @@ function ExamAside({
     queryFn: () => invoke("maps.all", {}),
   });
   const papers = useQuery(pastPapersQuery(planId));
+  const subjects = useSubjects();
+  // Subject names are unique regardless of case, as the exam names its subject.
+  const subjectId = plan.subject
+    ? subjects.data?.find((item) => item.name.toLocaleLowerCase() === plan.subject!.toLocaleLowerCase())?.id
+    : undefined;
   const due = dueCards ?? 0;
   const entries =
     mistakes.data?.entries.filter((entry) => entry.planId === planId) ?? [];
@@ -639,7 +645,7 @@ function ExamAside({
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => navigate(`/plans/${planId}/review/cards`)}
+                    onClick={() => navigate(`/cards/due?exam=${encodeURIComponent(planId)}`)}
                   >
                     {t("examPage.cardsReview", { count: due })}
                   </Button>
@@ -647,7 +653,7 @@ function ExamAside({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate("/exams/cards")}
+                  onClick={() => navigate(`/exams/cards?exam=${encodeURIComponent(planId)}`)}
                 >
                   {t("examPage.browseCards")}
                 </Button>
@@ -744,8 +750,20 @@ function ExamAside({
               ) : (
                 <p>{t("examPage.mapsNone")}</p>
               )}
-              <Link className="px-exam-alink" to="/maps">
-                {t("examPage.allMaps")}
+              {/* Maps opens at this subject; with none yet, the way on is making one for it. */}
+              <Link
+                className="px-exam-alink"
+                to={
+                  subjectMaps.length
+                    ? subjectId
+                      ? `/maps?subject=${encodeURIComponent(subjectId)}`
+                      : "/maps"
+                    : subjectId
+                      ? `/maps?subject=${encodeURIComponent(subjectId)}&new=1`
+                      : "/maps?new=1"
+                }
+              >
+                {t(subjectMaps.length ? "examPage.allMaps" : "examPage.makeMap")}
                 <Icon name="chevron-right" size={14} />
               </Link>
             </>

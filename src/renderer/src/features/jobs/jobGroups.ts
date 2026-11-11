@@ -1,4 +1,4 @@
-import type { JobView } from "../../../../shared/ipc";
+import { endedEmpty, type JobView } from "../../../../shared/ipc";
 import { checkRef } from "../../../../shared/quiz";
 import { isPdfPasswordError } from "../../../../shared/source-errors";
 import { jobErrorEngine, jobErrorKey } from "./jobErrors";
@@ -117,6 +117,31 @@ export function finishedLabelKey(kind: string): string | undefined {
   return FINISHED_LABELS[kind];
 }
 
+/**
+ * The line of a finished job: what it made, or, for a job that found nothing for its request, that it found nothing.
+ * Undefined for work the student never asked for by name.
+ */
+export function finishedJobKey(job: Pick<JobView, "kind" | "state" | "error">): string | undefined {
+  return endedEmpty(job) ? jobErrorKey(job.error ?? "") : finishedLabelKey(job.kind);
+}
+
+/**
+ * Where a finished job's row leads, when it has somewhere to go: a map request that found nothing opens its map page,
+ * where the request can be changed. The page is the scope's, shared by every request of it, so the navigation state
+ * names the job whose row was pressed. `ref` is `map:<subjectId>` or `map:<planId>:<topicId>` (core's map build).
+ */
+export function finishedPath(
+  job: Pick<JobView, "id" | "kind" | "state" | "error" | "ref">,
+): { to: string; state: { job: string } } | undefined {
+  if (job.kind !== "map-build" || !endedEmpty(job) || !job.ref?.startsWith("map:")) return undefined;
+  const [first, topicId] = job.ref.slice(4).split(":");
+  if (!first) return undefined;
+  const to = topicId
+    ? `/plans/${encodeURIComponent(first)}/map/${encodeURIComponent(topicId)}`
+    : `/maps/${encodeURIComponent(first)}`;
+  return { to, state: { job: job.id } };
+}
+
 /** The message key for running study work of this kind, or undefined when its step says what it does. */
 export function runningLabelKey(kind: string): string | undefined {
   return RUNNING_LABELS[kind];
@@ -228,7 +253,7 @@ function batchOf(batches: Map<string, JobBatch>, job: JobView): JobBatch | undef
 /**
  * Sorts the jobs into what the list shows: problems (stopped jobs, those that stopped for the same reason merged into
  * one), work in progress, and what finished today. `active` is the runner's list in creation order; `done` the jobs
- * that succeeded today, newest first. A succeeded job of a kind with no finished-job wording stays out of the list.
+ * that ended today, newest first: those that succeeded and those that found nothing for their request (`endedEmpty`). A succeeded job of a kind with no finished-job wording stays out of the list.
  * Jobs of one kind from one request form one row from two jobs up; while some of them run, those that finished are
  * counted on that row rather than listed under finished.
  */
@@ -238,14 +263,16 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
   for (const job of active) {
     if (job.state === "queued" || job.state === "running") {
       running.push(job);
-    } else if (job.state !== "succeeded") {
+    } else if (job.state !== "succeeded" && !endedEmpty(job)) {
       const found = problemOf(job);
       const known = problems.get(found.key);
       if (known) known.jobs.push(job);
       else problems.set(found.key, { ...found, jobs: [job] });
     }
   }
-  const shown = done.filter((job) => job.state === "succeeded" && finishedLabelKey(job.kind) !== undefined);
+  const shown = done.filter(
+    (job) => (job.state === "succeeded" || endedEmpty(job)) && finishedJobKey(job) !== undefined,
+  );
   const live = new Map<string, JobBatch>();
   for (const job of running) batchOf(live, job)?.jobs.push(job);
   // A running request counts every member that finished, also of a kind the finished list leaves out (indexing).

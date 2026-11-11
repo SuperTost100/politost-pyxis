@@ -3,7 +3,7 @@ import { Button, Input, Modal, Select } from "antd";
 import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapEntry } from "@shared/concept-map";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Notice } from "../../components/Notice";
@@ -21,7 +21,21 @@ export function MapsHome() {
   const navigate = useNavigate();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
-  const [creating, setCreating] = useState(false);
+  // An exam's page opens Maps at its subject (`?subject=<id>`), and with `new=1` at a new map of that subject.
+  const [params, setParams] = useSearchParams();
+  const atSubject = params.get("subject") ?? undefined;
+  const [creating, setCreating] = useState(params.get("new") === "1");
+  useEffect(() => {
+    // Asked once: closing the dialog, or coming back to this page, does not open it again.
+    if (params.has("new"))
+      setParams(
+        (next) => {
+          next.delete("new");
+          return next;
+        },
+        { replace: true },
+      );
+  }, []);
 
   // The search waits for a pause in typing.
   useEffect(() => {
@@ -41,6 +55,7 @@ export function MapsHome() {
   const dialog = (
     <NewMapDialog
       open={creating}
+      initialSubject={atSubject}
       subjects={subjects.data ?? []}
       plans={plans.data ?? []}
       onClose={() => setCreating(false)}
@@ -51,6 +66,17 @@ export function MapsHome() {
       {t("maps.new")}
     </Button>
   );
+
+  // The subject asked for comes into view with its heading focused, once its maps are on the page.
+  const shownSubject = useRef<string | null>(null);
+  useEffect(() => {
+    if (!atSubject || !data || shownSubject.current === atSubject) return;
+    const heading = document.getElementById(`px-maps-${atSubject}`);
+    if (!heading) return;
+    shownSubject.current = atSubject;
+    heading.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [atSubject, data]);
 
   let body;
   // Without the subjects the empty state and the new-map dialog would be wrong, so their failure shows like the maps'.
@@ -132,6 +158,7 @@ export function MapsHome() {
               <h2
                 className="title-3"
                 id={`px-maps-${group.subjectId ?? "none"}`}
+                tabIndex={-1}
               >
                 {group.subjectName ?? t("maps.noSubject")}
               </h2>
@@ -223,13 +250,15 @@ const WHOLE = "";
  */
 function NewMapDialog(props: {
   open: boolean;
+  /** The subject chosen when the dialog opens, such as the exam's subject it was opened for. */
+  initialSubject?: string;
   subjects: Array<{ id: string; name: string }>;
   plans: Array<{ id: string; title: string; subject: string | null; archived: boolean }>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [subjectId, setSubjectId] = useState<string>();
+  const [subjectId, setSubjectId] = useState<string | undefined>(props.open ? props.initialSubject : undefined);
   const [topicId, setTopicId] = useState<string>();
   const [instruction, setInstruction] = useState("");
   const subject = props.subjects.find((item) => item.id === subjectId);
@@ -253,7 +282,7 @@ function NewMapDialog(props: {
       setSubjectId(undefined);
       setTopicId(undefined);
       setInstruction("");
-    }
+    } else if (props.initialSubject) setSubjectId(props.initialSubject);
   }, [props.open]);
 
   // Topics by id; a whole subject's maps by the subject's id.

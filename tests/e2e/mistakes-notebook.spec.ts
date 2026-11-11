@@ -236,6 +236,7 @@ function seed(db: DatabaseSync) {
 test("the mistakes notebook collects misses by exam and topic and asks them again", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-mistakes-"));
+  let opened: DatabaseSync | undefined;
   const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
@@ -245,6 +246,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10_000,
     });
+    opened = db;
     seed(db);
     // In the Esami menu.
     await page.reload();
@@ -340,6 +342,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page.getByRole("heading", { level: 2, name: "Path" })).toBeVisible();
     db.close();
   } finally {
+    if (opened?.isOpen) opened.close();
     await app.close();
     removeTestFolder(userData);
   }

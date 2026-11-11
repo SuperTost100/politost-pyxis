@@ -225,6 +225,27 @@ test("a request that matches nothing builds no map, says so next to the request,
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-instruction/nothing-matched.png");
 
+    // Attività lists it as finished, with its own line and no retry, and shows no problem. Its button opens this page.
+    const activity = page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ });
+    await expect(activity).not.toHaveAccessibleName(/da sistemare/);
+    await expect(page.locator(".px-corner-tools .px-jobs-part.is-problem")).toHaveCount(0);
+    await activity.click();
+    const list = page.getByRole("region", { name: "Attività" });
+    const row = list.locator(".px-jobs-row", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
+    await expect(row).toBeVisible();
+    await expect(list.getByRole("button", { name: /^Riprova/ })).toHaveCount(0);
+    await expect(list.getByText("Dettagli tecnici")).toHaveCount(0);
+    await saveShot(page, "maps-instruction/nothing-matched-activity.png");
+    await page.keyboard.press("Escape");
+    await expect(list).toBeHidden();
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+    await activity.click();
+    await row.getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(page).toHaveURL(/#\/plans\/[^/]+\/map\/t-limits$/);
+    await expect(page.getByLabel("Come la vuoi?")).toHaveValue(words);
+
     // Other words are another request, and its map is the topic's first.
     await page.getByLabel("Come la vuoi?").fill("le definizioni sui limiti");
     await page.getByRole("button", { name: "Crea la mappa" }).click();
@@ -304,5 +325,166 @@ test("opens the map the build it follows made when an older request finishes rig
     await app.close();
     removeTestFolder(userData);
     removeTestFolder(holdFolder);
+  }
+});
+
+/** Removes the map build that was asked for in these words, as clearing old jobs would. */
+async function removeJob(userData: string, words: string) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+  try {
+    const removed = db
+      .prepare("DELETE FROM jobs WHERE kind = 'map-build' AND json_extract(params_json, '$.instruction') = ?")
+      .run(words);
+    expect(removed.changes).toBe(1);
+  } finally {
+    db.close();
+  }
+}
+
+/** Attività's list, opened from the corner button, and the rows of requests that found nothing. */
+async function openActivity(page: Page) {
+  await page.locator(".px-corner-tools").getByRole("button", { name: /^Attività/ }).click();
+  const list = page.getByRole("region", { name: "Attività" });
+  return list.locator(".px-jobs-row", { hasText: "Nel materiale non c’è niente per la tua richiesta" });
+}
+
+test("Cambia la richiesta opens the page on the request of its own row, not on the topic's newest one", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([nothing, nothing]);
+  try {
+    const { ask } = dialogs(page);
+    const older = "solo i teoremi sulle onde gravitazionali";
+    const newer = "solo le dimostrazioni sulla relatività";
+    const field = page.getByLabel("Come la vuoi?");
+    await ask(older);
+    await expect(field).toHaveValue(older, { timeout: 60_000 });
+    await ask(newer);
+    await expect(field).toHaveValue(newer, { timeout: 60_000 });
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+
+    // Both requests are listed, the newest first. The older row opens the page with the older words.
+    let rows = await openActivity(page);
+    await expect(rows).toHaveCount(2);
+    await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(page).toHaveURL(/#\/plans\/[^/]+\/map\/t-limits$/);
+    await expect(field).toHaveValue(older);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toBeVisible();
+
+    // From the page itself, the newer row opens it on the newer words.
+    rows = await openActivity(page);
+    await rows.nth(0).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(newer);
+    rows = await openActivity(page);
+    await rows.nth(1).getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(older);
+
+    // A reload comes back to the same request, since the page was opened on it. Once that request's job is gone the page
+    // shows the topic's newest one instead of waiting for it.
+    await page.reload();
+    await expect(field).toHaveValue(older);
+    await removeJob(userData, older);
+    await page.reload();
+    await expect(field).toHaveValue(newer);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Cambia la richiesta on a topic that already has a map shows the request, and the map stays one choice away", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels), nothing]);
+  try {
+    const { ask } = dialogs(page);
+    const words = "solo i teoremi sulle onde gravitazionali";
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await ask(words, "Limiti · 1 mappa");
+    await expect
+      .poll(
+        async () =>
+          (
+            (await page.evaluate(() => window.pyxis.invoke("maps.build", { topicId: "t-limits" }))) as {
+              state: string;
+            } | null
+          )?.state,
+        { timeout: 60_000 },
+      )
+      .toBe("failed");
+    expect(await listOf(page)).toHaveLength(1);
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+
+    const rows = await openActivity(page);
+    await expect(rows).toHaveCount(1);
+    await rows.getByRole("button", { name: "Cambia la richiesta" }).click();
+    // The page shows that request in its field, with the way to ask again, and not the map that exists.
+    const field = page.getByLabel("Come la vuoi?");
+    await expect(field).toHaveValue(words);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "maps-instruction/change-request-with-map.png");
+
+    // The map is still there: the page's own menu opens it, and the request is gone from the page.
+    await page.getByRole("button", { name: "Altro" }).click();
+    await page.getByRole("group", { name: "Scegli una mappa" }).getByRole("menuitemradio").first().click();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(field).toHaveCount(0);
+
+    // The request belongs to its history entry: Back leaves it for the map, Forward and a reload come back to it.
+    const again = await openActivity(page);
+    await again.getByRole("button", { name: "Cambia la richiesta" }).click();
+    await expect(field).toHaveValue(words);
+    await page.goBack();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(field).toHaveCount(0);
+    await page.goForward();
+    await expect(field).toHaveValue(words);
+    await page.reload();
+    await expect(field).toHaveValue(words);
+    // When its job is gone, a reload shows the map and not an empty request.
+    await removeJob(userData, words);
+    await page.reload();
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    await expect(field).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("asking again from a request opened in Attività builds the new map next to the one that exists", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp([focused(labels), nothing, focused(conceptsOf("B"))]);
+  try {
+    const { ask } = dialogs(page);
+    await ask(first);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });
+    await ask("solo i teoremi sulle onde gravitazionali", "Limiti · 1 mappa");
+    await expect(page.getByText("non ha trovato niente su")).toBeVisible({ timeout: 60_000 });
+    await page.evaluate(() => {
+      location.hash = "/maps";
+    });
+    const rows = await openActivity(page);
+    await rows.getByRole("button", { name: "Cambia la richiesta" }).click();
+    await page.getByLabel("Come la vuoi?").fill(second);
+    await page.getByRole("button", { name: "Crea la mappa" }).click();
+    // The map that exists gives way to the working state, and the new map opens when it is ready, beside the first.
+    await expect(page.locator(".px-map-working")).toBeVisible();
+    await expect(conceptOf(page, "B")).toBeVisible({ timeout: 60_000 });
+    const maps = await listOf(page);
+    expect(maps.map((map) => map.instruction)).toEqual([first, second]);
+    await expect(page).toHaveURL(new RegExp(`map=${maps[1]!.id}$`));
+    await expect(page.getByLabel("Come la vuoi?")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
   }
 });

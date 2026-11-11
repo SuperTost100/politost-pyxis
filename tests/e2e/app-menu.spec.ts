@@ -213,6 +213,30 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(dialog.getByText("Rispondi \"Non lo so\"")).toBeVisible();
     await expect(dialog.getByText("Salta la domanda")).toBeVisible();
     await expect(dialog.getByText("Interrompi la risposta")).toBeVisible();
+    // The sections' number keys follow the sidebar's order, in the Go menu, in this list and in the sidebar's hints.
+    const order = ["Chiedi", "Esami", "Mappe", "Flashcard", "Libreria"];
+    expect(
+      await app.evaluate(({ Menu }) =>
+        Menu.getApplicationMenu()
+          ?.items.find((item) => item.label === "Vai")
+          ?.submenu?.items.filter((item) => /^CmdOrCtrl\+\d$/.test(item.accelerator ?? ""))
+          .map((item) => [item.label, item.accelerator]),
+      ),
+    ).toEqual(order.map((label, index) => [label, `CmdOrCtrl+${index + 1}`]));
+    const goRows = dialog.locator(".px-shortcuts-row").filter({ hasText: /^Vai (a|alla|alle) \p{Lu}/u });
+    await expect(goRows.locator("dt")).toHaveText([
+      "Vai a Chiedi",
+      "Vai a Esami",
+      "Vai alle Mappe",
+      "Vai alle Flashcard",
+      "Vai alla Libreria",
+    ]);
+    await expect(goRows.locator("dd")).toHaveText(order.map((_, index) => new RegExp(`${index + 1}$`)));
+    const hints = await page
+      .getByRole("navigation", { name: "Sezioni" })
+      .locator("kbd")
+      .evaluateAll((keys) => keys.map((key) => key.textContent));
+    expect(hints.slice(1)).toEqual(order.slice(1).map((_, index) => (mac ? `⌘${index + 2}` : `Ctrl+${index + 2}`)));
     // The map's keys, listed from the same rows as the map's "…" menu.
     const mapKeys = dialog.getByRole("region", { name: "Mappe", exact: true });
     for (const [action, keys] of [
