@@ -108,7 +108,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     // Exams exports no calendar of every exam any more.
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "Analisi 1" }),
+      page.getByRole("list", { name: /^(I tuoi esami|Your exams)$/ }).getByRole("link", { name: /Analisi 1/ }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: calendarName })).toHaveCount(
       0,

@@ -103,7 +103,7 @@ describe("hot queries", () => {
       currentSelfRatings(db, "t", now);
       smartAnswers(db, "lesson");
       browseCards(db, { query: "velocita" }, now);
-      newCardsLeftToday(db, "p", now);
+      newCardsLeftToday(db, { planId: "p" }, now);
       const { reviewId } = rateCard(db, "c2", "good", now);
       undoRating(db, reviewId);
       browseCards(db, { status: "leech" }, now);

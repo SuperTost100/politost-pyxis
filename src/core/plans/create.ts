@@ -347,7 +347,9 @@ export function listPlans(db: Database.Database, now = Date.now()) {
   const rows = db
     .prepare(
       `SELECT p.id, p.title, p.status, p.exam_at, p.target, p.archived_at IS NOT NULL AS archived, s.name AS subject,
-       EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported
+       EXISTS(SELECT 1 FROM settings x WHERE x.key = 'plan-import:' || p.id) AS imported,
+       (SELECT label FROM plan_sessions ps WHERE ps.plan_id = p.id AND ps.date = p.exam_at
+        ORDER BY ps.created_at LIMIT 1) AS exam_label
        FROM plans p
        LEFT JOIN subjects s ON s.id = p.subject_id
        ORDER BY CASE WHEN p.exam_at < ? THEN 2 WHEN p.exam_at IS NULL THEN 1 ELSE 0 END,
@@ -362,6 +364,7 @@ export function listPlans(db: Database.Database, now = Date.now()) {
     archived: number;
     imported: number;
     subject: string | null;
+    exam_label: string | null;
   }>;
   return rows.map((row) => {
     const topics = planMastery(db, row.id, now);
@@ -373,6 +376,8 @@ export function listPlans(db: Database.Database, now = Date.now()) {
       archived: Boolean(row.archived),
       subject: row.subject,
       daysToExam: row.exam_at == null ? null : daysUntil(row.exam_at, now),
+      examAt: row.exam_at,
+      examLabel: row.exam_label,
       mastery,
       target: row.target,
       imported: Boolean(row.imported),
@@ -493,7 +498,7 @@ export function planGuide(
 }
 
 /**
- * Every subject in its order, whether anything still uses it (an exam, a source, a map or a chat), and how many maps of
+ * Every subject in its order, whether anything still uses it (an exam, a source, a map, a flashcard or a chat), and how many maps of
  * the whole subject it has, which removing it deletes. A row holding one bare graph, as before collections, is one map. A subject outlives the
  * exam it came with, so the exam form offers only the ones in use, while the subject manager lists them all.
  */
@@ -505,6 +510,7 @@ export function listSubjects(db: Database.Database) {
            (EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
+             OR EXISTS (SELECT 1 FROM cards cd WHERE cd.subject_id = s.id)
              OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used,
            COALESCE((SELECT CASE WHEN json_extract(m.graph_json, '$.version') = 1
                THEN COALESCE(json_array_length(m.graph_json, '$.maps'), 0) ELSE 1 END FROM maps m

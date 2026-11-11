@@ -2,8 +2,8 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { suggestStep, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
-import { countDueCards, dueCards } from "../study/cards";
-import { topicPassageCounts, weightedPlanMastery } from "./progress";
+import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks } from "../study/cards";
+import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
 
@@ -27,7 +27,7 @@ const stepMinutes: Record<Activity, number> = {
 };
 
 /** Plans Oggi and the planner look at: every built plan that is not archived. */
-const studyPlans = `SELECT id, title, exam_at, target, updated_at,
+const studyPlans = `SELECT id, title, exam_at, target, updated_at, subject_id,
   (SELECT name FROM subjects s WHERE s.id = p.subject_id) AS subject
   FROM plans p WHERE status <> 'building' AND archived_at IS NULL`;
 
@@ -37,6 +37,7 @@ type PlanRow = {
   exam_at: number | null;
   target: number;
   updated_at: number;
+  subject_id: string | null;
   subject: string | null;
 };
 
@@ -419,12 +420,17 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
   const plans = studyState(db, now);
   const { dated, exams, result, today } = layout(db, plans, now);
   const dueByPlan = plans.map((plan) => countDueCards(db, plan.row.id, now));
-  const due = dueByPlan.reduce((sum, count) => sum + count, 0);
+  // Flashcards with no exam are due in the same daily review.
+  const examless = examlessDecks(db).reduce(
+    (sum, deck) => sum + countDeckDue(db, { subjectId: deck.subjectId }, now),
+    0,
+  );
+  const due = dueByPlan.reduce((sum, count) => sum + count, examless);
   const rated = (
     db
       .prepare(
         `SELECT COUNT(*) AS n FROM card_reviews r JOIN cards c ON c.id = r.card_id
-         WHERE r.reviewed_at >= ? AND c.plan_id IN (SELECT id FROM (${studyPlans}))`,
+         WHERE r.reviewed_at >= ? AND (c.plan_id IS NULL OR c.plan_id IN (SELECT id FROM (${studyPlans})))`,
       )
       .get(today) as { n: number }
   ).n;
@@ -486,12 +492,21 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
 }
 
 /**
- * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, plans without a date after
- * the dated ones and past exams last; at most 20 at a time, like a plan's own session.
+ * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, then plans without a date
+ * and each subject's cards with no exam, past exams last; at most 20 at a time, like a plan's own session.
+ *
+ * `only` narrows it to one subject (`subjectId: null` for the cards with no subject), and with `examless` to that
+ * subject's cards with no exam: the Flashcard section's review of a subject.
  */
-export function dueEverywhere(db: Database.Database, now = Date.now()) {
+export function dueEverywhere(
+  db: Database.Database,
+  now = Date.now(),
+  only?: { subjectId: string | null; examless?: boolean },
+) {
   const today = startOfDay(now);
-  const rows = db.prepare(studyPlans).all() as PlanRow[];
+  const rows = (db.prepare(studyPlans).all() as PlanRow[]).filter(
+    (row) => !only || (!only.examless && row.subject_id === only.subjectId),
+  );
   const rank = (row: PlanRow) =>
     row.exam_at == null ? 1 : startOfDay(row.exam_at) < today ? 2 : 0;
   const ordered = rows.sort(
@@ -500,14 +515,47 @@ export function dueEverywhere(db: Database.Database, now = Date.now()) {
       (a.exam_at ?? 0) - (b.exam_at ?? 0) ||
       b.updated_at - a.updated_at,
   );
-  const cards: Array<ReturnType<typeof dueCards>[number] & { planId: string; planTitle: string }> =
-    [];
-  for (const row of ordered) {
+  type Due = ReturnType<typeof dueCards>[number] & {
+    planId: string | null;
+    planTitle: string | null;
+    subject: string | null;
+  };
+  const decks: Array<() => Due[]> = [
+    ...ordered
+      .filter((row) => rank(row) < 2)
+      .map((row) => () =>
+        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+      ),
+    ...examlessDecks(db)
+      .filter((deck) => !only || deck.subjectId === only.subjectId)
+      .map((deck) => () =>
+        deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
+          ...card,
+          planId: null,
+          planTitle: null,
+          subject: deck.subject,
+        })),
+      ),
+    ...ordered
+      .filter((row) => rank(row) === 2)
+      .map((row) => () =>
+        dueCards(db, row.id, now).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
+      ),
+  ];
+  const cards: Due[] = [];
+  for (const deck of decks) {
     if (cards.length >= 20) break;
-    for (const card of dueCards(db, row.id, now))
-      cards.push({ ...card, planId: row.id, planTitle: row.title });
+    cards.push(...deck());
   }
   return cards.slice(0, 20);
+}
+
+/** Flashcards due with no exam, across subjects: the ones the daily review adds to the exams' own, as Oggi counts them. */
+export function examlessDue(db: Database.Database, now = Date.now()) {
+  return examlessDecks(db).reduce(
+    (sum, deck) => sum + countDeckDue(db, { subjectId: deck.subjectId }, now),
+    0,
+  );
 }
 
 /** Activities that measure the student; a plan with none of them and no mastery has nothing measured yet. */
@@ -517,7 +565,8 @@ const measuring = (activity: Activity) => activity !== "intro" && activity !== "
  * The three rings of each built exam, from what the planner and Oggi already compute:
  *
  * - `preparation`: the mastery the exam list shows (topics weighted by passages), which the renderer reads on the
- *   student's grade scale. Null while nothing is measured: no topic has mastery and no graded step was done.
+ *   student's grade scale. Null while nothing is measured: no topic has mastery or evidence and no graded step was
+ *   done.
  * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
  *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
  * - `today`: the share of today's planned work done, as Oggi counts it. With weekly hours the planner gives the exam
@@ -542,9 +591,13 @@ export function examRings(db: Database.Database, now = Date.now()) {
   const titles = db.prepare("SELECT title FROM topics WHERE id = ?");
   const ring = (plan: Studied, isArchived: boolean) => {
     const { state } = plan;
+    // Measured means there is evidence, whatever its score: a wrong quick-check answer is evidence worth zero.
     const measured =
       state.topics.some((topic) => topic.mastery > 0) ||
-      state.steps.some((step) => measuring(step.activity));
+      state.steps.some((step) => measuring(step.activity)) ||
+      planMasteryBreakdown(db, plan.row.id, now).some((topic) =>
+        Object.values(topic.parts).some((part) => part.count > 0),
+      );
     const fresh = remainingMinutes({
       topics: state.topics.map((topic) => ({ id: topic.id, mastery: 0 })),
       steps: [],

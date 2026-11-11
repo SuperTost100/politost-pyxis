@@ -46,6 +46,8 @@ const routes = [
   ["exams", "/exams"],
   ["exams-empty", "/exams"],
   ["exams-import-menu", "/exams"],
+  // An archived exam under the open Archiviati toggle.
+  ["exams-archived", "/exams"],
   ["library", "/exams/library"],
   // The Library with no sources: the empty state and its two ways in, no search or filters.
   ["library-empty", "/exams/library"],
@@ -57,12 +59,14 @@ const routes = [
   ["cards-browser-none", "/exams/cards"],
   ["cards-browser-edit", "/exams/cards"],
   ["cards-browser-delete", "/exams/cards"],
+  ["flashcards", "/flashcards"],
+  ["flashcards-empty", "/flashcards"],
+  ["flashcards-none-due", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
-  // Oggi's flashcards from every plan, and the session planner (the fixture's one plan has no exam date).
+  // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
-  ["planner", "/exams/planner"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -162,6 +166,8 @@ const routes = [
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
@@ -979,15 +985,54 @@ let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
 
-/** Cards of a second subject and of an exam with no subject, for the flashcard browser only. Every other state removes them. */
+/**
+ * Cards of a second subject, of an exam with no subject and with no exam, for the flashcard browser only. Every other
+ * state removes them. The flashcard dialog of a subject with no exam gets that subject alone.
+ */
 function prepareCardBrowser(name: string) {
   withDb((db) => {
-    db.exec(`DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
-      DELETE FROM subjects WHERE id = 'audit-chem';
+    db.exec(`DELETE FROM cards WHERE plan_id IS NULL;
+      DELETE FROM card_reviews WHERE id LIKE 'audit-later-%';
+      DELETE FROM maps WHERE id = 'audit-chem-map';
+      DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
+      DELETE FROM subjects WHERE id IN ('audit-chem','audit-gal');
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
-    if (!name.startsWith("cards-browser")) return;
+    if (name === "map-cards-no-exam") {
+      // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
+      seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
+      const node = (id: string, label: string, parent: string | null, x: number) => ({ id, label, parent, x, y: parent ? 160 : 0, pinned: false });
+      db.prepare(
+        "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-chem-map','audit-chem',?,'general',1)",
+      ).run(
+        JSON.stringify({
+          version: 1,
+          maps: [
+            {
+              id: "audit-chem-map-entry",
+              title: "Chimica",
+              passageIds: [],
+              graph: {
+                layout: "tree",
+                nodes: [
+                  node("chem-root", "Chimica", null, 0),
+                  node("chem-orbitals", "Orbitali", "chem-root", -120),
+                  node("chem-quantum", "Numeri quantici", "chem-root", 120),
+                ],
+                edges: [
+                  { from: "chem-root", to: "chem-orbitals" },
+                  { from: "chem-root", to: "chem-quantum" },
+                ],
+                undo: null,
+              },
+            },
+          ],
+        }),
+      );
+    }
+    // The Flashcard section shows the browser's cards, by subject, exam and topic.
+    if (!name.startsWith("cards-browser") && !name.startsWith("flashcards")) return;
     // An archived topic hides its cards, so no topic holds a card: the browser has nothing to show.
-    if (name === "cards-browser-empty") {
+    if (name === "cards-browser-empty" || name === "flashcards-empty") {
       db.exec("UPDATE topics SET archived_at = 7 WHERE archived_at IS NULL");
       return;
     }
@@ -1015,10 +1060,24 @@ function prepareCardBrowser(name: string) {
         ('audit-card-bohr','audit-chem-plan','audit-atoms','Perché l’atomo di Bohr non spiega gli spettri di tutti gli elementi, compresi quelli con molti elettroni e interazioni tra loro?','Perché trascura la repulsione tra elettroni.','z2',1,'sources',2),
         ('audit-card-loose','audit-loose-plan','audit-loose-topic','Una flashcard senza materia','Resta nel gruppo finale.','z3',0,'sources',1);
       INSERT INTO cards(id,plan_id,topic_id,front,back,grounding,created_at) VALUES
-        ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);`);
+        ('audit-card-cloze','audit-chem-plan','audit-atoms','Gli {{c1::elettroni}} occupano i {{c2::livelli}} di energia.','Modello a gusci.','sources',3);
+      INSERT INTO cards(id,subject_id,front,back,seed_key,grounding,created_at) VALUES
+        ('audit-card-free','audit-chem','Che cos’è un orbitale?','La regione dove è più probabile trovare l’elettrone.','z4','general',4);`);
     db.prepare(
       "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
     ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+    if (!name.startsWith("flashcards")) return;
+    // A subject with a long name and flashcards with no exam only.
+    seedSubjects(db, [{ id: "audit-gal", name: "Geometria e algebra lineare per l’ingegneria dell’informazione", position: 2 }]);
+    db.exec(`INSERT INTO cards(id,subject_id,front,back,grounding,created_at) VALUES
+      ('audit-card-gal1','audit-gal','Quando una matrice è invertibile?','Quando il determinante non è nullo.','general',5),
+      ('audit-card-gal2','audit-gal','Che cos’è un autovalore?','Uno scalare λ per cui Av = λv con v non nullo.','general',6);`);
+    // Every card rated and due in nine days: nothing to review today.
+    if (name === "flashcards-none-due")
+      db.prepare(
+        `INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at)
+         SELECT 'audit-later-' || id, id, 'good', ?, 2 FROM cards WHERE id NOT IN (SELECT card_id FROM card_reviews)`,
+      ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
   });
 }
 
@@ -1114,6 +1173,15 @@ function prepareEngines(name: string) {
         "INSERT INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)",
       ).run(JSON.stringify(["claude", "codex"]), Date.now());
   });
+}
+
+/** One exam archived for the archived list's state only; every other state has it back. */
+function prepareExamsArchived(name: string) {
+  withDb((db) =>
+    db
+      .prepare("UPDATE plans SET archived_at = ? WHERE id = 'audit-review-plan'")
+      .run(name === "exams-archived" ? 1 : null),
+  );
 }
 
 function prepareExamsEmpty(name: string) {
@@ -1250,6 +1318,7 @@ function preparePanelSources(name: string) {
 function prepareState(name: string) {
   prepareEngines(name);
   prepareExamsEmpty(name);
+  prepareExamsArchived(name);
   preparePanelSources(name);
   prepareLibraryEmpty(name);
   prepareMapsEmpty(name);
@@ -2280,7 +2349,7 @@ async function openState(page: Page, name: string) {
           list.getByRole("heading", { name: /^(Attività|Background tasks)$/ }),
         ).toBeVisible();
         await expect(
-          list.getByRole("heading", { name: /^(Ti serve|Needs you)$/ }),
+          list.getByRole("heading", { name: /^(C'è bisogno di te|Needs you)$/ }),
         ).toBeVisible();
         await expect(
           list.getByText(
@@ -2351,7 +2420,7 @@ async function openState(page: Page, name: string) {
       }
       break;
     case "map-building":
-      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo le tue mappe…|Building your maps…)$/);
+      await expect(page.locator(".px-map-working")).toHaveText(/^(Creo la mappa…|Building the map…)$/);
       await expect(page.locator(".px-map-working .px-logo-working")).toBeVisible();
       break;
     case "ocr-settings-missing":
@@ -2790,6 +2859,16 @@ async function openState(page: Page, name: string) {
       await expect(panel).toBeFocused();
       break;
     }
+    case "map-cards":
+    case "map-cards-no-exam": {
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page.getByRole("button", { name: both("Crea flashcard da questa mappa", "Make flashcards from this map") }).click();
+      const dialog = page.getByRole("dialog", { name: both("Crea flashcard", "Make flashcards") });
+      // The dialog names the subject of the map it was opened from.
+      await expect(dialog.locator(".px-mc-lead b")).toHaveText(name === "map-cards" ? "Fisica" : "Chimica");
+      await expect(dialog.locator("#mc-plan")).toHaveCount(name === "map-cards" ? 1 : 0);
+      break;
+    }
     case "map-export":
       // The map's "…" menu holds the layout, the build, the exports, undo and the shortcuts.
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
@@ -2798,6 +2877,10 @@ async function openState(page: Page, name: string) {
         page.getByRole("menuitemradio", { name: both("Albero", "Tree") }),
       ).toBeVisible();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
+    case "exams-archived":
+      await page.getByRole("button", { name: both("Archiviati", "Archived") }).click();
+      await expect(page.getByRole("list", { name: both("Esami archiviati", "Archived exams") })).toBeVisible();
       break;
     case "exams-import-menu":
       await page.getByRole("button", { name: both("Altro", "More") }).click();
@@ -3049,6 +3132,23 @@ async function openState(page: Page, name: string) {
         page.locator(".px-cardbrowser-row .katex").first(),
       ).toBeVisible();
       break;
+    case "flashcards":
+      await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 3, name: "Chimica generale" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: both("Nessuna materia", "No subject") })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /^(Ripassa le \d+ di oggi|Review today's \d+)$/ }),
+      ).toBeVisible();
+      break;
+    case "flashcards-empty":
+      await expect(
+        page.getByRole("heading", { level: 2, name: both("Ancora nessuna flashcard", "No flashcards yet") }),
+      ).toBeVisible();
+      break;
+    case "flashcards-none-due":
+      await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
+      await expect(page.locator(".px-fc-head").getByText(both("Niente da ripassare oggi", "Nothing to review today"))).toBeVisible();
+      break;
     case "cards-browser-empty":
       await expect(
         page.getByRole("heading", {
@@ -3134,8 +3234,6 @@ async function openState(page: Page, name: string) {
  */
 async function focusRingChecks(page: Page, name: string) {
   const cases: { field: string; frame: string }[] = [];
-  if (name === "exams")
-    cases.push({ field: "#plan-subject-filter", frame: ".ant-select-focused" });
   if (name === "ask-new")
     cases.push({ field: ".px-composer-field", frame: ".px-composer" });
   if (name.startsWith("wizard-") && (await page.locator("#plan-date").isVisible()))
@@ -3263,8 +3361,7 @@ async function keyboardCheck(page: Page, name: string) {
     ).toBe(true);
     await expect(code).toHaveCSS("outline-style", "solid");
   }
-  if (name === "exams" || name === "ask-new" || name.startsWith("wizard-"))
-    await focusRingChecks(page, name);
+  if (name === "ask-new" || name.startsWith("wizard-")) await focusRingChecks(page, name);
   if (name === "quiz") {
     const first = page.locator("button[aria-keyshortcuts='1']");
     const second = page.locator("button[aria-keyshortcuts='2']");

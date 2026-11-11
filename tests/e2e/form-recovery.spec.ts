@@ -65,6 +65,8 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
       await expect(menu.getByRole("menuitem")).toHaveText([
         "Importa da un file .pyxis",
         "Importa da un link",
+        "Tutte le flashcard",
+        "Quaderno degli errori",
         "Gestisci materie",
       ]);
       await expect(trigger).toHaveAttribute("aria-expanded", "true");

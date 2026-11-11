@@ -3,6 +3,7 @@ import {
   CircleHelp,
   Ellipsis,
   GraduationCap,
+  Layers,
   Monitor,
   Moon,
   Network,
@@ -82,8 +83,7 @@ export function Sidebar({
   const chats = useChats();
   const library = pathname.startsWith("/exams/library");
   const map = isMapPath(pathname);
-  // The Library has its own row, so Exams never leads back into it.
-  const examsTo = doorTarget("exams", pathname);
+
   const items: Item[] = [
     ...(simulation
       ? []
@@ -99,7 +99,7 @@ export function Sidebar({
         ]),
     {
       key: "exams",
-      to: examsTo.startsWith("/exams/library") ? "/exams" : examsTo,
+      to: doorTarget("exams", pathname),
       icon: GraduationCap,
       label: t("doors.exams"),
       accelerator: "CmdOrCtrl+2",
@@ -112,6 +112,14 @@ export function Sidebar({
       label: t("doors.maps"),
       accelerator: "CmdOrCtrl+5",
       current: map || pathname.startsWith("/maps"),
+    },
+    {
+      key: "flashcards",
+      to: "/flashcards",
+      icon: Layers,
+      label: t("flashcards.title"),
+      accelerator: "CmdOrCtrl+4",
+      current: pathname.startsWith("/flashcards"),
     },
     {
       key: "library",

@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
   countDueCards,
+  deckDueCards,
   deleteCard,
   dueCards,
   newCardsLeftToday,
@@ -17,6 +18,7 @@ import {
   undoRating,
 } from "./cards";
 import { browseCards } from "./cardBrowser";
+import { cardSections } from "./cardSections";
 import { mistakesNotebook, startRedo } from "./notebook";
 import {
   enqueueTopicCards,
@@ -142,7 +144,7 @@ export function studyHandlers(
    */
   async function tracked<T>(
     kind: (typeof TRACKED)[number],
-    about: { planId: string; topicId: string },
+    about: { planId?: string; topicId?: string },
     label: string,
     work: (start: () => Tracked | undefined) => Promise<T>,
     succeeded: (result: T) => boolean = () => true,
@@ -446,12 +448,18 @@ export function studyHandlers(
     cards(input: { planId: string; topicId?: string }) {
       return dueCards(db, input.planId, Date.now(), input.topicId);
     },
+    cardSections() {
+      return cardSections(db, Date.now());
+    },
+    subjectCards(input: { subjectId: string }) {
+      return deckDueCards(db, { subjectId: input.subjectId }, Date.now());
+    },
     queue(input: { planId: string; topicId: string }) {
       const now = Date.now();
       return {
         ...queueCounts(db, input.planId, input.topicId),
         due: countDueCards(db, input.planId, now, input.topicId),
-        newToday: newCardsLeftToday(db, input.planId, now),
+        newToday: newCardsLeftToday(db, { planId: input.planId }, now),
       };
     },
     cardSettings() {
@@ -493,8 +501,9 @@ export function studyHandlers(
       return readGapDrill(db, input.planId, input.topicId, input.gapId);
     },
     save(input: {
-      planId: string;
-      topicId: string;
+      planId?: string;
+      topicId?: string;
+      subjectId?: string;
       cardId?: string;
       front: string;
       back: string;

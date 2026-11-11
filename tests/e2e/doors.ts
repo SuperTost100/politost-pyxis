@@ -12,3 +12,18 @@ export async function fromChiediToExams(page: Page): Promise<void> {
     .click();
   await expect(page).toHaveURL(/#\/exams$/);
 }
+
+/** Opens the Library from the sidebar, which was a tab of Esami before 0.5. */
+export async function toLibrary(page: Page): Promise<void> {
+  await page
+    .getByRole("navigation", { name: /^(Sezioni|Sections)$/ })
+    .getByRole("link", { name: /^(Libreria|Library)$/ })
+    .click();
+  await expect(page).toHaveURL(/#\/exams\/library$/);
+}
+
+/** Picks an item of the Esami menu (Altro), on the exam list. */
+export async function fromExamsMenu(page: Page, item: string | RegExp): Promise<void> {
+  await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
+  await page.getByRole("menuitem", { name: item }).click();
+}

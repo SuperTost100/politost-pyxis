@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
-import { setNewCardsPerDay } from "../study/cards";
+import { appendEvent } from "../events";
+import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import {
   dueEverywhere,
   examRings,
+  examlessDue,
   finishDays,
   neededHours,
   planSchedule,
@@ -384,6 +386,47 @@ describe("Oggi", () => {
     expect(cards.map((card) => card.planId)).toEqual(["a", "a", "b", "b"]);
     expect(todayPlan(db, now).cards?.due).toBe(4);
   });
+
+  it("serves and counts flashcards with no exam after the dated exams, before a past one, each subject on its own", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "near", { examIn: 4 });
+    addPlan(db, "past", { examIn: -1 });
+    dueCard(db, "c-near", "near", "near-t0");
+    dueCard(db, "c-past", "past", "past-t0");
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c-free', 'phys', 'Campo', 'E', 1),
+        ('c-gone', 'phys', 'Rimossa', 'x', 1);
+      UPDATE cards SET removed = 1 WHERE id = 'c-gone';`);
+    expect(dueEverywhere(db, now).map((card) => [card.id, card.planId, card.subject])).toEqual([
+      ["c-near", "near", null],
+      ["c-free", null, "Fisica 2"],
+      ["c-past", "past", null],
+    ]);
+    expect(todayPlan(db, now).cards).toEqual({ due: 3, plans: 2, ratedToday: 0 });
+    rateCard(db, "c-free", "good", now);
+    expect(todayPlan(db, now).cards).toEqual({ due: 2, plans: 2, ratedToday: 1 });
+  });
+});
+
+describe("flashcards due with no exam", () => {
+  it("counts the ones the daily review adds to the exams' own, with or without an exam", () => {
+    const db = openDatabase(":memory:");
+    expect(examlessDue(db, now)).toBe(0);
+    db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1), ('chem', 'Chimica', 1);
+      INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('c1', 'phys', 'Campo', 'E', 1),
+        ('c2', 'chem', 'Mole', 'n', 1), ('c-gone', 'phys', 'Rimossa', 'x', 1);
+      UPDATE cards SET removed = 1 WHERE id = 'c-gone';`);
+    // No exam at all: the review still has these two.
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(2);
+    // An exam's own card is not counted here, and rating one of the two takes it out.
+    addPlan(db, "near", { examIn: 4 });
+    dueCard(db, "c-near", "near", "near-t0");
+    expect(examlessDue(db, now)).toBe(2);
+    expect(todayPlan(db, now).cards?.due).toBe(3);
+    rateCard(db, "c1", "good", now);
+    expect(examlessDue(db, now)).toBe(1);
+  });
 });
 
 describe("exam rings", () => {
@@ -397,6 +440,20 @@ describe("exam rings", () => {
     recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
     expect(ringOf(db, "a").preparation).toBeNull();
     recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+    expect(ringOf(db, "a").preparation).toBe(0);
+  });
+
+  it("counts a wrong quick-check answer as measured, at zero", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // What a wrong answer to a lesson's quick check records: evidence with score 0 and no graded step.
+    appendEvent(db, {
+      kind: "answer_given",
+      planId: "a",
+      topicId: "a-t0",
+      payload: { blockId: "q1", pick: 1, shown: true, score: 0, evidenceKind: "check" },
+      at: day(0, 9),
+    });
     expect(ringOf(db, "a").preparation).toBe(0);
   });
 

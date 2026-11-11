@@ -41,12 +41,28 @@ const ACTIVE = `c.suspended = 0
          AND (c.topic_id IS NULL OR c.topic_id NOT IN (SELECT id FROM topics WHERE archived_at IS NOT NULL))`;
 
 /**
- * Active, due cards of a plan; parameters: planId, topicId twice, ids JSON twice, now twice, the new cards allowed today
- * (JSON, or null for no cap) twice. An archived plan has none.
+ * The cards reviewed together. An exam's cards are its deck. Cards with no exam form one deck per subject, and those
+ * that lost their subject too form one more (`subjectId: null`). Each deck has its own daily limit of new cards.
  */
-const DUE_FROM = `FROM cards c
-       WHERE c.plan_id = ?
-         AND NOT EXISTS (SELECT 1 FROM plans ap WHERE ap.id = c.plan_id AND ap.archived_at IS NOT NULL)
+export type CardDeck = { planId: string } | { subjectId: string | null };
+
+/** The deck's cards, as SQL on `c` with its parameters. An archived exam's deck is empty. */
+function deckWhere(deck: CardDeck): { sql: string; params: unknown[] } {
+  return "planId" in deck
+    ? {
+        sql: `c.plan_id = ?
+         AND NOT EXISTS (SELECT 1 FROM plans ap WHERE ap.id = c.plan_id AND ap.archived_at IS NOT NULL)`,
+        params: [deck.planId],
+      }
+    : { sql: "c.plan_id IS NULL AND c.subject_id IS ?", params: [deck.subjectId] };
+}
+
+/**
+ * Active, due cards of a deck; after the deck's own parameters: topicId twice, ids JSON twice, now twice, the new
+ * cards allowed today (JSON, or null for no cap) twice.
+ */
+const dueFrom = (where: string) => `FROM cards c
+       WHERE ${where}
          AND ${ACTIVE}
          AND (? IS NULL OR c.topic_id = ?)
          AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
@@ -62,7 +78,7 @@ const NEW_PER_DAY = "cards.newPerDay";
 const defaultNewPerDay = 20;
 const maxNewPerDay = 999;
 
-/** How many never-reviewed cards each exam introduces per day. */
+/** How many never-reviewed cards each deck (an exam, or a subject's cards with no exam) introduces per day. */
 export function newCardsPerDay(db: Database.Database): number {
   const row = db
     .prepare(`SELECT value_json FROM settings WHERE key = ?`)
@@ -83,78 +99,99 @@ export function setNewCardsPerDay(
   return value;
 }
 
-/** The new cards this plan can still introduce today: the daily limit minus the cards first rated since local midnight. */
+/** The new cards this deck can still introduce today: the daily limit minus the cards first rated since local midnight. */
 export function newCardsLeftToday(
   db: Database.Database,
-  planId: string,
+  deck: CardDeck,
   now: number,
 ): { limit: number; left: number } {
   const limit = newCardsPerDay(db);
-
+  const where = deckWhere(deck);
   const { n } = db
     .prepare(
       `SELECT COUNT(*) AS n FROM cards c
-       WHERE c.plan_id = ?
+       WHERE ${where.sql}
          AND (SELECT MIN(cr.reviewed_at) FROM card_reviews cr WHERE cr.card_id = c.id) >= ?`,
     )
-    .get(planId, startOfDay(now)) as { n: number };
+    .get(...where.params, startOfDay(now)) as { n: number };
   return { limit, left: Math.max(0, limit - n) };
 }
 
 /**
- * The never-reviewed cards that may come up today, oldest first, up to what is left of the plan's daily limit. With a
+ * The never-reviewed cards that may come up today, oldest first, up to what is left of the deck's daily limit. With a
  * topic, the topic's own new cards fill that allowance, so a topic built after another still gets its cards.
  */
 function newCardsAllowed(
   db: Database.Database,
-  planId: string,
+  deck: CardDeck,
   now: number,
   topicId: string | null,
 ): string[] {
-  const { left } = newCardsLeftToday(db, planId, now);
+  const { left } = newCardsLeftToday(db, deck, now);
   if (left === 0) return [];
+  const where = deckWhere(deck);
   return (
     db
       .prepare(
         `SELECT c.id FROM cards c
-         WHERE c.plan_id = ?
+         WHERE ${where.sql}
            AND ${ACTIVE}
            AND (? IS NULL OR c.topic_id = ?)
            AND NOT EXISTS (SELECT 1 FROM card_reviews r WHERE r.card_id = c.id)
          ORDER BY c.created_at, c.rowid
          LIMIT ?`,
       )
-      .all(planId, topicId, topicId, left) as Array<{ id: string }>
+      .all(...where.params, topicId, topicId, left) as Array<{ id: string }>
   ).map((row) => row.id);
 }
 
-/** How many cards are due, without the session limit of dueCards. New cards count up to the daily limit. */
+/** How many cards of a deck are due, without the session limit of dueCards. New cards count up to the daily limit. */
+export function countDeckDue(
+  db: Database.Database,
+  deck: CardDeck,
+  now: number,
+  topicId?: string,
+): number {
+  const allowed = JSON.stringify(newCardsAllowed(db, deck, now, topicId ?? null));
+  const where = deckWhere(deck);
+  return (
+    db
+      .prepare(`SELECT COUNT(*) AS n ${dueFrom(where.sql)}`)
+      .get(...where.params, topicId ?? null, topicId ?? null, null, null, now, now, allowed, allowed) as {
+      n: number;
+    }
+  ).n;
+}
+
+/** How many cards of an exam are due. */
 export function countDueCards(
   db: Database.Database,
   planId: string,
   now: number,
   topicId?: string,
 ): number {
-  const allowed = JSON.stringify(
-    newCardsAllowed(db, planId, now, topicId ?? null),
-  );
-  return (
-    db
-      .prepare(`SELECT COUNT(*) AS n ${DUE_FROM}`)
-      .get(
-        planId,
-        topicId ?? null,
-        topicId ?? null,
-        null,
-        null,
-        now,
-        now,
-        allowed,
-        allowed,
-      ) as {
-      n: number;
-    }
-  ).n;
+  return countDeckDue(db, { planId }, now, topicId);
+}
+
+/**
+ * The decks of cards with no exam that hold any card that could come up, in subject order, the cards without a subject
+ * last. Archived topics cannot hold such cards, since a card with a topic has an exam.
+ */
+export function examlessDecks(
+  db: Database.Database,
+): Array<{ subjectId: string | null; subject: string | null }> {
+  return db
+    .prepare(
+      `SELECT DISTINCT c.subject_id AS subjectId, s.name AS subject, s.position
+       FROM cards c LEFT JOIN subjects s ON s.id = c.subject_id
+       WHERE c.plan_id IS NULL AND c.suspended = 0 AND c.removed = 0
+       ORDER BY s.id IS NULL, s.position, s.name COLLATE NOCASE, s.id`,
+    )
+    .all()
+    .map((row) => {
+      const { subjectId, subject } = row as { subjectId: string | null; subject: string | null };
+      return { subjectId, subject };
+    });
 }
 
 export function dueCards(
@@ -168,9 +205,21 @@ export function dueCards(
    */
   ids?: string[],
 ): DueCard[] {
+  return deckDueCards(db, { planId }, now, topicId, ids);
+}
+
+/** Up to 20 due cards of a deck, the most overdue first. */
+export function deckDueCards(
+  db: Database.Database,
+  deck: CardDeck,
+  now: number,
+  topicId?: string,
+  ids?: string[],
+): DueCard[] {
   const allowed = ids
     ? null
-    : JSON.stringify(newCardsAllowed(db, planId, now, topicId ?? null));
+    : JSON.stringify(newCardsAllowed(db, deck, now, topicId ?? null));
+  const where = deckWhere(deck);
   const rows = db
     .prepare(
       `SELECT c.id, c.front, c.back, c.topic_id,
@@ -183,13 +232,13 @@ export function dueCards(
           CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER),
           ?
         ) AS due_at
-       ${DUE_FROM}
+       ${dueFrom(where.sql)}
        ORDER BY due_at ASC, c.created_at, c.rowid
        LIMIT 20`,
     )
     .all(
       now,
-      planId,
+      ...where.params,
       topicId ?? null,
       topicId ?? null,
       ids ? JSON.stringify(ids) : null,
@@ -237,11 +286,11 @@ export function rateCard(
     const card = db
       .prepare(
         `SELECT c.plan_id, c.topic_id, c.suspended, c.removed, p.exam_at
-         FROM cards c JOIN plans p ON p.id = c.plan_id WHERE c.id = ?`,
+         FROM cards c LEFT JOIN plans p ON p.id = c.plan_id WHERE c.id = ?`,
       )
       .get(cardId) as
       | {
-          plan_id: string;
+          plan_id: string | null;
           topic_id: string | null;
           suspended: number;
           removed: number;
@@ -267,6 +316,8 @@ export function rateCard(
       `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
      VALUES (?, ?, ?, ?, ?)`,
     ).run(reviewId, cardId, rating, JSON.stringify(next), now);
+    // The event is evidence for an exam's mastery and path; a card with no exam has none to feed.
+    if (card.plan_id == null) return { ...next, reviewId };
     const score = rating === "again" ? 0 : rating === "hard" ? 0.5 : 1;
     db.prepare(
       `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
@@ -298,7 +349,7 @@ export function undoRating(
          JOIN cards c ON c.id = r.card_id WHERE r.id = ?`,
       )
       .get(reviewId) as
-      | { card_id: string; reviewed_at: number; plan_id: string }
+      | { card_id: string; reviewed_at: number; plan_id: string | null }
       | undefined;
     if (!row) throw new Error("review-missing");
     const latest = db
@@ -308,6 +359,7 @@ export function undoRating(
       .get(row.card_id) as { id: string };
     if (latest.id !== reviewId) throw new Error("review-not-latest");
     db.prepare(`DELETE FROM card_reviews WHERE id = ?`).run(reviewId);
+    if (row.plan_id == null) return { cardId: row.card_id };
     // rateCard writes the event in the same transaction with the review's time; one rating per card per millisecond.
     db.prepare(
       `DELETE FROM learning_events
@@ -348,11 +400,16 @@ export function queueCounts(
   return { fresh, learning, mastered };
 }
 
+/**
+ * Edits a card (by `cardId`; a plan, when given, has to be the card's) or writes a new one, under an exam's topic or,
+ * with no exam, under a subject.
+ */
 export function saveCard(
   db: Database.Database,
   input: {
-    planId: string;
-    topicId: string;
+    planId?: string;
+    topicId?: string;
+    subjectId?: string;
     cardId?: string;
     front: string;
     back: string;
@@ -365,17 +422,26 @@ export function saveCard(
   if (input.cardId) {
     const result = db
       .prepare(
-        `UPDATE cards SET front = ?, back = ? WHERE id = ? AND plan_id = ?`,
+        `UPDATE cards SET front = ?, back = ? WHERE id = ? AND (? IS NULL OR plan_id = ?)`,
       )
-      .run(front, back, input.cardId, input.planId);
+      .run(front, back, input.cardId, input.planId ?? null, input.planId ?? null);
     if (result.changes === 0) throw new Error("card-missing");
     return { id: input.cardId };
   }
   const id = uuidv7(now);
+  if (input.planId) {
+    if (!input.topicId) throw new Error("topic-missing");
+    db.prepare(
+      `INSERT INTO cards (id, plan_id, topic_id, front, back, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(id, input.planId, input.topicId, front, back, now);
+    return { id };
+  }
+  if (!input.subjectId || !db.prepare("SELECT 1 FROM subjects WHERE id = ?").get(input.subjectId))
+    throw new Error("subject-missing");
   db.prepare(
-    `INSERT INTO cards (id, plan_id, topic_id, front, back, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, input.planId, input.topicId, front, back, now);
+    `INSERT INTO cards (id, subject_id, front, back, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, input.subjectId, front, back, now);
   return { id };
 }
 

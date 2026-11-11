@@ -18,7 +18,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 async function clean(page: Page) {
   await expectNoAxeViolations(page);
@@ -277,7 +277,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await expect(
       page.getByRole("heading", { name: "Esami", exact: true }),
     ).toBeVisible();
-    await page.getByText("Fonti", { exact: true }).click();
+    await toLibrary(page);
     await page
       .getByRole("button", { name: "Aggiungi fonti", exact: true })
       .click();

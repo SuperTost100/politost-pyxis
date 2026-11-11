@@ -8,7 +8,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, fromExamsMenu } from "./doors";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -246,11 +246,9 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
       timeout: 10_000,
     });
     seed(db);
-    // A tab next to Flashcards.
+    // In the Esami menu.
     await page.reload();
-    await page
-      .locator(".ant-segmented-item-label", { hasText: "Mistakes notebook" })
-      .click();
+    await fromExamsMenu(page, "Mistakes notebook");
     await expect(page).toHaveURL(/#\/exams\/mistakes$/);
     await expect(page.getByRole("status")).toHaveText("5 questions to redo from quizzes, quick checks and simulations");
     // Exams in subject order, then topics in plan order; an exam without mistakes is not listed.

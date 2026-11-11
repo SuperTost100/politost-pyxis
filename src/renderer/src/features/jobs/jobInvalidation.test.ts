@@ -13,12 +13,38 @@ describe("job update invalidation", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "source-details",
       "series:later",
     ]);
     expect(keys(staleFamilies({ kind: "quiz-build", state: "running" }))).toEqual(["jobs"]);
     expect(keys(staleFamilies({ kind: "cards-build", state: "failed" }))).toEqual([
       "jobs",
+      "jobs-finished",
+      "plans",
+      "plan",
+      "card-sections",
+      "series:later",
+    ]);
+  });
+
+  it("refreshes the Flashcard section when a job that makes flashcards ends, and not before", () => {
+    for (const kind of ["cards-build", "cards-propose", "plan-build", "plan-rebuild"]) {
+      expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("card-sections");
+      expect(keys(staleFamilies({ kind, state: "running" }))).not.toContain("card-sections");
+    }
+    expect(keys(staleFamilies({ kind: "quiz-build", state: "succeeded" }))).not.toContain("card-sections");
+  });
+
+  it("tells an open map page about its build from every update, and about its maps when the build ends", () => {
+    // The page polls its build only while it runs, so a build resumed or retried elsewhere reaches it through this.
+    expect(keys(staleFamilies({ kind: "map-build", state: "running" }))).toEqual(["jobs", "map-build"]);
+    expect(keys(staleFamilies({ kind: "map-build", state: "succeeded" }))).toEqual([
+      "jobs",
+      "map-build",
+      "maps",
+      "map",
+      "maps-all",
       "jobs-finished",
       "plans",
       "plan",
@@ -70,6 +96,7 @@ describe("stale batcher", () => {
       "jobs-finished",
       "plans",
       "plan",
+      "card-sections",
       "series:later",
     ]);
   });

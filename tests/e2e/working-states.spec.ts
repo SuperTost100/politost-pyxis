@@ -58,7 +58,7 @@ test("the Attività clock turns only while jobs run, and stands still with reduc
   }
 });
 
-test("Ferma tutte stops every running job at once, and they wait under Ti serve with Riprendi", async () => {
+test("Ferma tutte stops every running job at once, and they wait under C'è bisogno di te with Riprendi", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-jobs-stop-"));
   const app = await launchPyxis({ userData });
@@ -75,10 +75,10 @@ test("Ferma tutte stops every running job at once, and they wait under Ti serve 
     await expect(running.locator(".px-logo-working").first()).toBeVisible();
     await expect(list.locator(".px-spin")).toHaveCount(0);
 
-    // Stopping asks nothing: the stopped jobs move to Ti serve as one item.
+    // Stopping asks nothing: the stopped jobs move to C'è bisogno di te as one item.
     await running.getByRole("button", { name: "Ferma tutte" }).click();
     await expect(running).toHaveCount(0);
-    const needs = list.getByRole("region", { name: "Ti serve" });
+    const needs = list.getByRole("region", { name: "C'è bisogno di te" });
     await expect(needs.getByText(/^Hai fermato [2-5] attività$/)).toBeVisible();
     await expect(needs.getByText("Le hai fermate tu. Riprendile quando vuoi da dove erano arrivate.")).toBeVisible();
     await needs.getByRole("button", { name: /^Mostra le [2-5] attività$/ }).click();
@@ -189,10 +189,10 @@ test("the maps page shows the Pyxis mark at work while the maps are built", asyn
     });
     const working = page.locator(".px-map-working");
     await expect(working).toBeVisible();
-    await expect(working.getByRole("status")).toHaveText("Creo le tue mappe…");
+    await expect(working.getByRole("status")).toHaveText("Creo la mappa…");
     await expect(working.locator(".px-logo-working")).toBeVisible();
     // The empty state and its button wait until the build is over.
-    await expect(page.getByRole("button", { name: "Crea mappe" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Crea la mappa" })).toHaveCount(0);
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "working-states/maps-building.png");

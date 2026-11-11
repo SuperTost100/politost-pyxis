@@ -30,7 +30,7 @@ import { isAbort, type JobView } from "../../shared/ipc";
 import { fetchSnapshot } from "./link";
 import { IMPORT_EXTENSIONS } from "./folder";
 import { extForMime, plansUsing } from "./manage";
-import { base64, hashFiles } from "./quality";
+import { base64, existingLinkFor, existingSourceFor, hashFiles, sha256 } from "./quality";
 import { readableLinkedPath } from "./linked-file";
 
 
@@ -786,6 +786,19 @@ export async function enqueueSourceFile(
   );
 }
 
+/**
+ * Thrown when an import finds its material already in the library: nothing was stored and no job started. The handlers
+ * answer with that source.
+ */
+export class SourceExists extends Error {
+  constructor(
+    readonly sourceId: string,
+    readonly title: string,
+  ) {
+    super("source-exists");
+  }
+}
+
 export function enqueueSourceData(
   db: Database.Database,
   workspace: string,
@@ -806,6 +819,17 @@ export function enqueueSourceData(
   if (isHeicExt(ext) && !isHeicBytes(bytes)) throw new Error("heic-invalid");
   if (isHeicExt(ext) && bytes.length > MAX_HEIC_BYTES)
     throw new Error("heic-too-large");
+  if (!existingId) {
+    // The same material is one library source, whatever the way in (a picked file, a drop, pasted text, a link): no
+    // second copy and no second job. A copy a chat or a plan file keeps out of the library does not count, because it
+    // lives and dies with that chat or plan. Nothing awaits between this lookup and the insert below, so two imports
+    // of one file cannot both pass it.
+    const existing = url ? existingLinkFor(db, url) : existingSourceFor(db, sha256(bytes), true);
+    if (existing) {
+      const { title: held } = db.prepare(`SELECT title FROM sources WHERE id = ?`).get(existing) as { title: string };
+      throw new SourceExists(existing, held);
+    }
+  }
   const sourceId = existingId ?? uuidv7();
   const kind = url
     ? "link"

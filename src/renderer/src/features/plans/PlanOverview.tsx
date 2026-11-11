@@ -580,7 +580,10 @@ function ExamAside({
   const subjectMaps = (maps.data ?? []).filter(
     (map) =>
       map.planId === planId ||
-      (plan.subject != null && map.subjectName === plan.subject),
+      // Subject names are unique regardless of case, and the Maps section matches them that way.
+      (plan.subject != null &&
+        map.subjectName?.toLocaleLowerCase() ===
+          plan.subject.toLocaleLowerCase()),
   );
   const paperIds = new Set(papers.data?.papers.map((paper) => paper.sourceId));
   const covers = [

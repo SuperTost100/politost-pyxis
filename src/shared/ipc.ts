@@ -119,6 +119,8 @@ const quizQuestionSchema = z.object({
 const importResultSchema = z.object({
   sourceId: z.string(),
   jobId: z.string().optional(),
+  /** The same material was already a source: that source is returned, and no job started. */
+  existing: z.boolean().optional(),
   title: z.string(),
   chapters: z.number(),
   passages: z.number(),
@@ -1284,33 +1286,38 @@ export const requests = {
     output: z.object({ jobId: z.string(), state: z.string(), progress: z.number() }).nullable(),
   },
   "study.cardsPlaces": {
-    // The plans and topics a card can go under, with a first guess from the chat's plan or subject, the lesson's topic, or the passages the text cites.
+    // The subjects, and the exams and topics, cards can go under, with a first guess from the chat's plan or subject, the
+    // lesson's topic, or the passages the text cites. Cards belong to a subject; the exam is optional.
     input: z.object({
       planId: z.string().optional(),
       topicId: z.string().optional(),
       subject: z.string().optional(),
-      /** A map's subject: only its exams are offered, and none when it has none. */
+      /** A map's subject: the cards go under it, and only its exams are offered. */
       subjectId: z.string().optional(),
       passageIds: z.array(z.string()).max(1000).optional(),
     }),
     output: z.object({
+      subjects: z.array(z.object({ id: z.string(), name: z.string() })),
       plans: z.array(
         z.object({
           id: z.string(),
           title: z.string(),
+          subjectId: z.string().nullable(),
           subject: z.string().nullable(),
           topics: z.array(z.object({ id: z.string(), title: z.string() })),
         }),
       ),
+      subjectId: z.string().nullable(),
       planId: z.string().nullable(),
       topicId: z.string().nullable(),
     }),
   },
   "study.cardsPropose": {
     // Asks the model for cards from a text and stores nothing: the student reviews them, then saves with cardsSaveProposed.
+    // The exam, when there is one, sets the language they are written in.
     input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
       text: z.string().trim().min(1).max(50_000),
       passageIds: z.array(z.string()).max(1000),
     }),
@@ -1321,9 +1328,11 @@ export const requests = {
     }),
   },
   "study.cardsSaveProposed": {
+    // Under an exam's topic (planId and topicId), or under a subject with no exam (subjectId).
     input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      subjectId: z.string().optional(),
       cards: z.array(proposedCardSchema).min(1).max(20),
       provider: z.string(),
       model: z.string(),
@@ -1367,9 +1376,11 @@ export const requests = {
     output: z.object({ newPerDay: z.number().int() }),
   },
   "study.save": {
+    // Edits the card `cardId`, or writes a new one under an exam's topic or, with no exam, under `subjectId`.
     input: z.object({
-      planId: z.string(),
-      topicId: z.string(),
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      subjectId: z.string().optional(),
       cardId: z.string().optional(),
       front: z.string(),
       back: z.string(),
@@ -1385,10 +1396,11 @@ export const requests = {
     output: z.object({ ok: z.boolean() }),
   },
   "study.browse": {
-    // Cards across every exam, in subject order, one page at a time. `query` matches the front or the back, ignoring case and accents.
+    // Cards across every exam and subject, in subject order, one page at a time. `query` matches the front or the back,
+    // ignoring case and accents. `planId: null` keeps the cards with no exam.
     input: z.object({
       query: z.string().max(200).optional(),
-      planId: z.string().optional(),
+      planId: z.string().nullable().optional(),
       topicId: z.string().optional(),
       status: z.enum(["all", "due", "suspended", "removed", "leech"]).optional(),
       offset: z.number().int().min(0).optional(),
@@ -1401,8 +1413,8 @@ export const requests = {
           id: z.string(),
           front: z.string(),
           back: z.string(),
-          planId: z.string(),
-          planTitle: z.string(),
+          planId: z.string().nullable(),
+          planTitle: z.string().nullable(),
           topicId: z.string().nullable(),
           topicTitle: z.string().nullable(),
           subjectId: z.string().nullable(),
@@ -1436,6 +1448,7 @@ export const requests = {
       topics: z.array(
         z.object({ id: z.string(), planId: z.string(), title: z.string() }),
       ),
+      examless: z.boolean(),
     }),
   },
   "study.restore": {
@@ -1705,6 +1718,9 @@ export const requests = {
         archived: z.boolean(),
         subject: z.string().nullable(),
         daysToExam: z.number().nullable(),
+        /** The next exam session, or the last one once all are past, and its label ("Scritto"). */
+        examAt: z.number().nullable(),
+        examLabel: z.string().nullable(),
         mastery: z.number(),
         target: z.number(),
         imported: z.boolean(),
@@ -2033,6 +2049,11 @@ export const requests = {
       }),
     ),
   },
+  "plans.examlessDue": {
+    // Flashcards due that belong to no exam, which the daily review shows with the exams' own and the rings do not count.
+    input: z.object({}),
+    output: z.object({ count: z.number().int().nonnegative() }),
+  },
   "plans.planner": {
     input: z.object({}),
     output: z.object({
@@ -2080,10 +2101,47 @@ export const requests = {
     }),
     output: z.object({ ok: z.literal(true) }),
   },
-  "study.dueEverywhere": {
-    // Due cards from every plan, for Oggi's flashcards item.
+  "study.subjectCards": {
+    // Due cards of a subject's flashcards with no exam, to review them on their own.
+    input: z.object({ subjectId: z.string() }),
+    output: z.array(dueCardSchema),
+  },
+  "study.cardSections": {
+    // The Flashcard section: every card by subject, exam and topic, the cards with no exam last in each subject, with
+    // their due counts. `due` is what the daily review holds today.
     input: z.object({}),
-    output: z.array(dueCardSchema.extend({ planId: z.string(), planTitle: z.string() })),
+    output: z.object({
+      due: z.number().int(),
+      total: z.number().int(),
+      subjects: z.array(
+        z.object({
+          subjectId: z.string().nullable(),
+          name: z.string().nullable(),
+          total: z.number().int(),
+          due: z.number().int(),
+          exams: z.array(
+            z.object({
+              planId: z.string(),
+              title: z.string(),
+              total: z.number().int(),
+              due: z.number().int(),
+              topics: z.array(
+                z.object({ topicId: z.string(), title: z.string(), total: z.number().int(), due: z.number().int() }),
+              ),
+            }),
+          ),
+          examless: z.object({ total: z.number().int(), due: z.number().int() }).nullable(),
+        }),
+      ),
+    }),
+  },
+  "study.dueEverywhere": {
+    // Due cards from every plan and every subject's cards with no exam (planId null), for the daily review. With
+    // `subjectId`, one subject's (null: the cards with no subject), and with `examless` only its cards with no exam.
+    input: z.object({ subjectId: z.string().nullable().optional(), examless: z.boolean().optional() }),
+    output: z.array(
+      dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
+    ),
   },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
