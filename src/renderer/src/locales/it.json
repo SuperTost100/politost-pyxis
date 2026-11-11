@@ -3123,6 +3123,7 @@
     "reviewTopic": "Ripasso mirato su {{topic}}",
     "reviewPreparing": "Preparo il ripasso",
     "reviewFailed": "Il ripasso mirato non è pronto: la preparazione si è fermata.",
+    "reviewReadFailed": "Il ripasso mirato potrebbe essere pronto, ma non riesco a controllare.",
     "simulationDone": "Ultima prova: {{result}}",
     "create": "Crea un'attività",
     "share": "Condividi l'esame",

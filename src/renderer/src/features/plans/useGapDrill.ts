@@ -31,13 +31,17 @@ export function useGapDrill(planId: string) {
         topicId: drill?.topicId ?? "",
         ...(drill?.gapId ? { gapId: drill.gapId } : {}),
       }),
+    // A failed read stops the polling: the page says so, and Retry reads again.
     refetchInterval: (query) =>
+      query.state.status !== "error" &&
       ["queued", "running"].includes(query.state.data?.state ?? "queued")
         ? 1500
         : false,
   });
+  // A read that failed says nothing about the job, so it is not taken for a drill that is queued.
+  const readFailed = Boolean(drill) && drillRead.isError;
   const state = drill ? (drillRead.data?.state ?? "queued") : null;
-  const preparing = state === "queued" || state === "running";
+  const preparing = !readFailed && (state === "queued" || state === "running");
   const jobStopped =
     state === "failed" || state === "cancelled" || state === "interrupted";
   const readyAttempt =
@@ -80,12 +84,25 @@ export function useGapDrill(planId: string) {
     void start(request.begin);
   }, [requestedDrill]);
 
+  const stopped = stoppedTopic(failedTopic, jobStopped || readFailed, drill?.topicId ?? null);
   return {
     start,
     /** The topic whose drill is being prepared, while it is. */
     preparing: preparing ? (drill?.topicId ?? null) : null,
     /** The topic whose drill stopped, with nothing to open. */
-    stopped: stoppedTopic(failedTopic, jobStopped, drill?.topicId ?? null),
+    stopped,
+    /** The drill's state could not be read, so it is not known to have stopped. */
+    readFailed,
+    /** Reads the drill again after a failed read; otherwise starts the stopped drill again. */
+    retry: () => {
+      if (readFailed) {
+        void drillRead.refetch();
+        return;
+      }
+      setFailedTopic(null);
+      setDrill(null);
+      if (stopped) void start(stopped);
+    },
     dismiss: () => {
       setFailedTopic(null);
       setDrill(null);

@@ -388,3 +388,54 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
     removeTestFolder(userData);
   }
 });
+
+test("a gap drill whose read fails says so and offers to read it again, instead of staying prepared forever", async () => {
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-read-"));
+  let app = await launch(userData, drillReplies());
+  let planId = "";
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    ({ planId } = await setupPlan(userData, page, app));
+  } finally {
+    await app.close();
+  }
+  // The model answers slowly, so the drill is still being prepared while its read fails.
+  app = await launch(userData, drillReplies(), 5000);
+  // Reading a drill looks at the gaps; while that table is away the read fails, and it works again when it is back.
+  const gaps = (away: boolean) => {
+    const db = new DatabaseSync(dbPath(userData), { timeout: 10000 });
+    try {
+      db.exec(away ? "ALTER TABLE gaps RENAME TO gaps_away" : "ALTER TABLE gaps_away RENAME TO gaps");
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    await goto(page, `/plans/${planId}`);
+    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    await fill.first().click();
+    await expect(fill.first()).toBeDisabled();
+    gaps(true);
+    // The page says it cannot tell whether the review is ready, and the controls are free again.
+    const failed = page.getByRole("alert").filter({ hasText: "non riesco a controllare" });
+    await expect(failed).toBeVisible();
+    await expect(fill.first()).toBeEnabled();
+    await expect(page.getByText("Preparo il ripasso")).toHaveCount(0);
+    await saveShot(page, "review-drills-read-failed-it.png", { animations: "disabled" });
+    await expectNoAxeViolations(page);
+    // Trying again while it still fails keeps the message; once the read works the review goes on and opens its quiz.
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toBeVisible();
+    gaps(false);
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(failed).toHaveCount(0);
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 90000 });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

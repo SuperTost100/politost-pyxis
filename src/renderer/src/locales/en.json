@@ -3123,6 +3123,7 @@
     "reviewTopic": "Targeted review of {{topic}}",
     "reviewPreparing": "Preparing the review",
     "reviewFailed": "The targeted review isn't ready: preparing it stopped.",
+    "reviewReadFailed": "The targeted review may be ready, but Pyxis couldn't check.",
     "simulationDone": "Last one: {{result}}",
     "create": "Create an activity",
     "share": "Share the exam",
