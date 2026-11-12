@@ -1064,6 +1064,33 @@ describe("renaming and deleting a map", () => {
     db.close();
   });
 
+  it("does not let a retry or a resume by id restart a build given up with its deleted map", async () => {
+    const { db, input } = fixture(4);
+    const runner = createRunner(db, () => {});
+    registerMapJobs(db, runner, run);
+    enqueueMaps(db, runner, input);
+    await until(db, input, "succeeded");
+    const mapId = listMaps(db, input)[0]!.id;
+    const params = { ...prepareMaps(db, input), mapId, built: [], next: 0 };
+    const cancelled = runner.start("map-build", params);
+    runner.cancel(cancelled);
+    const interrupted = runner.start("map-build", params);
+    runner.cancel(interrupted);
+    deleteMapAndBuilds(db, runner, input, { mapId });
+    // A build still running when the app quit is interrupted at the next start, given up or not.
+    db.prepare("UPDATE jobs SET state = 'interrupted' WHERE id = ?").run(interrupted);
+    // The calls the job's own IPC handlers make clear the flag a retry uses, so it cannot be what keeps a build given up.
+    runner.retry(cancelled);
+    runner.resume(interrupted);
+    runner.activate();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mapBuild(db, input, cancelled)?.state).toBe("cancelled");
+    expect(mapBuild(db, input, interrupted)?.state).toBe("interrupted");
+    expect(runner.list().some((job) => job.id === cancelled || job.id === interrupted)).toBe(false);
+    expect(listMaps(db, input)).toEqual([]);
+    db.close();
+  });
+
   it("makes an AI edit that ends after its map was deleted fail, without storing the map again", async () => {
     const { db, input } = fixture(4);
     await generateMaps(db, input, run);

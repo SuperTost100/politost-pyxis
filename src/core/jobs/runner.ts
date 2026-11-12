@@ -98,6 +98,12 @@ type StepRow = {
  * The kind of tracked work (see `Runner.track`). Its finished rows store what the work was about as their params;
  * register its kinds at startup so those rows read the same after a restart.
  */
+/**
+ * The `dismissed` value of a job given up for good (`discard`). Any other non-zero value is a Chiudi, which a retry or a
+ * resume may still undo; this one is refused by both, so a build of a deleted map cannot store it again.
+ */
+const GIVEN_UP = 2;
+
 export const trackedJob: JobSpec = { jobClass: "local", steps: [], about: (params) => params as JobAbout };
 
 const defaultLimits = (): Limits => ({
@@ -400,7 +406,7 @@ export function createRunner(
   function resume(jobId: string, schedule = true): boolean {
     const changed = db
       .prepare(
-        `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted'`,
+        `UPDATE jobs SET state = 'queued', dismissed = 0, updated_at = ? WHERE id = ? AND state = 'interrupted' AND dismissed < ${GIVEN_UP}`,
       )
       .run(Date.now(), jobId);
     if (changed.changes === 0) return false;
@@ -446,7 +452,7 @@ export function createRunner(
   function retry(jobId: string, schedule = true): boolean {
     const job = db
       .prepare(
-        "SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled')",
+        `SELECT kind, params_json FROM jobs WHERE id = ? AND state IN ('failed', 'cancelled') AND dismissed < ${GIVEN_UP}`,
       )
       .get(jobId) as { kind: string; params_json: string } | undefined;
     if (!job) return false;
@@ -549,7 +555,7 @@ export function createRunner(
     cancel,
     discard(jobId) {
       const hidden = db
-        .prepare(`UPDATE jobs SET dismissed = 1 WHERE id = ? AND state <> 'succeeded'`)
+        .prepare(`UPDATE jobs SET dismissed = ${GIVEN_UP} WHERE id = ? AND state <> 'succeeded'`)
         .run(jobId);
       cancel(jobId);
       if (hidden.changes > 0) publish(jobId);
@@ -629,7 +635,8 @@ export function createRunner(
           (view?.kind === "gap-insight" && view.state === "succeeded")) &&
         ["failed", "cancelled", "succeeded", "interrupted"].includes(view.state)
       ) {
-        db.prepare("UPDATE jobs SET dismissed = 1 WHERE id = ?").run(jobId);
+        // A build given up keeps its mark: a Chiudi must not make it one a retry could bring back.
+        db.prepare("UPDATE jobs SET dismissed = MAX(dismissed, 1) WHERE id = ?").run(jobId);
         // The row stays for its own reasons; the student's prompts and replies in the debug log don't.
         void removeJobLog(jobId);
         publish(jobId);
