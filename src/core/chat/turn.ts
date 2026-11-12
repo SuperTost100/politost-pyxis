@@ -668,13 +668,14 @@ function passageLabels(citations: ChatCitation[]) {
   }));
 }
 
-/** Whether any Library file has passages to search. */
+/** Whether any file of the Library or of an exam has passages to search. */
 function libraryHasPassages(db: Database.Database): boolean {
   return Boolean(
     db
       .prepare(
         `SELECT 1 FROM passages p JOIN sources s ON s.id = p.source_id
-          WHERE s.library = 1 AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted') LIMIT 1`,
+          WHERE (s.library = 1 OR s.id IN (SELECT source_id FROM plan_sources WHERE role = 'material'))
+            AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted') LIMIT 1`,
       )
       .get(),
   );

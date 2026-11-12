@@ -27,7 +27,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `ListToolbar`                        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
 | `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
 | `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
-| `Composer`                           | The message box in Chiedi, with attachments, the whiteboard, formulas, the graph and the subject chip    |
+| `Composer`                           | The message box in Chiedi: the plus (a file or a formula), the whiteboard, the graph and Invia           |
 | `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
 | `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                             |
 

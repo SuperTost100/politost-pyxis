@@ -2,7 +2,6 @@ import {
   expect,
   test,
   type ElectronApplication,
-  type Page,
 } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -93,99 +92,10 @@ function seed(userData: string) {
   db.close();
 }
 
-async function chat(page: Page) {
-  return page.evaluate(
-    () =>
-      window.pyxis.invoke("chats.read", {
-        chatId: location.hash.split("/").at(-1)!,
-      }) as Promise<{
-        sourceIds: string[];
-        subject: string | null;
-        messages: Array<{ role: string; body: string }>;
-      }>,
-  );
-}
-
 async function finish(app: ElectronApplication, userData: string) {
   await app.close();
   removeTestFolder(userData);
 }
-
-test("Ask: the composer chip is the only subject control and picks the subject's sources", async () => {
-  test.setTimeout(120000);
-  const { app, page, userData } = await launch();
-  try {
-    seed(userData);
-    await page.evaluate(() => {
-      location.hash = "/ask";
-    });
-    await page.reload();
-    await page.getByRole("heading", { level: 1 }).waitFor();
-    // The old Select row and the loose source lists are gone.
-    await expect(page.getByRole("combobox")).toHaveCount(0);
-    await expect(page.locator(".choice")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Gestisci materie" })).toHaveCount(0);
-
-    const subject = page.getByRole("button", { name: /^Materia:/ });
-    await expect(subject).toHaveText("Nessuna materia");
-    await expect(page.getByRole("button", { name: "Fonti", exact: true })).toBeVisible();
-
-    await subject.click();
-    // Focus moves into the menu, so the keyboard can pick.
-    await expect(page.getByRole("button", { name: "Nessuna materia", exact: true })).toBeFocused();
-    await expect(page.getByRole("button", { name: "Gestisci materie" })).toBeVisible();
-    await page.getByRole("button", { name: "Fisica", exact: true }).click();
-    await expect(subject).toHaveText("Fisica");
-
-    // Fisica's plan brings its two sources, and nothing of Analisi 2.
-    const sources = page.getByRole("button", { name: "2 fonti" });
-    await sources.click();
-    const menu = page.getByRole("region", { name: "Fonti in uso" });
-    await expect(menu.getByRole("button").first()).toBeFocused();
-    await expect(menu.getByText("Appunti di fisica")).toBeVisible();
-    await expect(menu.getByText("Esercizi di meccanica")).toBeVisible();
-    await expect(menu.getByText("Dispense di analisi 2")).toHaveCount(0);
-
-    // Remove one, then add another from the library.
-    await menu.getByRole("button", { name: "Rimuovi Esercizi di meccanica" }).click();
-    await expect(page.getByRole("button", { name: "1 fonte" })).toBeVisible();
-    await menu.getByRole("button", { name: "Aggiungi fonti" }).click();
-    await menu.getByRole("button", { name: "Slide di chimica" }).click();
-    await menu.getByRole("button", { name: "Indietro" }).click();
-    await expect(page.getByRole("button", { name: "2 fonti" })).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    // Switching subject swaps the subject's sources and keeps the one added by hand.
-    await subject.click();
-    await page.getByRole("button", { name: "Analisi 2", exact: true }).click();
-    await page.getByRole("button", { name: "2 fonti" }).click();
-    await expect(menu.getByText("Dispense di analisi 2")).toBeVisible();
-    await expect(menu.getByText("Slide di chimica")).toBeVisible();
-    await expect(menu.getByText("Appunti di fisica")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-
-    // Back to Fisica, then ask: the chat stores that scope and restores it.
-    await subject.click();
-    await page.getByRole("button", { name: "Fisica", exact: true }).click();
-    const box = page.getByRole("textbox", { name: "Messaggio" });
-    await box.fill("Come si risolve un integrale per parti?");
-    await box.press("Enter");
-    await expect(page).toHaveURL(/#\/ask\/.+/);
-    await expect(page.getByRole("button", { name: "Fammi un altro esempio" })).toBeVisible();
-    const stored = await chat(page);
-    expect(stored.subject).toBe("Fisica");
-    expect(stored.sourceIds.sort()).toEqual(["src-fis", "src-fis2", "src-free"].sort());
-    await page.evaluate(() => {
-      location.hash = "/ask";
-    });
-    await expect(page.getByRole("button", { name: "Fonti", exact: true })).toBeVisible();
-    await page.getByRole("link", { name: /^Come si risolve un integrale per parti\?/ }).click();
-    await expect(page.getByRole("button", { name: /^Materia: Fisica/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "3 fonti" })).toBeVisible();
-  } finally {
-    await finish(app, userData);
-  }
-});
 
 test("Ask: recent chats, automatic titles, rename and delete, greeting and the thinking placeholder", async () => {
   test.setTimeout(120000);
@@ -290,17 +200,15 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       await expect(page.getByText(text, { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
     }
-    // With a subject chosen and nothing in its sources about the question, the reply is still given, marked as general knowledge.
-    await page.getByRole("button", { name: /^Materia:/ }).click();
-    await page.getByRole("button", { name: "Analisi 2", exact: true }).click();
+    // With nothing in the Library about the question, the reply is still given, and says it comes from general knowledge.
+    const general = "Nella tua Libreria non c'è niente su questa domanda, quindi ti rispondo con quello che so in generale.";
+    const before = await page.getByText(general).count();
     await box.fill("Una domanda fuori materia");
     await box.press("Enter");
     // Slow hosted runners can take well over 30 s for a recorded reply.
-    await expect(page.getByText("Conoscenza generale, non dalle tue fonti")).toBeVisible({ timeout: 90000 });
+    await expect(page.getByText(general)).toHaveCount(before + 1, { timeout: 90000 });
     await expect(page.getByText("Il materiale non copre questa domanda.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
-    // The earlier replies, from a chat with nothing selected, carry no badge.
-    await expect(page.getByText("Conoscenza generale, non dalle tue fonti")).toHaveCount(1);
 
     // The page scrolls to the newest message after the reply ends; a slow runner can measure before it gets there.
     await expect

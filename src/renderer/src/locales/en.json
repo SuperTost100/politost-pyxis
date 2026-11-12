@@ -312,7 +312,6 @@
       "guiding": "Rewriting the answer one step at a time",
       "solving": "Writing the full solution"
     },
-    "sources": "Sources in use",
     "notCovered": "Your material does not cover this question.",
     "answerGeneral": "Answer from general knowledge",
     "skippedTooLarge_one": "A photo from this chat was too large to send, so this answer did not see it.",
@@ -329,7 +328,6 @@
     "deleteFailed": "This chat couldn't be deleted. Try again.",
     "new": "New chat",
     "stopped": "Stopped",
-    "subject": "Subject",
     "askTutor": "Ask the tutor",
     "contextRemove": "Remove",
     "removeAttachment": "Remove {{name}}",
@@ -2483,7 +2481,6 @@
       "refused": "That text is too long to add: a message holds up to {{max, number}} characters. Shorten it, or send it in parts."
     },
     "chat": {
-      "generalTag": "General knowledge, not from your sources",
       "thinking": "Thinking…",
       "readingSources": "Reading your sources…",
       "copy": "Copy",

@@ -312,7 +312,6 @@
       "guiding": "Riscrivo la risposta un passo alla volta",
       "solving": "Scrivo la soluzione completa"
     },
-    "sources": "Fonti in uso",
     "notCovered": "Il materiale non copre questa domanda.",
     "answerGeneral": "Rispondi con le conoscenze generali",
     "skippedTooLarge_one": "Una foto di questa chat era troppo grande da inviare, quindi questa risposta non l'ha vista.",
@@ -329,7 +328,6 @@
     "deleteFailed": "Non è stato possibile eliminare la chat. Riprova.",
     "new": "Nuova chat",
     "stopped": "Interrotta",
-    "subject": "Materia",
     "askTutor": "Chiedi al tutor",
     "contextRemove": "Rimuovi",
     "removeAttachment": "Rimuovi {{name}}",
@@ -2483,7 +2481,6 @@
       "refused": "Questo testo è troppo lungo da aggiungere: un messaggio contiene al massimo {{max, number}} caratteri. Accorcialo, o invialo a parti."
     },
     "chat": {
-      "generalTag": "Conoscenza generale, non dalle tue fonti",
       "thinking": "Sto pensando…",
       "readingSources": "Leggo le tue fonti…",
       "copy": "Copia",

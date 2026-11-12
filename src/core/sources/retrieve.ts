@@ -178,15 +178,17 @@ export function hitOf(row: PassageRow): PassageHit {
 }
 
 /**
- * The passages a search may return: those of `sourceIds`, or with `withLibrary` (or no ids) every Library passage, plus
- * the given ids. Passages with no source (none are written today) count as the Library's.
+ * The passages a search may return: those of `sourceIds`, or with no ids every Library passage. With `withLibrary` it is
+ * the student's whole material, the Library and the files their exams study (a plan file's copies are kept out of the
+ * Library), plus the given ids. Passages with no source (none are written today) count as the Library's.
  */
 function scopeClause(sourceIds: string[] | undefined, withLibrary: boolean): { sql: string; params: string[] } {
   const ids = sourceIds ?? [];
   const listed = ids.length > 0 ? `p.source_id IN (${ids.map(() => "?").join(", ")})` : "";
   if (ids.length > 0 && !withLibrary) return { sql: ` AND ${listed}`, params: ids };
+  const exams = withLibrary ? " OR p.source_id IN (SELECT source_id FROM plan_sources WHERE role = 'material')" : "";
   return {
-    sql: ` AND (p.source_id IS NULL OR s.library = 1${listed ? ` OR ${listed}` : ""})`,
+    sql: ` AND (p.source_id IS NULL OR s.library = 1${exams}${listed ? ` OR ${listed}` : ""})`,
     params: ids,
   };
 }

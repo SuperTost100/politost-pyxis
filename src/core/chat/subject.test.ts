@@ -167,6 +167,22 @@ describe("a chat's subject", () => {
     db.close();
   });
 
+  it("covers an exam's own copies of its files, which stay out of the Library, and takes the exam's subject from them", async () => {
+    const db = library([
+      { id: "copy", subject: null, texts: physics, library: false },
+      { id: "other", subject: "Storia", texts: filler },
+    ]);
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica 2', 1)").run();
+    db.prepare(
+      "INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', 's-fis', 'Esame', 'ready', 1, 1)",
+    ).run();
+    db.prepare("INSERT INTO plan_sources (plan_id, source_id) VALUES ('plan', 'copy')").run();
+    const asked = await ask(db, "Campo elettrico di un filo carico");
+    expect(asked.prompt).toContain("teorema di Gauss");
+    expect(chatSubject(db, asked.chatId)).toBe("Fisica 2");
+    db.close();
+  });
+
   it("set by the student sticks, the whole Library included, and a failed turn changes nothing", async () => {
     const db = library([
       { id: "fis", subject: "Fisica 2", texts: physics },
