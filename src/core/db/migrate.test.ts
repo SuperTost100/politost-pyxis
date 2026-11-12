@@ -759,3 +759,44 @@ describe("the kind a student chose for a file", () => {
     expect(again.prepare("SELECT chosen_kind FROM sources WHERE id = 'a'").pluck().get()).toBe("notes");
   });
 });
+
+/** How many columns of `sources` carry this name. */
+const sourceColumns = (db: Database.Database, name: string) =>
+  db.prepare("SELECT COUNT(*) FROM pragma_table_info('sources') WHERE name = ?").pluck().get(name);
+
+describe("`sources.chosen_kind` on a new workspace and on every upgrade", () => {
+  it("creates a new workspace at the newest version with the column once, empty for a new file", () => {
+    const db = tempDb();
+    expect(db.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+    expect(sourceColumns(db, "chosen_kind")).toBe(1);
+    db.prepare("INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('a', 'pdf', 'Dispense', 'ready', 1, 1)").run();
+    expect(db.prepare("SELECT chosen_kind FROM sources WHERE id = 'a'").pluck().get()).toBeNull();
+    // Opening it again runs no step and leaves the column as it is.
+    migrate(db);
+    expect(sourceColumns(db, "chosen_kind")).toBe(1);
+  });
+
+  // Each version is built by running the real steps up to it, so a step that already held the column would fail here.
+  for (const version of [1, 15, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30])
+    it(`upgrades a workspace at version ${version} to ${SCHEMA_VERSION} with every source kept and no kind chosen`, () => {
+      const { db, file } = workspaceAt(version);
+      expect(sourceColumns(db, "chosen_kind")).toBe(0);
+      db.exec(`
+        INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES
+          ('a', 'pdf', 'Dispense', 'ready', 1, 2),
+          ('b', 'text', 'Appunti', 'ready', 3, 4);
+      `);
+      const before = db.prepare("SELECT * FROM sources ORDER BY rowid").all() as Array<Record<string, unknown>>;
+      db.close();
+
+      const again = openDatabase(file);
+      opened.push(again);
+      expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+      expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+      expect(sourceColumns(again, "chosen_kind")).toBe(1);
+      const after = again.prepare("SELECT * FROM sources ORDER BY rowid").all() as Array<Record<string, unknown>>;
+      // Every value the row had is unchanged, and the new column is empty.
+      expect(after.map((row) => Object.fromEntries(Object.keys(before[0]!).map((key) => [key, row[key]])))).toEqual(before);
+      expect(after.map((row) => row.chosen_kind)).toEqual([null, null]);
+    });
+});
