@@ -224,7 +224,9 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
   };
   const packaged = process.env.PYXIS_DIST_APP;
   const app = await launchPyxis({ userData, env });
-  // What core logs while the loop runs. A line such as "file sorting failed" is an error it swallowed.
+  // What the app's processes log while the loop runs. A line of core's such as "pyxis-core: file sorting failed" is an
+  // error it swallowed. Chromium writes to the same stream (the Intel Mac runner logs "EGL display types failed" at
+  // every launch), so only core's own lines count.
   let coreLog = "";
   if (!live)
     app.process().stderr?.on("data", (chunk) => {
@@ -570,7 +572,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .click();
     await expect(page.getByText(/12 metres/).first()).toBeVisible();
     await clean(page);
-    if (!live) expect(coreLog.split("\n").filter((line) => /failed/.test(line))).toEqual([]);
+    if (!live) expect(coreLog.split("\n").filter((line) => /pyxis-core:.*failed/.test(line))).toEqual([]);
     if (live)
       writeFileSync(
         ".tmp/m15-live-release.json",
