@@ -1,7 +1,14 @@
-import type { MenuItemConstructorOptions } from "electron";
+import type { BaseWindow, MenuItemConstructorOptions, WebFrameMain } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { goPages, isMenuCommand, type MenuCommand } from "../shared/menu";
-import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuTemplate, type TextMenuParams } from "./menu";
+import {
+  buildMenuTemplate,
+  contextMenuAnchor,
+  contextMenuItems,
+  textMenuPopupOptions,
+  textMenuTemplate,
+  type TextMenuParams,
+} from "./menu";
 
 type Item = MenuItemConstructorOptions;
 
@@ -263,6 +270,31 @@ describe("contextMenuItems", () => {
     expect(contextMenuItems([{ id: "", label: "A" }])).toBeNull();
     expect(contextMenuItems([{ id: "a", label: "A", click: "x", enabled: "yes" }])).toBeNull();
     expect(contextMenuItems([{ id: "a", label: "x".repeat(121) }])).toBeNull();
+  });
+});
+
+describe("textMenuPopupOptions", () => {
+  const window = { id: 1 } as unknown as BaseWindow;
+  const frame = { routingId: 7 } as unknown as WebFrameMain;
+
+  it("passes the event's frame, so macOS adds Writing Tools, AutoFill and Services", () => {
+    const options = textMenuPopupOptions(window, { menuSourceType: "mouse", x: 10, y: 20, frame });
+    expect(options.frame).toBe(frame);
+    expect(options.window).toBe(window);
+  });
+
+  it("opens at the pointer for a click and at the field for the keyboard", () => {
+    expect(textMenuPopupOptions(window, { menuSourceType: "mouse", x: 10, y: 20, frame })).toEqual({ window, frame });
+    expect(textMenuPopupOptions(window, { menuSourceType: "keyboard", x: 10.4, y: 20, frame })).toEqual({
+      window,
+      frame,
+      x: 10,
+      y: 20,
+    });
+  });
+
+  it("leaves the frame out when the event has none", () => {
+    expect(textMenuPopupOptions(window, { menuSourceType: "mouse", x: 1, y: 2, frame: null })).toEqual({ window });
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ContextMenuParams, MenuItemConstructorOptions } from "electron";
+import type { BaseWindow, ContextMenuParams, MenuItemConstructorOptions, PopupOptions } from "electron";
 import { goPages, type MenuCommand, type MenuLanguage } from "../shared/menu";
 
 const appName = "PoliTost Pyxis";
@@ -306,6 +306,19 @@ export function contextMenuItems(raw: unknown): Array<{ id: string; label: strin
     items.push(enabled === undefined ? { id, label } : { id, label, enabled });
   }
   return items;
+}
+
+/**
+ * What the text menu's popup is called with. A menu asked for by the keyboard hangs from the field; one asked for by a
+ * click opens at the pointer. The event's frame goes along: without it macOS leaves out the system's own entries for a
+ * text field (Writing Tools, AutoFill, Services), as Electron's `Menu.popup` documentation says.
+ */
+export function textMenuPopupOptions(
+  window: BaseWindow,
+  params: Pick<ContextMenuParams, "menuSourceType" | "x" | "y" | "frame">,
+): PopupOptions {
+  const at = params.menuSourceType === "keyboard" ? contextMenuAnchor({ x: params.x, y: params.y }) : null;
+  return { window, ...(params.frame ? { frame: params.frame } : {}), ...(at ?? {}) };
 }
 
 /** What the text menu reads of a window's `context-menu` event. */

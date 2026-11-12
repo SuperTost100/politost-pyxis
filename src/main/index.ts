@@ -31,7 +31,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuTemplate } from "./menu";
+import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuPopupOptions, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
   type MenuCommand,
@@ -583,9 +583,7 @@ function createWindow(route?: string): void {
       learn: (word) => void contents.session.addWordToSpellCheckerDictionary(word),
     });
     if (!template || !mainWindow || mainWindow.isDestroyed()) return;
-    // A menu asked for by the keyboard hangs from the field; one asked for by a click opens at the pointer.
-    const at = params.menuSourceType === "keyboard" ? contextMenuAnchor({ x: params.x, y: params.y }) : null;
-    Menu.buildFromTemplate(template).popup({ window: mainWindow, ...(at ?? {}) });
+    Menu.buildFromTemplate(template).popup(textMenuPopupOptions(mainWindow, params));
   });
   mainWindow.webContents.on("did-finish-load", () => {
     pageReady = true;
