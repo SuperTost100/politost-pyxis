@@ -84,6 +84,41 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
       await expect(name, key).toBeFocused();
     }
 
+    // Windows sends a contextmenu for the menu key when the key is released, after the key press opened the menu, on the
+    // focused element and at its place. The menu stays under the name as the keyboard's, and Escape gives the focus back.
+    await name.focus();
+    await page.keyboard.press("ContextMenu");
+    expect(await itemsOf(page, "Azioni")).toEqual(fromDots);
+    const keyMenu = (await page.getByRole("menu").boundingBox())!;
+    await page.evaluate(() => {
+      const focused = document.activeElement!;
+      const at = focused.getBoundingClientRect();
+      focused.dispatchEvent(
+        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: at.left + at.width / 2, clientY: at.top + at.height / 2 }),
+      );
+    });
+    await expect(page.getByRole("menu")).toHaveCount(1);
+    expect((await page.getByRole("menu").boundingBox())!).toEqual(keyMenu);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(name).toBeFocused();
+
+    // A right-click on the name's far end while the key's menu is open moves the menu to the pointer.
+    await page.keyboard.press("ContextMenu");
+    await expect(page.getByRole("menu")).toBeVisible();
+    const nameAt = (await name.boundingBox())!;
+    const far = { x: nameAt.x + nameAt.width - 4, y: nameAt.y + nameAt.height / 2 };
+    expect(far.x - (nameAt.x + 8)).toBeGreaterThan(40);
+    await page.mouse.click(far.x, far.y, { button: "right" });
+    await expect
+      .poll(async () => {
+        const menuBox = (await page.getByRole("menu").boundingBox())!;
+        return [Math.abs(menuBox.x - far.x) < 24, Math.abs(menuBox.y - far.y) < 24];
+      })
+      .toEqual([true, true]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+
     // The search field of the page keeps the system's own menu: nothing opens, and nothing is prevented.
     const field = page.getByRole("textbox").first();
     const prevented = await field.evaluate((input) => {

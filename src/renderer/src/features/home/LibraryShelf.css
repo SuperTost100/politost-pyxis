@@ -161,6 +161,12 @@ input.px-ctl-field.px-shelf-subject-rename {
 .px-cover-badge.is-problem {
   color: var(--danger);
 }
+/* The Library's dots are round: over a cover's corner, at the end of a row and beside a subject's name. */
+.px-iconbtn.ant-btn.px-cover-menu,
+.px-iconbtn.ant-btn.px-unsorted-menu,
+.px-iconbtn.ant-btn.px-shelf-subject-dots {
+  border-radius: 50%;
+}
 /* The dots show on hover and focus, and stay while the menu is open. */
 .px-cover-menu.ant-btn {
   position: absolute;

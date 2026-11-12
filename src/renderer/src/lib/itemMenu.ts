@@ -54,24 +54,39 @@ type MenuKeyEvent = {
 };
 
 /**
+ * The item whose menu a menu key opened, until a pointer is pressed on it or a `contextmenu` arrives. Handling the key
+ * press keeps Chromium on Linux and macOS from sending a `contextmenu` for the key, but on Windows Chromium sends one when
+ * the key is released, whatever the key press did. It reaches the item with no pointer pressed in between, and is the
+ * key's own: the menu is already open where the key put it. A right-click always presses the pointer on the item first.
+ * Kept outside the handlers because each render makes new ones, and there is one keyboard and one pointer.
+ */
+let keyOpened: EventTarget | null = null;
+
+/**
  * The handlers an item takes so its menu answers a right-click and the menu keys. `open` receives the point, whether
  * a key asked (to give focus back to where it was) and the item the handler is on. Pass `enabled: false` for an item whose menu is disabled, which
  * leaves its events alone.
  */
 export function menuTrigger(open: (at: MenuPoint, byKey: boolean, item: EventTarget | null) => void, enabled = true) {
   return {
+    onPointerDown(event: { currentTarget?: EventTarget | null }) {
+      if (keyOpened === (event.currentTarget ?? null)) keyOpened = null;
+    },
     onContextMenu(event: MenuMouseEvent) {
       if (!enabled || event.defaultPrevented || keepsSystemMenu(event.target as Targetable)) return;
       event.preventDefault();
-      open({ x: event.clientX, y: event.clientY }, false, event.currentTarget ?? null);
+      const item = event.currentTarget ?? null;
+      const fromKey = keyOpened !== null && keyOpened === item;
+      keyOpened = null;
+      if (!fromKey) open({ x: event.clientX, y: event.clientY }, false, item);
     },
     onKeyDown(event: MenuKeyEvent) {
       if (!enabled || event.defaultPrevented || !isMenuKey(event) || keepsSystemMenu(event.target as Targetable)) return;
       const focused = event.target as { getBoundingClientRect?: () => { left: number; bottom: number; right: number } } | null;
       if (!focused?.getBoundingClientRect) return;
-      // Handling the key press keeps Chromium from also sending a `contextmenu` event for it.
       event.preventDefault();
-      open(pointBelow(focused.getBoundingClientRect()), true, event.currentTarget ?? null);
+      keyOpened = event.currentTarget ?? null;
+      open(pointBelow(focused.getBoundingClientRect()), true, keyOpened);
     },
   };
 }

@@ -1,5 +1,5 @@
 import { Button as AntButton, Dropdown, type MenuProps } from "antd";
-import { useEffect, useId, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { menuTrigger, type MenuPoint } from "../lib/itemMenu";
 import { Icon } from "./Icon";
@@ -10,15 +10,32 @@ import "./ItemMenu.css";
 const submenuArrow = <Icon name="chevron-right" size={14} className="px-item-menu-arrow" />;
 
 /**
- * The items as the menu draws them: a submenu (an item with `children`) gets the drawn arrow, and choosing an item closes
- * the menu, gives focus back to where the menu was opened and then runs the item, so a dialog the item opens returns
- * focus there when it closes.
+ * How a menu stays inside the window: it flips to the other side of its pointer or button when there is no room, and
+ * moves along the edge when neither side has room. A menu taller than the window scrolls inside itself (`ItemMenu.css`).
+ * antd types this option with the flips only, but hands the whole object to the trigger, which also reads the shifts.
+ */
+const FIT_IN_WINDOW = { adjustX: 1 as const, adjustY: 1 as const, shiftX: true, shiftY: true };
+
+/**
+ * A submenu opens beside its item, on the left when the right has no room, and moves up when it would end below the
+ * window, as desktop menus do.
+ */
+const submenuPlacements: MenuProps["builtinPlacements"] = {
+  rightTop: { points: ["tl", "tr"], overflow: { adjustX: 1, shiftY: true } },
+};
+
+/**
+ * The items as the menu draws them: a submenu (an item with `children`) gets the drawn arrow and stays inside the window,
+ * and choosing an item closes the menu, gives focus back to where the menu was opened and then runs the item, so a
+ * dialog the item opens returns focus there when it closes.
  */
 function drawn(menu: MenuProps, close: () => void): MenuProps {
   return {
     expandIcon: submenuArrow,
-    // A submenu opens inside the menu's landmark, not loose in the document's body.
-    getPopupContainer: (node) => node.closest<HTMLElement>("[role=region]") ?? document.body,
+    builtinPlacements: submenuPlacements,
+    // A submenu opens inside the menu's landmark, or the menu itself when it has none, so it is fixed to the window with
+    // it instead of loose in the document's body.
+    getPopupContainer: (node) => node.closest<HTMLElement>("[role=region], .px-item-menu") ?? document.body,
     ...menu,
     onClick: (info) => {
       close();
@@ -32,21 +49,51 @@ function drawn(menu: MenuProps, close: () => void): MenuProps {
  * Each time the menu opens it takes the focus, so the arrow keys move through it at once: the popup's own focus would
  * land on this wrapper, which can't hold it.
  */
-function MenuRegion({ label, open, children }: { label: string; open: boolean; children: ReactNode }) {
+function MenuRegion({
+  label,
+  open,
+  arrow,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  /** An arrow pressed on the button before the menu took the focus: the menu then takes it on its first or last item. */
+  arrow?: MutableRefObject<"first" | "last" | null>;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
-    const frame = requestAnimationFrame(() =>
-      ref.current?.querySelector<HTMLElement>(".ant-dropdown-menu")?.focus({ preventScroll: true }),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
+    const take = () => {
+      const region = ref.current;
+      const edge = arrow?.current;
+      const items = edge ? [...(region?.querySelectorAll<HTMLElement>(ROOT_ITEMS) ?? [])] : [];
+      const target = edge ? (edge === "first" ? items[0] : items.at(-1)) : region?.querySelector<HTMLElement>(".ant-dropdown-menu");
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      if (arrow) arrow.current = null;
+    };
+    // At once, before the next key press when the popup is ready, and a frame later when it was not, unless the focus is
+    // already in the menu.
+    take();
+    const frame = requestAnimationFrame(() => {
+      if (!ref.current?.contains(document.activeElement)) take();
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (arrow) arrow.current = null;
+    };
+  }, [open, arrow]);
   return (
     <div role="region" aria-label={label} ref={ref}>
       {children}
     </div>
   );
 }
+
+/** The items of a menu's first level that can be chosen, a submenu's row among them. */
+const ROOT_ITEMS =
+  ".ant-dropdown-menu-root > [role=menuitem]:not([aria-disabled=true]), .ant-dropdown-menu-root > li > [role=menuitem]:not([aria-disabled=true])";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -194,6 +241,7 @@ export function useItemMenu({
           // The anchor is never clicked: the trigger only makes a click away close the menu.
           trigger={["click"]}
           rootClassName="px-item-menu"
+          autoAdjustOverflow={FIT_IN_WINDOW}
           onOpenChange={(next) => {
             if (!next) close(true);
           }}
@@ -237,7 +285,7 @@ export function MenuItemArea({
   region?: string;
   disabled?: boolean;
   children: ReactNode;
-} & Omit<HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown">) {
+} & Omit<HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown" | "onPointerDown">) {
   const { bind, popup } = useItemMenu({ menu, region, disabled });
   return (
     <Tag {...rest} {...bind}>
@@ -289,6 +337,9 @@ export function MenuButton({
     setOpen(false);
     document.getElementById(id)?.focus();
   };
+  // The menu takes the focus as it opens. An arrow pressed on the button before it could is kept for the menu, so a
+  // quick Enter and down arrow still reach the first item.
+  const arrow = useRef<"first" | "last" | null>(null);
   // The menu closes when the page scrolls, and follows its button when the window is resized or the layout shifts it.
   useMenuLifetime(
     open,
@@ -307,6 +358,7 @@ export function MenuButton({
       trigger={["click"]}
       placement={align === "start" ? "bottomLeft" : "bottomRight"}
       rootClassName="px-item-menu"
+      autoAdjustOverflow={FIT_IN_WINDOW}
       disabled={disabled}
       onOpenChange={(next) => {
         if (next) return setOpen(true);
@@ -317,7 +369,7 @@ export function MenuButton({
         else setOpen(false);
       }}
       popupRender={(list) => (
-        <MenuRegion label={region ?? label} open={open}>
+        <MenuRegion label={region ?? label} open={open} arrow={arrow}>
           {list}
         </MenuRegion>
       )}
@@ -338,6 +390,11 @@ export function MenuButton({
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
+        onKeyDown={(event) => {
+          if (!open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
+          event.preventDefault();
+          arrow.current = event.key === "ArrowDown" ? "first" : "last";
+        }}
         title={dots ? label : undefined}
         disabled={disabled}
         icon={dots ? <Icon name="ellipsis" size={size === "sm" ? 16 : 18} /> : undefined}

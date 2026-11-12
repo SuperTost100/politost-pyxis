@@ -62,6 +62,37 @@ describe("item menu behaviour", () => {
     expect(open).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a key-opened menu when Windows sends the key's own contextmenu on its release, and moves it for a real right-click", () => {
+    const open = vi.fn();
+    const item = {};
+    // The menu key on the focused item opens the menu under it, as opened by the keyboard.
+    menuTrigger(open).onKeyDown(press(focused, "ContextMenu", { currentTarget: item }));
+    expect(open).toHaveBeenLastCalledWith({ x: 38, y: 90 }, true, item);
+    // Windows then sends a contextmenu for the same key, on the focused element and at its place, with no pointer
+    // pressed. It reaches the item through a handler made by the next render, and changes nothing.
+    const fromKey = click(focused, { currentTarget: item, clientX: 215, clientY: 75 });
+    menuTrigger(open).onContextMenu(fromKey);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect((fromKey as { preventDefault: () => void }).preventDefault).toHaveBeenCalled();
+    // A right-click on the same item while that menu is open moves it to the pointer, as the pointer's menu.
+    const trigger = menuTrigger(open);
+    trigger.onPointerDown({ currentTarget: item } as never);
+    trigger.onContextMenu(click(plain, { currentTarget: item }));
+    expect(open).toHaveBeenLastCalledWith({ x: 120, y: 48 }, false, item);
+    // And one with no key before it opens the menu at the pointer as always.
+    menuTrigger(open).onContextMenu(click(plain, { currentTarget: item, clientX: 10, clientY: 20 }));
+    expect(open).toHaveBeenLastCalledWith({ x: 10, y: 20 }, false, item);
+    expect(open).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not take a right-click on another item for the key's own contextmenu", () => {
+    const open = vi.fn();
+    menuTrigger(open).onKeyDown(press(focused, "ContextMenu", { currentTarget: {} }));
+    const other = {};
+    menuTrigger(open).onContextMenu(click(plain, { currentTarget: other }));
+    expect(open).toHaveBeenLastCalledWith({ x: 120, y: 48 }, false, other);
+  });
+
   it("does nothing for an item whose menu is disabled", () => {
     const open = vi.fn();
     const trigger = menuTrigger(open, false);

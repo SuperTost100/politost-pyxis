@@ -1150,6 +1150,7 @@ export function MapPage() {
   // A concept keeps what a right-click or the menu key did on it, and the tools on the canvas keep theirs.
   const onCanvas = (target: EventTarget) => !(target instanceof Element && target.closest(".react-flow__node, .px-map-strip"));
   const canvasBind: typeof canvasMenu.bind = {
+    onPointerDown: canvasMenu.bind.onPointerDown,
     onContextMenu: (event) => {
       if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onContextMenu(event);
     },

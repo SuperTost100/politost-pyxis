@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Button as AntButton, Dropdown, Modal, Tooltip, type MenuProps } from "antd";
-import { AlertCircle, Check, ChevronRight, MoreHorizontal } from "lucide-react";
+import { Modal, Tooltip, type MenuProps } from "antd";
+import { AlertCircle, Check } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -17,7 +17,7 @@ import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
-import { leaveMenuTo, useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
+import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
@@ -453,50 +453,6 @@ function fileMenu(
   ];
 }
 
-/** The dots that open an item's menu: the same `menu` a right-click on the item opens. */
-function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: string; region: string; className: string }) {
-  const [open, setOpen] = useState(false);
-  const button = useRef<HTMLButtonElement>(null);
-  // The menu closes when the page scrolls, and follows its dots when the window is resized or the layout shifts them.
-  useMenuLifetime(
-    open,
-    () => button.current,
-    () => {
-      setOpen(false);
-      leaveMenuTo(button.current);
-    },
-    true,
-  );
-  return (
-    <Dropdown
-      trigger={["click"]}
-      autoFocus
-      rootClassName="px-item-menu"
-      open={open}
-      onOpenChange={setOpen}
-      popupRender={(list) => (
-        <div role="region" aria-label={region}>
-          {list}
-        </div>
-      )}
-      menu={menu}
-    >
-      <AntButton
-        ref={button}
-        type="text"
-        shape="circle"
-        className={["px-dots", className].join(" ")}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        icon={<MoreHorizontal size={18} strokeWidth={1.75} />}
-      />
-    </Dropdown>
-  );
-}
-
-const submenuArrow = <ChevronRight size={14} strokeWidth={1.75} aria-hidden className="px-source-row-submenu" />;
-
 /** What a file's cover or row says about its state: reading, failed, missing, or a note such as a new book version. */
 function useFileState(source: LibrarySource, newVersion: string | undefined) {
   const { t } = useTranslation();
@@ -602,7 +558,7 @@ const Cover = memo(function Cover({
   const state = useFileState(source, newVersion);
   const item = useRef<HTMLLIElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
-  const menuProps: MenuProps = { items: menu, expandIcon: submenuArrow, onClick: ({ key }) => onAct(key) };
+  const menuProps: MenuProps = { items: menu, onClick: ({ key }) => onAct(key) };
   const itemMenu = useItemMenu({ menu: menuProps, region: t("sources.actionsColumn") });
   // A file the student just moved here comes out of where it was, and takes focus when the move came from its menu.
   useLayoutEffect(() => {
@@ -692,7 +648,7 @@ const Cover = memo(function Cover({
         </span>
       ) : null}
       <FileActions source={source} newVersion={newVersion} bookBusy={bookBusy} onAct={onAct} />
-      <MenuDots
+      <MenuButton
         menu={menuProps}
         className="px-cover-menu"
         label={t("sources.actionsFor", { title: source.title })}
@@ -729,7 +685,7 @@ function UnsortedRow({
 }) {
   const { t } = useTranslation();
   const state = useFileState(source, newVersion);
-  const menuProps: MenuProps = { items: menu, expandIcon: submenuArrow, onClick: ({ key }) => onAct(key) };
+  const menuProps: MenuProps = { items: menu, onClick: ({ key }) => onAct(key) };
   const itemMenu = useItemMenu({ menu: menuProps, region: t("sources.actionsColumn") });
   const meta = [
     t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),
@@ -768,7 +724,7 @@ function UnsortedRow({
       ) : (
         <SubjectPicker source={source} subjects={subjects} onPick={onPick} onNewSubject={onNewSubject} />
       )}
-      <MenuDots
+      <MenuButton
         menu={menuProps}
         className="px-unsorted-menu"
         label={t("sources.actionsFor", { title: source.title })}
@@ -896,7 +852,7 @@ function SubjectCard({
         <span id={countId} className="small px-shelf-subject-count">
           {count ? t("sources.shelf.count", { count }) : t("sources.shelf.countNone")}
         </span>
-        <MenuDots
+        <MenuButton
           menu={menu}
           className="px-shelf-subject-dots"
           label={t("sources.shelf.subjectActions", { name: subject.name })}

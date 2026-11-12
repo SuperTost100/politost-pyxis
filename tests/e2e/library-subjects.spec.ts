@@ -1110,3 +1110,54 @@ test("A subject's menu offers flashcards of the subject, which open the Flashcar
     removeTestFolder(userData);
   }
 });
+
+test("A cover's dots and a subject's dots work from the keyboard alone: Sposta in moves the file and Rinomina renames the subject", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    await page.reload();
+    const file = cover(page, "Analisi 1", "Limiti");
+    await expect(file).toBeVisible();
+
+    // Tab from the cover to its dots, Enter opens the menu, the arrows reach Sposta in, the right arrow opens the
+    // subjects, and Enter on one moves the file there.
+    await file.locator(".px-cover-open").focus();
+    await page.keyboard.press("Tab");
+    const dots = file.getByRole("button", { name: "Azioni per Limiti" });
+    await expect(dots).toBeFocused();
+    await page.keyboard.press("Enter");
+    for (const item of ["Dettagli della fonte", "Rinomina", "Sposta in"]) {
+      await page.keyboard.press("ArrowDown");
+      await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeFocused();
+    }
+    await page.keyboard.press("ArrowRight");
+    const target = page.getByRole("menuitem", { name: "Fisica 2", exact: true });
+    await expect(target).toBeVisible();
+    // The subject the file is on is shown and cannot be chosen, so the keyboard lands on the next one.
+    await expect(target).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(cover(page, "Fisica 2", "Limiti")).toBeVisible();
+    await expect(shelf(page, "Analisi 1")).toHaveAccessibleName("Analisi 1 nessun file");
+
+    // Shift+Tab from the subject's first cover reaches its dots; Enter, the down arrow and Enter start the rename.
+    await cover(page, "Fisica 2", "Limiti").locator(".px-cover-open").focus();
+    await page.keyboard.press("Shift+Tab");
+    const subjectDots = shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" });
+    await expect(subjectDots).toBeFocused();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Rinomina", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    const field = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await expect(field).toBeFocused();
+    await page.keyboard.type("Fisica tecnica");
+    await page.keyboard.press("Enter");
+    await expect(shelf(page, "Fisica tecnica").locator(".px-cover", { hasText: "Limiti" })).toBeVisible();
+    expect(await subjectNames(page)).toEqual(["Analisi 1", "Fisica tecnica"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
