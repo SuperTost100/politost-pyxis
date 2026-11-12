@@ -215,3 +215,178 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     removeTestFolder(userData);
   }
 });
+
+/** A map of Limiti with three branches, for the map page and its tiles. */
+function limitsMap(id: string, title: string, instruction?: string) {
+  const labels = ["Definizioni", "Teoremi", "Limiti notevoli"];
+  const nodes = [
+    { id: "n0", label: title, parent: null as string | null, x: 0, y: 0, pinned: false },
+    ...labels.map((label, index) => ({ id: `b${index}`, label, parent: "n0", x: 0, y: 0, pinned: false })),
+  ];
+  const edges = labels.map((_, index) => ({ from: "n0", to: `b${index}` }));
+  return { id, title, instruction, passageIds: [], grounding: "sources", graph: { layout: "tree", undo: null, redo: null, nodes, edges } };
+}
+
+/**
+ * Sixteen subjects, so "Sposta in" is taller than the window; Analisi 1 with fourteen files, an exam whose topic Limiti
+ * has four maps (a row of tiles that reaches the window's right edge), and a file without a subject in "Da sistemare".
+ */
+function seedSubmenus(db: DatabaseSync) {
+  seed(db);
+  seedSource(db, { id: "loose", title: "Appunti sciolti" });
+  db.prepare("INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES(?,?,?,?,'sources',1)").run(
+    "row-lim",
+    "p-an",
+    "t-lim",
+    JSON.stringify({
+      version: 1,
+      maps: [
+        limitsMap("m-lim", "Limiti"),
+        limitsMap("m-teo", "Teoremi sui limiti", "solo i teoremi"),
+        limitsMap("m-not", "Limiti notevoli", "solo i limiti notevoli"),
+        limitsMap("m-es", "Esercizi sui limiti", "solo gli esercizi"),
+      ],
+    }),
+  );
+}
+
+/**
+ * The submenu that `row` opens lies beside the menu it grows from, never over it, so the row and its neighbours stay
+ * readable, and inside the window.
+ */
+async function expectSubmenuBeside(page: Page, row: Locator, label: string) {
+  await row.hover();
+  const sub = page.locator(".ant-dropdown-menu-sub:visible");
+  await expect(sub.getByRole("menuitem").first()).toBeVisible();
+  await animationsSettled(page);
+  const parent = (await page.locator(".px-item-menu:not(.ant-dropdown-hidden) .ant-dropdown-menu-root").boundingBox())!;
+  const box = (await sub.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  const overlap =
+    Math.min(box.x + box.width, parent.x + parent.width) - Math.max(box.x, parent.x) > 0.5 &&
+    Math.min(box.y + box.height, parent.y + parent.height) - Math.max(box.y, parent.y) > 0.5;
+  expect(overlap, `${label}: submenu ${JSON.stringify(box)} over its menu ${JSON.stringify(parent)}`).toBe(false);
+  expect(box.x, `${label} left`).toBeGreaterThanOrEqual(0);
+  expect(box.y, `${label} top`).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width);
+  expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".px-item-menu:not(.ant-dropdown-hidden)")).toHaveCount(0);
+}
+
+for (const [width, height] of [
+  [1280, 800],
+  [960, 600],
+] as const) {
+  test(`A submenu opens beside its menu, never over it, at ${width} px`, async () => {
+    test.setTimeout(120_000);
+    const userData = mkdtempSync(join(tmpdir(), "pyxis-submenu-"));
+    const app = await launchPyxis({ userData });
+    try {
+      const page = await app.firstWindow();
+      await page.getByRole("button", { name: "Salta" }).click();
+      await fromChiediToExams(page);
+      const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+      seedSubmenus(db);
+      db.close();
+      await page.setViewportSize({ width, height });
+      const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+      const exportRow = () => open.getByRole("menuitem", { name: "Esporta", exact: true });
+
+      // The map page: its dots sit at the window's right edge.
+      await page.evaluate(() => {
+        location.hash = "#/maps/s-an/t-lim";
+      });
+      await page.reload();
+      await expect(page.locator(".react-flow__node")).toHaveCount(4);
+      await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
+      await expectSubmenuBeside(page, exportRow(), "map dots");
+
+      // A right-click near the canvas's right edge.
+      const canvas = (await page.locator(".px-map-canvas").boundingBox())!;
+      await page.mouse.click(canvas.x + canvas.width - 16, canvas.y + 16, { button: "right" });
+      await expectSubmenuBeside(page, exportRow(), "map canvas");
+
+      // The rightmost tile on Mappe.
+      await page.evaluate(() => {
+        location.hash = "#/maps";
+      });
+      const tiles = page.locator(".px-maps-tilew");
+      await expect(tiles).toHaveCount(4);
+      const rights = await tiles.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
+      const tile = tiles.nth(rights.indexOf(Math.max(...rights)));
+      await tile.hover();
+      await tile.locator(".px-maps-dots").click();
+      await expectSubmenuBeside(page, exportRow(), "map tile");
+
+      // The Library: the rightmost cover of the shelf's first row, and the row in "Da sistemare".
+      await page.evaluate(() => {
+        location.hash = "#/exams/library";
+      });
+      const covers = page.locator(".px-cover");
+      await expect(covers).toHaveCount(14);
+      const coverRights = await covers.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
+      const cover = covers.nth(coverRights.indexOf(Math.max(...coverRights)));
+      const title = (await cover.locator(".px-cover-title").textContent())!;
+      await cover.hover();
+      await cover.getByRole("button", { name: `Azioni per ${title}` }).click();
+      const moveRow = () => open.getByRole("menuitem", { name: "Sposta in", exact: true });
+      await expectSubmenuBeside(page, moveRow(), "cover");
+
+      const loose = page.getByRole("region", { name: "Da sistemare" }).locator(".px-unsorted-row", { hasText: "Appunti sciolti" });
+      await loose.hover();
+      await loose.getByRole("button", { name: "Azioni per Appunti sciolti" }).click();
+      await expectSubmenuBeside(page, moveRow(), "Da sistemare");
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+    }
+  });
+}
+
+test("In a window too narrow for a submenu on either side, the submenu leaves the item that opened it in sight", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-submenu-narrow-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubmenus(db);
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "#/maps/s-an/t-lim";
+    });
+    await page.reload();
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    // 440 px: the menu opens at x 200, and neither the 200 px on its left nor the room on its right holds its formats.
+    await page.setViewportSize({ width: 440, height: 600 });
+    await page.locator(".px-map-canvas").dispatchEvent("contextmenu", { clientX: 200, clientY: 120, button: 2 });
+    const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+    const row = open.getByRole("menuitem", { name: "Esporta", exact: true });
+    await row.hover();
+    const sub = page.locator(".ant-dropdown-menu-sub:visible");
+    await expect(sub.getByRole("menuitem").first()).toBeVisible();
+    await animationsSettled(page);
+    // The card is moved after the trigger places it, so wait for it to stop moving.
+    await expect
+      .poll(async () => {
+        const opener = (await row.boundingBox())!;
+        const box = (await sub.boundingBox())!;
+        return box.y >= opener.y + opener.height || box.y + box.height <= opener.y;
+      })
+      .toBe(true);
+    const box = (await sub.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(440);
+    expect(box.y + box.height).toBeLessThanOrEqual(600);
+    // Its formats still act.
+    await expect(sub.getByRole("menuitem", { name: /^Schema in testo/ })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
