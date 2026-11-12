@@ -564,6 +564,8 @@ describe("askTurn", () => {
 
   it("keeps the text already streamed when the student stops", async () => {
     const db = openDatabase(":memory:");
+    // The subject is one of the Library's: a chat whose name no subject has reads as the whole Library.
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));
@@ -593,6 +595,8 @@ describe("askTurn", () => {
 
   it("keeps the subject on the next turn and links a stopped citation", async () => {
     const db = openDatabase(":memory:");
+    // The subject is one of the Library's: a chat whose name no subject has reads as the whole Library.
+    db.prepare("INSERT INTO subjects (id, name, created_at) VALUES ('s-fis', 'Fisica', 1)").run();
     db.prepare(
       "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('default', ?, 1)",
     ).run(JSON.stringify({ provider: "claude", model: "claude-sonnet-5" }));

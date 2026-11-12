@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 import { seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
 import { saveShot } from "./shots";
@@ -149,6 +149,41 @@ test("Ask: a new chat picks its subject from the Library, says what it used, and
     await ask(page, "Campo elettrico di un filo carico");
     expect(await stored(page)).toMatchObject({ subject: null, subjectBy: "student" });
     await expect(chip(page)).toHaveText("Tutta la Libreria");
+  } finally {
+    await finish(app, userData, db);
+  }
+});
+
+test("Ask: a subject renamed in the Library keeps its chats: the chip says the new name and the next question still searches it", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await launch();
+  const db = seedLibrary(userData);
+  try {
+    await openAsk(page);
+    await ask(page, "Campo elettrico di un filo carico");
+    await expect(chip(page)).toHaveText("Fisica 2");
+    const chatUrl = page.url();
+
+    // Renamed in place on its shelf, by a double-click on its name.
+    await toLibrary(page);
+    await page.getByRole("region", { name: /^Fisica 2 \d+ file$/ }).getByRole("heading", { level: 2, name: "Fisica 2" }).dblclick();
+    const field = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await field.fill("Fisica generale");
+    await field.press("Enter");
+    await expect(page.getByRole("region", { name: /^Fisica generale \d+ file$/ })).toBeVisible();
+
+    // Back in the chat, the chip names the subject as it is now, still the one Pyxis picked.
+    await page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Campo elettrico/ }).click();
+    await expect(page).toHaveURL(chatUrl);
+    await expect(chip(page)).toHaveText("Fisica generale");
+    await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica generale, scelta da Pyxis");
+    expect(await stored(page)).toMatchObject({ subject: "Fisica generale", subjectBy: "pyxis" });
+
+    // A new question searches that subject's files: the answer says it used one of them and that nothing was missing.
+    await ask(page, "Teorema di Gauss per il filo carico");
+    await expect(lastReply(page).getByRole("button", { name: "Ho usato 1 fonte di Fisica generale" })).toBeVisible();
+    expect((await stored(page)).messages.at(-1)).toMatchObject({ grounding: "sources" });
+    await expect(chip(page)).toHaveText("Fisica generale");
   } finally {
     await finish(app, userData, db);
   }

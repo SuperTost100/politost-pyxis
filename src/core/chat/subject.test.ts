@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
+import { removeSubject, renameSubject } from "../plans/subjects";
 import type { EngineResult } from "../engine/funnel";
 import { pickSubject, type SubjectVote } from "./subject";
 import { askTurn, chatSubject, chatSubjectBy, readChat, setChatSubject } from "./turn";
@@ -245,6 +246,68 @@ describe("a chat's subject", () => {
     const read = db.prepare("SELECT scope_json FROM chats WHERE id = 'old'").get() as { scope_json: string };
     expect(JSON.parse(read.scope_json)).toEqual({ sourceIds: ["att"], subjectBy: "student" });
     expect((await ask(db, "Campo elettrico di un filo carico", "old")).prompt).toContain("teorema di Gauss");
+    db.close();
+  });
+
+  it("follows a renamed subject: the chip's name changes with it and the next question still searches its files", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+    ]);
+    const first = await ask(db, "Campo elettrico di un filo carico");
+    expect(chatSubject(db, first.chatId)).toBe("Fisica 2");
+    // A chat filed before the rename kept the name in another case, as an older version could store it.
+    db.prepare("INSERT INTO chats (id, title, scope_json, subject, created_at, updated_at) VALUES ('old', 'Vecchia', '[]', 'fisica 2', 1, 1)").run();
+    renameSubject(db, "s-1", "Fisica generale");
+    expect(chatSubject(db, first.chatId)).toBe("Fisica generale");
+    expect(chatSubject(db, "old")).toBe("Fisica generale");
+    expect(chatSubjectBy(db, first.chatId)).toBe("pyxis");
+    const again = await ask(db, "Teorema di Gauss sul cilindro", first.chatId);
+    expect(again.prompt).toContain("Gauss");
+    expect(again.prompt).not.toContain("serie geometrica");
+    expect(again.reply.grounding).toBe("sources");
+    db.close();
+  });
+
+  it("falls back to the whole Library when its subject is deleted, and says nothing false about it", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+    ]);
+    const first = await ask(db, "Campo elettrico di un filo carico");
+    expect(chatSubjectBy(db, first.chatId)).toBe("pyxis");
+    db.prepare("INSERT INTO chats (id, title, scope_json, subject, created_at, updated_at) VALUES ('kept', 'Scelta', '{\"sourceIds\":[],\"subjectBy\":\"student\"}', 'Fisica 2', 1, 1)").run();
+    removeSubject(db, "s-1");
+    for (const id of [first.chatId, "kept"]) {
+      expect(chatSubject(db, id)).toBeNull();
+      expect(chatSubjectBy(db, id)).toBe("student");
+    }
+    // The next question searches everything and is not called "wider": there is no subject that had nothing.
+    const outside = await ask(db, "Serie geometrica che converge", first.chatId);
+    expect(outside.prompt).toContain("serie geometrica");
+    expect(outside.reply.grounding).toBe("sources");
+    // A chat left on a deleted name by an older version reads the same way.
+    db.prepare("INSERT INTO chats (id, title, scope_json, subject, created_at, updated_at) VALUES ('stale', 'Vecchia', '[]', 'Chimica', 1, 1)").run();
+    expect(chatSubject(db, "stale")).toBeNull();
+    expect(chatSubjectBy(db, "stale")).toBe("student");
+    db.close();
+  });
+
+  it("refuses a subject that does not exist from the chip, stores the Library's spelling of one that does, and ignores a stale one on a first question", async () => {
+    const db = library([{ id: "fis", subject: "Fisica 2", texts: physics }]);
+    const first = await ask(db, "Ricetta della carbonara");
+    expect(() => setChatSubject(db, first.chatId, "Chimica")).toThrow();
+    setChatSubject(db, first.chatId, "fisica 2");
+    expect(chatSubject(db, first.chatId)).toBe("Fisica 2");
+    const result = await askTurn(db, {
+      text: "Campo elettrico di un filo carico",
+      subject: "Fisica",
+      embed: null,
+      python: null,
+      run: async () => ({ text: "Ecco [P1].", model: "m", provider: "claude", inputTokens: 1 }),
+    });
+    // The name was renamed meanwhile: the question goes out as if nothing was chosen, and Pyxis picks.
+    expect(chatSubjectBy(db, result.chatId)).not.toBe("student");
     db.close();
   });
 });

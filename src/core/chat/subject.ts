@@ -68,13 +68,25 @@ export function subjectSourceIds(db: Database.Database, subject: string): string
     db
       .prepare(
         `SELECT s.id FROM sources s JOIN subjects sub ON sub.id = s.subject_id
-          WHERE sub.name = ? AND s.library = 1
+          WHERE sub.name = ? COLLATE NOCASE AND s.library = 1
          UNION
          SELECT ps.source_id FROM plan_sources ps
            JOIN plans p ON p.id = ps.plan_id
            JOIN subjects sub ON sub.id = p.subject_id
-          WHERE sub.name = ? AND ps.role = 'material'`,
+          WHERE sub.name = ? COLLATE NOCASE AND ps.role = 'material'`,
       )
       .all(subject, subject) as Array<{ id: string }>
   ).map((row) => row.id);
+}
+
+/**
+ * The Library's own spelling of a subject a chat names, or null when no subject has that name any more. A chat keeps its
+ * subject as text, so this is how a stale name (a deleted subject, or one stored in another case) is told from a live one.
+ */
+export function liveSubject(db: Database.Database, name: string | null | undefined): string | null {
+  if (!name) return null;
+  const row = db.prepare("SELECT name FROM subjects WHERE name = ? COLLATE NOCASE").get(name.trim()) as
+    | { name: string }
+    | undefined;
+  return row?.name ?? null;
 }

@@ -38,7 +38,7 @@ import {
   chatTemplateId,
   dataBlock,
 } from "./prompts";
-import { pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
+import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
 import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
 
 export type ChatContext = {
@@ -379,6 +379,10 @@ function readScope(db: Database.Database, chatId: string): Scope {
       ? value.filter((id): id is string => typeof id === "string")
       : [];
   const legacy: SubjectBy | undefined = row.subject ? "student" : undefined;
+  // A subject that was deleted leaves the chat on the whole Library, as a choice of the student's: Pyxis picked the
+  // subject, and a chat with none of its own must not look as if Pyxis were still choosing.
+  const gone = (by: SubjectBy | undefined): SubjectBy | undefined =>
+    by === "pyxis" && !liveSubject(db, row.subject) ? "student" : by;
   if (Array.isArray(parsed)) return { planId: null, ids: strings(parsed), subjectBy: legacy };
   const object = (parsed ?? {}) as { planId?: unknown; sourceIds?: unknown; subjectBy?: unknown };
   const planId =
@@ -388,7 +392,7 @@ function readScope(db: Database.Database, chatId: string): Scope {
       : null;
   const subjectBy =
     object.subjectBy === "pyxis" || object.subjectBy === "student" ? object.subjectBy : legacy;
-  return { planId, ids: strings(object.sourceIds), subjectBy };
+  return { planId, ids: strings(object.sourceIds), subjectBy: gone(subjectBy) };
 }
 
 /** The stored form of a scope: the plain ID array while there is nothing else to keep, as older chats have it. */
@@ -454,7 +458,10 @@ export function chatSubjectBy(db: Database.Database, chatId: string): SubjectBy 
 export function setChatSubject(db: Database.Database, chatId: string, subject: string | null): void {
   db.transaction(() => {
     const scope = readScope(db, chatId);
-    const name = subject?.trim() || null;
+    // The Library's spelling of the name, and only a subject that exists: the chip lists them, but one may have been
+    // renamed or deleted since.
+    const name = subject?.trim() ? liveSubject(db, subject) : null;
+    if (subject?.trim() && !name) throw new IpcError("invalid", "errors.invalidSubject");
     const info = db
       .prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`)
       .run(name, scopeJson({ planId: null, ids: hiddenSources(db, scope.ids), subjectBy: "student" }), chatId);
@@ -608,7 +615,7 @@ export function seedChat(
     : undefined;
   const fromFiles = [...new Set(sourceSubjects(db, input.sourceIds ?? []).values())];
   const subject =
-    input.subject?.trim() || fromPlan || (fromFiles.length === 1 && fromFiles[0] ? fromFiles[0] : "");
+    liveSubject(db, input.subject) || fromPlan || (fromFiles.length === 1 && fromFiles[0] ? fromFiles[0] : "");
   const context: ChatContext = {
     kind: input.kind,
     title,
@@ -799,14 +806,18 @@ async function answer(
     const picked = [...new Set([...picked0, ...hidden, ...attachedIds])];
     const sourceIds = effectiveSources(db, { planId, ids: picked });
     const current = readScope(db, chatId);
-    const storedSubject = (
-      db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
-        { subject: string | null } | undefined
-    )?.subject;
-    // A subject the student chose with this question (the new chat's chip) is theirs; otherwise the chat keeps its own.
-    const subject =
-      input.subject === undefined ? (storedSubject ?? "") : (input.subject ?? "").trim();
-    const subjectBy: SubjectBy | undefined = input.subject === undefined ? current.subjectBy : "student";
+    const storedSubject = liveSubject(
+      db,
+      (db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
+        { subject: string | null } | undefined)?.subject,
+    );
+    // A subject the student chose with this question (the new chat's chip) is theirs, in the Library's spelling; the
+    // whole Library is null. A name no subject has any more (renamed or deleted since the chip showed it) counts as no
+    // choice, so the chat keeps its own and Pyxis may still pick.
+    const chosen =
+      input.subject == null ? input.subject : (liveSubject(db, input.subject) ?? undefined);
+    const subject = chosen === undefined ? (storedSubject ?? "") : (chosen ?? "");
+    const subjectBy: SubjectBy | undefined = chosen === undefined ? current.subjectBy : "student";
     db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
       scopeJson({ planId, ids: picked, subjectBy }),
       subject || null,
@@ -1415,7 +1426,7 @@ export function chatSubject(
   const row = db
     .prepare(`SELECT subject FROM chats WHERE id = ?`)
     .get(chatId) as { subject: string | null } | undefined;
-  return row?.subject ?? null;
+  return liveSubject(db, row?.subject);
 }
 
 export function readChat(
