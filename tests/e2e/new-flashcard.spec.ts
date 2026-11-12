@@ -729,6 +729,14 @@ test("a proposed face with a formula shows its preview, and a long face wraps in
     await expect(first.locator(".px-formula-preview")).toHaveCount(0);
     await first.getByRole("textbox", { name: "Fronte" }).fill("Che cos'è $\\lim_{x \\to x_0^-} f(x)$?");
     await expect(first.locator(".px-formula-preview .katex")).toBeVisible();
+    // The other delimiters the app renders, \( … \) and \[ … \], get the preview too.
+    const back = first.getByRole("textbox", { name: "Retro" });
+    for (const written of ["Il limite è \\(x^2\\).", "Il limite è \\[x^2\\]."]) {
+      await back.fill("Il limite per x minore di x0.");
+      await expect(first.locator(".px-formula-preview .katex")).toHaveCount(1);
+      await back.fill(written);
+      await expect(first.locator(".px-formula-preview .katex")).toHaveCount(2);
+    }
 
     // The long front wraps on several lines inside the dialog instead of running on in one.
     await animationsSettled(page);

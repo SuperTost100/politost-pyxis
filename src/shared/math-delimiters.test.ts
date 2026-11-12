@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayMathLines, normalizeMathDelimiters } from "./math-delimiters";
+import { displayMathLines, hasFormula, normalizeMathDelimiters } from "./math-delimiters";
 
 describe("normalizeMathDelimiters and control characters", () => {
   it("restores LaTeX commands in prose but leaves code as written", () => {
@@ -128,5 +128,17 @@ describe("bold markers inside math", () => {
       "costa \\$5 e **forte** \\$6",
     ])
       expect(normalizeMathDelimiters(same)).toBe(same);
+  });
+});
+
+describe("hasFormula", () => {
+  it("sees a formula in every delimiter the app renders", () => {
+    for (const face of ["Se $x < x_0$ allora", "Sono $ C_nH_{2n+2} $", "Vale \\(x^2\\) qui", "Vale\n\\[x^2\\]\nqui", "$$x^2$$"])
+      expect(hasFormula(face)).toBe(true);
+  });
+
+  it("sees none in plain text, a lone dollar sign or code", () => {
+    for (const face of ["Nessuna formula", "Un solo $ qui", "`$a$`"])
+      expect(hasFormula(face)).toBe(false);
   });
 });
