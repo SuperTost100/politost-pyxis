@@ -37,7 +37,8 @@ describe("prompt templates", () => {
         "The student reads the explanation after a wrong pick too, so never call any option but the answer correct",
       );
     expect(loadTemplate("quiz.batch").version).toBe("quiz-5");
-    expect(loadTemplate("chat.socratic").version).toBe("5");
+    // chat.socratic 6 guides one step at a time: the idea behind the step, then one question, and feedback on the answer.
+    expect(loadTemplate("chat.socratic").version).toBe("6");
     // Answers may ask for a figure drawn in the Python sandbox.
     expect(loadTemplate("chat.general").version).toBe("6");
     expect(loadTemplate("chat.solver").version).toBe("8");

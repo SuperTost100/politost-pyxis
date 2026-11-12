@@ -1,56 +1,50 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { MenuProps } from "antd";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { CHAT_TEXT_MAX } from "@shared/limits";
+import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
+import { MenuButton } from "./ItemMenu";
 import { FormulaDock } from "./math/FormulaDock";
 import { MathTextEditor, type MathTextEditorHandle } from "./math/MathTextEditor";
 import { useFormulaKeys } from "./math/useFormulaKeys";
-import { Tag } from "./Tag";
 import "./Composer.css";
 
+/**
+ * The message box in Chiedi: the field, then the plus (a file or a formula), the whiteboard, the function graph and Invia.
+ * Nothing in it sets how Pyxis answers or where it looks; the chat's subject is a chip in its header.
+ */
+
 export function Composer({
-  subject,
-  subjectControl,
-  sourcesControl,
-  sources,
-  mode: modeProp,
   placeholder,
   streaming,
   value,
   onValueChange,
   onSend,
   onStop,
-  onModeChange,
   onAttach,
   onPasteImages,
   dropping,
+  fieldRef,
 }: {
-  subject?: string;
-  /** Replaces the plain subject label, for a chip that opens the subject menu. */
-  subjectControl?: ReactNode;
-  /** Replaces the list of source tags, for a chip that opens the sources in use. */
-  sourcesControl?: ReactNode;
-  sources?: string[];
-  mode?: "solver" | "socratic";
   placeholder?: string;
   streaming?: boolean;
   value?: string;
   onValueChange?: (value: string) => void;
   onSend?: () => void;
   onStop?: () => void;
-  onModeChange?: (mode: "solver" | "socratic") => void;
   onAttach?: () => void;
   /** Images pasted without text, such as a screenshot. Text pastes into the field as usual. */
   onPasteImages?: (images: File[]) => void;
   /** Files are being dragged over the page, so the card shows it takes them. */
   dropping?: boolean;
+  /** The field, for a page that gives it the focus back, as after choosing the chat's subject. */
+  fieldRef?: RefObject<MathTextEditorHandle | null>;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [localMode, setMode] = useState<"solver" | "socratic">("solver");
-  const mode = modeProp ?? localMode;
   const [draft, setDraft] = useState("");
   const text = value ?? draft;
   // A refused paste is explained until the text changes, by the student or by a send.
@@ -60,10 +54,49 @@ export function Composer({
     onValueChange?.(next);
     if (value === undefined) setDraft(next);
   }
-  const field = useRef<MathTextEditorHandle>(null);
+  const ownField = useRef<MathTextEditorHandle>(null);
+  const field = fieldRef ?? ownField;
   const formula = useFormulaKeys(field);
+  const card = useRef<HTMLDivElement>(null);
+  // Where the caret was when the plus menu opened, so a formula chosen from it opens there and not at the end.
+  const caret = useRef<Range | null>(null);
+  function keepCaret(open: boolean) {
+    if (!open) return;
+    const selection = getSelection();
+    const root = card.current?.querySelector(".px-composer-field");
+    caret.current =
+      selection && selection.rangeCount > 0 && root?.contains(selection.anchorNode)
+        ? selection.getRangeAt(0).cloneRange()
+        : null;
+  }
+  // The plus adds to the message: a file or a photo from the computer, or a formula at the caret. The formula keyboard
+  // opens after the menu has given the focus back, in the field where the caret was.
+  const add: MenuProps = {
+    items: [
+      { key: "file", icon: <Icon name="paperclip" size={16} />, label: t("components.composer.attach"), disabled: !onAttach },
+      {
+        key: "formula",
+        icon: <Icon name="sigma" size={16} />,
+        label: formula.open ? t("components.composer.formulaClose") : t("components.composer.formula"),
+      },
+    ],
+    onClick: ({ key }) => {
+      if (key === "file") onAttach?.();
+      else
+        requestAnimationFrame(() => {
+          field.current?.focus();
+          const range = caret.current;
+          if (range && !formula.open) {
+            getSelection()?.removeAllRanges();
+            getSelection()?.addRange(range);
+          }
+          formula.toggle();
+        });
+    },
+  };
   return (
     <div
+      ref={card}
       className={dropping ? "px-composer is-dropping" : "px-composer"}
       data-keeps-draft
       onPaste={(event) => {
@@ -75,18 +108,6 @@ export function Composer({
         onPasteImages(images);
       }}
     >
-      <div className="px-composer-top">
-        {subjectControl ?? (
-          <span className="px-subject">
-            <Icon name="graduation-cap" size={14} />
-            <span>{subject ?? t("components.composer.noSubject")}</span>
-          </span>
-        )}
-        {sourcesControl ??
-          (sources ?? []).map((s) => (
-            <Tag key={s} tone="smartbook">{s}</Tag>
-          ))}
-      </div>
       {/* The field grows with the draft up to a few lines, then scrolls. */}
       <MathTextEditor
         ref={field}
@@ -122,75 +143,34 @@ export function Composer({
       ) : null}
       <FormulaDock {...formula.dock} />
       <div className="px-composer-bar">
-        <IconButton
-          icon="paperclip"
-          label={t("components.composer.attach")}
-          variant="ghost"
-          size="sm"
-          onClick={onAttach}
+        <MenuButton
+          menu={add}
+          icon="plus"
+          label={t("components.composer.add")}
+          align="start"
+          onOpenChange={keepCaret}
         />
         <IconButton
-          icon="signature"
+          icon="pencil-line"
           label={t("components.composer.whiteboard")}
           variant="ghost"
-          size="sm"
           onClick={() => navigate("/tools/whiteboard")}
-        />
-        <IconButton
-          icon="sigma"
-          label={t("math.toggle")}
-          variant="ghost"
-          size="sm"
-          pressed={formula.open}
-          keepFocus
-          onClick={formula.toggle}
         />
         <IconButton
           icon="chart-line"
           label={t("components.composer.graph")}
           variant="ghost"
-          size="sm"
           onClick={() => navigate("/tools/graph")}
         />
-        <div className="px-mode" role="group" aria-label={t("components.composer.modeLabel")}>
-          <button
-            type="button"
-            aria-pressed={mode === "solver"}
-            onClick={() => {
-              setMode("solver");
-              onModeChange?.("solver");
-            }}
-          >
-            {t("components.composer.solver")}
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "socratic"}
-            onClick={() => {
-              setMode("socratic");
-              onModeChange?.("socratic");
-            }}
-          >
-            {t("components.composer.socratic")}
-          </button>
-        </div>
         <span className="px-spacer" />
         {streaming ? (
-          <IconButton
-            icon="square"
-            label={t("components.composer.stop")}
-            variant="secondary"
-            size="sm"
-            onClick={onStop}
-          />
+          <Button variant="secondary" icon="square" onClick={onStop}>
+            {t("components.composer.stop")}
+          </Button>
         ) : (
-          <IconButton
-            icon="send"
-            label={t("components.composer.send")}
-            variant="primary"
-            size="sm"
-            onClick={onSend}
-          />
+          <Button variant="primary" onClick={onSend}>
+            {t("components.composer.send")}
+          </Button>
         )}
       </div>
     </div>

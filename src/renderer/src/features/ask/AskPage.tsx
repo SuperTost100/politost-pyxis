@@ -32,33 +32,26 @@ import {
   attachable,
   draftKey,
   fileName,
-  keepUnsentQuestion,
   readPendingFiles,
+  readPendingSubject,
   takeBoardAttachment,
   writePendingFiles,
+  writePendingSubject,
   addPendingFiles,
 } from "./attachments";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { replyPlainText } from "./replyText";
-import {
-  addIds,
-  allowsGeneral,
-  applySubject,
-  choseGeneral,
-  onlySubject,
-  scopeChanges,
-  scopeItems,
-  type ScopeItem,
-} from "./scope";
-import { SourcesMenu } from "./SourcesMenu";
-import { SubjectMenu } from "./SubjectMenu";
+import { chipState, newChipState, settleNewSubject, subjectToSend, type NewChatSubject } from "./scope";
+import { SubjectChip, type SubjectPick } from "./SubjectChip";
+import { UsedSources } from "./UsedSources";
 import { dayPart } from "./greeting";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
-import { planQuery, plansQuery, useChats, usePlans, useProfile, useSources, subjectsQuery } from "../../lib/queries";
+import { useChats, usePlan, useProfile, useSources, useSubjects } from "../../lib/queries";
+import type { MathTextEditorHandle } from "../../components/math/MathTextEditor";
 
 function errorKey(err: unknown): string {
   return err && typeof err === "object" && "messageKey" in err
@@ -89,7 +82,7 @@ type Preview = { src: string; alt: string; name?: string };
 type Held = { draft: string; files: string[]; previews: Record<string, Preview> };
 type Skipped = Array<"too-large" | "unreadable" | "over-limit">;
 
-/** Whether each chat's latest question was asked with "Answer generally", for the session (see choseGeneral). */
+/** Whether each chat's latest question was asked with "Answer generally", which Try again and Regenerate keep. */
 const askedGeneral = new Map<string, boolean>();
 
 /**
@@ -145,6 +138,7 @@ const Reply = memo(function Reply({
   onSuggest,
   onReact,
   onMakeCards,
+  onSwitchWay,
 }: {
   row: ChatRow;
   /** The reply that ends the chat: it carries Regenerate and the suggestions. */
@@ -157,7 +151,10 @@ const Reply = memo(function Reply({
   onSuggest: (text: string) => void;
   onReact: (messageId: string, reaction: "up" | "down") => void;
   onMakeCards: (row: ChatRow) => void;
+  /** Ask the same question again the other way: guided under a solution, solved under a guided step. */
+  onSwitchWay?: (way: "solved" | "guided") => void;
 }) {
+  const { t } = useTranslation();
   const describeEngineError = useEngineError();
   const engineNames = useEngineNames();
   // A reply the engine cut short because its sign-in was refused names that engine and offers its sign-in.
@@ -192,7 +189,14 @@ const Reply = memo(function Reply({
       engine={
         engineNames.label(row.provider, row.modelId) || undefined
       }
-      general={row.grounding === "general"}
+      lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
+      switchWay={
+        onSwitchWay && !row.stopped
+          ? row.way === "guided"
+            ? { label: t("ask.way.solve"), icon: "lightbulb", onClick: () => onSwitchWay("solved"), disabled: busy }
+            : { label: t("ask.way.guide"), icon: "list-ordered", onClick: () => onSwitchWay("guided"), disabled: busy }
+          : undefined
+      }
       stopped={row.stopped}
       failure={failure?.text}
       failureAction={failure?.action}
@@ -230,10 +234,13 @@ function PendingQuestion({ turn, last }: { turn: Turn; last: ChatRow | undefined
 function StreamingReply({
   turn,
   usesSources,
+  line,
   onGrow,
 }: {
   turn: Turn;
   usesSources: boolean;
+  /** What the working state says, such as "Riscrivo la risposta un passo alla volta" for the switch under an answer. */
+  line?: string;
   onGrow: () => void;
 }) {
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
@@ -251,7 +258,7 @@ function StreamingReply({
       </MarkdownView>
     </ChatMessage>
   ) : (
-    <ThinkingMessage usesSources={usesSources} />
+    <ThinkingMessage usesSources={usesSources} line={line} />
   );
 }
 
@@ -266,16 +273,12 @@ export function AskPage() {
     () => sessionStorage.getItem(draftKey(chatId)) ?? "",
   );
   const profile = useProfile();
-  const defaultMode = profile.data?.tutorMode ?? "solver";
-  const [mode, setMode] = useState<"solver" | "socratic">(defaultMode);
-  const [picked, setPicked] = useState<string[]>([]);
-  // A subject's sources arrive after its plans are read; a message sent before then waits for them, so it is not sent
-  // without the sources the student just picked. `scope` holds those changes for the chat on screen (see scope.ts).
-  const pickedNow = useRef(picked);
-  pickedNow.current = picked;
-  const [scope] = useState(scopeChanges);
-  const [planId, setPlanId] = useState<string | null>(null);
-  const loadedFor = useRef<string | undefined>(undefined);
+  // A new chat's subject before its first question: Pyxis picks unless the student chooses one on the first page. The
+  // choice stays in the session with the new chat's draft, so the whiteboard, the graph or the Library do not lose it.
+  const [newSubject, setNewSubject] = useState<NewChatSubject>(() => readPendingSubject(sessionStorage));
+  const field = useRef<MathTextEditorHandle>(null);
+  // The way being asked for with the action under the last answer, for its working line.
+  const [switching, setSwitching] = useState<"solved" | "guided" | null>(null);
   const [uncovered, setUncovered] = useState<string | null>(null);
   // The reply being written, kept outside the page so it survives leaving Ask and coming back. Its text shows only in
   // the chat it was sent from, and the page follows it to its new chat only if the student is still there.
@@ -292,10 +295,6 @@ export function AskPage() {
   const chatNow = useRef(chatId);
   chatNow.current = chatId;
   const arrived = useRef<string | null>(null);
-  const [subject, setSubject] = useState("");
-  // The subject a question goes out with: set at once when one is chosen, so a question waiting for the scope to settle has it.
-  const subjectNow = useRef(subject);
-  subjectNow.current = subject;
   const [files, setFiles] = useState<string[]>(() =>
     readPendingFiles(sessionStorage, chatId),
   );
@@ -312,6 +311,8 @@ export function AskPage() {
     setDraft(sessionStorage.getItem(draftKey(chatId)) ?? "");
     setFiles(readPendingFiles(sessionStorage, chatId));
     setPreviews({});
+    // A new chat shows the subject kept for it, which is Pyxis's choice once its first question has gone.
+    setNewSubject(readPendingSubject(sessionStorage));
   }, [chatId]);
   useEffect(() => {
     const board = takeBoardAttachment(sessionStorage);
@@ -347,7 +348,7 @@ export function AskPage() {
   const [skipped, setSkipped] = useState<Skipped>([]);
 
   const sources = useSources();
-  const plans = usePlans();
+  const subjects = useSubjects();
 
   const thread = useQuery({
     queryKey: ["chat", chatId],
@@ -369,31 +370,14 @@ export function AskPage() {
     setError(null);
   }, [chatId]);
 
-  const chooseLatest = useRef(chooseSubject);
-  chooseLatest.current = chooseSubject;
+  // The kept choice follows a subject renamed in the Library meanwhile, and gives way when the subject is gone.
   useEffect(() => {
-    // Scope changes still running belong to the chat being left: they stop holding questions and touch nothing here.
-    const chat = scope.open();
-    if (chatId) return;
-    setPicked([]);
-    pickedNow.current = [];
-    setPlanId(null);
-    setSubject("");
-    subjectNow.current = "";
-    setUncovered(null);
-    loadedFor.current = undefined;
-    // A new chat starts on the student's only subject, so a question typed at once reads its plans. It is chosen once per
-    // new chat from a fresh list, so a subject added a moment ago counts. Any pick the student makes, "No subject"
-    // included, wins over it, before the list arrives or after. A question sent while the list loads waits for it; if the
-    // list cannot be read, the question goes without a subject.
-    void scope.track(
-      onlySubject(
-        () => client.fetchQuery({ ...subjectsQuery, staleTime: 0 }),
-        () => scope.wantsDefault(chat) && subjectNow.current === "",
-        (name) => chooseLatest.current(name),
-      ).catch(() => undefined),
-    );
-  }, [chatId]);
+    if (!subjects.data) return;
+    const settled = settleNewSubject(newSubject, subjects.data);
+    if (JSON.stringify(settled) === JSON.stringify(newSubject)) return;
+    setNewSubject(settled);
+    writePendingSubject(sessionStorage, settled);
+  }, [subjects.data, newSubject]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
   useEffect(
@@ -412,69 +396,30 @@ export function AskPage() {
     };
   }, [chatId]);
 
-  // ASK-02: a new conversation starts in the mode chosen in Settings.
-  useEffect(() => {
-    if (!chatId) setMode(defaultMode);
-  }, [chatId, defaultMode]);
-
-  useEffect(() => {
-    if (!chatId || !thread.data) return;
-    if (loadedFor.current === chatId) return;
-    loadedFor.current = chatId;
-    setPicked(thread.data.sourceIds);
-    setPlanId(thread.data.planId);
-    setSubject(thread.data.subject ?? "");
-  }, [chatId, thread.data]);
-
-  /** Sources of every plan filed under a subject: choosing the subject uses them. */
-  async function subjectSourceIds(name: string): Promise<string[]> {
-    if (!name) return [];
-    const list = await client.ensureQueryData(plansQuery);
-    const found = await Promise.all(
-      list
-        .filter((plan) => plan.subject === name)
-        .map((plan) =>
-          client.fetchQuery({ ...planQuery(plan.id), staleTime: 15_000 }),
-        ),
-    );
-    return found.flatMap((plan) => plan?.sources.map((source) => source.id) ?? []);
-  }
-
-  async function chooseSubject(next: string) {
-    // The ref, not this render's state: the default choice can run after a chat change this closure has not seen.
-    const previous = subjectNow.current;
-    if (next === previous) return;
-    const chat = scope.token();
-    setSubject(next);
-    subjectNow.current = next;
-    const plan = (plans.data ?? []).find((item) => item.id === planId);
-    if (plan?.subject && plan.subject !== next) setPlanId(null);
-    await scope.track(
-      Promise.all([
-        subjectSourceIds(previous),
-        subjectSourceIds(next),
-      ]).then(([before, after]) => {
-        if (!scope.isCurrent(chat)) return;
-        pickedNow.current = applySubject(pickedNow.current, before, after);
-        setPicked(pickedNow.current);
-      }),
-    );
-  }
-
-  async function addPlan(id: string) {
-    const chat = scope.token();
-    const plan = await client.fetchQuery({ ...planQuery(id), staleTime: 15_000 });
-    if (!scope.isCurrent(chat)) return;
-    pickedNow.current = addIds(
-      pickedNow.current,
-      plan?.sources.map((source) => source.id) ?? [],
-    );
-    setPicked(pickedNow.current);
-  }
-
-  function removeItem(item: ScopeItem) {
-    if (item.kind === "plan") setPlanId(null);
-    else setPicked((current) => current.filter((id) => id !== item.id));
+  /** The student picks the chat's subject from its chip. A new chat keeps the choice for its first question. */
+  async function pickSubject(pick: SubjectPick) {
+    const said =
+      pick.kind === "subject"
+        ? t("ask.chip.nowSubject", { name: pick.name })
+        : pick.kind === "library"
+          ? t("ask.chip.nowLibrary")
+          : t("ask.chip.nowPyxis");
+    if (!chatId) {
+      const row = pick.kind === "subject" ? subjects.data?.find((subject) => subject.name === pick.name) : undefined;
+      const choice: NewChatSubject = pick.kind === "subject" ? { ...pick, id: row?.id } : pick;
+      setNewSubject(choice);
+      writePendingSubject(sessionStorage, choice);
+      setAnnouncement(said);
+      return;
+    }
+    try {
+      await invoke("chats.setSubject", { chatId, subject: pick.kind === "subject" ? pick.name : null });
+      setAnnouncement(said);
+    } catch {
+      fail({ messageKey: "ask.chip.failed" });
+    }
+    void client.invalidateQueries({ queryKey: ["chat", chatId] });
+    void client.invalidateQueries({ queryKey: ["chats"] });
   }
 
   const messages = thread.data?.messages ?? [];
@@ -483,24 +428,14 @@ export function AskPage() {
   const lastRow = messages.at(-1);
   const lastTutor = lastRow?.role === "assistant" ? lastRow : undefined;
   const unanswered = lastRow?.role === "user";
-  const items = scopeItems({
-    planId,
-    planTitle: (plans.data ?? []).find((plan) => plan.id === planId)?.title,
-    picked,
-    library: sources.data ?? [],
-    held,
-  });
-  // The ids sent are the ones the student can see; a source deleted since the chat was saved is left out.
-  const visible = (ids: string[]) =>
-    sources.data
-      ? ids.filter(
-          (id) =>
-            sources.data.some((source) => source.id === id) ||
-            held.some((source) => source.id === id),
-        )
-      : ids;
-  const sendIds = visible(picked);
-  const hasScope = items.length > 0;
+  // The exam a chat was opened from names the chip when the chat has no subject of its own.
+  const plan = usePlan(thread.data?.planId, Boolean(thread.data?.planId) && !thread.data?.subject);
+  const chip = chatId
+    ? thread.data
+      ? chipState({ ...thread.data, planTitle: plan.data?.title })
+      : null
+    : newChipState(newSubject);
+  const subjectNames = (subjects.data ?? []).map((row) => row.name);
 
   // The page fills the viewport, so the composer sits at the foot of the window even with one short message. The shell
   // around it has its own padding, so the page borrows that space back with a negative bottom margin.
@@ -588,28 +523,14 @@ export function AskPage() {
   // A suggestion chip or "Answer generally" sends only its own text: the typed draft and pending photos stay in the composer, unsent.
   async function send(
     text: string,
-    options: { allowGeneral?: boolean; textOnly?: boolean; subject?: string } = {},
+    options: { allowGeneral?: boolean; textOnly?: boolean } = {},
   ) {
     const trimmed = text.trim();
     if (!trimmed || turns.get()) return;
-    if (chatId && loadedFor.current !== chatId) return;
+    if (chatId && !thread.data) return;
     const startedIn = chatId ?? "";
     const turn = turns.start(startedIn, trimmed, false, messages.at(-1)?.id ?? null);
     if (!turn) return;
-    // Stop works from the first moment, also while the subject's sources are still loading.
-    let stoppedEarly = false;
-    turn.stop = () => {
-      stoppedEarly = true;
-    };
-    const stillHere = await scope.settled();
-    if (stoppedEarly || !stillHere) {
-      turns.end(turn);
-      // The student opened another chat while the question waited for its scope. Sending it now would use that chat's
-      // subject and sources, so it stays unsent, as the draft of the chat it was asked in.
-      if (!stillHere) keepUnsentQuestion(sessionStorage, startedIn || undefined, trimmed);
-      return;
-    }
-    const ids = visible(pickedNow.current);
     setError(null);
     setAnnouncement("");
     setSkipped([]);
@@ -623,8 +544,12 @@ export function AskPage() {
       setPreviews({});
       sessionStorage.removeItem(draftKey(chatId));
     }
+    // A new chat's first question takes the subject chosen for it, which stays kept only until the question has gone.
+    const sentSubject = chatId ? null : newSubject;
+    if (sentSubject) writePendingSubject(sessionStorage, { kind: "auto" });
     // The message goes back to the chat it was sent from, even if the student has moved to another one or left Ask.
     const restore = () => {
+      if (sentSubject && readPendingSubject(sessionStorage).kind === "auto") writePendingSubject(sessionStorage, sentSubject);
       if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
       const page = screen?.current;
@@ -635,24 +560,16 @@ export function AskPage() {
       if (held.draft && !sessionStorage.getItem(draftKey(from)))
         sessionStorage.setItem(draftKey(from), held.draft);
     };
-    const general = allowsGeneral({
-      chosen: options.allowGeneral === true,
-      planId,
-      sourceCount: ids.length,
-      fileCount: attached.length,
-    });
     if (startedIn) askedGeneral.set(startedIn, options.allowGeneral === true);
     const handle = window.pyxis.stream(
       "chats.ask",
       {
         chatId,
         text: trimmed,
-        sourceIds: ids,
-        planId,
-        mode,
-        subject: options.subject ?? subjectNow.current,
+        // A new chat's first question carries the subject chosen on its first page; a saved chat keeps its own.
+        subject: chatId ? undefined : subjectToSend(newSubject),
         files: attached.length > 0 ? attached : undefined,
-        allowGeneral: general,
+        allowGeneral: options.allowGeneral === true,
       },
       turn.onEvent,
     );
@@ -738,11 +655,15 @@ export function AskPage() {
     };
   }, []);
 
-  /** Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short. */
-  function regenerate(options: { engine?: "strong"; resume?: boolean } = {}) {
+  /**
+   * Answers the last question again. `strong` uses the strongest model; `resume` continues a reply that was cut short;
+   * `way` asks for the other way of answering, from the action under the answer.
+   */
+  function regenerate(options: { engine?: "strong"; resume?: boolean; way?: "solved" | "guided" } = {}) {
     if (!chatId) return;
     const turn = turns.start(chatId, null, true);
     if (!turn) return;
+    setSwitching(options.way ?? null);
     setError(null);
     setAnnouncement("");
     // Continue keeps the saved part on screen, with its citation chips: the cut-off reply is hidden while it runs, core
@@ -758,16 +679,7 @@ export function AskPage() {
       {
         chatId,
         ...options,
-        sourceIds: sendIds,
-        planId,
-        mode,
-        subject,
-        // Same rule as a first send: the reply's own grounding says nothing about whether sources are selected.
-        allowGeneral: allowsGeneral({
-          chosen: choseGeneral(askedGeneral.get(chatId), messages),
-          planId,
-          sourceCount: sendIds.length,
-        }),
+        allowGeneral: askedGeneral.get(chatId) === true,
       },
       turn.onEvent,
     );
@@ -791,7 +703,10 @@ export function AskPage() {
       .catch((err: unknown) => {
         if (errorKey(err) !== "errors.aborted" && !turn.dropped) showing(turn)?.fail(err);
       })
-      .finally(() => turns.end(turn));
+      .finally(() => {
+        setSwitching(null);
+        turns.end(turn);
+      });
   }
 
   const conversation =
@@ -799,7 +714,7 @@ export function AskPage() {
   const shownMessages = regenerating && streamHere
     ? messages.filter((row) => row.id !== lastTutor?.id)
     : messages;
-  const usesSources = hasScope || files.length > 0;
+  const usesSources = (sources.data?.length ?? 0) > 0 || files.length > 0;
   const name = profile.data?.displayName.trim() ?? "";
   // Home is a chat with nothing in it yet: the greeting with the composer under it, in the middle of the page.
   const home = !conversation && !threadLoading && !threadFailed;
@@ -838,12 +753,13 @@ export function AskPage() {
   const regenerateNow = useStable(() => regenerate());
   const strongerNow = useStable(() => regenerate({ engine: "strong" }));
   const continueNow = useStable(() => regenerate({ resume: true }));
+  const switchWay = useStable((way: "solved" | "guided") => regenerate({ way }));
   const makeCards = useStable((row: ChatRow) =>
     openMakeCards({
       text: replyPlainText(row.body),
       origin: "reply",
-      planId: planId ?? undefined,
-      subject: subject || undefined,
+      planId: thread.data?.planId ?? undefined,
+      subject: thread.data?.subject ?? undefined,
       passageIds: row.citations.map((cite) => cite.passageId),
     }),
   );
@@ -924,7 +840,25 @@ export function AskPage() {
         if (dropped.length > 0) void attachDropped(dropped);
       }}
     >
-      <ChatHeader chatId={chatId} title={title} />
+      <ChatHeader
+        chatId={chatId}
+        title={title}
+        chip={
+          // With no subject in the Library there is nothing to choose, until a chat has one of its own.
+          chip && (subjectNames.length > 0 || chip.kind !== "auto") ? (
+            <SubjectChip
+              chat={chatId ?? ""}
+              state={chip}
+              subjects={subjectNames}
+              allowAuto={!chatId}
+              disabled={busy}
+              onPick={(pick) => void pickSubject(pick)}
+              // The student goes on typing after choosing.
+              focusAfterChoice={() => field.current?.focus()}
+            />
+          ) : null
+        }
+      />
       {threadFailed ? (
         <div className="ask-thread">
           <h1 className="visually-hidden">{t("doors.ask")}</h1>
@@ -981,6 +915,7 @@ export function AskPage() {
                 onSuggest={suggest}
                 onReact={react}
                 onMakeCards={makeCards}
+                onSwitchWay={row.id === lastTutorId && chatId ? switchWay : undefined}
               />
             ),
           )}
@@ -999,7 +934,12 @@ export function AskPage() {
           ) : null}
           {streamHere && !regenerating ? <PendingQuestion turn={turn} last={lastRow} /> : null}
           {streamHere ? (
-            <StreamingReply turn={turn} usesSources={usesSources} onGrow={followStream} />
+            <StreamingReply
+              turn={turn}
+              usesSources={usesSources}
+              line={switching ? t(switching === "guided" ? "ask.way.guiding" : "ask.way.solving") : undefined}
+              onGrow={followStream}
+            />
           ) : null}
         </div>
       )}
@@ -1149,43 +1089,12 @@ export function AskPage() {
           </ul>
         ) : null}
         <Composer
-          subjectControl={
-            <SubjectMenu
-              value={subject}
-              onChange={(next) => {
-                // A pick, "No subject" included, is the student's choice: the new chat's default no longer applies.
-                scope.choose();
-                void chooseSubject(next);
-              }}
-              disabled={busy}
-            />
-          }
-          sourcesControl={
-            <SourcesMenu
-              items={items}
-              library={(sources.data ?? []).map((source) => ({
-                id: source.id,
-                title: source.title,
-              }))}
-              plans={(plans.data ?? []).map((plan) => ({
-                id: plan.id,
-                title: plan.title,
-              }))}
-              onRemove={removeItem}
-              onAddSource={(id) =>
-                setPicked((current) => addIds(current, [id]))
-              }
-              onAddPlan={(id) => void addPlan(id)}
-              disabled={busy}
-            />
-          }
+          fieldRef={field}
           value={draft}
           onValueChange={(next) => {
             setDraft(next);
             sessionStorage.setItem(draftKey(composerFor.current), next);
           }}
-          mode={mode}
-          onModeChange={setMode}
           streaming={busy}
           onStop={() => turns.get()?.stop()}
           onSend={() => void send(draft)}

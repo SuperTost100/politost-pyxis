@@ -183,18 +183,13 @@ test("Studio: one choice is radio rows, on or off a switch, the text size a segm
       window.location.hash = "#/settings/study";
     });
     const profile = () => page.evaluate(() => window.pyxis.invoke("profile.get", {} as never)) as Promise<{
-      tutorMode: string;
       followups: boolean;
       textSize: string;
       dyslexia: boolean;
     }>;
 
-    // How it explains: two radio rows, each with a line on what it does, and a switch for follow-up questions.
-    const how = page.getByRole("radiogroup", { name: "Come ti spiega" });
-    await expect(how.getByRole("radio")).toHaveCount(2);
-    await expect(how.getByRole("radio", { name: /^Passo per passo/ })).toBeChecked();
-    await how.getByRole("radio", { name: /^Con domande/ }).check();
-    await expect.poll(async () => (await profile()).tutorMode).toBe("socratic");
+    // Pyxis chooses how to explain on each question, so the section has no default way, only the follow-up questions.
+    await expect(page.getByRole("radiogroup", { name: "Come ti spiega" })).toHaveCount(0);
     const followups = page.getByRole("switch", { name: "Proponi domande per approfondire" });
     await expect(followups).toHaveAttribute("aria-checked", "true");
     await followups.click();

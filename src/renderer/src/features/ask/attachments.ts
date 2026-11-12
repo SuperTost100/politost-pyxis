@@ -1,4 +1,5 @@
 import { DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS } from "../../../../shared/source-types";
+import type { NewChatSubject } from "./scope";
 
 /** Windows paths use `\`, so a `/` split alone shows the whole path. */
 export function fileName(path: string): string {
@@ -62,6 +63,29 @@ export function writePendingFiles(
 ): void {
   if (files.length === 0) store.removeItem(filesKey(chatId));
   else store.setItem(filesKey(chatId), JSON.stringify(files));
+}
+
+const SUBJECT_KEY = "pyxis-subject";
+
+/**
+ * The subject a student chose on a new chat's first page stays with that chat's draft until the first question is sent,
+ * so a visit to the whiteboard, the graph or the Library does not lose it. Letting Pyxis pick is no choice and keeps nothing.
+ */
+export function readPendingSubject(store: Pick<Storage, "getItem">): NewChatSubject {
+  try {
+    const value = JSON.parse(store.getItem(SUBJECT_KEY) ?? "null") as { kind?: unknown; name?: unknown; id?: unknown } | null;
+    if (value?.kind === "library") return { kind: "library" };
+    if (value?.kind === "subject" && typeof value.name === "string")
+      return { kind: "subject", name: value.name, ...(typeof value.id === "string" ? { id: value.id } : {}) };
+  } catch {
+    return { kind: "auto" };
+  }
+  return { kind: "auto" };
+}
+
+export function writePendingSubject(store: Pick<Storage, "setItem" | "removeItem">, choice: NewChatSubject): void {
+  if (choice.kind === "auto") store.removeItem(SUBJECT_KEY);
+  else store.setItem(SUBJECT_KEY, JSON.stringify(choice));
 }
 
 /**

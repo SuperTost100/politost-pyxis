@@ -551,13 +551,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     await page.evaluate(() => {
       window.location.hash = "/ask";
     });
-    // The plan joins the chat through the Fonti chip in the composer.
-    await page.getByRole("button", { name: "Fonti", exact: true }).click();
-    const scope = page.getByRole("region", { name: "Fonti in uso" });
-    await scope.getByRole("button", { name: "Aggiungi fonti" }).click();
-    await scope.getByRole("button", { name: "Motion", exact: true }).first().click();
-    await page.keyboard.press("Escape");
-    await expect(scope).toBeHidden();
+    // Pyxis searches the student's material, the plan's files included.
     await page
       .getByRole("textbox", { name: "Messaggio", exact: true })
       .fill("What is velocity?");

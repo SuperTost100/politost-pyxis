@@ -2,6 +2,7 @@ import {
   systemPrompt,
   type TemplateId,
 } from "../engine/prompts";
+import type { AnswerWay } from "./way";
 
 export type ChatTemplateId = Extract<
   TemplateId,
@@ -9,16 +10,14 @@ export type ChatTemplateId = Extract<
 >;
 
 /**
- * Socratic mode wins over "answer from general knowledge": chat.socratic already builds its question on the
- * model's own knowledge when no passage is attached, so a student who chose to be questioned still is.
+ * The template for a turn. A guided turn uses chat.socratic, which builds its step on the passages when there are any and
+ * on the model's own knowledge when not. A solved turn uses chat.solver, with the math checks, whenever the Library was
+ * searched or a file came with the question, and chat.general when nothing was (`general`).
  */
-export function chatTemplateId(input: {
-  allowGeneral?: boolean;
-  mode?: string;
-}): ChatTemplateId {
-  return input.mode === "socratic"
+export function chatTemplateId(input: { way: AnswerWay; general?: boolean }): ChatTemplateId {
+  return input.way === "guided"
     ? "chat.socratic"
-    : input.allowGeneral
+    : input.general
       ? "chat.general"
       : "chat.solver";
 }

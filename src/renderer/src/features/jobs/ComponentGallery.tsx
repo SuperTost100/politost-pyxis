@@ -6,6 +6,7 @@ import { ChatMessage } from "../../components/ChatMessage";
 import { CheckBadge } from "../../components/CheckBadge";
 import { Chip } from "../../components/Chip";
 import { CitationChip } from "../../components/CitationChip";
+import { UsedSources } from "../ask/UsedSources";
 import { Composer } from "../../components/Composer";
 import { ContextBlock } from "../../components/ContextBlock";
 import { EngineRow } from "../../components/EngineRow";
@@ -317,7 +318,7 @@ export function ComponentGallery() {
         title="Composer"
         layout="col"
       >
-        <Composer subject="Fisica" sources={["Fisica 1"]} />
+        <Composer />
         <Composer streaming />
       </Section>
 
@@ -339,7 +340,9 @@ export function ComponentGallery() {
           {t("components.chatSamples.tutor")}{" "}
           <CitationChip>{t("components.chatSamples.cite")}</CitationChip>
         </ChatMessage>
-        <ChatMessage general>{t("components.chatSamples.tutor")}</ChatMessage>
+        <ChatMessage lead={<UsedSources grounding="general" citations={[]} />}>
+          {t("components.chatSamples.tutor")}
+        </ChatMessage>
       </Section>
 
       <Section
