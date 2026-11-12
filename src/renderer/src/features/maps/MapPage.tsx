@@ -38,6 +38,7 @@ import {
 import { toPng } from "html-to-image";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
+import { Notice } from "../../components/Notice";
 import { IconButton } from "../../components/IconButton";
 import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
@@ -895,21 +896,29 @@ export function MapPage() {
     },
     [address, activeId, client],
   );
-  // Starts a stopped build again from the step it reached, as Attività's Riprendi does.
+  // Starts a stopped build again from the step it reached, as Attività's Riprendi does. With a map on show, Pyxis at work
+  // takes its place at once, as for a new map, until the build ends; if it fails, the map and the notice come back.
   async function resumeBuild() {
     if (!job) return;
     setBusy(true);
     setNotice("");
+    if (graph) setFresh(true);
     try {
       await invoke("jobs.resumeAll", { jobIds: [job.jobId] });
       client.setQueryData(buildKey(job.jobId), job);
       setJobId(job.jobId);
       await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
     } catch {
+      setFresh(false);
       setNotice(t("map.generateFailed"));
     } finally {
       setBusy(false);
     }
+  }
+  // Asks again for a build that failed, with its words, showing Pyxis at work in place as `resumeBuild` does.
+  async function retryBuild() {
+    if (graph) setFresh(true);
+    await generateMaps();
   }
   // Gives up the build the line under the head offers again, as Chiudi does in Attività: nothing offers it after this.
   async function dismissBuild() {
@@ -1193,7 +1202,8 @@ export function MapPage() {
     title: (wholeSubject ? scope.data?.subjectName : scope.data?.topicTitle) ?? t("map.title"),
   });
   // What the student asked for, in one quiet line under the working line, so they see the request was taken.
-  const workingAsk = building ? job?.instruction : starting ? wanted.current : undefined;
+  // A retry shows the words it asks again with from the click, before its build is read.
+  const workingAsk = building || (busy && fresh && retrying) ? job?.instruction : starting ? wanted.current : undefined;
   const change =
     lastChange && lastChange.mapId === activeId && graph?.undo
       ? lastChange
@@ -1302,23 +1312,20 @@ export function MapPage() {
         </p>
       ) : null}
       {recoverable && job ? (
-        <p className="small px-map-notice px-map-recover" role="status">
-          <span>
-            {t(job.state === "failed" ? "map.lastFailed" : job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
-          </span>
-          {/* A build that stopped or failed next to a map already there is picked up again from here. */}
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={disabled}
-            onClick={() => void (job.state === "failed" ? generateMaps() : resumeBuild())}
+        // How the last build ended, as a notice with its way back: Riprova or Riprendi, and Chiudi, as in Attività.
+        <div className="px-map-notice px-map-recover">
+          <Notice
+            tone="info"
+            action={{
+              label: t(job.state === "failed" ? "maps.retry" : "jobs.resume"),
+              disabled,
+              onClick: () => void (job.state === "failed" ? retryBuild() : resumeBuild()),
+            }}
+            secondary={{ label: t("jobs.dismiss"), disabled, onClick: () => void dismissBuild() }}
           >
-            {t(job.state === "failed" ? "maps.retry" : "jobs.resume")}
-          </Button>
-          <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void dismissBuild()}>
-            {t("jobs.dismiss")}
-          </Button>
-        </p>
+            {t(job.state === "failed" ? "map.lastFailed" : job.state === "cancelled" ? "map.stopped" : "map.lastInterrupted")}
+          </Notice>
+        </div>
       ) : null}
       {map.isError || list.isError || scope.isError ? (
         <LoadError

@@ -741,3 +741,82 @@ test("a tile's menu opened with the keyboard gives focus back to its dots when a
     removeTestFolder(userData);
   }
 });
+
+test("Riprova on a failed build shows Pyxis at work in place at once, and a retry that fails brings the line back", async () => {
+  test.setTimeout(180_000);
+  const theorems = reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"]);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([theorems, { fail: "offline" }, { fail: "offline" }, theorems]),
+    PYXIS_E2E_MAP_DELAY: "1500",
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await askAndWait(page, "solo i teoremi", "failed");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+
+    // The line is a notice: its icon, Riprova as its action and Chiudi beside it.
+    const line = recovery(page);
+    await expect(line.locator(".px-notice")).toContainText("L’ultima costruzione della mappa non è riuscita");
+    await expect(line.locator(".px-notice svg").first()).toBeVisible();
+    await expect(line.getByRole("button")).toHaveText(["Riprova", "Chiudi"]);
+    await expectNoAxeViolations(page);
+
+    // Riprova: Pyxis at work where the map will be, at once, as for a new map, with the words asked for.
+    await line.getByRole("button", { name: "Riprova" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(working).toContainText("solo i teoremi");
+    await expect(line).toHaveCount(0);
+    // It fails again: the line comes back and says so, and the map is there again.
+    await expect(line).toContainText("L’ultima costruzione della mappa non è riuscita", { timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+
+    // Again, and this time it is built: the new map opens.
+    await line.getByRole("button", { name: "Riprova" }).click();
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(line).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Riprendi on a stopped build shows Pyxis at work in place at once", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+    PYXIS_E2E_MAP_DELAY: "3000",
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await page.evaluate(() => window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }));
+    await page.evaluate(async () => {
+      const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+      await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+    });
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    const line = recovery(page);
+    await expect(line.locator(".px-notice")).toContainText("Hai fermato la creazione della mappa");
+    await expect(line.getByRole("button")).toHaveText(["Riprendi", "Chiudi"]);
+    await line.getByRole("button", { name: "Riprendi" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(line).toHaveCount(0);
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

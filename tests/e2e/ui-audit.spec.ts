@@ -3211,7 +3211,7 @@ async function openState(page: Page, name: string) {
     case "map-build-failed":
     case "map-build-stopped": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      const line = page.locator(".px-map-recover");
+      const line = page.locator(".px-map-notice .px-notice");
       await expect(line).toContainText(
         name === "map-build-failed"
           ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
