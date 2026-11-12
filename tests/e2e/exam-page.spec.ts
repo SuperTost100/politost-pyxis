@@ -424,3 +424,88 @@ test("the exam page keeps its path readable in the smallest window, at 200% zoom
     removeTestFolder(userData);
   }
 });
+
+test("Adesso and Percorso stay the same distance apart whatever the exam has and however tall the sections beside them are", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-exam-gap-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    const materials = ["Bramanti Pagani Salsa", "Esercitazione 3 soluzioni", "IMG_2041", "Lezione 06 slide", "appunti_analisi", "Temi d'esame"].map(
+      (title, index) => {
+        seedSource(db, { id: `gap-s${index}`, kind: "smartbook", title });
+        return `gap-s${index}`;
+      },
+    );
+    const topics = [
+      { id: "limits", title: "Limiti" },
+      { id: "derivatives", title: "Derivate" },
+    ];
+    // The sections column (Flashcard, Da rifare, Mappe, Materiale) is taller with six materials than with none, and
+    // taller than Adesso and the path together when the exam has few topics. A notice sits in the path with a date
+    // and no weekly hours.
+    const states = [
+      { id: "no-date-no-materials", examAt: null, topics, sourceIds: [], hours: null },
+      { id: "no-date-no-topics", examAt: null, topics: [], sourceIds: materials, hours: null },
+      { id: "no-date", examAt: null, topics, sourceIds: materials, hours: null },
+      { id: "date-hours", examAt: Date.now() + 20 * day, topics, sourceIds: materials, hours: 6 },
+      { id: "date-no-hours", examAt: Date.now() + 20 * day, topics, sourceIds: materials, hours: null },
+      { id: "date-no-topics", examAt: Date.now() + 20 * day, topics: [], sourceIds: materials, hours: 6 },
+    ];
+    for (const state of states)
+      seedPlan(db, {
+        id: state.id,
+        title: `Analisi ${state.id}`,
+        language: "it",
+        examAt: state.examAt,
+        sourceIds: state.sourceIds,
+        topics: state.topics.map((topic) => ({ ...topic, id: `${state.id}-${topic.id}` })),
+      });
+    db.close();
+    const heights = new Map<string, number>();
+    for (const width of [1280, 960]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const state of states) {
+        const settings = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+        if (state.hours === null) settings.prepare("DELETE FROM settings WHERE key = 'planner'").run();
+        else
+          settings
+            .prepare(
+              "INSERT INTO settings(key,value_json,updated_at) VALUES('planner',?,1) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+            )
+            .run(JSON.stringify({ weeklyHours: state.hours, weeks: {} }));
+        settings.close();
+        await openExam(page, state.id, `Analisi ${state.id}`);
+        await expect(page.locator(".px-exam-now h2")).toBeVisible();
+        await expect(page.locator(".px-exam-path .px-exam-sech")).toBeVisible();
+        const label = `${state.id} at ${width}`;
+        await expect(page.locator(".px-xpath > .px-notice"), label).toHaveCount(state.id === "date-no-hours" ? 1 : 0);
+        const measured = await page.evaluate(() => {
+          const now = document.querySelector(".px-exam-now")!.getBoundingClientRect();
+          const heading = document.querySelector(".px-exam-path .px-exam-sech")!.getBoundingClientRect();
+          return {
+            apart: heading.top - now.bottom,
+            gap: Number.parseFloat(getComputedStyle(document.querySelector(".px-exam-grid")!).rowGap),
+            nowHeight: now.height,
+            asideHeight: document.querySelector(".px-exam-aside")!.getBoundingClientRect().height,
+            mainHeight: heading.bottom - now.top,
+          };
+        });
+        // Nothing but the grid's own gap lies between the two, wherever the sections end.
+        expect(measured.apart, `${label}: Adesso to Percorso`).toBeCloseTo(measured.gap, 0);
+        // Adesso is as tall as its own content: the sections column does not stretch it.
+        const key = `${state.topics.length}-${width}`;
+        if (state.sourceIds.length === 0) heights.set(key, measured.nowHeight);
+        else if (state.id === "no-date" && heights.has(key)) expect(measured.nowHeight, `${label}: Adesso's height`).toBeCloseTo(heights.get(key)!, 0);
+        if (state.id === "no-date") expect(measured.asideHeight, `${label}: the sections are the taller column`).toBeGreaterThan(measured.mainHeight);
+      }
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

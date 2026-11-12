@@ -4286,6 +4286,20 @@ test("M14 every application route in both languages, themes and supported widths
                 if (name === "map-exam-active" && sizes.withIt.height > sizes.window)
                   errors.push(`The map's page is ${sizes.withIt.height - sizes.window}px taller than the window`);
               }
+              // On the exam page nothing but the grid's own gap lies between Adesso and Percorso, whatever the exam has and
+              // however tall the sections beside them are.
+              const apart = await page.evaluate(() => {
+                const now = document.querySelector(".px-exam-now");
+                const heading = document.querySelector(".px-exam-path .px-exam-sech");
+                const grid = document.querySelector(".px-exam-grid");
+                if (!now || !heading || !grid) return null;
+                return {
+                  apart: heading.getBoundingClientRect().top - now.getBoundingClientRect().bottom,
+                  gap: Number.parseFloat(getComputedStyle(grid).rowGap),
+                };
+              });
+              if (apart && Math.abs(apart.apart - apart.gap) > 1)
+                errors.push(`Adesso and Percorso are ${apart.apart}px apart, the grid's gap is ${apart.gap}px`);
               records.push({
                 name,
                 route,
