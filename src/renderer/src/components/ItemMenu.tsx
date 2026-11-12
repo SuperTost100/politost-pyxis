@@ -34,6 +34,11 @@ const GAP = 4;
  * edge and over its menu. It then moves down below the item that opened it, or above it when there is more room there,
  * so that item stays in sight, kept inside the window, and it scrolls inside itself when it is taller than that room. The card inside the
  * submenu is moved, not the box the trigger places, so the trigger's next alignment does not undo it.
+ *
+ * The answer comes from what does not depend on the answer: the menu's box, the row that opened the submenu, the window
+ * and the submenu's natural size (its content's height, whatever limit it has now). Where the trigger placed the box and
+ * how tall the limit made it never enter the decision, so the same inputs give the same result and the placement
+ * settles, instead of limiting the box, measuring the shorter box, lifting the limit and starting again.
  */
 function keepOpenerInSight(root: HTMLElement) {
   for (const popup of root.querySelectorAll<HTMLElement>(".ant-dropdown-menu-submenu-popup:not(.ant-dropdown-menu-submenu-hidden)")) {
@@ -41,22 +46,26 @@ function keepOpenerInSight(root: HTMLElement) {
     const opener = root.querySelector<HTMLElement>(
       ".ant-dropdown-menu-root > .ant-dropdown-menu-submenu-open > .ant-dropdown-menu-submenu-title",
     );
-    if (!card || !opener) continue;
+    const menu = opener?.closest<HTMLElement>(".ant-dropdown-menu-root");
+    if (!card || !opener || !menu) continue;
     const box = popup.getBoundingClientRect();
     const row = opener.getBoundingClientRect();
-    const covers = box.left < row.right && box.right > row.left && box.top < row.bottom && box.bottom > row.top;
+    const sides = menu.getBoundingClientRect();
+    // The card's content height, which a limit on the card does not change, and its borders.
+    const natural = card.scrollHeight + card.offsetHeight - card.clientHeight;
+    const beside = sides.right + GAP + box.width <= innerWidth || sides.left - GAP - box.width >= 0;
     let transform = "";
     let maxHeight = "";
-    if (covers) {
+    if (!beside) {
       const below = innerHeight - EDGE - (row.bottom + GAP);
       const above = row.top - GAP - EDGE;
       const room = Math.max(below, above);
-      const height = Math.min(box.height, room);
-      const top = below >= box.height || below >= above ? row.bottom + GAP : row.top - GAP - height;
+      const height = Math.min(natural, room);
+      const top = below >= natural || below >= above ? row.bottom + GAP : row.top - GAP - height;
       // The trigger keeps it inside the document, which a page wider than the window outgrows: inside the window here.
       const left = Math.max(EDGE, Math.min(box.left, innerWidth - EDGE - box.width));
       transform = `translate(${Math.round(left - box.left)}px, ${Math.round(top - box.top)}px)`;
-      if (height < box.height) maxHeight = `${Math.floor(height)}px`;
+      if (height < natural) maxHeight = `${Math.floor(height)}px`;
     }
     if (card.style.transform !== transform) card.style.transform = transform;
     if (card.style.maxHeight !== maxHeight) card.style.maxHeight = maxHeight;
@@ -75,9 +84,13 @@ function SubmenuRoom({ children }: { children: ReactNode }) {
     let frame = 0;
     const check = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => keepOpenerInSight(root));
+      frame = requestAnimationFrame(() => {
+        keepOpenerInSight(root);
+        // What was just written is not a change to react to.
+        observer.takeRecords();
+      });
     };
-    const observer = new MutationObserver(check);
+    const observer: MutationObserver = new MutationObserver(check);
     observer.observe(root, { attributes: true, attributeFilter: ["style", "class"], subtree: true, childList: true });
     return () => {
       observer.disconnect();

@@ -395,3 +395,108 @@ test("In a window too narrow for a submenu on either side, the submenu leaves th
     removeTestFolder(userData);
   }
 });
+
+test("A submenu taller than a narrow window holds still, stays inside the window and every item can be reached", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-submenu-tall-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubmenus(db);
+    // Twenty subjects with long names: "Sposta in" lists them all, far taller than the window and wider than its room.
+    seedSubjects(
+      db,
+      Array.from({ length: 20 }, (_, index) => ({
+        id: `long-${index}`,
+        name: `Fondamenti di analisi matematica e geometria, modulo ${String(index + 1).padStart(2, "0")}`,
+      })),
+    );
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "#/exams/library";
+    });
+    await page.reload();
+    await page.setViewportSize({ width: 440, height: 600 });
+    const loose = page.getByRole("region", { name: "Da sistemare" }).locator(".px-unsorted-row", { hasText: "Appunti sciolti" });
+    await loose.hover();
+    await loose.getByRole("button", { name: "Azioni per Appunti sciolti" }).click();
+    const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+    const row = open.getByRole("menuitem", { name: "Sposta in", exact: true });
+    await expect(row).toBeVisible();
+    await animationsSettled(page);
+    await row.hover();
+    const sub = page.locator(".ant-dropdown-menu-sub:visible");
+    await expect(sub.getByRole("menuitem").first()).toBeVisible();
+    await animationsSettled(page);
+    // Thirty frames, one box each: the same box every time, with the submenu's entries all in it.
+    const frames = await sub.evaluate(
+      (node) =>
+        new Promise<Array<{ x: number; y: number; width: number; height: number }>>((resolve) => {
+          const seen: Array<{ x: number; y: number; width: number; height: number }> = [];
+          const sample = () => {
+            const { x, y, width, height } = node.getBoundingClientRect();
+            seen.push({ x, y, width, height });
+            if (seen.length < 30) requestAnimationFrame(sample);
+            else resolve(seen);
+          };
+          requestAnimationFrame(sample);
+        }),
+    );
+    expect(frames).toHaveLength(30);
+    for (const [index, frame] of frames.entries()) expect(frame, `frame ${index}`).toEqual(frames[0]);
+    const viewport = page.viewportSize()!;
+    const box = frames[0]!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    // It is taller than the window would let it be, so it scrolls inside itself and its entries are all reachable.
+    const items = sub.getByRole("menuitem");
+    const count = await items.count();
+    expect(count).toBeGreaterThanOrEqual(21);
+    const inView = async (index: number) => {
+      const item = (await items.nth(index).boundingBox())!;
+      const card = (await sub.boundingBox())!;
+      return item.y >= card.y - 0.5 && item.y + item.height <= card.y + card.height + 0.5;
+    };
+    await items.last().scrollIntoViewIfNeeded();
+    expect(await inView(count - 1), "last item after scrolling").toBe(true);
+    await items.first().scrollIntoViewIfNeeded();
+    expect(await inView(0), "first item after scrolling back").toBe(true);
+    // The arrow keys walk through all of them, each one in sight when it has the focus.
+    const names = await items.allInnerTexts();
+    await items.first().focus();
+    const focused = () => page.evaluate(() => document.activeElement?.textContent ?? "");
+    const reached = new Set<string>([await focused()]);
+    let before = await focused();
+    for (let index = 1; index < count; index++) {
+      await page.keyboard.press("ArrowDown");
+      // The menu moves the focus a moment after the key.
+      await expect.poll(focused, { message: `after ${before}` }).not.toBe(before);
+      const seen = await page.evaluate(() => {
+        const active = document.activeElement!;
+        const item = active.getBoundingClientRect();
+        const card = active.closest("ul")!.getBoundingClientRect();
+        return {
+          text: active.textContent ?? "",
+          inCard: item.top >= card.top - 0.5 && item.bottom <= card.bottom + 0.5,
+          inWindow: item.top >= 0 && item.bottom <= innerHeight,
+        };
+      });
+      before = seen.text;
+      reached.add(seen.text);
+      expect(seen.inCard, `${seen.text} in its card`).toBe(true);
+      expect(seen.inWindow, `${seen.text} in the window`).toBe(true);
+    }
+    expect([...reached].sort()).toEqual([...names].sort());
+    // And the box has not moved while they did.
+    const after = (await sub.boundingBox())!;
+    expect(after).toEqual(box);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
