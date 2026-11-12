@@ -97,6 +97,15 @@ describe("token contrast", () => {
         ).toBeGreaterThanOrEqual(4.5);
       });
     }
+    // A book cover's title on each subject colour, and the cover itself against the card it sits on.
+    for (const cover of ["cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6"]) {
+      it(`the book title on ${cover} is 4.5:1 or more in ${mode}`, () => {
+        expect(contrast(value("on-cover", mode), value(cover, mode))).toBeGreaterThanOrEqual(4.5);
+      });
+      it(`${cover} on surface is 3:1 or more in ${mode}`, () => {
+        expect(contrast(value(cover, mode), value("surface", mode))).toBeGreaterThanOrEqual(3);
+      });
+    }
     for (const [name, soft] of [
       ["primary-text", "primary-soft"],
       ["ok", "ok-soft"],

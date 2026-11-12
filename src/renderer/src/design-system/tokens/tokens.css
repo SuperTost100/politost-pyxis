@@ -84,6 +84,13 @@
   --ring-path: #e6b552;
   --ring-today: #ec94b4;
   --ring-track: #252b36;
+  --cover-1: #93a7bf;
+  --cover-2: #d1957b;
+  --cover-3: #bba0bb;
+  --cover-4: #bfb39a;
+  --cover-5: #8fbfa8;
+  --cover-6: #d4b07a;
+  --on-cover: #171b22;
   --shadow-raised:
     0 0 0 1px rgba(255, 255, 255, 0.035), 0 16px 36px -16px rgba(0, 0, 0, 0.8);
 }
@@ -129,6 +136,13 @@
   --ring-path: #8f600b;
   --ring-today: #a8456b;
   --ring-track: #e8e6df;
+  --cover-1: #4d6178;
+  --cover-2: #96563a;
+  --cover-3: #6c5470;
+  --cover-4: #6b6250;
+  --cover-5: #3f6b5c;
+  --cover-6: #7a5230;
+  --on-cover: #ffffff;
   --shadow-raised:
     0 2px 4px rgba(21, 24, 30, 0.05), 0 12px 32px -12px rgba(21, 24, 30, 0.18);
 }

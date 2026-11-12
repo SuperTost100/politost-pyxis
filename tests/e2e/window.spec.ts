@@ -288,7 +288,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
     ).toBeVisible();
     await toLibrary(page);
     await page
-      .getByRole("button", { name: "Aggiungi fonti", exact: true })
+      .getByRole("button", { name: "Aggiungi file", exact: true })
       .click();
     await animationsSettled(page);
     await page

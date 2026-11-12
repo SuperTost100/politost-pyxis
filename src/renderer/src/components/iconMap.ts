@@ -25,6 +25,7 @@ import {
   Copy,
   Cpu,
   FilePen,
+  FilePlus,
   Flag,
   GraduationCap,
   HardDrive,
@@ -85,6 +86,7 @@ export type IconName =
   | "square-split-horizontal"
   | "repeat"
   | "file-pen"
+  | "file-plus"
   | "paperclip"
   | "image"
   | "signature"
@@ -157,6 +159,7 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "square-split-horizontal": SquareSplitHorizontal,
   repeat: Repeat,
   "file-pen": FilePen,
+  "file-plus": FilePlus,
   paperclip: Paperclip,
   image: Image,
   signature: Signature,

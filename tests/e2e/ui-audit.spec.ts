@@ -117,6 +117,10 @@ const routes = [
   ["library-sorting", "/exams/library"],
   ["library-unsorted", "/exams/library"],
   ["library-move-menu", "/exams/library"],
+  // The shelf by subject: a subject's menu by its dots, and an empty subject's menu by a right-click on its name, with
+  // Elimina only there.
+  ["library-subject-menu", "/exams/library"],
+  ["library-empty-subject", "/exams/library"],
   ["library-details", "/exams/library"],
   // The source details panel on a PDF whose scanned pages OCR read, and on a scan being read now.
   ["library-panel-pdf", "/exams/library"],
@@ -898,7 +902,7 @@ async function openAdvancedEngines(page: Page) {
 
 async function openAddSources(page: Page, tab?: RegExp) {
   await page
-    .getByRole("button", { name: both("Aggiungi fonti", "Add sources") })
+    .getByRole("button", { name: both("Aggiungi file", "Add files") })
     .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
@@ -1306,6 +1310,8 @@ function prepareLibrarySubjects(name: string) {
     if (name === "library-unsorted") {
       source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
       source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
+      // A file the Library never asked about has no reason to say Pyxis could not place it.
+      source.run("audit-sort-never", "Appunti mai chiesti", "ready", null, null, now + 2, now);
       return;
     }
     seedSubjects(db, [{ id: "audit-sort-made", name: "Probabilità e statistica", position: 5 }]);
@@ -1315,6 +1321,33 @@ function prepareLibrarySubjects(name: string) {
     db.prepare(
       "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES('audit-sort-job','library-sort',?,'running',0,'sources.jobs.sortRead',?,?)",
     ).run(JSON.stringify({ sourceIds: ["audit-sort-working"] }), now, now);
+  });
+}
+
+/**
+ * The Library's shelves: the audit's own sources in Fisica, three files of Analisi 1 (a free book, slides and a past
+ * exam paper) and an empty Probabilità e statistica, for the Library states except the empty one. Every other state
+ * starts without them, and the audit's sources lose the subject again.
+ */
+function prepareLibraryShelf(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM plan_sources WHERE source_id LIKE 'audit-shelf-%';
+      DELETE FROM sources WHERE id LIKE 'audit-shelf-%';
+      DELETE FROM subjects WHERE id LIKE 'audit-shelf-%';
+      UPDATE sources SET subject_id = NULL WHERE id IN ('audit-source', 'audit-photo');`);
+    if (!name.startsWith("library") || name === "library-empty") return;
+    seedSubjects(db, [
+      { id: "audit-shelf-analysis", name: "Analisi 1", position: 6 },
+      { id: "audit-shelf-empty", name: "Probabilità e statistica", position: 7 },
+    ]);
+    db.exec(`UPDATE sources SET subject_id = 'audit-subject' WHERE id IN ('audit-source', 'audit-photo');`);
+    const file = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,subject_id,created_at,updated_at) VALUES(?,?,?,'ready',1,'audit-shelf-analysis',1,1)",
+    );
+    file.run("audit-shelf-book", "smartbook", "Analisi matematica 1");
+    file.run("audit-shelf-slides", "pptx", "Slide del corso");
+    file.run("audit-shelf-paper", "pdf", "Temi d'esame 2022-2025");
+    db.prepare("INSERT INTO plan_sources(plan_id,source_id,role) VALUES('audit-plan','audit-shelf-paper','past_paper')").run();
   });
 }
 
@@ -1504,6 +1537,7 @@ function prepareState(name: string) {
   preparePanelSources(name);
   prepareLibraryEmpty(name);
   prepareLibrarySubjects(name);
+  prepareLibraryShelf(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
@@ -3047,6 +3081,8 @@ async function openState(page: Page, name: string) {
           name: both("Nessuna fonte ancora", "No sources yet"),
         }),
       ).toBeVisible();
+      // The subject the audit has stays on the page, with no file in it, so the student can still act on it.
+      await expect(page.getByRole("region", { name: /^Fisica (nessun file|no files)$/ })).toBeVisible();
       break;
     case "library-search":
       await page
@@ -3231,9 +3267,14 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
       await expect(page.getByText(both("Materia nuova.", "New subject."))).toBeVisible();
       break;
-    case "library-unsorted":
-      await expect(page.getByRole("region", { name: both("Da sistemare", "To sort") })).toBeVisible();
+    case "library-unsorted": {
+      const group = page.getByRole("region", { name: both("Da sistemare", "To sort") });
+      await expect(group).toBeVisible();
+      // The group has files Pyxis could not place and one it never asked about, so each line says it is about some.
+      await expect(group.getByText(both("Per alcuni file non ho capito a quale materia vanno: scegli tu.", "For some files I couldn't tell which subject they belong to, so you choose."))).toBeVisible();
+      await expect(group.getByText(both("Alcuni file non hanno ancora una materia: scegli tu.", "Some files have no subject yet, so you choose."))).toBeVisible();
       break;
+    }
     case "library-move-menu":
       await page
         .getByRole("button", { name: /^(Azioni per|Actions for) Calcolo delle probabilità, dispense$/ })
@@ -3248,6 +3289,19 @@ async function openState(page: Page, name: string) {
         })
         .click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
+    case "library-subject-menu":
+      await page.getByRole("button", { name: both("Azioni sulla materia Analisi 1", "Actions for the subject Analisi 1") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Nuova mappa di questa materia", "New map of this subject") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Crea flashcard di questa materia", "Make flashcards for this subject") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toHaveCount(0);
+      break;
+    case "library-empty-subject":
+      await page
+        .getByRole("heading", { name: "Probabilità e statistica", exact: true })
+        .click({ button: "right" });
+      await expect(page.getByRole("menuitem", { name: both("Crea flashcard di questa materia", "Make flashcards for this subject") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toBeVisible();
       break;
     case "library-vision":
       await page
@@ -4012,7 +4066,7 @@ test("M14 every application route in both languages, themes and supported widths
               if (name === "library-import") {
                 await page
                   .getByRole("button", {
-                    name: /Aggiungi fonti|Add sources/,
+                    name: /Aggiungi file|Add files/,
                     exact: true,
                   })
                   .click();
@@ -4052,6 +4106,8 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  name === "library-subject-menu" ||
+                  name === "library-empty-subject" ||
                   name === "exams-import-menu" ||
                   name === "map-menu" ||
                   name === "map-export" ||

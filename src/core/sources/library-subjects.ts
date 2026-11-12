@@ -71,9 +71,11 @@ export function startLibrarySort(db: Database.Database, runner: Runner, sourceId
 }
 
 /**
- * Puts a source in a subject the student chose, from the row's "Sposta in" or from "Da sistemare": an existing one by
+ * Puts a source in a subject the student chose, from its menu's "Sposta in" or from "Da sistemare": an existing one by
  * id, or a new one by name (reusing a subject with that name in any case). It is `manual` from then on, so no sort moves
- * it. A file read from a linked folder takes its subject from the folder and is refused (`source-linked`).
+ * it. A file read from a linked folder is moved the same way, in Pyxis only: nothing changes on disk. Its file is marked
+ * as asked about (`sorted_at`), so the sort of the folder's loose files leaves it alone, and neither a later look nor
+ * setup again changes a `manual` subject (see `linked.ts`).
  */
 export function moveSource(
   db: Database.Database,
@@ -81,14 +83,8 @@ export function moveSource(
   to: { subjectId: string } | { name: string },
 ): { id: string; name: string } {
   return db.transaction(() => {
-    const source = db
-      .prepare(
-        `SELECT s.id, EXISTS (SELECT 1 FROM linked_files l WHERE l.source_id = s.id) AS linked
-         FROM sources s WHERE s.id = ? AND s.status != 'removed'`,
-      )
-      .get(sourceId) as { id: string; linked: number } | undefined;
+    const source = db.prepare(`SELECT id FROM sources WHERE id = ? AND status != 'removed'`).get(sourceId);
     if (!source) throw new Error("source-missing");
-    if (source.linked) throw new Error("source-linked");
     const subject =
       "name" in to
         ? addSubject(db, to.name)
@@ -96,11 +92,13 @@ export function moveSource(
             | { id: string; name: string }
             | undefined);
     if (!subject) throw new Error("subject-missing");
+    const now = Date.now();
     db.prepare(`UPDATE sources SET subject_id = ?, subject_sort = 'manual', updated_at = ? WHERE id = ?`).run(
       subject.id,
-      Date.now(),
+      now,
       sourceId,
     );
+    db.prepare(`UPDATE linked_files SET sorted_at = COALESCE(sorted_at, ?) WHERE source_id = ?`).run(now, sourceId);
     return subject;
   })();
 }

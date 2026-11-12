@@ -60,7 +60,8 @@ async function start() {
 }
 
 async function openAdd(page: Page, tab?: string) {
-  await page.getByRole("button", { name: "Aggiungi fonti", exact: true }).click();
+  // The Library's button adds files, an exam's adds sources; both open the same dialog.
+  await page.getByRole("button", { name: /^Aggiungi (file|fonti)$/ }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await animationsSettled(page);

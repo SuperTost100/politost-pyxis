@@ -395,6 +395,7 @@ export function listSources(db: Database.Database) {
       `SELECT sources.id, title, kind, status, blob_sha AS blobSha, origin_url AS originUrl, fetched_at AS fetchedAt,
          ${latestDocument("sources.id")} AS documentId,
          (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount,
+         EXISTS (SELECT 1 FROM plan_sources ps WHERE ps.source_id = sources.id AND ps.role = 'past_paper') AS pastPaper,
          (SELECT name FROM subjects WHERE subjects.id = sources.subject_id) AS subject,
          sources.subject_id AS subjectId, sources.subject_sort AS subjectSort,
          lf.folder_id AS linkedFolderId, lf.missing_at AS linkedMissingAt, f.path AS linkedRoot
@@ -414,6 +415,7 @@ export function listSources(db: Database.Database) {
     fetchedAt: number | null;
     documentId: string | null;
     planCount: number;
+    pastPaper: number;
     subject: string | null;
     subjectId: string | null;
     subjectSort: string | null;
@@ -422,8 +424,9 @@ export function listSources(db: Database.Database) {
     linkedRoot: string | null;
   }>;
   // The figure is the one the source panel shows for the current version, not a count of passages or of saved versions.
-  return rows.map(({ documentId, linkedFolderId, linkedMissingAt, linkedRoot, ...source }) => ({
+  return rows.map(({ documentId, linkedFolderId, linkedMissingAt, linkedRoot, pastPaper, ...source }) => ({
     ...source,
+    pastPaper: pastPaper === 1,
     sections: documentId ? sectionCount(db, documentId) : 0,
     // A file read in place from a linked folder, and whether the last look found it there.
     linked:

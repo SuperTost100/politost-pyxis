@@ -18,6 +18,8 @@ describe("refreshSubjects", () => {
       ["card-browse", "", "", "", "all", 1],
       ["card-sections"],
       ["map-scope", "subject:s1"],
+      ["maps-all", ""],
+      ["linked-folders"],
     ];
     const other = [["profile"], ["jobs"], ["maps", "subject:s1"]];
     for (const key of [...named, ...other]) client.setQueryData(key, {});

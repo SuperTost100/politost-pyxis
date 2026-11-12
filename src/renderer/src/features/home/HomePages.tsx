@@ -133,13 +133,9 @@ function SubPage({
   );
 }
 
+/** The Library draws its own head: its title, the folders Pyxis reads and "Aggiungi file". */
 function LibraryHome() {
-  const { t } = useTranslation();
-  return (
-    <SubPage title={t("nav.library")}>
-      <LibraryPanel sortsSubjects />
-    </SubPage>
-  );
+  return <LibraryPanel sortsSubjects />;
 }
 
 function CardsHome() {

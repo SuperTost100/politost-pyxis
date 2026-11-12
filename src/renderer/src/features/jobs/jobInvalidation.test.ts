@@ -77,6 +77,14 @@ describe("job update invalidation", () => {
     ]);
   });
 
+  it("refreshes the subjects when a source job ends, since its files decide whether a subject is in use", () => {
+    for (const kind of ["source-import", "linked-folder-sort"]) {
+      expect(keys(staleFamilies({ kind, state: "running" }))).not.toContain("subjects");
+      expect(keys(staleFamilies({ kind, state: "succeeded" }))).toContain("subjects");
+    }
+    expect(keys(staleFamilies({ kind: "library-sort", state: "succeeded" })).filter((key) => key === "subjects")).toHaveLength(1);
+  });
+
   it("refreshes sources for imports and each download its own state", () => {
     expect(keys(staleFamilies({ kind: "source-import", state: "running" }))).toEqual([
       "jobs",

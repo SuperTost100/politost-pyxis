@@ -12,6 +12,7 @@ import { tempDir } from "../test-temp";
 import { extractByExt, extractPlain } from "./documents";
 import { enqueueSourceFile, registerSourceJobs, SourceExists, type Extraction } from "./jobs";
 import { linkedFolders } from "./linked";
+import { moveSource } from "./library-subjects";
 import { hashFiles } from "./quality";
 import { listSources } from "./smartbook";
 
@@ -175,6 +176,20 @@ describe("a file imported into the Library before its folder was linked", () => 
     const folder = await app.link();
     await app.linked.confirm({ folders: [{ folderId: folder.id, subjects: [{ key: "Fisica", name: "Analisi", skipped: false }] }] });
     expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Meccanica", rel })]);
+  });
+
+  it("keeps the subject the student moved it to, even the folder's own, when the folder is given another subject later", async () => {
+    const app = setup();
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    const folder = await app.link();
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Fisica", rel })]);
+    // Moved by hand into the subject it already had from the folder: from now on that is the student's choice.
+    const physics = app.db.prepare(`SELECT subject_id FROM sources WHERE id = ?`).pluck().get(copy.sourceId) as string;
+    moveSource(app.db, copy.sourceId, { subjectId: physics });
+    addSubject(app.db, "Analisi");
+    await app.linked.confirm({ folders: [{ folderId: folder.id, subjects: [{ key: "Fisica", name: "Analisi", skipped: false }] }] });
+    expect(app.sources()).toEqual([expect.objectContaining({ id: copy.sourceId, subject: "Fisica", rel, blobSha: sha(NOTES) })]);
   });
 
   it("is read from the folder once the file there changes, and keeps the original it was imported with", async () => {

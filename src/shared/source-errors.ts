@@ -46,7 +46,6 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "source-busy": "sources.busy",
   "subject-sort-failed": "sources.sort.failed",
   "linked-sort-failed": "sources.sort.linkedFailed",
-  "source-linked": "sources.sort.linked",
   "subject-missing": "sources.sort.subjectMissing",
   "pdf-password-required": "sources.pdfPassword.required",
   "pdf-password-wrong": "sources.pdfPassword.wrong",

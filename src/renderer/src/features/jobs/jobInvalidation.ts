@@ -25,8 +25,9 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   if (job.kind === "map-build" && finished.has(job.state)) keys.push("maps", "map", "maps-all");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
-  // Choosing the subjects of Library files can make new subjects.
-  if (job.kind === "library-sort") keys.push("subjects");
+  // Choosing the subjects of Library files can make new subjects, and a source job that ends (a folder read again
+  // included) adds or drops the files that decide whether a subject is in use.
+  if (job.kind === "library-sort" || (sourceKinds.has(job.kind) && finished.has(job.state))) keys.push("subjects");
   // A job that ends joins or leaves the jobs list's "finished today" group.
   if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
   if (finished.has(job.state) && cardKinds.has(job.kind)) keys.push("card-sections");

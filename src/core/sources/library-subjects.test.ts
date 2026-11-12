@@ -342,7 +342,7 @@ describe("choosing the subject of files added to the Library", () => {
     expect(ai.calls).toHaveLength(0);
   });
 
-  it("refuses to move a file a linked folder reads, whose subject is its folder's", () => {
+  it("moves a file a linked folder reads like any other, marks it asked about, and refuses a missing source or subject", () => {
     const app = setup(engine(() => null).run);
     const subject = addSubject(app.db, "Analisi 1");
     const id = app.added("appunti");
@@ -350,7 +350,10 @@ describe("choosing the subject of files added to the Library", () => {
     app.db
       .prepare(`INSERT INTO linked_files (folder_id, rel_path, subfolder, source_id, size, mtime_ms) VALUES ('f', 'a.txt', '', ?, 1, 1)`)
       .run(id);
-    expect(() => moveSource(app.db, id, { subjectId: subject.id })).toThrow("source-linked");
+    expect(moveSource(app.db, id, { subjectId: subject.id })).toEqual(subject);
+    expect(app.row(id)).toEqual({ sort: "manual", subject: "Analisi 1" });
+    // The sort of the folder's loose files does not ask about it again.
+    expect(app.db.prepare(`SELECT sorted_at FROM linked_files WHERE source_id = ?`).pluck().get(id)).not.toBeNull();
     expect(() => moveSource(app.db, "nothing", { subjectId: subject.id })).toThrow("source-missing");
     expect(() => moveSource(app.db, app.added("altro"), { subjectId: "gone" })).toThrow("subject-missing");
   });

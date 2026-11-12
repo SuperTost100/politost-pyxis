@@ -61,6 +61,32 @@ describe("ASK-01 shared subjects", () => {
     expect(db.prepare("SELECT id, subject_id, plan_id FROM maps").all()).toEqual([{ id: "topic", subject_id: null, plan_id: "plan" }]);
     db.close();
   });
+  it("deletes from the Library only a subject nothing has, and refuses one with an exam, a file, a map, a flashcard or a chat", () => {
+    const db = openDatabase(":memory:");
+    const add = (name: string) => addSubject(db, name).id;
+    const exam = add("Fisica");
+    const file = add("Chimica");
+    const map = add("Storia");
+    const card = add("Analisi 1");
+    const chat = add("Geometria");
+    const gone = add("Probabilità");
+    const empty = add("Statistica");
+    db.prepare("INSERT INTO plans (id, subject_id, title, status, created_at, updated_at) VALUES ('plan', ?, 'Esame', 'ready', 1, 1)").run(exam);
+    db.prepare("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('src', 'pdf', 'Appunti', 'ready', ?, 1, 1)").run(file);
+    db.prepare("INSERT INTO maps (id, subject_id, graph_json, created_at) VALUES ('whole', ?, '{}', 1)").run(map);
+    db.prepare("INSERT INTO cards (id, subject_id, front, back, created_at) VALUES ('card', ?, 'f', 'b', 1)").run(card);
+    db.prepare("INSERT INTO chats (id, subject, created_at, updated_at) VALUES ('chat', 'geometria', 1, 1)").run();
+    // A removed file has left the Library, so it does not keep its subject from being deleted.
+    db.prepare("INSERT INTO sources (id, kind, title, status, subject_id, created_at, updated_at) VALUES ('old', 'pdf', 'Vecchio', 'removed', ?, 1, 1)").run(gone);
+    for (const id of [exam, file, map, card, chat])
+      expect(() => removeSubject(db, id, { onlyEmpty: true }), id).toThrow(expect.objectContaining({ messageKey: "sources.shelf.subjectNotEmpty" }));
+    expect(listSubjects(db).filter((row) => !row.inUse).map((row) => row.name)).toEqual(["Probabilità", "Statistica"]);
+    removeSubject(db, gone, { onlyEmpty: true });
+    removeSubject(db, empty, { onlyEmpty: true });
+    expect(listSubjects(db).map((row) => row.name)).toEqual(["Fisica", "Chimica", "Storia", "Analisi 1", "Geometria"]);
+    expect(() => removeSubject(db, empty, { onlyEmpty: true })).toThrow();
+    db.close();
+  });
   it("marks the subjects an exam, a source or a chat still uses", () => {
     const db = openDatabase(":memory:");
     const exam = addSubject(db, "Fisica");

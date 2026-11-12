@@ -37,7 +37,7 @@ test("SRC-07 a dropped file gets a native grant and nothing else does", async ()
     expect(early).toBe("file-access-denied");
 
     await toLibrary(page);
-    await page.getByRole("button", { name: "Aggiungi fonti" }).click();
+    await page.getByRole("button", { name: "Aggiungi file" }).click();
     const dialog = page.getByRole("dialog");
     // The dialog mounts after the click; a slow runner reaches the drop before the zone exists.
     await expect(dialog.locator(".px-library-upload")).toBeVisible();
