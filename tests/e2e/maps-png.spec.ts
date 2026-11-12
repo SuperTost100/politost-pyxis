@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -181,7 +181,7 @@ const cases: Array<{
   name: string;
   layout: Layout;
   theme: Theme;
-  prepare?: (page: Page) => Promise<void>;
+  prepare?: (page: Page, app: ElectronApplication) => Promise<void>;
 }> = [
   { name: "tree-light", layout: "tree", theme: "light" },
   { name: "tree-dark", layout: "tree", theme: "dark" },
@@ -205,7 +205,36 @@ const cases: Array<{
       await zoom(page, 400);
     },
   },
+  // The app's own zoom (View > Zoom in, Zoom out) scales the window, so the page's pixels are no longer the window's.
+  { name: "tree-light-app-zoom-150", layout: "tree", theme: "light", prepare: appZoom(1.5) },
+  {
+    // The window is 640 x 400 CSS pixels here, so the map is zoomed out to leave links in the open.
+    name: "radial-dark-app-zoom-200",
+    layout: "radial",
+    theme: "dark",
+    prepare: async (page, app) => {
+      await appZoom(2)(page, app);
+      await zoom(page, 400);
+    },
+  },
+  { name: "tree-light-app-zoom-80", layout: "tree", theme: "light", prepare: appZoom(0.8) },
 ];
+
+/** Sets the app's zoom the way the View menu's Zoom in, Zoom out and Actual size do, which scale the whole window. */
+function appZoom(factor: number) {
+  return async (page: Page, app: ElectronApplication) => {
+    const before = await page.evaluate(() => devicePixelRatio);
+    await app.evaluate(({ BrowserWindow }, factor) => {
+      BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(factor);
+    }, factor);
+    // The window stays 1280 x 800, so at 200% the page is 640 x 400 CSS pixels and scrolls. Its scroll bars would be drawn
+    // over the canvas, which this test is not about, so they are hidden.
+    await page.addStyleTag({ content: "* { scrollbar-width: none !important; } *::-webkit-scrollbar { display: none !important; }" });
+    // The page's pixel ratio carries the zoom, so the checks below read the zoomed ratio.
+    await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBeCloseTo(before * factor, 2);
+    await mapAtRest(page);
+  };
+}
 
 async function zoom(page: Page, delta: number) {
   const box = (await page.locator(".px-map-canvas").boundingBox())!;
@@ -261,14 +290,38 @@ async function exportView(page: Page, saved: string) {
   return readFileSync(saved).toString("base64");
 }
 
-/** A screenshot of the canvas as it is now with the page's own controls (and the toast that says the file is saved) hidden, which is what the picture should be. */
+/**
+ * A screenshot of the canvas as it is now with the page's own controls (and the toast that says the file is saved) hidden,
+ * which is what the picture should be. Playwright's own screenshot is in CSS pixels whatever the window's zoom. Chromium's
+ * screenshot clip is in the window's pixels (a CSS pixel times the zoom) and its scale is the screen's pixels per window
+ * pixel, so this asks for the canvas's box in the window's pixels, grown to whole ones the way the export grows it, at
+ * the size the canvas has on screen.
+ */
 async function plainCanvas(page: Page) {
   await page.addStyleTag({
     content:
       ".px-map-strip, .px-concept-fold, .react-flow__handle, .ant-message { visibility: hidden !important; } * { transition: none !important; }",
   });
-  const shot = await page.locator(".px-map-canvas").screenshot({ animations: "disabled" });
-  return shot.toString("base64");
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { visualViewport } = await session.send("Page.getLayoutMetrics");
+    const zoom = visualViewport.zoom ?? 1;
+    const clip = await page.evaluate((zoom) => {
+      const box = document.querySelector(".px-map-canvas")!.getBoundingClientRect();
+      const left = Math.floor(box.x * zoom + 1e-6);
+      const top = Math.floor(box.y * zoom + 1e-6);
+      return {
+        x: left,
+        y: top,
+        width: Math.ceil((box.x + box.width) * zoom - 1e-6) - left,
+        height: Math.ceil((box.y + box.height) * zoom - 1e-6) - top,
+        scale: Math.round((devicePixelRatio / zoom) * 1000) / 1000,
+      };
+    }, zoom);
+    return (await session.send("Page.captureScreenshot", { format: "png", clip })).data;
+  } finally {
+    await session.detach();
+  }
 }
 
 function keep(name: string, picture: string, reference: string) {
@@ -286,10 +339,10 @@ async function checkPicture(page: Page, saved: string, name: string) {
   keep(name, picture, reference);
   const result = await compare(page, picture, reference, probes);
   // The canvas's size times the screen's pixel ratio: sharp on a display with more pixels than CSS pixels.
-  // (A canvas on a half pixel is saved with its outer pixels, so the size is within one CSS pixel.)
+  // (A canvas on a fraction of a pixel is saved with its outer pixels, so the size is off by less than two: one on each side.)
   const [width, height] = result.picture as [number, number];
-  expect(Math.abs(width - probes.canvas.width * probes.canvas.ratio)).toBeLessThanOrEqual(probes.canvas.ratio + 0.5);
-  expect(Math.abs(height - probes.canvas.height * probes.canvas.ratio)).toBeLessThanOrEqual(probes.canvas.ratio + 0.5);
+  expect(Math.abs(width - probes.canvas.width * probes.canvas.ratio)).toBeLessThanOrEqual(2);
+  expect(Math.abs(height - probes.canvas.height * probes.canvas.ratio)).toBeLessThanOrEqual(2);
   expect(result.shot).toEqual(result.picture);
   // The same concepts in the same places with the app's own fonts and colours: a picture in a fallback font, or without
   // the links, differs from the screen in a few per cent of its pixels.
@@ -310,7 +363,7 @@ for (const item of cases) {
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await openMap(page, item.layout, item.theme);
-      await item.prepare?.(page);
+      await item.prepare?.(page, app);
       await mapAtRest(page);
       await checkPicture(page, saved, item.name);
       expect(errors).toEqual([]);

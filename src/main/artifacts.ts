@@ -5,6 +5,7 @@ import { z } from "zod";
 import { mainChannels } from "../shared/bridge";
 import { MAX_ARTIFACT_BASE64 } from "../shared/plan-file";
 import { APP_PAGE } from "./app-protocol";
+import { captureRect } from "./capture-rect";
 
 const fileName = z
   .string()
@@ -35,10 +36,11 @@ const pdf = z.object({
     .refine((s) => s.startsWith("<svg"))
     .optional(),
 });
-// A rectangle of the window, in CSS pixels. 16384 is the largest picture a window can be asked for.
+// A rectangle of the page, in CSS pixels. It starts above or left of the window when the page has scrolled the element
+// partly out of it. 16384 is the largest picture a window can be asked for.
 const rect = z.object({
-  x: z.number().min(0).max(16384),
-  y: z.number().min(0).max(16384),
+  x: z.number().min(-16384).max(16384),
+  y: z.number().min(-16384).max(16384),
   width: z.number().positive().max(16384),
   height: z.number().positive().max(16384),
 });
@@ -82,16 +84,13 @@ export function registerArtifactHandlers(
     const bounds = rect.parse(input);
     const window = mainWindow();
     if (!window || window.isDestroyed()) throw new Error("window-closed");
-    // The window's own pixels, so the web fonts, the links and the theme are exactly what the student sees. The box
-    // grows to whole pixels, so a canvas on a half pixel is not cut short.
-    const left = Math.floor(bounds.x);
-    const top = Math.floor(bounds.y);
-    const image = await window.webContents.capturePage({
-      x: left,
-      y: top,
-      width: Math.max(1, Math.ceil(bounds.x + bounds.width) - left),
-      height: Math.max(1, Math.ceil(bounds.y + bounds.height) - top),
-    });
+    // The window's own pixels, so the web fonts, the links and the theme are exactly what the student sees. The page's
+    // rectangle is in CSS pixels, which are the window's only at the app's default zoom.
+    const { webContents } = window;
+    const [width = 0, height = 0] = window.getContentSize();
+    const box = captureRect(bounds, webContents.getZoomFactor(), { width, height });
+    if (!box) throw new Error("capture-empty");
+    const image = await webContents.capturePage(box);
     if (image.isEmpty()) throw new Error("capture-empty");
     return image.toPNG().toString("base64");
   });
