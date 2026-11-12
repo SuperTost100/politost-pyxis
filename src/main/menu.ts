@@ -1,4 +1,4 @@
-import type { MenuItemConstructorOptions } from "electron";
+import type { BaseWindow, ContextMenuParams, MenuItemConstructorOptions, PopupOptions } from "electron";
 import { goPages, type MenuCommand, type MenuLanguage } from "../shared/menu";
 
 const appName = "PoliTost Pyxis";
@@ -17,6 +17,8 @@ type Words = {
   copy: string;
   paste: string;
   selectAll: string;
+  addToDictionary: string;
+  noSuggestions: string;
   zoomIn: string;
   zoomOut: string;
   actualSize: string;
@@ -64,6 +66,8 @@ const words: Record<MenuLanguage, Words> = {
     copy: "Copy",
     paste: "Paste",
     selectAll: "Select all",
+    addToDictionary: "Add to dictionary",
+    noSuggestions: "No suggestions",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
     actualSize: "Actual size",
@@ -108,6 +112,8 @@ const words: Record<MenuLanguage, Words> = {
     copy: "Copia",
     paste: "Incolla",
     selectAll: "Seleziona tutto",
+    addToDictionary: "Aggiungi al dizionario",
+    noSuggestions: "Nessun suggerimento",
     zoomIn: "Ingrandisci",
     zoomOut: "Riduci",
     actualSize: "Dimensioni reali",
@@ -300,4 +306,87 @@ export function contextMenuItems(raw: unknown): Array<{ id: string; label: strin
     items.push(enabled === undefined ? { id, label } : { id, label, enabled });
   }
   return items;
+}
+
+/**
+ * What the text menu's popup is called with. A menu asked for by the keyboard hangs from the field; one asked for by a
+ * click opens at the pointer. The event's frame goes along: without it macOS leaves out the system's own entries for a
+ * text field (Writing Tools, AutoFill, Services), as Electron's `Menu.popup` documentation says.
+ */
+export function textMenuPopupOptions(
+  window: BaseWindow,
+  params: Pick<ContextMenuParams, "menuSourceType" | "x" | "y" | "frame">,
+): PopupOptions {
+  const at = params.menuSourceType === "keyboard" ? contextMenuAnchor({ x: params.x, y: params.y }) : null;
+  return { window, ...(params.frame ? { frame: params.frame } : {}), ...(at ?? {}) };
+}
+
+/** What the text menu reads of a window's `context-menu` event. */
+export type TextMenuParams = Pick<
+  ContextMenuParams,
+  "isEditable" | "selectionText" | "misspelledWord" | "dictionarySuggestions" | "formControlType" | "editFlags"
+>;
+
+/** What the text menu's spelling items do: `replace` swaps the misspelled word in the field, `learn` adds it to the dictionary. */
+export type TextMenuActions = { replace: (word: string) => void; learn: (word: string) => void };
+
+/** The most suggestions the menu lists above its edit items. */
+const MAX_SUGGESTIONS = 5;
+const TEXT_FIELDS: ReadonlySet<string> = new Set([
+  "input-text",
+  "input-search",
+  "input-email",
+  "input-url",
+  "input-telephone",
+  "input-number",
+  "text-area",
+]);
+
+/**
+ * The menu a right-click opens on text, in the interface language. Electron gives a page no menu of its own, so the
+ * window builds this one from its `context-menu` event, which the window's own menus (covers, rows, tiles) never
+ * cause: they prevent the page's `contextmenu`, and Chromium then sends nothing. The items are roles, which act on the
+ * focused field, except the spelling ones, which `actions` runs. Returns null when there is nothing to offer:
+ *
+ * - a field the student can write in: the misspelled word's suggestions and "Aggiungi al dizionario" first, then Annulla,
+ *   Ripeti, Taglia, Copia, Incolla and Seleziona tutto, each on only when it applies; a password field has no Taglia or Copia;
+ * - a field that is read-only: Copia and Seleziona tutto;
+ * - selected text elsewhere on the page: Copia.
+ */
+export function textMenuTemplate(
+  params: TextMenuParams,
+  language: MenuLanguage,
+  actions: TextMenuActions,
+): MenuItemConstructorOptions[] | null {
+  const w = words[language];
+  const flags = params.editFlags;
+  const password = params.formControlType === "input-password";
+  const copy: MenuItemConstructorOptions = { role: "copy", label: w.copy, enabled: flags.canCopy && !password };
+  const selectAll: MenuItemConstructorOptions = { role: "selectAll", label: w.selectAll, enabled: flags.canSelectAll };
+  if (!params.isEditable) {
+    if (TEXT_FIELDS.has(params.formControlType)) return [copy, selectAll];
+    return params.selectionText.trim() ? [copy] : null;
+  }
+  const spelling: MenuItemConstructorOptions[] = params.misspelledWord
+    ? [
+        ...(params.dictionarySuggestions.length
+          ? params.dictionarySuggestions
+              .slice(0, MAX_SUGGESTIONS)
+              .map((word): MenuItemConstructorOptions => ({ label: word, click: () => actions.replace(word) }))
+          : [{ label: w.noSuggestions, enabled: false }]),
+        { type: "separator" },
+        { label: w.addToDictionary, click: () => actions.learn(params.misspelledWord) },
+        { type: "separator" },
+      ]
+    : [];
+  return [
+    ...spelling,
+    { role: "undo", label: w.undo, enabled: flags.canUndo },
+    { role: "redo", label: w.redo, enabled: flags.canRedo },
+    { type: "separator" },
+    ...(password ? [] : [{ role: "cut" as const, label: w.cut, enabled: flags.canCut }, copy]),
+    { role: "paste", label: w.paste, enabled: flags.canPaste },
+    { type: "separator" },
+    selectAll,
+  ];
 }

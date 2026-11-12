@@ -46,8 +46,15 @@ const SHELF_CAP = 14;
 /** How many rows "Da sistemare" shows before "Mostra tutti", so twenty files to sort do not push the shelves away. */
 const UNSORTED_CAP = 8;
 
-/** Where a move started, so the file's new cover can come out of it, and what gets focus once it has landed. */
-type Landing = { from?: DOMRect; focus: "cover" | { picker: string } | null };
+/**
+ * How a moved file's new cover arrives, and what gets focus once it has landed. A file that left "Da sistemare" grows
+ * on its shelf where it lands (`grow`); one moved from another shelf comes out of the box it had there (`from`).
+ */
+type Landing = { from?: DOMRect; grow?: boolean; focus: "cover" | { picker: string } | null };
+
+/** How long a row of "Da sistemare" takes to fade and close once its file has a subject. */
+const ROW_EXIT_MS = 420;
+const STILL = "(prefers-reduced-motion: reduce)";
 
 /**
  * The Library by subject: "Da sistemare" on top while some files have no subject, then one card per subject with its
@@ -98,6 +105,11 @@ export function LibraryShelf({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [unsortedOpen, setUnsortedOpen] = useState(false);
   const landing = useRef(new Map<string, Landing>());
+  // Rows of "Da sistemare" whose file just got a subject: they stay, fading and closing in place, until their motion ends.
+  const [leaving, setLeaving] = useState<ReadonlyMap<string, { source: LibrarySource; at: number }>>(() => new Map());
+  // Files whose move was accepted and whose refreshed list has not arrived: they are out of "Da sistemare" already, so a
+  // slow refresh cannot bring their row back after it closed.
+  const [moved, setMoved] = useState<ReadonlySet<string>>(() => new Set());
   const pendingFocus = useRef<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const detachedId = useId();
@@ -142,8 +154,16 @@ export function LibraryShelf({
     }
   });
 
-  const unsorted = sources.filter((source) => !source.subjectId || isUnsorted(source)).sort(byShelfOrder);
+  const unsorted = sources
+    .filter((source) => (!source.subjectId || isUnsorted(source)) && !moved.has(source.id))
+    .sort(byShelfOrder);
   const unsortedShown = unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP);
+  // A row that is leaving stays where it was in the list while the files have already moved on without it.
+  const goneRows = [...leaving.values()]
+    .filter(({ source }) => !unsortedShown.some((row) => row.id === source.id))
+    .sort((a, b) => a.at - b.at);
+  const unsortedRows = [...unsortedShown];
+  for (const { source, at } of goneRows) unsortedRows.splice(Math.min(at, unsortedRows.length), 0, source);
   const bySubject = new Map<string, LibrarySource[]>();
   for (const source of sources) {
     if (!source.subjectId || isUnsorted(source)) continue;
@@ -153,7 +173,7 @@ export function LibraryShelf({
   }
   const counts = new Map<string, number>();
   for (const source of all) if (source.subjectId) counts.set(source.subjectId, (counts.get(source.subjectId) ?? 0) + 1);
-  const unsortedTotal = all.filter((source) => !source.subjectId || isUnsorted(source)).length;
+  const unsortedTotal = all.filter((source) => (!source.subjectId || isUnsorted(source)) && !moved.has(source.id)).length;
   // How many files of each subject Pyxis made the subject for, so its note can say "these 3 files".
   const madeFor = new Map<string, number>();
   for (const source of all)
@@ -171,12 +191,18 @@ export function LibraryShelf({
     /** The dialog that named the subject shows a refusal beside its field, so it gets the error instead of the page. */
     rethrow = false,
   ) {
-    const from = root.current
-      ?.querySelector(`[data-source-id="${CSS.escape(source.id)}"] .px-cover-art`)
-      ?.getBoundingClientRect();
+    // A file in "Da sistemare" has no cover to come out of: its row closes where it is and its cover grows on its shelf.
+    const fromRow = !source.subjectId || isUnsorted(source);
+    const from = fromRow
+      ? undefined
+      : root.current?.querySelector(`[data-source-id="${CSS.escape(source.id)}"] .px-cover-art`)?.getBoundingClientRect();
     try {
       const subject = await invoke("sources.move", { sourceId: source.id, ...to });
-      landing.current.set(source.id, { from, focus });
+      landing.current.set(source.id, { from, grow: fromRow, focus });
+      if (fromRow) setMoved((current) => new Set(current).add(source.id));
+      const at = unsortedShown.findIndex((row) => row.id === source.id);
+      if (fromRow && at >= 0 && !window.matchMedia(STILL).matches)
+        setLeaving((current) => new Map(current).set(source.id, { source, at }));
       setSaid(t("sources.shelf.moved", { name: subject.name }));
       // A shelf shows its first covers only. A file sorts first while it is read and by title after, so the shelf opens
       // when the file would be behind them once ready, and its cover stays there when the read ends.
@@ -184,10 +210,19 @@ export function LibraryShelf({
         setExpanded((current) => new Set(current).add(subject.id));
       // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
       if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
-      await Promise.all([
-        client.invalidateQueries({ queryKey: ["sources"] }),
-        client.invalidateQueries({ queryKey: ["subjects"] }),
-      ]);
+      try {
+        await Promise.all([
+          client.invalidateQueries({ queryKey: ["sources"] }),
+          client.invalidateQueries({ queryKey: ["subjects"] }),
+        ]);
+      } finally {
+        // The list is read again now: it shows the file sorted, or it still shows it waiting and the row returns.
+        setMoved((current) => {
+          const next = new Set(current);
+          next.delete(source.id);
+          return next;
+        });
+      }
       return subject;
     } catch (err) {
       if (rethrow) throw err;
@@ -275,9 +310,9 @@ export function LibraryShelf({
           await move(source, { name }, focus, true);
         }}
       />
-      {unsorted.length ? (
+      {unsorted.length || goneRows.length ? (
         <UnsortedGroup
-          sources={unsorted}
+          sources={[...unsorted, ...goneRows.map((row) => row.source)]}
           more={
             unsorted.length > UNSORTED_CAP && !filtering ? (
               <Button variant="secondary" size="sm" expanded={unsortedOpen} onClick={() => setUnsortedOpen((open) => !open)}>
@@ -286,10 +321,18 @@ export function LibraryShelf({
             ) : null
           }
         >
-          {unsortedShown.map((source) => (
+          {unsortedRows.map((source) => (
             <UnsortedRow
               key={source.id}
               source={source}
+              leaving={leaving.has(source.id)}
+              onGone={() =>
+                setLeaving((current) => {
+                  const next = new Map(current);
+                  next.delete(source.id);
+                  return next;
+                })
+              }
               subjects={subjects}
               selected={source.id === selectedId}
               menu={fileMenu(source, subjects, t, { refreshBusy, newVersion: newVersions.get(source.id) })}
@@ -568,13 +611,22 @@ const Cover = memo(function Cover({
     if (!land) return;
     if (land.focus === "cover") openRef.current?.focus();
     const art = item.current?.querySelector<HTMLElement>(".px-cover-art");
-    if (!land.from || !art || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!art || window.matchMedia(STILL).matches) return;
+    if (land.grow) {
+      // The picture grows where it lands, from its own centre. `scale` is its own property, so a book's tilt stays.
+      art.animate([{ scale: "0.4", opacity: 0 }, { scale: "1", opacity: 1 }], { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+      return;
+    }
+    if (!land.from) return;
     const to = art.getBoundingClientRect();
-    const dx = land.from.left - to.left;
-    const dy = land.from.top - to.top;
+    // The shelf draws its pictures with `zoom`, which also scales the lengths of a transform on them: the path is
+    // measured in window pixels, so it is divided by that zoom, and starts at the picture's corner.
+    const zoom = Number.parseFloat(getComputedStyle(art).zoom) || 1;
+    const dx = (land.from.left - to.left) / zoom;
+    const dy = (land.from.top - to.top) / zoom;
     if (Math.abs(dx) + Math.abs(dy) < 2) return;
     art.animate(
-      [{ transform: `translate(${dx}px, ${dy}px) scale(${land.from.width / to.width})` }, { transform: "none" }],
+      [{ transform: `translate(${dx}px, ${dy}px) scale(${land.from.width / to.width})`, transformOrigin: "0 0" }, { transform: "none", transformOrigin: "0 0" }],
       { duration: 320, easing: "cubic-bezier(0.77, 0, 0.175, 1)" },
     );
   }, []);
@@ -664,6 +716,8 @@ const Cover = memo(function Cover({
 /** A file without a subject: its picture, name and kind, the choice of subject (or Pyxis choosing it) and its menu. */
 function UnsortedRow({
   source,
+  leaving,
+  onGone,
   subjects,
   selected,
   menu,
@@ -675,6 +729,9 @@ function UnsortedRow({
   onNewSubject,
 }: {
   source: LibrarySource;
+  /** The file has a subject now: the row fades and closes where it is, then calls `onGone`. Nothing in it works. */
+  leaving: boolean;
+  onGone: () => void;
   subjects: Subject[];
   selected: boolean;
   menu: NonNullable<MenuProps["items"]>;
@@ -689,6 +746,24 @@ function UnsortedRow({
   const state = useFileState(source, newVersion);
   const menuProps: MenuProps = { items: menu, onClick: ({ key }) => onAct(key) };
   const itemMenu = useItemMenu({ menu: menuProps, region: t("sources.actionsColumn") });
+  const row = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    const node = row.current;
+    if (!leaving || !node) return;
+    const height = node.offsetHeight;
+    node.style.overflow = "hidden";
+    const animation = node.animate(
+      [
+        { opacity: 1, height: `${height}px`, minHeight: `${height}px` },
+        { opacity: 0, height: `${height}px`, minHeight: `${height}px`, offset: 0.52 },
+        { opacity: 0, height: "0px", minHeight: "0px", paddingTop: "0px", paddingBottom: "0px", marginTop: "0px" },
+      ],
+      { duration: ROW_EXIT_MS, easing: "cubic-bezier(0.77, 0, 0.175, 1)", fill: "forwards" },
+    );
+    animation.onfinish = onGone;
+    return () => animation.cancel();
+    // The motion starts once, when the row starts to leave.
+  }, [leaving]);
   const meta = [
     t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),
     source.sections ? t("sources.sectionCount", { count: source.sections }) : null,
@@ -698,9 +773,11 @@ function UnsortedRow({
     .join(" · ");
   return (
     <li
+      ref={row}
       className={["px-unsorted-row", selected ? "is-selected" : "", itemMenu.popup ? "is-menu" : ""].filter(Boolean).join(" ")}
       data-source-id={source.id}
       data-unsorted-id={source.id}
+      {...(leaving ? { "data-leaving": "", "aria-hidden": true, inert: true } : {})}
       {...itemMenu.bind}
     >
       <span className="px-unsorted-art">
@@ -856,7 +933,16 @@ function SubjectCard({
             }}
           />
         ) : null}
-        <h2 id={headId} className="px-shelf-subject-name" hidden={renaming}>
+        {/* A double-click renames in place, like Rinomina in the menu. */}
+        <h2
+          id={headId}
+          className="px-shelf-subject-name"
+          hidden={renaming}
+          onDoubleClick={() => {
+            setError(null);
+            onRename();
+          }}
+        >
           {subject.name}
         </h2>
         <span id={countId} className="small px-shelf-subject-count">
