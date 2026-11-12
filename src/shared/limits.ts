@@ -31,3 +31,9 @@ export const PROFILE_LIMITS = {
   interest: 60,
   interests: 20,
 } as const;
+
+/**
+ * A flashcard written from the Flashcard page: each face up to `face` characters, as a proposed card's. Pyxis writes
+ * between `min` and `max` at once, `start` unless the student changes it, and "Su cosa?" takes up to `focus` characters.
+ */
+export const NEW_CARDS = { face: 2000, min: 1, max: 30, start: 10, focus: 300 } as const;

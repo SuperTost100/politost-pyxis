@@ -1,15 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { App, Button, Input, Modal, Select } from "antd";
+import { App, Button, Modal, Select } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
-import { isCloze } from "../../../core/study/cloze";
 import { errorProvider, useEngineError } from "../lib/engineError";
 import { invoke } from "../lib/ipc";
-import { CitationChip } from "./CitationChip";
-import { IconButton } from "./IconButton";
 import { Notice } from "./Notice";
-import { openSourceViewer } from "./SourceViewer";
+import { ProposedCards, type ProposedRow } from "./ProposedCards";
 import "./MakeCardsDialog.css";
 import { Working } from "./Working";
 
@@ -40,12 +37,7 @@ export function openMakeCards(source: CardSource): void {
 
 type Places = RequestOutput<"study.cardsPlaces">;
 type Proposal = RequestOutput<"study.cardsPropose">;
-type Row = {
-  key: number;
-  front: string;
-  back: string;
-  passageId: string | null;
-};
+type Row = ProposedRow;
 
 /** The key of an engine error the student can act on; the generic one gets this dialog's own sentence. */
 function failureKey(err: unknown): string {
@@ -234,6 +226,7 @@ export function MakeCardsDialog() {
           {t("makeCards.cancel")}
         </Button>
         <Button
+          id="mc-again"
           shape="round"
           onClick={() => void make()}
           disabled={saving || !placed}
@@ -410,80 +403,18 @@ export function MakeCardsDialog() {
             <Working slot className="px-mc-working" line={t("makeCards.working")} />
           ) : null}
           {step === "review" ? (
-            rows.length ? (
-              <ol className="px-mc-list" aria-label={t("makeCards.listLabel")}>
-                {rows.map((row, index) => (
-                  <li key={row.key} className="px-mc-card">
-                    <div className="px-mc-card-head">
-                      <span className="label">
-                        {t("makeCards.cardN", { n: index + 1 })}
-                      </span>
-                      {row.passageId ? (
-                        <CitationChip
-                          onClick={() =>
-                            openSourceViewer({
-                              passageId: row.passageId ?? undefined,
-                            })
-                          }
-                        >
-                          {t("makeCards.source")}
-                        </CitationChip>
-                      ) : null}
-                      <span className="px-mc-spacer" />
-                      <IconButton
-                        icon="x"
-                        variant="ghost"
-                        size="sm"
-                        label={t("makeCards.drop", { n: index + 1 })}
-                        disabled={saving}
-                        onClick={() =>
-                          setRows((current) =>
-                            current.filter((item) => item.key !== row.key),
-                          )
-                        }
-                      />
-                    </div>
-                    <label
-                      className="small px-mc-face"
-                      htmlFor={`mc-front-${row.key}`}
-                    >
-                      {t("makeCards.front")}
-                    </label>
-                    <Input.TextArea
-                      id={`mc-front-${row.key}`}
-                      autoSize={{ minRows: 1, maxRows: 5 }}
-                      value={row.front}
-                      disabled={saving}
-                      onChange={(event) =>
-                        update(row.key, { front: event.target.value })
-                      }
-                    />
-                    {isCloze(row.front) ? (
-                      <p className="small px-mc-cloze">
-                        {t("makeCards.cloze", { markup: "{{c1::…}}" })}
-                      </p>
-                    ) : null}
-                    <label
-                      className="small px-mc-face"
-                      htmlFor={`mc-back-${row.key}`}
-                    >
-                      {t("makeCards.back")}
-                    </label>
-                    <Input.TextArea
-                      id={`mc-back-${row.key}`}
-                      autoSize={{ minRows: 1, maxRows: 5 }}
-                      value={row.back}
-                      disabled={saving}
-                      onChange={(event) =>
-                        update(row.key, { back: event.target.value })
-                      }
-                    />
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="small px-mc-hint">{t("makeCards.allDropped")}</p>
-            )
+            <>
+              <ProposedCards
+                rows={rows}
+                idPrefix="mc"
+                disabled={saving}
+                onChange={update}
+                onDrop={(key) => setRows((current) => current.filter((item) => item.key !== key))}
+                // With no card left, "Make again" is the way on, and it is enabled; the focus goes there.
+                onEmptied={() => document.getElementById("mc-again")?.focus()}
+              />
+              {rows.length ? null : <p className="small px-mc-hint">{t("makeCards.allDropped")}</p>}
+            </>
           ) : null}
         </div>
       ) : null}

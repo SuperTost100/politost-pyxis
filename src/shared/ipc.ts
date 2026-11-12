@@ -19,6 +19,7 @@ import {
   CHAT_TEXT_MAX,
   CHAT_TITLE_MAX,
   engineProviders,
+  NEW_CARDS,
   PROFILE_LIMITS,
 } from "./limits";
 
@@ -27,6 +28,7 @@ export {
   CHAT_TEXT_MAX,
   CHAT_TITLE_MAX,
   engineProviders,
+  NEW_CARDS,
   PROFILE_LIMITS,
 } from "./limits";
 export type { EngineProvider } from "./limits";
@@ -89,9 +91,11 @@ const dueCardSchema = z.object({
 
 /** A card proposed from a text, before the student keeps it. `passageId` names the source passage its fact comes from. */
 const proposedCardSchema = z.object({
-  front: z.string().max(2000),
-  back: z.string().max(2000),
+  front: z.string().max(NEW_CARDS.face),
+  back: z.string().max(NEW_CARDS.face),
   passageId: z.string().nullable(),
+  // Where the passage comes from, for the chip that names it; a reply carries it, saving does not read it.
+  source: z.object({ title: z.string(), page: z.number().int().nullable() }).nullish(),
 });
 
 /** One mixed review: its remaining cards and one progress count over cards plus questions (LES-13). */
@@ -1356,11 +1360,63 @@ export const requests = {
       planId: z.string().optional(),
       topicId: z.string().optional(),
       subjectId: z.string().optional(),
-      cards: z.array(proposedCardSchema).min(1).max(20),
+      cards: z.array(proposedCardSchema).min(1).max(NEW_CARDS.max),
       provider: z.string(),
       model: z.string(),
+      /** The prompt that wrote them, for their provenance: a text's (the default) or a subject's. */
+      prompt: z.enum(["cards.text", "cards.subject"]).optional(),
     }),
     output: z.object({ saved: z.number().int(), skipped: z.number().int() }),
+  },
+  "study.newCardPlaces": {
+    // The new-flashcard dialog's choices: each subject with its exams, its topics by exam and how many readable sources
+    // it has, and whether an AI tool is set up for flashcards.
+    input: z.object({}),
+    output: z.object({
+      subjects: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          exams: z.array(z.object({ id: z.string(), title: z.string() })),
+          topics: z.array(
+            z.object({
+              planId: z.string(),
+              planTitle: z.string(),
+              topics: z.array(z.object({ id: z.string(), title: z.string() })),
+            }),
+          ),
+          sources: z.number().int(),
+        }),
+      ),
+      engine: z.boolean(),
+    }),
+  },
+  "study.cardCreate": {
+    // A flashcard written by hand under a subject, and under one of the subject's exams when `planId` is given.
+    input: z.object({
+      subjectId: z.string(),
+      planId: z.string().nullable().optional(),
+      front: z.string().max(NEW_CARDS.face),
+      back: z.string().max(NEW_CARDS.face),
+    }),
+    output: z.object({ id: z.string() }),
+  },
+  "study.cardsForSubject": {
+    // Asks the model for `count` flashcards from the subject's material, or one topic's, and stores nothing: the student
+    // checks them, then saves with cardsSaveProposed. `repeats` counts the proposals dropped because the subject has them.
+    input: z.object({
+      subjectId: z.string(),
+      planId: z.string().optional(),
+      topicId: z.string().optional(),
+      focus: z.string().trim().max(NEW_CARDS.focus).optional(),
+      count: z.number().int().min(NEW_CARDS.min).max(NEW_CARDS.max),
+    }),
+    output: z.object({
+      cards: z.array(proposedCardSchema),
+      provider: z.string(),
+      model: z.string(),
+      repeats: z.number().int(),
+    }),
   },
   "study.gapDrillStart": {
     // `gapId` names one of the topic's gaps; without it the topic's top gap is drilled.

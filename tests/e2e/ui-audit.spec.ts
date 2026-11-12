@@ -62,6 +62,11 @@ const routes = [
   ["flashcards", "/flashcards"],
   ["flashcards-empty", "/flashcards"],
   ["flashcards-none-due", "/flashcards"],
+  // "Nuova flashcard": written by hand with a formula, Pyxis's side, Pyxis at work, and its flashcards to check.
+  ["flashcards-new-hand", "/flashcards"],
+  ["flashcards-new-pyxis", "/flashcards"],
+  ["flashcards-new-working", "/flashcards"],
+  ["flashcards-new-review", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
   // The due flashcards from every plan, as the exam list's line opens them.
@@ -1029,6 +1034,10 @@ function prepareCardBrowser(name: string) {
       DELETE FROM card_reviews WHERE id LIKE 'audit-later-%';
       DELETE FROM maps WHERE id = 'audit-chem-map';
       DELETE FROM plans WHERE id IN ('audit-chem-plan','audit-loose-plan');
+      DELETE FROM topic_passages WHERE passage_id LIKE 'audit-chem-p%';
+      DELETE FROM passages WHERE source_id = 'audit-chem-book';
+      DELETE FROM source_documents WHERE source_id = 'audit-chem-book';
+      DELETE FROM sources WHERE id = 'audit-chem-book';
       DELETE FROM subjects WHERE id IN ('audit-chem','audit-gal');
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
     // A subject with no exam, hence no topics, for the new-map dialog.
@@ -1125,6 +1134,20 @@ function prepareCardBrowser(name: string) {
     db.exec(`INSERT INTO cards(id,subject_id,front,back,grounding,created_at) VALUES
       ('audit-card-gal1','audit-gal','Quando una matrice è invertibile?','Quando il determinante non è nullo.','general',5),
       ('audit-card-gal2','audit-gal','Che cos’è un autovalore?','Uno scalare λ per cui Av = λv con v non nullo.','general',6);`);
+    // Chimica's book, which Pyxis writes flashcards from on the new-flashcard dialog's other side.
+    if (name.startsWith("flashcards-new")) {
+      seedSource(db, {
+        id: "audit-chem-book",
+        subjectId: "audit-chem",
+        title: "Atkins",
+        document: { id: "audit-chem-doc" },
+        passages: [
+          { id: "audit-chem-p1", text: "Il numero atomico Z è il numero di protoni nel nucleo.", section: "L’atomo" },
+          { id: "audit-chem-p2", text: "Un orbitale è la regione in cui è più probabile trovare l’elettrone.", section: "L’atomo" },
+        ],
+      });
+      db.exec("INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-atoms','audit-chem-p1'),('audit-atoms','audit-chem-p2')");
+    }
     // Every card rated and due in nine days: nothing to review today.
     if (name === "flashcards-none-due")
       db.prepare(
@@ -1496,7 +1519,15 @@ function prepareAnswerSheet(name: string) {
   });
 }
 
+/** Pyxis stays at work on the new-flashcard dialog until this file exists; every other state finds it there. */
+const newCardsHold = () => join(auditUserData, "subject-cards-hold");
+function prepareNewCards(name: string) {
+  if (name === "flashcards-new-working") rmSync(newCardsHold(), { force: true });
+  else writeFileSync(newCardsHold(), "");
+}
+
 function prepareState(name: string) {
+  prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
   prepareExamsEmpty(name);
@@ -3508,10 +3539,44 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "flashcards-empty":
-      await expect(
-        page.getByRole("heading", { level: 2, name: both("Ancora nessuna flashcard", "No flashcards yet") }),
-      ).toBeVisible();
+      // One line on what will appear and the one button that writes the first flashcard.
+      await expect(page.getByText(/^(Qui compariranno le tue flashcard|Your flashcards will appear here)/)).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
+    case "flashcards-new-hand":
+    case "flashcards-new-pyxis":
+    case "flashcards-new-working":
+    case "flashcards-new-review": {
+      await page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") }).click();
+      const dialog = page.getByRole("dialog", { name: both("Nuova flashcard", "New flashcard") });
+      const subject = dialog.getByRole("combobox", { name: both("Materia", "Subject") });
+      await expect(subject).toBeFocused();
+      if (name === "flashcards-new-hand") {
+        await expect(dialog.getByRole("combobox", { name: both("Esame facoltativo", "Exam optional") })).toBeVisible();
+        await dialog
+          .getByRole("textbox", { name: both("Fronte", "Front") })
+          .fill("Quanto vale $\\lim_{x \\to 0} \\frac{\\sin x}{x}$?");
+        await dialog
+          .getByRole("textbox", { name: both("Retro", "Back") })
+          .fill("Vale 1. Si vede confrontando le aree di due triangoli e di un settore circolare.");
+        await expect(dialog.locator(".px-nc-preview .katex").first()).toBeVisible();
+        break;
+      }
+      await dialog.getByRole("radio", { name: both("Falla fare a Pyxis", "Let Pyxis write them") }).click();
+      await subject.selectOption({ label: "Chimica" });
+      await dialog.getByRole("combobox", { name: both("Argomento", "Topic") }).selectOption({ label: "Struttura dell’atomo" });
+      await dialog.getByRole("textbox", { name: /^(Su cosa\?|About what\?)/ }).fill("il numero atomico");
+      if (name === "flashcards-new-pyxis") break;
+      await dialog.getByRole("button", { name: both("Crea le flashcard", "Make the flashcards") }).click();
+      if (name === "flashcards-new-working") {
+        await expect(dialog.getByRole("button", { name: both("Sto scrivendo", "Writing") })).toBeDisabled();
+        break;
+      }
+      await expect(
+        dialog.getByRole("list", { name: both("Flashcard proposte", "Proposed flashcards") }).getByRole("listitem"),
+      ).toHaveCount(3);
+      break;
+    }
     case "flashcards-none-due":
       await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
       await expect(page.locator(".px-fc-head").getByText(both("Niente da ripassare oggi", "Nothing to review today"))).toBeVisible();
@@ -3842,6 +3907,30 @@ test("M14 every application route in both languages, themes and supported widths
     ...updateEnv(),
     PYXIS_E2E_REPLY: "La forza è $F=ma$ [P1].",
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+      // A subject's flashcards from the new-flashcard dialog: held while that state shows Pyxis at work.
+      subjectCards: {
+        hold: join(userData, "subject-cards-hold"),
+        cards: [
+          {
+            kind: "qa",
+            front: "Che cosa indica il numero atomico $Z$?",
+            back: "Il numero di protoni nel nucleo dell’atomo.",
+            passageId: "{{passage:0}}",
+          },
+          {
+            kind: "concept",
+            term: "Orbitale",
+            definition: "La regione dello spazio in cui è più probabile trovare l’elettrone.",
+            passageId: "{{passage:0}}",
+          },
+          {
+            kind: "cloze",
+            text: "Gli isotopi hanno lo stesso {{c1::numero atomico}} ma un diverso numero di neutroni.",
+            extra: "Isotopi di un elemento.",
+            passageId: "{{passage:0}}",
+          },
+        ],
+      },
       modules: {
         modules: [
           { title: "Cinematica", summary: "Il moto dei corpi" },

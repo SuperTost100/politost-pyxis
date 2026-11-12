@@ -1,0 +1,1037 @@
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
+import { NEW_CARDS } from "@shared/limits";
+import type { RequestOutput } from "@shared/ipc";
+import { Button } from "../../components/Button";
+import { Segmented, Stepper } from "../../components/Controls";
+import { Icon } from "../../components/Icon";
+import { Logo } from "../../components/Logo";
+import { MarkdownView } from "../../components/MarkdownView";
+import { Notice } from "../../components/Notice";
+import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
+import { errorProvider, useEngineError } from "../../lib/engineError";
+import { invoke } from "../../lib/ipc";
+import { saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
+import "./NewCardDialog.css";
+
+/** Who writes the new flashcards: the student ("Scrivila tu") or Pyxis ("Falla fare a Pyxis"). */
+export type NewCardSide = "hand" | "pyxis";
+
+type Places = RequestOutput<"study.newCardPlaces">;
+type Subject = Places["subjects"][number];
+type Proposal = RequestOutput<"study.cardsForSubject">;
+
+/** The value of the "Nuova materia…" option, which no subject id can be. */
+const NEW_SUBJECT = "\u0000new";
+/** A topic option's value: its exam and its id. The empty value is the whole subject. */
+const topicValue = (planId: string, topicId: string) => `${planId}\u0000${topicId}`;
+/** A face with a formula in it, `$…$` with something between the dollars. */
+const HAS_FORMULA = /\$(?=[^$]*\S)[^$]+\$/;
+
+export const newCardsQuery = { queryKey: ["new-card-places"], queryFn: () => invoke("study.newCardPlaces", {}) };
+
+/** Everything a new card changes: the Flashcard page, the daily review and the decks it can be studied in. */
+async function refreshCards(client: QueryClient, planId?: string | null) {
+  await Promise.all([
+    ...[
+      ["card-sections"],
+      ["card-browse"],
+      ["cards-everywhere"],
+      ["subject-cards"],
+      ["plans", "today"],
+      ["plans", "rings"],
+      ["plans", "examlessDue"],
+      ["new-card-places"],
+    ].map((queryKey) => client.invalidateQueries({ queryKey })),
+    ...(planId
+      ? ["cards", "card-queue", "review-session", "plan"].map((key) =>
+          client.invalidateQueries({ queryKey: [key, planId] }),
+        )
+      : []),
+  ]);
+}
+
+/**
+ * "Nuova flashcard": one dialog with a switch between writing a card by
+ * hand and having Pyxis write some from the subject's material. It grows out of the button that opened it and shrinks
+ * back into it; Escape, the backdrop and Annulla ask first when something would be lost. `onSaved` tells the page which
+ * subject got how many cards, so it can show them.
+ */
+export function NewCardDialog({
+  open,
+  side: openSide,
+  subjectId: openSubject,
+  origin,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  side: NewCardSide;
+  /** The subject chosen when it opens, as another page asks for. */
+  subjectId?: string;
+  /** The button it grows out of; focus goes back to it on close. */
+  origin: () => HTMLElement | null;
+  onClose: () => void;
+  onSaved: (saved: { subjectId: string; name: string; count: number; closing: boolean }) => void;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const describeEngineError = useEngineError(navigate);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const switchId = useId();
+  const places = useQuery({ ...newCardsQuery, enabled: open });
+  const subjects = places.data?.subjects ?? [];
+
+  const [side, setSide] = useState<NewCardSide>(openSide);
+  const [subjectId, setSubjectId] = useState("");
+  // Asking before something is lost: what would be lost decides the words.
+  const [leaving, setLeaving] = useState<Loss | null>(null);
+  const [closing, setClosing] = useState(false);
+
+  // Scrivila tu
+  const [planId, setPlanId] = useState("");
+  const [newName, setNewName] = useState("");
+  const [front, setFront] = useState("");
+  const [back, setBack] = useState("");
+  const [errors, setErrors] = useState<{ name?: string; front?: string; back?: string }>({});
+  const [handFailed, setHandFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const [added, setAdded] = useState(0);
+  const [announce, setAnnounce] = useState("");
+
+  // Falla fare a Pyxis
+  const [topic, setTopic] = useState("");
+  const [focusText, setFocusText] = useState("");
+  const [count, setCount] = useState<number>(NEW_CARDS.start);
+  const [step, setStep] = useState<"form" | "working" | "review">("form");
+  const [rows, setRows] = useState<ProposedRow[]>([]);
+  // What Pyxis was asked and wrote, fixed when the proposals arrive: the fields on the form can change after that, and
+  // the proposals still belong to the request that wrote them.
+  const [made, setMade] = useState<
+    | (Pick<Proposal, "provider" | "model" | "repeats"> & {
+        asked: number;
+        /** How many cards Pyxis wrote, the repeats included; dropping a proposal does not change it. */
+        wrote: number;
+        target: ProposalTarget;
+        /** The subject's name, or the topic's, and the focus, as the request had them. */
+        place: string;
+        subjectName: string;
+        focus: string;
+      })
+    | null
+  >(null);
+  const [failure, setFailure] = useState<{ key: string; provider?: string } | null>(null);
+  const [savingProposed, setSavingProposed] = useState(false);
+  const cancel = useRef<(() => void) | null>(null);
+  const run = useRef(0);
+  // Counts the times the dialog has been opened. A reply that comes back from an earlier opening is not this one's.
+  const opening = useRef(0);
+
+  const subject = subjects.find((item) => item.id === subjectId);
+  const isNew = subjectId === NEW_SUBJECT;
+  const [topicPlan, topicId] = topic ? topic.split("\u0000") : ["", ""];
+  const topicTitle = subject?.topics.find((group) => group.planId === topicPlan)?.topics.find((item) => item.id === topicId)
+    ?.title;
+
+  function stopWork() {
+    run.current += 1;
+    cancel.current?.();
+    cancel.current = null;
+  }
+
+  // Everything starts again each time it opens, on the side and the subject it was asked for.
+  useEffect(() => {
+    if (!open) return;
+    opening.current += 1;
+    setSide(openSide);
+    setSubjectId(openSubject ?? "");
+    setPlanId("");
+    setNewName("");
+    setFront("");
+    setBack("");
+    setErrors({});
+    setHandFailed(false);
+    setSaving(false);
+    busy.current = false;
+    setAdded(0);
+    setAnnounce("");
+    setTopic("");
+    setFocusText("");
+    setCount(NEW_CARDS.start);
+    setStep("form");
+    setRows([]);
+    setMade(null);
+    setFailure(null);
+    setSavingProposed(false);
+    setLeaving(null);
+    setClosing(false);
+  }, [open]);
+
+  // Once the subjects are known: the one asked for if it exists, else the first, else a new one to name.
+  useEffect(() => {
+    if (!open || !places.data) return;
+    setSubjectId((current) => {
+      if (current === NEW_SUBJECT && side === "hand") return current;
+      if (current && places.data.subjects.some((item) => item.id === current)) return current;
+      const first = places.data.subjects[0]?.id;
+      return first ?? (side === "hand" ? NEW_SUBJECT : "");
+    });
+  }, [open, places.data, side]);
+
+  useEffect(() => () => stopWork(), []);
+
+  // Opening: the native modal dialog, grown out of the button that asked for it.
+  useLayoutEffect(() => {
+    const node = dialog.current;
+    if (!node || !open || node.open) return;
+    node.showModal();
+    grow(node, origin(), "in");
+  }, [open]);
+
+  // The first field of the side on show takes the focus once its choices are there.
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      focused.current = false;
+      return;
+    }
+    if (focused.current || !places.data || !subjectId) return;
+    focused.current = true;
+    requestAnimationFrame(() => firstField()?.focus());
+  }, [open, places.data, subjectId]);
+
+  function firstField(): HTMLElement | null {
+    const pane = dialog.current?.querySelector(`[data-pane="${side}"]`);
+    if (!pane) return null;
+    if (side === "hand" && subjectId === NEW_SUBJECT && subjects.length === 0)
+      return pane.querySelector<HTMLElement>("#nc-new-name");
+    return pane.querySelector<HTMLElement>("select, textarea, input");
+  }
+
+  /** Closes for good: shrinks back into the button, which gets the focus again. */
+  function close() {
+    const node = dialog.current;
+    stopWork();
+    setLeaving(null);
+    if (!node?.open) return onClose();
+    setClosing(true);
+    const button = origin();
+    grow(node, button, "out", () => {
+      node.close();
+      onClose();
+      button?.focus();
+    });
+  }
+
+  /**
+   * Escape, the backdrop or Annulla: asks first when Pyxis's work, its proposals or typed text would be lost, whichever side
+   * is showing. While a card is being saved the dialog stays: closing then would leave the student unsure what was saved.
+   */
+  function askClose() {
+    if (closing || busy.current) return;
+    if (leaving) return stay();
+    const ask = whatWouldBeLost({
+      step,
+      proposals: rows.length,
+      front,
+      back,
+      newName,
+      naming: isNew,
+      focus: focusText,
+    });
+    if (!ask) return close();
+    asked.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setLeaving(ask);
+  }
+
+  /** The student keeps going: the question goes and the focus is back where it was. */
+  const asked = useRef<HTMLElement | null>(null);
+  function stay() {
+    setLeaving(null);
+    const back = asked.current;
+    asked.current = null;
+    requestAnimationFrame(() => (back?.isConnected ? back : firstField())?.focus());
+  }
+
+  // Pyxis may finish while the student is asked about stopping it: the question becomes the one about its proposals.
+  useEffect(() => {
+    if (leaving === "working" && step !== "working") setLeaving(step === "review" && rows.length ? "review" : null);
+  }, [step]);
+
+  // The confirmation's safe answer takes the focus; the one that throws work away is never the default.
+  const keepButton = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (leaving) keepButton.current?.querySelector("button")?.focus();
+  }, [leaving]);
+
+  function switchSide(next: NewCardSide) {
+    setSide(next);
+    setLeaving(null);
+    // Pyxis writes for a subject that exists, so a new one being named gives way to the first subject.
+    if (next === "pyxis" && subjectId === NEW_SUBJECT) setSubjectId(subjects[0]?.id ?? "");
+    if (next === "hand" && !subjectId) setSubjectId(subjects[0]?.id ?? NEW_SUBJECT);
+    const pane = dialog.current?.querySelector(`[data-pane="${next}"]`);
+    if (pane && !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+      pane.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "ease-out" });
+  }
+
+  function chooseSubject(value: string) {
+    setSubjectId(value);
+    setPlanId("");
+    setTopic("");
+    setErrors((current) => ({ ...current, name: undefined }));
+    setFailure(null);
+  }
+
+  // ---------- Scrivila tu ----------
+
+  async function saveByHand(more: boolean) {
+    if (busy.current) return;
+    const name = newName.trim();
+    const found = {
+      name: isNew && !name ? t("flashcards.new.newSubjectEmpty") : undefined,
+      front: front.trim() ? undefined : t("flashcards.new.frontEmpty"),
+      back: back.trim() ? undefined : t("flashcards.new.backEmpty"),
+    };
+    setErrors(found);
+    setHandFailed(false);
+    const wrong = (["name", "front", "back"] as const).find((key) => found[key]);
+    if (wrong) {
+      document.getElementById(wrong === "name" ? "nc-new-name" : `nc-${wrong}`)?.focus();
+      return;
+    }
+    busy.current = true;
+    setSaving(true);
+    const mine = opening.current;
+    let shutting = false;
+    try {
+      let target = subjectId;
+      let targetName = subject?.name ?? name;
+      if (isNew) {
+        const made = await invoke("subjects.add", { name });
+        target = made.id;
+        targetName = made.name;
+        void client.invalidateQueries({ queryKey: ["subjects"] });
+        await client.invalidateQueries({ queryKey: ["new-card-places"] });
+        if (mine === opening.current) {
+          setSubjectId(made.id);
+          setNewName("");
+        }
+      }
+      await invoke("study.cardCreate", { subjectId: target, planId: planId || null, front, back });
+      await refreshCards(client, planId);
+      // The card is saved: the page hears of it even when the dialog is not this save's any more.
+      onSaved({ subjectId: target, name: targetName, count: 1, closing: !more });
+      if (mine !== opening.current) return;
+      if (!more) {
+        // The dialog stays locked until it is gone: Salva is not enabled again for a second click during the closing.
+        shutting = true;
+        return close();
+      }
+      setFront("");
+      setBack("");
+      setAdded((n) => n + 1);
+      setAnnounce(t("flashcards.new.addedTo", { subject: targetName }));
+      refocus.current = true;
+    } catch {
+      if (mine === opening.current) setHandFailed(true);
+    } finally {
+      if (mine === opening.current && !shutting) {
+        busy.current = false;
+        setSaving(false);
+      }
+    }
+  }
+
+  // The faces are enabled again once the save is over: then Fronte takes the focus for the next card.
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (saving || !refocus.current) return;
+    refocus.current = false;
+    document.getElementById("nc-front")?.focus();
+  }, [saving]);
+
+  // "Aggiunta" stays on the button for a moment, then its label comes back.
+  useEffect(() => {
+    if (!added) return;
+    const timer = window.setTimeout(() => setAdded(0), 1800);
+    return () => window.clearTimeout(timer);
+  }, [added]);
+
+  // ---------- Falla fare a Pyxis ----------
+
+  const engine = places.data?.engine ?? true;
+  const noMaterial = Boolean(subject) && subject!.sources === 0;
+  const canMake = Boolean(subject) && engine && !noMaterial && step !== "working";
+
+  async function make() {
+    if (!subject || !canMake) return;
+    stopWork();
+    const id = run.current;
+    setFailure(null);
+    setStep("working");
+    setRows([]);
+    const asked = count;
+    // The request as it is now: the proposals that come back are kept with it.
+    const request = {
+      target: {
+        subjectId: subject.id,
+        ...(topicId ? { planId: topicPlan, topicId } : {}),
+      },
+      place: topicTitle ?? subject.name,
+      subjectName: subject.name,
+      focus: focusText.trim(),
+    };
+    const handle = window.pyxis.stream(
+      "study.cardsForSubject",
+      {
+        subjectId: subject.id,
+        ...(topicId ? { planId: topicPlan, topicId } : {}),
+        ...(request.focus ? { focus: request.focus } : {}),
+        count: asked,
+      },
+      () => {},
+    );
+    cancel.current = handle.cancel;
+    try {
+      const result = (await handle.result) as Proposal;
+      if (id !== run.current) return;
+      setMade({
+        provider: result.provider,
+        model: result.model,
+        repeats: result.repeats,
+        asked,
+        wrote: result.cards.length + result.repeats,
+        ...request,
+      });
+      setRows(result.cards.map((card, key) => ({ key, ...card })));
+      setStep("review");
+    } catch (err) {
+      if (id !== run.current) return;
+      const key =
+        err && typeof err === "object" && "messageKey" in err ? String((err as { messageKey: unknown }).messageKey) : "";
+      setFailure({ key: !key || key === "errors.internal" ? "flashcards.new.failed" : key, provider: errorProvider(err) });
+      setStep("form");
+    } finally {
+      if (cancel.current === handle.cancel) cancel.current = null;
+    }
+  }
+
+  const incomplete = rows.some((row) => !row.front.trim() || !row.back.trim());
+
+  async function saveProposed() {
+    if (!made || !rows.length || incomplete || busy.current) return;
+    busy.current = true;
+    setSavingProposed(true);
+    setFailure(null);
+    const mine = opening.current;
+    let shutting = false;
+    try {
+      const result = await invoke("study.cardsSaveProposed", saveProposedInput(made, rows));
+      await refreshCards(client, made.target.topicId ? made.target.planId : null);
+      onSaved({ subjectId: made.target.subjectId, name: made.subjectName, count: result.saved, closing: true });
+      if (mine !== opening.current) return;
+      shutting = true;
+      close();
+    } catch {
+      if (mine === opening.current) setFailure({ key: "flashcards.new.saveProposedFailed" });
+    } finally {
+      if (mine === opening.current && !shutting) {
+        busy.current = false;
+        setSavingProposed(false);
+      }
+    }
+  }
+
+  const failureView = failure ? describeEngineError(failure.key, failure.provider) : null;
+  const retry = { label: t("flashcards.new.retry"), onClick: () => void (step === "review" ? saveProposed() : make()) };
+
+  // ---------- Layout ----------
+
+  const working = side === "pyxis" && step === "working";
+  const reviewing = side === "pyxis" && step === "review";
+  const askedLabel = t("flashcards.new.asked", { count });
+
+  let actions: ReactNode;
+  if (leaving)
+    actions = (
+      <div className="px-nc-leave" role="group" aria-labelledby="nc-leave-text">
+        <p id="nc-leave-text" className="small">
+          {t(`flashcards.new.leave.${leaving}`)}
+        </p>
+        <span ref={keepButton}>
+          <Button variant="secondary" onClick={stay}>
+            {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
+          </Button>
+        </span>
+        <Button variant="danger" onClick={close}>
+          {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
+        </Button>
+      </div>
+    );
+  else if (side === "hand")
+    actions = (
+      <>
+        <Button variant="ghost" disabled={saving || closing} onClick={askClose}>
+          {t("flashcards.new.cancel")}
+        </Button>
+        <Button variant="secondary" disabled={saving || closing || !places.data} onClick={() => void saveByHand(true)}>
+          <span className="px-nc-swap">
+            <span data-off={added ? "" : undefined}>{t("flashcards.new.saveMore")}</span>
+            <span data-off={added ? undefined : ""}>
+              <Icon name="check" size={16} />
+              {t("flashcards.new.added")}
+            </span>
+          </span>
+        </Button>
+        <Button disabled={saving || closing || !places.data} onClick={() => void saveByHand(false)}>
+          {t("flashcards.new.save")}
+        </Button>
+      </>
+    );
+  else
+    actions = (
+      <>
+        <Button variant="ghost" disabled={savingProposed || closing} onClick={askClose}>
+          {t("flashcards.new.cancel")}
+        </Button>
+        {reviewing ? (
+          <Button variant="secondary" disabled={savingProposed || closing} onClick={() => void make()}>
+            {t("flashcards.new.again")}
+          </Button>
+        ) : null}
+        {working ? (
+          <Button disabled className="px-nc-busy">
+            <Logo size={16} working decorative />
+            {t("flashcards.new.making")}
+          </Button>
+        ) : reviewing ? (
+          <Button
+            disabled={!rows.length || incomplete || savingProposed || closing}
+            onClick={() => void saveProposed()}
+          >
+            {t("flashcards.new.saveProposed", { count: rows.length })}
+          </Button>
+        ) : (
+          <Button disabled={!canMake} onClick={() => void make()}>
+            {t("flashcards.new.make")}
+          </Button>
+        )}
+      </>
+    );
+
+  return (
+    <dialog
+      ref={dialog}
+      className={["px-nc", reviewing ? "is-wide" : ""].filter(Boolean).join(" ")}
+      role="dialog"
+      aria-labelledby={titleId}
+      onKeyDown={(event) => {
+        // Escape is handled here rather than left to the dialog: Chromium closes a modal dialog outright on a second
+        // Escape with no click in between, which would throw typed text away without asking.
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        event.preventDefault();
+        askClose();
+      }}
+      onCancel={(event) => {
+        // Any other close request (the system's back gesture) asks the same way.
+        event.preventDefault();
+        askClose();
+      }}
+      onMouseDown={(event) => {
+        if (event.target === dialog.current) askClose();
+      }}
+    >
+      {open ? (
+        <div className="px-nc-card">
+          <div className="px-nc-head">
+            <h2 className="px-nc-title" id={titleId}>
+              {t("flashcards.new.title")}
+            </h2>
+            {reviewing ? null : working ? (
+              // What Pyxis was asked, while it works; its proposals then say it in their own line.
+              <p className="small px-nc-summary">
+                <b>{[subject?.name, topicTitle].filter(Boolean).join(" · ")}</b>
+                {focusText.trim() ? ` · «${focusText.trim()}»` : ""} · {askedLabel}
+              </p>
+            ) : (
+              <>
+                <span className="visually-hidden" id={switchId}>
+                  {t("flashcards.new.how")}
+                </span>
+                <div className="px-nc-switch">
+                  <Segmented<NewCardSide>
+                    label={switchId}
+                    value={side}
+                    options={[
+                      { value: "hand", label: t("flashcards.new.byHand") },
+                      { value: "pyxis", label: t("flashcards.new.byPyxis") },
+                    ]}
+                    onChange={switchSide}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="px-nc-body">
+            {places.isError && !places.data ? (
+              <Notice tone="danger" action={{ label: t("flashcards.new.retry"), onClick: () => void places.refetch() }}>
+                {t("flashcards.loadFailed")}
+              </Notice>
+            ) : null}
+
+            <div data-pane="hand" hidden={side !== "hand"} className="px-nc-pane">
+              <SubjectField
+                id="nc-subject"
+                subjects={subjects}
+                value={subjectId}
+                allowNew
+                disabled={saving || !places.data}
+                onChange={chooseSubject}
+              />
+              <Fold shut={!isNew}>
+                <div className="px-nc-sub">
+                  <input
+                    id="nc-new-name"
+                    className="px-nc-field"
+                    aria-label={t("flashcards.new.newSubjectName")}
+                    placeholder={t("flashcards.new.newSubjectPlaceholder")}
+                    maxLength={120}
+                    value={newName}
+                    disabled={saving}
+                    aria-invalid={errors.name ? true : undefined}
+                    aria-describedby={errors.name ? "nc-new-name-error" : undefined}
+                    onChange={(event) => {
+                      setNewName(event.target.value);
+                      setErrors((current) => ({ ...current, name: undefined }));
+                    }}
+                    // Enter in this one-line field never saves the card by accident.
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.preventDefault();
+                    }}
+                  />
+                  <FieldError id="nc-new-name-error" text={errors.name} />
+                </div>
+              </Fold>
+              <Fold shut={!subject || subject.exams.length === 0}>
+                <div className="px-nc-block">
+                  <label className="label" htmlFor="nc-exam">
+                    {t("flashcards.new.exam")} <span className="px-nc-optional">{t("flashcards.new.optional")}</span>
+                  </label>
+                  <Select id="nc-exam" value={planId} disabled={saving} onChange={setPlanId}>
+                    <option value="">{t("flashcards.new.noExam")}</option>
+                    {subject?.exams.map((exam) => (
+                      <option key={exam.id} value={exam.id}>
+                        {exam.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </Fold>
+              <FaceField
+                face="front"
+                value={front}
+                error={errors.front}
+                disabled={saving}
+                onChange={(value) => {
+                  setFront(value);
+                  setErrors((current) => ({ ...current, front: undefined }));
+                }}
+              />
+              <FaceField
+                face="back"
+                value={back}
+                error={errors.back}
+                disabled={saving}
+                onChange={(value) => {
+                  setBack(value);
+                  setErrors((current) => ({ ...current, back: undefined }));
+                }}
+              />
+              {handFailed ? (
+                <div className="px-nc-block">
+                  <Notice tone="danger">{t("flashcards.new.saveFailed")}</Notice>
+                </div>
+              ) : null}
+              <p className="visually-hidden" role="status">
+                {announce}
+              </p>
+            </div>
+
+            <div data-pane="pyxis" hidden={side !== "pyxis"} className="px-nc-pane">
+              {step === "form" ? (
+                places.data && subjects.length === 0 ? (
+                  <div className="px-nc-block">
+                    <Notice
+                      tone="info"
+                      action={{ label: t("flashcards.new.openLibrary"), onClick: () => navigate("/exams/library") }}
+                    >
+                      {t("flashcards.new.noSubjects")}
+                    </Notice>
+                  </div>
+                ) : (
+                  <>
+                    {!engine ? (
+                      <div className="px-nc-block">
+                        <Notice
+                          tone="info"
+                          action={{
+                            label: t("flashcards.new.noEngineAction"),
+                            onClick: () => navigate("/settings/engines"),
+                          }}
+                        >
+                          {t("flashcards.new.noEngine")}
+                        </Notice>
+                      </div>
+                    ) : subject && noMaterial ? (
+                      <div className="px-nc-block">
+                        <Notice
+                          tone="info"
+                          action={{ label: t("flashcards.new.openLibrary"), onClick: () => navigate("/exams/library") }}
+                        >
+                          <Trans
+                            i18nKey="flashcards.new.noMaterial"
+                            values={{ subject: subject.name }}
+                            components={{ b: <b /> }}
+                          />
+                        </Notice>
+                      </div>
+                    ) : subject ? (
+                      <p className="small px-nc-lead">
+                        <Trans
+                          i18nKey="flashcards.new.pyxisLead"
+                          values={{ subject: subject.name }}
+                          components={{ b: <b /> }}
+                        />
+                      </p>
+                    ) : null}
+                    <SubjectField
+                      id="nc-py-subject"
+                      subjects={subjects}
+                      value={subjectId === NEW_SUBJECT ? "" : subjectId}
+                      disabled={!places.data}
+                      onChange={chooseSubject}
+                    />
+                    <Fold shut={!subject || subject.topics.length === 0}>
+                      <div className="px-nc-block">
+                        <label className="label" htmlFor="nc-topic">
+                          {t("flashcards.new.topic")}
+                        </label>
+                        <Select id="nc-topic" value={topic} onChange={setTopic}>
+                          <option value="">{t("flashcards.new.wholeSubject")}</option>
+                          {subject?.topics.map((group) => (
+                            <optgroup key={group.planId} label={group.planTitle}>
+                              {group.topics.map((item) => (
+                                <option key={item.id} value={topicValue(group.planId, item.id)}>
+                                  {item.title}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </Select>
+                      </div>
+                    </Fold>
+                    <div className="px-nc-block">
+                      <label className="label" htmlFor="nc-focus">
+                        {t("flashcards.new.focus")}{" "}
+                        <span className="px-nc-optional">{t("flashcards.new.optional")}</span>
+                      </label>
+                      <textarea
+                        id="nc-focus"
+                        className="px-nc-field px-nc-area"
+                        rows={2}
+                        maxLength={NEW_CARDS.focus}
+                        placeholder={t("flashcards.new.focusPlaceholder")}
+                        value={focusText}
+                        onChange={(event) => setFocusText(event.target.value)}
+                      />
+                    </div>
+                    <div className="px-nc-count">
+                      <div>
+                        <b id="nc-count-label">{t("flashcards.new.count")}</b>
+                        <span className="small">{t("flashcards.new.countHint")}</span>
+                      </div>
+                      <Stepper
+                        label="nc-count-label"
+                        value={count}
+                        min={NEW_CARDS.min}
+                        max={NEW_CARDS.max}
+                        decreaseLabel={t("flashcards.new.fewer")}
+                        increaseLabel={t("flashcards.new.more")}
+                        onChange={setCount}
+                      />
+                    </div>
+                    {failure ? (
+                      <div className="px-nc-block">
+                        <Notice
+                          tone="danger"
+                          action={failureView?.action ?? retry}
+                          secondary={failureView?.action ? retry : undefined}
+                        >
+                          {failureView?.action
+                            ? failureView.text
+                            : t(failure.key, { defaultValue: t("flashcards.new.failed") })}
+                        </Notice>
+                      </div>
+                    ) : null}
+                  </>
+                )
+              ) : null}
+
+              {working ? (
+                <div className="px-nc-slot">
+                  <Logo size={44} working decorative />
+                  <p role="status">
+                    <b>{t("flashcards.new.workingLine")}</b>
+                    {t("flashcards.new.workingDetail")}
+                  </p>
+                </div>
+              ) : null}
+
+              {reviewing && made ? (
+                <>
+                  <p className="small px-nc-lead" role="status">
+                    <Trans
+                      i18nKey={made.focus ? "flashcards.new.reviewLeadFocus" : "flashcards.new.reviewLead"}
+                      count={made.wrote}
+                      values={{ place: made.place, focus: made.focus }}
+                      components={{ b: <b /> }}
+                    />
+                    {made.wrote < made.asked ? ` ${t("flashcards.new.short", { asked: made.asked })}` : ""}
+                    {made.repeats ? ` ${t("flashcards.new.repeats", { count: made.repeats })}` : ""}
+                    {rows.length ? ` ${t("flashcards.new.reviewHint")}` : ` ${t("flashcards.new.allDropped")}`}
+                  </p>
+                  <ProposedCards
+                    rows={rows}
+                    idPrefix="nc-pc"
+                    disabled={savingProposed}
+                    onChange={(key, patch) =>
+                      setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+                    }
+                    onDrop={(key) => setRows((current) => current.filter((row) => row.key !== key))}
+                    onEmptied={() => document.querySelector<HTMLElement>("#nc-change-wrap button")?.focus()}
+                  />
+                  {rows.length === 0 ? (
+                    <div className="px-nc-block">
+                      <span id="nc-change-wrap">
+                        <Button variant="secondary" onClick={() => setStep("form")}>
+                          {t("flashcards.new.changeRequest")}
+                        </Button>
+                      </span>
+                    </div>
+                  ) : null}
+                  {failure ? (
+                    <div className="px-nc-block">
+                      <Notice tone="danger" action={retry}>
+                        {t(failure.key)}
+                      </Notice>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="px-nc-actions">{actions}</div>
+        </div>
+      ) : null}
+    </dialog>
+  );
+}
+
+/** A native select drawn as the dialog's fields, with its chevron. */
+function Select({
+  id,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  id: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+  children: ReactNode;
+}) {
+  return (
+    <span className="px-nc-select">
+      <select
+        id={id}
+        className="px-nc-field"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {children}
+      </select>
+      <Icon name="chevron-down" size={16} />
+    </span>
+  );
+}
+
+function SubjectField({
+  id,
+  subjects,
+  value,
+  allowNew,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  subjects: Subject[];
+  value: string;
+  allowNew?: boolean;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="px-nc-block">
+      <label className="label" htmlFor={id}>
+        {t("flashcards.new.subject")}
+      </label>
+      <Select id={id} value={value} disabled={disabled} onChange={onChange}>
+        {value === "" ? (
+          <option value="" disabled>
+            {t("flashcards.new.pickSubject")}
+          </option>
+        ) : null}
+        {subjects.map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+        {allowNew ? <option value={NEW_SUBJECT}>{t("flashcards.new.newSubject")}</option> : null}
+      </Select>
+    </div>
+  );
+}
+
+/** A face of the card: its label, "Inserisci formula", the text, and a preview of a formula as the flashcard shows it. */
+function FaceField({
+  face,
+  value,
+  error,
+  disabled,
+  onChange,
+}: {
+  face: "front" | "back";
+  value: string;
+  error?: string;
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const id = `nc-${face}`;
+  const field = useRef<HTMLTextAreaElement>(null);
+  const caret = useRef<number | null>(null);
+  // After a formula goes in, the caret sits between its dollars.
+  useLayoutEffect(() => {
+    if (caret.current === null || !field.current) return;
+    field.current.focus();
+    field.current.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [value]);
+  return (
+    <div className="px-nc-block">
+      <div className="px-nc-labelrow">
+        <label className="label" htmlFor={id}>
+          {t(`flashcards.new.${face}`)}
+        </label>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon="sigma"
+          aria-label={t(face === "front" ? "flashcards.new.formulaFront" : "flashcards.new.formulaBack")}
+          disabled={disabled}
+          onClick={() => {
+            const at = field.current?.selectionStart ?? value.length;
+            const end = field.current?.selectionEnd ?? at;
+            caret.current = at + 2;
+            onChange(`${value.slice(0, at)}$  $${value.slice(end)}`);
+          }}
+        >
+          {t("flashcards.new.formula")}
+        </Button>
+      </div>
+      <textarea
+        ref={field}
+        id={id}
+        className="px-nc-field px-nc-area"
+        rows={2}
+        maxLength={NEW_CARDS.face}
+        placeholder={t(face === "front" ? "flashcards.new.frontPlaceholder" : "flashcards.new.backPlaceholder")}
+        value={value}
+        disabled={disabled}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <FieldError id={`${id}-error`} text={error} />
+      {HAS_FORMULA.test(value) ? (
+        <div className="px-nc-preview">
+          <span>{t("flashcards.new.preview")}</span>
+          <div className="px-nc-preview-face">
+            <MarkdownView variant="body">{value}</MarkdownView>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FieldError({ id, text }: { id: string; text?: string }) {
+  return (
+    <p id={id} className="small px-nc-error" role={text ? "alert" : undefined} hidden={!text}>
+      {text ? (
+        <>
+          <Icon name="circle-alert" size={14} />
+          {text}
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+/** A field that is there only sometimes, such as Esame: it folds in and out of the field above it. */
+function Fold({ shut, children }: { shut: boolean; children: ReactNode }) {
+  return (
+    <div className="px-nc-fold" data-shut={shut || undefined} inert={shut}>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The dialog grows out of `from` (a button) and shrinks back into it: it moves and scales from the button's centre,
+ * 320 ms in and 220 ms out. With reduced motion, or with no button on screen, it only fades.
+ */
+function grow(node: HTMLElement, from: HTMLElement | null, way: "in" | "out", done?: () => void) {
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const start = from?.getBoundingClientRect();
+  const end = node.getBoundingClientRect();
+  let frames: Keyframe[];
+  if (reduced || !start || !start.width || !end.width)
+    frames = [{ opacity: 0 }, { opacity: 1 }];
+  else {
+    const dx = start.left + start.width / 2 - (end.left + end.width / 2);
+    const dy = start.top + start.height / 2 - (end.top + end.height / 2);
+    const scale = Math.max(start.width / end.width, 0.2);
+    frames = [
+      { opacity: 0, transform: `translate(${dx}px, ${dy}px) scale(${scale})` },
+      { opacity: 1, transform: "none" },
+    ];
+  }
+  if (way === "out") frames.reverse();
+  const animation = node.animate(frames, {
+    duration: reduced ? 120 : way === "in" ? 320 : 220,
+    easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+  });
+  if (done) animation.onfinish = done;
+}

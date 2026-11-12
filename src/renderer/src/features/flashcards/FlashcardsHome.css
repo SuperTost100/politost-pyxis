@@ -139,3 +139,37 @@
 .px-fc-row > svg {
   color: var(--ink-subtle);
 }
+
+/* "Nuova flashcard" beside the review, or alone when nothing is due. */
+.px-fc-head > .px-fc-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.px-fc-actions > .px-fc-none {
+  padding: 0 4px 0 0;
+}
+.px-fc-new {
+  display: inline-flex;
+}
+/* The empty page: one line on what will appear and the button that starts it. */
+.px-fc > .empty {
+  padding-top: 56px;
+}
+.px-fc > .empty p {
+  max-width: 54ch;
+  margin-bottom: 14px;
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: 1.55;
+}
+/* Flashcards just saved under a subject: its card takes a light tint that fades (motion.md, "An item added"). */
+.px-fc-subject[data-landed] {
+  animation: px-fc-landed 1600ms var(--ease-out);
+}
+@keyframes px-fc-landed {
+  from {
+    background: var(--primary-soft);
+  }
+}
