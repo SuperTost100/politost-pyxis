@@ -3265,7 +3265,8 @@ async function openState(page: Page, name: string) {
       break;
     case "library-sorting":
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
-      await expect(page.getByText(both("Materia nuova.", "New subject."))).toBeVisible();
+      // The notice that Pyxis made a subject, not the "New subject…" choice of the pickers beside it.
+      await expect(page.locator(".px-library-newsubject").getByText(both("Materia nuova\\.", "New subject\\."))).toBeVisible();
       break;
     case "library-unsorted": {
       const group = page.getByRole("region", { name: both("Da sistemare", "To sort") });
