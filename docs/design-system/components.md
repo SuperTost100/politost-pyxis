@@ -21,6 +21,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `TagsField`                          | A free list of words, each a tag                                                                         |
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
 | `Chip`                               | A small rounded choice or filter                                                                         |
+| `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                    |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
 | `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |
 | `BackLink`                           | The way back above a page's title: an arrow and the name of the place it leads to                        |
@@ -79,16 +80,17 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 
 ## Sources and AI tools
 
-| Component                               | What it's for                                                                     |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `SourceRow`                             | One source in a list, with its kind and state                                     |
-| `SourceDetails`                         | A source's pages, reading state, the exams that use it and the pages lessons cite |
-| `SourceViewer`                          | A source opened at a page, beside the screen                                      |
-| `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                     |
-| `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                   |
-| `OcrDataCard` (`OcrData.tsx`)           | Progress and recovery for the local OCR language data                             |
-| `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library     |
-| `EngineRow`                             | One AI tool with its state, each state with its own icon and word                 |
-| `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                           |
-| `LocalModelCard` (`LocalModel.tsx`)     | The model that runs on this computer: hardware check, download and state          |
-| `Icon`                                  | A Lucide icon by name, at the stroke and size the system uses                     |
+| Component                               | What it's for                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `FileCover`                             | A file drawn by its kind; a book in its subject's colour with the subject's symbol |
+| `SourceRow`                             | One source in a list, with its kind and state                                      |
+| `SourceDetails`                         | A source's pages, reading state, the exams that use it and the pages lessons cite  |
+| `SourceViewer`                          | A source opened at a page, beside the screen                                       |
+| `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                      |
+| `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                    |
+| `OcrDataCard` (`OcrData.tsx`)           | Progress and recovery for the local OCR language data                              |
+| `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library      |
+| `EngineRow`                             | One AI tool with its state, each state with its own icon and word                  |
+| `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                            |
+| `LocalModelCard` (`LocalModel.tsx`)     | The model that runs on this computer: hardware check, download and state           |
+| `Icon`                                  | A Lucide icon by name, at the stroke and size the system uses                      |

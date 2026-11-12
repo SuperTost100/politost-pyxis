@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Modal, Tooltip, type MenuProps } from "antd";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, FileQuestionMark, Lock } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -8,23 +8,26 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
+import { FILE_KINDS, isFileKind, type FileKind } from "@shared/file-kind";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
+import { FileCover } from "../../components/FileCover";
+import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
+import { kindWords } from "../../lib/kindWords";
 import { refreshSubjects } from "../../lib/refreshSubjects";
 import { newCardPath } from "../flashcards/FlashcardsHome";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { isUnsorted, NewSubjectDialog, SubjectPicker, UnsortedGroup } from "./LibrarySubjects";
-import { bookLabel, byShelfOrder, coverColour, coverKind, needsStudent, nextPickerRow, placeWhenReady, PROBLEM } from "./shelf";
+import { byShelfOrder, coverColour, needsStudent, nextPickerRow, placeWhenReady, PROBLEM } from "./shelf";
 import "./LibraryShelf.css";
 
 export type LibrarySource = RequestOutput<"sources.list">[number];
@@ -240,9 +243,26 @@ export function LibraryShelf({
     landing.current.delete(id);
     return land;
   }
+  /**
+   * Stores the kind the student chose from "Tipo". The cover redraws in place once the list is read again, a screen
+   * reader hears the new kind, and focus goes back to the file, as the menu was about it.
+   */
+  async function setKind(source: LibrarySource, kind: FileKind) {
+    try {
+      await invoke("sources.setKind", { sourceId: source.id, kind });
+      setSaid(t("sources.shelf.kindSet", { title: source.title, kind: t(`sources.fileKind.${kind}`) }));
+      await client.invalidateQueries({ queryKey: ["sources"] });
+    } catch (err) {
+      onError(messageKeyOf(err));
+    }
+    root.current?.querySelector<HTMLElement>(`[data-source-id="${CSS.escape(source.id)}"] [data-source-open]`)?.focus();
+  }
   const fileAct = (source: LibrarySource, key: string, fromUnsorted: boolean) => {
     if (key === "move-new") setNaming(source);
-    else if (key.startsWith("move:"))
+    else if (key.startsWith("kind:")) {
+      const kind = key.slice(5);
+      if (isFileKind(kind)) void setKind(source, kind);
+    } else if (key.startsWith("move:"))
       void move(source, { subjectId: key.slice(5) }, fromUnsorted ? afterUnsorted(source) : "cover");
     else handlers.current?.act(source, key);
   };
@@ -384,6 +404,7 @@ export function LibraryShelf({
               <SubjectCard
                 key={subject.id}
                 subject={subject}
+                colour={coverColour(subject.id)}
                 index={subjects.indexOf(subject)}
                 count={count}
                 fresh={fresh.includes(subject)}
@@ -464,6 +485,22 @@ function fileMenu(
   return [
     { key: "details", label: t("sources.details") },
     { key: "rename", label: t("sources.rename") },
+    // What the file is: the rule's answer until the student picks one here, which then stays.
+    {
+      key: "kind",
+      label: t("sources.shelf.kindMenu"),
+      children: FILE_KINDS.map((kind) => ({
+        key: `kind:${kind}`,
+        role: "menuitemradio",
+        "aria-checked": kind === source.fileKind,
+        icon: (
+          <span className="px-item-menu-check" aria-hidden>
+            {kind === source.fileKind ? <Icon name="check" size={15} /> : null}
+          </span>
+        ),
+        label: t(`sources.fileKind.${kind}`),
+      })),
+    },
     {
       key: "move",
       label: t("sources.sort.moveTo"),
@@ -511,7 +548,37 @@ function useFileState(source: LibrarySource, newVersion: string | undefined) {
   ].filter((note): note is string => Boolean(note));
   const status =
     source.status === "ready" ? null : t(`sources.status.${source.status}`, { defaultValue: source.status });
-  return { problem, working, status, notes, flagged: problem || Boolean(source.linked?.missing) };
+  const locked = Boolean(source.errorJobId && isPdfPasswordError(source.error));
+  // The one mark a cover carries, most urgent first; the words under it say the same.
+  const mark: Mark | null = working
+    ? "reading"
+    : locked
+      ? "locked"
+      : problem
+        ? "failed"
+        : source.linked?.missing
+          ? "missing"
+          : null;
+  return { problem, working, status, notes, mark, flagged: problem || Boolean(source.linked?.missing) };
+}
+
+type Mark = "reading" | "locked" | "failed" | "missing";
+
+/** A file's state on its cover's corner, so a full shelf can be scanned for it: reading, locked, failed or missing. */
+function CoverMark({ mark }: { mark: Mark }) {
+  return (
+    <span className={`px-cover-badge is-${mark}`} data-mark={mark}>
+      {mark === "reading" ? (
+        <Logo working decorative size={16} />
+      ) : mark === "locked" ? (
+        <Lock size={14} strokeWidth={2} aria-hidden />
+      ) : mark === "missing" ? (
+        <FileQuestionMark size={15} strokeWidth={2} aria-hidden />
+      ) : (
+        <AlertCircle size={15} strokeWidth={2} aria-hidden />
+      )}
+    </span>
+  );
 }
 
 /**
@@ -560,14 +627,41 @@ function FileActions({
   );
 }
 
-/** The picture of a file: a book in its subject's colour, slides, an exam paper, a photo or a stack of pages. */
-function CoverArt({ source, colour, label }: { source: LibrarySource; colour?: number; label?: string }) {
-  const kind = coverKind(source);
-  const style = colour ? ({ "--cover": `var(--cover-${colour})` } as CSSProperties) : undefined;
+/**
+ * The picture of a file, drawn by its kind. A book takes its subject's colour and symbol; with no subject yet it is grey
+ * and takes its symbol from its own title. When the kind changes, the new drawing grows in place out of the old one.
+ */
+function CoverArt({
+  source,
+  colour,
+  scale,
+  faded = false,
+  children,
+}: {
+  source: LibrarySource;
+  colour?: number;
+  scale?: number;
+  /** The file is still being read. */
+  faded?: boolean;
+  children?: ReactNode;
+}) {
+  const art = useRef<HTMLSpanElement>(null);
+  const drawn = useRef(source.fileKind);
+  useLayoutEffect(() => {
+    if (drawn.current === source.fileKind) return;
+    drawn.current = source.fileKind;
+    if (window.matchMedia(STILL).matches) return;
+    art.current
+      ?.querySelector(".px-fc")
+      ?.animate([{ scale: "0.86", opacity: 0 }, { scale: "1", opacity: 1 }], {
+        duration: 240,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      });
+  }, [source.fileKind]);
   return (
-    <span className={`px-cover-art is-${kind}`} style={style} aria-hidden>
-      {/* Printed by CSS, so the cover's button is named by the file's title alone. */}
-      {kind === "book" && label ? <span className="px-cover-book-title" data-label={bookLabel(label)} /> : null}
+    <span ref={art} className={faded ? "px-cover-art is-reading" : "px-cover-art"} data-kind={source.fileKind}>
+      <FileCover kind={source.fileKind} colour={colour} symbol={source.subject ?? source.title} scale={scale} />
+      {children}
     </span>
   );
 }
@@ -632,6 +726,7 @@ const Cover = memo(function Cover({
   }, []);
   const detail = [state.status, ...state.notes].filter(Boolean).join(". ");
   const stateId = useId();
+  const kindId = useId();
   // The title shows whole in a tooltip on hover and on keyboard focus when the cover cuts it, or when there is a state to say.
   const titleText = useRef<HTMLSpanElement>(null);
   const [tip, setTip] = useState(false);
@@ -674,26 +769,22 @@ const Cover = memo(function Cover({
               setTip(false);
             }
           }}
-          // The title names the cover; its state, under it, is read after it as a description.
-          aria-describedby={detail ? stateId : undefined}
+          // The title names the cover; its kind and its state, under it, are read after it as a description.
+          aria-describedby={detail ? `${kindId} ${stateId}` : kindId}
         >
           <span className="px-cover-frame">
-            <CoverArt source={source} colour={colour} label={source.subject ?? undefined} />
-            {state.working || bookBusy ? (
-              <span className="px-cover-badge">
-                <Logo working decorative size={16} />
-              </span>
-            ) : state.flagged ? (
-              <span className="px-cover-badge is-problem">
-                <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
-              </span>
-            ) : null}
+            <CoverArt source={source} colour={colour} faded={state.working}>
+              {bookBusy ? <CoverMark mark="reading" /> : state.mark ? <CoverMark mark={state.mark} /> : null}
+            </CoverArt>
           </span>
           <span ref={titleText} className="px-cover-title">
             {source.title}
           </span>
         </button>
       </Tooltip>
+      <span id={kindId} className="visually-hidden">
+        {t(`sources.fileKind.${source.fileKind}`)}
+      </span>
       {detail ? (
         <span id={stateId} className={state.flagged ? "px-cover-state is-problem" : "px-cover-state"}>
           {[state.status, ...state.notes].filter(Boolean).map((part) => (
@@ -765,8 +856,12 @@ function UnsortedRow({
     // The motion starts once, when the row starts to leave.
   }, [leaving]);
   const meta = [
-    t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),
-    source.sections ? t("sources.sectionCount", { count: source.sections }) : null,
+    ...kindWords(source, t),
+    source.pages
+      ? t("sources.pages", { count: source.pages })
+      : source.sections
+        ? t("sources.sectionCount", { count: source.sections })
+        : null,
     state.status,
   ]
     .filter(Boolean)
@@ -781,7 +876,7 @@ function UnsortedRow({
       {...itemMenu.bind}
     >
       <span className="px-unsorted-art">
-        <CoverArt source={source} />
+        <CoverArt source={source} scale={0.72} faded={state.working} />
       </span>
       <span className="px-unsorted-name">
         <button type="button" className="px-unsorted-open" data-source-open onClick={onOpen}>
@@ -820,6 +915,7 @@ function UnsortedRow({
  */
 function SubjectCard({
   subject,
+  colour,
   index,
   count,
   ahead,
@@ -838,6 +934,8 @@ function SubjectCard({
   children,
 }: {
   subject: Subject;
+  /** The subject's cover colour, 1 to 6, which its books and handouts take and its name's dot shows. */
+  colour: number;
   index: number;
   count: number;
   /** A note after the count: the files that need the student come first, while some are behind "Mostra tutti". */
@@ -900,6 +998,7 @@ function SubjectCard({
       aria-labelledby={`${headId} ${countId}`}
     >
       <div className="px-shelf-subject-head" {...itemMenu.bind}>
+        <span className="px-shelf-subject-dot" style={{ background: `var(--cover-${colour})` }} aria-hidden />
         {renaming ? (
           <input
             className="px-ctl-field px-shelf-subject-rename"

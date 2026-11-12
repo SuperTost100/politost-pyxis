@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LINK_MODES, MATERIAL_KINDS, MAX_LINK_PATHS, MAX_SUBJECT_NAME } from "./linked-folders";
+import { FILE_KINDS } from "./file-kind";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
@@ -1975,6 +1976,30 @@ export const requests = {
     input: z.object({ planId: z.string(), itemId: z.string() }),
     output: z.object({ attemptId: z.string() }),
   },
+  "plans.unfinished": {
+    // "Da finire": what the student started on this exam and did not hand in, newest first. See `unfinishedActivities`
+    // in core/plans/unfinished.ts.
+    input: z.object({ planId: z.string().min(1) }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["quiz", "drill", "diagnostic", "redo", "past", "review", "simulation"]),
+        topicId: z.string().nullable(),
+        topicTitle: z.string().nullable(),
+        routeTopicId: z.string().nullable(),
+        attemptId: z.string().nullable(),
+        answered: z.number().int().nonnegative(),
+        total: z.number().int().nonnegative(),
+        state: z.enum(["open", "writing", "stopped", "ready", "expired"]),
+        startedAt: z.number(),
+      }),
+    ),
+  },
+  "plans.deleteUnfinished": {
+    // Deletes one entry of "Da finire" by its id, with its answers and the job still writing it.
+    input: z.object({ planId: z.string().min(1), id: z.string().min(1).max(200) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "plans.settings": {
     input: z.object({
       planId: z.string().min(1),
@@ -2126,7 +2151,7 @@ export const requests = {
               topicTitle: z.string().nullable(),
             }),
           ),
-          // Null when the planner has no share for this plan today (no hours set, no date, or the exam is today).
+          // Null when Oggi has no share for this plan today (no hours set, no date, or the exam is today).
           minutesToday: z.number().nullable(),
           minutesLeft: z.number().nullable(),
           complete: z.boolean(),
@@ -2144,6 +2169,11 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
+        // Oggi in minutes: what today's steps add up to and the exam's part of the student's goal for the day. Null
+        // whenever `today` is.
+        todayMinutes: z.object({ done: z.number().min(0), target: z.number().min(0) }).nullable(),
+        // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
+        todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
         // The path's next step, due cards aside.
         next: z
           .object({
@@ -2591,8 +2621,19 @@ export const requests = {
          * and `no-ai` when the student has to choose. Null otherwise.
          */
         sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
+        /** What the file is (a book, slides, an exam paper...): the student's choice, or the rule's (`file-kind.ts`). */
+        fileKind: z.enum(FILE_KINDS),
+        /** The student chose `fileKind` from the file's menu, so Pyxis keeps it whatever the file's name says. */
+        kindChosen: z.boolean(),
+        /** The number of the last page the read found, when the file has pages. */
+        pages: z.number().int().positive().nullable(),
       }),
     ),
+  },
+  /** Sets the kind of a file, the student's choice from its menu ("Tipo"), which the rules never change again. */
+  "sources.setKind": {
+    input: z.object({ sourceId: z.string(), kind: z.enum(FILE_KINDS) }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "sources.import": {
     input: z.object({

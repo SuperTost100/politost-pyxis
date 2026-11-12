@@ -363,6 +363,13 @@ CREATE INDEX sources_subject_sort ON sources(subject_sort) WHERE subject_sort IN
     version: 30,
     sql: `CREATE INDEX sources_blob_sha ON sources(blob_sha) WHERE blob_sha IS NOT NULL;`,
   },
+  // The kind of a file the student chose from its menu ("Tipo"), one of `FILE_KINDS` in src/shared/file-kind.ts. NULL
+  // for every source, and for any file whose kind the rules decide: the computed kind is never stored. No CHECK, so a
+  // later kind needs no rebuilt table; core reads a value it does not know as no choice.
+  {
+    version: 31,
+    sql: `ALTER TABLE sources ADD COLUMN chosen_kind TEXT;`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

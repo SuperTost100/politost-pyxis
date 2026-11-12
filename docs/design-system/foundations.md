@@ -8,28 +8,32 @@ Teal is the one accent. The ring colours belong to the exam rings and their lege
 
 Targets are measured against the weakest ground a colour sits on: 4.5:1 for text, 3:1 for control edges, focus and rings.
 
-| Token                                          | Use                                                                                                         |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `--bg`                                         | The ground behind every screen                                                                              |
-| `--surface`                                    | Cards, the side panel, settings lists                                                                       |
-| `--surface-raised`                             | Soft fills: secondary buttons, hover, the student's chat messages, fields in a row                          |
-| `--surface-sunken`                             | Panels inside a card: a formula, a graph, code                                                              |
-| `--surface-overlay`                            | Popovers, menus and dialogs, always with `--shadow-overlay`                                                 |
-| `--border`                                     | Hairlines between rows and groups. Decorative, so it has no contrast target                                 |
-| `--border-control`                             | The edge of a text field, the stepper, the tags field and the switch track (3:1)                            |
-| `--ink`                                        | Titles, body text, icons that mean something                                                                |
-| `--ink-muted`                                  | Secondary text: the line under a title, ghost buttons                                                       |
-| `--ink-subtle`                                 | Descriptions, times, group labels, placeholders                                                             |
-| `--primary`                                    | The one primary button, a checked switch, radio or box. Its label is `--on-primary`                         |
-| `--primary-text`                               | Links, the current item, the ring around a chosen preview tile, progress                                    |
-| `--primary-soft`                               | Behind citations and counts, and the selected segment in dark                                               |
-| `--focus-ring`                                 | A 2px outline, 2px away, on everything focusable                                                            |
-| `--ok`, `--mastery`                            | A right answer, a finished step, "Aggiunta". Always with a check or a word                                  |
-| `--danger`                                     | A wrong answer, an error line, the label of a destructive button                                            |
-| `--star`, `--star-text`                        | The star in the mark and the app icon                                                                       |
-| `--ring-prep`, `--ring-path`, `--ring-today`   | The three exam rings and their legend                                                                       |
-| `--cover-1` to `--cover-6`, `--on-cover`       | A subject's book covers in the Library, picked from the subject's id, and the title printed on them (4.5:1) |
-| `--scrollbar-thumb`, `--scrollbar-thumb-hover` | The scrollbar thumb at rest and on hover (see [Layout](layout.md#scroll-areas))                             |
+| Token                                                              | Use                                                                                                         |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `--bg`                                                             | The ground behind every screen                                                                              |
+| `--surface`                                                        | Cards, the side panel, settings lists                                                                       |
+| `--surface-raised`                                                 | Soft fills: secondary buttons, hover, the student's chat messages, fields in a row                          |
+| `--surface-sunken`                                                 | Panels inside a card: a formula, a graph, code                                                              |
+| `--surface-overlay`                                                | Popovers, menus and dialogs, always with `--shadow-overlay`                                                 |
+| `--border`                                                         | Hairlines between rows and groups. Decorative, so it has no contrast target                                 |
+| `--border-control`                                                 | The edge of a text field, the stepper, the tags field and the switch track (3:1)                            |
+| `--ink`                                                            | Titles, body text, icons that mean something                                                                |
+| `--ink-muted`                                                      | Secondary text: the line under a title, ghost buttons                                                       |
+| `--ink-subtle`                                                     | Descriptions, times, group labels, placeholders                                                             |
+| `--primary`                                                        | The one primary button, a checked switch, radio or box. Its label is `--on-primary`                         |
+| `--primary-text`                                                   | Links, the current item, the ring around a chosen preview tile, progress                                    |
+| `--primary-soft`                                                   | Behind citations and counts, and the selected segment in dark                                               |
+| `--focus-ring`                                                     | A 2px outline, 2px away, on everything focusable                                                            |
+| `--ok`, `--mastery`                                                | A right answer, a finished step, "Aggiunta". Always with a check or a word                                  |
+| `--danger`                                                         | A wrong answer, an error line, the label of a destructive button                                            |
+| `--star`, `--star-text`                                            | The star in the mark and the app icon                                                                       |
+| `--ring-prep`, `--ring-path`, `--ring-today`                       | The three exam rings and their legend                                                                       |
+| `--cover-1` to `--cover-6`, `--on-cover`                           | A subject's book covers in the Library, picked from the subject's id, and the title printed on them (4.5:1) |
+| `--cover-none`                                                     | A book or handout with no subject yet                                                                       |
+| `--kind-slides`, `--kind-exam`, `--kind-notes`, `--kind-exercises` | The colour of each kind of file's cover, with `--on-cover` marks on it (3:1)                                |
+| `--kind-board`                                                     | The blackboard in a photo's cover                                                                           |
+| `--paper`, `--paper-edge`, `--paper-line`, `--staple`, `--spiral`  | The sheets, lines, staples and notebook spiral drawn on covers. Decorative                                  |
+| `--scrollbar-thumb`, `--scrollbar-thumb-hover`                     | The scrollbar thumb at rest and on hover (see [Layout](layout.md#scroll-areas))                             |
 
 No gradients and no glass. State is never shown by colour alone.
 
@@ -94,6 +98,7 @@ Separate with space first, then a fill, then a shadow; a border comes last. Shad
 | `--shadow-card`    | Resting: the selected segment, small chips                          |
 | `--shadow-raised`  | Cards on the ground: settings lists, the side panel, the quiz sheet |
 | `--shadow-overlay` | Above everything: popovers, menus, dialogs, the command palette     |
+| `--shadow-cover`   | A filter, not a box shadow: lifts a drawn file cover off its card   |
 
 - Never a card inside a card. A group inside a card is rows split by hairlines.
 - Nothing is pressed in, inset or glowing. The one glow, `--glow-star`, marks the current path node.

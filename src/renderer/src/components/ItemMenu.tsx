@@ -118,6 +118,9 @@ function drawn(menu: MenuProps, close: () => void): MenuProps {
     getPopupContainer: (node) => node.closest<HTMLElement>(".px-submenu-room") ?? document.body,
     ...menu,
     onClick: (info) => {
+      // Chosen with Enter: the focus goes back to the menu's item during the key press, so the press must end here,
+      // or it would also click that item (a cover's button opens its details).
+      if ("key" in info.domEvent) info.domEvent.preventDefault();
       close();
       menu.onClick?.(info);
     },

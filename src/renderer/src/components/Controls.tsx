@@ -1,4 +1,4 @@
-import { Minus, Plus, X } from "lucide-react";
+import { Check, Minus, Plus, X } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { addTags } from "./tags";
 import "./Controls.css";
@@ -463,20 +463,82 @@ export function Stepper({
 }
 
 /**
+ * Several kinds to keep or leave out, as the kinds of question in a quiz: each a rounded chip that is pressed (tinted,
+ * with a check) or not. Each chip is a button with `aria-pressed`, one tab stop each, and Space or Enter toggles it.
+ * At least one stays on: the last pressed chip can't be turned off, says so to a screen reader through `keepHint`, and
+ * shows it is held by not reacting to the pointer.
+ */
+export function ToggleChips<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  keepHint,
+  disabled = false,
+}: {
+  /** The id of the text that names the group. */
+  label: string;
+  value: readonly T[];
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T[]) => void;
+  /** Why the last chip can't be turned off, read with that chip: "Almeno un tipo resta scelto". */
+  keepHint: string;
+  disabled?: boolean;
+}) {
+  const hint = useId();
+  const last = value.length === 1 ? value[0] : undefined;
+  return (
+    <div className="px-ctl-chips" role="group" aria-labelledby={label}>
+      {options.map((option) => {
+        const on = value.includes(option.value);
+        const held = option.value === last;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className="px-ctl-chip"
+            aria-pressed={on}
+            // Not `disabled`: the held chip keeps its tab stop, so the student hears why it stays on.
+            aria-disabled={disabled || held || undefined}
+            aria-describedby={held ? hint : undefined}
+            onClick={() => {
+              if (disabled || held) return;
+              // The order of `options`, whatever order the chips were pressed in.
+              const next = on ? value.filter((item) => item !== option.value) : [...value, option.value];
+              onChange(options.map((item) => item.value).filter((item) => next.includes(item)));
+            }}
+          >
+            <Check className="px-ctl-chip-check" size={14} strokeWidth={2.2} aria-hidden />
+            {option.label}
+          </button>
+        );
+      })}
+      <span id={hint} hidden>
+        {keepHint}
+      </span>
+    </div>
+  );
+}
+
+/**
  * A choice judged by looking, as the theme: each option a small picture with its name under it, the chosen one ringed.
- * A radio group in its own white card, with one tab stop and the arrow keys moving the choice.
+ * A radio group in its own white card, with one tab stop and the arrow keys moving the choice. `variant="icons"` is the
+ * small form for a choice of kinds, as in "Crea un'attività": each option an icon over its name on a soft tile, the
+ * chosen one tinted, with no card around the row.
  */
 export function PreviewTiles<T extends string>({
   label,
   value,
   options,
   onChange,
+  variant = "pictures",
 }: {
   /** The id of the heading that names the group. */
   label: string;
   value: T;
-  /** `preview` is drawn inside the tile's frame, which keeps a 16:10 shape. */
+  /** `preview` is drawn inside the tile's frame, which keeps a 16:10 shape; with `variant="icons"` it is an icon. */
   options: Array<{ value: T; label: ReactNode; preview: ReactNode }>;
+  variant?: "pictures" | "icons";
   /** May return the save; once it settles, the tiles show the stored value again, as RadioRows does. */
   onChange: (value: T) => void | Promise<unknown>;
 }) {
@@ -492,7 +554,7 @@ export function PreviewTiles<T extends string>({
   };
   return (
     <div
-      className="px-ctl px-ctl-tiles"
+      className={variant === "icons" ? "px-ctl-icontiles" : "px-ctl px-ctl-tiles"}
       role="radiogroup"
       aria-labelledby={label}
       onKeyDown={(event) => {
@@ -521,7 +583,7 @@ export function PreviewTiles<T extends string>({
           tabIndex={shown === option.value ? 0 : -1}
           onClick={() => pick(option.value)}
         >
-          <span className="px-ctl-tile-frame" aria-hidden="true">
+          <span className={variant === "icons" ? "px-ctl-tile-icon" : "px-ctl-tile-frame"} aria-hidden="true">
             {option.preview}
           </span>
           {option.label}

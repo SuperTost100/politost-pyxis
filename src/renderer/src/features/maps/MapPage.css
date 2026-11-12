@@ -284,6 +284,10 @@
   font: 500 12px/1 var(--font-mono);
   cursor: pointer;
 }
+/* In the radial layout the button sits where the node's links leave it, placed by the node. */
+.px-concept-fold.is-radial {
+  right: auto;
+}
 .px-concept-fold:hover {
   color: var(--ink);
   background: var(--surface-raised);
