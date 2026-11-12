@@ -164,7 +164,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
       return message;
     });
     await open.getByRole("menuitem").last().click();
-    expect(await confirmed).toMatch(/^Rimuovi "Dispensa \d\d"\?$/);
+    expect(await confirmed).toMatch(/^Rimuovere «Dispensa \d\d»\?$/);
 
     // The same cover's dots open the menu inside the window. "Sposta in", taller than the window, opens inside it too and
     // scrolls inside itself, and the menu it grows from stays where it was.

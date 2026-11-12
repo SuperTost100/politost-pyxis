@@ -23,6 +23,18 @@ describe("interface languages", () => {
     expect(enKeys.sort()).toEqual(itKeys.sort());
   });
 
+  it("asks every delete or remove confirmation the same way: an infinitive in Italian, the verb first in English", () => {
+    const read = (file: string) => JSON.parse(readFileSync(resolve(dir, file), "utf8")) as Record<string, unknown>;
+    const titles = (tree: Record<string, unknown>) =>
+      keys(tree)
+        .filter((key) => /\.(deleteTitle|removeTitle)$/.test(key))
+        .map((key) => [key, key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown>)[part], tree)]);
+    const italian = titles(read("it.json"));
+    expect(italian.length).toBeGreaterThan(4);
+    for (const [key, text] of italian) expect(text, key).toMatch(/^(Eliminare|Rimuovere) .*\?$/);
+    for (const [key, text] of titles(read("en.json"))) expect(text, key).toMatch(/^(Delete|Remove) .*\?$/);
+  });
+
   it('writes "ad", not "a", before a provider whose name starts with a vowel', () => {
     const italian = readFileSync(resolve(dir, "it.json"), "utf8");
     expect(italian.match(/\b[aA] (Anthropic|OpenAI|Ollama|Antigravity)\b/g) ?? []).toEqual([]);

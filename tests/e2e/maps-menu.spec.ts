@@ -307,7 +307,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     const askDelete = async () => {
       await dots.click();
       await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-      const dialog = page.getByRole("dialog", { name: "Elimini la mappa «Teoremi sui limiti»?" });
+      const dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Teoremi sui limiti»?" });
       await expect(dialog).toBeVisible();
       return dialog;
     };
@@ -344,7 +344,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await expect(campo).toHaveClass(/is-ctx/);
     expect(await menuItems(page)).toEqual(["Apri", "Rinomina", "Esporta", "-", "Elimina la mappa…"]);
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    dialog = page.getByRole("dialog", { name: "Elimini la mappa «Campo elettrico»?" });
+    dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Campo elettrico»?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(campo).toHaveCount(1);
     await campo.locator(".px-maps-thumb").click({ button: "right" });
@@ -431,7 +431,7 @@ test("deleting a map still being written stops its build, and the build never br
     await expect(page.getByRole("menuitem", { name: "Rinomina" })).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("menuitem", { name: "Esporta" })).toHaveAttribute("aria-disabled", "true");
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    const dialog = page.getByRole("dialog", { name: `Elimini la mappa «${asked}»?` });
+    const dialog = page.getByRole("dialog", { name: `Eliminare la mappa «${asked}»?` });
     await expect(dialog).toContainText("Pyxis smette di scriverla");
     await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\?subject=an$/);

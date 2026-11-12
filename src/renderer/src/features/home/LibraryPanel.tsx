@@ -565,7 +565,7 @@ export function LibraryPanel({
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
   async function remove(source: LibrarySource) {
-    if (!window.confirm(`${t("sources.remove")} "${source.title}"?`)) return;
+    if (!window.confirm(t("sources.removeTitle", { title: source.title }))) return;
     const result = await invoke("sources.remove", {
       sourceId: source.id,
       confirmed: false,
