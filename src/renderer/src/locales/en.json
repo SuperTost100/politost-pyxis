@@ -742,6 +742,9 @@
       "noAi": "You haven't connected an AI tool, so you choose the subject of these files.",
       "noAiLink": "Connect a tool",
       "unsure": "I couldn't tell which subject these files belong to, so you choose.",
+      "unsureSome": "For some files I couldn't tell which subject they belong to, so you choose.",
+      "none": "These files have no subject yet, so you choose.",
+      "noneSome": "Some files have no subject yet, so you choose.",
       "stopped": "You stopped choosing their subject. Resume it from Background tasks, or choose it yourself.",
       "choose": "Choose the subject",
       "chooseFor": "Subject of {{title}}",
@@ -761,6 +764,7 @@
       "files": "Files in {{name}}",
       "subjectActions": "Actions for the subject {{name}}",
       "newMap": "New map of this subject",
+      "newCards": "Make flashcards for this subject",
       "delete": "Delete the subject…",
       "deleteTitle": "Delete the subject {{name}}?",
       "deleteBody": "It has no files, exams, maps, flashcards or chats, so deleting it removes nothing else.",
@@ -773,6 +777,8 @@
       "showAll": "Show all {{count}} files",
       "showFewer": "Show fewer",
       "working": "I'm choosing the subject of these files.",
+      "subjectsFailed": "I couldn't load your subjects. Your files are below, without the split by subject.",
+      "detachedTitle": "Files",
       "updateBook": "Update the book",
       "subjectNotEmpty": "This subject still has files, exams, maps, flashcards or chats, so I won't delete it."
     }

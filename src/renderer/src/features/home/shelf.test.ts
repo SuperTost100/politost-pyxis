@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookLabel, coverColour, coverKind } from "./shelf";
+import { bookLabel, coverColour, coverKind, nextPickerRow, unsortedReasons } from "./shelf";
 
 describe("the Library's shelf", () => {
   it("gives a subject the same cover colour every time, from its id alone", () => {
@@ -27,5 +27,31 @@ describe("the Library's shelf", () => {
     expect(bookLabel("Analisi matematica 2")).toBe("AM2");
     expect(bookLabel("Metodi matematici per l'ingegneria dell'informazione")).toBe("MMII");
     expect(bookLabel("Termodinamica")).toBe("Termodinamica".slice(0, 12));
+  });
+  it("moves focus after a sort to a row that has a picker, never to one Pyxis is still choosing for", () => {
+    const rows = [
+      { id: "a", sort: null },
+      { id: "b", sort: "working" as const },
+      { id: "c", sort: "working" as const },
+      { id: "d", sort: "unsure" as const },
+    ];
+    // The next rows are being sorted and have no picker: the previous row has one.
+    expect(nextPickerRow(rows, "a")).toBe("d");
+    expect(nextPickerRow(rows, "d")).toBe("a");
+    // Only rows with no picker left: the caller falls back to the moved cover.
+    expect(nextPickerRow([{ id: "a", sort: null }, { id: "b", sort: "working" as const }], "a")).toBeNull();
+    expect(nextPickerRow([{ id: "a", sort: null }], "a")).toBeNull();
+    // The nearest row below comes first, then the nearest above.
+    expect(nextPickerRow([{ id: "a", sort: null }, { id: "b", sort: null }, { id: "c", sort: null }], "b")).toBe("c");
+    expect(nextPickerRow([{ id: "a", sort: null }, { id: "b", sort: null }, { id: "c", sort: null }], "c")).toBe("b");
+  });
+
+  it("explains a waiting file only by what really happened to it", () => {
+    // A file the Library never asked about is not one Pyxis could not place.
+    expect([...unsortedReasons([{ sort: null }])]).toEqual(["none"]);
+    expect([...unsortedReasons([{ sort: "unsure" }])]).toEqual(["unsure"]);
+    expect(unsortedReasons([{ sort: null }, { sort: "unsure" }, { sort: "working" }, { sort: "no-ai" }, { sort: "stopped" }])).toEqual(
+      new Set(["none", "unsure", "working", "no-ai", "stopped"]),
+    );
   });
 });

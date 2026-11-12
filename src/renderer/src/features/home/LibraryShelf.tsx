@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Button as AntButton, Dropdown, Modal, type MenuProps } from "antd";
+import { Button as AntButton, Dropdown, Modal, Tooltip, type MenuProps } from "antd";
 import { AlertCircle, Check, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
   memo,
@@ -17,13 +17,14 @@ import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
-import { useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
+import { leaveMenuTo, useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
+import { newCardPath } from "../flashcards/FlashcardsHome";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { isUnsorted, NewSubjectDialog, SubjectPicker, UnsortedGroup } from "./LibrarySubjects";
-import { bookLabel, coverColour, coverKind } from "./shelf";
+import { bookLabel, coverColour, coverKind, nextPickerRow } from "./shelf";
 import "./LibraryShelf.css";
 
 export type LibrarySource = RequestOutput<"sources.list">[number];
@@ -68,6 +69,7 @@ export function LibraryShelf({
   bookBusy,
   handlers,
   addButton,
+  subjectsFailed = false,
   onError,
 }: {
   /** The files that match the search and the type filter. */
@@ -84,6 +86,8 @@ export function LibraryShelf({
   handlers: RefObject<ShelfHandlers | null>;
   /** The page's "Aggiungi file", where focus goes when the last subject is deleted. */
   addButton: RefObject<HTMLElement | null>;
+  /** The subjects could not be read: files that have one still show, in a group of their own. */
+  subjectsFailed?: boolean;
   onError: (key: string) => void;
 }) {
   const { t } = useTranslation();
@@ -93,18 +97,23 @@ export function LibraryShelf({
   const [naming, setNaming] = useState<LibrarySource | null>(null);
   const [said, setSaid] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
+  // The subject whose name is being edited now, for an answer that arrives after the student went on to another.
+  const renamingNow = useRef<string | null>(null);
+  renamingNow.current = renaming;
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [unsortedOpen, setUnsortedOpen] = useState(false);
   const landing = useRef(new Map<string, Landing>());
   const pendingFocus = useRef<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  const detachedId = useId();
 
   // A file can reach a subject this page has not read yet (a sort or a folder made it): the subjects are read again.
   const known = new Set(subjects.map((subject) => subject.id));
   const unknown = all.some((source) => source.subjectId && !known.has(source.subjectId));
   useEffect(() => {
-    if (unknown) void client.invalidateQueries({ queryKey: ["subjects"] });
-  }, [unknown, client]);
+    // Not while the subjects cannot be read: the page offers Try again, and asking again here would only repeat the failure.
+    if (unknown && !subjectsFailed) void client.invalidateQueries({ queryKey: ["subjects"] });
+  }, [unknown, subjectsFailed, client]);
 
   // A file that just got its subject, from Pyxis or from the student, lands on its shelf with a tint that fades.
   const lastSubject = useRef<Map<string, string | null> | null>(null);
@@ -139,6 +148,7 @@ export function LibraryShelf({
   });
 
   const unsorted = sources.filter((source) => !source.subjectId || isUnsorted(source)).sort(byTitle);
+  const unsortedShown = unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP);
   const bySubject = new Map<string, LibrarySource[]>();
   for (const source of sources) {
     if (!source.subjectId || isUnsorted(source)) continue;
@@ -190,11 +200,10 @@ export function LibraryShelf({
       return null;
     }
   }
-  /** After a choice in "Da sistemare": the next row's picker, or the moved cover once the group is empty. */
+  /** After a choice in "Da sistemare": a shown row that has a picker, or the moved cover when none has one. */
   function afterUnsorted(source: LibrarySource): Landing["focus"] {
-    const at = unsorted.findIndex((item) => item.id === source.id);
-    const next = unsorted[at + 1] ?? unsorted[at - 1];
-    return next ? { picker: next.id } : "cover";
+    const next = nextPickerRow(unsortedShown, source.id);
+    return next ? { picker: next } : "cover";
   }
   function onLanded(id: string): Landing | undefined {
     const land = landing.current.get(id);
@@ -216,9 +225,12 @@ export function LibraryShelf({
     }
     try {
       const renamed = await invoke("subjects.rename", { id: subject.id, name: next });
-      setRenaming(null);
       setSaid(t("sources.shelf.renamed", { name: renamed.name }));
-      pendingFocus.current = `[data-subject-id="${CSS.escape(subject.id)}"] .px-shelf-subject-dots`;
+      // The answer closes the field and takes the focus back only while this subject's is the edit that is open.
+      if (renamingNow.current === subject.id) {
+        setRenaming(null);
+        pendingFocus.current = `[data-subject-id="${CSS.escape(subject.id)}"] .px-shelf-subject-dots`;
+      }
       void refreshSubjects(client);
       return null;
     } catch (err) {
@@ -250,6 +262,10 @@ export function LibraryShelf({
   }
 
   const shownSubjects = filtering ? subjects.filter((subject) => bySubject.has(subject.id)) : subjects;
+  // With the subjects unread, a file that has one is in no card: it shows in a group of its own, so it is still there.
+  const detached = subjectsFailed
+    ? sources.filter((source) => source.subjectId && !isUnsorted(source) && !known.has(source.subjectId)).sort(byTitle)
+    : [];
   return (
     <div className="px-shelves" ref={root}>
       {modalContext}
@@ -275,7 +291,7 @@ export function LibraryShelf({
             ) : null
           }
         >
-          {(unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP)).map((source) => (
+          {unsortedShown.map((source) => (
             <UnsortedRow
               key={source.id}
               source={source}
@@ -291,6 +307,32 @@ export function LibraryShelf({
             />
           ))}
         </UnsortedGroup>
+      ) : null}
+      {detached.length ? (
+        <section className="px-shelf-subject" aria-labelledby={detachedId}>
+          <div className="px-shelf-subject-head">
+            <h2 id={detachedId} className="px-shelf-subject-name">
+              {t("sources.shelf.detachedTitle")}
+            </h2>
+          </div>
+          <ul className="px-shelf">
+            {detached.map((source) => (
+              <Cover
+                key={source.id}
+                source={source}
+                colour={coverColour(source.subjectId!)}
+                selected={source.id === selectedId}
+                arrived={false}
+                menu={fileMenu(source, subjects, t, { refreshBusy, newVersion: newVersions.get(source.id) })}
+                newVersion={newVersions.get(source.id)}
+                bookBusy={bookBusy === source.id}
+                onOpen={() => handlers.current?.open(source)}
+                onAct={(key) => fileAct(source, key, false)}
+                onLanded={onLanded}
+              />
+            ))}
+          </ul>
+        </section>
       ) : null}
       {shownSubjects.length ? (
         <div className="px-shelf-subjects">
@@ -317,6 +359,7 @@ export function LibraryShelf({
                   pendingFocus.current = `[data-subject-id="${CSS.escape(subject.id)}"] .px-shelf-subject-dots`;
                 }}
                 onNewMap={() => navigate(`/maps?subject=${encodeURIComponent(subject.id)}&new=1`)}
+                onNewCards={() => navigate(newCardPath("pyxis", subject.id))}
                 onDelete={(index) => remove(subject, index)}
                 more={
                   files.length > SHELF_CAP && !filtering ? (
@@ -415,11 +458,20 @@ function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: 
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   // The menu closes when the page scrolls, and follows its dots when the window is resized or the layout shifts them.
-  useMenuLifetime(open, () => button.current, () => setOpen(false), true);
+  useMenuLifetime(
+    open,
+    () => button.current,
+    () => {
+      setOpen(false);
+      leaveMenuTo(button.current);
+    },
+    true,
+  );
   return (
     <Dropdown
       trigger={["click"]}
       autoFocus
+      rootClassName="px-item-menu"
       open={open}
       onOpenChange={setOpen}
       popupRender={(list) => (
@@ -570,6 +622,12 @@ const Cover = memo(function Cover({
   }, []);
   const detail = [state.status, ...state.notes].filter(Boolean).join(". ");
   const stateId = useId();
+  // The title shows whole in a tooltip on hover and on keyboard focus when the cover cuts it, or when there is a state to say.
+  const titleText = useRef<HTMLSpanElement>(null);
+  const [tip, setTip] = useState(false);
+  useEffect(() => {
+    if (itemMenu.open) setTip(false);
+  }, [itemMenu.open]);
   return (
     <li
       ref={item}
@@ -579,30 +637,53 @@ const Cover = memo(function Cover({
       data-source-id={source.id}
       {...itemMenu.bind}
     >
-      <button
-        ref={openRef}
-        type="button"
-        className="px-cover-open"
-        data-source-open
-        onClick={onOpen}
-        title={detail || undefined}
-        // The title names the cover; its state, under it, is read after it as a description.
-        aria-describedby={detail ? stateId : undefined}
+      <Tooltip
+        open={tip}
+        trigger={["hover", "focus"]}
+        placement="bottom"
+        onOpenChange={(next) => {
+          const text = titleText.current;
+          setTip(next && (detail !== "" || (text !== null && text.scrollHeight > text.clientHeight + 1)));
+        }}
+        title={
+          <span className="px-cover-tip">
+            <span>{source.title}</span>
+            {detail ? <span className="px-cover-tip-state">{detail}</span> : null}
+          </span>
+        }
       >
-        <span className="px-cover-frame">
-          <CoverArt source={source} colour={colour} label={source.subject ?? undefined} />
-          {state.working || bookBusy ? (
-            <span className="px-cover-badge">
-              <Logo working decorative size={16} />
-            </span>
-          ) : state.flagged ? (
-            <span className="px-cover-badge is-problem">
-              <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
-            </span>
-          ) : null}
-        </span>
-        <span className="px-cover-title">{source.title}</span>
-      </button>
+        <button
+          ref={openRef}
+          type="button"
+          className="px-cover-open"
+          data-source-open
+          onClick={onOpen}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && tip) {
+              event.stopPropagation();
+              setTip(false);
+            }
+          }}
+          // The title names the cover; its state, under it, is read after it as a description.
+          aria-describedby={detail ? stateId : undefined}
+        >
+          <span className="px-cover-frame">
+            <CoverArt source={source} colour={colour} label={source.subject ?? undefined} />
+            {state.working || bookBusy ? (
+              <span className="px-cover-badge">
+                <Logo working decorative size={16} />
+              </span>
+            ) : state.flagged ? (
+              <span className="px-cover-badge is-problem">
+                <AlertCircle size={16} strokeWidth={1.75} aria-hidden />
+              </span>
+            ) : null}
+          </span>
+          <span ref={titleText} className="px-cover-title">
+            {source.title}
+          </span>
+        </button>
+      </Tooltip>
       {detail ? (
         <span id={stateId} className={state.flagged ? "px-cover-state is-problem" : "px-cover-state"}>
           {[state.status, ...state.notes].filter(Boolean).map((part) => (
@@ -700,7 +781,7 @@ function UnsortedRow({
 
 /**
  * A subject: its name, how many files it has and its menu, then its shelf. A screen reader hears it as a region named
- * by both. Its menu renames it in place, starts a map of it, and deletes it once nothing has it.
+ * by both. Its menu renames it in place, starts a map or flashcards of it, and deletes it once nothing has it.
  */
 function SubjectCard({
   subject,
@@ -714,6 +795,7 @@ function SubjectCard({
   onRenameDone,
   onRenameCancel,
   onNewMap,
+  onNewCards,
   onDelete,
   more,
   children,
@@ -731,6 +813,7 @@ function SubjectCard({
   onRenameDone: (name: string) => Promise<string | null>;
   onRenameCancel: () => void;
   onNewMap: () => void;
+  onNewCards: () => void;
   onDelete: (index: number) => void;
   more: ReactNode;
   children: ReactNode;
@@ -747,6 +830,7 @@ function SubjectCard({
     items: [
       { key: "rename", label: t("sources.sort.rename") },
       { key: "map", label: t("sources.shelf.newMap") },
+      { key: "cards", label: t("sources.shelf.newCards") },
       ...(empty ? [{ type: "divider" as const }, { key: "delete", label: t("sources.shelf.delete"), danger: true }] : []),
     ],
     onClick: ({ key }) => {
@@ -754,6 +838,7 @@ function SubjectCard({
         setError(null);
         onRename();
       } else if (key === "map") onNewMap();
+      else if (key === "cards") onNewCards();
       else if (key === "delete") onDelete(index);
     },
   };

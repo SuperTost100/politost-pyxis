@@ -42,3 +42,27 @@ export function bookLabel(name: string): string {
   const initials = words.map((word) => (/^\p{N}+$/u.test(word) ? word : word[0]!.toLocaleUpperCase())).join("");
   return initials.length >= 2 ? initials.slice(0, 5) : clean.slice(0, 12);
 }
+
+type SortState = "working" | "stopped" | "created" | "unsure" | "no-ai" | null;
+
+/**
+ * The row of "Da sistemare" whose choice takes focus once `movedId` has left it: the nearest row below that has a
+ * picker, then the nearest above. A row Pyxis is still choosing for (`working`) shows no picker. Null when none has one,
+ * and focus goes to the moved cover.
+ */
+export function nextPickerRow(rows: { id: string; sort: SortState }[], movedId: string): string | null {
+  const at = rows.findIndex((row) => row.id === movedId);
+  const hasPicker = (row: { sort: SortState } | undefined) => row !== undefined && row.sort !== "working";
+  const below = rows.slice(at + 1).find(hasPicker);
+  const above = rows.slice(0, Math.max(at, 0)).reverse().find(hasPicker);
+  return (below ?? above)?.id ?? null;
+}
+
+/**
+ * Why files wait in "Da sistemare", from what core records: `unsure`, `no-ai`, `stopped` and `working` are what
+ * happened to a file the Library asked about; `none` is a file it never asked about (a loose file of a linked folder,
+ * one from before the sort existed).
+ */
+export function unsortedReasons(sources: { sort: SortState }[]): Set<"working" | "stopped" | "unsure" | "no-ai" | "none"> {
+  return new Set(sources.map((source) => (source.sort === null || source.sort === "created" ? "none" : source.sort)));
+}

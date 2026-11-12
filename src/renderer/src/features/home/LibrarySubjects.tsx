@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
+import { unsortedReasons } from "./shelf";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
@@ -36,7 +37,9 @@ export function UnsortedGroup({
 }) {
   const { t } = useTranslation();
   const headId = useId();
-  const reasons = new Set(sources.map((source) => source.sort ?? "unsure"));
+  const reasons = unsortedReasons(sources);
+  // With more than one reason in the group, each line says it is about some of the files.
+  const mixed = [...reasons].filter((reason) => reason !== "working").length > 1;
   return (
     <section className="px-library-unsorted" aria-labelledby={headId}>
       <h2 id={headId} className="body-strong">
@@ -47,7 +50,10 @@ export function UnsortedGroup({
           {t("sources.sort.noAi")} <Link to="/settings/engines">{t("sources.sort.noAiLink")}</Link>
         </p>
       ) : null}
-      {reasons.has("unsure") ? <p className="small ink-muted">{t("sources.sort.unsure")}</p> : null}
+      {reasons.has("unsure") ? (
+        <p className="small ink-muted">{t(mixed ? "sources.sort.unsureSome" : "sources.sort.unsure")}</p>
+      ) : null}
+      {reasons.has("none") ? <p className="small ink-muted">{t(mixed ? "sources.sort.noneSome" : "sources.sort.none")}</p> : null}
       {reasons.has("stopped") ? <p className="small ink-muted">{t("sources.sort.stopped")}</p> : null}
       {reasons.size === 1 && reasons.has("working") ? (
         <p className="small ink-muted">{t("sources.shelf.working")}</p>

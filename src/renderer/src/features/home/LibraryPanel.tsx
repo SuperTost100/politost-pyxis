@@ -1015,6 +1015,11 @@ export function LibraryPanel({
   if (importOnly) return addModal;
   const loadFailed = list.isError && !list.data;
   const empty = list.isSuccess && sources.length === 0;
+  // The subjects that exist are on the page even before the first file, and a failed read of them is said, not hidden.
+  const subjectList = subjects.data ?? [];
+  // A read that failed stays failed while the student tries again: the query reports "pending" for that retry, which
+  // would swap the page for its placeholder and start the read again from the page it replaced.
+  const subjectsFailed = !subjects.data && (subjects.isError || subjects.errorUpdatedAt > 0);
   const showHits = contentQuery.length > 0;
   rowHandlers.current = {
     open(source) {
@@ -1130,6 +1135,9 @@ export function LibraryPanel({
       {warning ? <Notice tone="warning">{warning}</Notice> : null}
       {errorView}
       {info ? <Notice tone="info">{info}</Notice> : null}
+      {subjectsFailed ? (
+        <LoadError onRetry={() => void subjects.refetch()}>{t("sources.shelf.subjectsFailed")}</LoadError>
+      ) : null}
       {showHits ? (
         <section aria-label={t("sources.searchPassages")}>
           <p className="small ink-muted px-library-count" role="status">
@@ -1158,16 +1166,17 @@ export function LibraryPanel({
             </ul>
           ) : null}
         </section>
-      ) : loadFailed || empty ? null : list.isPending || subjects.isPending ? (
+      ) : loadFailed || (empty && subjectList.length === 0) ? null : list.isPending || (subjects.isPending && !subjectsFailed) ? (
         <SkeletonRows label={t("components.loading")} />
-      ) : matching.length === 0 && filtering ? (
+      ) : matching.length === 0 && filtering && !empty ? (
         <p className="body" role="status">{t("sources.noMatch")}</p>
       ) : (
         <LibraryShelf
           sources={matching}
           all={sources}
-          subjects={subjects.data ?? []}
-          filtering={filtering}
+          subjects={subjectList}
+          subjectsFailed={subjectsFailed}
+          filtering={filtering && !empty}
           selectedId={sourceId}
           newVersions={newVersions}
           refreshBusy={refreshing !== null}

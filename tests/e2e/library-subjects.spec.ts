@@ -1,5 +1,6 @@
 import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -748,6 +749,362 @@ test("A menu closes when its file, row or subject goes away, and nothing acts on
     // Focus did not fall to the page: it is on the subject before it.
     await expect(page.locator(".px-shelf-subject").filter({ has: page.locator(":focus") })).toHaveCount(1);
     expect(await subjectNames(page)).not.toContain("Chimica");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** How far the page has scrolled: the first scroller above the shelves that is not at the top. */
+const pageScroll = (page: Page) =>
+  page.evaluate(() => {
+    for (let el: Element | null = document.querySelector(".px-shelves"); el; el = el.parentElement)
+      if (el.scrollTop > 0) return el.scrollTop;
+    return 0;
+  });
+
+/** Subjects with files, enough of them for the page to scroll in a window 420 px high. */
+async function tallLibrary(page: Page) {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  for (const name of ["Chimica", "Geometria", "Algebra", "Statistica", "Informatica", "Storia", "Inglese"])
+    await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
+  for (const [subject, titles] of [
+    ["Analisi 1", ["Limiti", "Derivate"]],
+    ["Fisica 2", ["Dinamica", "Cinematica"]],
+    ["Geometria", ["Vettori"]],
+  ] as const)
+    for (const title of titles) await fileUnder(page, title, subject);
+  await page.reload();
+  await expect(cover(page, "Geometria", "Vettori")).toBeVisible();
+  await animationsSettled(page);
+}
+
+test("A scroll that ends a keyboard-opened menu leaves the page where it went and the focus on the item, and the last cover's removal leaves the focus on the subject", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await tallLibrary(page);
+    const menu = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    /** Scrolls the page by wheel from a point clear of the cover and the menu hanging from it, and waits for it to stop. */
+    const scrollDown = async () => {
+      await page.mouse.move(1100, 300);
+      await page.mouse.wheel(0, 450);
+      await expect(menu).toHaveCount(0);
+      await animationsSettled(page);
+    };
+    const scrollUp = async () => {
+      await page.mouse.wheel(0, -900);
+      await expect.poll(() => pageScroll(page)).toBe(0);
+    };
+    // How far the wheel takes the page with no menu open, which is where a menu's scroll must leave it.
+    await page.mouse.move(1100, 300);
+    await page.mouse.wheel(0, 450);
+    await expect.poll(() => pageScroll(page)).toBeGreaterThan(150);
+    await animationsSettled(page);
+    await page.waitForTimeout(500);
+    const farthest = await pageScroll(page);
+    await scrollUp();
+    const stayed = () => expect.poll(() => pageScroll(page)).toBeGreaterThan(farthest - 3);
+
+    // A cover's menu opened with the keyboard: the scroll closes it, and focus returns to the cover without scrolling back.
+    const limiti = cover(page, "Analisi 1", "Limiti").getByRole("button", { name: "Limiti", exact: true });
+    await limiti.focus();
+    await page.keyboard.press("Shift+F10");
+    await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+    await scrollDown();
+    await expect(limiti).toBeFocused();
+    await stayed();
+    await scrollUp();
+
+    // A cover's dots menu opened with the keyboard: the scroll closes it, and focus is not left on the page.
+    const dots = cover(page, "Analisi 1", "Derivate").getByRole("button", { name: "Azioni per Derivate" });
+    await dots.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+    await scrollDown();
+    await expect(dots).toBeFocused();
+    await stayed();
+    await scrollUp();
+
+    // The same for a subject's dots.
+    const subjectDots = shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" });
+    await subjectDots.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    await scrollDown();
+    await expect(subjectDots).toBeFocused();
+    await stayed();
+    await scrollUp();
+
+    // A menu opened with the pointer keeps focus where the click put it: a scroll does not move it.
+    await cover(page, "Fisica 2", "Dinamica").hover();
+    await page.getByRole("button", { name: "Azioni per Dinamica" }).click();
+    await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+    await page.mouse.move(1100, 300);
+    await page.mouse.wheel(0, 450);
+    await expect(menu).toHaveCount(0);
+    await scrollUp();
+
+    // The last cover of a shelf removed while its menu is open: the shelf's list goes, and focus stays in the page, on
+    // the subject's dots, not on the body.
+    const vettori = await page.evaluate(
+      async () => (await window.pyxis.invoke("sources.list", {})).find((source) => source.title === "Vettori")!.id,
+    );
+    await cover(page, "Geometria", "Vettori").getByRole("button", { name: "Vettori", exact: true }).focus();
+    await page.keyboard.press("Shift+F10");
+    await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+    await page.evaluate((sourceId) => window.pyxis.invoke("sources.remove", { sourceId, confirmed: true }), vettori);
+    await pasteLoose(page, "Arrivo"); // the page reads the library again
+    await expect(shelf(page, "Geometria")).toContainText("nessun file");
+    await expect(menu).toHaveCount(0);
+    await expect(shelf(page, "Geometria").getByRole("button", { name: "Azioni sulla materia Geometria" })).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("A menu from the dots is drawn like the right-click menu of the same file, at large text", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    await page.evaluate(() => window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "lg" }));
+    await page.reload();
+    const file = cover(page, "Analisi 1", "Limiti");
+    await expect(file).toBeVisible();
+    const menu = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    /** What the menu's rows look like: the class the stylesheet keys on, and the size, text and colour of two rows. */
+    const look = async () => {
+      await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+      await animationsSettled(page);
+      return menu.evaluate((el) => {
+        const row = (name: string) => {
+          const item = [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((node) => node.textContent?.trim() === name)!;
+          const style = getComputedStyle(item);
+          return { height: item.getBoundingClientRect().height, font: style.fontSize, colour: style.color };
+        };
+        return { shared: el.classList.contains("px-item-menu"), details: row("Dettagli della fonte"), remove: row("Rimuovi") };
+      });
+    };
+    const box = (await file.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
+    const rightClick = await look();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await file.hover();
+    await page.getByRole("button", { name: "Azioni per Limiti" }).click();
+    const dots = await look();
+    // Large text is on, and both menus use the shared look.
+    expect(parseFloat(rightClick.details.font)).toBeGreaterThan(14.5);
+    expect(rightClick.shared).toBe(true);
+    expect(dots).toEqual(rightClick);
+    await page.keyboard.press("Escape");
+
+    // A subject's menu too.
+    await expect(menu).toHaveCount(0);
+    const head = shelf(page, "Analisi 1").locator(".px-shelf-subject-head");
+    const at = (await head.boundingBox())!;
+    await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2, { button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    const subjectRight = await menu.evaluate((el) => ({ shared: el.classList.contains("px-item-menu"), height: el.querySelector("[role=menuitem]")!.getBoundingClientRect().height }));
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
+    await expect(menu.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    await animationsSettled(page);
+    const subjectDots = await menu.evaluate((el) => ({ shared: el.classList.contains("px-item-menu"), height: el.querySelector("[role=menuitem]")!.getBoundingClientRect().height }));
+    expect(subjectDots).toEqual(subjectRight);
+    expect(subjectDots.shared).toBe(true);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("A cover's full title shows on hover and on keyboard focus, and its state is still described", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const first = "Dispensa di analisi matematica uno: serie numeriche e criteri di convergenza";
+    const second = "Dispensa di analisi matematica uno: serie di potenze e raggio di convergenza";
+    for (const title of [first, second, "Limiti"]) await fileUnder(page, title, "Analisi 1");
+    await page.reload();
+    const tip = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)");
+    const open = (title: string) => cover(page, "Analisi 1", title).getByRole("button", { name: title, exact: true });
+    // The whole title is the button's name, whatever the cover shows.
+    await expect(open(first)).toBeVisible();
+    await expect(open(second)).toBeVisible();
+    // A title the cover cuts shows whole on hover...
+    await open(first).hover();
+    await expect(tip).toHaveText(first);
+    await page.mouse.move(5, 5);
+    await expect(tip).toHaveCount(0);
+    // ...and on keyboard focus.
+    await open(second).focus();
+    await expect(tip).toHaveText(second);
+    await open(first).focus();
+    await expect(tip).toHaveText(first);
+    await page.keyboard.press("Escape");
+    await expect(tip).toHaveCount(0);
+    // A title that fits says nothing more.
+    await open("Limiti").hover();
+    await page.waitForTimeout(400);
+    await expect(tip).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("With subjects and no files the Library shows the subjects with the add-a-file message, and with neither it keeps the empty page", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const empty = page.getByRole("heading", { name: "Nessuna fonte ancora" });
+    await expect(empty).toBeVisible();
+    // The student can see both subjects, and act on them.
+    for (const name of ["Analisi 1", "Fisica 2"]) await expect(shelf(page, name)).toContainText("nessun file");
+    await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
+    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina", exact: true }).click();
+    await expect(shelf(page, "Fisica 2")).toHaveCount(0);
+    await expect(shelf(page, "Analisi 1")).toBeVisible();
+    await expect(empty).toBeVisible();
+    // A subject renamed on a page that has no files.
+    await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await page.getByRole("textbox", { name: "Nome della materia Analisi 1" }).fill("Analisi uno");
+    await page.keyboard.press("Enter");
+    await expect(shelf(page, "Analisi uno")).toBeVisible();
+    // With the last subject gone, no card is left: today's empty page.
+    await shelf(page, "Analisi uno").getByRole("button", { name: "Azioni sulla materia Analisi uno" }).click();
+    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina", exact: true }).click();
+    await expect(page.locator(".px-shelf-subject")).toHaveCount(0);
+    await expect(empty).toBeVisible();
+    await expect(page.locator(".px-shelves")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("When the subjects cannot be read, the files stay on the page and the student can try again", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    await fileUnder(page, "Dinamica", "Fisica 2");
+    // The subjects request fails while the table it counts chats in is away; the files' own request does not use it.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.exec("ALTER TABLE chats RENAME TO chats_away");
+    await page.reload();
+    const files = page.getByRole("region", { name: "File", exact: true });
+    await expect(page.getByText("Non sono riuscito a leggere le materie.")).toBeVisible();
+    await expect(files.getByRole("button", { name: "Limiti", exact: true })).toBeVisible();
+    await expect(files.getByRole("button", { name: "Dinamica", exact: true })).toBeVisible();
+    await expect(page.locator("[data-subject-id]")).toHaveCount(0);
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    // The files have their menu.
+    await files.getByRole("button", { name: "Azioni per Limiti" }).click();
+    await expect(page.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    // Try again: the subjects come back and the files go to their shelves.
+    db.exec("ALTER TABLE chats_away RENAME TO chats");
+    db.close();
+    await page.getByRole("button", { name: "Riprova" }).click();
+    await expect(cover(page, "Analisi 1", "Limiti")).toBeVisible();
+    await expect(cover(page, "Fisica 2", "Dinamica")).toBeVisible();
+    await expect(page.getByText("Non sono riuscito a leggere le materie.")).toHaveCount(0);
+    await expect(files).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("A rename that answers late does not close another subject's rename field", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  const core = await app.evaluate(({ app }) => app.getAppMetrics().find((metric) => metric.name === "pyxis-core")?.pid);
+  expect(core).toBeGreaterThan(0);
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    // Analisi 1 is renamed; the core, which answers it, is stopped from here until the student has gone on to Fisica 2.
+    await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await page.getByRole("textbox", { name: "Nome della materia Analisi 1" }).fill("Analisi uno");
+    process.kill(core!, "SIGSTOP");
+    // Leaving the field sends the new name, whose answer waits.
+    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    const second = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await second.fill("Fisica due");
+    await expect(second).toBeFocused();
+    process.kill(core!, "SIGCONT");
+    // Analisi 1 is renamed; the field of Fisica 2 is still there, with its text and the focus.
+    await expect.poll(() => subjectNames(page)).toContain("Analisi uno");
+    await expect(shelf(page, "Analisi uno")).toBeVisible();
+    await page.waitForTimeout(400);
+    await expect(second).toBeVisible();
+    await expect(second).toHaveValue("Fisica due");
+    await expect(second).toBeFocused();
+  } finally {
+    try {
+      process.kill(core!, "SIGCONT");
+    } catch {
+      // The core is gone already.
+    }
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("A subject's menu offers flashcards of the subject, which open the Flashcard page's dialog on Pyxis's side with the subject chosen", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    await page.reload();
+    const physics = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find((item) => item.name === "Fisica 2")!;
+    const menu = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    const items = () => menu.getByRole("menuitem").allTextContents();
+    // An empty subject: the three actions, a divider, and the delete.
+    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await expect(menu.getByRole("menuitem", { name: "Rinomina", exact: true })).toBeVisible();
+    expect(await items()).toEqual(["Rinomina", "Nuova mappa di questa materia", "Crea flashcard di questa materia", "Elimina la materia…"]);
+    await page.keyboard.press("Escape");
+    // A subject with a file: the same, without the delete, by right-click on its heading.
+    const head = shelf(page, "Analisi 1").locator(".px-shelf-subject-head");
+    const at = (await head.boundingBox())!;
+    await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2, { button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rinomina", exact: true })).toBeVisible();
+    expect(await items()).toEqual(["Rinomina", "Nuova mappa di questa materia", "Crea flashcard di questa materia"]);
+    await page.keyboard.press("Escape");
+
+    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    await menu.getByRole("menuitem", { name: "Crea flashcard di questa materia" }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(dialog.getByRole("radio", { name: "Falla fare a Pyxis" })).toHaveAttribute("aria-checked", "true");
+    await expect(dialog.getByRole("combobox", { name: "Materia" })).toHaveValue(physics.id);
+    // Back returns to the Library, and the dialog does not open again.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await page.goBack();
+    await expect(shelf(page, "Fisica 2")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);

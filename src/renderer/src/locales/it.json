@@ -742,6 +742,9 @@
       "noAi": "Non hai collegato uno strumento AI, quindi la materia di questi file la scegli tu.",
       "noAiLink": "Collega uno strumento",
       "unsure": "Non ho capito a quale materia vanno questi file: scegli tu.",
+      "unsureSome": "Per alcuni file non ho capito a quale materia vanno: scegli tu.",
+      "none": "Questi file non hanno ancora una materia: scegli tu.",
+      "noneSome": "Alcuni file non hanno ancora una materia: scegli tu.",
       "stopped": "Hai fermato la scelta della materia: riprendila da Attività, oppure sceglila tu.",
       "choose": "Scegli la materia",
       "chooseFor": "Materia di {{title}}",
@@ -761,6 +764,7 @@
       "files": "File di {{name}}",
       "subjectActions": "Azioni sulla materia {{name}}",
       "newMap": "Nuova mappa di questa materia",
+      "newCards": "Crea flashcard di questa materia",
       "delete": "Elimina la materia…",
       "deleteTitle": "Eliminare la materia {{name}}?",
       "deleteBody": "Non ha file, esami, mappe, flashcard né chat, quindi eliminarla non toglie nient'altro.",
@@ -773,6 +777,8 @@
       "showAll": "Mostra tutti i {{count}} file",
       "showFewer": "Mostra meno",
       "working": "Sto scegliendo la materia di questi file.",
+      "subjectsFailed": "Non sono riuscito a leggere le materie. I file sono qui sotto, senza la divisione per materia.",
+      "detachedTitle": "File",
       "updateBook": "Aggiorna il libro",
       "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino."
     }

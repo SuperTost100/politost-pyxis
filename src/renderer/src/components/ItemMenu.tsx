@@ -69,8 +69,9 @@ export function useMenuLifetime(
 ): void {
   const latest = useRef({ anchor, close });
   latest.current = { anchor, close };
-  // Where the item sat in its list, to find its neighbour if it is removed with the menu open.
-  const place = useRef<{ list: Element; index: number } | null>(null);
+  // Where the item sat in its list, to find its neighbour if it is removed with the menu open, and the section around the
+  // list, which stays when the list goes with its last item.
+  const place = useRef<{ list: Element; index: number; home: Element | null } | null>(null);
   useEffect(() => {
     const element = open ? latest.current.anchor() : null;
     if (!element) {
@@ -78,7 +79,13 @@ export function useMenuLifetime(
       return;
     }
     const row = element.closest("li, section") ?? element;
-    place.current = row.parentElement ? { list: row.parentElement, index: [...row.parentElement.children].indexOf(row) } : null;
+    place.current = row.parentElement
+      ? {
+          list: row.parentElement,
+          index: [...row.parentElement.children].indexOf(row),
+          home: row.parentElement.closest("section, [role=region]"),
+        }
+      : null;
     const start = element.getBoundingClientRect();
     // A scroll event is delivered a frame after the scroll, so one caused by what happened before the menu opened (a
     // focus that scrolled its item into view) can arrive after it. Only a scroll that moved the item counts.
@@ -120,12 +127,26 @@ export function useMenuLifetime(
   useEffect(
     () => () => {
       const there = place.current;
-      if (!there?.list.isConnected || (document.activeElement && document.activeElement !== document.body)) return;
-      const next = there.list.children[Math.min(there.index, there.list.children.length - 1)];
-      (next?.querySelector<HTMLElement>(FOCUSABLE) ?? there.list.closest("section, [role=region]")?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
+      if (!there || (document.activeElement && document.activeElement !== document.body)) return;
+      // The list can go with its last item: the section around it is what is left.
+      const next = there.list.isConnected
+        ? there.list.children[Math.min(there.index, there.list.children.length - 1)]
+        : undefined;
+      const home = there.home?.isConnected ? there.home : null;
+      (next?.querySelector<HTMLElement>(FOCUSABLE) ?? home?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
     },
     [],
   );
+}
+
+/**
+ * What a scroll that closes a menu does with the focus: a menu opened with the keyboard holds it, and it goes back to
+ * `trigger` as it does on every other way a menu closes. It does not scroll to it, since the student has just scrolled
+ * away. A menu opened with the pointer leaves the focus where the click put it.
+ */
+export function leaveMenuTo(trigger: HTMLElement | null | undefined): void {
+  const active = document.activeElement;
+  if (trigger?.isConnected && active instanceof Element && active.closest(".px-item-menu")) trigger.focus({ preventScroll: true });
 }
 
 /**
@@ -148,11 +169,12 @@ export function useItemMenu({
   const [at, setAt] = useState<MenuPoint | null>(null);
   // For a menu opened with the keyboard: where focus goes back to when it closes.
   const origin = useRef<HTMLElement | null>(null);
-  const close = (restoreFocus: boolean) => {
+  const close = (restoreFocus: boolean, scrollBack = true) => {
     setAt(null);
     const back = origin.current;
     origin.current = null;
-    if (restoreFocus && back?.isConnected) back.focus();
+    // A scroll closes the menu from under the student's hand: the focus goes back, but the page stays where they took it.
+    if (restoreFocus && back?.isConnected) back.focus({ preventScroll: !scrollBack });
   };
   // The item the menu belongs to, read when it opens: the menu closes when the page scrolls under it or the window resizes.
   const item = useRef<Element | null>(null);
@@ -161,7 +183,7 @@ export function useItemMenu({
     item.current = target instanceof Element ? target : null;
     setAt(point);
   }, !disabled);
-  useMenuLifetime(at !== null, () => item.current, () => close(true));
+  useMenuLifetime(at !== null, () => item.current, () => close(true, false));
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
   const popup: ReactNode = at
@@ -268,7 +290,15 @@ export function MenuButton({
     document.getElementById(id)?.focus();
   };
   // The menu closes when the page scrolls, and follows its button when the window is resized or the layout shifts it.
-  useMenuLifetime(open, () => document.getElementById(id), () => setOpen(false), true);
+  useMenuLifetime(
+    open,
+    () => document.getElementById(id),
+    () => {
+      setOpen(false);
+      leaveMenuTo(document.getElementById(id));
+    },
+    true,
+  );
   const dots = children === undefined;
   return (
     <Dropdown

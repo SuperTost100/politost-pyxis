@@ -704,3 +704,40 @@ test("a tile's menu closes when the page scrolls, follows its dots when the wind
     removeTestFolder(userData);
   }
 });
+
+test("a tile's menu opened with the keyboard gives focus back to its dots when a scroll closes it, without scrolling the page back", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await openMaps(page);
+    const menu = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+    const dots = tile(page, "Successioni").getByRole("button", { name: "Altro su Successioni" });
+    const scrolled = () =>
+      page.evaluate(() => {
+        for (let el: Element | null = document.querySelector(".px-maps-subject"); el; el = el.parentElement)
+          if (el.scrollTop > 0) return el.scrollTop;
+        return 0;
+      });
+    // How far the wheel takes the page with no menu open.
+    await page.mouse.move(640, 250);
+    await page.mouse.wheel(0, 450);
+    await expect.poll(scrolled).toBeGreaterThan(150);
+    await page.waitForTimeout(500);
+    const farthest = await scrolled();
+    await page.mouse.wheel(0, -900);
+    await expect.poll(scrolled).toBe(0);
+    await dots.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu).toBeVisible();
+    await page.mouse.wheel(0, 450);
+    await expect(menu).toHaveCount(0);
+    // Focus is on the dots, not on the page, and the page stays where the student scrolled it.
+    await expect(dots).toBeFocused();
+    await expect.poll(scrolled, "the page was scrolled back to the dots").toBeGreaterThan(farthest - 3);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

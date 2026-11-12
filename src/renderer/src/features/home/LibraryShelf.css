@@ -459,3 +459,15 @@ input.px-ctl-field.px-shelf-subject-rename {
 .px-cover-state > span + span::before {
   content: ". ";
 }
+
+/* A cover's tooltip: the whole title, then the state when there is one. */
+.px-cover-tip {
+  display: grid;
+  gap: 4px;
+  font: 500 calc(13px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.px-cover-tip-state {
+  color: var(--ink-subtle);
+  font-weight: 400;
+}

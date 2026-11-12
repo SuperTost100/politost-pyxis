@@ -1310,6 +1310,8 @@ function prepareLibrarySubjects(name: string) {
     if (name === "library-unsorted") {
       source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
       source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
+      // A file the Library never asked about has no reason to say Pyxis could not place it.
+      source.run("audit-sort-never", "Appunti mai chiesti", "ready", null, null, now + 2, now);
       return;
     }
     seedSubjects(db, [{ id: "audit-sort-made", name: "Probabilità e statistica", position: 5 }]);
@@ -3079,6 +3081,8 @@ async function openState(page: Page, name: string) {
           name: both("Nessuna fonte ancora", "No sources yet"),
         }),
       ).toBeVisible();
+      // The subject the audit has stays on the page, with no file in it, so the student can still act on it.
+      await expect(page.getByRole("region", { name: /^Fisica (nessun file|no files)$/ })).toBeVisible();
       break;
     case "library-search":
       await page
@@ -3263,9 +3267,14 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
       await expect(page.getByText(both("Materia nuova.", "New subject."))).toBeVisible();
       break;
-    case "library-unsorted":
-      await expect(page.getByRole("region", { name: both("Da sistemare", "To sort") })).toBeVisible();
+    case "library-unsorted": {
+      const group = page.getByRole("region", { name: both("Da sistemare", "To sort") });
+      await expect(group).toBeVisible();
+      // The group has files Pyxis could not place and one it never asked about, so each line says it is about some.
+      await expect(group.getByText(both("Per alcuni file non ho capito a quale materia vanno: scegli tu.", "For some files I couldn't tell which subject they belong to, so you choose."))).toBeVisible();
+      await expect(group.getByText(both("Alcuni file non hanno ancora una materia: scegli tu.", "Some files have no subject yet, so you choose."))).toBeVisible();
       break;
+    }
     case "library-move-menu":
       await page
         .getByRole("button", { name: /^(Azioni per|Actions for) Calcolo delle probabilità, dispense$/ })
@@ -3284,12 +3293,14 @@ async function openState(page: Page, name: string) {
     case "library-subject-menu":
       await page.getByRole("button", { name: both("Azioni sulla materia Analisi 1", "Actions for the subject Analisi 1") }).click();
       await expect(page.getByRole("menuitem", { name: both("Nuova mappa di questa materia", "New map of this subject") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Crea flashcard di questa materia", "Make flashcards for this subject") })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toHaveCount(0);
       break;
     case "library-empty-subject":
       await page
         .getByRole("heading", { name: "Probabilità e statistica", exact: true })
         .click({ button: "right" });
+      await expect(page.getByRole("menuitem", { name: both("Crea flashcard di questa materia", "Make flashcards for this subject") })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toBeVisible();
       break;
     case "library-vision":
