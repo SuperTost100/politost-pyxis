@@ -1017,9 +1017,10 @@ export function LibraryPanel({
   const empty = list.isSuccess && sources.length === 0;
   // The subjects that exist are on the page even before the first file, and a failed read of them is said, not hidden.
   const subjectList = subjects.data ?? [];
-  // A read that failed stays failed while the student tries again: the query reports "pending" for that retry, which
-  // would swap the page for its placeholder and start the read again from the page it replaced.
-  const subjectsFailed = !subjects.data && (subjects.isError || subjects.errorUpdatedAt > 0);
+  // A read that failed stays failed while the student tries again: with nothing read yet the query reports "pending" for
+  // that retry, which would swap the page for its placeholder and start the read again from the page it replaced. With an
+  // older list kept, a failed read still counts: a file that got a subject made since is on no shelf of that list.
+  const subjectsFailed = subjects.isError || (!subjects.data && subjects.errorUpdatedAt > 0);
   const showHits = contentQuery.length > 0;
   rowHandlers.current = {
     open(source) {

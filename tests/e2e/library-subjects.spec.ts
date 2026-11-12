@@ -1031,6 +1031,42 @@ test("When the subjects cannot be read, the files stay on the page and the stude
   }
 });
 
+test("When the subjects cannot be read again, a file moved to a new subject stays on the page and the student can try again", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await fileUnder(page, "Limiti", "Analisi 1");
+    await page.reload();
+    await expect(cover(page, "Analisi 1", "Limiti")).toBeVisible();
+    // The page has the subjects now. The request for them fails from here on, while the table it counts chats in is away.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.exec("ALTER TABLE chats RENAME TO chats_away");
+    try {
+      await cover(page, "Analisi 1", "Limiti").click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
+      await page.getByRole("menuitem", { name: "Nuova materia…" }).click();
+      const named = page.getByRole("dialog", { name: "Sposta in una materia nuova" });
+      await named.getByLabel("Nome della materia").fill("Chimica");
+      await named.getByRole("button", { name: "Sposta", exact: true }).click();
+      await expect(named).toBeHidden();
+      // The subject Chimica is not in the list the page kept, so the file is not on its shelf: it is said, and still shown.
+      await expect(page.getByText("Non sono riuscito a leggere le materie.")).toBeVisible();
+      await expect(page.getByRole("region", { name: "File", exact: true }).getByRole("button", { name: "Limiti", exact: true })).toBeVisible();
+    } finally {
+      db.exec("ALTER TABLE chats_away RENAME TO chats");
+      db.close();
+    }
+    await page.getByRole("button", { name: "Riprova" }).click();
+    await expect(cover(page, "Chimica", "Limiti")).toBeVisible();
+    await expect(page.getByText("Non sono riuscito a leggere le materie.")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "File", exact: true })).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("A rename that answers late does not close another subject's rename field", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
