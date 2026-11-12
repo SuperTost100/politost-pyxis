@@ -291,11 +291,11 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // The groups of settings render once the exam has been read.
     await expectContent(page, "Exam settings", page.getByRole("heading", { name: "The exam", exact: true }));
 
-    // Set the hours brings the weekly hours field into view and puts the focus in it, also in the smallest window.
+    // The path's "Set a study goal" brings the weekly hours field into view and puts the focus in it, also in the smallest window.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(960, 700));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(960);
     await openExam(page);
-    await page.getByRole("button", { name: "Set the hours" }).click();
+    await page.locator(".px-xpath").getByRole("button", { name: "Set a study goal" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
     const hours = page.getByRole("spinbutton", { name: "Hours a week" });
     await expect(hours).toBeFocused();

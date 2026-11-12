@@ -74,7 +74,7 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     // With weekly hours, the dated exam measures today's minutes; the one without a date says what it lacks.
     await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: 7 }));
     await page.reload();
-    await expect(rows.nth(0).getByRole("img")).toHaveAccessibleName(/, Today \d+%$/);
+    await expect(rows.nth(0).getByRole("img")).toHaveAccessibleName(/, Today \d+ of \d+ min$/);
     await expect(rows.nth(2).getByRole("img")).toHaveAccessibleName(/, Today no date yet$/);
     await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: null }));
 

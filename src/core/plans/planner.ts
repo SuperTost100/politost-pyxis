@@ -188,6 +188,19 @@ export function spread(
 }
 
 /**
+ * Today's goal split among the exams still to study, in proportion to the pace each needs (its work left over the days
+ * before it, the same pace `spread` uses to share a short day). The shares add up to `goal`; an exam with no work left
+ * takes none. One exam gets all of it.
+ */
+export function todayGoals(exams: SpreadExam[], goal: number): Map<string, number> {
+  const need = exams
+    .filter((exam) => exam.examDay > 0 && exam.remaining > 0)
+    .map((exam) => [exam.id, exam.remaining / exam.examDay] as const);
+  const total = need.reduce((sum, [, pace]) => sum + pace, 0);
+  return new Map(need.map(([id, pace]) => [id, (goal * pace) / total]));
+}
+
+/**
  * The hours a week that would bring every exam to its target on time: for each exam, the work of it and every earlier
  * exam over the days before it, and the largest of those paces. Rounded up to the half hour.
  */
@@ -253,7 +266,9 @@ function layout(db: Database.Database, plans: Studied[], now: number) {
   const result = planned
     ? spread(exams, (day) => ((weekHours(startOfWeek(addDays(today, day))) ?? 0) * 60) / 7)
     : null;
-  return { settings, dated, exams, weekHours, result, today };
+  // Oggi measures the student's goal, a seventh of this week's hours, not the pace the planner needs.
+  const goals = planned ? todayGoals(exams, ((weekHours(startOfWeek(today)) ?? 0) * 60) / 7) : null;
+  return { settings, dated, exams, weekHours, result, goals, today };
 }
 
 /** Round minutes for display, to the nearest 5. */
@@ -394,14 +409,17 @@ function nextStep(state: PlanState) {
   });
 }
 
-/** The minutes the planner gives a plan today; null when it gives none (no hours set, no date, or the exam is today). */
-function todayMinutes(plan: Studied, result: ReturnType<typeof spread> | null): number | null {
+/**
+ * The minutes Oggi asks of a plan today: its share of the student's goal for the day (see `todayGoals`). Null when
+ * nothing measures the day (no hours set, no date, or the exam is today).
+ */
+function todayMinutes(plan: Studied, goals: Map<string, number> | null): number | null {
   const days = plan.state.daysToExam;
-  return result != null && days != null && days > 0 ? (result.days[0]?.get(plan.row.id) ?? 0) : null;
+  return goals != null && days != null && days > 0 ? (goals.get(plan.row.id) ?? 0) : null;
 }
 
 /**
- * Oggi ticks a plan off once today's steps cover the minutes the planner gave it, within 2.5 minutes, and at least one
+ * Oggi ticks a plan off once today's steps cover its minutes for the day, within 2.5 minutes, and at least one
  * step was done. Without minutes (no weekly hours, no date, the exam day) nothing measures the day, so it never ticks off:
  * one step alone never makes the day's work.
  */
@@ -415,13 +433,13 @@ function todayComplete(
 /**
  * Today's study across every exam: due flashcards from all plans as one item, then each plan's next step, the closest
  * exam first and plans without a date after the dated ones. With hours set in the planner, a plan's item is done once
- * today's steps cover the minutes the planner gave it today (at least one step), and a plan the planner gave under
+ * today's steps cover its part of the student's goal for the day (at least one step), and a plan whose part is under
  * 2.5 minutes today is left out unless it was studied today. Without hours, or without minutes for the plan today, an
  * item is never done: nothing measures the day. Exams already past are left out.
  */
 export function todayPlan(db: Database.Database, now = Date.now()) {
   const plans = studyState(db, now);
-  const { dated, exams, result, today } = layout(db, plans, now);
+  const { dated, exams, result, goals, today } = layout(db, plans, now);
   const dueByPlan = plans.map((plan) => countDueCards(db, plan.row.id, now));
   // Flashcards with no exam are due in the same daily review.
   const examless = examlessDecks(db).reduce(
@@ -445,7 +463,7 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
     .flatMap((plan) => {
       const next = nextStep(plan.state);
       const days = plan.state.daysToExam;
-      const minutes = todayMinutes(plan, result);
+      const minutes = todayMinutes(plan, goals);
       // An allocation under the 2.5 minute tolerance is too small to ask for and would tick off with no work done.
       if (minutes != null && minutes < 2.5 && plan.doneToday.length === 0) return [];
       if (!next && plan.doneToday.length === 0) return [];
@@ -574,18 +592,19 @@ const measuring = (activity: Activity) => activity !== "intro" && activity !== "
  *   done.
  * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
  *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
- * - `today`: the share of today's planned work done, as Oggi counts it: the minutes of today's steps over the minutes
- *   the planner gives the exam today. Null when nothing measures it, and `todayUnmeasured` says why: no weekly hours set
- *   (`no-goal`, the student is offered to set them), no exam date (`no-date`) or the exam is today (`exam-day`). Also
- *   null, with no reason, when nothing is planned today: an archived or past exam, a share too small to ask for, or no
- *   next step, unless something was done today anyway.
+ * - `today`: the share of today's goal done, as Oggi counts it: the minutes of today's steps over the exam's part of
+ *   the student's goal for the day (`todayGoals`: a seventh of the week's hours, split among the exams in proportion
+ *   to what each needs), and `todayMinutes` those two numbers in minutes. Null when nothing measures it, and
+ *   `todayUnmeasured` says why: no weekly hours set (`no-goal`, the student is offered to set them), no exam date
+ *   (`no-date`) or the exam is today (`exam-day`). Also null, with no reason, when nothing is planned today: an archived
+ *   or past exam, a share too small to ask for, or no next step, unless something was done today anyway.
  *
  * `next` is the path's next step without due cards (Oggi lists those apart), and `dueCards` this exam's due cards.
  * Archived exams come after the others, with no Oggi.
  */
 export function examRings(db: Database.Database, now = Date.now()) {
   const active = studyState(db, now);
-  const { result } = layout(db, active, now);
+  const { result, goals } = layout(db, active, now);
   const archived = (
     db
       .prepare(
@@ -611,11 +630,14 @@ export function examRings(db: Database.Database, now = Date.now()) {
       target: state.target,
     });
     const next = nextStep(state);
+    const minutes = isArchived ? null : todayMinutes(plan, goals);
+    const today = isArchived ? null : todayShare(plan, minutes, next != null);
     return {
       planId: plan.row.id,
       preparation: measured ? plan.mastery : null,
       path: fresh > 0 ? Math.min(1, Math.max(0, 1 - plan.remainingNow / fresh)) : null,
-      today: isArchived ? null : todayShare(plan, todayMinutes(plan, result), next != null),
+      today,
+      todayMinutes: today == null || minutes == null ? null : { done: plan.doneMinutes, target: Math.round(minutes) },
       todayUnmeasured: isArchived ? null : todayUnmeasured(plan, result != null),
       next: next
         ? {

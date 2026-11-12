@@ -213,12 +213,12 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.progress")} title="ExamRings">
-        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayUnmeasured: null }} size="sm" />
-        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayUnmeasured: null }} />
-        <RingLegend values={{ preparation: 0.63, path: 0.32, today: 0.5, todayUnmeasured: null }} />
-        <ExamRings values={{ preparation: null, path: 0.06, today: null, todayUnmeasured: "no-goal" }} />
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} size="sm" />
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} />
+        <RingLegend values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} />
+        <ExamRings values={{ preparation: null, path: 0.06, today: null, todayMinutes: null, todayUnmeasured: "no-goal" }} />
         <RingLegend
-          values={{ preparation: null, path: 0.06, today: null, todayUnmeasured: "no-goal" }}
+          values={{ preparation: null, path: 0.06, today: null, todayMinutes: null, todayUnmeasured: "no-goal" }}
           onSetGoal={() => undefined}
         />
       </Section>

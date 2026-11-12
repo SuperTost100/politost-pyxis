@@ -634,7 +634,6 @@
       "renameField": "New source name",
       "save": "Save",
       "cancel": "Cancel",
-      "loadFailed": "Could not read the details of this source.",
       "pages": "Pages",
       "pagesFromText": "from the file's text",
       "pagesAllOcr": "all read with OCR",
@@ -1684,8 +1683,8 @@
         "cards": "Flashcards",
         "gaps": "Targeted review"
       },
-      "hoursHint": "Set your weekly hours to see when you will study each topic.",
-      "hoursAction": "Set the hours",
+      "hoursHint": "With a study goal, in hours a week, you see when you will study each topic.",
+      "hoursAction": "Set a study goal",
       "state": {
         "done": "done",
         "missed": "below your goal",
@@ -3327,6 +3326,7 @@
       "diagnosticAgain": "You can take the test again from the path.",
       "deleted": "Activity deleted: {{title}}",
       "deleteFailed": "Pyxis couldn't delete “{{title}}”.",
+      "loadFailed": "Pyxis couldn't read the unfinished activities.",
       "showAll": "Show all {{count}}",
       "showFewer": "Show fewer"
     }
@@ -3513,13 +3513,15 @@
     "hint": {
       "preparation": "The grade you would get today",
       "path": "How much of the path you've done",
-      "today": "How much of today's steps you've done",
-      "todayNoGoal": "Measured once you say how many hours you study a week"
+      "today": "Your study minutes today, out of your goal",
+      "todayNoGoal": "Measured once you set a study goal"
     },
     "noGoal": "not measured",
     "noDate": "no date yet",
     "examDay": "exam day",
-    "setGoal": "Set a study goal"
+    "setGoal": "Set a study goal",
+    "todayMinutes": "{{done}} of {{target}} min",
+    "todayDone": "done, {{done}} min"
   },
   "flashcards": {
     "title": "Flashcards",

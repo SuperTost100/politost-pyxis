@@ -634,7 +634,6 @@
       "renameField": "Nuovo nome della fonte",
       "save": "Salva",
       "cancel": "Annulla",
-      "loadFailed": "Non riesco a leggere i dettagli di questa fonte.",
       "pages": "Pagine",
       "pagesFromText": "dal testo del file",
       "pagesAllOcr": "tutte lette con l'OCR",
@@ -1684,8 +1683,8 @@
         "cards": "Flashcard",
         "gaps": "Ripasso mirato"
       },
-      "hoursHint": "Imposta le ore a settimana per vedere quando studierai ogni argomento.",
-      "hoursAction": "Imposta le ore",
+      "hoursHint": "Con un obiettivo di studio, in ore a settimana, vedi quando studierai ogni argomento.",
+      "hoursAction": "Imposta obiettivo di studio",
       "state": {
         "done": "fatto",
         "missed": "sotto l'obiettivo",
@@ -3327,6 +3326,7 @@
       "diagnosticAgain": "Puoi rifare il test dal percorso.",
       "deleted": "Attività eliminata: {{title}}",
       "deleteFailed": "Non riesco a eliminare «{{title}}».",
+      "loadFailed": "Non riesco a leggere le attività da finire.",
       "showAll": "Mostra tutte le {{count}}",
       "showFewer": "Mostra meno"
     }
@@ -3513,13 +3513,15 @@
     "hint": {
       "preparation": "Il voto che prenderesti oggi",
       "path": "Quanto del percorso hai fatto",
-      "today": "Quanto hai fatto dei passi di oggi",
-      "todayNoGoal": "Si misura quando dici quante ore studi a settimana"
+      "today": "I minuti di studio di oggi, sul tuo obiettivo",
+      "todayNoGoal": "Si misura quando imposti un obiettivo di studio"
     },
     "noGoal": "non misurato",
     "noDate": "manca la data",
     "examDay": "giorno dell'esame",
-    "setGoal": "Imposta obiettivo di studio"
+    "setGoal": "Imposta obiettivo di studio",
+    "todayMinutes": "{{done}} di {{target}} min",
+    "todayDone": "fatto, {{done}} min"
   },
   "flashcards": {
     "title": "Flashcard",

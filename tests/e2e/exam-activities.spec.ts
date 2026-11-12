@@ -488,6 +488,57 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
   }
 });
 
+test("Oggi counts the day's minutes against the goal: the introduction alone does not fill it, and a day done does", async () => {
+  test.setTimeout(180_000);
+  const { page, planId, topics, done } = await launch();
+  try {
+    // 6 hours a week is a goal of 51 minutes a day, whatever pace the planner needs for an exam 30 days away.
+    await invoke(page, "plans.plannerHours", { hours: 6 });
+    const stages = [
+      { steps: [["intro", null]], it: "10 di 51 min", en: "10 of 51 min", name: "intro" },
+      { steps: [["practice", topics[0]!.id]], it: "30 di 51 min", en: "30 of 51 min", name: "half" },
+      { steps: [["lesson", topics[0]!.id]], it: "fatto, 60 min", en: "done, 60 min", name: "done" },
+    ] as const;
+    for (const stage of stages) {
+      for (const [activity, topicId] of stage.steps)
+        await invoke(page, "plans.complete", { planId, activity, topicId });
+      for (const [language, theme, width] of [
+        ["it", "dark", 1280],
+        ["en", "light", 960],
+      ] as const) {
+        await page.evaluate(
+          async ({ language, theme }) => {
+            localStorage.setItem("pyxis.lang", language);
+            await window.pyxis.setAppearance(theme);
+          },
+          { language, theme },
+        );
+        await page.setViewportSize({ width, height: 800 });
+        await page.reload();
+        await openExam(page, planId);
+        const legend = page.locator(".px-rings-legend");
+        const value = legend.getByRole("listitem").nth(2);
+        await expect(value).toHaveText(
+          new RegExp(`^(Oggi|Today)\\s*${stage[language]}$`),
+        );
+        await expect(
+          page.locator(".px-exam-rings").getByRole("img"),
+        ).toHaveAccessibleName(new RegExp(`, (Oggi|Today) ${stage[language]}$`));
+        // The ring is drawn part of the way until the day is done.
+        const arc = page.locator(".px-rings-arc.is-today");
+        await expect(arc).toHaveCount(1);
+        await saveShot(
+          page.locator(".px-exam-head"),
+          `oggi-target-${stage.name}-${language}-${theme}-${width}.png`,
+          { animations: "disabled" },
+        );
+      }
+    }
+  } finally {
+    await done();
+  }
+});
+
 test("Oggi measures nothing without a study goal, and its action opens the weekly hours that start the measure", async () => {
   test.setTimeout(120_000);
   const { page, planId, done } = await launch();
@@ -539,14 +590,18 @@ test("Oggi measures nothing without a study goal, and its action opens the weekl
       .click();
     await expect(page.getByText("Modifiche salvate")).toBeVisible();
 
-    // Back on the exam, Oggi measures today's minutes against the planner's share.
+    // Back on the exam, Oggi measures today's minutes against the goal: 7 hours a week is 60 minutes a day, and the
+    // introduction done above took 10 of them.
     await openExam(page, planId);
     await expect(
       legend.getByRole("button", { name: "Imposta obiettivo di studio" }),
     ).toHaveCount(0);
     await expect(legend.getByRole("listitem").nth(2)).toHaveText(
-      /^Oggi\d+\s?%$/,
+      /^Oggi\s*10 di 60 min$/,
     );
+    await expect(
+      page.locator(".px-exam-rings").getByRole("img"),
+    ).toHaveAccessibleName(/, Oggi 10 di 60 min$/);
   } finally {
     await done();
   }

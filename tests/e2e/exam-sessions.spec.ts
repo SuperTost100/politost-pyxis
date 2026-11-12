@@ -120,9 +120,9 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a$/);
     // No weekly hours yet, so the path has no expected dates and says how to get them.
-    const hoursHint = page.getByText("Set your weekly hours to see when you will study each topic.");
+    const hoursHint = page.getByText("With a study goal, in hours a week, you see when you will study each topic.");
     await expect(hoursHint).toBeVisible();
-    await page.getByRole("button", { name: "Set the hours" }).click();
+    await page.locator(".px-xpath").getByRole("button", { name: "Set a study goal" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
     await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a$/);

@@ -2150,7 +2150,7 @@ export const requests = {
               topicTitle: z.string().nullable(),
             }),
           ),
-          // Null when the planner has no share for this plan today (no hours set, no date, or the exam is today).
+          // Null when Oggi has no share for this plan today (no hours set, no date, or the exam is today).
           minutesToday: z.number().nullable(),
           minutesLeft: z.number().nullable(),
           complete: z.boolean(),
@@ -2168,6 +2168,9 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
+        // Oggi in minutes: what today's steps add up to and the exam's part of the student's goal for the day. Null
+        // whenever `today` is.
+        todayMinutes: z.object({ done: z.number().min(0), target: z.number().min(0) }).nullable(),
         // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
         todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
         // The path's next step, due cards aside.

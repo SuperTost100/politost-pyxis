@@ -5,11 +5,11 @@ import "./ExamRings.css";
 
 export type RingValues = Pick<
   RequestOutput<"plans.rings">[number],
-  "preparation" | "path" | "today" | "todayUnmeasured"
+  "preparation" | "path" | "today" | "todayMinutes" | "todayUnmeasured"
 >;
 
 /** Rings with nothing to show yet, while they load. */
-export const emptyRings: RingValues = { preparation: null, path: null, today: null, todayUnmeasured: null };
+export const emptyRings: RingValues = { preparation: null, path: null, today: null, todayMinutes: null, todayUnmeasured: null };
 
 const RADII = [44, 33, 22] as const;
 const KEYS = ["preparation", "path", "today"] as const;
@@ -23,8 +23,8 @@ function percent(share: number, locale: string): string {
 }
 
 /**
- * Each ring's value as the student reads it: Preparazione as the grade on their scale, Percorso and Oggi as
- * percentages, and a few words when there is nothing to show.
+ * Each ring's value as the student reads it: Preparazione as the grade on their scale, Percorso as a percentage, Oggi
+ * as minutes done of its target, and a few words when there is nothing to show.
  */
 export function useRingText(values: RingValues | undefined) {
   const { t, i18n } = useTranslation();
@@ -34,8 +34,13 @@ export function useRingText(values: RingValues | undefined) {
       values?.preparation == null ? t("rings.unmeasured") : grade.mastery(values.preparation),
     path: values?.path == null ? t("rings.noPath") : percent(values.path, i18n.language),
     today:
-      values?.today != null
-        ? percent(values.today, i18n.language)
+      values?.today != null && values.todayMinutes != null
+        ? values.today >= 1
+          ? t("rings.todayDone", { done: Math.round(values.todayMinutes.done) })
+          : t("rings.todayMinutes", {
+              done: Math.round(values.todayMinutes.done),
+              target: values.todayMinutes.target,
+            })
         : values?.todayUnmeasured === "no-goal"
           ? t("rings.noGoal")
           : values?.todayUnmeasured === "no-date"
