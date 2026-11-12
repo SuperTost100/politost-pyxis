@@ -80,16 +80,17 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 
 ## Sources and AI tools
 
-| Component                               | What it's for                                                                     |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `SourceRow`                             | One source in a list, with its kind and state                                     |
-| `SourceDetails`                         | A source's pages, reading state, the exams that use it and the pages lessons cite |
-| `SourceViewer`                          | A source opened at a page, beside the screen                                      |
-| `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                     |
-| `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                   |
-| `OcrDataCard` (`OcrData.tsx`)           | Progress and recovery for the local OCR language data                             |
-| `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library     |
-| `EngineRow`                             | One AI tool with its state, each state with its own icon and word                 |
-| `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                           |
-| `LocalModelCard` (`LocalModel.tsx`)     | The model that runs on this computer: hardware check, download and state          |
-| `Icon`                                  | A Lucide icon by name, at the stroke and size the system uses                     |
+| Component                               | What it's for                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `FileCover`                             | A file drawn by its kind; a book in its subject's colour with the subject's symbol |
+| `SourceRow`                             | One source in a list, with its kind and state                                      |
+| `SourceDetails`                         | A source's pages, reading state, the exams that use it and the pages lessons cite  |
+| `SourceViewer`                          | A source opened at a page, beside the screen                                       |
+| `PdfSourcePage`                         | One PDF page with the cited passage marked, inside the viewer                      |
+| `PdfPasswordDialog` (`PdfPassword.tsx`) | Asks for the password of a locked PDF and runs its import again                    |
+| `OcrDataCard` (`OcrData.tsx`)           | Progress and recovery for the local OCR language data                              |
+| `FreeBooks`                             | The free books and whether a newer version can update the copy in the Library      |
+| `EngineRow`                             | One AI tool with its state, each state with its own icon and word                  |
+| `ProviderSetup`                         | Who makes each AI tool and which account signs in to it                            |
+| `LocalModelCard` (`LocalModel.tsx`)     | The model that runs on this computer: hardware check, download and state           |
+| `Icon`                                  | A Lucide icon by name, at the stroke and size the system uses                      |

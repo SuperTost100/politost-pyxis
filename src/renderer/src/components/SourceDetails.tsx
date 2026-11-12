@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { useEngineNames } from "../lib/useEngineNames";
 import { invoke } from "../lib/ipc";
+import { kindWords } from "../lib/kindWords";
 import { pageRanges } from "../lib/pageRanges";
 import { usePlans, useSources } from "../lib/queries";
 import { refreshPlan } from "../lib/refreshPlan";
@@ -550,7 +551,8 @@ export function SourceDetails({
           <KindIcon kind={source?.kind ?? ""} scan={scan} />
           <span>
             {[
-              source ? t(`sources.kind.${source.kind}`, { defaultValue: source.kind }) : "",
+              // The kind first ("Esercizi · PDF"), when the Library list knows it.
+              ...(listed ? kindWords(listed, t) : source ? [t(`sources.kind.${source.kind}`, { defaultValue: source.kind })] : []),
               data ? t("sources.panel.added", { date: dayText(data.addedAt) }) : "",
             ]
               .filter(Boolean)

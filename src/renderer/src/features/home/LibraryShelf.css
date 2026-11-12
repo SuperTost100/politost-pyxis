@@ -51,6 +51,13 @@
   gap: var(--space-1) 10px;
   min-height: 30px;
 }
+/* The subject's colour, which its books and handouts take. */
+.px-shelf-subject-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
 .px-shelf-subject-name {
   min-width: 0;
   margin: 0;
@@ -99,10 +106,10 @@ input.px-ctl-field.px-shelf-subject-rename {
   padding: 0 8px 0 0;
   list-style: none;
 }
-/* A cover is 100px with its hover fill; the fill reaches 6px past the 88px it takes on the shelf. */
+/* A cover takes 104px on the shelf; its hover fill starts 6px before it, so the title lines up with the picture. */
 .px-cover {
   position: relative;
-  width: 88px;
+  width: 104px;
 }
 .px-cover.is-arrived .px-cover-open {
   animation: px-shelf-tint 1200ms var(--ease-out);
@@ -112,7 +119,7 @@ input.px-ctl-field.px-shelf-subject-rename {
   grid-template-rows: 84px auto;
   gap: var(--space-2);
   box-sizing: border-box;
-  width: 100px;
+  width: 104px;
   margin: -6px;
   padding: 6px;
   border: 0;
@@ -139,11 +146,12 @@ input.px-ctl-field.px-shelf-subject-rename {
   align-items: flex-end;
   height: 84px;
 }
+/* The title wraps between words, two lines at most; a single word longer than the line still breaks. */
 .px-cover-title {
   display: -webkit-box;
   overflow: hidden;
   font: 500 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -160,21 +168,28 @@ input.px-ctl-field.px-shelf-subject-rename {
 .px-cover-state.is-problem {
   color: var(--danger);
 }
-/* Reading or a problem, on the cover's corner, so a full shelf can be scanned for it. */
+/* Reading, locked, failed or missing, on the picture's lower corner, so a full shelf can be scanned for it. The disc is
+   the card's colour with a control edge, so it stands out on every cover colour and on white paper. */
 .px-cover-badge {
   position: absolute;
-  bottom: -4px;
-  left: 44px;
+  right: -7px;
+  bottom: -6px;
   display: grid;
   place-items: center;
   width: 24px;
   height: 24px;
   border-radius: var(--radius-pill);
   background: var(--surface);
-  box-shadow: var(--shadow-card);
+  box-shadow:
+    0 0 0 1px var(--border-control),
+    0 2px 6px rgba(0, 0, 0, 0.18);
   color: var(--ink-muted);
 }
-.px-cover-badge.is-problem {
+.px-cover-badge.is-locked {
+  color: var(--ink);
+}
+.px-cover-badge.is-failed,
+.px-cover-badge.is-missing {
   color: var(--danger);
 }
 /* The Library's dots are round: over a cover's corner, at the end of a row and beside a subject's name. */
@@ -245,8 +260,8 @@ input.px-ctl-field.px-shelf-subject-rename {
 .px-unsorted-art {
   display: grid;
   flex: none;
-  place-items: center;
-  width: 60px;
+  place-items: end center;
+  width: 56px;
   height: 58px;
 }
 .px-unsorted-name {
@@ -294,133 +309,25 @@ input.px-ctl-field.px-shelf-subject-rename {
   .px-unsorted-row {
     flex-wrap: wrap;
   }
+  /* A select is as wide as its longest option, so a very long subject name would push it out of the window. */
   .px-unsorted-row select.px-ctl-field.px-library-picker,
   .px-unsorted-row .px-library-sorting {
     width: auto;
+    min-width: 0;
+    max-width: 100%;
     flex: 1 1 180px;
   }
 }
 
-/* The pictures. A book takes its subject's colour; the rest are drawn in the theme's lines. */
+/* The pictures (FileCover.tsx) sit on the frame's floor, so covers of different shapes stand on one line. A file still
+   being read is faded under its mark. */
 .px-cover-art {
   position: relative;
   display: block;
   flex: none;
-  box-sizing: border-box;
 }
-.px-shelf .px-cover-art {
-  zoom: 1.45;
-}
-.px-cover-art.is-book {
-  width: 40px;
-  height: 56px;
-  padding: 6px 3px 6px 8px;
-  overflow: hidden;
-  border-radius: 3px 6px 6px 3px;
-  background: var(--cover, var(--ink-subtle));
-  color: var(--on-cover);
-}
-.px-cover-art.is-book::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 4px;
-  border-radius: 3px 0 0 3px;
-  background: color-mix(in srgb, var(--ink) 25%, transparent);
-}
-.px-cover-book-title::before {
-  content: attr(data-label);
-}
-.px-cover-book-title {
-  display: -webkit-box;
-  overflow-wrap: normal;
-  overflow: hidden;
-  font: 400 6.5px/1.2 var(--font-display);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-}
-.px-cover-art.is-pages {
-  width: 40px;
-  height: 54px;
-  border: 1px solid var(--border-control);
-  border-radius: 2px;
-  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 8px / 28px 40px
-    no-repeat;
-  box-shadow:
-    -3px 2px 0 -1px var(--surface),
-    -3px 2px 0 0 var(--border-control);
-  transform: rotate(1.5deg);
-}
-.px-cover-art.is-slides {
-  width: 58px;
-  height: 38px;
-  margin-right: 6px;
-  border: 1px solid var(--border-control);
-  border-radius: 4px;
-  background: var(--surface-sunken);
-  box-shadow:
-    3px -3px 0 -1px var(--surface),
-    3px -3px 0 0 var(--border-control);
-}
-.px-cover-art.is-slides::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  width: 26px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--ink-subtle);
-  opacity: 0.7;
-}
-.px-cover-art.is-slides::after {
-  content: "";
-  position: absolute;
-  top: 15px;
-  left: 7px;
-  width: 40px;
-  height: 14px;
-  background: repeating-linear-gradient(var(--border) 0 2px, transparent 2px 5px);
-}
-.px-cover-art.is-exam {
-  width: 40px;
-  height: 54px;
-  border: 1px solid var(--border-control);
-  border-radius: 3px;
-  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 16px / 28px 32px
-    no-repeat;
-  box-shadow:
-    3px 3px 0 -1px var(--surface),
-    3px 3px 0 0 var(--border-control);
-}
-.px-cover-art.is-exam::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 3px;
-  width: 9px;
-  height: 2px;
-  background: var(--ink-subtle);
-  transform: rotate(-35deg);
-}
-.px-cover-art.is-photo {
-  width: 54px;
-  height: 42px;
-  padding: 3px 3px 9px;
-  border: 1px solid var(--border-control);
-  border-radius: 2px;
-  background: var(--surface);
-  transform: rotate(-2deg);
-}
-.px-cover-art.is-photo::before {
-  content: "";
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: color-mix(in srgb, var(--ring-path) 70%, var(--ink))
-    linear-gradient(160deg, transparent 40%, rgba(255, 255, 255, 0.35) 40% 43%, transparent 43% 60%, rgba(255, 255, 255, 0.3) 60% 62%, transparent 62%);
+.px-cover-art.is-reading .px-fc {
+  opacity: 0.42;
 }
 
 @keyframes px-shelf-grow {

@@ -187,9 +187,9 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
     await search.fill("");
     await expect(shelf(page, "Analisi 1")).toBeVisible();
-    // The type filter keeps the files of that type.
+    // The type filter keeps the files of that kind.
     await page.getByRole("combobox", { name: "Tipo" }).click();
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Testo" }).click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Dispensa" }).click();
     await expect(cover(page, "Probabilità", "Calcolo delle probabilita, dispense")).toBeVisible();
     await expect(shelf(page, "Analisi 1")).toHaveCount(0);
 
@@ -1284,7 +1284,7 @@ test("A cover's dots and a subject's dots work from the keyboard alone: Sposta i
     const dots = file.getByRole("button", { name: "Azioni per Limiti" });
     await expect(dots).toBeFocused();
     await page.keyboard.press("Enter");
-    for (const item of ["Dettagli della fonte", "Rinomina", "Sposta in"]) {
+    for (const item of ["Dettagli della fonte", "Rinomina", "Tipo", "Sposta in"]) {
       await page.keyboard.press("ArrowDown");
       await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeFocused();
     }
