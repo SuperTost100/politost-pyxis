@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,7 +97,10 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       ],
     },
   };
+  // Esporta > Solo quello che vedi saves through the same dialog as the other exports, which the seam answers with this path.
+  const output = join(userData, "map-export.png");
   const env = {
+    PYXIS_E2E_SAVE: output,
     PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies),
     PYXIS_E2E_MAP_REPLIES: process.env.PYXIS_LIVE_MAP
       ? undefined
@@ -353,12 +357,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       );
       await saveShot(page, `m10-map-${language}-${theme}-${width}.png`);
       await expectNoAxeViolations(page);
-      const output = join(userData, `map-${theme}-${language}.png`);
-      await app.evaluate(({ session }, path) => {
-        session.defaultSession.once("will-download", (_, item) =>
-          item.setSavePath(path),
-        );
-      }, output);
+      rmSync(output, { force: true });
       await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
       await page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }).click();
       await page.getByRole("menuitem", { name: /^(Solo quello che vedi|Just what you see)/ }).click();
@@ -380,8 +379,10 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       }
       const png = readPng()!;
       const bounds = await page.locator(".px-map-canvas").boundingBox();
-      expect(png.width).toBe(Math.round(bounds!.width * 2));
-      expect(png.height).toBe(Math.round(bounds!.height * 2));
+      // The canvas's size times the window's pixel ratio; a canvas on a half pixel is saved with its outer pixels.
+      const ratio = await page.evaluate(() => devicePixelRatio);
+      expect(Math.abs(png.width - bounds!.width * ratio)).toBeLessThan(2 * ratio);
+      expect(Math.abs(png.height - bounds!.height * ratio)).toBeLessThan(2 * ratio);
       const color = await page
         .locator(".px-map-canvas")
         .evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -389,8 +390,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       // Match a blank canvas pixel: catches old dark-only repaint exports.
       expect([
         ...png.data.slice(
-          (png.width * 40 + png.width - 40) * 4,
-          (png.width * 40 + png.width - 40) * 4 + 3,
+          (png.width * 20 * ratio + png.width - 20 * ratio) * 4,
+          (png.width * 20 * ratio + png.width - 20 * ratio) * 4 + 3,
         ),
       ]).toEqual(rgb);
     }
