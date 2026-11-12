@@ -417,6 +417,53 @@ test("the quiz too reopens on the question after Avanti and Segna per dopo press
   }
 });
 
+test("a slow save on its way, a queued draft and a newer one sent on leaving: the newest answers are the ones stored", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  let lock: DatabaseSync | undefined;
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    // The test holds the database's write lock, as new-flashcard.spec.ts does, so the core waits on the first save
+    // in the middle of it: no signal, no timing guess, and the same on every platform.
+    lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    lock.exec("BEGIN IMMEDIATE");
+    // Draft A (question 2) is sent after 500 ms and stays on its way, waiting for the lock.
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await expect(heading(page)).toHaveText("Domanda 2 di 3");
+    await page.waitForTimeout(800);
+    // Draft B (question 3) has to wait behind A.
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await expect(heading(page)).toHaveText("Domanda 3 di 3");
+    await page.waitForTimeout(800);
+    // Draft C (question 3, marked) is the page's last, sent as it leaves.
+    await mark.click();
+    await expect(mark).toHaveAttribute("aria-pressed", "true");
+    await go(page, "/plans/p-fis");
+    lock.exec("ROLLBACK");
+    lock.close();
+    lock = undefined;
+    // Every save has landed once the core answers a read; the last one in order must be C, never B.
+    await expect
+      .poll(
+        () =>
+          page
+            .evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }))
+            .then((run) => [run.current, run.marked ?? []]),
+        { timeout: 30_000 },
+      )
+      .toEqual(["e-3", ["e-3"]]);
+    await page.waitForTimeout(1500);
+    const run = await page.evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }));
+    expect([run.current, run.marked ?? []]).toEqual(["e-3", ["e-3"]]);
+  } finally {
+    lock?.close();
+    await done();
+  }
+});
+
 /** Sets the window to `width` device pixels at `zoom`, as Ctrl and plus do. */
 async function zoomWindow(app: ElectronApplication, page: Page, width: number, zoom: number) {
   await app.evaluate(
