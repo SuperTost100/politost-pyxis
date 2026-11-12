@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
-import { unsortedReasons } from "./shelf";
+import { mixedReasons, unsortedReasons } from "./shelf";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
@@ -39,7 +39,7 @@ export function UnsortedGroup({
   const headId = useId();
   const reasons = unsortedReasons(sources);
   // With more than one reason in the group, each line says it is about some of the files.
-  const mixed = [...reasons].filter((reason) => reason !== "working").length > 1;
+  const mixed = mixedReasons(reasons);
   return (
     <section className="px-library-unsorted" aria-labelledby={headId}>
       <h2 id={headId} className="body-strong">

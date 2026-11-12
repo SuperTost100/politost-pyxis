@@ -66,3 +66,9 @@ export function nextPickerRow(rows: { id: string; sort: SortState }[], movedId: 
 export function unsortedReasons(sources: { sort: SortState }[]): Set<"working" | "stopped" | "unsure" | "no-ai" | "none"> {
   return new Set(sources.map((source) => (source.sort === null || source.sort === "created" ? "none" : source.sort)));
 }
+
+/**
+ * Whether a group's lines are about some of its files only. A file Pyxis is still choosing for counts as a reason, since
+ * the lines for the others must not claim to speak for all of them.
+ */
+export const mixedReasons = (reasons: ReadonlySet<string>) => reasons.size > 1;

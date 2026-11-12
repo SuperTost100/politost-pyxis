@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookLabel, coverColour, coverKind, nextPickerRow, unsortedReasons } from "./shelf";
+import { bookLabel, coverColour, coverKind, mixedReasons, nextPickerRow, unsortedReasons } from "./shelf";
 
 describe("the Library's shelf", () => {
   it("gives a subject the same cover colour every time, from its id alone", () => {
@@ -53,5 +53,13 @@ describe("the Library's shelf", () => {
     expect(unsortedReasons([{ sort: null }, { sort: "unsure" }, { sort: "working" }, { sort: "no-ai" }, { sort: "stopped" }])).toEqual(
       new Set(["none", "unsure", "working", "no-ai", "stopped"]),
     );
+  });
+
+  it("calls the reasons mixed whenever a group has two, a file still being sorted included", () => {
+    expect(mixedReasons(unsortedReasons([{ sort: "unsure" }, { sort: "unsure" }]))).toBe(false);
+    expect(mixedReasons(unsortedReasons([{ sort: "working" }]))).toBe(false);
+    // One file Pyxis is still choosing for and one it could not place: "some files", not "these files".
+    expect(mixedReasons(unsortedReasons([{ sort: "working" }, { sort: "unsure" }]))).toBe(true);
+    expect(mixedReasons(unsortedReasons([{ sort: "unsure" }, { sort: null }]))).toBe(true);
   });
 });
