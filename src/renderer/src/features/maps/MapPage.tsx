@@ -912,7 +912,9 @@ export function MapPage() {
     if (graph) setFresh(true);
     try {
       await invoke("jobs.resumeAll", { jobIds: [job.jobId] });
-      client.setQueryData(buildKey(job.jobId), job);
+      // The build as it is now, running again. The stopped build the page holds ended and would be taken for the end of
+      // the work just started, which would bring the old map back while the resumed build still runs.
+      client.setQueryData(buildKey(job.jobId), await readBuild(job.jobId));
       setJobId(job.jobId);
       await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
     } catch {
