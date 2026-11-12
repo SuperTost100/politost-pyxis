@@ -31,7 +31,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { buildMenuTemplate, contextMenuAnchor, contextMenuItems } from "./menu";
+import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
   type MenuCommand,
@@ -574,6 +574,19 @@ function createWindow(route?: string): void {
   });
 
   if (!hiddenTest) mainWindow.once("ready-to-show", () => mainWindow?.show());
+  // Electron gives a page no right-click menu: this is the one for text (edit items, spelling, Copia on a selection), in
+  // the app's language. The window's own menus prevent the page's `contextmenu`, and Chromium then sends no event here.
+  const contents = mainWindow.webContents;
+  contents.on("context-menu", (_event, params) => {
+    const template = textMenuTemplate(params, menuLanguage ?? systemLanguage(), {
+      replace: (word) => contents.replaceMisspelling(word),
+      learn: (word) => void contents.session.addWordToSpellCheckerDictionary(word),
+    });
+    if (!template || !mainWindow || mainWindow.isDestroyed()) return;
+    // A menu asked for by the keyboard hangs from the field; one asked for by a click opens at the pointer.
+    const at = params.menuSourceType === "keyboard" ? contextMenuAnchor({ x: params.x, y: params.y }) : null;
+    Menu.buildFromTemplate(template).popup({ window: mainWindow, ...(at ?? {}) });
+  });
   mainWindow.webContents.on("did-finish-load", () => {
     pageReady = true;
     rendererPortFor = null;
