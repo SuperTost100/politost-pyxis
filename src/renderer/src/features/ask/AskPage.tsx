@@ -33,14 +33,16 @@ import {
   draftKey,
   fileName,
   readPendingFiles,
+  readPendingSubject,
   takeBoardAttachment,
   writePendingFiles,
+  writePendingSubject,
   addPendingFiles,
 } from "./attachments";
 import { ChatHeader } from "./ChatHeader";
 import { pastedPng } from "./paste";
 import { replyPlainText } from "./replyText";
-import { chipState, newChipState, subjectToSend, type NewChatSubject } from "./scope";
+import { chipState, newChipState, settleNewSubject, subjectToSend, type NewChatSubject } from "./scope";
 import { SubjectChip, type SubjectPick } from "./SubjectChip";
 import { UsedSources } from "./UsedSources";
 import { dayPart } from "./greeting";
@@ -271,8 +273,9 @@ export function AskPage() {
     () => sessionStorage.getItem(draftKey(chatId)) ?? "",
   );
   const profile = useProfile();
-  // A new chat's subject before its first question: Pyxis picks unless the student chooses one on the first page.
-  const [newSubject, setNewSubject] = useState<NewChatSubject>({ kind: "auto" });
+  // A new chat's subject before its first question: Pyxis picks unless the student chooses one on the first page. The
+  // choice stays in the session with the new chat's draft, so the whiteboard, the graph or the Library do not lose it.
+  const [newSubject, setNewSubject] = useState<NewChatSubject>(() => readPendingSubject(sessionStorage));
   const field = useRef<MathTextEditorHandle>(null);
   // The way being asked for with the action under the last answer, for its working line.
   const [switching, setSwitching] = useState<"solved" | "guided" | null>(null);
@@ -308,6 +311,8 @@ export function AskPage() {
     setDraft(sessionStorage.getItem(draftKey(chatId)) ?? "");
     setFiles(readPendingFiles(sessionStorage, chatId));
     setPreviews({});
+    // A new chat shows the subject kept for it, which is Pyxis's choice once its first question has gone.
+    setNewSubject(readPendingSubject(sessionStorage));
   }, [chatId]);
   useEffect(() => {
     const board = takeBoardAttachment(sessionStorage);
@@ -365,10 +370,14 @@ export function AskPage() {
     setError(null);
   }, [chatId]);
 
-  // Each new chat starts by letting Pyxis pick its subject.
+  // The kept choice follows a subject renamed in the Library meanwhile, and gives way when the subject is gone.
   useEffect(() => {
-    if (!chatId) setNewSubject({ kind: "auto" });
-  }, [chatId]);
+    if (!subjects.data) return;
+    const settled = settleNewSubject(newSubject, subjects.data);
+    if (JSON.stringify(settled) === JSON.stringify(newSubject)) return;
+    setNewSubject(settled);
+    writePendingSubject(sessionStorage, settled);
+  }, [subjects.data, newSubject]);
 
   // A reply's math check runs after the reply is saved. When it ends, the chat is read again for its badges.
   useEffect(
@@ -396,7 +405,10 @@ export function AskPage() {
           ? t("ask.chip.nowLibrary")
           : t("ask.chip.nowPyxis");
     if (!chatId) {
-      setNewSubject(pick);
+      const row = pick.kind === "subject" ? subjects.data?.find((subject) => subject.name === pick.name) : undefined;
+      const choice: NewChatSubject = pick.kind === "subject" ? { ...pick, id: row?.id } : pick;
+      setNewSubject(choice);
+      writePendingSubject(sessionStorage, choice);
       setAnnouncement(said);
       return;
     }
@@ -526,8 +538,12 @@ export function AskPage() {
       setPreviews({});
       sessionStorage.removeItem(draftKey(chatId));
     }
+    // A new chat's first question takes the subject chosen for it, which stays kept only until the question has gone.
+    const sentSubject = chatId ? null : newSubject;
+    if (sentSubject) writePendingSubject(sessionStorage, { kind: "auto" });
     // The message goes back to the chat it was sent from, even if the student has moved to another one or left Ask.
     const restore = () => {
+      if (sentSubject && readPendingSubject(sessionStorage).kind === "auto") writePendingSubject(sessionStorage, sentSubject);
       if (options.textOnly || turn.dropped) return;
       const from = startedIn || undefined;
       const page = screen?.current;

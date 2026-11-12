@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chipState, newChipState, subjectToSend } from "./scope";
+import { chipState, newChipState, settleNewSubject, subjectToSend } from "./scope";
 
 const chat = {
   subject: null,
@@ -42,6 +42,35 @@ describe("the chat's subject chip", () => {
       kind: "subject",
       name: "Fisica 2",
       by: "student",
+    });
+  });
+});
+
+describe("a new chat's pending choice against the Library's subjects", () => {
+  const library = [
+    { id: "s-fis", name: "Fisica generale" },
+    { id: "s-an", name: "Analisi 1" },
+  ];
+
+  it("follows a subject that was renamed, by its id", () => {
+    expect(settleNewSubject({ kind: "subject", id: "s-fis", name: "Fisica 2" }, library)).toEqual({
+      kind: "subject",
+      id: "s-fis",
+      name: "Fisica generale",
+    });
+  });
+
+  it("goes back to Pyxis's choice when the subject is gone, and leaves the other choices alone", () => {
+    expect(settleNewSubject({ kind: "subject", id: "s-gone", name: "Chimica" }, library)).toEqual({ kind: "auto" });
+    expect(settleNewSubject({ kind: "library" }, library)).toEqual({ kind: "library" });
+    expect(settleNewSubject({ kind: "auto" }, library)).toEqual({ kind: "auto" });
+  });
+
+  it("finds a subject without an id by its name", () => {
+    expect(settleNewSubject({ kind: "subject", name: "analisi 1" }, library)).toEqual({
+      kind: "subject",
+      id: "s-an",
+      name: "Analisi 1",
     });
   });
 });

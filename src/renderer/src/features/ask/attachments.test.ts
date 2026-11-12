@@ -7,8 +7,10 @@ import {
   keepUnsentQuestion,
   lastAskChat,
   readPendingFiles,
+  readPendingSubject,
   takeBoardAttachment,
   writePendingFiles,
+  writePendingSubject,
 } from "./attachments";
 
 function store(entries: Record<string, string>) {
@@ -78,6 +80,20 @@ describe("Ask attachments", () => {
     expect(s.getItem(draftKey("b"))).toBe("bozza di b");
     keepUnsentQuestion(s, undefined, "Che cos'è la velocità?");
     expect(s.getItem(draftKey())).toBe("Che cos'è la velocità?");
+  });
+
+  it("keeps a new chat's subject choice beside its draft, as the subject's id and name, until it is cleared", () => {
+    const s = store({});
+    expect(readPendingSubject(s)).toEqual({ kind: "auto" });
+    writePendingSubject(s, { kind: "subject", id: "s-fis", name: "Fisica 2" });
+    expect(readPendingSubject(s)).toEqual({ kind: "subject", id: "s-fis", name: "Fisica 2" });
+    writePendingSubject(s, { kind: "library" });
+    expect(readPendingSubject(s)).toEqual({ kind: "library" });
+    // Letting Pyxis pick is the absence of a choice, so nothing is kept.
+    writePendingSubject(s, { kind: "auto" });
+    expect([...s.data.keys()]).toEqual([]);
+    expect(readPendingSubject(store({ "pyxis-subject": "{" }))).toEqual({ kind: "auto" });
+    expect(readPendingSubject(store({ "pyxis-subject": '{"kind":"subject"}' }))).toEqual({ kind: "auto" });
   });
 
   it("reads no files from a value that is not a list of paths", () => {

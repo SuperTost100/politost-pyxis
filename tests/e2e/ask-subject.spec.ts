@@ -234,6 +234,61 @@ test("Ask: the subject can be chosen on a new chat's first page, from the keyboa
   }
 });
 
+test("Ask: a subject chosen on a new chat's first page survives the whiteboard, the Library, a reload and a renamed subject, and goes with the first question", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await launch();
+  const db = seedLibrary(userData);
+  try {
+    await openAsk(page);
+    await atRest(chip(page));
+    await chip(page).click();
+    await page.getByRole("menuitemradio", { name: "Fisica 2" }).click();
+    await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica 2, scelta da te");
+
+    // The whiteboard: draw, attach the drawing, and come back to the new chat with the subject still chosen.
+    await page.locator(".px-composer").getByRole("button", { name: "Lavagna", exact: true }).click();
+    await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
+    const canvas = page.locator(".px-whiteboard canvas");
+    await expect(canvas).toBeVisible();
+    const rect = (await canvas.boundingBox())!;
+    await page.mouse.move(rect.x + 100, rect.y + 200);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + 250, rect.y + 300, { steps: 12 });
+    await page.mouse.up();
+    await page.getByRole("button", { name: "Allega alla chat" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(page.getByAltText("Lavagna")).toBeVisible();
+    await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica 2, scelta da te");
+
+    // A reload keeps it, like the draft.
+    await page.reload();
+    await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica 2, scelta da te");
+
+    // The subject is renamed in the Library meanwhile: the choice follows it.
+    await toLibrary(page);
+    await page.getByRole("region", { name: /^Fisica 2 \d+ file$/ }).getByRole("heading", { level: 2, name: "Fisica 2" }).dblclick();
+    const field = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await field.fill("Fisica generale");
+    await field.press("Enter");
+    await expect(page.getByRole("region", { name: /^Fisica generale \d+ file$/ })).toBeVisible();
+    await page.getByRole("link", { name: "Nuova chat" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica generale, scelta da te");
+
+    // The first question goes with it (the drawing leaves, as reading a photo needs data this test does not download),
+    // and the next new chat starts with Pyxis's choice again.
+    await page.getByRole("button", { name: /^Rimuovi .*\.png$/ }).click();
+    await ask(page, "Campo elettrico di un filo carico");
+    expect(await stored(page)).toMatchObject({ subject: "Fisica generale", subjectBy: "student" });
+    await page.getByRole("link", { name: "Nuova chat" }).click();
+    await expect(chip(page)).toHaveText("Materia: sceglie Pyxis");
+    await page.reload();
+    await expect(chip(page)).toHaveText("Materia: sceglie Pyxis");
+  } finally {
+    await finish(app, userData, db);
+  }
+});
+
 test("Ask: the action under an answer asks again the other way, in both directions, and keeps it after a reload", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: REPLY, PYXIS_E2E_REPLY_DELAY: "2500" });
