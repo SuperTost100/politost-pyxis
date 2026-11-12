@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, atRest } from "./settled";
 import { saveShot } from "./shots";
 import { seedSource, seedSubjects } from "./seed";
 
@@ -553,6 +553,9 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // A file's menu by its dots.
     const target = cover(page, "Analisi 1", "Integrali");
     await target.scrollIntoViewIfNeeded();
+    // The page's own scrolls, the wheel's and this one, have stopped: a menu closes on a scroll that moves its item, and
+    // on an Intel Mac this menu opened and was gone.
+    await atRest(target);
     await target.hover();
     const dots = page.getByRole("button", { name: "Azioni per Integrali" });
     await expect(dots).toBeVisible();
@@ -579,6 +582,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // By a right-click, at the pointer.
     const second = cover(page, "Fisica 2", "Onde");
     await second.scrollIntoViewIfNeeded();
+    await atRest(second);
     const at = centre((await second.boundingBox())!);
     await page.mouse.click(at.x, at.y, { button: "right" });
     await expectMenuAt(fileMenu, at, await sourceId(second), "library-menu/960-file-right-click.png");
@@ -589,6 +593,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     await rest();
     const third = cover(page, "Fisica 2", "Ottica");
     await third.scrollIntoViewIfNeeded();
+    await atRest(third);
     await third.getByRole("button", { name: "Ottica", exact: true }).focus();
     await page.keyboard.press("Shift+F10");
     const focusedBox = (await third.getByRole("button", { name: "Ottica", exact: true }).boundingBox())!;
@@ -600,12 +605,14 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     await rest();
     const subjectDots = page.getByRole("button", { name: "Azioni sulla materia Fisica 2" });
     await subjectDots.scrollIntoViewIfNeeded();
+    await atRest(subjectDots);
     await subjectDots.click();
     await expectMenuAt(subjectMenu, centre((await subjectDots.boundingBox())!), null, "library-menu/960-subject-dots.png");
     await page.keyboard.press("Escape");
     await expect(subjectMenu).toHaveCount(0);
     const heading = shelf(page, "Analisi 1").getByRole("heading", { name: "Analisi 1" });
     await heading.scrollIntoViewIfNeeded();
+    await atRest(heading);
     const headAt = centre((await heading.boundingBox())!);
     await page.mouse.click(headAt.x, headAt.y, { button: "right" });
     await expectMenuAt(subjectMenu, headAt, null, "library-menu/960-subject-right-click.png");
@@ -628,6 +635,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       const open = async () => {
         const file = cover(page, "Analisi 1", "Serie");
         await file.scrollIntoViewIfNeeded();
+        // After this scroll, the wheel's and the window's last resize, which closes a right-click menu.
+        await atRest(file);
         if (way === "dots") {
           await file.hover();
           await page.getByRole("button", { name: "Azioni per Serie" }).click();
@@ -864,6 +873,8 @@ test("A scroll that ends a keyboard-opened menu leaves the page where it went an
     const scrollUp = async () => {
       await page.mouse.wheel(0, -900);
       await expect.poll(() => pageScroll(page)).toBe(0);
+      // The next menu opens here, after this scroll's event.
+      await atRest(page.locator(".px-shelves"));
     };
     // How far the wheel takes the page with no menu open, which is where a menu's scroll must leave it.
     await page.mouse.move(1100, 300);

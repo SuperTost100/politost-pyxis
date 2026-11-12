@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
+import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -541,10 +542,21 @@ test("open answer: written with formulas, graded by the AI tool after Consegna w
     // beside the numbers once some questions are ready, with the ones still to come drawn and Consegna waiting.
     await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
     await expect(page.locator(".px-qz-sheet .px-working-slot, .px-qz-busy").first()).toBeVisible();
-    await expect(page.locator(".px-qz-num.is-waiting").first()).toBeVisible();
+    const waiting = page.locator(".px-qz-num.is-waiting");
+    await expect(waiting.first()).toBeVisible();
     await expect(sheet(page).getByRole("button", { name: "Consegna", exact: true })).toBeDisabled();
     await expect(sheet(page)).toContainText("Potrai consegnare quando tutte le domande saranno pronte.");
     await saveShot(page, "quiz-writing-it-light.png", { animations: "disabled" });
+    // A number still to come is text the student reads, so it keeps 4.5:1 in both themes. The release loop met these
+    // numbers only when its first answer beat the rest of the questions; here they are on screen on purpose.
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((value) => window.pyxis.setAppearance(value), theme);
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      await animationsSettled(page);
+      await expect(waiting.first()).toBeVisible();
+      await expectNoAxeViolations(page, { include: [".px-qz-nums"] });
+    }
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
     // Ten questions are written in three calls, each with the recorded model's delay.
     await expect
       .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
