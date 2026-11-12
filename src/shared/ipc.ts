@@ -3186,6 +3186,8 @@ export const requests = {
         sourceId: z.string(),
         title: z.string(),
         kind: z.string(),
+        /** The source left the Library (removed, or its linked folder unlinked); its cited text is still shown. */
+        removed: z.boolean(),
         blobSha: z.string().nullable(),
         excerpt: z.string().nullable(),
       })

@@ -8,6 +8,7 @@ import { spokenText } from "@shared/spoken-math";
 import { invoke } from "../lib/ipc";
 import { IconButton } from "./IconButton";
 import { LoadError } from "./LoadError";
+import { Notice } from "./Notice";
 import { SelectionMenu } from "./SelectionMenu";
 import "./SourceViewer.css";
 
@@ -65,6 +66,7 @@ export function useSourceView(
   const content = (
     <>
       {passages.isPending || (!markdownReady && source.data?.kind !== "pdf") ? <Skeleton active /> : null}
+      {source.data?.removed ? <Notice tone="info">{t("sources.panel.gone")}</Notice> : null}
       {passages.isError || source.isError ? (
         <LoadError onRetry={() => void Promise.all([passages.isError ? passages.refetch() : null, source.isError ? source.refetch() : null])}>
           {t("sources.viewerFailed")}

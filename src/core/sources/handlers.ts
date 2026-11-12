@@ -849,7 +849,7 @@ export function sourceHandlers(
     viewerDocument(input: { sourceId?: string; passageId?: string }) {
       const row = db
         .prepare(
-          `SELECT s.id, s.title, s.kind, s.blob_sha, d.tree_json, d.version,
+          `SELECT s.id, s.title, s.kind, s.blob_sha, s.status, d.tree_json, d.version,
         (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS latest
         FROM sources s LEFT JOIN source_documents d ON d.id = COALESCE(
           (SELECT document_id FROM passages WHERE id = ?),
@@ -866,6 +866,7 @@ export function sourceHandlers(
             title: string;
             kind: string;
             blob_sha: string | null;
+            status: string;
             tree_json: string | null;
             version: number;
             latest: number;
@@ -879,6 +880,8 @@ export function sourceHandlers(
         sourceId: row.id,
         title: row.title,
         kind: tree.kind ?? row.kind,
+        // Removed from the Library, or its folder unlinked: the citation keeps its text, and the viewer says so.
+        removed: row.status === "removed",
         blobSha:
           tree.blobSha ?? (row.version === row.latest ? row.blob_sha : null),
         excerpt: input.passageId

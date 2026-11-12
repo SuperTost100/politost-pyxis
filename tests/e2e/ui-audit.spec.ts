@@ -134,6 +134,11 @@ const routes = [
   // An exam's Sources tab opens the same panel; Escape closes it and focus goes back to the row.
   ["plan-sources-panel", "/plans/audit-plan/sources"],
   ["library-folder", "/exams/library"],
+  // The linked folders in the Library's head: the control, its list open, a folder no longer on disk, and unlinking one.
+  ["library-folders", "/exams/library"],
+  ["library-folders-open", "/exams/library"],
+  ["library-folders-missing", "/exams/library"],
+  ["library-folders-unlink", "/exams/library"],
   ["library-link", "/exams/library"],
   ["library-text", "/exams/library"],
   ["library-text-ready", "/exams/library"],
@@ -934,6 +939,9 @@ let auditPicked = "";
 /** A study folder with subject folders and a holiday folder, linked by setup's material step. */
 let auditStudy = "";
 
+/** Two course folders the Library's linked-folder states show as linked, beside the one setup links. */
+let auditCourses = "";
+
 /** A newer fake release served from disk by the e2e seam, installed into a stand-in AppImage. */
 const packageVersion = JSON.parse(
   readFileSync(join(process.cwd(), "package.json"), "utf8"),
@@ -1355,6 +1363,40 @@ function prepareLibraryShelf(name: string) {
   });
 }
 
+/**
+ * Three linked folders for the Library's linked-folder states: two course folders on disk, read two minutes ago, with a
+ * file each on a shelf, and a third that is no longer there (only in the missing state). Every other state starts
+ * without them.
+ */
+function prepareLinkedFolders(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM linked_folders WHERE id LIKE 'audit-folder-%';
+      DELETE FROM sources WHERE id LIKE 'audit-folder-%';`);
+    if (!name.startsWith("library-folders")) return;
+    const checked = Date.now() - 2 * 60_000;
+    const folder = db.prepare(
+      "INSERT INTO linked_folders(id,path,mode,detection,cut_json,confirmed_at,synced_at,created_at) VALUES(?,?,'subject','names','{}',?,?,?)",
+    );
+    const source = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,subject_id,created_at,updated_at) VALUES(?,'text',?,'ready',1,'audit-subject',1,1)",
+    );
+    const file = db.prepare(
+      "INSERT INTO linked_files(folder_id,rel_path,subfolder,source_id,size,mtime_ms,missing_at) VALUES(?,?,'',?,10,1,?)",
+    );
+    const courses: Array<[string, string, string, boolean]> = [
+      ["audit-folder-digital", join(auditCourses, "Tecnologie Digitali"), "Slide lezione 9", false],
+      ["audit-folder-cinema", join(auditCourses, "Linguaggio cinematografico"), "Schede dei film", false],
+    ];
+    if (name === "library-folders-missing")
+      courses.push(["audit-folder-gone", join(auditCourses, "Fisica (spostata)"), "Esercitazione 4", true]);
+    for (const [id, path, title, gone] of courses) {
+      folder.run(id, path, checked, checked, checked);
+      source.run(`${id}-file`, title);
+      file.run(id, `${title}.txt`, `${id}-file`, gone ? checked : null);
+    }
+  });
+}
+
 /** The empty Maps section: the maps move to a side table and come back for every other state. */
 function prepareMapsEmpty(name: string) {
   withDb((db) => {
@@ -1542,6 +1584,7 @@ function prepareState(name: string) {
   prepareLibraryEmpty(name);
   prepareLibrarySubjects(name);
   prepareLibraryShelf(name);
+  prepareLinkedFolders(name);
   prepareMapsEmpty(name);
   prepareCardBrowser(name);
   prepareBackupState(name);
@@ -3290,6 +3333,22 @@ async function openState(page: Page, name: string) {
       await page.getByRole("menuitem", { name: both("Sposta in", "Move to") }).hover();
       await expect(page.getByRole("menuitem", { name: both("Nuova materia…", "New subject…") })).toBeVisible();
       break;
+    case "library-folders-open":
+    case "library-folders-missing":
+    case "library-folders-unlink": {
+      await page.getByRole("button", { name: /^\d+ (cartelle collegate|linked folders)/ }).click();
+      const list = page.getByRole("dialog", { name: both("Cartelle collegate", "Linked folders") });
+      await expect(list).toBeFocused();
+      if (name === "library-folders-missing")
+        await expect(list.getByRole("button", { name: both("Trova la cartella…", "Find the folder…") })).toBeVisible();
+      if (name !== "library-folders-unlink") break;
+      await list
+        .getByRole("button", { name: both("Azioni sulla cartella Polito › Tecnologie Digitali", "Actions on the folder Polito › Tecnologie Digitali") })
+        .click();
+      await page.getByRole("menuitem", { name: both("Scollega…", "Unlink…") }).click();
+      await expect(page.getByRole("dialog", { name: /^(Scollegare|Unlink)/ })).toBeVisible();
+      break;
+    }
     case "library-row-menu":
       await page
         .getByRole("button", {
@@ -3889,6 +3948,9 @@ test("M14 every application route in both languages, themes and supported widths
   writeFileSync(join(deep, "profondo.txt"), "Troppo in fondo.");
   // The study folder setup links: three subjects and a folder of holiday paperwork the recorded reply skips.
   auditStudy = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-study-")), "Università");
+  auditCourses = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-courses-")), "Polito");
+  for (const course of ["Tecnologie Digitali", "Linguaggio cinematografico"])
+    mkdirSync(join(auditCourses, course), { recursive: true });
   for (const [folder, file, text] of [
     ["Fisica 1", "Mazzoldi cap 2.txt", "La velocità è la derivata della posizione."],
     ["Analisi 2", "appunti integrali.md", "# Integrali doppi\n\nSi calcolano per fili."],
@@ -4240,6 +4302,7 @@ test("M14 every application route in both languages, themes and supported widths
     removeTestFolder(userData);
     rmSync(importFolder, { recursive: true, force: true });
     rmSync(dirname(auditStudy), { recursive: true, force: true });
+    rmSync(dirname(auditCourses), { recursive: true, force: true });
     rmSync(booksSite, { recursive: true, force: true });
     rmSync(updateFolder, { recursive: true, force: true });
     rmSync(auditEngines, { recursive: true, force: true });

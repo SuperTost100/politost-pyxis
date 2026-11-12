@@ -37,10 +37,11 @@ export function JobsSync() {
         void client.invalidateQueries({ queryKey: [key], refetchType: "none" });
     });
     // A linked folder changed without a job, such as a file moved or deleted there: the Library reads its list again,
-    // and the subjects too, since a subject's last file can be the one that left.
+    // and the subjects too, since a subject's last file can be the one that left, and the linked folders, which count them.
     const offSources = onBroadcast("sources.changed", () => {
       void client.invalidateQueries({ queryKey: ["sources"] });
       void client.invalidateQueries({ queryKey: ["subjects"] });
+      void client.invalidateQueries({ queryKey: ["linked-folders"] });
     });
     const offPort = window.pyxis.onPort(() => {
       void client.invalidateQueries({ queryKey: ["jobs"] });
