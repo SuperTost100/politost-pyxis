@@ -527,9 +527,9 @@ export function SourceDetails({
           return;
         }
         if (!id) return;
-        // Back to the row the panel belongs to, even when the row menu opened it and its item is gone.
+        // Back to the row or cover the panel belongs to, even when its menu opened it and its item is gone.
         const row = document.querySelector<HTMLElement>(
-          `[data-source-id="${CSS.escape(id)}"] .px-source-row-open`,
+          `[data-source-id="${CSS.escape(id)}"] :is(.px-source-row-open, [data-source-open])`,
         );
         // A source removed meanwhile has no row left; the page's visible heading keeps focus from staying on the closed
         // panel. The page can hold an empty, hidden h1 before it, which cannot take focus.

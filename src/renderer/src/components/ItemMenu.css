@@ -7,6 +7,29 @@
   pointer-events: none;
 }
 
+/* An item's menu is fixed to the window, like the point it hangs from: it never lengthens the page, and nothing scrolls
+   the page to reach it (a focus or a scroll into view of one of its items). The trigger keeps it inside the window, and
+   one taller than the window scrolls inside itself. A scroll of the page under it closes it (useMenuLifetime). */
+.ant-dropdown.px-item-menu {
+  position: fixed;
+}
+.px-item-menu ul.ant-dropdown-menu {
+  box-sizing: border-box;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+/* A submenu is drawn inside its menu (`drawn` in ItemMenu.tsx). There Ant Design's rule for a submenu's row, whose class
+   the submenu shares, would make it take room in the menu and stretch the menu down the window: it floats beside its row
+   instead. Its wrapper also shares the list's class, and only the list inside it is drawn as a card. */
+.px-item-menu .ant-dropdown-menu-submenu.ant-dropdown-menu-submenu-popup {
+  position: absolute;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+
 /* An item's menu (docs/design-system/layout.md, item menus): a card of actions, 34px rows, a hairline before the one
    that deletes, which is soft red. A format or a note sits quietly on the right of its row; a submenu has its arrow. */
 .px-item-menu .ant-dropdown-menu {

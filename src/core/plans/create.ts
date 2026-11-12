@@ -1,5 +1,5 @@
 import { planOrigin, topicContent, topicTree } from "./views";
-import { addSubject } from "./subjects";
+import { addSubject, SUBJECT_IN_USE } from "./subjects";
 import { planEducation } from "./education";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
@@ -507,12 +507,7 @@ export function listSubjects(db: Database.Database) {
   return (
     db
       .prepare(
-        `SELECT s.id, s.name,
-           (EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM cards cd WHERE cd.subject_id = s.id)
-             OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE)) AS used,
+        `SELECT s.id, s.name, ${SUBJECT_IN_USE} AS used,
            COALESCE((SELECT CASE WHEN json_extract(m.graph_json, '$.version') = 1
                THEN COALESCE(json_array_length(m.graph_json, '$.maps'), 0) ELSE 1 END FROM maps m
              WHERE m.subject_id = s.id AND m.plan_id IS NULL AND m.topic_id IS NULL), 0) AS wholeMaps

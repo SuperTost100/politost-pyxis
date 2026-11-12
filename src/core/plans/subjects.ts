@@ -40,9 +40,33 @@ export function renameSubject(db: Database.Database, id: string, name: string): 
   })();
 }
 
-/** A whole subject's maps go with it; an exam's maps stay with the exam and lose only the subject. */
-export function removeSubject(db: Database.Database, id: string): void {
+/**
+ * Whether anything still has the subject, as a condition on `subjects s`: an exam, a file in the Library (a removed one,
+ * or a copy only a chat or a plan file keeps, is not there and does not count), a map, a flashcard (a removed one too,
+ * since it can be restored) or a chat filed under its name. `listSubjects` reports it as `inUse`, and only a subject
+ * without it can be deleted from the Library.
+ */
+export const SUBJECT_IN_USE = `(EXISTS (SELECT 1 FROM plans p WHERE p.subject_id = s.id)
+  OR EXISTS (SELECT 1 FROM sources src WHERE src.subject_id = s.id AND src.library = 1 AND src.status != 'removed')
+  OR EXISTS (SELECT 1 FROM maps m WHERE m.subject_id = s.id)
+  OR EXISTS (SELECT 1 FROM cards cd WHERE cd.subject_id = s.id)
+  OR EXISTS (SELECT 1 FROM chats c WHERE c.subject = s.name COLLATE NOCASE))`;
+
+/**
+ * A whole subject's maps go with it; an exam's maps stay with the exam and lose only the subject. A linked folder that
+ * named the subject keeps its subfolder without one (the foreign key clears it), so a later look neither makes the
+ * subject again nor gives the subfolder's new files another: they wait in "Da sistemare". With `onlyEmpty`, as the
+ * Library asks, a subject that anything still has is refused (`sources.shelf.subjectNotEmpty`) and nothing changes.
+ */
+export function removeSubject(db: Database.Database, id: string, options: { onlyEmpty?: boolean } = {}): void {
   db.transaction(() => {
+    if (options.onlyEmpty) {
+      const row = db.prepare(`SELECT ${SUBJECT_IN_USE} AS used FROM subjects s WHERE s.id = ?`).get(id) as
+        | { used: number }
+        | undefined;
+      if (!row) throw new IpcError("invalid", "errors.invalidSubject");
+      if (row.used) throw new IpcError("invalid", "sources.shelf.subjectNotEmpty");
+    }
     db.prepare("DELETE FROM maps WHERE subject_id = ? AND plan_id IS NULL").run(id);
     db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
   })();

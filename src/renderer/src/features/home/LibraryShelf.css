@@ -1,0 +1,479 @@
+/* The Library by subject (LibraryShelf.tsx): "Da sistemare", then a card per subject with its files as covers. */
+.px-shelves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-width: 0;
+}
+
+/* Cards sit side by side when their shelves are short, and a long shelf takes the whole row. Each card sizes from its
+   own covers, so the layout reflows from the page's width at any zoom or text size. */
+.px-shelf-subjects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.px-shelf-subject {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: 14px;
+  min-width: min(100%, 260px);
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 14px 14px 20px 22px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-shelf-subject.is-fresh {
+  animation: px-shelf-grow var(--duration-small) var(--ease-out);
+}
+.px-shelf-subject-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1) 10px;
+  min-height: 30px;
+}
+.px-shelf-subject-name {
+  min-width: 0;
+  margin: 0;
+  font: 400 calc(20px * var(--text-scale, 1)) / 1.2 var(--font-display);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.px-shelf-subject-count {
+  flex: none;
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.px-shelf-subject-head .px-shelf-subject-dots {
+  flex: none;
+  margin-left: auto;
+}
+input.px-ctl-field.px-shelf-subject-rename {
+  width: min(320px, 100%);
+  height: 32px;
+  font: 400 calc(18px * var(--text-scale, 1)) / 1 var(--font-display);
+}
+.px-shelf-subject-error {
+  margin: -6px 0 0;
+  color: var(--danger);
+}
+.px-shelf-subject-none {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-shelf-subject .px-library-newsubject {
+  margin: -6px 0 0;
+}
+.px-shelf-subject-more {
+  margin: -6px 0 0 -10px;
+}
+
+/* A shelf: covers in rows. */
+.px-shelf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px 20px;
+  margin: 0;
+  padding: 0 8px 0 0;
+  list-style: none;
+}
+/* A cover is 100px with its hover fill; the fill reaches 6px past the 88px it takes on the shelf. */
+.px-cover {
+  position: relative;
+  width: 88px;
+}
+.px-cover.is-arrived .px-cover-open {
+  animation: px-shelf-tint 1200ms var(--ease-out);
+}
+.px-cover-open {
+  display: grid;
+  grid-template-rows: 84px auto;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100px;
+  margin: -6px;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-cover-open:hover,
+.px-cover.is-selected .px-cover-open,
+.px-cover.is-menu .px-cover-open,
+.px-cover:has(.px-cover-menu[aria-expanded="true"]) .px-cover-open {
+  background: var(--surface-raised);
+}
+.px-cover-open:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-cover-frame {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  height: 84px;
+}
+.px-cover-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font: 500 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.px-cover-state {
+  display: -webkit-box;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.px-cover-state.is-problem {
+  color: var(--danger);
+}
+/* Reading or a problem, on the cover's corner, so a full shelf can be scanned for it. */
+.px-cover-badge {
+  position: absolute;
+  bottom: -4px;
+  left: 44px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--ink-muted);
+}
+.px-cover-badge.is-problem {
+  color: var(--danger);
+}
+/* The Library's dots are round: over a cover's corner, at the end of a row and beside a subject's name. */
+.px-iconbtn.ant-btn.px-cover-menu,
+.px-iconbtn.ant-btn.px-unsorted-menu,
+.px-iconbtn.ant-btn.px-shelf-subject-dots {
+  border-radius: 50%;
+}
+/* The dots show on hover and focus, and stay while the menu is open. */
+.px-cover-menu.ant-btn {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+.px-cover:hover .px-cover-menu,
+.px-cover:focus-within .px-cover-menu,
+.px-cover.is-menu .px-cover-menu,
+.px-cover-menu[aria-expanded="true"],
+.px-unsorted-row:hover .px-unsorted-menu,
+.px-unsorted-row:focus-within .px-unsorted-menu,
+.px-unsorted-row.is-menu .px-unsorted-menu,
+.px-unsorted-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+.px-unsorted-menu.ant-btn {
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+@media (hover: none) {
+  .px-cover-menu.ant-btn,
+  .px-unsorted-menu.ant-btn {
+    opacity: 1;
+  }
+}
+/* A subject whose menu is open by a right-click lifts, as its dots would show. */
+.px-shelf-subject.is-menu {
+  box-shadow: var(--shadow-overlay);
+}
+
+/* "Da sistemare": a card of rows, each with its picture, name, the subject choice and its menu. */
+.px-unsorted-card {
+  margin: var(--space-2) 0 0;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  list-style: none;
+}
+.px-unsorted-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+}
+.px-unsorted-row + .px-unsorted-row {
+  margin-top: 1px;
+}
+.px-unsorted-row.is-selected,
+.px-unsorted-row.is-menu,
+.px-unsorted-row:has(.px-unsorted-menu[aria-expanded="true"]) {
+  background: var(--surface-raised);
+}
+.px-unsorted-art {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 60px;
+  height: 58px;
+}
+.px-unsorted-name {
+  display: grid;
+  flex: 1 1 0;
+  gap: 2px;
+  min-width: 0;
+}
+.px-unsorted-open {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.px-unsorted-open .body-strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-unsorted-open:hover .body-strong {
+  color: var(--primary-text);
+}
+.px-unsorted-meta {
+  color: var(--ink-subtle);
+  overflow-wrap: anywhere;
+}
+.px-unsorted-meta.is-problem {
+  color: var(--danger);
+}
+.px-unsorted-row select.px-ctl-field.px-library-picker {
+  flex: none;
+  width: 220px;
+}
+.px-unsorted-row .px-library-sorting {
+  flex: none;
+  width: 220px;
+  margin: 0;
+}
+@media (max-width: 720px) {
+  .px-unsorted-row {
+    flex-wrap: wrap;
+  }
+  .px-unsorted-row select.px-ctl-field.px-library-picker,
+  .px-unsorted-row .px-library-sorting {
+    width: auto;
+    flex: 1 1 180px;
+  }
+}
+
+/* The pictures. A book takes its subject's colour; the rest are drawn in the theme's lines. */
+.px-cover-art {
+  position: relative;
+  display: block;
+  flex: none;
+  box-sizing: border-box;
+}
+.px-shelf .px-cover-art {
+  zoom: 1.45;
+}
+.px-cover-art.is-book {
+  width: 40px;
+  height: 56px;
+  padding: 6px 3px 6px 8px;
+  overflow: hidden;
+  border-radius: 3px 6px 6px 3px;
+  background: var(--cover, var(--ink-subtle));
+  color: var(--on-cover);
+}
+.px-cover-art.is-book::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  border-radius: 3px 0 0 3px;
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+}
+.px-cover-book-title::before {
+  content: attr(data-label);
+}
+.px-cover-book-title {
+  display: -webkit-box;
+  overflow-wrap: normal;
+  overflow: hidden;
+  font: 400 6.5px/1.2 var(--font-display);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.px-cover-art.is-pages {
+  width: 40px;
+  height: 54px;
+  border: 1px solid var(--border-control);
+  border-radius: 2px;
+  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 8px / 28px 40px
+    no-repeat;
+  box-shadow:
+    -3px 2px 0 -1px var(--surface),
+    -3px 2px 0 0 var(--border-control);
+  transform: rotate(1.5deg);
+}
+.px-cover-art.is-slides {
+  width: 58px;
+  height: 38px;
+  margin-right: 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  box-shadow:
+    3px -3px 0 -1px var(--surface),
+    3px -3px 0 0 var(--border-control);
+}
+.px-cover-art.is-slides::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ink-subtle);
+  opacity: 0.7;
+}
+.px-cover-art.is-slides::after {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: 7px;
+  width: 40px;
+  height: 14px;
+  background: repeating-linear-gradient(var(--border) 0 2px, transparent 2px 5px);
+}
+.px-cover-art.is-exam {
+  width: 40px;
+  height: 54px;
+  border: 1px solid var(--border-control);
+  border-radius: 3px;
+  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 16px / 28px 32px
+    no-repeat;
+  box-shadow:
+    3px 3px 0 -1px var(--surface),
+    3px 3px 0 0 var(--border-control);
+}
+.px-cover-art.is-exam::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 3px;
+  width: 9px;
+  height: 2px;
+  background: var(--ink-subtle);
+  transform: rotate(-35deg);
+}
+.px-cover-art.is-photo {
+  width: 54px;
+  height: 42px;
+  padding: 3px 3px 9px;
+  border: 1px solid var(--border-control);
+  border-radius: 2px;
+  background: var(--surface);
+  transform: rotate(-2deg);
+}
+.px-cover-art.is-photo::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: color-mix(in srgb, var(--ring-path) 70%, var(--ink))
+    linear-gradient(160deg, transparent 40%, rgba(255, 255, 255, 0.35) 40% 43%, transparent 43% 60%, rgba(255, 255, 255, 0.3) 60% 62%, transparent 62%);
+}
+
+@keyframes px-shelf-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes px-shelf-tint {
+  from {
+    background: var(--primary-soft);
+  }
+}
+/* On a highlighted row the picker keeps its edge, since the row now has the picker's fill. */
+.px-unsorted-row.is-selected select.px-ctl-field,
+.px-unsorted-row.is-menu select.px-ctl-field,
+.px-unsorted-row:has(.px-unsorted-menu[aria-expanded="true"]) select.px-ctl-field {
+  border-color: var(--border-control);
+  background: var(--surface);
+}
+/* A locked PDF's password and a free book's update, under the file's name. */
+.px-file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+.px-cover .px-file-actions {
+  margin-top: 2px;
+}
+.px-file-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--primary-text);
+  font: 600 calc(12.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+.px-file-action:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.px-file-action:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.px-file-action:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-unsorted-more {
+  margin-left: -10px;
+}
+.px-cover-state > span + span::before {
+  content: ". ";
+}
+
+/* A cover's tooltip: the whole title, then the state when there is one. */
+.px-cover-tip {
+  display: grid;
+  gap: 4px;
+  font: 500 calc(13px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.px-cover-tip-state {
+  color: var(--ink-subtle);
+  font-weight: 400;
+}

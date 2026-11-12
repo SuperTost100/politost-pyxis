@@ -13,6 +13,8 @@ const NAMED = [
   "card-browse",
   "card-sections",
   "map-scope",
+  "maps-all",
+  "linked-folders",
 ] as const;
 
 /**

@@ -1,13 +1,10 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { Modal } from "antd";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
-import { Logo } from "../../components/Logo";
-import { invoke } from "../../lib/ipc";
-import { refreshSubjects } from "../../lib/refreshSubjects";
+import { mixedReasons, unsortedReasons } from "./shelf";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
@@ -21,27 +18,28 @@ const messageKeyOf = (err: unknown): string =>
 export const isUnsorted = (source: Pick<LibrarySource, "sort">) =>
   source.sort === "stopped" || source.sort === "unsure" || source.sort === "no-ai";
 
-/** Puts a source in a subject and reads the list and the subjects again. */
-export function useMoveSource() {
-  const client = useQueryClient();
-  return async (sourceId: string, to: { subjectId: string } | { name: string }) => {
-    await invoke("sources.move", { sourceId, ...to });
-    void client.invalidateQueries({ queryKey: ["sources"] });
-    void client.invalidateQueries({ queryKey: ["subjects"] });
-  };
-}
-
 /** The value of the "Nuova materia…" option in a subject picker. */
 const NEW = "\u0000new";
 
 /**
- * "Da sistemare": the files whose subject the student chooses. The line above them says why they wait, and links
- * Settings when no AI tool is set up. The rows are the Library's own, each with a `SubjectPicker` in place of its state.
+ * "Da sistemare": the files without a subject, whose subject the student chooses. The lines above them say why they
+ * wait, and link Settings when no AI tool is set up. A file Pyxis is still choosing for says so in its row.
  */
-export function UnsortedGroup({ sources, children }: { sources: LibrarySource[]; children: ReactNode }) {
+export function UnsortedGroup({
+  sources,
+  more,
+  children,
+}: {
+  sources: LibrarySource[];
+  /** "Mostra tutti" when only the first rows show. */
+  more?: ReactNode;
+  children: ReactNode;
+}) {
   const { t } = useTranslation();
   const headId = useId();
-  const reasons = new Set(sources.map((source) => source.sort));
+  const reasons = unsortedReasons(sources);
+  // With more than one reason in the group, each line says it is about some of the files.
+  const mixed = mixedReasons(reasons);
   return (
     <section className="px-library-unsorted" aria-labelledby={headId}>
       <h2 id={headId} className="body-strong">
@@ -52,9 +50,16 @@ export function UnsortedGroup({ sources, children }: { sources: LibrarySource[];
           {t("sources.sort.noAi")} <Link to="/settings/engines">{t("sources.sort.noAiLink")}</Link>
         </p>
       ) : null}
-      {reasons.has("unsure") ? <p className="small ink-muted">{t("sources.sort.unsure")}</p> : null}
+      {reasons.has("unsure") ? (
+        <p className="small ink-muted">{t(mixed ? "sources.sort.unsureSome" : "sources.sort.unsure")}</p>
+      ) : null}
+      {reasons.has("none") ? <p className="small ink-muted">{t(mixed ? "sources.sort.noneSome" : "sources.sort.none")}</p> : null}
       {reasons.has("stopped") ? <p className="small ink-muted">{t("sources.sort.stopped")}</p> : null}
-      <ul className="px-list-surface">{children}</ul>
+      {reasons.size === 1 && reasons.has("working") ? (
+        <p className="small ink-muted">{t("sources.shelf.working")}</p>
+      ) : null}
+      <ul className="px-unsorted-card">{children}</ul>
+      {more ? <div className="px-unsorted-more">{more}</div> : null}
     </section>
   );
 }
@@ -63,17 +68,16 @@ export function UnsortedGroup({ sources, children }: { sources: LibrarySource[];
 export function SubjectPicker({
   source,
   subjects,
+  onPick,
   onNewSubject,
-  onError,
 }: {
   source: LibrarySource;
   subjects: Subject[];
+  onPick: (subjectId: string) => void;
   /** Opens the dialog that names a new subject for this source. */
-  onNewSubject: (source: LibrarySource) => void;
-  onError: (key: string) => void;
+  onNewSubject: () => void;
 }) {
   const { t } = useTranslation();
-  const move = useMoveSource();
   return (
     <select
       className="px-ctl-field px-library-picker"
@@ -81,8 +85,8 @@ export function SubjectPicker({
       value=""
       onChange={(event) => {
         const value = event.target.value;
-        if (value === NEW) onNewSubject(source);
-        else if (value) void move(source.id, { subjectId: value }).catch((err) => onError(messageKeyOf(err)));
+        if (value === NEW) onNewSubject();
+        else if (value) onPick(value);
       }}
     >
       <option value="">{t("sources.sort.choose")}</option>
@@ -96,10 +100,17 @@ export function SubjectPicker({
   );
 }
 
-/** Names a new subject and moves the source into it. A name the student already has is that subject. */
-export function NewSubjectDialog({ source, onClose }: { source: LibrarySource | null; onClose: () => void }) {
+/** Names a new subject and moves the source into it (`onMove`). A name the student already has is that subject. */
+export function NewSubjectDialog({
+  source,
+  onClose,
+  onMove,
+}: {
+  source: LibrarySource | null;
+  onClose: () => void;
+  onMove: (source: LibrarySource, name: string) => Promise<void>;
+}) {
   const { t } = useTranslation();
-  const move = useMoveSource();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -114,7 +125,7 @@ export function NewSubjectDialog({ source, onClose }: { source: LibrarySource | 
     setSaving(true);
     setError(null);
     try {
-      await move(source.id, { name: name.trim() });
+      await onMove(source, name.trim());
       close();
     } catch (err) {
       setError(messageKeyOf(err));
@@ -158,79 +169,3 @@ export function NewSubjectDialog({ source, onClose }: { source: LibrarySource | 
   );
 }
 
-/**
- * What a Library row says about its subject: the working mark while Pyxis chooses it, and "Materia nuova" with Rinomina
- * on a file Pyxis made a subject for, until the student renames that subject.
- */
-export function SortNote({ source, shared }: { source: LibrarySource; shared: number }) {
-  const { t } = useTranslation();
-  const client = useQueryClient();
-  const [renaming, setRenaming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Escape leaves the field without saving, whatever the browser does with focus as it goes.
-  const cancelled = useRef(false);
-  if (source.sort === "working")
-    return (
-      <p className="small px-library-sorting" role="status">
-        <Logo working decorative size={16} />
-        {t("sources.sort.working")}
-      </p>
-    );
-  if (source.sort !== "created" || !source.subjectId || !source.subject) return null;
-  const name = source.subject;
-  const subjectId = source.subjectId;
-  const rename = async (next: string) => {
-    setRenaming(false);
-    try {
-      await invoke("subjects.rename", { id: subjectId, name: next || name });
-      setError(null);
-    } catch (err) {
-      setError(messageKeyOf(err));
-    }
-    void refreshSubjects(client);
-  };
-  return (
-    <div className="px-library-newsubject">
-      <p className="small">
-        <strong>{t("sources.sort.createdTitle")}</strong> {t("sources.sort.created", { count: shared })}
-      </p>
-      {renaming ? (
-        <input
-          className="px-ctl-field"
-          aria-label={t("sources.sort.renameLabel", { name })}
-          autoFocus
-          autoComplete="off"
-          maxLength={120}
-          defaultValue={name}
-          onFocus={(event) => {
-            cancelled.current = false;
-            event.currentTarget.select();
-          }}
-          onBlur={(event) => {
-            if (cancelled.current) setRenaming(false);
-            else void rename(event.target.value.trim());
-          }}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              cancelled.current = true;
-              event.currentTarget.blur();
-            }
-          }}
-        />
-      ) : (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="pencil-line"
-          aria-label={t("sources.sort.renameNamed", { name })}
-          onClick={() => setRenaming(true)}
-        >
-          {t("sources.sort.rename")}
-        </Button>
-      )}
-      {error ? <p className="small px-library-flag">{t(error)}</p> : null}
-    </div>
-  );
-}

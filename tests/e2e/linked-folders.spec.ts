@@ -169,13 +169,15 @@ test("Setup links the study folder in place, finds its subjects, and the Library
     // Reading the folder wrote nothing in it.
     expect(snapshot(root)).toEqual(before);
 
-    // The Library shows the subject on each row.
+    // The Library says which folder Pyxis reads, and shows each file on its subject's shelf.
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    const row = (titleText: string) =>
-      page.locator(".px-source-row").filter({ has: page.getByText(titleText, { exact: true }) });
-    await expect(row("Mazzoldi cap 2").locator(".px-source-row-meta")).toContainText("Fisica");
+    await expect(page.getByText("Pyxis legge Documenti › Università e non modifica niente.", { exact: true })).toBeVisible();
+    const shelf = (subject: string) => page.getByRole("region", { name: new RegExp(`^${subject} (\\d+ file|nessun file)$`) });
+    const cover = (subject: string, titleText: string) => shelf(subject).locator(".px-cover", { hasText: titleText });
+    await expect(cover("Fisica", "Mazzoldi cap 2")).toBeVisible();
+    await expect(cover("Fisica", "Febbraio 2025")).toBeVisible();
 
     // A file added while Pyxis runs is read by itself, under its folder's subject.
     writeFileSync(join(root, "Fisica 1", "Lezione 5.pdf"), onePagePdf("Il moto circolare uniforme ha accelerazione centripeta"));
@@ -192,7 +194,9 @@ test("Setup links the study folder in place, finds its subjects, and the Library
         timeout: 60000,
       })
       .toBe(true);
-    await expect(row("Dispense matrici")).toContainText("Spostato o cancellato dalla cartella Università");
+    await expect(cover("Geometria e algebra lineare", "Dispense matrici")).toContainText(
+      "Spostato o cancellato dalla cartella Università",
+    );
     // A scan read from the folder whose file is then deleted has nothing to read, and offers no Replace: a linked
     // file is replaced in its folder.
     writeFileSync(join(root, "GAL", "Lavagna.pdf"), onePagePdf("Lavagna"));
@@ -206,6 +210,22 @@ test("Setup links the study folder in place, finds its subjects, and the Library
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "linked-folders/4-library.png");
+
+    // A loose file at the top of the folder that Pyxis could not place waits in "Da sistemare". Choosing its subject
+    // puts it on that shelf in Pyxis only: the folder stays as it was, and a later look keeps the choice.
+    writeFileSync(join(root, "Orario lezioni.pdf"), onePagePdf("Lunedi Fisica, martedi Analisi"));
+    const unsorted = page.getByRole("region", { name: "Da sistemare" });
+    const picker = unsorted.getByRole("combobox", { name: "Materia di Orario lezioni" });
+    await expect(picker).toBeVisible({ timeout: 60000 });
+    const onDisk = snapshot(root);
+    await picker.selectOption({ label: "Fisica" });
+    await expect(cover("Fisica", "Orario lezioni")).toBeVisible();
+    await expect(unsorted).toHaveCount(0);
+    expect(snapshot(root)).toEqual(onDisk);
+    writeFileSync(join(root, "Fisica 1", "Lezione 6.pdf"), onePagePdf("Il pendolo semplice oscilla con periodo costante"));
+    await expect(cover("Fisica", "Lezione 6")).toBeVisible({ timeout: 60000 });
+    expect((await listed(page)).find((source) => source.title === "Orario lezioni")?.subject).toBe("Fisica");
+    await expect(cover("Fisica", "Orario lezioni")).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -152,7 +152,7 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
     ).toMatchObject([{ state: "succeeded" }]);
 
     // A HEIC photo is read with the data straight away, with no question first.
-    await page.getByRole("button", { name: "Aggiungi fonti" }).click();
+    await page.getByRole("button", { name: "Aggiungi file" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await animationsSettled(page);

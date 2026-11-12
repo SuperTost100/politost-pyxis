@@ -140,7 +140,9 @@ export function Shell() {
                 ? "px-shell-container px-shell-exams"
                 : isExamPagePath(target.pathname)
                   ? "px-shell-container px-shell-exam"
-                  : "px-shell-container"
+                  : target.pathname.startsWith("/exams/library")
+                    ? "px-shell-container px-shell-library"
+                    : "px-shell-container"
         }
       >
         <div className="shell-page">

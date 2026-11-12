@@ -645,3 +645,99 @@ test("renaming a tile on a fresh launch shows the name field in the design's own
     removeTestFolder(userData);
   }
 });
+
+test("a tile's menu closes when the page scrolls, follows its dots when the window resizes or the page shifts, and a right-click menu closes on a resize", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await openMaps(page);
+    const menu = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+    const dots = tile(page, "Successioni").getByRole("button", { name: "Altro su Successioni" });
+    const near = async () => {
+      const box = (await menu.boundingBox())!;
+      const at = (await dots.boundingBox())!;
+      const x = at.x + at.width / 2;
+      const y = at.y + at.height / 2;
+      return Math.hypot(Math.max(box.x - x, 0, x - (box.x + box.width)), Math.max(box.y - y, 0, y - (box.y + box.height)));
+    };
+    const open = async () => {
+      await tile(page, "Successioni").hover();
+      await dots.click();
+      await expect(menu).toBeVisible();
+    };
+
+    // A layout shift (a block above the tiles) does not close it: the menu follows the dots.
+    await open();
+    await page.mouse.move(5, 5);
+    const before = (await dots.boundingBox())!.y;
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>(".px-maps-subject")!.style.paddingTop = "60px";
+    });
+    await expect.poll(async () => (await dots.boundingBox())!.y).toBeGreaterThan(before + 20);
+    await expect(menu).toBeVisible();
+    await expect.poll(near).toBeLessThan(40);
+    // So does a resize.
+    await page.setViewportSize({ width: 900, height: 420 });
+    await expect(menu).toBeVisible();
+    await expect.poll(near).toBeLessThan(40);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+
+    // A scroll closes it. The window is short, so the page scrolls.
+    await open();
+    await page.mouse.move(640, 250);
+    await page.mouse.wheel(0, 150);
+    await expect(menu).toHaveCount(0);
+    await page.mouse.wheel(0, -400);
+
+    // A right-click menu stays at the pointer when the page shifts, and closes on a resize.
+    const thumb = tile(page, "Successioni").locator(".px-maps-thumb");
+    await thumb.scrollIntoViewIfNeeded();
+    await thumb.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await expect(menu).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a tile's menu opened with the keyboard gives focus back to its dots when a scroll closes it, without scrolling the page back", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await openMaps(page);
+    const menu = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
+    const dots = tile(page, "Successioni").getByRole("button", { name: "Altro su Successioni" });
+    const scrolled = () =>
+      page.evaluate(() => {
+        for (let el: Element | null = document.querySelector(".px-maps-subject"); el; el = el.parentElement)
+          if (el.scrollTop > 0) return el.scrollTop;
+        return 0;
+      });
+    // How far the wheel takes the page with no menu open.
+    await page.mouse.move(640, 250);
+    await page.mouse.wheel(0, 450);
+    await expect.poll(scrolled).toBeGreaterThan(150);
+    await page.waitForTimeout(500);
+    const farthest = await scrolled();
+    await page.mouse.wheel(0, -900);
+    await expect.poll(scrolled).toBe(0);
+    await dots.focus();
+    await page.keyboard.press("Enter");
+    await expect(menu).toBeVisible();
+    await page.mouse.wheel(0, 450);
+    await expect(menu).toHaveCount(0);
+    // Focus is on the dots, not on the page, and the page stays where the student scrolled it.
+    await expect(dots).toBeFocused();
+    await expect.poll(scrolled, "the page was scrolled back to the dots").toBeGreaterThan(farthest - 3);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

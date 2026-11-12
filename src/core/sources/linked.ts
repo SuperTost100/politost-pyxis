@@ -754,9 +754,12 @@ export function linkedFolders(deps: LinkedDeps) {
               .run(folderId, file.rel, file.subfolder, file.mtime, match.folder_id, match.rel_path);
             // A look at another folder took that file first: this one is a new file after all, and keeps its record.
             if (!changes) throw taken;
-            // Moved into another subject's folder, the source follows it there.
+            // Moved into another subject's folder, the source follows it there, unless the student chose its subject.
             if (subjectId && (match.folder_id !== folderId || match.subfolder !== file.subfolder))
-              db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ?`).run(subjectId, match.source_id);
+              db.prepare(`UPDATE sources SET subject_id = ? WHERE id = ? AND subject_sort IS NOT 'manual'`).run(
+                subjectId,
+                match.source_id,
+              );
           });
           try {
             moved();
@@ -979,11 +982,14 @@ export function linkedFolders(deps: LinkedDeps) {
     );
     // A Library copy that a file here took over (it still has its stored original) keeps a subject of its own. Without a
     // subject, or with the one the subfolder had before, it takes the new one, since that subject came from the folder.
-    // shortcut: a copy whose own subject is the same as its folder's cannot be told apart from one that inherited it, and
-    // follows the folder too; telling them apart takes a column recording where the subject came from.
+    // A subject the student chose in the Library (`manual`) is never changed, whatever the file is.
+    // shortcut: a copy whose own subject, from before it was taken over, is the same as its folder's cannot be told apart
+    // from one that inherited it, and follows the folder too; telling them apart takes a column recording where the
+    // subject came from.
     db.prepare(
       `UPDATE sources SET subject_id = ?
        WHERE id IN (SELECT source_id FROM linked_files WHERE folder_id = ? AND subfolder = ?)
+         AND subject_sort IS NOT 'manual'
          AND (blob_sha IS NULL OR subject_id IS NULL OR subject_id IS ?)`,
     ).run(subjectId, folderId, key, previous);
   }
