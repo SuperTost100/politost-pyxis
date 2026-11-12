@@ -178,10 +178,6 @@ export function LibraryShelf({
       const subject = await invoke("sources.move", { sourceId: source.id, ...to });
       landing.current.set(source.id, { from, focus });
       setSaid(t("sources.shelf.moved", { name: subject.name }));
-      // A shelf shows its first covers only: when the file sorts past them, the shelf opens so the cover is there.
-      const there = [...(bySubject.get(subject.id) ?? []).filter((item) => item.id !== source.id), source].sort(byShelfOrder);
-      if (there.findIndex((item) => item.id === source.id) >= SHELF_CAP)
-        setExpanded((current) => new Set(current).add(subject.id));
       // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
       if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
       await Promise.all([
@@ -195,6 +191,18 @@ export function LibraryShelf({
       return null;
     }
   }
+  // A shelf shows its first covers only: when a moved file sorts past them, the shelf opens so its cover is there to land.
+  // Worked out from the shelf as drawn, not when the file moves: a file still being read sorts first until its read ends.
+  useEffect(() => {
+    const opening = [...bySubject]
+      .filter(
+        ([subjectId, files]) =>
+          !expanded.has(subjectId) &&
+          [...files].sort(byShelfOrder).slice(SHELF_CAP).some((file) => landing.current.has(file.id)),
+      )
+      .map(([subjectId]) => subjectId);
+    if (opening.length) setExpanded((current) => new Set([...current, ...opening]));
+  });
   /** After a choice in "Da sistemare": a shown row that has a picker, or the moved cover when none has one. */
   function afterUnsorted(source: LibrarySource): Landing["focus"] {
     const next = nextPickerRow(unsortedShown, source.id);

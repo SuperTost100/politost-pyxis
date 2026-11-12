@@ -255,6 +255,9 @@ function seedSubmenus(db: DatabaseSync) {
  * readable, and inside the window.
  */
 async function expectSubmenuBeside(page: Page, row: Locator, label: string) {
+  // The menu has finished growing out of its dots, so the row stays under the pointer once it is there.
+  await expect(row).toBeVisible();
+  await animationsSettled(page);
   await row.hover();
   const sub = page.locator(".ant-dropdown-menu-sub:visible");
   await expect(sub.getByRole("menuitem").first()).toBeVisible();
@@ -366,6 +369,8 @@ test("In a window too narrow for a submenu on either side, the submenu leaves th
     await page.locator(".px-map-canvas").dispatchEvent("contextmenu", { clientX: 200, clientY: 120, button: 2 });
     const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
     const row = open.getByRole("menuitem", { name: "Esporta", exact: true });
+    await expect(row).toBeVisible();
+    await animationsSettled(page);
     await row.hover();
     const sub = page.locator(".ant-dropdown-menu-sub:visible");
     await expect(sub.getByRole("menuitem").first()).toBeVisible();
