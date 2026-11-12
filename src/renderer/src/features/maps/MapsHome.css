@@ -97,6 +97,12 @@
 .px-maps-tilew.is-ctx .px-maps-dots {
   opacity: 1;
 }
+/* No hover on touch screens, so the dots stay visible there. */
+@media (hover: none) {
+  .ant-btn.px-maps-dots {
+    opacity: 1;
+  }
+}
 .px-maps-name .px-map-name-field {
   width: 100%;
   height: calc(30px * var(--text-scale, 1));
