@@ -1975,6 +1975,30 @@ export const requests = {
     input: z.object({ planId: z.string(), itemId: z.string() }),
     output: z.object({ attemptId: z.string() }),
   },
+  "plans.unfinished": {
+    // "Da finire": what the student started on this exam and did not hand in, newest first. See `unfinishedActivities`
+    // in core/plans/unfinished.ts.
+    input: z.object({ planId: z.string().min(1) }),
+    output: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.enum(["quiz", "drill", "diagnostic", "redo", "past", "review", "simulation"]),
+        topicId: z.string().nullable(),
+        topicTitle: z.string().nullable(),
+        routeTopicId: z.string().nullable(),
+        attemptId: z.string().nullable(),
+        answered: z.number().int().nonnegative(),
+        total: z.number().int().nonnegative(),
+        state: z.enum(["open", "writing", "stopped", "ready", "expired"]),
+        startedAt: z.number(),
+      }),
+    ),
+  },
+  "plans.deleteUnfinished": {
+    // Deletes one entry of "Da finire" by its id, with its answers and the job still writing it.
+    input: z.object({ planId: z.string().min(1), id: z.string().min(1).max(200) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "plans.settings": {
     input: z.object({
       planId: z.string().min(1),
@@ -2144,6 +2168,8 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
+        // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
+        todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
         // The path's next step, due cards aside.
         next: z
           .object({

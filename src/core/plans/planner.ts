@@ -400,20 +400,24 @@ function todayMinutes(plan: Studied, result: ReturnType<typeof spread> | null): 
   return result != null && days != null && days > 0 ? (result.days[0]?.get(plan.row.id) ?? 0) : null;
 }
 
-/** Oggi ticks a plan off once today's steps cover its minutes, within 2.5 minutes; without minutes, after one step. */
+/**
+ * Oggi ticks a plan off once today's steps cover the minutes the planner gave it, within 2.5 minutes, and at least one
+ * step was done. Without minutes (no weekly hours, no date, the exam day) nothing measures the day, so it never ticks off:
+ * one step alone never makes the day's work.
+ */
 function todayComplete(
   plan: Pick<Studied, "doneToday" | "doneMinutes">,
   minutes: number | null,
 ): boolean {
-  return plan.doneToday.length > 0 && (minutes == null || plan.doneMinutes >= minutes - 2.5);
+  return minutes != null && plan.doneToday.length > 0 && plan.doneMinutes >= minutes - 2.5;
 }
 
 /**
  * Today's study across every exam: due flashcards from all plans as one item, then each plan's next step, the closest
  * exam first and plans without a date after the dated ones. With hours set in the planner, a plan's item is done once
  * today's steps cover the minutes the planner gave it today (at least one step), and a plan the planner gave under
- * 2.5 minutes today is left out unless it was studied today. Without hours, one step a day finishes a plan's item.
- * Exams already past are left out.
+ * 2.5 minutes today is left out unless it was studied today. Without hours, or without minutes for the plan today, an
+ * item is never done: nothing measures the day. Exams already past are left out.
  */
 export function todayPlan(db: Database.Database, now = Date.now()) {
   const plans = studyState(db, now);
@@ -570,10 +574,11 @@ const measuring = (activity: Activity) => activity !== "intro" && activity !== "
  *   done.
  * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
  *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
- * - `today`: the share of today's planned work done, as Oggi counts it. With weekly hours the planner gives the exam
- *   minutes today, and the share is the minutes of today's steps over them; without hours, or on the exam day, one step
- *   is the day's work. Null when nothing is planned today: an archived or past exam, a share too small to ask for, or
- *   no next step, unless something was done today anyway.
+ * - `today`: the share of today's planned work done, as Oggi counts it: the minutes of today's steps over the minutes
+ *   the planner gives the exam today. Null when nothing measures it, and `todayUnmeasured` says why: no weekly hours set
+ *   (`no-goal`, the student is offered to set them), no exam date (`no-date`) or the exam is today (`exam-day`). Also
+ *   null, with no reason, when nothing is planned today: an archived or past exam, a share too small to ask for, or no
+ *   next step, unless something was done today anyway.
  *
  * `next` is the path's next step without due cards (Oggi lists those apart), and `dueCards` this exam's due cards.
  * Archived exams come after the others, with no Oggi.
@@ -611,6 +616,7 @@ export function examRings(db: Database.Database, now = Date.now()) {
       preparation: measured ? plan.mastery : null,
       path: fresh > 0 ? Math.min(1, Math.max(0, 1 - plan.remainingNow / fresh)) : null,
       today: isArchived ? null : todayShare(plan, todayMinutes(plan, result), next != null),
+      todayUnmeasured: isArchived ? null : todayUnmeasured(plan, result != null),
       next: next
         ? {
             activity: next.activity,
@@ -634,9 +640,25 @@ export function todayShare(
 ): number | null {
   const days = plan.state.daysToExam;
   const did = plan.doneToday.length > 0;
-  if (days != null && days < 0) return null;
-  if (!did && (!hasNext || (minutes != null && minutes < 2.5))) return null;
+  // Without minutes from the planner nothing measures the day: see `todayUnmeasured`.
+  if (minutes == null || (days != null && days < 0)) return null;
+  if (!did && (!hasNext || minutes < 2.5)) return null;
   if (todayComplete(plan, minutes)) return 1;
   // Not complete: some minutes short of today's share, or nothing done yet.
-  return minutes == null || !did ? 0 : Math.min(plan.doneMinutes / minutes, 0.99);
+  return did ? Math.min(plan.doneMinutes / minutes, 0.99) : 0;
+}
+
+/**
+ * Why Oggi measures nothing for an exam that is still ahead: no weekly hours (`no-goal`), no date to spread them over
+ * (`no-date`), or the exam is today, which gets no study time (`exam-day`). Null when Oggi measures, or the exam is past.
+ */
+export function todayUnmeasured(
+  plan: { state: Pick<PlanState, "daysToExam"> },
+  planned: boolean,
+): "no-goal" | "no-date" | "exam-day" | null {
+  const days = plan.state.daysToExam;
+  if (days != null && days < 0) return null;
+  if (!planned) return "no-goal";
+  if (days == null) return "no-date";
+  return days === 0 ? "exam-day" : null;
 }

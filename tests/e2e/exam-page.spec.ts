@@ -95,11 +95,16 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
 
     // The head: the date from the written session, the rings read as one image, and the legend with each value.
     await expect(page.locator(".px-exam-date")).toHaveText(/^Written \w+day/);
+    // No weekly hours are set, so Today measures nothing and offers to set a study goal.
     await expect(page.locator(".px-exam-rings").getByRole("img")).toHaveAccessibleName(
-      "Preparation not measured yet, Path 0%, Today 0%",
+      "Preparation not measured yet, Path 0%, Today not measured",
     );
     const legend = page.getByRole("list", { name: "Exam rings" });
-    await expect(legend.getByRole("listitem")).toHaveText(["Preparationnot measured yet", "Path0%", "Today0%"]);
+    await expect(legend.getByRole("listitem")).toHaveText([
+      "Preparationnot measured yet",
+      "Path0%",
+      "Todaynot measured. Set a study goal",
+    ]);
     await expectNoAxeViolations(page);
 
     // Adesso: the path's next step with the one primary button, the same step the exam list names. The due flashcard
@@ -271,7 +276,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await pickFromMenu(page, "Create an activity");
     const create = page.getByRole("dialog", { name: "Create an activity" });
     await expect(create).toContainText("Lesson");
-    await create.getByRole("button", { name: "Close" }).click();
+    await create.getByRole("button", { name: "Cancel" }).click();
     await expect(create).toBeHidden();
     await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Add to calendar" })).toBeVisible();

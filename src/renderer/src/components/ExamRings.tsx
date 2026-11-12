@@ -3,7 +3,13 @@ import type { RequestOutput } from "@shared/ipc";
 import { useGradeScale } from "../lib/useGradeScale";
 import "./ExamRings.css";
 
-export type RingValues = Pick<RequestOutput<"plans.rings">[number], "preparation" | "path" | "today">;
+export type RingValues = Pick<
+  RequestOutput<"plans.rings">[number],
+  "preparation" | "path" | "today" | "todayUnmeasured"
+>;
+
+/** Rings with nothing to show yet, while they load. */
+export const emptyRings: RingValues = { preparation: null, path: null, today: null, todayUnmeasured: null };
 
 const RADII = [44, 33, 22] as const;
 const KEYS = ["preparation", "path", "today"] as const;
@@ -27,7 +33,16 @@ export function useRingText(values: RingValues | undefined) {
     preparation:
       values?.preparation == null ? t("rings.unmeasured") : grade.mastery(values.preparation),
     path: values?.path == null ? t("rings.noPath") : percent(values.path, i18n.language),
-    today: values?.today == null ? t("rings.nothingToday") : percent(values.today, i18n.language),
+    today:
+      values?.today != null
+        ? percent(values.today, i18n.language)
+        : values?.todayUnmeasured === "no-goal"
+          ? t("rings.noGoal")
+          : values?.todayUnmeasured === "no-date"
+            ? t("rings.noDate")
+            : values?.todayUnmeasured === "exam-day"
+              ? t("rings.examDay")
+              : t("rings.nothingToday"),
   };
   return {
     text,
@@ -81,19 +96,30 @@ export function ExamRings({
   );
 }
 
-/** The legend beside the large rings: each ring's colour, its name and its value, with what it means on hover. */
-export function RingLegend({ values }: { values: RingValues }) {
+/**
+ * The legend beside the large rings: each ring's colour, its name and its value, with what it means on hover. Without a
+ * study goal, Oggi measures nothing and its value is the way to set one (`onSetGoal`).
+ */
+export function RingLegend({ values, onSetGoal }: { values: RingValues; onSetGoal?: () => void }) {
   const { t } = useTranslation();
   const { text } = useRingText(values);
+  const setGoal = values.todayUnmeasured === "no-goal" && onSetGoal != null;
   return (
     <ul className="px-rings-legend" aria-label={t("rings.legend")}>
       {KEYS.map((key) => (
-        <li key={key} title={t(`rings.hint.${key}`)}>
+        <li key={key} title={t(key === "today" && setGoal ? "rings.hint.todayNoGoal" : `rings.hint.${key}`)}>
           <i className={`px-rings-key is-${key}`} aria-hidden />
           <span>{t(`rings.${key}`)}</span>
-          <span className={values[key] == null ? "px-rings-value is-empty" : "px-rings-value"}>
-            {text[key]}
-          </span>
+          {key === "today" && setGoal ? (
+            <span className="px-rings-value is-action">
+              <span className="visually-hidden">{text.today}. </span>
+              <button type="button" className="px-rings-action" onClick={onSetGoal}>
+                {t("rings.setGoal")}
+              </button>
+            </span>
+          ) : (
+            <span className={values[key] == null ? "px-rings-value is-empty" : "px-rings-value"}>{text[key]}</span>
+          )}
         </li>
       ))}
     </ul>

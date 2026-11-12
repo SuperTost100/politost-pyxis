@@ -309,15 +309,15 @@ describe("Oggi", () => {
     expect(today.items[0]!.complete).toBe(false);
   });
 
-  it("ticks a plan off after one step today when no hours are set", () => {
+  it("never ticks a plan off without weekly hours, however many steps are done today", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
-    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
-    expect(todayPlan(db, now).items[0]!.complete).toBe(false);
-    recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 9));
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 10));
     const item = todayPlan(db, now).items[0]!;
-    expect(item.complete).toBe(true);
-    expect(item.done).toEqual([{ activity: "lesson", topicId: "a-t1", topicTitle: "Topic 1 of a" }]);
+    expect(item.complete).toBe(false);
+    expect(item.minutesToday).toBeNull();
+    expect(item.done.map((step) => step.topicId)).toEqual(["a-t0", "a-t1"]);
   });
 
   it("ticks a plan off once today's steps cover the planner's minutes for it", () => {
@@ -488,17 +488,50 @@ describe("exam rings", () => {
     expect(ringOf(db, "a").path).toBeNull();
   });
 
-  it("counts one step as today's work when no weekly hours are set", () => {
+  it("leaves Oggi unmeasured on a new exam with only the introduction done and no weekly hours", () => {
+    // What Tost saw on dev.9: a few seconds on the introduction filled the ring for the whole day.
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 64 });
+    db.prepare("INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('intro', 'a', 'intro', '{}', 1)").run();
+    recordStep(db, "a", { activity: "intro", topicId: null }, day(0, 9));
+    const ring = ringOf(db, "a");
+    expect(ring.today).toBeNull();
+    expect(ring.todayUnmeasured).toBe("no-goal");
+  });
+
+  it("never fills Oggi with one step when no weekly hours are set, with or without a date", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
     addPlan(db, "undated");
-    expect(ringOf(db, "a").today).toBe(0);
-    expect(ringOf(db, "undated").today).toBe(0);
     recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
-    expect(ringOf(db, "a").today).toBe(1);
-    // A step yesterday is not today's.
-    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(-1));
-    expect(ringOf(db, "undated").today).toBe(0);
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(0, 9));
+    for (const id of ["a", "undated"]) {
+      expect(ringOf(db, id).today).toBeNull();
+      expect(ringOf(db, id).todayUnmeasured).toBe("no-goal");
+    }
+    // Oggi's own list agrees: nothing ticks off without a goal.
+    expect(todayPlan(db, now).items.every((item) => !item.complete)).toBe(true);
+  });
+
+  it("starts measuring once weekly hours are set, from nothing done", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    savePlannerHours(db, { hours: 3.5 }, now);
+    const ring = ringOf(db, "a");
+    expect(ring.today).toBe(0);
+    expect(ring.todayUnmeasured).toBeNull();
+  });
+
+  it("says why Oggi is unmeasured with weekly hours: no date, or the exam is today", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "undated");
+    addPlan(db, "today", { examIn: 0 });
+    addPlan(db, "past", { examIn: -2 });
+    savePlannerHours(db, { hours: 7 }, now);
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(0, 9));
+    expect(ringOf(db, "undated")).toMatchObject({ today: null, todayUnmeasured: "no-date" });
+    expect(ringOf(db, "today")).toMatchObject({ today: null, todayUnmeasured: "exam-day" });
+    expect(ringOf(db, "past")).toMatchObject({ today: null, todayUnmeasured: null });
   });
 
   it("counts today's minutes against the planner's share with weekly hours", () => {

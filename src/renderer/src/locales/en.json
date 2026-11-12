@@ -3246,7 +3246,90 @@
     "cardsReview_one": "Review the flashcard",
     "cardsReview_other": "Review {{count}}",
     "redoCount_one": "Redo the question",
-    "redoCount_other": "Redo {{count}}"
+    "redoCount_other": "Redo {{count}}",
+    "createDialog": {
+      "what": "What",
+      "kinds": {
+        "lesson": "Lesson",
+        "quiz": "Quiz",
+        "cards": "Flashcards",
+        "practice": "Exercises",
+        "map": "Map",
+        "simulation": "Simulation"
+      },
+      "wholeExam": "The whole syllabus",
+      "noMaterial": "This topic has no material yet, so Pyxis writes from what it knows instead of your sources.",
+      "noMaterialPractice": "This topic has no material yet, so there are no exercises to offer. Add material to the exam to get some.",
+      "questions": "Questions",
+      "keepOne": "At least one kind of question stays chosen.",
+      "count": "How many questions",
+      "countHint": "Up to {{max}}.",
+      "fewer": "One question fewer",
+      "more": "One more question",
+      "material": "Material",
+      "materialStyled": "New questions shaped like your past exams",
+      "materialExam": "Only the exam exercises in your material",
+      "materialMixed": "Exam and course exercises",
+      "materialPast": "Your past exams' own questions, one after another, untimed",
+      "duration": "Length",
+      "minutesShort": "{{count}} min",
+      "hours_one": "1 hour",
+      "hours_other": "{{count}} hours",
+      "hoursHalf_one": "1 h 30",
+      "hoursHalf_other": "{{count}} h 30",
+      "mapPlaceholder": "For example “only the theorems, with proofs”",
+      "about": {
+        "lesson": "A lesson on the topic written from your material, with a few questions to check. If there is one already, it opens.",
+        "cards": "The topic's flashcards. If there are none yet, Pyxis writes them from your material.",
+        "practice": "The topic's exercises with their solutions. If there are none, you can have Pyxis write some."
+      },
+      "simulationEmpty": "This exam has no questions or passages to write a simulation from.",
+      "pastEmpty": "No questions from your past exams are ready yet.",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating"
+    },
+    "making": {
+      "quiz": "Preparing the quiz on {{topic}}",
+      "quizLine": "Reading your material and writing the first questions. The quiz opens as soon as they are ready.",
+      "simulation": "Preparing the exam simulation",
+      "simulationLine": "Writing the questions, {{percent}}%. It opens when it is ready, and you can leave meanwhile: it waits in To finish."
+    },
+    "unfinished": {
+      "title": "To finish",
+      "count_one": "1 activity",
+      "count_other": "{{count}} activities",
+      "quizOn": "Quiz on {{topic}}",
+      "drill": "Targeted review",
+      "redo": "Questions to redo",
+      "progress_one": "{{answered}} of 1 question",
+      "progress_other": "{{answered}} of {{count}} questions",
+      "reviewProgress": "{{answered}} of {{count}} flashcards and questions",
+      "writing": "Being prepared",
+      "stopped": "Preparation stopped",
+      "ready": "Ready to start",
+      "expired": "Time is up",
+      "today": "today at {{time}}",
+      "yesterday": "yesterday at {{time}}",
+      "resume": "Resume",
+      "delete": "Delete…",
+      "actions": "Actions on {{title}}",
+      "deleteTitle": "Delete “{{title}}”?",
+      "deleteConfirm": "Delete",
+      "lostAnswers_one": "The answer you gave is lost.",
+      "lostAnswers_other": "The {{count}} answers you gave are lost.",
+      "lostNothing": "You haven't answered any question yet.",
+      "lostWriting": "Pyxis stops writing it, and the questions written so far are lost.",
+      "lostPreparing": "Pyxis stops preparing the simulation.",
+      "lostPrepared": "The questions prepared for the simulation are lost.",
+      "lostReview": "The flashcards you reviewed stay reviewed, but the answers to the questions are lost.",
+      "staysOnPath": "The quiz stays on the path, to take again.",
+      "diagnosticAgain": "You can take the test again from the path.",
+      "deleted": "Activity deleted: {{title}}",
+      "deleteFailed": "Pyxis couldn't delete “{{title}}”.",
+      "showAll": "Show all {{count}}",
+      "showFewer": "Show fewer"
+    }
   },
   "smart": {
     "check": "Quick check",
@@ -3430,8 +3513,13 @@
     "hint": {
       "preparation": "The grade you would get today",
       "path": "How much of the path you've done",
-      "today": "How much of today's steps you've done"
-    }
+      "today": "How much of today's steps you've done",
+      "todayNoGoal": "Measured once you say how many hours you study a week"
+    },
+    "noGoal": "not measured",
+    "noDate": "no date yet",
+    "examDay": "exam day",
+    "setGoal": "Set a study goal"
   },
   "flashcards": {
     "title": "Flashcards",
