@@ -176,6 +176,15 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
     await sheet.getByRole("button", { name: "Chiudi" }).click();
     await expect(sheet).toHaveCount(0);
     await expect(second).toBeFocused();
+    // The list of what the answer used opens the same panel, at the same place.
+    await page.locator(".ask-used-line").last().click();
+    const used = page.locator(".ask-used-item").first();
+    await used.click();
+    await expect(sheet).toHaveCount(1);
+    await expect(sheet.getByRole("group", { name: `Pagina ${CITED_PAGE} di ${BOOK_PAGES}` })).toBeVisible();
+    await expect(sheet.locator(".source-cite-mark")).toBeVisible();
+    await sheet.getByRole("button", { name: "Chiudi" }).click();
+    await expect(used).toBeFocused();
     // A citation to a page the file no longer has: the last page, a line that says so, and the cited words.
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId: "sp-book-gone" } })));
     await expect(sheet.getByText(`Il file non ha più la pagina ${BOOK_PAGES + 40}: ora ne ha ${BOOK_PAGES}. Ti mostro l'ultima.`)).toBeVisible();
