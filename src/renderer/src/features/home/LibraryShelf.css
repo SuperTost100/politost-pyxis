@@ -12,6 +12,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4);
+  container: px-shelves / inline-size;
 }
 .px-shelf-subject {
   display: grid;
@@ -25,6 +26,21 @@
   border-radius: var(--radius-card);
   background: var(--surface);
   box-shadow: var(--shadow-raised);
+}
+/* A subject with no file is one column wide, three to a row (two, then one, where three cards of 260px don't fit): it
+   neither grows to fill its row nor stretches alone across the last one. */
+.px-shelf-subject.is-empty {
+  flex: 0 0 calc((100% - 2 * var(--space-4)) / 3);
+}
+@container px-shelves (max-width: 812px) {
+  .px-shelf-subject.is-empty {
+    flex-basis: calc((100% - var(--space-4)) / 2);
+  }
+}
+@container px-shelves (max-width: 536px) {
+  .px-shelf-subject.is-empty {
+    flex-basis: 100%;
+  }
 }
 .px-shelf-subject.is-fresh {
   animation: px-shelf-grow var(--duration-small) var(--ease-out);

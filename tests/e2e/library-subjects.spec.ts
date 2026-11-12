@@ -1258,3 +1258,42 @@ test("Files that need the student come first on their shelf and in Da sistemare,
     removeTestFolder(userData);
   }
 });
+
+test("Subjects with no files keep one column width each, and the last row is not stretched", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-library-empty-cards-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [
+      { id: "an", name: "Analisi 1" },
+      { id: "fis", name: "Fisica 2" },
+      { id: "chem", name: "Chimica generale" },
+      { id: "lab", name: "Laboratorio di fisica" },
+    ]);
+    db.close();
+    const cards = page.locator(".px-shelf-subject");
+    for (const [width, textSize] of [
+      [1280, "md"],
+      [960, "lg"],
+    ] as const) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.evaluate((textSize) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize }), textSize);
+      await toLibrary(page);
+      await page.reload();
+      await expect(cards).toHaveCount(4);
+      const widths = await cards.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().width)));
+      const row = (await page.locator(".px-shelf-subjects").boundingBox())!;
+      // Every card has the same width, the one of a column, never the whole row.
+      expect(new Set(widths).size, `${width}: ${widths.join(", ")}`).toBe(1);
+      expect(widths[0]!, `${width}: a card is ${widths[0]} of ${row.width}`).toBeLessThan(row.width * 0.6);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

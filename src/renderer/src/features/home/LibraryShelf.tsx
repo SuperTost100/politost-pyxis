@@ -816,7 +816,9 @@ function SubjectCard({
   };
   return (
     <section
-      className={["px-shelf-subject", fresh ? "is-fresh" : "", itemMenu.popup ? "is-menu" : ""].filter(Boolean).join(" ")}
+      className={["px-shelf-subject", count === 0 ? "is-empty" : "", fresh ? "is-fresh" : "", itemMenu.popup ? "is-menu" : ""]
+        .filter(Boolean)
+        .join(" ")}
       data-subject-id={subject.id}
       aria-labelledby={`${headId} ${countId}`}
     >
