@@ -1,7 +1,14 @@
-import type { MenuItemConstructorOptions } from "electron";
+import type { BaseWindow, MenuItemConstructorOptions, WebFrameMain } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { goPages, isMenuCommand, type MenuCommand } from "../shared/menu";
-import { buildMenuTemplate, contextMenuAnchor, contextMenuItems } from "./menu";
+import {
+  buildMenuTemplate,
+  contextMenuAnchor,
+  contextMenuItems,
+  textMenuPopupOptions,
+  textMenuTemplate,
+  type TextMenuParams,
+} from "./menu";
 
 type Item = MenuItemConstructorOptions;
 
@@ -263,5 +270,117 @@ describe("contextMenuItems", () => {
     expect(contextMenuItems([{ id: "", label: "A" }])).toBeNull();
     expect(contextMenuItems([{ id: "a", label: "A", click: "x", enabled: "yes" }])).toBeNull();
     expect(contextMenuItems([{ id: "a", label: "x".repeat(121) }])).toBeNull();
+  });
+});
+
+describe("textMenuPopupOptions", () => {
+  const window = { id: 1 } as unknown as BaseWindow;
+  const frame = { routingId: 7 } as unknown as WebFrameMain;
+
+  it("passes the event's frame, so macOS adds Writing Tools, AutoFill and Services", () => {
+    const options = textMenuPopupOptions(window, { menuSourceType: "mouse", x: 10, y: 20, frame });
+    expect(options.frame).toBe(frame);
+    expect(options.window).toBe(window);
+  });
+
+  it("opens at the pointer for a click and at the field for the keyboard", () => {
+    expect(textMenuPopupOptions(window, { menuSourceType: "mouse", x: 10, y: 20, frame })).toEqual({ window, frame });
+    expect(textMenuPopupOptions(window, { menuSourceType: "keyboard", x: 10.4, y: 20, frame })).toEqual({
+      window,
+      frame,
+      x: 10,
+      y: 20,
+    });
+  });
+
+  it("leaves the frame out when the event has none", () => {
+    expect(textMenuPopupOptions(window, { menuSourceType: "mouse", x: 1, y: 2, frame: null })).toEqual({ window });
+  });
+});
+
+describe("textMenuTemplate", () => {
+  const all = { canUndo: true, canRedo: true, canCut: true, canCopy: true, canPaste: true, canDelete: true, canSelectAll: true, canEditRichly: true };
+  const none = { ...all, canUndo: false, canRedo: false, canCut: false, canCopy: false, canPaste: false, canDelete: false };
+  const params = (over: Partial<TextMenuParams> = {}): TextMenuParams => ({
+    isEditable: true,
+    selectionText: "",
+    misspelledWord: "",
+    dictionarySuggestions: [],
+    formControlType: "input-text",
+    editFlags: all,
+    ...over,
+  });
+  const actions = { replace: vi.fn(), learn: vi.fn() };
+  /** Label and whether it is on, a separator as "-". */
+  const shown = (template: ReturnType<typeof textMenuTemplate>) =>
+    template?.map((item) => (item.type === "separator" ? "-" : `${item.label}${item.enabled === false ? " (off)" : ""}`));
+
+  it("gives a field the edit items, in Italian and in English, as roles", () => {
+    expect(shown(textMenuTemplate(params(), "it", actions))).toEqual([
+      "Annulla", "Ripeti", "-", "Taglia", "Copia", "Incolla", "-", "Seleziona tutto",
+    ]);
+    expect(shown(textMenuTemplate(params(), "en", actions))).toEqual([
+      "Undo", "Redo", "-", "Cut", "Copy", "Paste", "-", "Select all",
+    ]);
+    expect(textMenuTemplate(params(), "it", actions)?.flatMap((item) => (item.role ? [item.role] : []))).toEqual([
+      "undo", "redo", "cut", "copy", "paste", "selectAll",
+    ]);
+  });
+
+  it("turns off each item the field cannot do now", () => {
+    expect(shown(textMenuTemplate(params({ editFlags: { ...none, canSelectAll: false } }), "it", actions))).toEqual([
+      "Annulla (off)", "Ripeti (off)", "-", "Taglia (off)", "Copia (off)", "Incolla (off)", "-", "Seleziona tutto (off)",
+    ]);
+    expect(shown(textMenuTemplate(params({ editFlags: { ...none, canUndo: true, canPaste: true } }), "en", actions))).toEqual([
+      "Undo", "Redo (off)", "-", "Cut (off)", "Copy (off)", "Paste", "-", "Select all",
+    ]);
+  });
+
+  it("leaves Taglia and Copia out of a password field", () => {
+    expect(shown(textMenuTemplate(params({ formControlType: "input-password" }), "it", actions))).toEqual([
+      "Annulla", "Ripeti", "-", "Incolla", "-", "Seleziona tutto",
+    ]);
+  });
+
+  it("offers a misspelled word's suggestions first, then the dictionary", () => {
+    const template = textMenuTemplate(
+      params({ misspelledWord: "ciaoo", dictionarySuggestions: ["ciao", "ciaò", "caio", "ciaone", "ciaa", "ciao!"] }),
+      "it",
+      actions,
+    );
+    expect(shown(template)).toEqual([
+      "ciao", "ciaò", "caio", "ciaone", "ciaa", "-", "Aggiungi al dizionario", "-",
+      "Annulla", "Ripeti", "-", "Taglia", "Copia", "Incolla", "-", "Seleziona tutto",
+    ]);
+    template![1]!.click!({} as never, undefined, {} as never);
+    expect(actions.replace).toHaveBeenCalledWith("ciaò");
+    template![6]!.click!({} as never, undefined, {} as never);
+    expect(actions.learn).toHaveBeenCalledWith("ciaoo");
+  });
+
+  it("says so when a misspelled word has no suggestion", () => {
+    expect(shown(textMenuTemplate(params({ misspelledWord: "xqzv" }), "en", actions))?.slice(0, 4)).toEqual([
+      "No suggestions (off)", "-", "Add to dictionary", "-",
+    ]);
+  });
+
+  it("gives a read-only field Copia and Seleziona tutto, and a password one nothing to copy", () => {
+    expect(shown(textMenuTemplate(params({ isEditable: false, formControlType: "text-area" }), "it", actions))).toEqual([
+      "Copia", "Seleziona tutto",
+    ]);
+    expect(shown(textMenuTemplate(params({ isEditable: false, formControlType: "input-search", editFlags: { ...none, canSelectAll: true } }), "en", actions))).toEqual([
+      "Copy (off)", "Select all",
+    ]);
+  });
+
+  it("gives selected text outside a field Copia, and nothing without a selection", () => {
+    const text = { isEditable: false, formControlType: "none" as const };
+    expect(shown(textMenuTemplate(params({ ...text, selectionText: "il calore" }), "it", actions))).toEqual(["Copia"]);
+    expect(textMenuTemplate(params({ ...text, selectionText: "  " }), "it", actions)).toBeNull();
+    expect(textMenuTemplate(params({ ...text, formControlType: "input-checkbox" }), "it", actions)).toBeNull();
+  });
+
+  it("treats an editable area that is no input, such as a formula's text, like a field", () => {
+    expect(shown(textMenuTemplate(params({ formControlType: "none" }), "en", actions))?.[0]).toBe("Undo");
   });
 });
