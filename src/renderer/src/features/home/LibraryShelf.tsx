@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Button as AntButton, Dropdown, Modal, type MenuProps } from "antd";
-import { AlertCircle, Check, MoreHorizontal } from "lucide-react";
+import { AlertCircle, Check, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -17,7 +17,7 @@ import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
-import { drawn, useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
+import { useItemMenu, useMenuLifetime } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
 import { refreshSubjects } from "../../lib/refreshSubjects";
@@ -427,7 +427,7 @@ function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: 
           {list}
         </div>
       )}
-      menu={drawn(menu, () => setOpen(false))}
+      menu={menu}
     >
       <AntButton
         ref={button}
@@ -442,6 +442,8 @@ function MenuDots({ menu, label, region, className }: { menu: MenuProps; label: 
     </Dropdown>
   );
 }
+
+const submenuArrow = <ChevronRight size={14} strokeWidth={1.75} aria-hidden className="px-source-row-submenu" />;
 
 /** What a file's cover or row says about its state: reading, failed, missing, or a note such as a new book version. */
 function useFileState(source: LibrarySource, newVersion: string | undefined) {
@@ -548,7 +550,7 @@ const Cover = memo(function Cover({
   const state = useFileState(source, newVersion);
   const item = useRef<HTMLLIElement>(null);
   const openRef = useRef<HTMLButtonElement>(null);
-  const menuProps: MenuProps = { items: menu, onClick: ({ key }) => onAct(key) };
+  const menuProps: MenuProps = { items: menu, expandIcon: submenuArrow, onClick: ({ key }) => onAct(key) };
   const itemMenu = useItemMenu({ menu: menuProps, region: t("sources.actionsColumn") });
   // A file the student just moved here comes out of where it was, and takes focus when the move came from its menu.
   useLayoutEffect(() => {
@@ -646,7 +648,7 @@ function UnsortedRow({
 }) {
   const { t } = useTranslation();
   const state = useFileState(source, newVersion);
-  const menuProps: MenuProps = { items: menu, onClick: ({ key }) => onAct(key) };
+  const menuProps: MenuProps = { items: menu, expandIcon: submenuArrow, onClick: ({ key }) => onAct(key) };
   const itemMenu = useItemMenu({ menu: menuProps, region: t("sources.actionsColumn") });
   const meta = [
     t(`sources.kind.${source.kind}`, { defaultValue: source.kind }),

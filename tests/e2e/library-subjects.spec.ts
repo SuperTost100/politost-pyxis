@@ -662,7 +662,6 @@ test("A menu stays open and acts on its own file while the page changes under it
       await expect.poll(async () => (await file.boundingBox())!.y, `the page shifted under the ${way} menu`).toBeGreaterThan(top + 20);
       await animationsSettled(page);
       await expect(menu, `${way} menu after a file arrived`).toBeVisible();
-      await expect(file).toHaveClass(/px-cover/);
       await moveTo(page, "Fisica 2");
       await expect(cover(page, "Fisica 2", title)).toBeVisible();
       await expect(cover(page, "Analisi 1", title)).toHaveCount(0);

@@ -14,7 +14,7 @@ const submenuArrow = <Icon name="chevron-right" size={14} className="px-item-men
  * the menu, gives focus back to where the menu was opened and then runs the item, so a dialog the item opens returns
  * focus there when it closes.
  */
-export function drawn(menu: MenuProps, close: () => void): MenuProps {
+function drawn(menu: MenuProps, close: () => void): MenuProps {
   return {
     expandIcon: submenuArrow,
     // A submenu opens inside the menu's landmark, not loose in the document's body.
