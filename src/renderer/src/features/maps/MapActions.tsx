@@ -135,8 +135,8 @@ export function useMapActions(props: {
 
 /**
  * The map's name, edited where it shows (the page's title, a tile's caption). Enter saves, Escape and leaving it unchanged
- * cancel, and a name made only of spaces is refused with a word under the field. Leaving the field with a new name saves
- * it. `onDone` gets the saved name, or nothing when the name stays as it was; focus is the caller's to place.
+ * cancel, and a name made only of spaces is refused with a word under the field, on Enter and on leaving the field alike.
+ * Leaving the field with a new name saves it. `onDone` gets the saved name, or nothing when the name stays as it was; focus is the caller's to place.
  */
 export function MapNameField(props: {
   address: MapAddress;
@@ -195,7 +195,8 @@ export function MapNameField(props: {
         }}
         onBlur={() => {
           if (saving) return;
-          if (!text.trim() || text.trim() === props.value) props.onDone();
+          // An empty name stays open with its word, as Enter leaves it; only an unchanged name closes the field.
+          if (text.trim() === props.value) props.onDone();
           else void save();
         }}
       />
