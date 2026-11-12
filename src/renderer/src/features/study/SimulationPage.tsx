@@ -110,7 +110,10 @@ export function SimulationPage() {
     building?.state ?? "",
   );
   const run = open.data?.planId === planId ? open.data : undefined;
-  // Worked out once per attempt, so a later read (every second) never moves the question the student is on.
+  // Worked out once per attempt from a read made since the page opened, so a later read (every second) never moves the
+  // question the student is on. A read cached from an earlier visit can predate the last draft that visit saved, as
+  // when Avanti and "Segna per dopo" come just before leaving; until the fresh read is in, the cached one stands in.
+  const fresh = open.isFetchedAfterMount;
   const resumed = useMemo(
     () =>
       run
@@ -120,7 +123,7 @@ export function SimulationPage() {
             (id) => (run.picks[id] ?? "").trim() !== "",
           )
         : 0,
-    [run?.attemptId],
+    [run?.attemptId, fresh],
   );
   const index = run && moved?.attemptId === run.attemptId ? moved.index : resumed;
   function startFailed(err: unknown) {

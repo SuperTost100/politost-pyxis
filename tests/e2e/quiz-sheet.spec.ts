@@ -348,6 +348,75 @@ test("a running exam reopens on the question it was left on, with its clock stil
   }
 });
 
+test("Avanti and Segna per dopo pressed back to back, then leaving at once, reopen the exam on that question, marked", async () => {
+  test.setTimeout(180_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    const stored = () =>
+      page
+        .evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }))
+        .then((run) => [run.current, run.marked ?? []]);
+    // Five times with a reload right after the two presses, three times leaving for Esami and coming back from the
+    // shell's Riprendi l'esame: within the 500 ms a draft waits, and while the page still holds an older read.
+    for (let round = 0; round < 8; round++) {
+      const where = `round ${round + 1}`;
+      await page.getByRole("button", { name: "Avanti" }).click();
+      await mark.click();
+      if (round < 5) await page.reload();
+      else {
+        await go(page, "/exams");
+        await page.getByRole("button", { name: "Riprendi l’esame" }).click();
+      }
+      await expect(heading(page), where).toHaveText("Domanda 2 di 3");
+      await expect(mark, where).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(stored, { message: where }).toEqual(["e-2", ["e-2"]]);
+      // Back to the first question with nothing marked, saved, for the next round.
+      await mark.click();
+      await page.getByRole("button", { name: "Indietro" }).click();
+      await expect(heading(page)).toHaveText("Domanda 1 di 3");
+      await expect.poll(stored, { message: where }).toEqual(["e-1", []]);
+    }
+  } finally {
+    await done();
+  }
+});
+
+test("the quiz too reopens on the question after Avanti and Segna per dopo pressed back to back just before leaving", async () => {
+  test.setTimeout(180_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const quiz = "/plans/p-fis/quiz/t-kin?attempt=a-quiz";
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    const stored = () => read(page, "a-quiz").then((run) => [run.draft?.index, run.draft?.marked?.length ?? 0]);
+    for (let round = 0; round < 5; round++) {
+      const where = `round ${round + 1}`;
+      await page.getByRole("button", { name: "Avanti" }).click();
+      await mark.click();
+      if (round < 3) await page.reload();
+      else {
+        await go(page, "/plans/p-fis");
+        await go(page, quiz);
+      }
+      await expect(heading(page), where).toHaveText("Domanda 2 di 8");
+      await expect(mark, where).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(stored, { message: where }).toEqual([1, 1]);
+      await mark.click();
+      await page.getByRole("button", { name: "Indietro" }).click();
+      await expect(heading(page)).toHaveText("Domanda 1 di 8");
+      await expect.poll(stored, { message: where }).toEqual([0, 0]);
+    }
+  } finally {
+    await done();
+  }
+});
+
 /** Sets the window to `width` device pixels at `zoom`, as Ctrl and plus do. */
 async function zoomWindow(app: ElectronApplication, page: Page, width: number, zoom: number) {
   await app.evaluate(
