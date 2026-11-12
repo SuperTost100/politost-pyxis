@@ -107,12 +107,15 @@ test("A right-click in any text field opens the edit menu in Italian, with each 
     expect(labelsOf(await textMenuOf(app, page.locator("#probe-formula")))).toEqual(labelsOf(empty));
     await page.evaluate(() => getSelection()!.selectAllChildren(document.querySelector("#probe-text")!));
     expect(labelsOf(await textMenuOf(app, page.locator("#probe-text")))).toEqual(["Copia"]);
-    // Text that is not selected has no menu: nothing is shown.
+    // Text that is not selected has no menu: nothing is shown. On macOS a right-click selects the word under the
+    // pointer first, as it does in every Mac app, so there the selection it made gets Copia.
     await page.evaluate(() => getSelection()!.removeAllRanges());
     await answerNextMenu(app, null);
     await page.locator("#probe-text").click({ button: "right" });
     await expect.poll(events).toBeGreaterThan(5);
-    expect(await lastMenuLabels(app)).toBeUndefined();
+    const selectedByClick = await page.evaluate(() => getSelection()!.toString().trim() !== "");
+    expect(selectedByClick).toBe(process.platform === "darwin");
+    expect(await lastMenuLabels(app)).toEqual(selectedByClick ? ["Copia"] : undefined);
   } finally {
     await app.close();
     removeTestFolder(userData);
