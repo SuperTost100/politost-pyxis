@@ -1,4 +1,4 @@
-import { openSourceViewer } from "../../components/SourceViewer";
+import { closeSourceViewer, openSourceViewer } from "../../components/SourceViewer";
 import {
   keepPreviousData,
   useMutation,
@@ -1025,9 +1025,10 @@ export function LibraryPanel({
   const subjectsFailed = subjects.isError || (!subjects.data && subjects.errorUpdatedAt > 0);
   const showHits = contentQuery.length > 0;
   rowHandlers.current = {
-    open(source) {
+    // A click on a cover or a row opens the file at its first page; its details are one item of the panel's menu.
+    open(source, menu) {
       select(source);
-      setDetailsOpen(true);
+      openSourceViewer({ sourceId: source.id }, { menu });
     },
     act(source, key) {
       select(source);
@@ -1038,6 +1039,8 @@ export function LibraryPanel({
       else if (key === "update-book") void updateBook(source);
       else if (key === "unlock" && source.errorJobId) setUnlocking({ jobId: source.errorJobId, title: source.title });
       else {
+        // The details take the panel's place, on the same side.
+        closeSourceViewer();
         setRenameOnOpen(key === "rename");
         setDetailsOpen(true);
       }

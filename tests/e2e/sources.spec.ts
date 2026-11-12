@@ -12,7 +12,7 @@ import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 
-test("M4 chapter drawer, highlight and responsive 600-page import", async () => {
+test("M4 chapter panel, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
   const file = join(userData, "source.ptsb");
   writeFileSync(
@@ -49,19 +49,14 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       page.getByRole("button", { name: "Fisica", exact: true }),
     ).toBeVisible({ timeout: 30000 });
     await page.getByRole("button", { name: "Fisica", exact: true }).click();
-    await expect(
-      page.getByRole("dialog", { name: "Fisica", exact: true }),
-    ).toBeVisible();
-    await page
-      .getByRole("dialog", { name: "Fisica", exact: true })
-      .getByRole("button", { name: /Close|Chiudi/, exact: true })
-      .click();
-    // Passage search is the same field with the Content scope. The closing drawer moves focus back first.
-    await expect(
-      page.getByRole("dialog", { name: "Fisica", exact: true }),
-    ).toBeHidden();
+    // A cover opens the source panel, beside the shelf.
+    const panel = page.getByRole("complementary", { name: "Fisica", exact: true });
+    await expect(panel).toBeVisible();
+    await panel.getByRole("button", { name: /Close|Chiudi/, exact: true }).click();
+    // Passage search is the same field with the Content scope. The closing panel moves focus back first.
+    await expect(panel).toBeHidden();
     await animationsSettled(page);
-    // The drawer gives focus back to its opener once its close animation ends.
+    // The panel gives focus back to its opener once its close animation ends.
     await expect(
       page.getByRole("button", { name: "Fisica", exact: true }),
     ).toBeFocused();
@@ -77,7 +72,7 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       .getByRole("button", { name: /2\. Energia.*energia cinetica/i })
       .first();
     await hit.click();
-    const drawer = page.getByRole("dialog", { name: "Fisica 2. Energia", exact: true });
+    const drawer = page.getByRole("complementary", { name: "Fisica", exact: true });
     await expect(
       drawer.getByText(/Il lavoro è il prodotto di forza e spostamento/),
     ).toBeVisible();
@@ -146,9 +141,9 @@ test("M4 chapter drawer, highlight and responsive 600-page import", async () => 
       result[0]!.id,
     )) as { excerpt: string };
     expect(snapshot.excerpt).toBe(result[0]!.text);
-    await page.getByRole("button", { name: "Successiva", exact: true }).click();
+    await page.getByRole("button", { name: "Pagina successiva", exact: true }).click();
     await expect(
-      page.getByText("Pagina 2 di 600", { exact: true }),
+      page.getByRole("group", { name: "Pagina 2 di 600", exact: true }),
     ).toBeVisible();
     await saveShot(page, "m4-pdf-it-light-960.png", { animations: "disabled" });
   } finally {

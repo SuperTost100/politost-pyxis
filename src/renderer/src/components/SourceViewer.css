@@ -1,50 +1,265 @@
-.source-viewer-locator.meta {
-  color: var(--ink-muted);
-  margin-top: var(--space-2);
+/* The source panel: a sheet along the right edge, below Attività's corner, beside the page on a wide window and over its
+   right side on a narrow one. 520px, as the details panel it replaces. */
+.source-panel {
+  --source-panel-width: min(520px, calc(100vw - 32px));
+  position: fixed;
+  z-index: 90;
+  top: 56px;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  width: var(--source-panel-width);
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-raised);
 }
-.source-viewer-chapter {
-  max-width: 68ch;
+.source-panel.is-over-dialog {
+  z-index: 1100;
 }
-.source-viewer-paragraph {
-  padding: var(--space-3) var(--space-4);
-  border-left: 3px solid transparent;
+.source-panel.is-leaving {
+  pointer-events: none;
 }
-.source-viewer-paragraph.is-current {
-  border-left-color: var(--star);
-  animation: source-position 2s ease-out forwards;
-}
-@keyframes source-position {
-  from {
-    background: var(--star-soft);
+/* A window narrower than the panel and the folded sidebar (200% zoom at 960px): the panel starts after the sidebar,
+   which stays usable, instead of going under it. */
+@media (max-width: 640px) {
+  .source-panel {
+    left: 100px;
+    width: auto;
   }
-  to {
-    background: transparent;
-  }
 }
-@media (prefers-reduced-motion: reduce) {
-  .source-viewer-paragraph.is-current {
-    animation: none;
-    background: var(--star-soft);
+/* Wide enough for both: the page moves over and stays usable beside the panel. */
+@media (min-width: 1180px) {
+  :root[data-source-panel] #root {
+    padding-right: calc(min(520px, 100vw - 32px) + 16px);
   }
 }
 
-.source-pdf-navigation {
+/* Head: the name on one line, its menu and the close button; what the file is, and the way back, under it. */
+.source-viewer-head {
+  flex: none;
+  display: grid;
+  gap: var(--space-1);
+  padding: 12px 10px 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.source-viewer-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
+  gap: 6px;
+  min-width: 0;
 }
-.source-pdf-navigation button {
+.source-viewer-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 600 calc(14px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.source-viewer-title:focus {
+  outline: none;
+}
+.source-viewer-title:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.source-viewer-what {
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.source-viewer-back {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font: 500 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  cursor: pointer;
+}
+.source-viewer-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Paging: the arrows round the page number, which can be typed over; "Apri il file" on the right. */
+.source-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.source-nav {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.source-nav-grow {
+  flex: 1;
+}
+.source-nav-page {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0 6px;
+  font: 600 calc(13px * var(--text-scale, 1)) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.source-nav-field {
+  min-width: 2ch;
+  padding: 3px 2px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+.source-nav-field:hover {
+  border-bottom-color: var(--border-control);
+}
+.source-nav-field:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+.source-nav-total {
+  color: var(--ink-subtle);
+  font-weight: 500;
+}
+
+/* The page: on the sunken ground in light, the app's own dark in dark, with the sheet in the middle. */
+.source-view-page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: 22px;
+  background: var(--surface-sunken);
+}
+[data-theme="dark"] .source-view-page {
+  background: var(--bg);
+}
+.source-view-page:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.source-view-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 476px;
+  margin: 0 auto var(--space-3);
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.45;
+}
+.source-view-note.is-problem {
+  color: var(--danger);
+}
+.source-paper,
+.source-pdf {
+  position: relative;
+  max-width: 476px;
+  margin: 0 auto;
+}
+.source-paper {
+  padding: 30px 34px 26px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.62 var(--font-serif);
+}
+.source-paper-waiting {
+  aspect-ratio: 1 / 1.414;
+  display: grid;
+  place-items: center;
+}
+.source-viewer-chapter :is(h1, h2, h3, h4) {
+  color: var(--ink);
+  font-family: var(--font-serif);
+}
+.source-viewer-paragraph {
+  position: relative;
+}
+.source-viewer-paragraph + .source-viewer-paragraph {
+  margin-top: 10px;
+}
+.source-viewer-paragraph.is-current {
+  color: var(--ink);
+}
+
+/* The cited passage: a line in the page's margin beside it. No colour goes behind the text: citations are numbered
+   chips in the answer, never a highlighter. */
+.source-viewer-paragraph.is-current::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -18px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary-text);
+}
+.source-cite-mark {
+  position: absolute;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+/* A PDF page: always the file's own paper, white in dark too, with the app's dark around it. */
 .source-pdf-page {
   position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #ffffff;
+}
+.source-pdf-page.is-preparing {
+  display: grid;
+  place-items: center;
+  background: var(--surface);
 }
 .source-pdf-page canvas {
   display: block;
   max-width: 100%;
 }
+.source-page-working {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--ink-muted);
+  font: 400 calc(13px * var(--text-scale, 1)) / 1.4 var(--font-sans);
+  text-align: center;
+}
+.source-pdf-page:not(.is-preparing) > .source-page-working {
+  position: absolute;
+  inset: 0;
+  align-content: center;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+/* pdf.js's text layer: the page's words, invisible over the picture, where selection and screen readers find them. */
 .source-pdf-text {
   position: absolute;
   inset: 0;
@@ -52,41 +267,135 @@
   line-height: 1;
   text-align: initial;
   transform-origin: 0 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
 }
-.source-pdf-text span {
+.source-pdf-text span,
+.source-pdf-text br {
   position: absolute;
   color: transparent;
   white-space: pre;
   cursor: text;
   transform-origin: 0 0;
 }
-.source-pdf-text .is-cited {
-  background: var(--star-soft);
-  outline: 2px solid var(--star);
+.source-pdf-text > :not(.markedContent),
+.source-pdf-text .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.source-pdf-text .markedContent {
+  display: contents;
 }
 .source-pdf-text ::selection {
-  background: var(--primary-soft);
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
 }
-/* One row for the way back and the close button; the name and place sit under it. */
-.source-viewer-head {
+
+/* A photo, and the text read from a scan or a photo. */
+.source-image {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  border-radius: 4px;
+}
+.source-read {
+  max-width: 476px;
+  padding-left: 14px;
+  margin: var(--space-4) auto 0;
+  color: var(--ink-muted);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+.source-read > summary {
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.source-read-line {
+  margin: var(--space-2) 0 0;
+}
+.source-read-line.is-current {
+  position: relative;
+  color: var(--ink);
+}
+.source-read-line.is-current::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: -12px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary-text);
+}
+
+/* The cited passage's words, when the page can't show them marked. */
+.source-cited {
+  max-width: 476px;
+  margin: var(--space-4) auto 0;
+}
+.source-cited-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+  font: 600 calc(13px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.source-cited-where {
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.source-cited-text {
+  margin: 0;
+  color: var(--ink);
+  font: 400 calc(14px * var(--text-scale, 1)) / 1.6 var(--font-serif);
+  white-space: pre-line;
+}
+
+/* A file that can't be shown now: what happened and the way out, in the sheet's place. */
+.source-message {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0 var(--space-3);
-  width: 100%;
+  justify-items: center;
+  gap: var(--space-2);
+  max-width: 400px;
+  margin: var(--space-8) auto 0;
+  text-align: center;
 }
-.source-viewer-back {
-  grid-column: 1;
-  grid-row: 1;
-  justify-self: start;
-  margin: 0 0 var(--space-1) calc(var(--space-3) * -1);
+.source-message > svg {
+  color: var(--ink-subtle);
 }
-.source-viewer-close {
-  grid-column: 2;
-  grid-row: 1;
+.source-message-title {
+  margin: var(--space-2) 0 0;
+  color: var(--ink);
+  font: 600 calc(15px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  text-wrap: balance;
 }
-.source-viewer-title {
-  grid-column: 1;
-  min-width: 0;
+.source-message-body {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-muted);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+
+/* A page saved from a link: its address, at the foot. */
+.source-view-foot {
+  flex: none;
+  padding: 11px 20px 13px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-subtle);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+.source-view-address {
+  color: var(--ink-muted);
   overflow-wrap: anywhere;
 }

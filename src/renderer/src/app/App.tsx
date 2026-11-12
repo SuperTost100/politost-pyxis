@@ -23,6 +23,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { profileQuery } from "../lib/queries";
 import { Logo } from "../components/Logo";
 
+/** Tells the source panel when the router moved to another page, so it closes with the page that opened it. */
+const watchRouter = (listener: () => void) => router.subscribe(listener);
+
 // Only the print window shows it, and it waits for the page to say it is ready.
 const PrintPage = lazy(() =>
   import("../features/share/PrintPage").then((module) => ({ default: module.PrintPage })),
@@ -153,7 +156,7 @@ function StudyApp() {
           <MenuCommands />
           <OpenedPlans />
           <RouterProvider router={router} />
-          <SourceViewer />
+          <SourceViewer watch={watchRouter} />
           <MakeCardsDialog />
         </AntApp>
       </ConfigProvider>

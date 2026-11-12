@@ -121,9 +121,15 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await expect(page.getByRole("alert").getByText(/^Non riesco a leggere (quel link|questo file)\.$/)).toBeVisible({ timeout: 30000 });
     expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
 
+    // A click on the cover opens the page in the source panel, with its address and the way to it.
     await page.getByRole("button", { name: "Appunti", exact: true }).click();
-    // The details panel says where and when the link was saved. The check itself stays in the row menu used above:
-    // an action the row menu has is not repeated as a panel button.
+    const sourcePanel = page.getByRole("complementary", { name: "Appunti" });
+    await expect(sourcePanel.getByRole("button", { name: "Apri la pagina web" })).toBeVisible();
+    await expect(sourcePanel.getByText("Salvata da")).toBeVisible();
+    // The details, from the file's menu, say where and when the link was saved. The check itself stays in the row
+    // menu used above: an action the row menu has is not repeated as a panel button.
+    await page.getByRole("button", { name: "Azioni per Appunti" }).click();
+    await page.getByRole("menuitem", { name: "Dettagli della fonte" }).click();
     const details = page.getByRole("dialog", { name: "Appunti" });
     await expect(details.getByText(/Salvata da appunti\.invalid il/)).toBeVisible();
     await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toHaveCount(0);

@@ -70,6 +70,8 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { copyFile, mkdtemp } from "node:fs/promises";
+import { inside } from "../core/path-inside";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
 import { rendererCsp } from "./csp";
@@ -470,6 +472,43 @@ function showReminder(summary: ReminderSummary): void {
   note.once("close", () => shownReminders.delete(note));
   note.show();
 }
+
+/**
+ * Asks core which file a Library source's original is, by the source's id. Null when core is not up or the source has
+ * no file it can open, so the window can never have a path of its own choosing opened.
+ */
+function askCoreForSourceFile(sourceId: string): Promise<{ path: string; name: string; stored: boolean } | null> {
+  const child = coreChild;
+  if (!child || coreExited(child) || keysReadyFor !== child || holdCore) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const id = randomUUID();
+    const done = (file: { path: string; name: string; stored: boolean } | null) => {
+      clearTimeout(timer);
+      child.off("message", listener);
+      resolve(file);
+    };
+    const listener = (data: { type?: string; id?: string; file?: { path?: unknown; name?: unknown; stored?: unknown } | null }) => {
+      if (data?.type !== "source-file-path" || data.id !== id) return;
+      const file = data.file;
+      done(
+        file && typeof file.path === "string" && typeof file.name === "string"
+          ? { path: file.path, name: file.name, stored: file.stored === true }
+          : null,
+      );
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    child.on("message", listener);
+    try {
+      child.postMessage({ type: "source-file-query", id, sourceId });
+    } catch {
+      done(null);
+    }
+  });
+}
+
+/** Tests only: the files "Apri il file" would have handed to the system, read through app.evaluate. */
+const openedSourceFiles: Array<{ sourceId: string; name: string; stored: boolean; path: string }> = [];
+if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eOpenedFiles: () => openedSourceFiles });
 
 /** Asks core for the cards due now. null: core is not up, so the check runs again in a minute. */
 function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | null> {
@@ -1137,6 +1176,27 @@ function registerIpc(): void {
         ),
       ).popup({ window: mainWindow!, ...(at ?? {}), callback: () => setImmediate(() => resolve(picked)) });
     });
+  });
+  // Only a source's id names a file: core says which one, and main never opens a path the window chose.
+  ipcMain.handle(mainChannels.openSourceFile, async (event, sourceId: unknown) => {
+    requireMainSender(event, "open-untrusted-sender");
+    if (typeof sourceId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(sourceId) || !workspacePath) return false;
+    const file = await askCoreForSourceFile(sourceId);
+    if (!file) return false;
+    let path = file.path;
+    if (file.stored) {
+      // The stored copy is named by its hash. The system app gets a copy under the file's own name, with its extension,
+      // in a folder of its own, so it knows the type and the student sees the name they know.
+      if (!inside(join(workspacePath, "blobs"), path)) return false;
+      const folder = await mkdtemp(join(app.getPath("temp"), "pyxis-open-"));
+      path = join(folder, file.name);
+      await copyFile(file.path, path);
+    }
+    if (e2eSeam() && process.env["PYXIS_E2E"] === "1") {
+      openedSourceFiles.push({ sourceId, name: file.name, stored: file.stored, path });
+      return true;
+    }
+    return (await shell.openPath(path)) === "";
   });
   // Only a job id names a file, and only inside the workspace's debug log folder (core/debug/log.ts).
   ipcMain.handle(mainChannels.revealJobLog, (event, jobId: unknown) => {

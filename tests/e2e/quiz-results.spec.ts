@@ -162,6 +162,17 @@ test("results list every question in order, right ones folded in green, the othe
     await expect(second.locator(".px-res-answer.is-expected")).toContainText("0 m");
     await expect(second.locator(".px-res-why")).toContainText("Hai calcolato la distanza percorsa.");
     await expect(second.getByRole("button", { name: "Crea una flashcard" })).toBeVisible();
+    // The explanation's source opens the source panel at the cited passage, beside the results; Escape gives the focus
+    // back to the citation.
+    const cite = second.locator(".px-res-why .px-cite");
+    await cite.click();
+    const sourcePanel = page.locator("aside.source-panel");
+    await expect(sourcePanel.locator(".source-viewer-paragraph.is-current")).toContainText(
+      "Lo spostamento è la differenza tra la posizione finale e quella iniziale.",
+    );
+    await page.keyboard.press("Escape");
+    await expect(sourcePanel).toHaveCount(0);
+    await expect(cite).toBeFocused();
     // Half right, graded by the AI tool, and a "Non lo so".
     await expect(rows(page).nth(3).locator(".px-res-st")).toHaveText("A metà · 0,5/1");
     await expect(rows(page).nth(3)).toContainText("Valutata da");

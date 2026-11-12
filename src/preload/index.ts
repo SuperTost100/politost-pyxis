@@ -221,6 +221,8 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.openExternal, url),
   contextMenu: (items: Array<{ id: string; label: string; enabled?: boolean } | null>, at?: { x: number; y: number }) =>
     ipcRenderer.invoke(mainChannels.contextMenu, items, at),
+  openSourceFile: (sourceId: string) =>
+    ipcRenderer.invoke(mainChannels.openSourceFile, sourceId),
   revealJobLog: (jobId: string) =>
     ipcRenderer.invoke(mainChannels.revealJobLog, jobId),
   showOpenDialog: (options: OpenDialogOptions) =>

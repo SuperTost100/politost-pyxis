@@ -453,6 +453,9 @@ const routes = {
   "sources.passage": ["sources", "passage"],
   "sources.viewerDocument": ["sources", "viewerDocument"],
   "sources.chapter": ["sources", "chapter"],
+  "sources.panel": ["sources", "panel"],
+  "sources.panelPage": ["sources", "panelPage"],
+  "sources.readOriginal": ["sources", "readOriginal"],
 } as const;
 type RoutedRequest = keyof typeof routes;
 

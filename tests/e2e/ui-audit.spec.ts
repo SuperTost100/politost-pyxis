@@ -22,6 +22,8 @@ import { PNG } from "pngjs";
 import { putBlob } from "../../src/core/blobs";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { imageOnlyPdf } from "./scanned-pdf-fixture";
+import { docx } from "./source-panel-fixture";
+import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
@@ -148,6 +150,11 @@ const routes = [
   ["library-text", "/exams/library"],
   ["library-text-ready", "/exams/library"],
   ["source-viewer", "/exams/library"],
+  // The source panel at a PDF's cited page with the passage marked, on a Word file it shows as read text, and on a file
+  // of a linked folder that was moved away.
+  ["source-panel-pdf", "/exams/library"],
+  ["source-panel-text", "/exams/library"],
+  ["source-panel-missing", "/exams/library"],
   ["engine-details", "/settings/engines"],
   ["engine-details-disabled", "/settings/engines"],
   ["engine-add-cli", "/settings/engines"],
@@ -921,6 +928,12 @@ const both = (it: string, en: string) => new RegExp(`^(${it}|${en})$`);
 const sidebarFolded = async (page: Page) =>
   (await page.locator(".px-side").getAttribute("data-folded")) !== null;
 
+/** Opens a file's details from its menu: a click on the file opens the source panel instead. */
+async function openDetails(page: Page, title: string) {
+  await page.getByRole("button", { name: both(`Azioni per ${title}`, `Actions for ${title}`) }).click();
+  await page.getByRole("menuitem", { name: both("Dettagli della fonte", "Source details") }).click();
+}
+
 async function openAdvancedEngines(page: Page) {
   const toggle = page.getByRole("switch", {
     name: /^(Opzioni avanzate|Advanced options)$/,
@@ -1487,6 +1500,55 @@ function preparePanelSources(name: string) {
   });
 }
 
+/** The files the source panel states open: a 12-page PDF, a Word file and a linked file moved away. Others have none. */
+function prepareSourcePanel(name: string) {
+  const ids = "('audit-sp-pdf', 'audit-sp-docx', 'audit-sp-moved')";
+  withDb((db) => {
+    db.exec(`DELETE FROM linked_files WHERE folder_id = 'audit-sp-folder';
+      DELETE FROM linked_folders WHERE id = 'audit-sp-folder';
+      DELETE FROM passages WHERE source_id IN ${ids};
+      DELETE FROM source_documents WHERE source_id IN ${ids};
+      DELETE FROM sources WHERE id IN ${ids};`);
+  });
+  if (!name.startsWith("source-panel-")) return;
+  const workspace = join(auditUserData, "workspace");
+  const pdf = putBlob(workspace, manyPagePdf(12, "Esercizio sul limite della successione"), "application/pdf", "pdf");
+  const notes = "Un integrale doppio si calcola per fili, integrando prima in y e poi in x.";
+  const word = putBlob(workspace, docx(notes), "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx");
+  withDb((db) => {
+    const source = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,blob_sha,mime,created_at,updated_at) VALUES(?,?,?,'ready',1,?,?,1,1)",
+    );
+    const document = db.prepare("INSERT INTO source_documents(id,source_id,version,tree_json,created_at) VALUES(?,?,1,'{}',1)");
+    const passage = db.prepare(
+      "INSERT INTO passages(id,source_id,document_id,version,text,locator_json,section_path,created_at) VALUES(?,?,?,1,?,?,?,1)",
+    );
+    source.run("audit-sp-pdf", "pdf", "Esercitazioni di Analisi I, 2025", pdf, "application/pdf");
+    document.run("audit-sp-pdf-doc", "audit-sp-pdf");
+    passage.run("audit-sp-pdf-p5", "audit-sp-pdf", "audit-sp-pdf-doc", "Esercizio sul limite della successione 5", '{"page":5}', "Successioni");
+    source.run("audit-sp-docx", "docx", "Appunti di Analisi II, lezioni 1-9", word, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    document.run("audit-sp-docx-doc", "audit-sp-docx");
+    passage.run("audit-sp-docx-p0", "audit-sp-docx", "audit-sp-docx-doc", "Lezione 1. Integrali curvilinei.", "{}", "Lezione 1");
+    passage.run("audit-sp-docx-p9", "audit-sp-docx", "audit-sp-docx-doc", notes, "{}", "Lezione 9");
+    source.run("audit-sp-moved", "pdf", "Appunti lezione 5", null, null);
+    document.run("audit-sp-moved-doc", "audit-sp-moved");
+    passage.run(
+      "audit-sp-moved-p3",
+      "audit-sp-moved",
+      "audit-sp-moved-doc",
+      "Nel moto circolare uniforme l'accelerazione punta verso il centro.",
+      '{"page":3}',
+      "p. 3",
+    );
+    db.prepare("INSERT INTO linked_folders(id,path,mode,created_at) VALUES('audit-sp-folder',?,'root',1)").run(
+      join(auditUserData, "Università"),
+    );
+    db.prepare(
+      "INSERT INTO linked_files(folder_id,rel_path,subfolder,source_id,size,mtime_ms,missing_at) VALUES('audit-sp-folder','Fisica I/Appunti lezione 5.pdf','Fisica I','audit-sp-moved',1,1,1)",
+    ).run();
+  });
+}
+
 /** A quiz half answered (an answer, a "Non lo so", one marked) for the answer sheet, and a simulation under way. */
 function prepareAnswerSheet(name: string) {
   withDb((db) => {
@@ -1598,6 +1660,7 @@ function prepareState(name: string) {
   prepareExamsEmpty(name);
   prepareExamsArchived(name);
   preparePanelSources(name);
+  prepareSourcePanel(name);
   prepareLibraryEmpty(name);
   prepareLibrarySubjects(name);
   prepareLibraryShelf(name);
@@ -3453,7 +3516,7 @@ async function openState(page: Page, name: string) {
       await expect(dialog).not.toContainText("vision-fixture-model");
       break;
     case "library-details":
-      await page.getByRole("button", { name: source }).click();
+      await openDetails(page, "Appunti di fisica");
       await expect(dialog).toBeVisible();
       await expect(
         dialog.getByRole("button", { name: both("Rinomina", "Rename") }),
@@ -3464,9 +3527,7 @@ async function openState(page: Page, name: string) {
       ).toHaveCount(0);
       break;
     case "library-panel-pdf":
-      await page
-        .getByRole("button", { name: "Esercitazioni Analisi 1 2025", exact: true })
-        .click();
+      await openDetails(page, "Esercitazioni Analisi 1 2025");
       await expect(dialog).toBeVisible();
       await expect(
         dialog.getByRole("button", { name: both("Apri la fonte", "Open source") }),
@@ -3484,7 +3545,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "library-panel-link":
-      await page.getByRole("button", { name: "Serie di Fourier", exact: true }).click();
+      await openDetails(page, "Serie di Fourier");
       await expect(dialog).toBeVisible();
       await expect(
         dialog.getByText(/^(Salvata da appunti\.example\.org il|Saved from appunti\.example\.org on) /),
@@ -3498,7 +3559,7 @@ async function openState(page: Page, name: string) {
         db.exec(`UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf';
           DELETE FROM plan_sources WHERE source_id = 'audit-panel-pdf';`),
       );
-      await row.click();
+      await openDetails(page, "Esercitazioni Analisi 1 2025");
       await expect(
         dialog.getByText(
           both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
@@ -3518,7 +3579,7 @@ async function openState(page: Page, name: string) {
       withDb((db) =>
         db.prepare("UPDATE sources SET status = 'removed' WHERE id = 'audit-panel-pdf'").run(),
       );
-      await row.click();
+      await openDetails(page, "Esercitazioni Analisi 1 2025");
       await expect(
         dialog.getByText(
           both("Questa fonte non è più nella libreria.", "This source is no longer in the library."),
@@ -3530,13 +3591,15 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "plan-sources-panel": {
+      // The row opens the file in the source panel; Escape closes it and focus goes back to the row. The details are an
+      // item of the row's menu.
       const row = page.getByRole("button", { name: source });
       await row.click();
-      await expect(dialog).toBeVisible();
+      await expect(page.locator("aside.source-panel")).toBeVisible();
       await page.keyboard.press("Escape");
-      await expect(dialog).toBeHidden();
+      await expect(page.locator("aside.source-panel")).toHaveCount(0);
       await expect(row).toBeFocused();
-      await row.click();
+      await openDetails(page, "Appunti di fisica");
       await expect(
         dialog.getByRole("heading", { name: both("Negli esami", "In exams") }),
       ).toBeVisible();
@@ -3544,9 +3607,7 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "library-panel-scan":
-      await page
-        .getByRole("button", { name: "Appello 10 febbraio 2025", exact: true })
-        .click();
+      await openDetails(page, "Appello 10 febbraio 2025");
       await expect(dialog).toBeVisible();
       await expect(
         dialog.getByRole("heading", { name: both("Come la sto leggendo", "How I'm reading it") }),
@@ -3611,8 +3672,35 @@ async function openState(page: Page, name: string) {
           }),
         ),
       );
-      await expect(dialog.getByText(/La forza è il prodotto/)).toBeVisible();
+      await expect(page.locator("aside.source-panel").getByText(/La forza è il prodotto/)).toBeVisible();
       break;
+    case "source-panel-pdf":
+    case "source-panel-text":
+    case "source-panel-missing": {
+      const passageId = {
+        "source-panel-pdf": "audit-sp-pdf-p5",
+        "source-panel-text": "audit-sp-docx-p9",
+        "source-panel-missing": "audit-sp-moved-p3",
+      }[name];
+      await page.evaluate(
+        (passageId) => window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId } })),
+        passageId,
+      );
+      const panel = page.locator("aside.source-panel");
+      if (name === "source-panel-pdf") {
+        await expect(panel.getByRole("group", { name: both("Pagina 5 di 12", "Page 5 of 12") })).toBeVisible();
+        await expect(panel.locator(".source-cite-mark")).toBeVisible();
+      } else if (name === "source-panel-text") {
+        await expect(panel.locator(".source-viewer-paragraph.is-current")).toContainText("Un integrale doppio");
+        await expect(panel.getByRole("button", { name: both("Apri il file", "Open the file") })).toBeVisible();
+      } else {
+        await expect(
+          panel.getByRole("heading", { name: both("Non trovo più questo file", "I can't find this file any more") }),
+        ).toBeVisible();
+        await expect(panel.getByText(/accelerazione punta verso il centro/)).toBeVisible();
+      }
+      break;
+    }
     case "engine-details":
       await openAdvancedEngines(page);
       await page

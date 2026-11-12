@@ -285,9 +285,10 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await entry("Che cosa causa")
       .getByRole("button", { name: "Source" })
       .click();
-    await expect(page.getByRole("dialog")).toContainText("Una forza produce");
+    const sourcePanel = page.locator("aside.source-panel");
+    await expect(sourcePanel).toContainText("Una forza produce");
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(sourcePanel).toHaveCount(0);
 
     // One exam only.
     await page.getByRole("combobox", { name: "Exam" }).click();

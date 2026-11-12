@@ -21,6 +21,7 @@ import { FileCover } from "../../components/FileCover";
 import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
+import type { SourceMenu } from "../../components/SourceViewer";
 import { invoke } from "../../lib/ipc";
 import { kindWords } from "../../lib/kindWords";
 import { refreshSubjects } from "../../lib/refreshSubjects";
@@ -35,7 +36,8 @@ type Subject = RequestOutput<"subjects.list">[number];
 
 /** What a file's menu and its cover do, other than moving it, which the shelf does itself. */
 export type ShelfHandlers = {
-  open: (source: LibrarySource) => void;
+  /** Opens the file in the source panel, which gets the file's own menu. */
+  open: (source: LibrarySource, menu: SourceMenu) => void;
   act: (source: LibrarySource, key: string) => void;
 };
 
@@ -266,6 +268,21 @@ export function LibraryShelf({
       void move(source, { subjectId: key.slice(5) }, fromUnsorted ? afterUnsorted(source) : "cover");
     else handlers.current?.act(source, key);
   };
+  // The source panel shows the same menu as the cover, built from the shelf as it is when the panel draws.
+  const latest = useRef({ all, subjects, refreshBusy, newVersions, fileAct, t });
+  latest.current = { all, subjects, refreshBusy, newVersions, fileAct, t };
+  const panelMenu =
+    (id: string, fromUnsorted: boolean): SourceMenu =>
+    () => {
+      const now = latest.current;
+      const file = now.all.find((item) => item.id === id);
+      return file
+        ? {
+            items: fileMenu(file, now.subjects, now.t, { refreshBusy: now.refreshBusy, newVersion: now.newVersions.get(id) }),
+            onSelect: (key) => now.fileAct(file, key, fromUnsorted),
+          }
+        : null;
+    };
 
   async function rename(subject: Subject, next: string): Promise<string | null> {
     if (!next || next === subject.name) {
@@ -358,7 +375,7 @@ export function LibraryShelf({
               menu={fileMenu(source, subjects, t, { refreshBusy, newVersion: newVersions.get(source.id) })}
               newVersion={newVersions.get(source.id)}
               bookBusy={bookBusy === source.id}
-              onOpen={() => handlers.current?.open(source)}
+              onOpen={() => handlers.current?.open(source, panelMenu(source.id, true))}
               onAct={(key) => fileAct(source, key, true)}
               onPick={(subjectId) => void move(source, { subjectId }, afterUnsorted(source))}
               onNewSubject={() => setNaming(source)}
@@ -384,7 +401,7 @@ export function LibraryShelf({
                 menu={fileMenu(source, subjects, t, { refreshBusy, newVersion: newVersions.get(source.id) })}
                 newVersion={newVersions.get(source.id)}
                 bookBusy={bookBusy === source.id}
-                onOpen={() => handlers.current?.open(source)}
+                onOpen={() => handlers.current?.open(source, panelMenu(source.id, false))}
                 onAct={(key) => fileAct(source, key, false)}
                 onLanded={onLanded}
               />
@@ -459,7 +476,7 @@ export function LibraryShelf({
                         menu={fileMenu(source, subjects, t, { refreshBusy, newVersion: newVersions.get(source.id) })}
                         newVersion={newVersions.get(source.id)}
                         bookBusy={bookBusy === source.id}
-                        onOpen={() => handlers.current?.open(source)}
+                        onOpen={() => handlers.current?.open(source, panelMenu(source.id, false))}
                         onAct={(key) => fileAct(source, key, false)}
                         onLanded={onLanded}
                       />

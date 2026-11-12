@@ -41,6 +41,7 @@ import { folderTransport } from "./sources/books";
 import { retireExerciseCards } from "./study/exerciseCards";
 import { onEvidenceChanged } from "./plans/evidenceCache";
 import { reminderSummary } from "./plans/reminder";
+import { fileToOpen } from "./sources/panel";
 import { readProfile } from "./profile/profile";
 import { watchProcessErrors } from "./process-errors";
 
@@ -93,6 +94,7 @@ if (!parent) {
   let jobRunner: ReturnType<typeof createRunner> | undefined;
   let developmentSeam = false;
   let database: Database.Database | undefined;
+  let workspaceRoot: string | undefined;
 
   function failBootstrap(err: unknown): void {
     console.error(
@@ -117,6 +119,7 @@ if (!parent) {
     setRuntimeSender((message) => port.postMessage(message));
     const db = openDatabase(join(workspacePath, "pyxis.db"));
     database = db;
+    workspaceRoot = workspacePath;
     retireExerciseCards(db);
     // Study writes change mastery. The broadcast goes out with the first write of a turn, before the reply to the
     // request that wrote, so the renderer marks its plan data out of date before it acts on the reply.
@@ -252,6 +255,17 @@ if (!parent) {
         result: data.result,
         error: data.error,
       });
+    if (data?.type === "source-file-query" && data.id) {
+      // "Apri il file": main opens only the file core has for a source in the Library, never a path the window names.
+      let file: ReturnType<typeof fileToOpen> = null;
+      try {
+        if (database && workspaceRoot && typeof data.sourceId === "string")
+          file = fileToOpen(database, workspaceRoot, data.sourceId);
+      } catch (err) {
+        console.error("pyxis-core: source file lookup failed", err instanceof Error ? err.message : "unknown");
+      }
+      port.postMessage({ type: "source-file-path", id: data.id, file });
+    }
     if (data?.type === "reminder-query" && data.id) {
       // Main asks once a day, at the time the student picked. ok false: core could not tell, so main asks again.
       let reply: { ok: boolean; summary: unknown } = { ok: false, summary: null };

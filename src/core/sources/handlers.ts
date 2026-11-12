@@ -36,6 +36,7 @@ import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { checkLinkPath, linkedFolders } from "./linked";
 import { linkedFile } from "./linked-file";
+import { panelPage, panelSource, readOriginal } from "./panel";
 import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { watchFolder } from "./linked-watch";
 import type { LinkMode } from "../../shared/linked-folders";
@@ -880,6 +881,19 @@ export function sourceHandlers(
           ? row.locator.paragraph === input.paragraph
           : false,
       }));
+    },
+    panel(input: { sourceId?: string; passageId?: string }) {
+      return panelSource(db, workspace, input);
+    },
+    panelPage(input: { sourceId?: string; passageId?: string; unit: "page" | "slide"; n: number }) {
+      return panelPage(db, input);
+    },
+    async readOriginal(input: { sourceId?: string; passageId?: string; start: number; length: number }) {
+      try {
+        return await readOriginal(db, workspace, input);
+      } catch (err) {
+        sourceError(err);
+      }
     },
   };
 }

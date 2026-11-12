@@ -3231,6 +3231,72 @@ export const requests = {
       }),
     ),
   },
+  /**
+   * What the source panel draws a source from: its file, whether the original can be read now (`stored` copy or the
+   * `linked` file in place), where its read is, and the cited passage with its page. Null for an unknown source.
+   */
+  "sources.panel": {
+    input: z
+      .object({ sourceId: z.string().optional(), passageId: z.string().optional() })
+      .refine((v) => Boolean(v.sourceId || v.passageId)),
+    output: z
+      .object({
+        sourceId: z.string(),
+        title: z.string(),
+        kind: z.string(),
+        status: z.string(),
+        state: z.enum(["ready", "reading", "locked", "failed", "removed"]),
+        errorJobId: z.string().nullable(),
+        original: z.enum(["stored", "linked"]).nullable(),
+        mime: z.string().nullable(),
+        size: z.number().nullable(),
+        missing: z.boolean(),
+        changed: z.boolean(),
+        originUrl: z.string().nullable(),
+        pages: z.number().nullable(),
+        slides: z.number().nullable(),
+        passage: z
+          .object({
+            id: z.string(),
+            text: z.string(),
+            sectionPath: z.string().nullable(),
+            page: z.number().nullable(),
+            slide: z.number().nullable(),
+            chapter: z.number().nullable(),
+          })
+          .nullable(),
+      })
+      .nullable(),
+  },
+  /** The read text of one page or slide, of the cited version (the latest without a passage). */
+  "sources.panelPage": {
+    input: z
+      .object({
+        sourceId: z.string().optional(),
+        passageId: z.string().optional(),
+        unit: z.enum(["page", "slide"]),
+        n: z.number().int().positive(),
+      })
+      .refine((v) => Boolean(v.sourceId || v.passageId)),
+    output: z.array(
+      z.object({ id: z.string(), text: z.string(), sectionPath: z.string().nullable(), current: z.boolean() }),
+    ),
+  },
+  /**
+   * Bytes of a source's original, so the panel draws one page of a large PDF without reading the rest. The source is
+   * named by id and core reads only its stored copy or its linked file. Errors: `source-file-missing`.
+   */
+  "sources.readOriginal": {
+    input: z
+      .object({
+        sourceId: z.string().optional(),
+        passageId: z.string().optional(),
+        start: z.number().int().nonnegative(),
+        length: z.number().int().positive(),
+      })
+      .refine((v) => Boolean(v.sourceId || v.passageId)),
+    output: z.object({ bytes: z.instanceof(Uint8Array), size: z.number() }),
+  },
 } as const;
 
 const broadcasts = {

@@ -26,6 +26,8 @@ Over the lesson, the quiz and the flashcards. The way back is a ghost button tha
 
 What opens beside a screen, such as a source at its page, is a sheet along the right edge of the window, and the screen stays usable beside it. The sheet slides in from that edge and leaves the same way. Its head holds the title and the close button.
 
+The source panel (`SourceViewer` in `components/SourceViewer.tsx`) is 520px wide, below Attività's corner. From 1180px the page moves over and stays usable beside it; on a narrower window it covers the page's right side, and below 640px it starts after the folded sidebar. Its head has the file's name on one line, its menu (the same as the file's cover) and the close button, with what the file is under the name and the way back under that. The paging row has the arrows round the page number, which can be typed over, and "Apri il file" on the right. The page sits on `--surface-sunken`, `--bg` in dark, and a PDF page stays white in both themes. The cited passage gets a 2px line in the page's margin beside its lines, with no colour behind the text. Escape and the close button close it, focus goes back to what opened it, and a second source opened while it is open moves it instead of opening another.
+
 ## Popovers
 
 A popover belongs to the button that opened it: it sits 8px from it, lines up with its edge and grows out of it. Escape and a click outside close it, and focus goes back to the button.

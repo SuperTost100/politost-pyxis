@@ -8,6 +8,7 @@ import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
 import { SourceDetails } from "../../components/SourceDetails";
+import { closeSourceViewer, openSourceViewer } from "../../components/SourceViewer";
 import { SourceRow } from "../../components/SourceRow";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
@@ -97,43 +98,56 @@ export function PlanSources({ planId }: { planId: string }) {
           )}
           {plan.data?.sources.length ? (
             <ul className="px-list-surface" aria-label={t("plans.tabSources")}>
-              {plan.data.sources.map((source) => (
-                <SourceRow
-                  key={source.id}
-                  source={{
-                    ...source,
-                    bytes: library.data?.find((item) => item.id === source.id)
-                      ?.bytes,
-                  }}
-                  selected={source.id === detailSourceId}
-                  onOpen={() => setDetailSourceId(source.id)}
-                  actions={{
-                    disabled: busy,
-                    items: [
-                      {
-                        key: "remove",
-                        label: t("planOverview.removeSource"),
-                        danger: true,
-                      },
-                    ],
-                    onSelect: () =>
-                      modal.confirm({
-                        title: t("planOverview.removeSource"),
-                        content: t("planOverview.removeSourceHelp", {
-                          title: source.title,
-                        }),
-                        onOk: () =>
-                          action(async () => {
-                            await invoke("plans.removeSource", {
-                              planId,
-                              sourceId: source.id,
-                            });
-                            await refresh();
-                          }),
+              {plan.data.sources.map((source) => {
+                const removeItem = { key: "remove", label: t("planOverview.removeSource"), danger: true };
+                const askRemove = () =>
+                  modal.confirm({
+                    title: t("planOverview.removeSource"),
+                    content: t("planOverview.removeSourceHelp", {
+                      title: source.title,
+                    }),
+                    onOk: () =>
+                      action(async () => {
+                        await invoke("plans.removeSource", {
+                          planId,
+                          sourceId: source.id,
+                        });
+                        await refresh();
                       }),
-                  }}
-                />
-              ))}
+                  });
+                return (
+                  <SourceRow
+                    key={source.id}
+                    source={{
+                      ...source,
+                      bytes: library.data?.find((item) => item.id === source.id)
+                        ?.bytes,
+                    }}
+                    selected={source.id === detailSourceId}
+                    // The file opens at its first page; its details are an item of the panel's menu.
+                    onOpen={() =>
+                      openSourceViewer(
+                        { sourceId: source.id },
+                        {
+                          menu: () => ({
+                            items: [{ key: "details", label: t("sources.details") }, { type: "divider" }, removeItem],
+                            onSelect: (key) => {
+                              if (key === "remove") return askRemove();
+                              closeSourceViewer();
+                              setDetailSourceId(source.id);
+                            },
+                          }),
+                        },
+                      )
+                    }
+                    actions={{
+                      disabled: busy,
+                      items: [{ key: "details", label: t("sources.details") }, { type: "divider" }, removeItem],
+                      onSelect: (key) => (key === "remove" ? askRemove() : setDetailSourceId(source.id)),
+                    }}
+                  />
+                );
+              })}
             </ul>
           ) : plan.data ? (
             <p className="body ink-muted">{t("planOverview.noSources")}</p>
