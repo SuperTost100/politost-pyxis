@@ -902,6 +902,8 @@ async function answer(
   const attachments = hiddenSources(db, sourceIds);
   const chosen = sourceIds.filter((id) => !attachments.includes(id));
   const subjectFiles = subject ? subjectSourceIds(db, subject) : [];
+  // The files that belong to the chat's subject, and its attachments: a reply that cites any other file is "wider".
+  const within = subject ? new Set([...subjectFiles, ...attachments]) : null;
   // An exam's chat stays on the exam's files even when it has none (ASK-07); its subject, if any, is searched next.
   const narrowed = chosen.length > 0 || Boolean(planId) || Boolean(subject);
   const scope: SearchScope = narrowed
@@ -1088,6 +1090,7 @@ async function answer(
           selected,
           attached: thisTurnFile,
           widened: widened || Boolean(input.resumeFrom?.widened),
+          within,
           template,
           citations,
           stopped: true,
@@ -1119,6 +1122,7 @@ async function answer(
     selected,
     attached: thisTurnFile,
     widened: widened || Boolean(input.resumeFrom?.widened),
+    within,
     template,
     citations,
     stopped: false,
@@ -1169,6 +1173,11 @@ type SavedReply = {
   attached: boolean;
   /** The passages came from outside the chat's subject (see replyGrounding). */
   widened: boolean;
+  /**
+   * The files of the chat's subject and its attachments, null for a chat without a subject. A reply that cites a file
+   * outside them is wider even when the search itself did not have to widen (a file picked by hand in an older chat).
+   */
+  within?: ReadonlySet<string> | null;
   template: string;
   citations: ChatCitation[];
   stopped: boolean;
@@ -1200,13 +1209,14 @@ function saveReply(
     ),
   );
   const linked = meta.citations.filter((cite) => used.has(cite.index));
+  const { within } = meta;
   const grounding = replyGrounding({
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
     question: meta.template === "chat.socratic" && parsed.body.trim().endsWith("?"),
     passages: meta.citations.length,
-    widened: meta.widened,
+    widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
   db.prepare(
     `INSERT INTO messages

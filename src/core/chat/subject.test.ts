@@ -310,4 +310,22 @@ describe("a chat's subject", () => {
     expect(chatSubjectBy(db, result.chatId)).not.toBe("student");
     db.close();
   });
+
+  it("records a reply as wider when it cites a hand-picked file from outside the chat's subject, though the search found it without widening", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+    ]);
+    // An older chat: Fisica 2, plus a file of Analisi 1 the student picked by hand.
+    db.prepare(
+      `INSERT INTO chats (id, title, scope_json, subject, created_at, updated_at) VALUES ('old', 'Vecchia', '{"sourceIds":["an"],"subjectBy":"student"}', 'Fisica 2', 1, 1)`,
+    ).run();
+    const outside = await ask(db, "Serie geometrica che converge", "old");
+    expect(outside.reply.citations[0]).toMatchObject({ sourceId: "an", subject: "Analisi 1" });
+    expect(outside.reply.grounding).toBe("wider");
+    const inside = await ask(db, "Teorema di Gauss sul cilindro", "old");
+    expect(inside.reply.citations[0]).toMatchObject({ sourceId: "fis" });
+    expect(inside.reply.grounding).toBe("sources");
+    db.close();
+  });
 });
