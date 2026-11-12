@@ -84,9 +84,17 @@ mac:
       to: electron-licenses/LICENSE
     - from: node_modules/electron/dist/LICENSES.chromium.html
       to: electron-licenses/LICENSES.chromium.html
+# The spell checker's Italian and English dictionaries (resources/dictionaries, src/main/spellcheck.ts) go next to the
+# asar, where main copies them into the profile before Chromium looks there. macOS uses the system's checker and ships
+# none.
 win:
   target:
     - nsis
+  extraResources: &dictionaries
+    - from: resources/dictionaries
+      to: dictionaries
+      filter:
+        - "*.bdic"
 # Pyxis installs updates from the full installer, so the archive inside it can be solid LZMA instead of the per-file
 # blocks electron-updater's differential download needs. No .exe.blockmap is built.
 nsis:
@@ -97,6 +105,7 @@ linux:
     - AppImage
     - deb
   category: Education
+  extraResources: *dictionaries
 # The AppImage stays on mksquashfs' default gzip. xz with 1 MiB blocks made it 31 MiB smaller but took the first
 # window from about 1.6 s to 5.3 s on every start, because the AppImage runtime unpacks the squashfs on each launch.
 # fpm compresses the deb payload with xz -3 (a 4 MiB dictionary) unless told otherwise.
