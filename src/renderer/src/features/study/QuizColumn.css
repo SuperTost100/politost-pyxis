@@ -322,8 +322,11 @@
   .px-qz-handin > .px-ctl-reveal {
     grid-column: 1 / -1;
   }
-  .px-qz-note {
+  .px-qz-note:not(.is-reason) {
     display: none;
+  }
+  .px-qz-note.is-reason {
+    grid-column: 1 / -1;
   }
   .px-qz-sheet {
     padding: 20px 20px 14px;

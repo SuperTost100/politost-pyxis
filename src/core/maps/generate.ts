@@ -384,7 +384,7 @@ function latestBuild<T>(
   // the scope's build any more: the page does not offer to resume it, and a new request starts afresh.
   const asked =
     (instruction === undefined ? "" : " AND COALESCE(json_extract(params_json, '$.instruction'), '') = ?") +
-    (jobId === undefined ? " AND NOT (dismissed = 1 AND state <> 'succeeded')" : " AND id = ?");
+    (jobId === undefined ? " AND NOT (dismissed <> 0 AND state <> 'succeeded')" : " AND id = ?");
   const extra = [...(instruction === undefined ? [] : [instruction]), ...(jobId === undefined ? [] : [jobId])];
   return (
     isTopicScope(input)

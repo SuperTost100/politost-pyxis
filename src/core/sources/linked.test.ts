@@ -856,6 +856,32 @@ describe("a large linked folder", () => {
     expect(app.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'linked-folder-sort'`)).toBe(1);
   }, 30_000);
 
+  it("fails the sort job in Attività, as a missing AI tool, when Riprova finds no AI tool to ask", async () => {
+    const root = bigTree(20, ["Materia 3 appunti.txt", "orario.txt"]);
+    const app = bulk({
+      run: async (input) => {
+        if (!isSorting(input)) return answer([])(input);
+        throw new Error("engine down");
+      },
+    });
+    const [folder] = await app.linked.link({ paths: [root], mode: "root" });
+    await app.settled();
+    await app.linked.confirm({ folders: [{ folderId: folder!.id, subjects: [] }] });
+    await app.settled();
+    const jobId = app.db.prepare(`SELECT id FROM jobs WHERE kind = 'linked-folder-sort' AND state = 'failed'`).pluck().get() as string;
+    expect(jobId).toBeTruthy();
+    // The student disconnected the AI tool before pressing Riprova.
+    app.db.prepare("DELETE FROM feature_engines").run();
+    app.runner.retry(jobId);
+    await app.settled();
+    await expect
+      .poll(() => app.db.prepare(`SELECT state, error FROM jobs WHERE id = ?`).get(jobId), { timeout: 10_000 })
+      .toEqual({ state: "failed", error: "engine-missing" });
+    // The files still wait for a subject, and Attività lists the failure.
+    expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE subfolder = '' AND sorted_at IS NULL`)).toBe(2);
+    expect(app.runner.list().some((job) => job.id === jobId)).toBe(true);
+  }, 30_000);
+
   describe("stopping the job that sorts loose files", () => {
     /**
      * A folder with 101 loose files, a first sort that failed (so the job exists and has failed), and a model that

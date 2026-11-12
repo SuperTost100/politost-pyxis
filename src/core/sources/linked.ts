@@ -2,6 +2,7 @@ import { realpathSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute, sep } from "node:path";
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
+import { IpcError } from "../../shared/ipc";
 import { maxSourceBytes, isImageExt } from "../../shared/source-types";
 import { MAX_LINKED_DEPTH, MAX_SUBJECT_NAME, type LinkMode, type MaterialKind } from "../../shared/linked-folders";
 import type { GenerateInput } from "../engine/generate";
@@ -831,7 +832,8 @@ export function linkedFolders(deps: LinkedDeps) {
    * Asks the AI tool which subject each file lying loose at the top of a `root` folder belongs to, by its name alone,
    * `MAX_LOOSE_SENT` names a call. A file it sorts takes that subfolder, so it follows that subject from then on, as if
    * it lay inside it; one it cannot place stays without a subject and is not asked about again. Without an AI tool the
-   * files stay without a subject, and the next look asks again. When the call fails, the files stay without a subject
+   * files stay without a subject, and the next look asks again; with `strict` the job fails as `engine-missing`, so it
+   * is not listed as done. When the call fails, the files stay without a subject
    * and a `linked-folder-sort` job asks once more, so a failure that lasts ends as a failed job in Attività; with
    * `strict` (that job) the failure is thrown as `linked-sort-failed` instead. The job's `signal` is passed to the call,
    * so a stop aborts the call in flight, starts no other and saves nothing more: the files not placed yet stay without
@@ -867,7 +869,11 @@ export function linkedFolders(deps: LinkedDeps) {
         const answer = await sortLooseFiles(db, subjects, batch, { signal, run: deps.run });
         // A stop that came as the call answered is a stop: nothing of this answer is saved.
         signal?.throwIfAborted();
-        if (answer === "no-engine") return;
+        if (answer === "no-engine") {
+          // The job's Riprova ran without an AI tool: Attività says so and offers to connect one, as for any other job.
+          if (strict) throw new IpcError("engine-missing", "engines.errors.engine-missing");
+          return;
+        }
         if (answer === "failed") {
           sortGaveUp.add(folderId);
           if (strict) throw new Error("linked-sort-failed");

@@ -139,6 +139,7 @@ export function ResultsScreen({
   const gapTopic = gap ? outcome.data?.topics.find((topic) => topic.id === gap.topicId)?.title : undefined;
   const parts = tally(items);
   const titleId = useId();
+  const openDrill = (topicId: string) => navigate(`/plans/${planId}?drill=${encodeURIComponent(topicId)}`);
   return (
     <div className="px-res">
       <aside className="px-res-summary" aria-labelledby={titleId}>
@@ -228,13 +229,7 @@ export function ResultsScreen({
             </div>
           ) : graded && review ? (
             <>
-              <Button
-                size="lg"
-                block
-                onClick={() =>
-                  gap ? navigate(`/plans/${planId}?drill=${encodeURIComponent(gap.topicId)}`) : review.onReview()
-                }
-              >
+              <Button size="lg" block onClick={() => (gap ? openDrill(gap.topicId) : review.onReview())}>
                 {t("results.targeted")}
               </Button>
               {gap ? (
@@ -244,7 +239,16 @@ export function ResultsScreen({
               ) : null}
             </>
           ) : (
-            primary
+            <>
+              {/* A review or a redo has no wrong answers to ask again, but a gap it left open still has its drill: the
+                  step the summary announces is offered here. */}
+              {graded && gap ? (
+                <Button variant="secondary" size="lg" block onClick={() => openDrill(gap.topicId)}>
+                  {t("results.targeted")}
+                </Button>
+              ) : null}
+              {primary}
+            </>
           )}
           {secondary}
         </div>
