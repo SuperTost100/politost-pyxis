@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { blobSize } from "../blobs";
@@ -6,7 +6,7 @@ import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { tempDir } from "../test-temp";
 import { extractByExt } from "./documents";
-import { enqueueSourceFile, registerSourceJobs } from "./jobs";
+import { enqueueSourceFile, markStoppedImport, registerSourceJobs } from "./jobs";
 import { linkedFolders } from "./linked";
 import { moveSource } from "./library-subjects";
 import { hashFiles } from "./quality";
@@ -16,16 +16,29 @@ import { listSources } from "./smartbook";
 const NOTES = "Il campo elettrico di una carica puntiforme decresce con il quadrato della distanza. ".repeat(30);
 
 /** A study folder with two subjects, and the import jobs and linked folders over an in-memory workspace. */
-function setup(options: { paused?: boolean } = {}) {
+function setup(options: { paused?: boolean; failOn?: string } = {}) {
   const db = openDatabase(":memory:");
   const workspace = tempDir("pyxis-unlink-ws-");
   const updates: Array<{ id: string; kind: string; state: string }> = [];
-  const runner = createRunner(db, (job) => updates.push(job), undefined, options.paused === true);
+  const runner = createRunner(
+    db,
+    (job) => {
+      updates.push(job);
+      // As core wires it: a source whose import stopped shows that state.
+      markStoppedImport(db, job);
+    },
+    undefined,
+    options.paused === true,
+  );
   registerSourceJobs(
     db,
     workspace,
     runner,
-    async (input) => ({ document: await extractByExt(new Uint8Array(readFileSync(input.path)), input.ext) }),
+    async (input) => {
+      // A file whose reading fails, as a damaged one does.
+      if (options.failOn && input.path.includes(options.failOn)) throw new Error("unreadable");
+      return { document: await extractByExt(new Uint8Array(readFileSync(input.path)), input.ext) };
+    },
     { hash: (paths, maxBytes) => hashFiles(paths, maxBytes) },
   );
   let changes = 0;
@@ -234,6 +247,17 @@ describe("unlinking a folder", () => {
     expect(app.runner.list().filter((job) => job.kind.startsWith("source-") || job.kind.startsWith("linked-"))).toEqual([]);
   });
 
+  it("drops the folder's failed readings from Attività, so nothing offers to retry a file that left", async () => {
+    const app = setup({ failOn: "matrici" });
+    const folder = await app.link();
+    await app.settled();
+    expect(app.runner.list().filter((job) => job.state === "failed")).toHaveLength(1);
+
+    app.linked.unlink(folder.id);
+    expect(app.runner.list().filter((job) => job.kind.startsWith("source-"))).toEqual([]);
+    expect(app.count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import' AND state = 'failed' AND dismissed = 0`)).toBe(0);
+  });
+
   it("stops a look that is walking the folder, which then writes nothing", async () => {
     const app = setup();
     for (let index = 0; index < 400; index += 1) app.put(`Fisica/cap ${index % 20}/nota ${index}.txt`, `Nota ${index}`);
@@ -259,6 +283,14 @@ describe("a linked folder in the list", () => {
     const view = app.linked.view(folder.id);
     expect(view).toMatchObject({ files: 3, read: 3, state: "ready" });
     expect(view.checkedAt).toEqual(expect.any(Number));
+  });
+
+  it("does not count a file whose reading failed as read, and says how many could not be read", async () => {
+    const app = setup({ failOn: "matrici" });
+    const folder = await app.link();
+    await app.settled();
+    expect(app.count(`SELECT COUNT(*) FROM sources WHERE status = 'failed'`)).toBe(1);
+    expect(app.linked.view(folder.id)).toMatchObject({ files: 3, read: 2, failed: 1, state: "ready" });
   });
 
   it("reads one folder again now, and leaves the others alone", async () => {
@@ -293,16 +325,43 @@ describe("a linked folder in the list", () => {
     const elsewhere = join(tempDir("pyxis-unlink-else-"), "Vacanze");
     mkdirSync(join(elsewhere, "Fisica"), { recursive: true });
     writeFileSync(join(elsewhere, "Fisica", "appunti.txt"), "Altro testo.");
-    expect(app.linked.relocate(folder.id, elsewhere)).toEqual({ same: false, matched: 0, total: 3 });
+    expect(await app.linked.relocate(folder.id, elsewhere)).toEqual({ same: false, matched: 0, total: 3 });
     expect(app.linked.view(folder.id).path).toBe(app.root);
 
     // The folder where it went: the same folder, with the same sources, no longer missing.
-    expect(app.linked.relocate(folder.id, moved)).toEqual({ same: true, matched: 3, total: 3 });
+    expect(await app.linked.relocate(folder.id, moved)).toEqual({ same: true, matched: 3, total: 3 });
     await app.settled();
     expect(app.linked.view(folder.id)).toMatchObject({ path: moved, state: "ready", files: 3 });
     expect(app.db.prepare(`SELECT source_id FROM linked_files ORDER BY rel_path`).pluck().all()).toEqual(ids);
     expect(app.count(`SELECT COUNT(*) FROM linked_files WHERE missing_at IS NOT NULL`)).toBe(0);
     expect(app.count(`SELECT COUNT(*) FROM sources`)).toBe(3);
+  });
+
+  it("does not take a folder for the same one when the matching files are links the folder's reading skips", async () => {
+    const app = setup();
+    const folder = await app.link();
+    await app.settled();
+    const base = tempDir("pyxis-unlink-links-");
+    const real = join(base, "real");
+    renameSync(app.root, real);
+    await app.linked.sync(folder.id);
+    // One real file, one file that is a link to a file of the same size, and a subject folder that is a link.
+    const candidate = join(base, "Polito");
+    mkdirSync(join(candidate, "Fisica"), { recursive: true });
+    copyFileSync(join(real, "Fisica", "appunti.txt"), join(candidate, "Fisica", "appunti.txt"));
+    symlinkSync(join(real, "Fisica", "lezione 1.txt"), join(candidate, "Fisica", "lezione 1.txt"));
+    // A junction needs no privilege on Windows; elsewhere it is a plain link to a folder.
+    symlinkSync(join(real, "GAL"), join(candidate, "GAL"), "junction");
+
+    expect(await app.linked.relocate(folder.id, candidate)).toEqual({ same: false, matched: 1, total: 3 });
+    expect(app.linked.view(folder.id).path).toBe(app.root);
+    // The same files as plain files are the same folder.
+    const plain = join(base, "Polito copia");
+    mkdirSync(join(plain, "GAL"), { recursive: true });
+    mkdirSync(join(plain, "Fisica"), { recursive: true });
+    for (const rel of ["Fisica/appunti.txt", "Fisica/lezione 1.txt", "GAL/matrici.txt"])
+      copyFileSync(join(real, rel), join(plain, rel));
+    expect(await app.linked.relocate(folder.id, plain)).toEqual({ same: true, matched: 3, total: 3 });
   });
 
   it("refuses to find a folder at a place inside another linked folder", async () => {
@@ -312,6 +371,6 @@ describe("a linked folder in the list", () => {
     mkdirSync(join(other, "Dentro"), { recursive: true });
     await app.linked.link({ paths: [other], mode: "subject" });
     await app.settled();
-    expect(() => app.linked.relocate(folder.id, join(other, "Dentro"))).toThrow("folder-overlap");
+    await expect(app.linked.relocate(folder.id, join(other, "Dentro"))).rejects.toThrow("folder-overlap");
   });
 });

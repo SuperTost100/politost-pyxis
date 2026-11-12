@@ -82,9 +82,9 @@ const shelf = (page: Page, subject: string) =>
   page.getByRole("region", { name: new RegExp(`^${subject} (\\d+ file|nessun file)$`) });
 const status = (page: Page) => page.locator(".px-library-head [role=status]");
 
-async function start() {
+async function start(env: Record<string, string | undefined> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-folders-user-"));
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined } });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined, ...env } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
@@ -303,11 +303,132 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     await dots(page, folders.analisi).click();
     await page.getByRole("menuitem", { name: "Scollega…" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeVisible();
+    // The confirmation closed on a control that is gone: the focus goes to the one that took its place.
+    await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
+    await expect(status(page)).toHaveText(`Ho scollegato ${label(folders.analisi)}: 2 file tolti dalla Libreria.`);
     expect(await listed(page)).toEqual([]);
   } finally {
     await app.close();
     removeTestFolder(userData);
     rmSync(dirname(folders.base), { recursive: true, force: true });
+  }
+});
+
+test("A folder says how many of its files could not be read, and a list that cannot be read says so with Riprova", async () => {
+  test.setTimeout(180000);
+  const lose = join(mkdtempSync(join(tmpdir(), "pyxis-folders-lose-")), "lose");
+  const { userData, app, page } = await start({ PYXIS_E2E_READ_FAIL: `sources.linkedFolders=${lose}` });
+  const base = join(mkdtempSync(join(tmpdir(), "pyxis-folders-bad-")), "Polito");
+  const corso = join(base, "Fisica");
+  mkdirSync(corso, { recursive: true });
+  writeFileSync(join(corso, "Appunti.txt"), "Il campo elettrico di una carica puntiforme decresce con il quadrato della distanza.");
+  // Not a PDF at all: its reading fails.
+  writeFileSync(join(corso, "Rotto.pdf"), "questo non è un pdf");
+  try {
+    await link(app, page, [corso]);
+    await expect
+      .poll(async () => (await listed(page)).map((source) => source.status).sort(), { timeout: 60000 })
+      .toEqual(["failed", "ready"]);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
+    await openList(page);
+    // Two files are there, one is read, and the row says the other is not, where to retry it.
+    await expect(row(page, corso)).toContainText("2 file · controllata");
+    await expect(row(page, corso)).toContainText("1 file non letto: riprova da Attività");
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "linked-folders-manage/5-unreadable.png");
+    await page.keyboard.press("Escape");
+
+    // The folders cannot be read the next time the Library opens: the head says so, and Riprova brings the control back.
+    writeFileSync(lose, "x");
+    await page.reload();
+    const failed = page.locator(".px-library-head").getByRole("alert");
+    await expect(failed).toHaveText(/Non riesco a leggere le cartelle collegate\./);
+    await animationsSettled(page);
+    await expectNoAxeViolations(page);
+    await saveShot(page, "linked-folders-manage/6-failed.png");
+    await failed.getByRole("button", { name: "Riprova" }).click();
+    await expect(control(page)).toHaveText("1 cartella collegata");
+    await expect(failed).toBeHidden();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dirname(base), { recursive: true, force: true });
+    rmSync(dirname(lose), { recursive: true, force: true });
+  }
+});
+
+test("The list stays inside a short window, at large text and at 200% and 300% zoom, and its foot is reachable", async () => {
+  test.setTimeout(240000);
+  const { userData, app, page } = await start();
+  const base = mkdtempSync(join(tmpdir(), "pyxis-folders-many-"));
+  const paths = Array.from({ length: 10 }, (_, index) => {
+    const path = join(base, `Corso ${index + 1}`);
+    mkdirSync(path, { recursive: true });
+    writeFileSync(join(path, "Note.txt"), `Note del corso ${index + 1} sul campo elettrico.`);
+    return path;
+  });
+  /** The window's content area, in device pixels, at a zoom: the page then sees the size divided by the zoom. */
+  const resize = async (width: number, height: number, zoom: number) => {
+    await app.evaluate(
+      ({ BrowserWindow }, { width, height, zoom }) => {
+        const window = BrowserWindow.getAllWindows()[0]!;
+        window.setContentSize(width, height);
+        window.webContents.setZoomFactor(zoom);
+      },
+      { width, height, zoom },
+    );
+    await expect.poll(() => page.evaluate(() => [innerWidth, innerHeight])).toEqual([
+      Math.round(width / zoom),
+      Math.round(height / zoom),
+    ]);
+  };
+  try {
+    await link(app, page, paths);
+    await allRead(page, 10);
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("profile.save", { dyslexia: false, textSize: "lg" });
+      location.hash = "/exams/library";
+    });
+    await expect(control(page)).toHaveText("10 cartelle collegate");
+    for (const name of ["200% zoom", "300% zoom", "960x600, large text"]) {
+      // The app's window does not go below 960x640, so 960x600 is the page's own viewport, as menu-in-window sets it.
+      if (name === "200% zoom") await resize(1920, 800, 2);
+      // 960x640, the smallest window, at 300%: the page is 320x213, with little room under the control.
+      else if (name === "300% zoom") await resize(960, 640, 3);
+      else {
+        await resize(1280, 800, 1);
+        await page.setViewportSize({ width: 960, height: 600 });
+      }
+      await atRest(control(page));
+      await openList(page);
+      await animationsSettled(page);
+      const place = await list(page).evaluate((panel) => {
+        const box = panel.getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, scrolls: panel.scrollHeight > panel.clientHeight };
+      });
+      const view = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      expect(place.top, name).toBeGreaterThanOrEqual(0);
+      expect(place.bottom, name).toBeLessThanOrEqual(view.height);
+      expect(place.left, name).toBeGreaterThanOrEqual(0);
+      expect(place.right, name).toBeLessThanOrEqual(view.width);
+      // Ten folders do not fit a window this short: the list scrolls inside, and its foot comes into view.
+      expect(place.scrolls, name).toBe(true);
+      const foot = list(page).getByRole("button", { name: "Collega un'altra cartella" });
+      await foot.scrollIntoViewIfNeeded();
+      const reached = await foot.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        return box.top >= 0 && box.bottom <= innerHeight;
+      });
+      expect(reached, name).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(list(page)).toBeHidden();
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(base, { recursive: true, force: true });
   }
 });

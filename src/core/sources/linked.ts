@@ -71,8 +71,10 @@ export type LinkedFolderView = {
   subjects: LinkedSubjectView[];
   /** The files Pyxis reads there now: present, not removed by the student, read or waiting for their first reading. */
   files: number;
-  /** Of those, the ones read: no reading waits or runs for them. */
+  /** Of those, the ones read: their reading ended with a source Pyxis can use. */
   read: number;
+  /** The ones whose reading ended without one (failed, stopped, or waiting for the student), which Attività can retry. */
+  failed: number;
   /** When the last look at the folder ended, or null before the first one. */
   checkedAt: number | null;
   /** `missing`: the folder is not on disk. `reading`: a look runs, or some of its files wait or are being read. */
@@ -368,6 +370,19 @@ export function linkedFolders(deps: LinkedDeps) {
       )
       .pluck()
       .get(id) as number;
+    // Readings that ended without a usable source and are not being tried again: the states the Library marks as a problem.
+    const failed = db
+      .prepare(
+        `SELECT COUNT(*) FROM linked_files l JOIN sources s ON s.id = l.source_id
+         WHERE l.folder_id = ? AND l.pending = 0 AND l.missing_at IS NULL
+           AND s.status IN ('failed', 'needs-ocr', 'interrupted', 'cancelled')
+           AND NOT EXISTS (
+             SELECT 1 FROM jobs j WHERE j.state IN ('queued', 'running')
+               AND j.kind IN ('source-import', 'source-import-vision', 'source-ocr', 'source-index')
+               AND json_extract(j.params_json, '$.sourceId') = s.id)`,
+      )
+      .pluck()
+      .get(id) as number;
     let present = false;
     try {
       present = statSync(folder.path).isDirectory();
@@ -395,7 +410,8 @@ export function linkedFolders(deps: LinkedDeps) {
         }))
         .sort((a, b) => Number(a.skipped) - Number(b.skipped) || a.folder.localeCompare(b.folder)),
       files: counts.files,
-      read: counts.files - unread,
+      read: Math.max(0, counts.files - unread - failed),
+      failed,
       checkedAt: folder.synced_at,
       state: !present ? "missing" : running.has(id) || unread > 0 ? "reading" : "ready",
     };
@@ -1256,7 +1272,7 @@ export function linkedFolders(deps: LinkedDeps) {
         .prepare(
           `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index', 'source-ocr')
            AND json_extract(params_json, '$.sourceId') = ? AND (? OR json_extract(params_json, '$.linked') = 1)
-           AND state IN ('queued', 'running', 'interrupted', 'cancelled') AND dismissed = 0`,
+           AND state IN ('queued', 'running', 'interrupted', 'cancelled', 'failed') AND dismissed = 0`,
         )
         .pluck();
       for (const sourceId of result.removed) for (const id of jobs.all(sourceId, 1) as string[]) runner.discard(id);
@@ -1276,11 +1292,13 @@ export function linkedFolders(deps: LinkedDeps) {
      * Points a folder that is no longer where it was at the place the student found it, already checked by
      * `checkLinkPath`, when it is the same folder: more than half of the files read from it are at the same place under
      * the new path with the same size (names and sizes are what Pyxis keeps of every file; a hash is kept only for some,
-     * and checking it would read every file). The folder then keeps its id, subjects and sources, and a look finds its
-     * files again. Otherwise nothing changes, and the result says how many matched. A folder with no files read yet
-     * has nothing to compare and is always the same. Errors: `linked-folder-missing`, `folder-overlap`.
+     * and checking it would read every file). A file counts only when the folder's own walk would read it there: a
+     * regular file reached through real folders, not a link, so a folder whose matching files are links is not the
+     * same one. The folder then keeps its id, subjects and sources, and a look finds its files again. Otherwise nothing
+     * changes, and the result says how many matched. A folder with no files read yet has nothing to compare and is
+     * always the same. Errors: `linked-folder-missing`, `folder-overlap`.
      */
-    relocate(folderId: string, path: string): RelocateResult {
+    async relocate(folderId: string, path: string): Promise<RelocateResult> {
       const folder = folderRow(folderId);
       if (!folder) throw new Error("linked-folder-missing");
       const others = (db.prepare(`SELECT path FROM linked_folders WHERE id != ?`).pluck().all(folderId) as string[]);
@@ -1290,13 +1308,24 @@ export function linkedFolders(deps: LinkedDeps) {
         .all(folderId) as Array<{ rel: string; size: number }>;
       let matched = 0;
       for (const file of files) {
+        // The walk's own rule, asked about this one place: it checks every folder on the way and the file with `lstat`.
+        let there: WalkedFile | undefined;
         try {
-          const stat = statSync(`${path}${sep}${file.rel}`);
-          if (stat.isFile() && stat.size === file.size) matched += 1;
+          await walkImportable(path, {
+            within: file.rel,
+            exclude: excludes(),
+            maxDepth: MAX_LINKED_DEPTH,
+            onFiles: (found) => {
+              there = found[0];
+            },
+          });
         } catch {
           // Not there: it does not count.
         }
+        if (there?.size === file.size) matched += 1;
       }
+      // The folder was unlinked or pointed elsewhere while the files were checked.
+      if (folderRow(folderId)?.path !== folder.path) throw new Error("linked-folder-missing");
       const same = matched * 2 > files.length || files.length === 0;
       if (!same) return { same, matched, total: files.length };
       if (path !== folder.path) {

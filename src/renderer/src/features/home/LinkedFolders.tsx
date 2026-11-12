@@ -105,16 +105,7 @@ export function LinkedFolders({
     return () => clearInterval(timer);
   }, [open]);
 
-  const list = folders.data;
-  if (!list) return <span className="px-folders-slot" aria-hidden />;
-  if (!list.length)
-    return (
-      <Button variant="secondary" className="px-folders-control" onClick={onLink}>
-        <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
-        {t("sources.shelf.linkFolder")}
-      </Button>
-    );
-
+  const list = folders.data ?? [];
   const reading = list.some((folder) => folder.state === "reading");
   const missing = list.filter((folder) => folder.state === "missing").length;
   const added = sources?.filter((source) => !source.linked).length ?? 0;
@@ -122,6 +113,7 @@ export function LinkedFolders({
     void client.invalidateQueries({ queryKey: ["linked-folders"] });
     void client.invalidateQueries({ queryKey: ["sources"] });
   };
+  // The anchor holds the control in every state, so the focus has somewhere to go after the last folder is unlinked.
   const focusControl = () => anchor.current?.querySelector("button")?.focus({ preventScroll: true });
 
   async function reread(folder: LinkedFolder) {
@@ -261,16 +253,29 @@ export function LinkedFolders({
     },
   });
 
+  // What a folder's row says: its state, then the files whose reading ended without a usable source, which the shelf
+  // marks and Attività retries.
   const line = (folder: LinkedFolder) => {
     if (folder.state === "missing") return t("sources.folders.missing");
+    const unreadable = folder.failed ? t("sources.folders.unreadable", { count: folder.failed }) : null;
     if (folder.state === "reading")
-      return folder.files
-        ? t("sources.folders.readingCount", { read: folder.read, count: folder.files })
-        : t("sources.folders.readingStart");
+      return [
+        folder.files
+          ? t("sources.folders.readingCount", { read: folder.read, count: folder.files })
+          : t("sources.folders.readingStart"),
+        unreadable,
+      ]
+        .filter(Boolean)
+        .join(" · ");
     const files = folder.files ? t("sources.folders.files", { count: folder.files }) : t("sources.folders.noFiles");
-    if (folder.checkedAt === null) return files;
-    const when = ago(folder.checkedAt, now, i18n.language);
-    return `${files} · ${when ? t("sources.folders.checked", { when }) : t("sources.folders.checkedNow")}`;
+    const when = folder.checkedAt === null ? null : ago(folder.checkedAt, now, i18n.language);
+    return [
+      files,
+      folder.checkedAt === null ? null : when ? t("sources.folders.checked", { when }) : t("sources.folders.checkedNow"),
+      unreadable,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   };
 
   return (
@@ -280,28 +285,46 @@ export function LinkedFolders({
         {said}
       </p>
       <span ref={anchor} className="px-folders-anchor">
-        <Button
-          variant="secondary"
-          className="px-folders-control"
-          // The name a screen reader hears says what the red dot and the turning mark show.
-          aria-label={[
-            t("sources.folders.control", { count: list.length }),
-            missing ? t("sources.folders.controlMissing", { count: missing }) : "",
-            reading ? t("sources.folders.controlReading") : "",
-          ].join("")}
-          expanded={open}
-          hasPopup="dialog"
-          controls={open ? listId : undefined}
-          onClick={() => setOpen((was) => !was)}
-        >
-          {reading ? <Logo working decorative size={16} /> : <Folder size={16} strokeWidth={1.75} aria-hidden />}
-          <span>{t("sources.folders.control", { count: list.length })}</span>
-          {missing ? <span className="px-folders-warn" aria-hidden /> : null}
-          <ChevronDown size={14} strokeWidth={1.75} className="px-folders-chevron" aria-hidden />
-        </Button>
+        {folders.data === undefined ? (
+          folders.isError ? (
+            <span className="px-folders-failed" role="alert">
+              <span>{t("sources.folders.loadFailed")}</span>
+              <Button variant="ghost" size="sm" onClick={() => void folders.refetch()}>
+                {t("components.notice.retry")}
+              </Button>
+            </span>
+          ) : (
+            <span className="px-folders-slot" aria-hidden />
+          )
+        ) : !list.length ? (
+          <Button variant="secondary" className="px-folders-control" onClick={onLink}>
+            <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
+            {t("sources.shelf.linkFolder")}
+          </Button>
+        ) : (
+          <Button
+            variant="secondary"
+            className="px-folders-control"
+            // The name a screen reader hears says what the red dot and the turning mark show.
+            aria-label={[
+              t("sources.folders.control", { count: list.length }),
+              missing ? t("sources.folders.controlMissing", { count: missing }) : "",
+              reading ? t("sources.folders.controlReading") : "",
+            ].join("")}
+            expanded={open}
+            hasPopup="dialog"
+            controls={open ? listId : undefined}
+            onClick={() => setOpen((was) => !was)}
+          >
+            {reading ? <Logo working decorative size={16} /> : <Folder size={16} strokeWidth={1.75} aria-hidden />}
+            <span>{t("sources.folders.control", { count: list.length })}</span>
+            {missing ? <span className="px-folders-warn" aria-hidden /> : null}
+            <ChevronDown size={14} strokeWidth={1.75} className="px-folders-chevron" aria-hidden />
+          </Button>
+        )}
       </span>
       <Popover
-        open={open}
+        open={open && list.length > 0}
         anchor={anchor}
         id={listId}
         label={t("sources.folders.title")}

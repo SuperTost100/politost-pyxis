@@ -1,10 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { placePopover, type PopoverPlace } from "./popoverPlace";
 import "./Popover.css";
-
-/** The room a popover keeps from its button and from the window's edges. */
-const GAP = 8;
-const EDGE = 8;
 
 /**
  * What a popover leaves alone when it is clicked or takes the focus: a menu or a dialog that something inside the
@@ -14,7 +11,8 @@ const OPENED_FROM_INSIDE = ".px-item-menu, .ant-modal-root, .ant-dropdown";
 
 /**
  * A panel that belongs to the button that opened it (`anchor`): 8px under it, lined up with its right edge and kept inside
- * the window, growing out of it. It scrolls inside itself when the window is short, so the window never scrolls for it.
+ * the window, growing out of it. With too little room under the button it opens above it when there is more room there
+ * (`placePopover`), and it scrolls inside itself when neither side fits it, so the window never scrolls for it.
  * It takes the focus as it opens. Escape closes it and gives the focus back to the button; a click outside closes it
  * and leaves the focus where the click put it. A menu or a dialog opened from inside it counts as inside, and Escape
  * closes that first. It is a dialog that does not block the page, named by `label`. Under reduced motion it fades.
@@ -40,7 +38,7 @@ export function Popover({
   const panel = useRef<HTMLDivElement>(null);
   // Kept on the page while it fades out, so closing is not a hard cut.
   const [shown, setShown] = useState(open);
-  const [place, setPlace] = useState<{ top: number; left: number; maxHeight: number; origin: string } | null>(null);
+  const [place, setPlace] = useState<PopoverPlace | null>(null);
   // Set a frame after it is placed, so it grows from its button rather than appearing there.
   const [entered, setEntered] = useState(false);
   const latest = useRef(onClose);
@@ -56,15 +54,14 @@ export function Popover({
       const button = anchor.current?.getBoundingClientRect();
       const box = panel.current;
       if (!button || !box) return;
-      const width = box.offsetWidth;
-      const left = Math.max(EDGE, Math.min(button.right - width, innerWidth - EDGE - width));
-      const top = button.bottom + GAP;
-      setPlace({
-        top,
-        left,
-        maxHeight: Math.max(120, innerHeight - top - EDGE),
-        origin: `${Math.round(button.left + button.width / 2 - left)}px -${GAP}px`,
-      });
+      // `scrollHeight` is the whole content's height, also while a smaller `maxHeight` makes the panel scroll.
+      setPlace(
+        placePopover(
+          button,
+          { width: box.offsetWidth, height: box.scrollHeight },
+          { width: innerWidth, height: innerHeight },
+        ),
+      );
     };
     measure();
     window.addEventListener("resize", measure);
@@ -117,7 +114,13 @@ export function Popover({
       className={["px-popover", open ? (entered ? "is-in" : "") : "is-closing", className].filter(Boolean).join(" ")}
       style={
         place
-          ? { top: place.top, left: place.left, maxHeight: place.maxHeight, transformOrigin: place.origin }
+          ? {
+              top: place.top,
+              bottom: place.bottom,
+              left: place.left,
+              maxHeight: place.maxHeight,
+              transformOrigin: place.origin,
+            }
           : { visibility: "hidden" }
       }
       onKeyDown={(event) => {

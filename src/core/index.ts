@@ -65,6 +65,7 @@ type ParentEvent = {
     dev?: boolean;
     unpackaged?: boolean;
     removedProvider?: string;
+    folderId?: string;
     anthropic?: string;
     openai?: string;
     id?: string;

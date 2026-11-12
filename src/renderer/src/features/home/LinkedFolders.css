@@ -3,6 +3,16 @@
   display: inline-flex;
   min-width: 0;
 }
+/* The folders could not be read: the reason and Riprova, in the place of the control. */
+.px-folders-failed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.4;
+  color: var(--danger);
+}
 .px-folders-slot {
   display: inline-block;
   width: 1px;

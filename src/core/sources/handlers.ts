@@ -578,9 +578,9 @@ export function sourceHandlers(
      * the folder grant at the IPC boundary. Errors: `folder-missing`, `folder-inside-data`, `folder-overlap`,
      * `linked-folder-missing`.
      */
-    relocateFolder(input: { folderId: string; path: string }) {
+    async relocateFolder(input: { folderId: string; path: string }) {
       try {
-        return linked.relocate(input.folderId, checkLinkPath(input.path, protectedPaths));
+        return await linked.relocate(input.folderId, checkLinkPath(input.path, protectedPaths));
       } catch (err) {
         linkError(err);
       }

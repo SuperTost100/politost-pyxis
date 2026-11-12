@@ -507,9 +507,10 @@ const linkedFolderSchema = z.object({
       skipped: z.boolean(),
     }),
   ),
-  /** The files Pyxis reads there now, and how many of them are read. */
+  /** The files Pyxis reads there now, how many of them are read, and how many ended without a usable reading. */
   files: z.number().int().nonnegative(),
   read: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
   /** When Pyxis last looked at the folder, or null before its first look. */
   checkedAt: z.number().nullable(),
   /** `missing`: not on disk (unplugged, renamed or deleted). `reading`: a look or some of its readings are running. */
