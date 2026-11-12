@@ -158,6 +158,12 @@ test("A file chosen a subject in Da sistemare grows on its shelf where it lands,
       heights.forEach((height, at) => {
         if (at > 0) expect(height, where).toBeLessThanOrEqual(heights[at - 1]! + 0.5);
       });
+      // Focus went on with the file, to the next row's choice or the new cover, and was not left on the row that closed.
+      const focus = await page.evaluate(() => ({
+        onPage: document.activeElement !== document.body,
+        inLeaving: Boolean(document.activeElement?.closest("[data-leaving]")),
+      }));
+      expect(focus, where).toEqual({ onPage: true, inLeaving: false });
       if (index === 0) await saveShot(page, "library-sort-motion/landed.png");
     }
   } finally {
