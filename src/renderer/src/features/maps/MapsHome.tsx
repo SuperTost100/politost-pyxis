@@ -130,12 +130,15 @@ export function MapsHome() {
   // The map page hands over the map the student deleted there, once its tile is on screen.
   useEffect(() => {
     const asked = arrival?.remove;
+    // A replacement lands on the router's current entry: once the student is leaving, it would stop that move. The
+    // handoff stays in this entry's state, so coming back to it carries on.
     if (arrival?.gone && !asked && !handed.current) {
+      if (!stillHere()) return;
       // The notice is in the page; a reload or Back does not show it again.
       handed.current = true;
       navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     }
-    if (!asked || handed.current || !data) return;
+    if (!asked || handed.current || !data || !stillHere()) return;
     handed.current = true;
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     const shown = data.find((map) => map.id === asked.mapId);

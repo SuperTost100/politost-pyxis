@@ -936,13 +936,21 @@ export function MapPage() {
   // Gives up the build the line under the head offers again, as Chiudi does in Attività: nothing offers it after this.
   async function dismissBuild() {
     if (!job) return;
-    // Done or not, the build is read again, so the line shows what is stored.
-    const reread = () =>
-      Promise.all([
+    // Chiudi and Riprova stay off until the request is answered, so a second click cannot dismiss the build twice or start it again.
+    setBusy(true);
+    setNotice("");
+    try {
+      await invoke("jobs.dismiss", { jobId: job.jobId });
+    } catch {
+      setNotice(t("map.dismissFailed"));
+    } finally {
+      // Done or not, the build is read again, so the line shows what is stored.
+      await Promise.all([
         client.invalidateQueries({ queryKey: ["map-build", scopeKey] }),
         client.invalidateQueries({ queryKey: ["jobs"] }),
       ]);
-    await invoke("jobs.dismiss", { jobId: job.jobId }).then(reread, reread);
+      setBusy(false);
+    }
   }
   // A stopped build asks again with the instruction it had, so it is picked up and not built anew without it.
   const retrying = Boolean(job && ["failed", "cancelled", "interrupted"].includes(job.state));

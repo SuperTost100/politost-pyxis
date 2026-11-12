@@ -1047,6 +1047,7 @@
     "stoppedBody": "You can resume it from where it stopped.",
     "lastFailed": "The last build of this map did not finish",
     "lastInterrupted": "The last build of this map stopped",
+    "dismissFailed": "The notice could not be closed. Try again.",
     "exportFailed": "The image could not be exported. Try again.",
     "empty": "Build a map of this topic",
     "emptyBody": "Your sources become one focused map that you can edit and keep offline.",

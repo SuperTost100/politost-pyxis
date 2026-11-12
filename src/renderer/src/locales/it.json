@@ -1047,6 +1047,7 @@
     "stoppedBody": "Puoi riprenderla da dove si era fermata.",
     "lastFailed": "L’ultima costruzione della mappa non è riuscita",
     "lastInterrupted": "L’ultima costruzione della mappa si è fermata",
+    "dismissFailed": "Non riesco a chiudere l’avviso. Riprova.",
     "exportFailed": "Non riesco a esportare l’immagine. Riprova.",
     "empty": "Crea una mappa di questo argomento",
     "emptyBody": "Le tue fonti diventano una mappa mirata, da modificare e usare anche offline.",

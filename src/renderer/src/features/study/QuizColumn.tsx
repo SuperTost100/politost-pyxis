@@ -114,14 +114,15 @@ export function QuizColumn({
               block
               disabled={handIn.disabled}
               expanded={confirm ? confirm.from === "card" : undefined}
-              title={t("quiz.sheet.blankNote")}
+              title={handIn.note ?? t("quiz.sheet.blankNote")}
               onClick={() => handIn.onRequest("card")}
             >
               {t("quiz.sheet.handIn")}
             </Button>
             {confirm?.from === "card" ? <Reveal>{confirm.content}</Reveal> : null}
           </div>
-          <p className="px-qz-note">{handIn.note ?? t("quiz.sheet.blankNote")}</p>
+          {/* The reason Consegna waits shows in every layout; the narrow strip drops only the standing note. */}
+          <p className={handIn.note ? "px-qz-note is-reason" : "px-qz-note"}>{handIn.note ?? t("quiz.sheet.blankNote")}</p>
         </aside>
       </div>
     </div>

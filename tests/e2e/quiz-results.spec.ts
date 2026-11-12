@@ -286,6 +286,28 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
   }
 });
 
+test("a redo with an open gap offers the Ripasso mirato its summary announces, next to the way back", async () => {
+  test.setTimeout(120_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // The mistakes notebook asks the questions again as a redo, which has no wrong answers to ask a third time.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-fis/redo?attempt=a-quiz";
+    });
+    await expect(page.locator(".px-res-title")).toBeVisible();
+    await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: ripasso mirato");
+    await expect(page.getByRole("button", { name: /^Rifai solo le \d+ da rivedere$/ })).toHaveCount(0);
+    // The announced step has its button, and the way back stays the one primary action.
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
+    // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
+    await expect(page).toHaveURL(/#\/plans\/p-fis$/);
+  } finally {
+    await done();
+  }
+});
+
 /** Screenshots for review, in Italian dark and English light at 1280 and 960, when PYXIS_SHOTS is set. */
 async function shoot(page: Page, name: string) {
   if (!SHOTS) return;
