@@ -21,39 +21,49 @@ const written = ["Quanto vale $2 + 2$?", "Quanto vale $3 \\cdot 3$?"].map((stem,
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-note-"));
   const app = await launchPyxis({ userData });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  const now = Date.now();
-  db.prepare("INSERT INTO subjects(id,name,position,created_at) VALUES('sub-fis','Fisica',0,1)").run();
-  seedPlan(db, { id: "p-fis", subjectId: "sub-fis", title: "Fisica I", language: "it", topics: [{ id: "t-kin", title: "Cinematica" }] });
-  for (const [id, timerMinutes] of [
-    ["plain", undefined],
-    ["timed", 20],
-  ] as const) {
-    db.prepare(
-      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES(?,'p-fis','t-kin','quiz',?,'fixture','sources',?)",
-    ).run(
-      `i-${id}`,
-      JSON.stringify({ questions: written, config: { count: 8, feedback: true, types: ["mcq"], timerMinutes }, complete: false }),
-      now,
-    );
-    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'p-fis',?,?)").run(`a-${id}`, `i-${id}`, now);
-    db.prepare(
-      "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES(?,'quiz-build',?,'running',0.3,?,?)",
-    ).run(`j-${id}`, JSON.stringify({ attemptId: `a-${id}` }), now, now);
+  let db: DatabaseSync | undefined;
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const now = Date.now();
+    db.prepare("INSERT INTO subjects(id,name,position,created_at) VALUES('sub-fis','Fisica',0,1)").run();
+    seedPlan(db, { id: "p-fis", subjectId: "sub-fis", title: "Fisica I", language: "it", topics: [{ id: "t-kin", title: "Cinematica" }] });
+    for (const [id, timerMinutes] of [
+      ["plain", undefined],
+      ["timed", 20],
+    ] as const) {
+      db.prepare(
+        "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES(?,'p-fis','t-kin','quiz',?,'fixture','sources',?)",
+      ).run(
+        `i-${id}`,
+        JSON.stringify({ questions: written, config: { count: 8, feedback: true, types: ["mcq"], timerMinutes }, complete: false }),
+        now,
+      );
+      db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'p-fis',?,?)").run(`a-${id}`, `i-${id}`, now);
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES(?,'quiz-build',?,'running',0.3,?,?)",
+      ).run(`j-${id}`, JSON.stringify({ attemptId: `a-${id}` }), now, now);
+    }
+    db.close();
+    return {
+      app,
+      page,
+      done: async () => {
+        await app.close();
+        removeTestFolder(userData);
+      },
+    };
+  } catch (error) {
+    // A setup step failed after the app started: nothing else would close it, and an open database handle keeps the
+    // folder from being removed on Windows.
+    if (db?.isOpen) db.close();
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
+    throw error;
   }
-  db.close();
-  return {
-    app,
-    page,
-    done: async () => {
-      await app.close();
-      removeTestFolder(userData);
-    },
-  };
 }
 
 /** Sets the window to `width` device pixels at `zoom`, as Ctrl and plus do. */
