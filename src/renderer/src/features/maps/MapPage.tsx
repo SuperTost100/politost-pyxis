@@ -477,6 +477,13 @@ export function MapPage() {
   const announce = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement>(null);
   const working = (!graph || fresh) && (building || starting || busy);
+  // While Pyxis works in the canvas's place the canvas is gone; the one drawn when it comes back, with the same map or a
+  // new one, opens on the whole map again instead of at the corner of an empty view.
+  useEffect(() => {
+    if (!working) return;
+    setReady(undefined);
+    viewed.current = "";
+  }, [working]);
   // A request whose job is gone (cleared from Attività, or from an older workspace) leaves the scope's normal view.
   useEffect(() => {
     if (reviewed && build.isSuccess && build.data === null) leaveRequest();

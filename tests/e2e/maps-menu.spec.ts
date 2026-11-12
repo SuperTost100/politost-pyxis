@@ -774,6 +774,22 @@ test("Riprova on a failed build shows Pyxis at work in place at once, and a retr
     await expect(line).toContainText("L’ultima costruzione della mappa non è riuscita", { timeout: 30_000 });
     await expect(working).toHaveCount(0);
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    // The canvas drawn again opens on the whole map, not at the corner of an empty view: every concept is inside it.
+    await expect
+      .poll(async () => {
+        const area = (await page.locator(".px-map-canvas").boundingBox())!;
+        const boxes = await page.locator(".react-flow__node").evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const box = node.getBoundingClientRect();
+            return [box.top, box.left, box.bottom, box.right];
+          }),
+        );
+        return boxes.every(
+          ([top, left, bottom, right]) =>
+            top! >= area.y && left! >= area.x && bottom! <= area.y + area.height && right! <= area.x + area.width,
+        );
+      })
+      .toBe(true);
 
     // Again, and this time it is built: the new map opens.
     await line.getByRole("button", { name: "Riprova" }).click();
