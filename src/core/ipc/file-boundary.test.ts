@@ -22,8 +22,11 @@ const importFile = vi.hoisted(() =>
 const linkFolders = vi.hoisted(() =>
   vi.fn(async ({ paths }: { paths: string[] }) => ({ folders: paths })),
 );
+const relocateFolder = vi.hoisted(() =>
+  vi.fn(({ path }: { folderId: string; path: string }) => ({ same: true, matched: 0, total: 0, path })),
+);
 vi.mock("../sources/handlers", () => ({
-  sourceHandlers: () => ({ importFile, linkFolders }),
+  sourceHandlers: () => ({ importFile, linkFolders, relocateFolder }),
 }));
 import {
   addFileGrants,
@@ -157,4 +160,39 @@ it("links only folders a picker or a drop granted, by their real path", async ()
   expect((await request({ paths: [study, elsewhere], mode: "subject" })).ok).toBe(false);
   expect((await request({ paths: [], mode: "root" })).ok).toBe(false);
   expect(linkFolders).toHaveBeenCalledTimes(1);
+});
+
+it("finds a moved linked folder only at a folder a picker granted, by its real path", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pyxis-boundary-"));
+  roots.push(root);
+  mkdirSync(join(root, "scratch"));
+  const found = join(root, "Polito 2026");
+  mkdirSync(found);
+  const elsewhere = join(root, "elsewhere");
+  mkdirSync(elsewhere);
+  bindSources(null as never, root, null as never);
+  setJobHandlers({} as never);
+  let receive: (event: { data: unknown }) => void = () => {};
+  let settle: (response: any) => void = () => {};
+  attachRendererPort({
+    on: (_event, listener) => {
+      receive = listener;
+    },
+    postMessage: (message) => settle(message),
+    start() {},
+    close() {},
+  });
+  const request = (path: string): Promise<any> =>
+    new Promise((resolve) => {
+      settle = resolve;
+      receive({ data: { kind: "req", name: "sources.relocateFolder", input: { folderId: "f", path }, id: "find" } });
+    });
+  relocateFolder.mockClear();
+  expect((await request(found)).error.code).toBe("file-access-denied");
+  addFileGrants([pickedFileGrant(found)]);
+  expect((await request(elsewhere)).error.code).toBe("file-access-denied");
+  const allowed = await request(found);
+  expect(allowed.ok).toBe(true);
+  expect(allowed.value.path).toBe(realpathSync(found));
+  expect(relocateFolder).toHaveBeenCalledTimes(1);
 });

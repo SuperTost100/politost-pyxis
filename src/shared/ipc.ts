@@ -506,6 +506,13 @@ const linkedFolderSchema = z.object({
       skipped: z.boolean(),
     }),
   ),
+  /** The files Pyxis reads there now, and how many of them are read. */
+  files: z.number().int().nonnegative(),
+  read: z.number().int().nonnegative(),
+  /** When Pyxis last looked at the folder, or null before its first look. */
+  checkedAt: z.number().nullable(),
+  /** `missing`: not on disk (unplugged, renamed or deleted). `reading`: a look or some of its readings are running. */
+  state: z.enum(["ready", "reading", "missing"]),
 });
 
 export const requests = {
@@ -3015,6 +3022,31 @@ export const requests = {
   "sources.linkedFolders": {
     input: z.object({}),
     output: z.array(linkedFolderSchema),
+  },
+  /** Reads one linked folder again now, in the background. */
+  "sources.rereadFolder": {
+    input: z.object({ folderId: z.string().max(64) }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  /**
+   * Unlinks a folder in one transaction: its files leave the Library and every exam, and stay for the citations. A
+   * Library copy the folder took over that still has its own stored file stays (`kept`). Nothing on disk changes.
+   */
+  "sources.unlinkFolder": {
+    input: z.object({ folderId: z.string().max(64) }),
+    output: z.object({ removed: z.number().int().nonnegative(), kept: z.number().int().nonnegative() }),
+  },
+  /**
+   * Points a linked folder that is no longer on disk at the folder the student found, when more than half of the files
+   * read from it are there with the same size (`same`). Otherwise nothing changes. The path must have been granted.
+   */
+  "sources.relocateFolder": {
+    input: z.object({ folderId: z.string().max(64), path: z.string().min(1).max(4096) }),
+    output: z.object({
+      same: z.boolean(),
+      matched: z.number().int().nonnegative(),
+      total: z.number().int().nonnegative(),
+    }),
   },
   "sources.preview": {
     input: z.object({ path: z.string() }),

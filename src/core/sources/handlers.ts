@@ -551,6 +551,38 @@ export function sourceHandlers(
     linkedFolders() {
       return linked.list();
     },
+    /** Reads one linked folder again now. Errors: `linked-folder-missing`. */
+    rereadFolder(input: { folderId: string }) {
+      try {
+        linked.reread(input.folderId);
+        return { ok: true as const };
+      } catch (err) {
+        linkError(err);
+      }
+    },
+    /**
+     * Unlinks a folder: its files leave the Library, kept for the citations, and nothing on disk changes (see
+     * `linked.ts`). Errors: `linked-folder-missing`.
+     */
+    unlinkFolder(input: { folderId: string }) {
+      try {
+        return linked.unlink(input.folderId);
+      } catch (err) {
+        linkError(err);
+      }
+    },
+    /**
+     * Points a linked folder that moved at the place the student found it, when its files are there. The path passed
+     * the folder grant at the IPC boundary. Errors: `folder-missing`, `folder-inside-data`, `folder-overlap`,
+     * `linked-folder-missing`.
+     */
+    relocateFolder(input: { folderId: string; path: string }) {
+      try {
+        return linked.relocate(input.folderId, checkLinkPath(input.path, protectedPaths));
+      } catch (err) {
+        linkError(err);
+      }
+    },
     async scanFolder(input: { path: string }, signal?: AbortSignal) {
       signal?.throwIfAborted();
       const files: string[] = [];

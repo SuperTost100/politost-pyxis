@@ -185,6 +185,16 @@ async function dispatch(
     }
     return dispatchValidated(name, parsed, signal, emit);
   }
+  // A folder found again after it moved is checked as a folder to link is.
+  if (name === "sources.relocateFolder") {
+    const parsed = requests["sources.relocateFolder"].input.parse(input);
+    try {
+      parsed.path = fileGrants.directory(parsed.path);
+    } catch {
+      throw new IpcError("file-access-denied", "errors.fileAccessDenied");
+    }
+    return dispatchValidated(name, parsed, signal, emit);
+  }
   let parsed: { path?: string; files?: string[] } | undefined;
   if (
     name === "sources.import" ||
@@ -432,6 +442,9 @@ const routes = {
   "sources.linkFolders": ["sources", "linkFolders", "signal"],
   "sources.confirmFolders": ["sources", "confirmFolders"],
   "sources.linkedFolders": ["sources", "linkedFolders", "bare"],
+  "sources.rereadFolder": ["sources", "rereadFolder"],
+  "sources.unlinkFolder": ["sources", "unlinkFolder"],
+  "sources.relocateFolder": ["sources", "relocateFolder"],
   "sources.preview": ["sources", "preview", "signal"],
   "sources.rename": ["sources", "rename"],
   "sources.replace": ["sources", "replace"],
