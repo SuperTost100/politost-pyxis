@@ -4,6 +4,7 @@ import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
 import { planGuide } from "./create";
+import { dayKey, startOfWeek } from "../../shared/local-day";
 import {
   dueEverywhere,
   examRings,
@@ -17,6 +18,7 @@ import {
   savePlannerHours,
   sessionPlan,
   spread,
+  todayGoals,
   todayPlan,
 } from "./planner";
 
@@ -309,18 +311,18 @@ describe("Oggi", () => {
     expect(today.items[0]!.complete).toBe(false);
   });
 
-  it("ticks a plan off after one step today when no hours are set", () => {
+  it("never ticks a plan off without weekly hours, however many steps are done today", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
-    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(-1));
-    expect(todayPlan(db, now).items[0]!.complete).toBe(false);
-    recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 9));
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+    recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 10));
     const item = todayPlan(db, now).items[0]!;
-    expect(item.complete).toBe(true);
-    expect(item.done).toEqual([{ activity: "lesson", topicId: "a-t1", topicTitle: "Topic 1 of a" }]);
+    expect(item.complete).toBe(false);
+    expect(item.minutesToday).toBeNull();
+    expect(item.done.map((step) => step.topicId)).toEqual(["a-t0", "a-t1"]);
   });
 
-  it("ticks a plan off once today's steps cover the planner's minutes for it", () => {
+  it("ticks a plan off once today's steps cover its part of the goal for the day", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
     // 255 minutes over 4 days is about 64 a day; 3.5 h a week gives 30.
@@ -488,28 +490,131 @@ describe("exam rings", () => {
     expect(ringOf(db, "a").path).toBeNull();
   });
 
-  it("counts one step as today's work when no weekly hours are set", () => {
+  it("leaves Oggi unmeasured on a new exam with only the introduction done and no weekly hours", () => {
+    // What Tost saw on dev.9: a few seconds on the introduction filled the ring for the whole day.
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 64 });
+    db.prepare("INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES ('intro', 'a', 'intro', '{}', 1)").run();
+    recordStep(db, "a", { activity: "intro", topicId: null }, day(0, 9));
+    const ring = ringOf(db, "a");
+    expect(ring.today).toBeNull();
+    expect(ring.todayMinutes).toBeNull();
+    expect(ring.todayUnmeasured).toBe("no-goal");
+  });
+
+  it("never fills Oggi with one step when no weekly hours are set, with or without a date", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
     addPlan(db, "undated");
-    expect(ringOf(db, "a").today).toBe(0);
-    expect(ringOf(db, "undated").today).toBe(0);
     recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
-    expect(ringOf(db, "a").today).toBe(1);
-    // A step yesterday is not today's.
-    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(-1));
-    expect(ringOf(db, "undated").today).toBe(0);
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(0, 9));
+    for (const id of ["a", "undated"]) {
+      expect(ringOf(db, id).today).toBeNull();
+      expect(ringOf(db, id).todayUnmeasured).toBe("no-goal");
+    }
+    // Oggi's own list agrees: nothing ticks off without a goal.
+    expect(todayPlan(db, now).items.every((item) => !item.complete)).toBe(true);
   });
 
-  it("counts today's minutes against the planner's share with weekly hours", () => {
+  it("starts measuring once weekly hours are set, from nothing done", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
-    // 3.5 h a week gives the exam 30 minutes today; exercises take 20.
+    savePlannerHours(db, { hours: 3.5 }, now);
+    const ring = ringOf(db, "a");
+    expect(ring.today).toBe(0);
+    expect(ring.todayUnmeasured).toBeNull();
+  });
+
+  it("says why Oggi is unmeasured with weekly hours: no date, or the exam is today", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "undated");
+    addPlan(db, "today", { examIn: 0 });
+    addPlan(db, "past", { examIn: -2 });
+    savePlannerHours(db, { hours: 7 }, now);
+    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(0, 9));
+    expect(ringOf(db, "undated")).toMatchObject({ today: null, todayUnmeasured: "no-date" });
+    expect(ringOf(db, "today")).toMatchObject({ today: null, todayUnmeasured: "exam-day" });
+    expect(ringOf(db, "past")).toMatchObject({ today: null, todayUnmeasured: null });
+  });
+
+  it("counts today's minutes against the goal for the day with weekly hours", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    // 3.5 h a week is 30 minutes a day, and the exam is the only one; exercises take 20.
     savePlannerHours(db, { hours: 3.5 }, now);
     recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
     expect(ringOf(db, "a").today).toBeCloseTo(20 / 30);
+    expect(ringOf(db, "a").todayMinutes).toEqual({ done: 20, target: 30 });
     recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
     expect(ringOf(db, "a").today).toBe(1);
+  });
+
+  describe("Oggi's target is the student's goal, not the planner's pace", () => {
+    const withIntro = (db: Db, id: string, examIn: number) => {
+      addPlan(db, id, { examIn });
+      db.prepare(
+        "INSERT INTO items (id, plan_id, kind, body_json, created_at) VALUES (?, ?, 'intro', '{}', 1)",
+      ).run(`intro-${id}`, id);
+    };
+
+    it("reads 10 of 51 minutes, not full, after only the introduction with 6 hours a week and the exam 64 days away", () => {
+      // What Tost saw on dev.10: the planner's pace for this exam is about 8 minutes a day, so the introduction alone
+      // filled the ring. The goal is a seventh of 6 hours, 51 minutes.
+      const db = openDatabase(":memory:");
+      withIntro(db, "a", 64);
+      savePlannerHours(db, { hours: 6 }, now);
+      recordStep(db, "a", { activity: "intro", topicId: null }, day(0, 9));
+      const ring = ringOf(db, "a");
+      expect(ring.todayMinutes).toEqual({ done: 10, target: 51 });
+      expect(ring.today).toBeCloseTo(10 / ((6 * 60) / 7));
+      expect(ring.today).toBeLessThan(1);
+      // Oggi's list asks the same of the exam.
+      expect(todayPlan(db, now).items[0]).toMatchObject({ complete: false, minutesToday: 50 });
+    });
+
+    it("gives each of two exams its part of the goal: 10 of 26 minutes for two alike", () => {
+      const db = openDatabase(":memory:");
+      withIntro(db, "a", 64);
+      withIntro(db, "b", 64);
+      savePlannerHours(db, { hours: 6 }, now);
+      recordStep(db, "a", { activity: "intro", topicId: null }, day(0, 9));
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 10, target: 26 });
+      expect(ringOf(db, "a").today).toBeLessThan(1);
+      expect(ringOf(db, "b").todayMinutes).toEqual({ done: 0, target: 26 });
+    });
+
+    it("is full once today's steps reach the goal, within 2.5 minutes, and not before", () => {
+      const db = openDatabase(":memory:");
+      withIntro(db, "a", 64);
+      savePlannerHours(db, { hours: 6 }, now);
+      // A lesson (30) and exercises (20) make 50 of 51: inside the tolerance.
+      recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+      expect(ringOf(db, "a").today).toBeLessThan(1);
+      recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
+      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 50, target: 51 } });
+    });
+
+    it("takes this week's own hours over the usual ones", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      savePlannerHours(db, { hours: 6 }, now);
+      savePlannerHours(db, { week: dayKey(startOfWeek(now)), hours: 3.5 }, now);
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 0, target: 30 });
+    });
+
+    it("splits the goal in proportion to the pace each exam needs, and gives none to one with nothing left", () => {
+      const exams = [
+        { id: "far", examDay: 60, remaining: 240 },
+        { id: "near", examDay: 30, remaining: 240 },
+        { id: "done", examDay: 10, remaining: 0 },
+      ];
+      const goals = todayGoals(exams, 60);
+      expect(goals.get("far")).toBeCloseTo(20);
+      expect(goals.get("near")).toBeCloseTo(40);
+      expect(goals.has("done")).toBe(false);
+      expect([...goals.values()].reduce((sum, value) => sum + value, 0)).toBeCloseTo(60);
+      expect(todayGoals([exams[0]!], 51).get("far")).toBeCloseTo(51);
+    });
   });
 
   it("plans nothing today for a share too small to ask for, a past exam or an archived one", () => {

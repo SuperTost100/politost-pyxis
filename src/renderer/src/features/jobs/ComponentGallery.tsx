@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { BuildingMark } from "../../components/BuildingMark";
 import { Button } from "../../components/Button";
@@ -22,6 +22,7 @@ import { PathNode } from "../../components/PathNode";
 import { ExamRings, RingLegend } from "../../components/ExamRings";
 import { QuizOption } from "../../components/QuizOption";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
+import { ToggleChips } from "../../components/Controls";
 import { StatTile } from "../../components/StatTile";
 import { StepLines } from "../../components/StepLines";
 import { Stepper } from "../../components/Stepper";
@@ -55,6 +56,27 @@ function Section({
       </div>
       <div className={`gallery-card-body ${bodyClass}`}>{children}</div>
     </section>
+  );
+}
+
+/** The kinds of question of a quiz, as "Crea un'attività" asks for them. */
+function GalleryChips() {
+  const { t } = useTranslation();
+  const kinds = ["mcq", "completion", "matching", "tf", "open"] as const;
+  const [value, setValue] = useState<Array<(typeof kinds)[number]>>(["mcq", "tf"]);
+  return (
+    <>
+      <span id="gallery-chips" className="visually-hidden">
+        {t("examPage.createDialog.questions")}
+      </span>
+      <ToggleChips
+      label="gallery-chips"
+      value={value}
+      onChange={setValue}
+      keepHint={t("examPage.createDialog.keepOne")}
+      options={kinds.map((kind) => ({ value: kind, label: t(`quiz.kinds.${kind}`) }))}
+      />
+    </>
   );
 }
 
@@ -151,6 +173,10 @@ export function ComponentGallery() {
         <Chip icon="sigma">{t("components.chips.q3")}</Chip>
       </Section>
 
+      <Section eyebrow={t("gallery.sections.actions")} title="ToggleChips">
+        <GalleryChips />
+      </Section>
+
       <Section eyebrow={t("gallery.sections.status")} title="Tag">
         <Tag tone="smartbook">{t("components.tags.smartbook")}</Tag>
         <Tag>{t("components.tags.ai")}</Tag>
@@ -187,11 +213,14 @@ export function ComponentGallery() {
       </Section>
 
       <Section eyebrow={t("gallery.sections.progress")} title="ExamRings">
-        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5 }} size="sm" />
-        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5 }} />
-        <RingLegend values={{ preparation: 0.63, path: 0.32, today: 0.5 }} />
-        <ExamRings values={{ preparation: null, path: 0.06, today: null }} />
-        <RingLegend values={{ preparation: null, path: 0.06, today: null }} />
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} size="sm" />
+        <ExamRings values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} />
+        <RingLegend values={{ preparation: 0.63, path: 0.32, today: 0.5, todayMinutes: { done: 25, target: 51 }, todayUnmeasured: null }} />
+        <ExamRings values={{ preparation: null, path: 0.06, today: null, todayMinutes: null, todayUnmeasured: "no-goal" }} />
+        <RingLegend
+          values={{ preparation: null, path: 0.06, today: null, todayMinutes: null, todayUnmeasured: "no-goal" }}
+          onSetGoal={() => undefined}
+        />
       </Section>
 
       <Section

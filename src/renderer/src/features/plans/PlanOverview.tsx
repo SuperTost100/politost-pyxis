@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "antd";
 import dayjs from "dayjs";
@@ -7,7 +7,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { Button } from "../../components/Button";
-import { ExamRings, RingLegend } from "../../components/ExamRings";
+import { emptyRings, ExamRings, RingLegend } from "../../components/ExamRings";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
 import { ToolbarMenu } from "../../components/ListToolbar";
@@ -37,11 +37,14 @@ import { MapThumb } from "../maps/MapThumb";
 import { useSaveCalendar } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { setPlanArchived } from "./archivePlan";
+import { ActivityMaking } from "./ActivityMaking";
+import { madeFor, type MadeActivity } from "./making";
 import { ExamCreateDialog } from "./ExamCreateDialog";
 import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
 import { PlanPath, type TopicAction } from "./PlanPath";
 import { PlanSources } from "./PlanSources";
 import { skipDiagnosticPath, stepPath } from "./reopen";
+import { UnfinishedSection } from "./Unfinished";
 import { useGapDrill } from "./useGapDrill";
 import "./PlanPage.css";
 import "./ExamPage.css";
@@ -96,6 +99,14 @@ function ExamPage({ planId }: { planId: string }) {
   const calendar = useSaveCalendar(planId);
   const [createOpen, setCreateOpen] = useState(false);
   const [createTopic, setCreateTopic] = useState<string | undefined>(undefined);
+  // What opened "Crea un'attività": it grows out of it and gives the focus back to it.
+  const createOrigin = useRef<HTMLElement | null>(null);
+  const [made, setMade] = useState<MadeActivity | null>(null);
+  // An activity being made belongs to its exam: going to another exam leaves it out of sight and forgets it.
+  const making = madeFor(made, planId);
+  useEffect(() => {
+    if (made && !making) setMade(null);
+  }, [made, making]);
   const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -141,6 +152,7 @@ function ExamPage({ planId }: { planId: string }) {
     if (kind === "viewer" && topic.firstPassageId)
       openSourceViewer({ passageId: topic.firstPassageId });
     if (kind === "create") {
+      createOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setCreateTopic(topic.id);
       setCreateOpen(true);
     }
@@ -224,6 +236,8 @@ function ExamPage({ planId }: { planId: string }) {
       onSelect={(key) => {
         if (key === "review") navigate(`/plans/${planId}/review`);
         if (key === "create") {
+          // The menu gave the focus back to its button before this runs.
+          createOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           setCreateTopic(undefined);
           setCreateOpen(true);
         }
@@ -244,11 +258,12 @@ function ExamPage({ planId }: { planId: string }) {
         </div>
         <div className="px-exam-rings">
           <ExamRings
-            values={ring ?? { preparation: null, path: null, today: null }}
+            values={ring ?? emptyRings}
             label={rings.isPending ? t("components.loading") : undefined}
           />
           <RingLegend
-            values={ring ?? { preparation: null, path: null, today: null }}
+            values={ring ?? emptyRings}
+            onSetGoal={() => navigate(`/plans/${planId}/settings`, { state: { focus: "hours" } })}
           />
         </div>
         <span className="px-exam-grow" aria-hidden />
@@ -325,12 +340,16 @@ function ExamPage({ planId }: { planId: string }) {
         </div>
       ) : null}
       <div className="px-exam-grid">
-        <NowCard
-          planId={planId}
-          plan={data}
-          guide={recommended.data ?? undefined}
-          loading={recommended.isPending}
-        />
+        {making ? (
+          <ActivityMaking planId={planId} made={making} onDone={() => setMade(null)} />
+        ) : (
+          <NowCard
+            planId={planId}
+            plan={data}
+            guide={recommended.data ?? undefined}
+            loading={recommended.isPending}
+          />
+        )}
         <div className="px-exam-path">
           <PlanPath
             planId={planId}
@@ -351,7 +370,9 @@ function ExamPage({ planId }: { planId: string }) {
         guide={recommended.data ?? undefined}
         open={createOpen}
         initialTopic={createTopic}
+        origin={() => createOrigin.current}
         onClose={() => setCreateOpen(false)}
+        onMade={setMade}
       />
       <ExportButton
         planId={planId}
@@ -621,6 +642,7 @@ function ExamAside({
   }
   return (
     <aside className="px-exam-aside" aria-label={t("examPage.aside")}>
+      <UnfinishedSection planId={planId} />
       <AsideSection
         title={t("cards.title")}
         count={

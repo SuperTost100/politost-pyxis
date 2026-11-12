@@ -17,10 +17,19 @@ One look per kind of choice, so the same kind of question always looks the same.
 | A choice you judge by looking                       | `PreviewTiles`             | Words alone, when a picture would decide it             |
 | A short text value in settings                      | `TextRow`                  | A bordered field with a label above it, inside the card |
 | Several items to tick, each on its own              | Checkbox rows              | A switch for each item of a list                        |
+| A few kinds to keep or leave out, at least one kept | `ToggleChips`              | Checkbox rows that double a dialog's height             |
 
 Every control sits in a row of a white card (`ControlList`): the name on the left, one line on what it does, the control on the right. Preview tiles, tags and checkboxes take the full width of the card under their row.
 
-`Segmented`, `RadioRows` and `PreviewTiles` are radio groups: one tab stop, the arrow keys move the choice, and the chosen item shows the focus ring when it came from the keyboard.
+`Segmented`, `RadioRows` and `PreviewTiles` are radio groups: one tab stop, the arrow keys move the choice, and the chosen item shows the focus ring when it came from the keyboard. `PreviewTiles` with `variant="icons"` is the small form for a choice of kinds, as in "Crea un'attività": an icon over its name on a soft tile, the chosen one tinted and ringed, six in a row or two rows of three when the window is narrow or the text is large.
+
+### Toggle chips
+
+`ToggleChips` is a row of rounded chips, each a kind the student keeps or leaves out, such as the kinds of question in a quiz. A pressed chip is tinted `--primary-soft` with its name in `--primary-text` and a check that grows in; an unpressed one is a plain soft chip. Colour is never the only signal: the check comes and goes with the state.
+
+- Each chip is a `button` with `aria-pressed`, inside a `group` named by its label. Every chip is a tab stop, and Space or Enter toggles it.
+- At least one chip stays on. The last pressed chip can't be turned off: it keeps its tab stop, carries `aria-disabled`, and its description says why ("Almeno un tipo di domanda resta scelto"), so a screen reader hears its state and the reason.
+- The check grows from the chip's start in 150 ms, ease-out; under reduced motion it appears at once. A press scales the chip to 0.98.
 
 ## The mistakes to avoid
 

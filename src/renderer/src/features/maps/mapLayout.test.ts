@@ -148,6 +148,21 @@ describe("startViewport", () => {
     expect(view.y + 582 * MIN_READ_ZOOM).toBeCloseTo(300);
   });
 
+  it("centres the root of a radial map that is too big", () => {
+    const root = box(-120, -32);
+    const view = startViewport([root, box(-1500, -900), box(1260, 900)], root, size, true);
+    expect(view.zoom).toBe(MIN_READ_ZOOM);
+    expect(view.x).toBeCloseTo(500);
+    expect(view.y).toBeCloseTo(300);
+  });
+
+  it("keeps a radial map with one branch on the canvas rather than centring its root", () => {
+    const root = box(-120, -32);
+    const view = startViewport([root, box(400, -32), box(2400, -32)], root, size, true);
+    expect(view.zoom).toBe(MIN_READ_ZOOM);
+    expect(view.x + -120 * MIN_READ_ZOOM).toBeCloseTo(40);
+  });
+
   it("starts at MIN_READ_ZOOM on the root when the map is too big", () => {
     const view = startViewport(
       [box(0, 0), box(2660, 2000), box(0, -2000)],

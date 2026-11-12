@@ -58,19 +58,25 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     await expect(rows.nth(0)).toContainText("NowDiagnostic test");
     await expect(rows.nth(1)).toContainText("Chimica generale");
     await expect(rows.nth(2)).toContainText("IngleseDate to be set");
-    // Each row's rings are one image that reads its three values.
+    // Each row's rings are one image that reads its three values. No weekly hours are set, so Today measures nothing.
     await expect(rows.nth(0).getByRole("img")).toHaveAccessibleName(
-      "Preparation not measured yet, Path 0%, Today 0%",
+      "Preparation not measured yet, Path 0%, Today not measured",
     );
 
-    // A lesson read today closes Today's ring and moves the path.
+    // A lesson read today moves the path, and still fills nothing of Today without a study goal.
     await page.evaluate(() =>
       window.pyxis.invoke("plans.complete", { planId: "p-none", activity: "lesson", topicId: "t-cond" }),
     );
     await page.reload();
     await expect(rows.nth(2).getByRole("img")).toHaveAccessibleName(
-      /^Preparation not measured yet, Path [1-9]\d?%, Today 100%$/,
+      /^Preparation not measured yet, Path [1-9]\d?%, Today not measured$/,
     );
+    // With weekly hours, the dated exam measures today's minutes; the one without a date says what it lacks.
+    await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: 7 }));
+    await page.reload();
+    await expect(rows.nth(0).getByRole("img")).toHaveAccessibleName(/, Today \d+ of \d+ min$/);
+    await expect(rows.nth(2).getByRole("img")).toHaveAccessibleName(/, Today no date yet$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: null }));
 
     // Archived exams wait behind their toggle, which grows the list out of itself.
     const toggle = page.getByRole("button", { name: "Archived" });

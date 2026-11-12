@@ -126,6 +126,11 @@
   line-height: calc(19px * var(--text-scale, 1));
   color: var(--ink-subtle);
 }
+/* Adesso while Crea's activity is written: the working mark beside what Pyxis is doing. */
+.px-exam-now.is-working {
+  flex-wrap: nowrap;
+  gap: 18px;
+}
 .px-exam-now .px-skeleton-bar.is-title {
   width: 60%;
   height: 22px;
@@ -155,7 +160,8 @@
   padding: 18px 0;
   border-top: 1px solid var(--border);
 }
-.px-exam-asec:first-child {
+/* "Da finire" leaves a status line behind when it goes, so the first section is counted among sections only. */
+.px-exam-asec:first-of-type {
   border-top: 0;
 }
 .px-exam-asec h2 {

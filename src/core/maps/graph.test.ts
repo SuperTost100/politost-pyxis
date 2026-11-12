@@ -41,35 +41,10 @@ describe("concept map", () => {
     });
   });
 
-  it("puts children on a ring in the radial layout", () => {
-    const radial = layoutGraph({ ...sample(), layout: "radial" });
-    const root = radial.nodes.find((node) => node.id === "root");
-    const child = radial.nodes.find((node) => node.id === "a");
-    expect(root).toMatchObject({ x: 0, y: 0 });
-    expect(Math.hypot(child?.x ?? 0, child?.y ?? 0)).toBeGreaterThan(200);
-    const many = layoutGraph({
-      layout: "radial",
-      undo: null,
-      edges: [],
-      nodes: [
-        { id: "root", label: "Moti", parent: null, x: 0, y: 0, pinned: false },
-        ...Array.from({ length: 12 }, (_, index) => ({
-          id: `n${index}`,
-          label: `n${index}`,
-          parent: "root",
-          x: 0,
-          y: 0,
-          pinned: false,
-        })),
-      ],
-    });
-    const first = many.nodes.find((node) => node.id === "n0");
-    const second = many.nodes.find((node) => node.id === "n1");
-    const gap = Math.hypot(
-      (first?.x ?? 0) - (second?.x ?? 0),
-      (first?.y ?? 0) - (second?.y ?? 0),
-    );
-    expect(gap).toBeGreaterThan(140);
+  it("leaves the positions of a radial map as they are, since the page and the export plan them", () => {
+    const stored = sample().nodes.map((node) => ({ ...node, x: node.x + 7, y: node.y + 3 }));
+    const radial = layoutGraph({ ...sample(), layout: "radial", nodes: stored });
+    expect(radial.nodes).toEqual(stored);
   });
 
   it("applies one patch and undoes it", () => {

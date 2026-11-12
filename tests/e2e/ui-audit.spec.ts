@@ -27,6 +27,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
+import { radialFixtures, storedGraph } from "../fixtures/maps";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -109,6 +110,11 @@ const routes = [
   ["plan-settings-changes", "/plans/audit-plan/settings"],
   ["plan-settings-delete", "/plans/audit-plan/settings"],
   ["plan-create", "/plans/audit-plan"],
+  // "Crea un'attività" on a simulation, with its length and material in place.
+  ["plan-create-simulation", "/plans/audit-plan"],
+  // "Da finire" with seven activities: one being written, one on a very long topic, a prepared simulation; and its menu.
+  ["plan-unfinished", "/plans/audit-plan"],
+  ["plan-unfinished-menu", "/plans/audit-plan"],
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
@@ -203,6 +209,10 @@ const routes = [
   ["maps-delete", "/maps"],
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
+  // Two maps in the radial layout: one with long labels, uneven branches and links across them, open; one of sixty
+  // concepts, opened folded, with one branch unfolded.
+  ["map-radial-film", "/maps/audit-cinema?from=maps&map=audit-film-entry"],
+  ["map-radial-physics", "/maps/audit-cinema?from=maps&map=audit-physics-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
@@ -1030,6 +1040,7 @@ function auditScanBlob(): string {
 let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
+let auditUnfinished = false;
 
 /**
  * Cards of a second subject, of an exam with no subject and with no exam, for the flashcard browser only. Every other
@@ -1545,7 +1556,29 @@ function prepareNewCards(name: string) {
   else writeFileSync(newCardsHold(), "");
 }
 
+/** The radial maps' subject, Cinema, with its two maps, for the radial states only. */
+function prepareRadialMaps(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM maps WHERE id = 'audit-cinema-map';
+      DELETE FROM subjects WHERE id = 'audit-cinema';`);
+    if (!name.startsWith("map-radial-")) return;
+    seedSubjects(db, [{ id: "audit-cinema", name: "Cinema", position: 1 }]);
+    db.prepare(
+      "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-cinema-map','audit-cinema',?,'general',1)",
+    ).run(
+      JSON.stringify({
+        version: 1,
+        maps: [
+          { id: "audit-film-entry", title: radialFixtures.filmHistory.title, passageIds: [], graph: storedGraph(radialFixtures.filmHistory, "radial") },
+          { id: "audit-physics-entry", title: radialFixtures.physics.title, passageIds: [], graph: storedGraph(radialFixtures.physics, "radial") },
+        ],
+      }),
+    );
+  });
+}
+
 function prepareState(name: string) {
+  prepareRadialMaps(name);
   prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
@@ -1603,6 +1636,54 @@ function prepareState(name: string) {
       step.run("audit-done-practice", JSON.stringify({ activity: "practice" }), Date.now());
     });
   auditDone = name === "plan-done";
+  // Unfinished activities on the audit exam beside its open quiz, so "Da finire" lists seven; other states keep one.
+  if (name.startsWith("plan-unfinished") || auditUnfinished)
+    withDb((db) => {
+      db.exec(`DELETE FROM attempts WHERE id LIKE 'audit-unf-%'; DELETE FROM items WHERE id LIKE 'audit-unf-%';
+        DELETE FROM jobs WHERE id LIKE 'audit-unf-%'; DELETE FROM topics WHERE id = 'audit-unf-topic'`);
+      if (!name.startsWith("plan-unfinished")) return;
+      const now = Date.now();
+      const questions = (count: number) =>
+        Array.from({ length: count }, (_, i) => ({ id: `audit-unf-q${i}`, stem: `Domanda ${i}`, answer: { kind: "tf", value: true } }));
+      db.prepare("INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-unf-topic','audit-plan',?,99,1)").run(
+        "Successioni e serie numeriche, criteri di convergenza assoluta e condizionata con esempi svolti",
+      );
+      const add = (id: string, kind: string, topicId: string | null, body: object, at: number) => {
+        db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES(?,'audit-plan',?,?,?,1)").run(
+          `audit-unf-${id}-item`,
+          topicId,
+          kind,
+          JSON.stringify(body),
+        );
+        db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'audit-plan',?,?)").run(
+          `audit-unf-${id}`,
+          `audit-unf-${id}-item`,
+          at,
+        );
+      };
+      add("writing", "quiz", "audit-topic", { complete: false, config: { count: 8 }, questions: questions(2) }, now - 60_000);
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,created_at,updated_at) VALUES('audit-unf-job','quiz-build',?,'running',?,?)",
+      ).run(JSON.stringify({ attemptId: "audit-unf-writing", input: { planId: "audit-plan", topicId: "audit-topic" } }), now, now);
+      add("long", "quiz", "audit-unf-topic", { complete: true, questions: questions(10) }, now - 86_400_000);
+      add("diag", "diagnostic", null, { questions: questions(10) }, now - 3 * 86_400_000);
+      add("redo", "quiz", null, { redo: true, complete: true, questions: questions(4) }, now - 9 * 86_400_000);
+      add("past", "quiz", null, { pastPaper: 1, complete: true, questions: questions(6) }, now - 12 * 86_400_000);
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,created_at,updated_at) VALUES('audit-unf-build','simulation-build',?,'succeeded',?,?)",
+      ).run(
+        JSON.stringify({
+          planId: "audit-plan",
+          minutes: 60,
+          batches: [],
+          next: 0,
+          questions: [{ id: "audit-unf-sq", topicId: "audit-topic", passageIds: ["audit-passage"], stem: "Calcola la forza." }],
+        }),
+        now - 5 * 86_400_000,
+        now - 5 * 86_400_000,
+      );
+    });
+  auditUnfinished = name.startsWith("plan-unfinished");
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -3195,6 +3276,20 @@ async function openState(page: Page, name: string) {
         .fill("solo le leggi di Newton, con un esempio per ognuna");
       break;
     }
+    case "map-radial-film":
+      await expect(page.locator(".react-flow__node")).toHaveCount(radialFixtures.filmHistory.nodes.length);
+      await expect(page.getByRole("radio", { name: both("Radiale", "Radial") })).toHaveAttribute("aria-checked", "true");
+      break;
+    case "map-radial-physics": {
+      // The root and its six branches, folded; then the second branch opens, with its five sections.
+      await expect(page.locator(".react-flow__node")).toHaveCount(7);
+      const fold = page.locator('.react-flow__node[data-id="t1"] .px-concept-fold');
+      await fold.click();
+      await expect(fold).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator(".react-flow__node")).toHaveCount(12);
+      await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
+      break;
+    }
     case "map-subject":
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
       await expect(page.locator(".px-map-sub")).toContainText("Fisica");
@@ -3310,6 +3405,15 @@ async function openState(page: Page, name: string) {
         "aria-checked",
         "true",
       );
+      break;
+    case "plan-unfinished":
+      await expect(page.locator(".px-unf-open")).toHaveCount(3);
+      await page.locator(".px-unf-more").click();
+      await expect(page.locator(".px-unf-open")).toHaveCount(7);
+      break;
+    case "plan-unfinished-menu":
+      await page.locator(".px-unf-dots").first().click();
+      await expect(page.getByRole("menuitem", { name: both("Elimina…", "Delete…") })).toBeVisible();
       break;
     case "library-row-menu":
       await page
@@ -4102,11 +4206,13 @@ test("M14 every application route in both languages, themes and supported widths
                 // The dialog mounts a frame after the click; the keyboard check needs it there.
                 await expect(page.getByRole("dialog")).toBeVisible();
               }
-              if (name === "plan-create") {
+              if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.
                 await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
                 await page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }).click();
                 await expect(page.getByRole("dialog")).toBeVisible();
+                if (name === "plan-create-simulation")
+                  await page.getByRole("dialog").getByRole("radio", { name: /^(Simulazione|Simulation)$/ }).click();
               }
               if (name === "plan-done") {
                 // The topic the path is on is open, its finished steps ticked.
@@ -4136,6 +4242,7 @@ test("M14 every application route in both languages, themes and supported widths
               if (
                 (name === "library-row-menu" ||
                   name === "library-kind-menu" ||
+                  name === "plan-unfinished-menu" ||
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||

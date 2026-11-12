@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
-import { ExamRings, useRingText } from "../../components/ExamRings";
+import { emptyRings, ExamRings, useRingText } from "../../components/ExamRings";
 import { Icon } from "../../components/Icon";
 import { LoadError } from "../../components/LoadError";
 import { Logo } from "../../components/Logo";
@@ -189,7 +189,7 @@ function ExamRow({ plan, ring, ringsPending }: { plan: Plan; ring: Ring | undefi
           ) : ring ? (
             <ExamRings values={ring} size="sm" label={label} />
           ) : ringsPending ? (
-            <ExamRings values={{ preparation: null, path: null, today: null }} size="sm" label={t("components.loading")} />
+            <ExamRings values={emptyRings} size="sm" label={t("components.loading")} />
           ) : null}
         </span>
         <span className="px-exams-name">
