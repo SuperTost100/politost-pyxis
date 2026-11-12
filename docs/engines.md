@@ -165,7 +165,7 @@ An older chat whose sources were picked by hand keeps answering from them, and i
 
 ### The way of answering
 
-Pyxis solves and explains when the student asks for an answer, and guides one step at a time when the student asks for help understanding, asks to be guided, shows their own attempt, or answers a guided step without asking for the solution. `answerWay()` in `src/core/chat/way.ts` decides it from the question's words and the way the previous reply took, so it is tested without a model. A request for the solution wins over a request for help.
+Pyxis solves and explains when the student asks for an answer, and guides one step at a time when the student asks for help understanding, asks to be guided, shows their own attempt, or answers a guided step without asking for the solution. `answerWay()` in `src/core/chat/way.ts` decides it from the question's words and the way the previous reply took, so it is tested without a model. A request for the solution wins over a request for help, but a solve verb that only names the task ("guidami a risolvere questo integrale", "walk me through how to solve it") or a refused solution ("non darmi la soluzione") is not a request for the solution.
 
 The way picks the template: `chat.socratic` for a guided step, `chat.solver` for a solved answer (with the math checks and figures), and `chat.general` for a solved answer when nothing was searched. The reply stores its template in `messages.prompt_template`, which is how the chat knows which way it went after a reload. Under the last reply one action asks the same question again the other way ("Guidami passo passo" or "Dammi la soluzione"), which is `chats.regenerate` with `way`. Regenerate and Continue keep the way of the reply they replace.
 

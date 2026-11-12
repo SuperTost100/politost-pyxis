@@ -20,6 +20,28 @@ const SOLVE = [
   /\bfull answer\b/,
 ];
 
+/**
+ * A solve verb that only names the thing the student wants help with ("guidami a risolvere", "walk me through how to
+ * solve") asks for no answer. These phrases are taken out of the question before the solve cues are read.
+ */
+const NAMES_THE_TASK: Array<[RegExp, string]> = [
+  [/\ba risolver(e|lo|la|li|le|ci)\b/g, "a"],
+  [/\bcome (si |faccio a |posso |devo |dovrei |bisogna )?(risolv|svolg)\w*/g, " "],
+  [/\bhow (to|do i|do you|can i|should i|would i|does one) (solve|work (it )?out)\b/g, " "],
+  [/\bhelp(s)? me (to )?solve\b/g, "help me"],
+];
+
+/**
+ * A refused solution ("non darmi la soluzione", "don't give me the answer", "senza la soluzione") is a request to be
+ * guided. It is taken out of the question too, so the noun in it is not read as a request for the answer.
+ */
+const REFUSES_THE_ANSWER = [
+  /\bnon (darmi|dirmi|dammi|dimmi|mi dare|mi dire|dare|dire|mostrarmi|mostrami) (subito |direttamente )?(la |il |tutta la )?(soluzion\w*|risposta|risultato)/,
+  /\bsenza (darmi |dirmi |che tu mi dia )?(la |il )?(soluzion\w*|risposta|risultato)/,
+  /\b(do ?n'?t|do not|never) (just )?(give|tell|show) me (just )?(the )?(answer|solution|result)/,
+  /\bwithout (giving me |telling me )?(the )?(answer|solution|result)/,
+];
+
 /** Words with which a student asks to be helped through it, or shows their own attempt. */
 const GUIDE = [
   /\bguidami\b/,
@@ -27,7 +49,12 @@ const GUIDE = [
   /passo (a|per) passo/,
   /un passo alla volta/,
   /\bnon (ho )?capi(to|sco)\b/,
-  /\b(aiutami|mi aiuti|aiutarmi) a (capir|ragionar)/,
+  /\b(aiutami|mi aiuti|mi aiutate|aiutarmi)\b/,
+  /\buna mano\b/,
+  /\bnon riesco a\b/,
+  /\bnon so (da dove|come)\b/,
+  /\bmi (viene|esce|risulta)\b/,
+  /\b(e|sara) (corretto|sbagliato)\b/,
   /\bragionarci\b/,
   /\bsuggeriment/,
   /\bindizio\b/,
@@ -41,7 +68,7 @@ const GUIDE = [
   /\bone step at a time\b/,
   /\bguide me\b/,
   /\bwalk me through\b/,
-  /\bhelp me (understand|figure|work)/,
+  /\bhelp me\b/,
   /\bdon'?t (get|understand)\b/,
   /\bhint\b/,
   /\bstuck\b/,
@@ -68,9 +95,12 @@ export function answerWay(input: {
   asked?: AnswerWay;
 }): AnswerWay {
   if (input.asked) return input.asked;
-  const text = plain(input.text);
-  if (SOLVE.some((cue) => cue.test(text))) return "solved";
-  if (GUIDE.some((cue) => cue.test(text))) return "guided";
+  let rest = plain(input.text);
+  const refused = REFUSES_THE_ANSWER.some((cue) => cue.test(rest));
+  for (const cue of REFUSES_THE_ANSWER) rest = rest.replace(cue, " ");
+  for (const [cue, instead] of NAMES_THE_TASK) rest = rest.replace(cue, instead);
+  if (SOLVE.some((cue) => cue.test(rest))) return "solved";
+  if (refused || GUIDE.some((cue) => cue.test(rest))) return "guided";
   return input.previous === "guided" ? "guided" : "solved";
 }
 
