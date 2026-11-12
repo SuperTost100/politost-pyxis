@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input, Modal, Select, type MenuProps } from "antd";
-import { ChevronLeft, ChevronRight, GraduationCap, Library } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, GraduationCap, Library } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -27,6 +27,8 @@ import {
   Position,
   applyNodeChanges,
   getBezierPath,
+  useInternalNode,
+  type BuiltInEdge,
   type Edge,
   type EdgeProps,
   type Node,
@@ -59,6 +61,10 @@ import {
   initialCollapsed,
   layoutTree,
   parentIds,
+  radialDirection,
+  radialLink,
+  radialPlan,
+  smoothPath,
   startViewport,
   revealViewport,
   visibleNodes,
@@ -83,15 +89,34 @@ type FlowNode = Node<
     toggle: (id: string) => void;
     /** Sliding back into the node that was folded, on its way out. */
     leaving?: boolean;
+    /**
+     * In the radial layout, where the node's links leave it, as shares of its width and height, and their direction:
+     * the fold button sits there, as it sits on the right edge in the tree.
+     */
+    out?: { x: number; y: number; dx: number; dy: number };
   },
   "concept"
 >;
 /** How long a fold or an unfold moves the map. */
 const MOTION_MS = 300;
 type FlowEdge = Edge<{ label?: string; active: boolean }, "cross">;
+type RadialFlowEdge = Edge<{ root: string; band: [number, number] }, "radial">;
+// How far the middle of the fold button stands out from the edge its links leave.
+const FOLD_OUT = 18;
 function ConceptNode({ id, data }: NodeProps<FlowNode>) {
   const { t } = useTranslation();
-  const Chevron = data.folded ? ChevronRight : ChevronLeft;
+  // The chevron points away from the node to unfold and back at it to fold: right and left in the tree, along the
+  // direction its links leave in the radial layout.
+  const out = data.out ?? { dx: 1, dy: 0 };
+  const [away, back] =
+    Math.abs(out.dx) >= Math.abs(out.dy)
+      ? out.dx >= 0
+        ? [ChevronRight, ChevronLeft]
+        : [ChevronLeft, ChevronRight]
+      : out.dy >= 0
+        ? [ChevronDown, ChevronUp]
+        : [ChevronUp, ChevronDown];
+  const Chevron = data.folded ? away : back;
   return (
     <div
       className={`px-concept-node is-level-${data.level}`}
@@ -113,7 +138,16 @@ function ConceptNode({ id, data }: NodeProps<FlowNode>) {
       {data.hasChildren && (
         <button
           type="button"
-          className="px-concept-fold nodrag nopan"
+          className={`px-concept-fold nodrag nopan${data.out ? " is-radial" : ""}`}
+          style={
+            data.out
+              ? {
+                  left: `${data.out.x * 100}%`,
+                  top: `${data.out.y * 100}%`,
+                  transform: `translate(-50%, -50%) translate(${data.out.dx * FOLD_OUT}px, ${data.out.dy * FOLD_OUT}px)`,
+                }
+              : undefined
+          }
           aria-expanded={!data.folded}
           aria-label={
             data.folded
@@ -179,6 +213,27 @@ function CrossEdge({
     </g>
   );
 }
+// A link of the hierarchy in the radial layout: out of the parent away from the root, a turn in the free band between
+// the two rings, then into the child's near side (see `radialLink`). It reads where the boxes are drawn now, so it
+// follows them while the map moves.
+function RadialEdge({ source, target, data, style }: EdgeProps<RadialFlowEdge>) {
+  const from = useInternalNode<FlowNode>(source);
+  const to = useInternalNode<FlowNode>(target);
+  const root = useInternalNode<FlowNode>(data?.root ?? source);
+  if (!from || !to || !root || !data) return null;
+  const box = (node: typeof from) => ({
+    ...node.internals.positionAbsolute,
+    width: node.measured.width ?? NODE_WIDTH,
+    height: node.measured.height ?? NODE_MIN_HEIGHT,
+  });
+  const middle = box(root);
+  const centre = { x: middle.x + middle.width / 2, y: middle.y + middle.height / 2 };
+  return (
+    <g className="px-tree-edge" style={style?.opacity === undefined ? undefined : { opacity: style.opacity }}>
+      <BaseEdge path={smoothPath(radialLink(box(from), box(to), centre, data.band))} />
+    </g>
+  );
+}
 const nodeTypes = { concept: ConceptNode };
 /** The window's session storage, or nothing where the browser refuses it. */
 function sessionOf(): Storage | undefined {
@@ -188,7 +243,7 @@ function sessionOf(): Storage | undefined {
     return undefined;
   }
 }
-const edgeTypes = { cross: CrossEdge };
+const edgeTypes = { cross: CrossEdge, radial: RadialEdge };
 
 export function MapPage() {
   const { t } = useTranslation();
@@ -261,13 +316,17 @@ export function MapPage() {
   // Unfolding or folding a node moves the map in one motion instead of a cut: children slide out of the node they hang
   // from, or back into it, and the others move to their new places. `motion` holds where that node is and the frame.
   // `map` is the map the fold happened on, so switching maps mid-move cuts to the new one.
-  const motion = useRef<{ origin?: string; map?: string; frame: number }>({ frame: 0 });
+  const motion = useRef<{ origin?: string; map?: string; frame: number; all?: string }>({ frame: 0 });
   // The branch that was just unfolded, until the view has been moved to show it.
   const reveal = useRef<{ id: string; map?: string } | undefined>(undefined);
   // Real node heights, measured by React Flow, so the layout can leave room for long labels.
   const [heights, setHeights] = useState<Map<string, number>>(new Map());
-  // Their widths too, which only the fold's motion needs: a branch grows out of its node's right edge.
-  const widths = useRef(new Map<string, number>());
+  // Their widths too: the radial layout places boxes by their real size, and a branch grows out of its node's edge.
+  const [widths, setWidths] = useState<Map<string, number>>(new Map());
+  // The map and layout the nodes were last drawn for, so a change to them can move the map instead of cutting.
+  const drawn = useRef<{ map?: string; graph?: unknown; layout?: string; parents: Map<string, string | null> }>({
+    parents: new Map(),
+  });
   const [ready, setReady] = useState<string>();
   const [fold, setFold] = useState<{ mapId?: string; ids: Set<string> }>({
     ids: new Set(),
@@ -573,9 +632,25 @@ export function MapPage() {
     () => visibleNodes(graph?.nodes ?? [], folded),
     [graph, folded],
   );
+  // The radial layout also says where each node's links leave it and where they turn.
+  const plan = useMemo(
+    () =>
+      radial
+        ? radialPlan(
+            shown.shown,
+            new Map(
+              shown.shown.map((n) => [
+                n.id,
+                { width: widths.get(n.id) ?? NODE_WIDTH, height: heights.get(n.id) ?? NODE_MIN_HEIGHT },
+              ]),
+            ),
+          )
+        : null,
+    [radial, shown, heights, widths],
+  );
   const places = useMemo(
-    () => (radial ? null : layoutTree(shown.shown, heights)),
-    [radial, shown, heights],
+    () => plan?.places ?? layoutTree(shown.shown, heights),
+    [plan, shown, heights],
   );
   const parents = useMemo(() => parentIds(graph?.nodes ?? []), [graph]);
   const levels = useMemo(() => {
@@ -596,6 +671,17 @@ export function MapPage() {
     [shown, places],
   );
   useEffect(() => {
+    // Where a ray from the root through the node leaves its box, as shares of its size, and the ray's direction.
+    const outward = (angle: number, id: string) => {
+      const way = radialDirection(angle);
+      const width = widths.get(id) ?? NODE_WIDTH;
+      const height = heights.get(id) ?? NODE_MIN_HEIGHT;
+      const t = Math.min(
+        way.x ? width / 2 / Math.abs(way.x) : Infinity,
+        way.y ? height / 2 / Math.abs(way.y) : Infinity,
+      );
+      return { x: 0.5 + (way.x * t) / width, y: 0.5 + (way.y * t) / height, dx: way.x, dy: way.y };
+    };
     const target: FlowNode[] = 
       spots.map(({ node: n, at }) => {
         const height = heights.get(n.id);
@@ -606,7 +692,7 @@ export function MapPage() {
           selected: selected === n.id,
           ariaLabel: n.label,
           ariaRole: "group",
-          ...(height ? { measured: { width: NODE_WIDTH, height } } : {}),
+          ...(height ? { measured: { width: widths.get(n.id) ?? NODE_WIDTH, height } } : {}),
           data: {
             label: n.label,
             level: levels.get(n.id) ?? 2,
@@ -614,6 +700,7 @@ export function MapPage() {
             hidden: shown.hidden.get(n.id) ?? 0,
             hasChildren: parents.has(n.id),
             toggle,
+            ...(plan && n.parent !== null ? { out: outward(plan.polar.get(n.id)?.angle ?? 0, n.id) } : {}),
             // Neutro is the plain node, which differs between the themes.
             color:
               n.color !== "surface-raised" &&
@@ -628,22 +715,115 @@ export function MapPage() {
     const now = new Map(nodesRef.current.map((node) => [node.id, node]));
     const origin = originId ? now.get(originId) : undefined;
     cancelAnimationFrame(motion.current.frame);
-    if (!origin || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // A switch between the tree and the radial layout, and any change to a radial map (an edit, the AI's, Annulla or
+    // Ripeti), moves every node from where it is to its new place. What did not change keeps its place as far as the
+    // layout allows; a new concept grows out of its parent and a removed one goes back into it.
+    const before = drawn.current;
+    const parentsNow = new Map((graph?.nodes ?? []).map((n) => [n.id, n.parent] as const));
+    drawn.current = { map: activeId, graph, layout: graph?.layout, parents: parentsNow };
+    if (
+      !origin &&
+      before.map === activeId &&
+      before.graph &&
+      graph &&
+      before.graph !== graph &&
+      (before.layout !== graph.layout || radial)
+    )
+      motion.current.all = activeId;
+    const all = !origin && motion.current.all === activeId;
+    if ((!origin && !all) || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       motion.current.origin = undefined;
+      motion.current.all = undefined;
       setNodes(target);
       return;
     }
+    const sizeOf = (id: string) => ({
+      width: widths.get(id) ?? NODE_WIDTH,
+      height: heights.get(id) ?? NODE_MIN_HEIGHT,
+    });
+    // Where a node of `id`'s size sits centred on `node`.
+    const centredOn = (at: { x: number; y: number }, on: string, id: string) => ({
+      x: at.x + (sizeOf(on).width - sizeOf(id).width) / 2,
+      y: at.y + (sizeOf(on).height - sizeOf(id).height) / 2,
+    });
+    if (all) {
+      const ids = new Set(target.map((node) => node.id));
+      const ends = new Map(target.map((node) => [node.id, node.position]));
+      // The nearest node up the map that `has` a place.
+      const upTo = (id: string, parents: Map<string, string | null>, has: (id: string) => boolean) => {
+        for (let up = parents.get(id); up; up = parents.get(up)) if (has(up)) return up;
+        return undefined;
+      };
+      const leaving = nodesRef.current.filter((node) => !ids.has(node.id));
+      const shownAt = (node?: FlowNode) => Number(node?.style?.opacity ?? 1);
+      let start: number | undefined;
+      let ended = false;
+      const step = (time?: number) => {
+        if (time !== undefined) start ??= time;
+        const progress =
+          time === undefined || start === undefined ? 0 : Math.min(1, (time - start) / MOTION_MS);
+        const eased = 1 - (1 - progress) ** 3;
+        const between = (from: { x: number; y: number }, to: { x: number; y: number }) => ({
+          x: from.x + (to.x - from.x) * eased,
+          y: from.y + (to.y - from.y) * eased,
+        });
+        const settled = ended;
+        ended = progress === 1;
+        setNodes([
+          ...target.map((node) => {
+            const was = now.get(node.id);
+            const opacity = was ? shownAt(was) : 0;
+            const parent = was ? undefined : upTo(node.id, parentsNow, (id) => now.has(id));
+            const from = was
+              ? was.position
+              : parent
+                ? centredOn(now.get(parent)!.position, parent, node.id)
+                : node.position;
+            return {
+              ...node,
+              position: between(from, node.position),
+              style: opacity < 1 ? { ...node.style, opacity: opacity + (1 - opacity) * eased } : node.style,
+            };
+          }),
+          ...(settled
+            ? []
+            : leaving.map((node) => {
+                const parent = upTo(node.id, before.parents, (id) => ends.has(id));
+                return {
+                  ...node,
+                  position: between(node.position, parent ? centredOn(ends.get(parent)!, parent, node.id) : node.position),
+                  selectable: false,
+                  data: { ...node.data, leaving: true },
+                  style: { ...node.style, opacity: shownAt(node) * (1 - eased) },
+                };
+              })),
+        ]);
+        canvas.current?.toggleAttribute("data-moving", !settled);
+        if (!settled) motion.current.frame = requestAnimationFrame((time) => flushSync(() => step(time)));
+        else motion.current.all = undefined;
+      };
+      step();
+      return () => {
+        cancelAnimationFrame(motion.current.frame);
+        canvas.current?.removeAttribute("data-moving");
+      };
+    }
+    if (!origin) return;
     // Every node moves from where it is now to where the layout puts it. The branch that opens or closes hangs off the
     // folded node's right edge, centred on it, and moves with that node: new nodes grow out of it and fade in, leaving
     // ones slide into it and fade out. When the map redraws mid-move because a new node got measured, each node carries
     // on from where it is, so one already on its way out keeps going instead of vanishing.
     const originEnd = target.find((node) => node.id === originId)?.position ?? origin.position;
-    const originWidth = widths.current.get(origin.id) ?? NODE_WIDTH;
+    const originWidth = widths.get(origin.id) ?? NODE_WIDTH;
     const originHeight = heights.get(origin.id) ?? NODE_MIN_HEIGHT;
-    const tucked = (at: { x: number; y: number }, id: string) => ({
-      x: at.x + originWidth,
-      y: at.y + (originHeight - (heights.get(id) ?? originHeight)) / 2,
-    });
+    // In the radial layout a branch grows out of its node's middle, since its children lie all round the node's far side.
+    const tucked = (at: { x: number; y: number }, id: string) =>
+      radial
+        ? centredOn(at, origin.id, id)
+        : {
+            x: at.x + originWidth,
+            y: at.y + (originHeight - (heights.get(id) ?? originHeight)) / 2,
+          };
     const ids = new Set(target.map((node) => node.id));
     const leaving = nodesRef.current.filter((node) => !ids.has(node.id));
     const shownAt = (node?: FlowNode) => Number(node?.style?.opacity ?? 1);
@@ -715,7 +895,7 @@ export function MapPage() {
       cancelAnimationFrame(motion.current.frame);
       canvas.current?.removeAttribute("data-moving");
     };
-  }, [spots, shown, heights, selected, folded, parents, levels, toggle, activeId]);
+  }, [spots, shown, heights, widths, plan, graph, radial, selected, folded, parents, levels, toggle, activeId]);
   // After an unfold, the view moves so the branch and its parent are on screen, once the new concepts are measured.
   useEffect(() => {
     const asked = reveal.current;
@@ -754,7 +934,7 @@ export function MapPage() {
     setSelected(undefined);
     setPaletteOpen(false);
     setHeights(new Map());
-    widths.current = new Map();
+    setWidths(new Map());
   }, [activeId]);
   const edges = useMemo(() => {
     const at = new Map(nodes.map((n) => [n.id, n.position.x]));
@@ -765,7 +945,8 @@ export function MapPage() {
       ),
     );
     const byId = new Map((graph?.nodes ?? []).map((n) => [n.id, n]));
-    const result: Array<Edge | FlowEdge> = [];
+    const rootId = graph?.nodes.find((n) => n.parent === null)?.id;
+    const result: Array<BuiltInEdge | FlowEdge | RadialFlowEdge> = [];
     for (const e of graph?.edges ?? []) {
       let source = e.from;
       let target = e.to;
@@ -776,6 +957,10 @@ export function MapPage() {
       const from = at.get(source);
       const to = at.get(target);
       if (from === undefined || to === undefined) continue;
+      // A radial map shows a link outside the hierarchy only while one of its ends is selected: drawn across the
+      // rings it would cross the branches, and with an end selected it shows lit, with its label.
+      const active = selected === e.from || selected === e.to;
+      if (radial && !tree && !active) continue;
       const forward = to >= from;
       const opacity = Math.min(faded.get(source) ?? 1, faded.get(target) ?? 1);
       const base = {
@@ -788,47 +973,49 @@ export function MapPage() {
         focusable: false,
       };
       result.push(
-        tree
+        tree && radial && rootId
           ? {
               ...base,
-              // Right-angled connectors with rounded elbows in the tree; the radial layout keeps its curves.
-              ...(radial
-                ? { type: "default" }
-                : { type: "smoothstep", pathOptions: { borderRadius: 9 } }),
-              className: "px-tree-edge",
+              type: "radial",
+              data: { root: rootId, band: plan?.bands.get(source) ?? [0.35, 0.65] },
             }
-          : {
-              ...base,
-              type: "cross",
-              data: {
-                label: e.label,
-                active: selected === e.from || selected === e.to,
+          : tree
+            ? {
+                ...base,
+                // Right-angled connectors with rounded elbows in the tree.
+                type: "smoothstep",
+                pathOptions: { borderRadius: 9 },
+                className: "px-tree-edge",
+              }
+            : {
+                ...base,
+                type: "cross",
+                data: { label: e.label, active },
               },
-            },
       );
     }
     return result;
-  }, [graph, nodes, selected, radial]);
-  function startView() {
+  }, [graph, nodes, selected, radial, plan]);
+  function startView(duration = 0) {
     const size = canvas.current?.getBoundingClientRect();
     if (!size || !spots.length) return;
     const boxes = spots.map(({ node, at }) => ({
       ...at,
-      width: NODE_WIDTH,
+      width: radial ? (widths.get(node.id) ?? NODE_WIDTH) : NODE_WIDTH,
       height: heights.get(node.id) ?? 64,
     }));
     const root = boxes[spots.findIndex(({ node }) => node.parent === null)];
-    void flow.current?.setViewport(
-      startViewport(boxes, root ?? boxes[0]!, size),
-    );
+    void flow.current?.setViewport(startViewport(boxes, root ?? boxes[0]!, size, radial), { duration });
   }
-  // Open on the whole map, or on the root at a readable size when it will not fit.
+  // Open on the whole map, or on the root at a readable size when it will not fit. A switch between the tree and the
+  // radial layout moves the view there with the nodes.
   useEffect(() => {
     const key = `${activeId}:${graph?.layout}`;
     if (ready !== activeId || !spots.length || viewed.current === key) return;
     if (spots.some(({ node }) => !heights.has(node.id))) return;
+    const switched = viewed.current.startsWith(`${activeId}:`);
     viewed.current = key;
-    startView();
+    startView(switched && !window.matchMedia("(prefers-reduced-motion: reduce)").matches ? MOTION_MS : 0);
   }, [ready, spots, heights, activeId, graph?.layout]);
 
   async function commit(
@@ -862,9 +1049,15 @@ export function MapPage() {
   const changes = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
-      for (const change of changes)
-        if (change.type === "dimensions" && change.dimensions)
-          widths.current.set(change.id, change.dimensions.width);
+      const wide = changes.flatMap((change) =>
+        change.type === "dimensions" && change.dimensions
+          ? [[change.id, Math.ceil(change.dimensions.width)] as const]
+          : [],
+      );
+      if (wide.length)
+        setWidths((current) =>
+          wide.every(([id, width]) => current.get(id) === width) ? current : new Map([...current, ...wide]),
+        );
       const measured = changes.flatMap((change) =>
         change.type === "dimensions" && change.dimensions
           ? [[change.id, Math.ceil(change.dimensions.height)] as const]

@@ -39,6 +39,7 @@ import { linkedFile } from "./linked-file";
 import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { watchFolder } from "./linked-watch";
 import type { LinkMode } from "../../shared/linked-folders";
+import type { FileKind } from "../../shared/file-kind";
 import type { GenerateInput } from "../engine/generate";
 import {
   extForMime,
@@ -46,6 +47,7 @@ import {
   promoteSource,
   removeSource,
   renameSource,
+  setChosenKind,
 } from "./manage";
 import { registerOcrJob, startScan, stopOrphanScans, waitingScans } from "./ocr-job";
 import {
@@ -646,6 +648,14 @@ export function sourceHandlers(
     rename(input: { sourceId: string; title: string }) {
       try {
         renameSource(db, input.sourceId, input.title);
+        return { ok: true as const };
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    setKind(input: { sourceId: string; kind: FileKind }) {
+      try {
+        setChosenKind(db, input.sourceId, input.kind);
         return { ok: true as const };
       } catch (err) {
         sourceError(err);

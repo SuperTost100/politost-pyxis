@@ -115,9 +115,6 @@ export function PlanPath({
   const steps = plan.steps;
   const last = (activity: Activity) =>
     steps.filter((step) => step.activity === activity).at(-1);
-  const studied = steps.some(
-    (step) => step.activity !== "intro" && step.activity !== "diagnostic",
-  );
   const name = (activity: Activity) => t(`plans.path.activity.${activity}`);
   const day = (value: string) => shortDay(value, i18n.language);
 
@@ -249,8 +246,8 @@ export function PlanPath({
   const intro = last("intro");
   const diagnostic = last("diagnostic");
   const showIntro = Boolean(guide?.hasIntro) || intro != null;
-  const showDiagnostic =
-    plan.topics.length > 0 && (diagnostic != null || !studied);
+  // The diagnostic stays on the path once study has started: it is where the student takes it again or for the first time.
+  const showDiagnostic = plan.topics.length > 0;
   const simulationStep = last("simulation");
   const simulation = schedule?.simulation;
   const exam = plan.sessions.find((session) => session.date === plan.examAt);

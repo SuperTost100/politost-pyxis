@@ -5,7 +5,13 @@ export {
   NODE_MIN_HEIGHT,
   NODE_WIDTH,
   SIBLING_GAP,
+  RADIAL_SQUASH,
+  layoutRadial,
   layoutTree,
+  radialDirection,
+  radialLink,
+  radialPlan,
+  smoothPath,
 } from "../../../../shared/map-layout";
 
 // A map of more than this many concepts opens with everything below its main branches folded: the root and its first
@@ -67,12 +73,15 @@ const VIEW_PAD = 40;
 /**
  * Opening view: the whole map when it fits at MIN_READ_ZOOM or more (never zoomed in
  * past 1); otherwise MIN_READ_ZOOM with the root at the left edge, vertically centred, so the root and its nearest
- * branches are readable and the student pans for the rest.
+ * branches are readable and the student pans for the rest. A radial map (`centred`) has its branches all round the
+ * root, so there the root goes in the middle of the canvas, or as near as it can while the map still fills the
+ * canvas's width (a map with one branch starts at its left edge).
  */
 export function startViewport(
   boxes: Box[],
   root: Box,
   size: { width: number; height: number },
+  centred = false,
 ): { x: number; y: number; zoom: number } {
   const left = Math.min(...boxes.map((box) => box.x));
   const right = Math.max(...boxes.map((box) => box.x + box.width));
@@ -93,10 +102,25 @@ export function startViewport(
       x: VIEW_PAD + (room.width - (right - left) * fit) / 2 - left * fit,
       y: VIEW_PAD + (room.height - (bottom - top) * fit) / 2 - top * fit,
     };
+  const z = MIN_READ_ZOOM;
+  if (centred) {
+    // The root in the middle, unless that leaves empty canvas on a side the map does not reach; a span that fits is
+    // centred.
+    const along = (low: number, high: number, middle: number, length: number, pad: number) => {
+      const span = (high - low) * z;
+      if (span <= length - 2 * pad) return pad + (length - 2 * pad - span) / 2 - low * z;
+      return Math.min(pad - low * z, Math.max(length - pad - high * z, length / 2 - middle * z));
+    };
+    return {
+      zoom: z,
+      x: along(left, right, root.x + root.width / 2, size.width, VIEW_PAD),
+      y: along(top, bottom, root.y + root.height / 2, size.height, VIEW_PAD),
+    };
+  }
   return {
-    zoom: MIN_READ_ZOOM,
-    x: VIEW_PAD - root.x * MIN_READ_ZOOM,
-    y: size.height / 2 - (root.y + root.height / 2) * MIN_READ_ZOOM,
+    zoom: z,
+    x: VIEW_PAD - root.x * z,
+    y: size.height / 2 - (root.y + root.height / 2) * z,
   };
 }
 

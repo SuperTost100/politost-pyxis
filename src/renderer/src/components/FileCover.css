@@ -1,0 +1,116 @@
+/* A file's drawn cover (FileCover.tsx). `--sc` is its subject's colour; each kind has its own (`--kind-*`). */
+.px-fc {
+  display: block;
+  flex: none;
+  overflow: visible;
+  filter: var(--shadow-cover);
+}
+.px-fc.is-slides {
+  --kc: var(--kind-slides);
+}
+.px-fc.is-exam {
+  --kc: var(--kind-exam);
+}
+.px-fc.is-notes {
+  --kc: var(--kind-notes);
+}
+.px-fc.is-exercises {
+  --kc: var(--kind-exercises);
+}
+.px-fc .sc {
+  fill: var(--sc);
+}
+.px-fc .kc {
+  fill: var(--kc);
+}
+.px-fc .shade {
+  fill: rgba(0, 0, 0, 0.2);
+}
+.px-fc .hl {
+  fill: rgba(255, 255, 255, 0.22);
+}
+.px-fc .ink {
+  fill: var(--on-cover);
+}
+.px-fc .o7 {
+  opacity: 0.7;
+}
+.px-fc .o5 {
+  opacity: 0.5;
+}
+.px-fc .o42 {
+  opacity: 0.42;
+}
+.px-fc .o55 {
+  opacity: 0.55;
+}
+.px-fc .paper {
+  fill: var(--paper);
+  stroke: var(--paper-edge);
+  stroke-width: 1;
+}
+.px-fc .line {
+  fill: var(--paper-line);
+}
+.px-fc .tint {
+  fill: color-mix(in srgb, var(--sc) 20%, var(--paper));
+  stroke: var(--paper-edge);
+  stroke-width: 1;
+}
+.px-fc .tint-line {
+  fill: color-mix(in srgb, var(--sc) 40%, var(--paper));
+}
+.px-fc .staple {
+  fill: var(--staple);
+}
+.px-fc .spiral {
+  fill: none;
+  stroke: var(--spiral);
+  stroke-width: 1.3;
+}
+.px-fc .fold {
+  fill: var(--paper-line);
+  stroke: var(--paper-edge);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.px-fc .box {
+  fill: none;
+  stroke: var(--kc);
+  stroke-width: 1.3;
+}
+.px-fc .tick {
+  fill: none;
+  stroke: var(--kc);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.px-fc .board {
+  fill: var(--kind-board);
+}
+.px-fc .chalk {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+/* The subject's symbol, in the app's icon style, and the initials when no symbol fits. */
+.px-fc .px-fc-symbol {
+  fill: none;
+  stroke: var(--on-cover);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.px-fc svg.px-fc-symbol[data-symbol="integral"],
+.px-fc svg.px-fc-symbol[data-symbol="matrix"] {
+  stroke-width: 1.7;
+}
+.px-fc .px-fc-dot {
+  fill: var(--on-cover);
+}
+.px-fc .px-fc-initials {
+  fill: var(--on-cover);
+  font: 400 10.5px/1 var(--font-display);
+  letter-spacing: 0.02em;
+}

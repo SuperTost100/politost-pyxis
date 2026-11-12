@@ -13,6 +13,7 @@ import { extractByExt, extractPlain } from "./documents";
 import { enqueueSourceFile, registerSourceJobs, SourceExists, type Extraction } from "./jobs";
 import { linkedFolders } from "./linked";
 import { moveSource } from "./library-subjects";
+import { setChosenKind } from "./manage";
 import { hashFiles } from "./quality";
 import { listSources } from "./smartbook";
 
@@ -220,6 +221,22 @@ describe("a file imported into the Library before its folder was linked", () => 
     await expect(enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("nuova.txt", changed))).rejects.toBeInstanceOf(
       SourceExists,
     );
+  });
+
+  it("keeps the kind the student chose for the copy, through the take-over and a read of the changed file", async () => {
+    const app = setup();
+    const copy = await enqueueSourceFile(app.db, app.workspace, app.runner, app.outside("appunti.txt"));
+    await app.settled();
+    setChosenKind(app.db, copy.sourceId, "exercises");
+    const folder = await app.link();
+    const kind = () => listSources(app.db).map((source) => [source.id, source.fileKind, source.kindChosen]);
+    expect(kind()).toEqual([[copy.sourceId, "exercises", true]]);
+
+    writeFileSync(join(app.root, rel), `${NOTES}\n\nL'accelerazione è la derivata della velocità.`);
+    await app.linked.sync(folder.id);
+    await app.settled();
+    expect(app.reads).toContain(join(app.root, rel));
+    expect(kind()).toEqual([[copy.sourceId, "exercises", true]]);
   });
 
   it("keeps its stored original and its place in the subject when the file goes missing from the folder", async () => {

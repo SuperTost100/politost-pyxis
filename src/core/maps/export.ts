@@ -4,6 +4,9 @@ import {
   NODE_WIDTH,
   childrenOf,
   layoutTree,
+  radialLink,
+  radialPlan,
+  smoothPath,
 } from "../../shared/map-layout";
 import type { ConceptGraph, MapNode } from "./graph";
 import { readStoredMap } from "./store";
@@ -154,9 +157,11 @@ type Box = {
 };
 
 /**
- * The whole map as one SVG at full size, laid out as the editor lays it out: the tree from the shared layout with
- * estimated node heights, the radial layout from saved positions, and a dragged node where it was dropped. Folded
- * branches are open, and every cross-link shows its label.
+ * The whole map as one SVG at full size, laid out as the editor lays it out: the tree or the radial layout from the
+ * shared module with estimated node sizes, and a dragged node where it was dropped. Folded branches are open. A tree
+ * shows every cross-link with its label. A radial map draws the hierarchy only: across the rings a dashed link would
+ * run behind other concepts, and the page itself shows one only while an end is selected. The outline, and so the PDF
+ * that prints it beside the drawing, lists those links with their labels.
  */
 export function mapSvg(title: string, graph: ConceptGraph): string {
   const boxes = new Map<string, Box>();
@@ -169,16 +174,31 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
     heights.set(node.id, height);
     boxes.set(node.id, { node, x: node.x, y: node.y, height, lines, root });
   }
-  if (graph.layout === "tree") {
-    const places = layoutTree(graph.nodes, heights);
-    for (const box of boxes.values()) {
-      const at = places.get(box.node.id);
-      if (at && !box.node.pinned) Object.assign(box, at);
-    }
+  const plan =
+    graph.layout === "radial"
+      ? radialPlan(
+          graph.nodes,
+          new Map(
+            graph.nodes.map((node) => [
+              node.id,
+              { width: NODE_WIDTH, height: heights.get(node.id)! },
+            ]),
+          ),
+        )
+      : null;
+  const places = plan?.places ?? layoutTree(graph.nodes, heights);
+  for (const box of boxes.values()) {
+    const at = places.get(box.node.id);
+    if (at && !box.node.pinned) Object.assign(box, at);
   }
   const all = [...boxes.values()];
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-  type Curve = { tree: boolean; points: number[] };
+  // A link is one cubic curve, or in a radial map the points of a route that is drawn as a smooth curve through them.
+  type Curve = {
+    tree: boolean;
+    points: number[];
+    route?: Array<{ x: number; y: number }>;
+  };
   type Label = { x: number; y: number; width: number; lines: string[] };
   const curves: Curve[] = [];
   const labelBoxes: Label[] = [];
@@ -193,6 +213,31 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
       [source, target] = [target, source];
     const sy = source.y + source.height / 2;
     const ty = target.y + target.height / 2;
+    if (plan) {
+      // A radial map draws the hierarchy: out of the parent away from the root, a turn between the rings, into the child.
+      if (!tree) continue;
+      const rootBox = boxes.get(
+        graph.nodes.find((node) => node.parent === null)!.id,
+      )!;
+      const sized = (box: Box) => ({
+        x: box.x,
+        y: box.y,
+        width: NODE_WIDTH,
+        height: box.height,
+      });
+      const route = radialLink(
+        sized(source),
+        sized(target),
+        { x: rootBox.x + NODE_WIDTH / 2, y: rootBox.y + rootBox.height / 2 },
+        plan.bands.get(source.node.id) ?? [0.35, 0.65],
+      );
+      curves.push({
+        tree,
+        points: route.flatMap((point) => [point.x, point.y]),
+        route,
+      });
+      continue;
+    }
     let points: number[];
     if (!tree && source.x === target.x) {
       // Two nodes in one column: a loop out of their right sides, rather than a line through both boxes.
@@ -241,6 +286,7 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
   const top =
     Math.min(
       ...all.map((box) => box.y),
+      ...curves.flatMap((curve) => curve.points.filter((_, i) => i % 2 === 1)),
       ...labelBoxes.map((label) => label.y - labelHeight(label) / 2),
     ) - PAD;
   const right =
@@ -252,6 +298,7 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
   const bottom =
     Math.max(
       ...all.map((box) => box.y + box.height),
+      ...curves.flatMap((curve) => curve.points.filter((_, i) => i % 2 === 1)),
       ...labelBoxes.map((label) => label.y + labelHeight(label) / 2),
     ) + PAD;
   const width = Math.ceil(right - left);
@@ -260,8 +307,12 @@ export function mapSvg(title: string, graph: ConceptGraph): string {
   const X = (x: number) => Math.round((x - left) * 10) / 10;
   const Y = (y: number) => Math.round((y - top) * 10) / 10;
 
-  const path = ({ points: [x0, y0, x1, y1, x2, y2, x3, y3] }: Curve) =>
-    `<path d="M${X(x0!)} ${Y(y0!)} C${X(x1!)} ${Y(y1!)} ${X(x2!)} ${Y(y2!)} ${X(x3!)} ${Y(y3!)}"/>`;
+  const path = (curve: Curve) => {
+    if (curve.route)
+      return `<path d="${smoothPath(curve.route.map((point) => ({ x: X(point.x), y: Y(point.y) })))}"/>`;
+    const [x0, y0, x1, y1, x2, y2, x3, y3] = curve.points;
+    return `<path d="M${X(x0!)} ${Y(y0!)} C${X(x1!)} ${Y(y1!)} ${X(x2!)} ${Y(y2!)} ${X(x3!)} ${Y(y3!)}"/>`;
+  };
   const treeEdges = curves.filter((curve) => curve.tree).map(path);
   const linkEdges = curves.filter((curve) => !curve.tree).map(path);
   const linkLabels = labelBoxes.map((label) => {

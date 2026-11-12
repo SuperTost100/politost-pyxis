@@ -593,6 +593,8 @@
     "noMatch": "Nessuna fonte con questo filtro.",
     "sectionCount_one": "{{count}} sezione",
     "sectionCount_other": "{{count}} sezioni",
+    "pages_one": "{{count}} pagina",
+    "pages_other": "{{count}} pagine",
     "usedIn_one": "usata in {{count}} esame",
     "usedIn_other": "usata in {{count}} esami",
     "allTypes": "Tutti i tipi",
@@ -615,6 +617,15 @@
       "image": "Immagine",
       "link": "Link",
       "excerpt": "Estratto"
+    },
+    "fileKind": {
+      "book": "Libro",
+      "slides": "Slide",
+      "exam": "Tema d'esame",
+      "notes": "Appunti",
+      "exercises": "Esercizi",
+      "photo": "Foto",
+      "handout": "Dispensa"
     },
     "previewLink": "Anteprima del link",
     "saveLink": "Salva link",
@@ -831,7 +842,9 @@
       "subjectsFailed": "Non sono riuscito a leggere le materie. I file sono qui sotto, senza la divisione per materia.",
       "detachedTitle": "File",
       "updateBook": "Aggiorna il libro",
-      "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino."
+      "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino.",
+      "kindMenu": "Tipo",
+      "kindSet": "{{title}}: ora è {{kind}}."
     }
   },
   "cards": {
@@ -1731,8 +1744,8 @@
         "cards": "Flashcard",
         "gaps": "Ripasso mirato"
       },
-      "hoursHint": "Imposta le ore a settimana per vedere quando studierai ogni argomento.",
-      "hoursAction": "Imposta le ore",
+      "hoursHint": "Con un obiettivo di studio, in ore a settimana, vedi quando studierai ogni argomento.",
+      "hoursAction": "Imposta obiettivo di studio",
       "state": {
         "done": "fatto",
         "missed": "sotto l'obiettivo",
@@ -3293,7 +3306,91 @@
     "cardsReview_one": "Ripassa la flashcard",
     "cardsReview_other": "Ripassa le {{count}}",
     "redoCount_one": "Rifai la domanda",
-    "redoCount_other": "Rifai le {{count}}"
+    "redoCount_other": "Rifai le {{count}}",
+    "createDialog": {
+      "what": "Cosa",
+      "kinds": {
+        "lesson": "Lezione",
+        "quiz": "Quiz",
+        "cards": "Flashcard",
+        "practice": "Esercizi",
+        "map": "Mappa",
+        "simulation": "Simulazione"
+      },
+      "wholeExam": "Tutto il programma",
+      "noMaterial": "Questo argomento non ha ancora materiale, quindi Pyxis scrive da quello che sa invece che dalle tue fonti.",
+      "noMaterialPractice": "Questo argomento non ha ancora materiale, quindi non ci sono esercizi da proporre. Aggiungi materiale all'esame per averli.",
+      "questions": "Domande",
+      "keepOne": "Almeno un tipo di domanda resta scelto.",
+      "count": "Quante domande",
+      "countHint": "Al massimo {{max}}.",
+      "fewer": "Una domanda in meno",
+      "more": "Una domanda in più",
+      "material": "Materiale",
+      "materialStyled": "Domande nuove con la forma dei tuoi temi d'esame",
+      "materialExam": "Solo gli esercizi d'esame del tuo materiale",
+      "materialMixed": "Esercizi d'esame e del corso",
+      "materialPast": "Le domande dei tuoi temi d'esame, una dopo l'altra, senza tempo",
+      "duration": "Durata",
+      "minutesShort": "{{count}} min",
+      "hours_one": "1 ora",
+      "hours_other": "{{count}} ore",
+      "hoursHalf_one": "1 ora e mezza",
+      "hoursHalf_other": "{{count}} ore e mezza",
+      "mapPlaceholder": "Per esempio «solo i teoremi, con le dimostrazioni»",
+      "about": {
+        "lesson": "Una lezione sull'argomento scritta dal tuo materiale, con qualche domanda per controllare. Se ce n'è già una, si apre quella.",
+        "cards": "Le flashcard dell'argomento. Se non ce ne sono ancora, Pyxis le scrive dal tuo materiale.",
+        "practice": "Gli esercizi dell'argomento con la loro soluzione. Se non ce ne sono, puoi farli scrivere a Pyxis."
+      },
+      "simulationEmpty": "Questo esame non ha domande o brani da cui scrivere una simulazione.",
+      "pastEmpty": "Nei temi d'esame non ci sono ancora domande pronte.",
+      "cancel": "Annulla",
+      "create": "Crea",
+      "creating": "Sto creando"
+    },
+    "making": {
+      "quiz": "Sto preparando il quiz su {{topic}}",
+      "quizLine": "Leggo il tuo materiale e scrivo le prime domande. Il quiz si apre appena sono pronte.",
+      "simulation": "Sto preparando la simulazione d'esame",
+      "simulationLine": "Scrivo le domande, {{percent}}%. Si apre quando è pronta, e intanto puoi uscire: la trovi in Da finire."
+    },
+    "unfinished": {
+      "title": "Da finire",
+      "count_one": "1 attività",
+      "count_other": "{{count}} attività",
+      "quizOn": "Quiz su {{topic}}",
+      "drill": "Ripasso mirato",
+      "redo": "Domande da rifare",
+      "progress_one": "{{answered}} di 1 domanda",
+      "progress_other": "{{answered}} di {{count}} domande",
+      "reviewProgress": "{{answered}} di {{count}} tra flashcard e domande",
+      "writing": "In preparazione",
+      "stopped": "Preparazione interrotta",
+      "ready": "Pronta da iniziare",
+      "expired": "Tempo scaduto",
+      "today": "oggi alle {{time}}",
+      "yesterday": "ieri alle {{time}}",
+      "resume": "Riprendi",
+      "delete": "Elimina…",
+      "actions": "Azioni su {{title}}",
+      "deleteTitle": "Eliminare «{{title}}»?",
+      "deleteConfirm": "Elimina",
+      "lostAnswers_one": "La risposta che hai già dato si perde.",
+      "lostAnswers_other": "Le {{count}} risposte che hai già dato si perdono.",
+      "lostNothing": "Non hai ancora risposto a nessuna domanda.",
+      "lostWriting": "Pyxis smette di scriverlo e le domande scritte finora si perdono.",
+      "lostPreparing": "Pyxis smette di preparare la simulazione.",
+      "lostPrepared": "Le domande preparate per la simulazione si perdono.",
+      "lostReview": "Le flashcard che hai già ripassato restano ripassate, mentre le risposte alle domande si perdono.",
+      "staysOnPath": "Il quiz resta nel percorso, da rifare.",
+      "diagnosticAgain": "Puoi rifare il test dal percorso.",
+      "deleted": "Attività eliminata: {{title}}",
+      "deleteFailed": "Non riesco a eliminare «{{title}}».",
+      "loadFailed": "Non riesco a leggere le attività da finire.",
+      "showAll": "Mostra tutte le {{count}}",
+      "showFewer": "Mostra meno"
+    }
   },
   "smart": {
     "check": "Verifica rapida",
@@ -3477,8 +3574,15 @@
     "hint": {
       "preparation": "Il voto che prenderesti oggi",
       "path": "Quanto del percorso hai fatto",
-      "today": "Quanto hai fatto dei passi di oggi"
-    }
+      "today": "I minuti di studio di oggi, sul tuo obiettivo",
+      "todayNoGoal": "Si misura quando imposti un obiettivo di studio"
+    },
+    "noGoal": "non misurato",
+    "noDate": "manca la data",
+    "examDay": "giorno dell'esame",
+    "setGoal": "Imposta obiettivo di studio",
+    "todayMinutes": "{{done}} di {{target}} min",
+    "todayDone": "fatto, {{done}} min"
   },
   "flashcards": {
     "title": "Flashcard",

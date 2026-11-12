@@ -49,6 +49,7 @@ import {
 import { dueEverywhere, examRings, examlessDue, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
+import { deleteUnfinished, unfinishedActivities } from "./unfinished";
 import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
 import { IpcError } from "../../shared/ipc";
 
@@ -189,6 +190,12 @@ export function planHandlers(
     },
     openQuiz(input: { planId: string; itemId: string }) {
       return openPlanQuiz(db, input.planId, input.itemId);
+    },
+    unfinished(input: { planId: string }) {
+      return unfinishedActivities(db, input.planId);
+    },
+    deleteUnfinished(input: { planId: string; id: string }) {
+      return deleteUnfinished(db, runner, input.planId, input.id);
     },
     read(input: { planId: string }) {
       return readPlan(db, input.planId);

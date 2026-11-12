@@ -95,11 +95,16 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
 
     // The head: the date from the written session, the rings read as one image, and the legend with each value.
     await expect(page.locator(".px-exam-date")).toHaveText(/^Written \w+day/);
+    // No weekly hours are set, so Today measures nothing and offers to set a study goal.
     await expect(page.locator(".px-exam-rings").getByRole("img")).toHaveAccessibleName(
-      "Preparation not measured yet, Path 0%, Today 0%",
+      "Preparation not measured yet, Path 0%, Today not measured",
     );
     const legend = page.getByRole("list", { name: "Exam rings" });
-    await expect(legend.getByRole("listitem")).toHaveText(["Preparationnot measured yet", "Path0%", "Today0%"]);
+    await expect(legend.getByRole("listitem")).toHaveText([
+      "Preparationnot measured yet",
+      "Path0%",
+      "Todaynot measured. Set a study goal",
+    ]);
     await expectNoAxeViolations(page);
 
     // Adesso: the path's next step with the one primary button, the same step the exam list names. The due flashcard
@@ -271,7 +276,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await pickFromMenu(page, "Create an activity");
     const create = page.getByRole("dialog", { name: "Create an activity" });
     await expect(create).toContainText("Lesson");
-    await create.getByRole("button", { name: "Close" }).click();
+    await create.getByRole("button", { name: "Cancel" }).click();
     await expect(create).toBeHidden();
     await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Add to calendar" })).toBeVisible();
@@ -286,11 +291,11 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // The groups of settings render once the exam has been read.
     await expectContent(page, "Exam settings", page.getByRole("heading", { name: "The exam", exact: true }));
 
-    // Set the hours brings the weekly hours field into view and puts the focus in it, also in the smallest window.
+    // The path's "Set a study goal" brings the weekly hours field into view and puts the focus in it, also in the smallest window.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(960, 700));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(960);
     await openExam(page);
-    await page.getByRole("button", { name: "Set the hours" }).click();
+    await page.locator(".px-xpath").getByRole("button", { name: "Set a study goal" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
     const hours = page.getByRole("spinbutton", { name: "Hours a week" });
     await expect(hours).toBeFocused();

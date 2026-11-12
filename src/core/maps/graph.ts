@@ -39,8 +39,9 @@ export function validateGraph(graph: ConceptGraph): void {
 export function layoutGraph(graph: ConceptGraph): ConceptGraph {
   validateGraph(graph);
   const nodes = graph.nodes.map((node) => ({ ...node }));
-  if (graph.layout === "radial") placeRadial(nodes);
-  else placeTree(nodes);
+  // A radial map stores no positions: the page and the export both plan it from the concepts' sizes, so a row of an
+  // older version keeps the positions it has and nothing reads them.
+  if (graph.layout !== "radial") placeTree(nodes);
   return { ...graph, nodes };
 }
 
@@ -189,19 +190,5 @@ function placeTree(nodes: MapNode[]): void {
       point.data.x = point.x;
       point.data.y = point.y;
     }
-  });
-}
-function placeRadial(nodes: MapNode[]): void {
-  const root = rooted(nodes);
-  const maxDepth = Math.max(1, root.height);
-  const outerRadius = Math.max(
-    320 * maxDepth,
-    (nodes.length * 250) / (2 * Math.PI),
-  );
-  const placed = tree<MapNode>().size([2 * Math.PI, outerRadius])(root);
-  placed.each((point) => {
-    if (point.data.pinned) return;
-    point.data.x = Math.round(Math.sin(point.x) * point.y);
-    point.data.y = Math.round(-Math.cos(point.x) * point.y);
   });
 }

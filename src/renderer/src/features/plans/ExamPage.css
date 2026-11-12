@@ -126,6 +126,11 @@
   line-height: calc(19px * var(--text-scale, 1));
   color: var(--ink-subtle);
 }
+/* Adesso while Crea's activity is written: the working mark beside what Pyxis is doing. */
+.px-exam-now.is-working {
+  flex-wrap: nowrap;
+  gap: 18px;
+}
 .px-exam-now .px-skeleton-bar.is-title {
   width: 60%;
   height: 22px;
@@ -155,7 +160,8 @@
   padding: 18px 0;
   border-top: 1px solid var(--border);
 }
-.px-exam-asec:first-child {
+/* "Da finire" leaves a status line behind when it goes, so the first section is counted among sections only. */
+.px-exam-asec:first-of-type {
   border-top: 0;
 }
 .px-exam-asec h2 {
@@ -278,7 +284,7 @@
   text-overflow: ellipsis;
 }
 
-/* Materiale: a small drawing per kind of file, as on a shelf. */
+/* Materiale: each file's cover (FileCover), as on its shelf. */
 .px-exam-mats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -312,93 +318,13 @@
   font-weight: 500;
   font-size: calc(12px * var(--text-scale, 1));
   line-height: 1.3;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 .px-exam-art {
-  position: relative;
   align-self: end;
-  overflow: hidden;
-}
-.px-exam-art.is-book {
-  width: 40px;
-  height: 56px;
-  box-sizing: border-box;
-  padding: 6px 5px 6px 8px;
-  border-radius: 3px 6px 6px 3px;
-  background: var(--ink-muted);
-  color: var(--surface);
-  font: 400 8.5px/1.1 var(--font-display);
-  overflow-wrap: anywhere;
-}
-.px-exam-art.is-book::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 4px;
-  background: color-mix(in srgb, var(--ink) 25%, transparent);
-}
-.px-exam-art.is-slides {
-  width: 58px;
-  height: 38px;
-  margin-right: 6px;
-  border: 1px solid var(--border-control);
-  border-radius: 4px;
-  background: var(--surface-sunken);
-  box-shadow: 3px -3px 0 -1px var(--surface), 3px -3px 0 0 var(--border-control);
-  overflow: visible;
-}
-.px-exam-art.is-slides::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  width: 26px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--ink-subtle);
-}
-.px-exam-art.is-exam,
-.px-exam-art.is-notebook {
-  width: 40px;
-  height: 54px;
-  border: 1px solid var(--border-control);
-  border-radius: 3px;
-  background: var(--surface-sunken) repeating-linear-gradient(var(--border) 0 1px, transparent 1px 6px) 6px 16px / 28px 32px no-repeat;
-}
-.px-exam-art.is-exam::before {
-  content: "";
-  position: absolute;
-  top: 4px;
-  left: 3px;
-  width: 9px;
-  height: 2px;
-  background: var(--ink-subtle);
-  transform: rotate(-35deg);
-}
-.px-exam-art.is-notebook {
-  border-radius: 3px 6px 6px 3px;
-  background: var(--surface-sunken) repeating-linear-gradient(transparent 0 5px, var(--border) 5px 6px);
-}
-.px-exam-art.is-photo {
-  width: 54px;
-  height: 42px;
-  box-sizing: border-box;
-  padding: 3px 3px 9px;
-  border: 1px solid var(--border-control);
-  border-radius: 2px;
-  background: var(--surface);
-  transform: rotate(-2deg);
-}
-.px-exam-art.is-photo::before {
-  content: "";
-  display: block;
-  width: 100%;
-  height: 100%;
-  background: color-mix(in srgb, var(--ink-subtle) 55%, var(--surface-sunken));
+  justify-self: start;
 }
 
 /* The material page under /plans/:planId/sources. */
