@@ -7,7 +7,22 @@ describe("the line that says what an answer used", () => {
   it("names the one subject the cited files belong to", () => {
     expect(
       usedLine({ grounding: "sources", citations: [cite("a", "Fisica 2"), cite("b", "Fisica 2"), cite("a", "Fisica 2")] }),
-    ).toEqual({ key: "ask.used.subject", values: { count: 3, subject: "Fisica 2" } });
+    ).toEqual({ key: "ask.used.subject", values: { count: 2, subject: "Fisica 2" } });
+  });
+
+  it("counts files, not passages: three citations from two files are two sources", () => {
+    expect(usedLine({ grounding: "sources", citations: [cite("a", "Fisica 2"), cite("a", "Fisica 2"), cite("a", "Fisica 2")] })).toEqual({
+      key: "ask.used.subject",
+      values: { count: 1, subject: "Fisica 2" },
+    });
+    expect(usedLine({ grounding: "sources", citations: [cite("a", "Fisica 2"), cite("b", "Analisi 1"), cite("a", "Fisica 2")] })).toEqual({
+      key: "ask.used.two",
+      values: { count: 2, first: "Fisica 2", second: "Analisi 1" },
+    });
+    expect(usedLine({ grounding: "wider", citations: [cite("a", null), cite("a", null), cite("b", null)] })).toEqual({
+      key: "ask.used.library",
+      values: { count: 2, context: "wider" },
+    });
   });
 
   it("names two subjects, and says 'your Library' for more or for files without a subject", () => {
