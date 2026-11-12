@@ -1,6 +1,6 @@
 import { importPickedSource } from "./picked-source";
 import { expect, test } from "@playwright/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -13,6 +13,7 @@ import { fromChiediToExams } from "./doors";
 import { DatabaseSync } from "node:sqlite";
 import type { Page } from "@playwright/test";
 import { seedSubjects } from "./seed";
+import { drawingProblems } from "../fixtures/map-svg";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
@@ -620,6 +621,62 @@ test("MAP-11 radial layout: no overlaps, readable fit, folding, switch back and 
     }
     await expectNoAxeViolations(page);
     expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("MAP-12 exporting a radial map as SVG draws the picture the page shows", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-map-radial-export-"));
+  const saved = join(userData, "export.bin");
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_SAVE: saved } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const fixtures = { filmHistory: radialFixtures.filmHistory, physics: radialFixtures.physics };
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "cinema", name: "Cinema" }]);
+    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cinema','cinema',?,'general',1)").run(
+      JSON.stringify({
+        version: 1,
+        maps: Object.entries(fixtures).map(([id, map]) => ({
+          id,
+          title: map.title,
+          passageIds: [],
+          grounding: "general",
+          graph: storedGraph(map, "radial"),
+        })),
+      }),
+    );
+    db.close();
+    for (const [id, map] of Object.entries(fixtures)) {
+      await page.evaluate((id) => {
+        location.hash = `/maps/cinema?from=maps&map=${id}`;
+      }, id);
+      await page.reload();
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await mapAtRest(page);
+      rmSync(saved, { force: true });
+      await page.getByRole("button", { name: "Altro", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Esporta" }).click();
+      await page.getByRole("menuitem", { name: "Mappa intera SVG" }).click();
+      await expect.poll(() => existsSync(saved), { timeout: 30_000 }).toBe(true);
+      await expect(page.getByText("File salvato")).toBeVisible();
+      // The file is the whole map, unfolded, drawn from the radial plan: no two boxes touch, no link passes behind a
+      // box that is not one of its ends, and the root is in the middle.
+      const svg = readFileSync(saved, "utf8");
+      const graph = storedGraph(map, "radial");
+      const problems = drawingProblems(svg, graph);
+      expect(problems.overlaps, id).toEqual([]);
+      expect(problems.behind, id).toEqual([]);
+      expect(problems.rootOffset.x, id).toBeLessThan(0.1);
+      expect(problems.rootOffset.y, id).toBeLessThan(0.1);
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);

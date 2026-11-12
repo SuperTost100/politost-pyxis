@@ -1,0 +1,76 @@
+// Reads the SVG a map export draws, so unit and e2e tests can check the picture a student gets.
+
+type Rect = { x: number; y: number; width: number; height: number };
+type Point = { x: number; y: number };
+type Graph = {
+  nodes: Array<{ id: string; parent: string | null }>;
+  edges: Array<{ from: string; to: string }>;
+};
+
+/**
+ * What is wrong with a drawing of `map`: pairs of concept boxes that intersect, hierarchy links that pass through a box
+ * other than their two ends, and how far the root's middle is from the drawing's middle, as a share of its size. The
+ * drawing holds one concept box per node, in the order of the nodes, and the hierarchy's links in the first group of
+ * paths, one per link in the order of the edges.
+ */
+export function drawingProblems(svg: string, map: Graph) {
+  const rects = [...svg.matchAll(/<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.]+)" height="([\d.]+)" rx="12"/g)];
+  if (rects.length !== map.nodes.length) throw new Error(`${rects.length} concept boxes for ${map.nodes.length} nodes`);
+  const boxes = new Map<string, Rect>(
+    map.nodes.map((node, i) => {
+      const [, x, y, width, height] = rects[i]!;
+      return [node.id, { x: Number(x), y: Number(y), width: Number(width), height: Number(height) }];
+    }),
+  );
+  const parent = (id: string) => map.nodes.find((node) => node.id === id)?.parent;
+  const hierarchy = map.edges.filter((edge) => parent(edge.to) === edge.from || parent(edge.from) === edge.to);
+  const group = /<g fill="none" stroke="#7e8492"[^>]*>(.*?)<\/g>/.exec(svg)![1]!;
+  const paths = [...group.matchAll(/<path d="([^"]+)"/g)].map((match) => match[1]!);
+  if (paths.length !== hierarchy.length) throw new Error(`${paths.length} links for ${hierarchy.length} edges`);
+
+  const overlaps: string[] = [];
+  const list = [...boxes.entries()];
+  for (const [i, [a, boxA]] of list.entries())
+    for (const [b, boxB] of list.slice(i + 1))
+      if (boxA.x < boxB.x + boxB.width && boxB.x < boxA.x + boxA.width && boxA.y < boxB.y + boxB.height && boxB.y < boxA.y + boxA.height)
+        overlaps.push(`${a} and ${b}`);
+
+  const behind: string[] = [];
+  paths.forEach((d, i) => {
+    // A path is M, then straight (L) or cubic (C) segments, sampled finely enough to catch a box a curve cuts through.
+    const samples: Point[] = [];
+    for (const [, command, rest] of d.matchAll(/([MLC])([^MLC]*)/g)) {
+      const n = rest!.match(/-?[\d.]+/g)!.map(Number);
+      const from = samples.at(-1)!;
+      if (command === "M") samples.push({ x: n[0]!, y: n[1]! });
+      for (let step = 1; step <= 24 && command !== "M"; step++) {
+        const t = step / 24;
+        const u = 1 - t;
+        const at = (a: number, b: number, c: number, e: number) => u ** 3 * a + 3 * u * u * t * b + 3 * u * t * t * c + t ** 3 * e;
+        samples.push(
+          command === "L"
+            ? { x: from.x + (n[0]! - from.x) * t, y: from.y + (n[1]! - from.y) * t }
+            : { x: at(from.x, n[0]!, n[2]!, n[4]!), y: at(from.y, n[1]!, n[3]!, n[5]!) },
+        );
+      }
+    }
+    const link = hierarchy[i]!;
+    for (const [id, box] of boxes) {
+      if (id === link.from || id === link.to) continue;
+      if (samples.some((p) => p.x > box.x + 1 && p.x < box.x + box.width - 1 && p.y > box.y + 1 && p.y < box.y + box.height - 1))
+        behind.push(`${link.from} to ${link.to} passes behind ${id}`);
+    }
+  });
+
+  const width = Number(/width="(\d+)"/.exec(svg)![1]);
+  const height = Number(/height="(\d+)"/.exec(svg)![1]);
+  const root = boxes.get(map.nodes.find((node) => node.parent === null)!.id)!;
+  return {
+    overlaps,
+    behind,
+    rootOffset: {
+      x: Math.abs(root.x + root.width / 2 - width / 2) / width,
+      y: Math.abs(root.y + root.height / 2 - height / 2) / height,
+    },
+  };
+}
