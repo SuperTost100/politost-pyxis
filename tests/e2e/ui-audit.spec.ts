@@ -109,6 +109,11 @@ const routes = [
   ["plan-settings-changes", "/plans/audit-plan/settings"],
   ["plan-settings-delete", "/plans/audit-plan/settings"],
   ["plan-create", "/plans/audit-plan"],
+  // "Crea un'attività" on a simulation, with its length and material in place.
+  ["plan-create-simulation", "/plans/audit-plan"],
+  // "Da finire" with seven activities: one being written, one on a very long topic, a prepared simulation; and its menu.
+  ["plan-unfinished", "/plans/audit-plan"],
+  ["plan-unfinished-menu", "/plans/audit-plan"],
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
@@ -1027,6 +1032,7 @@ function auditScanBlob(): string {
 let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
+let auditUnfinished = false;
 
 /**
  * Cards of a second subject, of an exam with no subject and with no exam, for the flashcard browser only. Every other
@@ -1590,6 +1596,54 @@ function prepareState(name: string) {
       step.run("audit-done-practice", JSON.stringify({ activity: "practice" }), Date.now());
     });
   auditDone = name === "plan-done";
+  // Unfinished activities on the audit exam beside its open quiz, so "Da finire" lists seven; other states keep one.
+  if (name.startsWith("plan-unfinished") || auditUnfinished)
+    withDb((db) => {
+      db.exec(`DELETE FROM attempts WHERE id LIKE 'audit-unf-%'; DELETE FROM items WHERE id LIKE 'audit-unf-%';
+        DELETE FROM jobs WHERE id LIKE 'audit-unf-%'; DELETE FROM topics WHERE id = 'audit-unf-topic'`);
+      if (!name.startsWith("plan-unfinished")) return;
+      const now = Date.now();
+      const questions = (count: number) =>
+        Array.from({ length: count }, (_, i) => ({ id: `audit-unf-q${i}`, stem: `Domanda ${i}`, answer: { kind: "tf", value: true } }));
+      db.prepare("INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('audit-unf-topic','audit-plan',?,99,1)").run(
+        "Successioni e serie numeriche, criteri di convergenza assoluta e condizionata con esempi svolti",
+      );
+      const add = (id: string, kind: string, topicId: string | null, body: object, at: number) => {
+        db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES(?,'audit-plan',?,?,?,1)").run(
+          `audit-unf-${id}-item`,
+          topicId,
+          kind,
+          JSON.stringify(body),
+        );
+        db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'audit-plan',?,?)").run(
+          `audit-unf-${id}`,
+          `audit-unf-${id}-item`,
+          at,
+        );
+      };
+      add("writing", "quiz", "audit-topic", { complete: false, config: { count: 8 }, questions: questions(2) }, now - 60_000);
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,created_at,updated_at) VALUES('audit-unf-job','quiz-build',?,'running',?,?)",
+      ).run(JSON.stringify({ attemptId: "audit-unf-writing", input: { planId: "audit-plan", topicId: "audit-topic" } }), now, now);
+      add("long", "quiz", "audit-unf-topic", { complete: true, questions: questions(10) }, now - 86_400_000);
+      add("diag", "diagnostic", null, { questions: questions(10) }, now - 3 * 86_400_000);
+      add("redo", "quiz", null, { redo: true, complete: true, questions: questions(4) }, now - 9 * 86_400_000);
+      add("past", "quiz", null, { pastPaper: 1, complete: true, questions: questions(6) }, now - 12 * 86_400_000);
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,created_at,updated_at) VALUES('audit-unf-build','simulation-build',?,'succeeded',?,?)",
+      ).run(
+        JSON.stringify({
+          planId: "audit-plan",
+          minutes: 60,
+          batches: [],
+          next: 0,
+          questions: [{ id: "audit-unf-sq", topicId: "audit-topic", passageIds: ["audit-passage"], stem: "Calcola la forza." }],
+        }),
+        now - 5 * 86_400_000,
+        now - 5 * 86_400_000,
+      );
+    });
+  auditUnfinished = name.startsWith("plan-unfinished");
   if (name.startsWith("library")) {
     // A stored syllabus comparison, keyed the way the core keys it: the source version and each plan's compared texts.
     withDb((db) => {
@@ -3290,6 +3344,15 @@ async function openState(page: Page, name: string) {
       await page.getByRole("menuitem", { name: both("Sposta in", "Move to") }).hover();
       await expect(page.getByRole("menuitem", { name: both("Nuova materia…", "New subject…") })).toBeVisible();
       break;
+    case "plan-unfinished":
+      await expect(page.locator(".px-unf-open")).toHaveCount(3);
+      await page.locator(".px-unf-more").click();
+      await expect(page.locator(".px-unf-open")).toHaveCount(7);
+      break;
+    case "plan-unfinished-menu":
+      await page.locator(".px-unf-dots").first().click();
+      await expect(page.getByRole("menuitem", { name: both("Elimina…", "Delete…") })).toBeVisible();
+      break;
     case "library-row-menu":
       await page
         .getByRole("button", {
@@ -4081,11 +4144,13 @@ test("M14 every application route in both languages, themes and supported widths
                 // The dialog mounts a frame after the click; the keyboard check needs it there.
                 await expect(page.getByRole("dialog")).toBeVisible();
               }
-              if (name === "plan-create") {
+              if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.
                 await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
                 await page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }).click();
                 await expect(page.getByRole("dialog")).toBeVisible();
+                if (name === "plan-create-simulation")
+                  await page.getByRole("dialog").getByRole("radio", { name: /^(Simulazione|Simulation)$/ }).click();
               }
               if (name === "plan-done") {
                 // The topic the path is on is open, its finished steps ticked.
@@ -4114,6 +4179,7 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  name === "plan-unfinished-menu" ||
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||

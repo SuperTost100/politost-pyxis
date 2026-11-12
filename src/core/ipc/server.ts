@@ -394,6 +394,8 @@ const routes = {
   "plans.removeSource": ["plans", "removeSource"],
   "plans.item": ["plans", "item"],
   "plans.openQuiz": ["plans", "openQuiz"],
+  "plans.unfinished": ["plans", "unfinished"],
+  "plans.deleteUnfinished": ["plans", "deleteUnfinished"],
   "plans.settings": ["plans", "settings"],
   "plans.create": ["plans", "create", "signal"],
   "plans.proposeModules": ["plans", "proposeModules", "signal"],

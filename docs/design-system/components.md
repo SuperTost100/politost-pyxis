@@ -21,6 +21,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `TagsField`                          | A free list of words, each a tag                                                                         |
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
 | `Chip`                               | A small rounded choice or filter                                                                         |
+| `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                    |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
 | `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |
 | `BackLink`                           | The way back above a page's title: an arrow and the name of the place it leads to                        |
