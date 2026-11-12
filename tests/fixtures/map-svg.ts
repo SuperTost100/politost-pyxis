@@ -37,14 +37,23 @@ export function drawingProblems(svg: string, map: Graph) {
 
   const behind: string[] = [];
   paths.forEach((d, i) => {
-    // A path is M, then straight (L) or cubic (C) segments, sampled finely enough to catch a box a curve cuts through.
+    // A path is M, then straight (L) or cubic (C) segments. Each is sampled at least every 4 px of its length, and the
+    // check below tests the stretch between two samples, not the samples alone, so a long straight link cannot step over
+    // a box.
     const samples: Point[] = [];
     for (const [, command, rest] of d.matchAll(/([MLC])([^MLC]*)/g)) {
       const n = rest!.match(/-?[\d.]+/g)!.map(Number);
       const from = samples.at(-1)!;
-      if (command === "M") samples.push({ x: n[0]!, y: n[1]! });
-      for (let step = 1; step <= 24 && command !== "M"; step++) {
-        const t = step / 24;
+      if (command === "M") {
+        samples.push({ x: n[0]!, y: n[1]! });
+        continue;
+      }
+      const corners = command === "L" ? [from, { x: n[0]!, y: n[1]! }] : [from, { x: n[0]!, y: n[1]! }, { x: n[2]!, y: n[3]! }, { x: n[4]!, y: n[5]! }];
+      // A curve is never longer than the polygon of its control points.
+      const length = corners.slice(1).reduce((sum, point, at) => sum + Math.hypot(point.x - corners[at]!.x, point.y - corners[at]!.y), 0);
+      const steps = Math.max(24, Math.ceil(length / 4));
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps;
         const u = 1 - t;
         const at = (a: number, b: number, c: number, e: number) => u ** 3 * a + 3 * u * u * t * b + 3 * u * t * t * c + t ** 3 * e;
         samples.push(
@@ -57,7 +66,8 @@ export function drawingProblems(svg: string, map: Graph) {
     const link = hierarchy[i]!;
     for (const [id, box] of boxes) {
       if (id === link.from || id === link.to) continue;
-      if (samples.some((p) => p.x > box.x + 1 && p.x < box.x + box.width - 1 && p.y > box.y + 1 && p.y < box.y + box.height - 1))
+      const inside = { left: box.x + 1, right: box.x + box.width - 1, top: box.y + 1, bottom: box.y + box.height - 1 };
+      if (samples.some((p, at) => at > 0 && crosses(samples[at - 1]!, p, inside)))
         behind.push(`${link.from} to ${link.to} passes behind ${id}`);
     }
   });
@@ -73,4 +83,20 @@ export function drawingProblems(svg: string, map: Graph) {
       y: Math.abs(root.y + root.height / 2 - height / 2) / height,
     },
   };
+}
+
+/** Whether the straight stretch from `a` to `b` has a point strictly inside the rectangle (Liang-Barsky clipping). */
+export function crosses(a: Point, b: Point, box: { left: number; right: number; top: number; bottom: number }): boolean {
+  let enter = 0;
+  let leave = 1;
+  const clip = (delta: number, distance: number) => {
+    if (delta === 0) return distance > 0;
+    const t = distance / delta;
+    if (delta < 0) enter = Math.max(enter, t);
+    else leave = Math.min(leave, t);
+    return enter < leave;
+  };
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return clip(-dx, a.x - box.left) && clip(dx, box.right - a.x) && clip(-dy, a.y - box.top) && clip(dy, box.bottom - a.y);
 }

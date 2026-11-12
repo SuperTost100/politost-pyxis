@@ -4,7 +4,7 @@ import { openDatabase } from "../db/connection";
 import { exportMap, mapOutline, mapSvg, wrapText } from "./export";
 import type { ConceptGraph } from "./graph";
 import { storeMap } from "./store";
-import { drawingProblems } from "../../../tests/fixtures/map-svg";
+import { crosses, drawingProblems } from "../../../tests/fixtures/map-svg";
 import { filmHistory, physics, radialFixtures, storedGraph } from "../../../tests/fixtures/maps";
 
 const node = (
@@ -247,5 +247,20 @@ describe.each([
     const svg = mapSvg(fixture.title, map);
     expect(svg).not.toMatch(/stroke-dasharray="6 5"[^>]*><path/);
     for (const link of fixture.links) expect(svg).not.toContain(`>${link.label}</tspan>`);
+  });
+});
+
+describe("the drawing check", () => {
+  const box = { left: -119, right: 119, top: 49, bottom: 111 };
+
+  it("sees a long straight link that passes through a box between two of its samples", () => {
+    expect(crosses({ x: 0, y: 32 }, { x: 0, y: 2400 }, box)).toBe(true);
+    expect(crosses({ x: -300, y: 80 }, { x: 300, y: 80 }, box)).toBe(true);
+  });
+
+  it("lets a link pass beside a box or stop at its edge", () => {
+    expect(crosses({ x: 200, y: 32 }, { x: 200, y: 2400 }, box)).toBe(false);
+    expect(crosses({ x: 0, y: 0 }, { x: 0, y: 49 }, box)).toBe(false);
+    expect(crosses({ x: -300, y: 20 }, { x: 300, y: 40 }, box)).toBe(false);
   });
 });
