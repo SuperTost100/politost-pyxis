@@ -1,6 +1,6 @@
 {
   "name": "politost-pyxis",
-  "version": "0.5.0-dev.8",
+  "version": "0.5.0-dev.9",
   "description": "PoliTost Pyxis is a free, open-source study tutor that runs on the student's computer.",
   "author": "PoliTost",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "@huggingface/transformers": "^3.8.1",
     "@mozilla/readability": "^0.6.0",
     "@napi-rs/canvas": "1.1.0",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^13.1.1",
     "cli-funnel": "0.9.1",
     "d3-hierarchy": "^3.1.2",
     "fflate": "^0.8.2",
@@ -68,9 +68,9 @@
     "html-to-image": "1.11.13",
     "i18next": "^27.1.1",
     "katex": "0.19.1",
-    "lucide-react": "^1.71.0",
+    "lucide-react": "^1.72.0",
     "mathlive": "0.111.4",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-i18next": "^18.0.1",
@@ -82,7 +82,7 @@
     "remark-math": "6.0.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vite": "^8.3.7",
+    "vite": "^8.3.8",
     "vitest": "^5.0.5"
   },
   "overrides": {
