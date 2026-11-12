@@ -33,7 +33,8 @@ export function renameSubject(db: Database.Database, id: string, name: string): 
     const clash = db.prepare("SELECT id FROM subjects WHERE name = ? COLLATE NOCASE AND id <> ?").get(clean, id);
     if (clash) throw new IpcError("invalid", "errors.subjectExists");
     db.prepare("UPDATE subjects SET name = ? WHERE id = ?").run(clean, id);
-    db.prepare("UPDATE chats SET subject = ? WHERE subject = ?").run(clean, current.name);
+    // A chat names its subject as text, in whatever case it was stored; the Library's own names are unique without case.
+    db.prepare("UPDATE chats SET subject = ? WHERE subject = ? COLLATE NOCASE").run(clean, current.name);
     // A subject Pyxis made for files added to the Library says so on their rows until the student names it.
     db.prepare("UPDATE sources SET subject_sort = 'sorted' WHERE subject_id = ? AND subject_sort = 'created'").run(id);
     return { id, name: clean };
@@ -67,7 +68,10 @@ export function removeSubject(db: Database.Database, id: string, options: { only
       if (!row) throw new IpcError("invalid", "errors.invalidSubject");
       if (row.used) throw new IpcError("invalid", "sources.shelf.subjectNotEmpty");
     }
+    const name = (db.prepare("SELECT name FROM subjects WHERE id = ?").get(id) as { name: string } | undefined)?.name;
     db.prepare("DELETE FROM maps WHERE subject_id = ? AND plan_id IS NULL").run(id);
     db.prepare("DELETE FROM subjects WHERE id = ?").run(id);
+    // Its chats are left without a subject, which they read as the whole Library (see `readScope` in chat/turn.ts).
+    if (name) db.prepare("UPDATE chats SET subject = NULL WHERE subject = ? COLLATE NOCASE").run(name);
   })();
 }

@@ -161,6 +161,11 @@ export interface PyxisBridge {
     filename: string;
     base64: string;
   }): Promise<"saved" | "cancelled">;
+  /**
+   * The pixels the window shows in `rect` (in CSS pixels from the window's top-left corner), as a PNG at the screen's
+   * pixel ratio, in base64. It is the window as drawn, so what is over `rect` at that moment is in the picture.
+   */
+  captureView(rect: { x: number; y: number; width: number; height: number }): Promise<string>;
   /** `svg` is a concept map's drawing, printed on its own page before the Markdown. */
   exportPdf(input: {
     filename: string;
@@ -237,6 +242,7 @@ export const mainChannels = {
   planFileWaiting: "plan-file:waiting",
   artifactSave: "artifact:save",
   pdfExport: "artifact:pdf",
+  viewCapture: "artifact:capture-view",
   printData: "print:data",
   printReady: "print:ready",
   updatesCheck: "updates:check",

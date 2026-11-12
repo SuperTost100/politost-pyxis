@@ -48,7 +48,8 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     const chip = page.getByRole("button", { name: "Perché?" });
     await expect(chip).toBeVisible();
 
-    await page.getByRole("button", { name: "Allega file o immagine" }).click();
+    await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
+    await page.getByRole("menuitem", { name: "Allega file o immagine" }).click();
     await expect(page.getByText("appunti.txt")).toBeVisible();
     await box.fill("Bozza da tenere");
 
@@ -81,7 +82,8 @@ test("R14-3 a suggestion sends only its own text and leaves the draft and photos
     await expect(page.getByText("appunti.txt")).toHaveCount(0);
 
     // A normal send still carries the draft and the file, then clears both.
-    await page.getByRole("button", { name: "Allega file o immagine" }).click();
+    await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
+    await page.getByRole("menuitem", { name: "Allega file o immagine" }).click();
     await expect(page.getByText("appunti.txt")).toBeVisible();
     await box.press("Enter");
     // The note is the turn's own source, so the reply is stored even though the fixture reply cites nothing.

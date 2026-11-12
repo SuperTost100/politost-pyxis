@@ -40,10 +40,9 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
     await box.click();
     await page.keyboard.type("Quanto vale ");
 
-    // The sigma button opens a formula at the caret and the keyboard under the field.
-    const toggle = page.getByRole("button", { name: "Inserisci formula" });
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // "Scrivi una formula" in the plus menu opens a formula at the caret and the keyboard under the field.
+    await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
+    await page.getByRole("menuitem", { name: "Scrivi una formula" }).click();
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await expect(keys).toBeVisible();
     const field = box.locator(".px-mathchip math-field");
@@ -61,7 +60,6 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
     // Esc closes the keyboard and returns to the text after the formula.
     await page.keyboard.press("Escape");
     await expect(keys).toHaveCount(0);
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
     await expect(box).toBeFocused();
     await page.keyboard.type(" se x vale 3?");
     const chip = box.locator(".px-mathchip");

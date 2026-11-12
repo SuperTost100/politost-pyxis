@@ -2,7 +2,7 @@ import { Button as AntButton, Dropdown, type MenuProps } from "antd";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { menuTrigger, type MenuPoint } from "../lib/itemMenu";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 import "./ItemMenu.css";
 
@@ -156,12 +156,17 @@ function MenuRegion({
       target.focus({ preventScroll: true });
       if (arrow) arrow.current = null;
     };
-    // At once, before the next key press when the popup is ready, and a frame later when it was not, unless the focus is
-    // already in the menu.
+    // At once, before the next key press when the popup is ready, and on the next frames while it is not (a menu opened
+    // again right after it closed is hidden for a few frames), until the focus is in the menu.
     take();
-    const frame = requestAnimationFrame(() => {
-      if (!ref.current?.contains(document.activeElement)) take();
-    });
+    let tries = 0;
+    let frame = 0;
+    const retry = () => {
+      if (ref.current?.contains(document.activeElement)) return;
+      take();
+      if (++tries < 12) frame = requestAnimationFrame(retry);
+    };
+    frame = requestAnimationFrame(retry);
     return () => {
       cancelAnimationFrame(frame);
       if (arrow) arrow.current = null;
@@ -388,7 +393,8 @@ export function MenuItemArea({
 }
 
 /**
- * The button that opens a menu below it: by default the three dots; with `children`, a button that shows them followed by
+ * The button that opens a menu below it: by default the three dots, or another `icon` such as the composer's plus; with
+ * `children`, a button that shows them followed by
  * a chevron, such as a map switcher. `label` is its name for screen readers, which for a switcher says what it switches
  * and what is chosen now. The menu grows from the button, lines up with its right edge (or its
  * left with `align="start"`), and closes on Escape, a click away or a choice, giving focus back to the button. Hand it the
@@ -401,12 +407,16 @@ export function MenuButton({
   disabled,
   align = "end",
   size = "md",
+  icon = "ellipsis",
   className,
   children,
   onOpenChange,
+  focusAfterChoice,
 }: {
   menu: MenuProps;
   label: string;
+  /** The icon of a button without `children`. */
+  icon?: IconName;
   region?: string;
   disabled?: boolean;
   align?: "start" | "end";
@@ -414,8 +424,13 @@ export function MenuButton({
   className?: string;
   children?: ReactNode;
   onOpenChange?: (open: boolean) => void;
+  /** Where the focus goes after a choice, when not back to the button, such as the field the student was typing in. */
+  focusAfterChoice?: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Each opening draws the menu anew: a closed popup keeps its last render, so its region would not see it open again
+  // and would not take the focus.
+  const [openings, setOpenings] = useState(0);
   // The Dropdown hands its child a ref of its own, so the button is found by its id to give focus back.
   const id = useId();
   const report = useRef(onOpenChange);
@@ -425,10 +440,29 @@ export function MenuButton({
   useEffect(() => {
     if (disabled) setOpen(false);
   }, [disabled]);
-  const close = () => {
+  const close = (chose = false) => {
     setOpen(false);
-    document.getElementById(id)?.focus();
+    const back = () => (chose && focusAfterChoice ? focusAfterChoice() : document.getElementById(id)?.focus());
+    back();
+    // A menu closed by Escape before any item had the focus moves it to an item once more as it leaves; the button
+    // takes it back a frame later when it is left in the closing menu or nowhere.
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (!active || active === document.body || active.closest(".px-item-menu")) back();
+    });
   };
+  // Escape pressed before an item has the focus closes the menu with the focus nowhere in it, so it is noted as it is
+  // pressed, before the menu goes, and the focus still goes back to the button.
+  const escaped = useRef(false);
+  useEffect(() => {
+    if (!open) return;
+    escaped.current = false;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escaped.current = true;
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [open]);
   // The menu takes the focus as it opens. An arrow pressed on the button before it could is kept for the menu, so a
   // quick Enter and down arrow still reach the first item.
   const arrow = useRef<"first" | "last" | null>(null);
@@ -453,19 +487,22 @@ export function MenuButton({
       autoAdjustOverflow={FIT_IN_WINDOW}
       disabled={disabled}
       onOpenChange={(next) => {
-        if (next) return setOpen(true);
+        if (next) {
+          setOpenings((count) => count + 1);
+          return setOpen(true);
+        }
         // Escape, or a choice, leaves the focus in the menu as it closes, so it goes back to the button. A click away
         // or on the button leaves it where the click put it.
         const fromMenu = document.activeElement instanceof Element && document.activeElement.closest(".px-item-menu");
-        if (fromMenu) close();
+        if (fromMenu || escaped.current) close();
         else setOpen(false);
       }}
       popupRender={(list) => (
-        <MenuRegion label={region ?? label} open={open} arrow={arrow}>
+        <MenuRegion key={openings} label={region ?? label} open={open} arrow={arrow}>
           {list}
         </MenuRegion>
       )}
-      menu={drawn(menu, close)}
+      menu={drawn(menu, () => close(true))}
     >
       <AntButton
         id={id}
@@ -489,7 +526,7 @@ export function MenuButton({
         }}
         title={dots ? label : undefined}
         disabled={disabled}
-        icon={dots ? <Icon name="ellipsis" size={size === "sm" ? 16 : 18} /> : undefined}
+        icon={dots ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : undefined}
       >
         {dots ? null : (
           <>

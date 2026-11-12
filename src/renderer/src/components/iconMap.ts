@@ -71,6 +71,8 @@ import {
   SlidersHorizontal,
   Star,
   Contrast,
+  Lightbulb,
+  ListOrdered,
 } from "lucide-react";
 
 export type IconName =
@@ -82,6 +84,8 @@ export type IconName =
   | "target"
   | "network"
   | "pencil-line"
+  | "lightbulb"
+  | "list-ordered"
   | "list-checks"
   | "square-split-horizontal"
   | "repeat"
@@ -155,6 +159,8 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   target: Target,
   network: Network,
   "pencil-line": PencilLine,
+  lightbulb: Lightbulb,
+  "list-ordered": ListOrdered,
   "list-checks": ListChecks,
   "square-split-horizontal": SquareSplitHorizontal,
   repeat: Repeat,

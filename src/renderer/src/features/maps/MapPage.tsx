@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Input, Modal, Select, type MenuProps } from "antd";
+import { App, Input, Modal, Select, type MenuProps } from "antd";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, GraduationCap, Library } from "lucide-react";
 import {
   useCallback,
@@ -37,7 +37,6 @@ import {
   type NodeChange,
   type Viewport,
 } from "@xyflow/react";
-import { toPng } from "html-to-image";
 import { BackLink } from "../../components/BackLink";
 import { Button } from "../../components/Button";
 import { Notice } from "../../components/Notice";
@@ -53,6 +52,7 @@ import { MathText } from "../../components/math/MathText";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
 import { claimOnce, wasClaimed } from "../../lib/claimOnce";
+import { safeFileName } from "@shared/file-name";
 import { MAP_INSTRUCTION_MAX, mapColors as fills, type MapAddress, type MapOp } from "@shared/concept-map";
 import "@xyflow/react/dist/style.css";
 import {
@@ -247,6 +247,7 @@ const edgeTypes = { cross: CrossEdge, radial: RadialEdge };
 
 export function MapPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   // `/maps/:subjectId/:topicId?` names a subject and maybe one of its topics; `/plans/:planId/map/:topicId`, the older
   // address, a topic of an exam. Core reads either as the same map.
   const params = useParams();
@@ -1201,27 +1202,34 @@ export function MapPage() {
       void generateMaps(own).finally(() => setStarting(false));
     } else setStarting(false);
   });
-  // The view on screen as a picture, without the canvas tools over it.
+  // The view on screen as a picture. Main takes the window's own pixels, so the picture has the app's fonts, the links
+  // and the theme as drawn; the canvas's tools are hidden for the frames the capture takes, and come back before the
+  // save dialog opens.
   async function exportPng() {
-    if (!canvas.current) return;
+    const element = canvas.current;
+    if (!element) return;
     setBusy(true);
     setNotice("");
     try {
-      await document.fonts.ready;
-      const url = await toPng(canvas.current, {
-        backgroundColor: getComputedStyle(canvas.current).backgroundColor,
-        pixelRatio: 2,
-        filter: (el) =>
-          !(
-            el instanceof HTMLElement &&
-            (el.classList.contains("px-map-strip") ||
-              el.classList.contains("react-flow__attribution"))
-          ),
+      const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      // The menu this was chosen from fades out over the top of the canvas; the picture waits until it is gone.
+      for (let n = 0; n < 90 && document.querySelector(".ant-dropdown:not(.ant-dropdown-hidden)"); n++) await frame();
+      element.toggleAttribute("data-exporting", true);
+      let png: string;
+      try {
+        // Two frames: one to draw without the tools, one so the capture sees that frame.
+        await frame();
+        await frame();
+        const box = element.getBoundingClientRect();
+        png = await window.pyxis.captureView({ x: box.x, y: box.y, width: box.width, height: box.height });
+      } finally {
+        element.removeAttribute("data-exporting");
+      }
+      const result = await window.pyxis.saveArtifact({
+        filename: `${safeFileName(title, t("map.title"))}.png`,
+        base64: png,
       });
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "map.png";
-      link.click();
+      if (result === "saved") void message.success(t("export.saved"));
     } catch {
       setNotice(t("map.exportFailed"));
     } finally {

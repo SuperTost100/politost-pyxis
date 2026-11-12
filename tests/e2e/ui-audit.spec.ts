@@ -24,6 +24,7 @@ import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { atRest } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
@@ -294,12 +295,15 @@ const routes = [
   ["library-ocr-ready", "/exams/library"],
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
-  // The chat panel, the composer's subject menu and its sources popover.
+  // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
   ["ask-search-empty", "/ask/audit-chat"],
-  ["ask-subject-menu", "/ask/audit-chat"],
-  ["ask-sources-menu", "/ask/audit-chat"],
+  ["ask-subject-menu", "/ask/audit-guided"],
+  ["ask-new-subject-menu", "/ask"],
+  // A guided answer, with "Dammi la soluzione" under it, and an answer from general knowledge that says so.
+  ["ask-guided", "/ask/audit-guided"],
+  ["ask-general", "/ask/audit-general"],
   // The confirmations behind a solid danger button: delete a chat and delete a hand-made flashcard.
   ["ask-delete", "/ask/audit-chat"],
   // The formula keyboard docked in the composer, with a formula already typed.
@@ -378,7 +382,16 @@ function seed(db: DatabaseSync) {
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-user','audit-chat','user','Come calcolo la forza?',1);
     INSERT INTO items(id,plan_id,kind,body_json,created_at) VALUES('audit-intro','audit-plan','intro','{"markdown":"Benvenuto in **Fisica 1**: studierai le forze e il moto.\\n\\n\`\`\`pyxis-check\\n{\\"question\\": \\"Che cosa cambia una forza?\\", \\"options\\": [\\"Il moto\\", \\"Il colore\\"], \\"answer\\": 0}\\n\`\`\`","passageIds":[]}',1);
     INSERT INTO messages(id,chat_id,role,body,grounding,created_at) VALUES('audit-assistant','audit-chat','assistant','Usa $F=ma$. Con $m=2$ e $a=3$, ottieni $6$ N [P1].','sources',2);
-    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-assistant','audit-passage','P1');`);
+    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-assistant','audit-passage','P1');
+    INSERT INTO chats(id,title,scope_json,subject,created_at,updated_at) VALUES('audit-guided','Accelerazione, passo per passo','{"sourceIds":[],"subjectBy":"pyxis"}','Linguaggio cinematografico e storia del cinema italiano del dopoguerra',1,1);
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-guided-user','audit-guided','user','Non ho capito come si trova la forza, mi aiuti?',1);
+    INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,created_at) VALUES('audit-guided-reply','audit-guided','assistant','Facciamolo un passo alla volta. La forza dipende dalla massa e dall''accelerazione [P1].
+
+Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
+    INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-guided-reply','audit-passage','P1');
+    INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
+    INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,passages_json,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver','{"found":false,"where":"files"}',2);`);
   db.prepare(
     "INSERT INTO settings(key,value_json,updated_at) VALUES('plan-import:audit-plan',?,?)",
   ).run(JSON.stringify({ author: "Example author", exportedAt: now }), now);
@@ -2573,22 +2586,20 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "ask-subject-menu":
-      await page.getByRole("button", { name: /^(Materia|Subject):/ }).click();
+    case "ask-new-subject-menu": {
+      const chip = page.getByRole("button", { name: /^(Materia della chat|Chat subject|Materia: sceglie|Subject: Pyxis)/ });
+      await atRest(chip);
+      await chip.click();
       await expect(
-        page.getByRole("button", {
-          name: both("Gestisci materie", "Manage subjects"),
-        }),
+        page.getByRole("menuitemradio", { name: both("Tutta la Libreria", "Whole Library") }),
       ).toBeVisible();
       break;
-    case "ask-sources-menu":
-      await page
-        .getByRole("button", { name: both("Fonti", "Sources") })
-        .click();
-      await expect(
-        page.getByRole("button", {
-          name: both("Aggiungi fonti", "Add sources"),
-        }),
-      ).toBeVisible();
+    }
+    case "ask-guided":
+      await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toBeVisible();
+      break;
+    case "ask-general":
+      await expect(page.getByText(/^(Non ho trovato niente su questa domanda|I found nothing on this)/)).toBeVisible();
       break;
     case "ask-delete":
       await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
@@ -2619,11 +2630,8 @@ async function openState(page: Page, name: string) {
       await expect(dialog).toBeVisible();
       break;
     case "ask-formula": {
-      await page
-        .getByRole("button", {
-          name: both("Inserisci formula", "Insert formula"),
-        })
-        .click();
+      await page.getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") }).click();
+      await page.getByRole("menuitem", { name: both("Scrivi una formula", "Write a formula") }).click();
       const keys = page.getByRole("group", {
         name: both("Tastiera per formule", "Formula keyboard"),
       });
@@ -4370,6 +4378,20 @@ test("M14 every application route in both languages, themes and supported widths
                 if (name === "map-exam-active" && sizes.withIt.height > sizes.window)
                   errors.push(`The map's page is ${sizes.withIt.height - sizes.window}px taller than the window`);
               }
+              // On the exam page nothing but the grid's own gap lies between Adesso and Percorso, whatever the exam has and
+              // however tall the sections beside them are.
+              const apart = await page.evaluate(() => {
+                const now = document.querySelector(".px-exam-now");
+                const heading = document.querySelector(".px-exam-path .px-exam-sech");
+                const grid = document.querySelector(".px-exam-grid");
+                if (!now || !heading || !grid) return null;
+                return {
+                  apart: heading.getBoundingClientRect().top - now.getBoundingClientRect().bottom,
+                  gap: Number.parseFloat(getComputedStyle(grid).rowGap),
+                };
+              });
+              if (apart && Math.abs(apart.apart - apart.gap) > 1)
+                errors.push(`Adesso and Percorso are ${apart.apart}px apart, the grid's gap is ${apart.gap}px`);
               records.push({
                 name,
                 route,

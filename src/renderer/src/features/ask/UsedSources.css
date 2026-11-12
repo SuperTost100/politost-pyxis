@@ -1,0 +1,95 @@
+/* "Ho usato 3 fonti di Fisica 2" above an answer: a quiet line that opens the numbered list of what the answer used. */
+.ask-used {
+  display: grid;
+  justify-items: start;
+  margin-bottom: var(--space-3);
+}
+.ask-used-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  margin-inline-start: -8px;
+  padding: 0 10px 0 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--ink-muted);
+  font: 500 calc(13px * var(--text-scale, 1)) / calc(18px * var(--text-scale, 1)) var(--font-sans);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out);
+}
+.ask-used-line:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.ask-used-line .px-icon {
+  flex: none;
+}
+.ask-used-chevron {
+  transition: transform var(--duration-micro) var(--ease-out);
+}
+.ask-used-line[aria-expanded="true"] .ask-used-chevron {
+  transform: rotate(90deg);
+}
+.ask-used-fold:not([hidden]) {
+  animation: ask-used-open var(--duration-small) var(--ease-out);
+}
+@keyframes ask-used-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.ask-used-list {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 2px;
+  padding: 0 0 0 14px;
+  list-style: none;
+}
+.ask-used-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-muted);
+  font: 400 calc(13px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  text-align: start;
+  cursor: pointer;
+}
+.ask-used-item:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ask-used-num {
+  display: inline-grid;
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  font: 600 calc(11px * var(--text-scale, 1)) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+/* An answer from general knowledge says so in the same quiet voice, with no list. */
+.ask-used-general {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--space-3);
+  color: var(--ink-muted);
+  font: 500 calc(13.5px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+}
+.ask-used-general .px-icon {
+  flex: none;
+  margin-top: 2px;
+}

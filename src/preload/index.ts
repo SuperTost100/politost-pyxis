@@ -340,6 +340,7 @@ const bridge: PyxisBridge = {
     },
   },
   saveArtifact: (input) => ipcRenderer.invoke(mainChannels.artifactSave, input),
+  captureView: (rect) => ipcRenderer.invoke(mainChannels.viewCapture, rect),
   exportPdf: (input) => ipcRenderer.invoke(mainChannels.pdfExport, input),
   printData: () => ipcRenderer.invoke(mainChannels.printData),
   printReady: () => ipcRenderer.invoke(mainChannels.printReady),

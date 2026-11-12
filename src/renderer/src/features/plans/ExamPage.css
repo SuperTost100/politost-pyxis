@@ -73,6 +73,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   grid-template-areas: "now aside" "path aside";
+  /* The sections beside them span both rows. When that column is taller than Adesso and the path, the extra height
+     belongs to the path's row, so Adesso keeps its own height and the path starts a set distance below it. */
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 26px var(--space-8);
   align-items: start;
   margin-top: 26px;
@@ -370,6 +373,7 @@
 @container px-exam (max-width: 44em) {
   .px-exam-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
     grid-template-areas: "now" "path" "aside";
   }
 }

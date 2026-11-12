@@ -5,6 +5,7 @@ import { z } from "zod";
 import { mainChannels } from "../shared/bridge";
 import { MAX_ARTIFACT_BASE64 } from "../shared/plan-file";
 import { APP_PAGE } from "./app-protocol";
+import { captureRect } from "./capture-rect";
 
 const fileName = z
   .string()
@@ -34,6 +35,14 @@ const pdf = z.object({
     .max(8 * 1024 * 1024)
     .refine((s) => s.startsWith("<svg"))
     .optional(),
+});
+// A rectangle of the page, in CSS pixels. It starts above or left of the window when the page has scrolled the element
+// partly out of it. 16384 is the largest picture a window can be asked for.
+const rect = z.object({
+  x: z.number().min(-16384).max(16384),
+  y: z.number().min(-16384).max(16384),
+  width: z.number().positive().max(16384),
+  height: z.number().positive().max(16384),
 });
 type PrintJob = { markdown: string; svg?: string; ready: () => void };
 
@@ -69,6 +78,21 @@ export function registerArtifactHandlers(
     authorize(event.sender.id);
     const parsed = artifact.parse(input);
     return save(parsed.filename, Buffer.from(parsed.base64, "base64"));
+  });
+  ipcMain.handle(mainChannels.viewCapture, async (event, input: unknown) => {
+    authorize(event.sender.id);
+    const bounds = rect.parse(input);
+    const window = mainWindow();
+    if (!window || window.isDestroyed()) throw new Error("window-closed");
+    // The window's own pixels, so the web fonts, the links and the theme are exactly what the student sees. The page's
+    // rectangle is in CSS pixels, which are the window's only at the app's default zoom.
+    const { webContents } = window;
+    const [width = 0, height = 0] = window.getContentSize();
+    const box = captureRect(bounds, webContents.getZoomFactor(), { width, height });
+    if (!box) throw new Error("capture-empty");
+    const image = await webContents.capturePage(box);
+    if (image.isEmpty()) throw new Error("capture-empty");
+    return image.toPNG().toString("base64");
   });
   ipcMain.handle(mainChannels.printData, (event) => {
     const job = printJobs.get(event.sender.id);

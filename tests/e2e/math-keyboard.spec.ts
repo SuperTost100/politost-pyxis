@@ -71,10 +71,14 @@ test("Composer: the formula keyboard types into a formula opened at the caret", 
       getSelection()!.addRange(range);
     });
 
-    const toggle = page.getByRole("button", { name: "Inserisci formula" });
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    // The formula is in the composer's plus menu, and opens where the caret was before the menu took the focus.
+    const toggle = {
+      click: async () => {
+        await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
+        await page.getByRole("menuitem", { name: "Scrivi una formula" }).click();
+      },
+    };
     await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await expect(keys).toBeVisible();
     // The formula opens inside the message, not in a box of its own.
@@ -157,7 +161,8 @@ test("Composer: the keyboard follows the interface language", async () => {
       location.hash = "/ask";
     });
     await page.reload();
-    await page.getByRole("button", { name: "Insert formula" }).click();
+    await page.getByRole("button", { name: "Add a file or a formula" }).click();
+    await page.getByRole("menuitem", { name: "Write a formula" }).click();
     const keys = page.getByRole("group", { name: "Formula keyboard" });
     await expect(keys.getByRole("button", { name: "Square root" })).toBeVisible();
     await expect(keys.getByRole("button", { name: "Done", exact: true })).toBeEnabled();
