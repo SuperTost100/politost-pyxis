@@ -912,17 +912,21 @@ export function MapPage() {
     if (graph) setFresh(true);
     try {
       await invoke("jobs.resumeAll", { jobIds: [job.jobId] });
-      // The build as it is now, running again. The stopped build the page holds ended and would be taken for the end of
-      // the work just started, which would bring the old map back while the resumed build still runs.
-      client.setQueryData(buildKey(job.jobId), await readBuild(job.jobId));
-      setJobId(job.jobId);
-      await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
     } catch {
       setFresh(false);
       setNotice(t("map.generateFailed"));
-    } finally {
       setBusy(false);
+      return;
     }
+    // The resume is accepted from here on, whatever the next read does. The stopped build the page holds ended and would be
+    // taken for the end of the work just started, which would bring the old map back while the resumed build still runs.
+    // So the page holds the build as it is now, and if that read fails, the stopped one marked as running again: the
+    // polling then reads the real build.
+    const running = await readBuild(job.jobId).catch(() => ({ ...job, state: "running" as const }));
+    client.setQueryData(buildKey(job.jobId), running);
+    setJobId(job.jobId);
+    await client.invalidateQueries({ queryKey: ["map-build", scopeKey] });
+    setBusy(false);
   }
   // Asks again for a build that failed, with its words, showing Pyxis at work in place as `resumeBuild` does.
   async function retryBuild() {

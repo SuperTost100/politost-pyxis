@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -839,6 +839,55 @@ test("Riprendi on a stopped build shows Pyxis at work in place at once", async (
 
 /** A model reply that waits until the test creates `hold`, so a build can be left running for as long as the test needs. */
 const held = (concepts: string[], hold: string) => ({ ...reply(concepts), hold });
+
+test("Riprendi keeps following the resumed build when the read right after it fails", async () => {
+  test.setTimeout(180_000);
+  const concepts = ["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"];
+  const holdFolder = mkdtempSync(join(tmpdir(), "pyxis-maps-hold-"));
+  const hold = join(holdFolder, "go");
+  const lose = join(holdFolder, "lose");
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([null, held(concepts, hold), held(concepts, hold)]),
+    PYXIS_E2E_READ_FAIL: `maps.build=${lose}`,
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await page.evaluate(() =>
+      window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }),
+    );
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("running");
+    await page.evaluate(async () => {
+      const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+      await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+    });
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    const line = recovery(page);
+    // The resume is accepted, but the first read of the build after it is lost: the seam fails the next `maps.build` once.
+    writeFileSync(lose, "");
+    await line.getByRole("button", { name: "Riprendi" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect.poll(() => existsSync(lose)).toBe(false);
+    // Not a failed resume: no notice, no old map, and the build that runs is still followed a few seconds on.
+    await page.waitForTimeout(3000);
+    expect((await buildOf(page))?.state).toBe("running");
+    await expect(working).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(0);
+    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    writeFileSync(hold, "");
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    removeTestFolder(dirname(hold));
+  }
+});
 
 for (const way of ["Riprendi", "Riprova"] as const) {
   test(`${way} keeps Pyxis at work in place for as long as the build runs, and the new map shows when it ends`, async () => {

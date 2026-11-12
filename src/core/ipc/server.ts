@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES } from "../chat/attach";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import { maxSourceBytes } from "../../shared/source-types";
 import { FileGrants, pickedFileGrant, type FileGrant } from "./file-grants";
@@ -79,6 +79,21 @@ export function holdReads(spec: string): void {
   }
 }
 
+/** Request names that fail once while their file exists, by name. Set only by the end-to-end seam. */
+const readFailures = new Map<string, string>();
+
+/**
+ * End-to-end seam (PYXIS_E2E_READ_FAIL, `maps.build=/tmp/lose-it`): the next request of that name fails once, with the
+ * file removed as it does, so a spec decides when by creating the file.
+ */
+export function failReadsOnce(spec: string): void {
+  readFailures.clear();
+  for (const entry of spec.split(",")) {
+    const at = entry.indexOf("=");
+    if (at > 0) readFailures.set(entry.slice(0, at).trim(), entry.slice(at + 1).trim());
+  }
+}
+
 export function broadcast(name: string, value: unknown): void {
   port?.postMessage({ kind: "bcast", name, value } satisfies PortMessage);
 }
@@ -109,6 +124,11 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
   try {
     const hold = readDelays.get(message.name);
     if (hold) await new Promise((resolve) => setTimeout(resolve, hold));
+    const lose = readFailures.get(message.name);
+    if (lose && existsSync(lose)) {
+      rmSync(lose, { force: true });
+      throw new Error("The end-to-end seam lost this read.");
+    }
     const value = await dispatch(
       message.name,
       message.input,
