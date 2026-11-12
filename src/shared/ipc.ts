@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LINK_MODES, MATERIAL_KINDS, MAX_LINK_PATHS, MAX_SUBJECT_NAME } from "./linked-folders";
+import { FILE_KINDS } from "./file-kind";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
@@ -2594,8 +2595,19 @@ export const requests = {
          * and `no-ai` when the student has to choose. Null otherwise.
          */
         sort: z.enum(["working", "stopped", "created", "unsure", "no-ai"]).nullable(),
+        /** What the file is (a book, slides, an exam paper...): the student's choice, or the rule's (`file-kind.ts`). */
+        fileKind: z.enum(FILE_KINDS),
+        /** The student chose `fileKind` from the file's menu, so Pyxis keeps it whatever the file's name says. */
+        kindChosen: z.boolean(),
+        /** The number of the last page the read found, when the file has pages. */
+        pages: z.number().int().positive().nullable(),
       }),
     ),
+  },
+  /** Sets the kind of a file, the student's choice from its menu ("Tipo"), which the rules never change again. */
+  "sources.setKind": {
+    input: z.object({ sourceId: z.string(), kind: z.enum(FILE_KINDS) }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "sources.import": {
     input: z.object({

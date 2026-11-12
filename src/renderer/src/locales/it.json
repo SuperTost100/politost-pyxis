@@ -593,6 +593,8 @@
     "noMatch": "Nessuna fonte con questo filtro.",
     "sectionCount_one": "{{count}} sezione",
     "sectionCount_other": "{{count}} sezioni",
+    "pages_one": "{{count}} pagina",
+    "pages_other": "{{count}} pagine",
     "usedIn_one": "usata in {{count}} esame",
     "usedIn_other": "usata in {{count}} esami",
     "allTypes": "Tutti i tipi",
@@ -615,6 +617,15 @@
       "image": "Immagine",
       "link": "Link",
       "excerpt": "Estratto"
+    },
+    "fileKind": {
+      "book": "Libro",
+      "slides": "Slide",
+      "exam": "Tema d'esame",
+      "notes": "Appunti",
+      "exercises": "Esercizi",
+      "photo": "Foto",
+      "handout": "Dispensa"
     },
     "previewLink": "Anteprima del link",
     "saveLink": "Salva link",
@@ -784,7 +795,9 @@
       "subjectsFailed": "Non sono riuscito a leggere le materie. I file sono qui sotto, senza la divisione per materia.",
       "detachedTitle": "File",
       "updateBook": "Aggiorna il libro",
-      "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino."
+      "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino.",
+      "kindMenu": "Tipo",
+      "kindSet": "{{title}}: ora è {{kind}}."
     }
   },
   "cards": {

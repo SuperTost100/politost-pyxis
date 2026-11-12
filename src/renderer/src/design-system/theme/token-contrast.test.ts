@@ -106,6 +106,30 @@ describe("token contrast", () => {
         expect(contrast(value(cover, mode), value("surface", mode))).toBeGreaterThanOrEqual(3);
       });
     }
+    // A kind's colour carries drawn marks in `on-cover` and must stand out from the card under it, also when the cover
+    // is hovered or selected (surface-raised).
+    for (const kind of ["kind-slides", "kind-exam", "kind-notes", "kind-exercises", "cover-none"]) {
+      it(`the marks on ${kind} are 3:1 or more in ${mode}`, () => {
+        expect(contrast(value("on-cover", mode), value(kind, mode))).toBeGreaterThanOrEqual(3);
+      });
+      for (const ground of ["surface", "surface-raised"])
+        it(`${kind} on ${ground} is 3:1 or more in ${mode}`, () => {
+          expect(contrast(value(kind, mode), value(ground, mode))).toBeGreaterThanOrEqual(3);
+        });
+    }
+    // The state mark (reading, failed, missing, locked) is a `surface` disc ringed in `border-control`, on a cover's
+    // corner: on every colour a corner can have, the disc or its ring stands out 3:1.
+    for (const under of [
+      "cover-1", "cover-2", "cover-3", "cover-4", "cover-5", "cover-6", "cover-none", "kind-slides", "kind-notes", "paper",
+      "surface", "surface-raised",
+    ]) {
+      it(`the state mark reads on ${under} in ${mode}`, () => {
+        const ground = value(under, mode);
+        expect(
+          Math.max(contrast(value("surface", mode), ground), contrast(value("border-control", mode), ground)),
+        ).toBeGreaterThanOrEqual(3);
+      });
+    }
     for (const [name, soft] of [
       ["primary-text", "primary-soft"],
       ["ok", "ok-soft"],

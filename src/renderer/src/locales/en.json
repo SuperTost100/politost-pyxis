@@ -593,6 +593,8 @@
     "noMatch": "No source matches this filter.",
     "sectionCount_one": "{{count}} section",
     "sectionCount_other": "{{count}} sections",
+    "pages_one": "{{count}} page",
+    "pages_other": "{{count}} pages",
     "usedIn_one": "used in {{count}} exam",
     "usedIn_other": "used in {{count}} exams",
     "allTypes": "All types",
@@ -615,6 +617,15 @@
       "image": "Image",
       "link": "Link",
       "excerpt": "Excerpt"
+    },
+    "fileKind": {
+      "book": "Book",
+      "slides": "Slides",
+      "exam": "Exam paper",
+      "notes": "Notes",
+      "exercises": "Exercises",
+      "photo": "Photo",
+      "handout": "Handout"
     },
     "previewLink": "Preview link",
     "saveLink": "Save link",
@@ -784,7 +795,9 @@
       "subjectsFailed": "I couldn't load your subjects. Your files are below, without the split by subject.",
       "detachedTitle": "Files",
       "updateBook": "Update the book",
-      "subjectNotEmpty": "This subject still has files, exams, maps, flashcards or chats, so I won't delete it."
+      "subjectNotEmpty": "This subject still has files, exams, maps, flashcards or chats, so I won't delete it.",
+      "kindMenu": "Kind",
+      "kindSet": "{{title}} is now {{kind}}."
     }
   },
   "cards": {

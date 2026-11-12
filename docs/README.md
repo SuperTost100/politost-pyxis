@@ -6,6 +6,7 @@ These pages are for people who change Pyxis or want to know exactly what it does
 
 - [Architecture](architecture.md). The main, core and renderer processes, what each one may touch, how jobs survive a restart, and the size limits on imported files.
 - [Data model](data-model.md). Every SQLite table, the migration history, and what a backup contains.
+- [File kinds](file-kinds.md). How the Library tells a book from slides, an exam paper, notes, exercises, a photo or a handout, and which symbol a subject's book carries.
 - [Engines](engines.md). How model calls go through one adapter, how structured output is validated and repaired, and how to add a feature key.
 
 ## Study logic

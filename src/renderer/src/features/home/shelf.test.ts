@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookLabel, byShelfOrder, coverColour, coverKind, mixedReasons, needsStudent, nextPickerRow, placeWhenReady, unsortedReasons } from "./shelf";
+import { byShelfOrder, coverColour, mixedReasons, needsStudent, nextPickerRow, placeWhenReady, unsortedReasons } from "./shelf";
 
 describe("the Library's shelf", () => {
   it("gives a subject the same cover colour every time, from its id alone", () => {
@@ -10,24 +10,6 @@ describe("the Library's shelf", () => {
     expect(colours.size).toBe(6);
   });
 
-  it("draws only what core records: a free book, a past paper, a photo, slides, or pages", () => {
-    expect(coverKind({ kind: "smartbook", pastPaper: false })).toBe("book");
-    expect(coverKind({ kind: "pdf", pastPaper: true })).toBe("exam");
-    expect(coverKind({ kind: "image", pastPaper: true })).toBe("exam");
-    expect(coverKind({ kind: "image", pastPaper: false })).toBe("photo");
-    expect(coverKind({ kind: "pptx", pastPaper: false })).toBe("slides");
-    expect(coverKind({ kind: "pdf", pastPaper: false })).toBe("pages");
-    expect(coverKind({ kind: "link", pastPaper: false })).toBe("pages");
-  });
-
-  it("prints a short subject name whole and a long one as its initials", () => {
-    expect(bookLabel("Analisi 1")).toBe("Analisi 1");
-    expect(bookLabel("Geometria e algebra lineare")).toBe("GAL");
-    expect(bookLabel("Probabilità e statistica")).toBe("PS");
-    expect(bookLabel("Analisi matematica 2")).toBe("AM2");
-    expect(bookLabel("Metodi matematici per l'ingegneria dell'informazione")).toBe("MMII");
-    expect(bookLabel("Termodinamica")).toBe("Termodinamica".slice(0, 12));
-  });
   it("moves focus after a sort to a row that has a picker, never to one Pyxis is still choosing for", () => {
     const rows = [
       { id: "a", sort: null },

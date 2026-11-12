@@ -16,6 +16,7 @@ import {
 import { sizeText } from "../../components/SourceRow";
 import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
+import { FILE_KINDS } from "@shared/file-kind";
 import { useEffect, useRef, useState } from "react";
 import { Trans } from "react-i18next";
 import { useTranslation } from "react-i18next";
@@ -591,11 +592,12 @@ export function LibraryPanel({
     queryFn: () => invoke("sources.search", { query: contentQuery }),
     placeholderData: keepPreviousData,
   });
-  const kindOf = new Map(sources.map((source) => [source.id, source.kind]));
+  // The type filter is by kind: a book, slides, an exam paper...
+  const kindOf = new Map(sources.map((source) => [source.id, source.fileKind as string]));
   const titleMatches = searchMatcher(scope === "titles" ? searchText : "");
   const matching = sources.filter(
     (source) =>
-      (filterType === "all" || source.kind === filterType) &&
+      (filterType === "all" || source.fileKind === filterType) &&
       titleMatches(source.title),
   );
   // A hit whose source was removed since the search would open nothing.
@@ -1115,10 +1117,11 @@ export function LibraryPanel({
               onChange={setFilterType}
               options={[
                 { value: "all", label: t("sources.allTypes") },
-                ...Array.from(new Set(sources.map((source) => source.kind))).map(
+                // The kinds the Library holds, in the order the "Tipo" menu lists them.
+                ...FILE_KINDS.filter((kind) => sources.some((source) => source.fileKind === kind)).map(
                   (kind) => ({
                     value: kind,
-                    label: t(`sources.kind.${kind}`, { defaultValue: kind }),
+                    label: t(`sources.fileKind.${kind}`),
                   }),
                 ),
               ]}

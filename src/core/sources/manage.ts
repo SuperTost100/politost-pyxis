@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { FileKind } from "../../shared/file-kind";
 
 export function renameSource(
   db: Database.Database,
@@ -12,6 +13,18 @@ export function renameSource(
       `UPDATE sources SET title = ?, updated_at = ? WHERE id = ? AND status != 'removed'`,
     )
     .run(name, Date.now(), sourceId);
+  if (result.changes === 0) throw new Error("source-missing");
+}
+
+/**
+ * Stores the kind the student chose for a file. The rules never change it again: a new name, a re-read of a linked
+ * file and a Library copy a linked file takes over all keep the same source row, and so this choice. Errors:
+ * `source-missing`.
+ */
+export function setChosenKind(db: Database.Database, sourceId: string, kind: FileKind): void {
+  const result = db
+    .prepare(`UPDATE sources SET chosen_kind = ?, updated_at = ? WHERE id = ? AND status != 'removed'`)
+    .run(kind, Date.now(), sourceId);
   if (result.changes === 0) throw new Error("source-missing");
 }
 
