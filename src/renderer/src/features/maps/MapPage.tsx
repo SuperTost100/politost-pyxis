@@ -1157,6 +1157,9 @@ export function MapPage() {
     onKeyDown: (event) => {
       if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onKeyDown(event);
     },
+    onKeyUp: (event) => {
+      if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onKeyUp(event);
+    },
   };
   // A link to a map that was deleted since lands on Mappe, which says so, rather than on another map of the scope.
   useEffect(() => {

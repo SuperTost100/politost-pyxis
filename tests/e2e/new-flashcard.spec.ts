@@ -550,9 +550,9 @@ test("a card is saved once, the dialog stays while it saves, and each save is an
     const front = dialog.getByRole("textbox", { name: "Fronte" });
     const back = dialog.getByRole("textbox", { name: "Retro" });
     const written = (text: string) => cards(userData).filter((row) => row.front === text).length;
-    // What a screen reader would be told: every time the page's status line gets words.
-    await page.evaluate(() => {
-      const line = document.querySelector<HTMLElement>(".px-fc > p[role=status]")!;
+    // What a screen reader would be told: every time the page's status line gets words. The locator waits for the line
+    // to be drawn before the observer is put on it.
+    await page.locator(".px-fc > p[role=status]").evaluate((line) => {
       const heard: string[] = [];
       (window as unknown as { heard: string[] }).heard = heard;
       new MutationObserver(() => line.textContent && heard.push(line.textContent)).observe(line, {
