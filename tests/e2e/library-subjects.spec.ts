@@ -408,6 +408,35 @@ test("A file moved from its menu while it is still being read shows where it wen
   }
 });
 
+test("A double-click on a subject's name renames it in place with the name selected, like Rinomina", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    const name = shelf(page, "Fisica 2").getByRole("heading", { level: 2, name: "Fisica 2" });
+    await name.dblclick();
+    const field = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue("Fisica 2");
+    // The whole name is selected, so typing replaces it.
+    expect(await field.evaluate((input: HTMLInputElement) => input.value.slice(input.selectionStart!, input.selectionEnd!))).toBe("Fisica 2");
+    await field.fill("Fisica generale");
+    await field.press("Enter");
+    await expect(shelf(page, "Fisica generale").getByRole("heading", { level: 2, name: "Fisica generale" })).toBeVisible();
+    expect(await subjectNames(page)).toEqual(["Analisi 1", "Fisica generale"]);
+    // Escape leaves the name as it was, and a double-click on the field itself only selects a word in it.
+    await shelf(page, "Fisica generale").getByRole("heading", { level: 2 }).dblclick();
+    const again = page.getByRole("textbox", { name: "Nome della materia Fisica generale" });
+    await again.dblclick();
+    await expect(again).toBeFocused();
+    await again.press("Escape");
+    await expect(page.getByRole("textbox", { name: /^Nome della materia/ })).toHaveCount(0);
+    await expect(shelf(page, "Fisica generale")).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("A subject offers its delete as soon as its last file is removed", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });

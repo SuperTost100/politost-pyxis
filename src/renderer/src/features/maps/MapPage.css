@@ -53,6 +53,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A title that a double-click does not rename (a map still being written, or busy) shows no text cursor. */
+.px-map-title-row h1:not([data-renamable]) {
+  cursor: default;
+}
 .px-map-title-row h1:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;

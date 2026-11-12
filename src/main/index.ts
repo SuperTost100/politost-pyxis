@@ -31,7 +31,8 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { buildMenuTemplate, contextMenuAnchor, contextMenuItems } from "./menu";
+import { applySpellCheckerLanguages } from "./spellcheck";
+import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuPopupOptions, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
   type MenuCommand,
@@ -574,6 +575,17 @@ function createWindow(route?: string): void {
   });
 
   if (!hiddenTest) mainWindow.once("ready-to-show", () => mainWindow?.show());
+  // Electron gives a page no right-click menu: this is the one for text (edit items, spelling, Copia on a selection), in
+  // the app's language. The window's own menus prevent the page's `contextmenu`, and Chromium then sends no event here.
+  const contents = mainWindow.webContents;
+  contents.on("context-menu", (_event, params) => {
+    const template = textMenuTemplate(params, menuLanguage ?? systemLanguage(), {
+      replace: (word) => contents.replaceMisspelling(word),
+      learn: (word) => void contents.session.addWordToSpellCheckerDictionary(word),
+    });
+    if (!template || !mainWindow || mainWindow.isDestroyed()) return;
+    Menu.buildFromTemplate(template).popup(textMenuPopupOptions(mainWindow, params));
+  });
   mainWindow.webContents.on("did-finish-load", () => {
     pageReady = true;
     rendererPortFor = null;
@@ -918,6 +930,11 @@ function installMenu(): void {
   );
 }
 
+/** The spell checker follows the interface language, set on the session where Electron lets the app choose (not macOS). */
+function installSpellChecker(): void {
+  applySpellCheckerLanguages(session.defaultSession, menuLanguage ?? systemLanguage());
+}
+
 let newerWorkspaceShown = false;
 
 async function showNewerWorkspace(): Promise<void> {
@@ -1228,6 +1245,7 @@ function registerIpc(): void {
     if (language === (menuLanguage ?? systemLanguage())) return;
     menuLanguage = language;
     installMenu();
+    installSpellChecker();
   });
   const installer = updateInstaller({
     repository,
@@ -1803,6 +1821,7 @@ app.whenReady().then(() => {
   applyAppearance(readAppearanceSource());
   installCsp();
   installMenu();
+  installSpellChecker();
   installNavigationGuards();
   installPermissionHandlers();
   registerProtocols();
