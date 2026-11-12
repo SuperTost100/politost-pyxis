@@ -52,41 +52,70 @@ type MenuKeyEvent = {
   defaultPrevented: boolean;
   preventDefault(): void;
 };
+type MenuPointerEvent = { currentTarget?: EventTarget | null; button?: number; pointerType?: string; ctrlKey?: boolean };
+
+/** The box of the element an event is on, for a menu that hangs below it. */
+function boxOf(target: unknown): { left: number; bottom: number; right: number } | null {
+  const element = target as { getBoundingClientRect?: () => { left: number; bottom: number; right: number } } | null;
+  return element?.getBoundingClientRect ? element.getBoundingClientRect() : null;
+}
 
 /**
- * The item whose menu a menu key opened, until a pointer is pressed on it or a `contextmenu` arrives. Handling the key
- * press keeps Chromium on Linux and macOS from sending a `contextmenu` for the key, but on Windows Chromium sends one when
- * the key is released, whatever the key press did. It reaches the item with no pointer pressed in between, and is the
- * key's own: the menu is already open where the key put it. A right-click always presses the pointer on the item first.
- * Kept outside the handlers because each render makes new ones, and there is one keyboard and one pointer.
+ * The item a pointer was last pressed on in a way that can ask for a context menu (any press but a plain primary click
+ * of a mouse: the secondary button, Ctrl+click on a Mac, a long press of a finger or a pen), until a `contextmenu`
+ * arrives. A right-click always presses the pointer on the item before its `contextmenu`, on every platform. A
+ * `contextmenu` that comes with no such press was asked for by a key (the context-menu key, Shift+F10, or the system on
+ * its own) and is sent to the focused element, so it opens the menu as the keyboard does. Kept outside the handlers
+ * because each render makes new ones, and there is one pointer.
  */
-let keyOpened: EventTarget | null = null;
+let pressedOn: EventTarget | null = null;
 
 /**
  * The handlers an item takes so its menu answers a right-click and the menu keys. `open` receives the point, whether
- * a key asked (to give focus back to where it was) and the item the handler is on. Pass `enabled: false` for an item whose menu is disabled, which
- * leaves its events alone.
+ * a key asked (to give focus back to where it was) and the item the handler is on. Pass `enabled: false` for an item
+ * whose menu is disabled, which leaves its events alone.
+ *
+ * One key press can ask for the menu twice: by the key press, and by a `contextmenu` that the system sends for the key
+ * before or after it (or instead of it, where the page never sees the key). `isOpen` says whether the item's menu is
+ * open at that moment; while it is, a key's request leaves the menu and the focus as they are, so the menu opens once.
+ * It is read when the event arrives, so it must be kept with the events, not with a render that may not have happened.
  */
-export function menuTrigger(open: (at: MenuPoint, byKey: boolean, item: EventTarget | null) => void, enabled = true) {
+export function menuTrigger(
+  open: (at: MenuPoint, byKey: boolean, item: EventTarget | null) => void,
+  enabled = true,
+  isOpen: () => boolean = () => false,
+) {
+  const openByKey = (box: { left: number; bottom: number; right: number }, item: EventTarget | null) => {
+    if (!isOpen()) open(pointBelow(box), true, item);
+  };
   return {
-    onPointerDown(event: { currentTarget?: EventTarget | null }) {
-      if (keyOpened === (event.currentTarget ?? null)) keyOpened = null;
+    onPointerDown(event: MenuPointerEvent) {
+      const plainClick = event.button === 0 && event.pointerType === "mouse" && !event.ctrlKey;
+      pressedOn = plainClick ? null : (event.currentTarget ?? null);
     },
     onContextMenu(event: MenuMouseEvent) {
       if (!enabled || event.defaultPrevented || keepsSystemMenu(event.target as Targetable)) return;
       event.preventDefault();
       const item = event.currentTarget ?? null;
-      const fromKey = keyOpened !== null && keyOpened === item;
-      keyOpened = null;
-      if (!fromKey) open({ x: event.clientX, y: event.clientY }, false, item);
+      const byPointer = pressedOn !== null && pressedOn === item;
+      pressedOn = null;
+      const box = byPointer ? null : boxOf(event.target);
+      if (box) openByKey(box, item);
+      else open({ x: event.clientX, y: event.clientY }, false, item);
     },
     onKeyDown(event: MenuKeyEvent) {
       if (!enabled || event.defaultPrevented || !isMenuKey(event) || keepsSystemMenu(event.target as Targetable)) return;
-      const focused = event.target as { getBoundingClientRect?: () => { left: number; bottom: number; right: number } } | null;
-      if (!focused?.getBoundingClientRect) return;
+      const box = boxOf(event.target);
+      if (!box) return;
       event.preventDefault();
-      keyOpened = event.currentTarget ?? null;
-      open(pointBelow(focused.getBoundingClientRect()), true, keyOpened);
+      pressedOn = null;
+      openByKey(box, event.currentTarget ?? null);
+    },
+    // Chromium on Windows sends the context-menu key's `contextmenu` when the key is released, to the element that has
+    // focus then, unless the release is handled. Handling it keeps that second request from being sent at all.
+    onKeyUp(event: MenuKeyEvent) {
+      if (!enabled || event.defaultPrevented || !isMenuKey(event) || keepsSystemMenu(event.target as Targetable)) return;
+      event.preventDefault();
     },
   };
 }
