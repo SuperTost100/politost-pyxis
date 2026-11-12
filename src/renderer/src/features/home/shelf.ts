@@ -108,3 +108,12 @@ export const needsStudent = (source: ShelfFile) => need(source) < 4;
 export function byShelfOrder(a: ShelfFile, b: ShelfFile): number {
   return need(a) - need(b) || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
 }
+
+/**
+ * Where a file sits on a shelf once it is read, after the files that need the student, among whatever else the shelf
+ * holds. A file still being read sorts first, so its place now says nothing about where it goes when its read ends.
+ */
+export function placeWhenReady<T extends ShelfFile & { id: string }>(files: readonly T[], file: T): number {
+  const ready = { ...file, status: "ready", error: null, errorJobId: null, linked: null };
+  return [...files.filter((other) => other.id !== file.id), ready].sort(byShelfOrder).indexOf(ready);
+}

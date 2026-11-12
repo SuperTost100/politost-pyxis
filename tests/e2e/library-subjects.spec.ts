@@ -311,43 +311,97 @@ async function pasteLoose(page: Page, title: string): Promise<string> {
   return sourceId;
 }
 
-test("A file moved behind \"Mostra tutti\" shows where it went and keeps the keyboard's place", async () => {
+/**
+ * Sixteen files on the way to Analisi 1's shelf: fifteen that sort before "Zeta" and "Zulu" (the shelf shows fourteen, so a
+ * moved file lands behind the button), and "Zeta" and "Zulu" waiting in "Da sistemare". The files are written to the
+ * database, so a spec decides whether "Zeta" is still being read when it moves, and when its read ends.
+ */
+async function seedFullShelf(page: Page, userData: string, zeta: "ready" | "extracting") {
+  const analysis = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
+    (subject) => subject.name === "Analisi 1",
+  )!;
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  for (let n = 1; n <= 15; n++)
+    seedSource(db, { id: `appunti-${n}`, title: `Appunti ${String(n).padStart(2, "0")}`, subjectId: analysis.id });
+  seedSource(db, { id: "zeta", title: "Zeta", status: zeta });
+  seedSource(db, { id: "zulu", title: "Zulu" });
+  db.close();
+  await page.reload();
+}
+
+/** Ends the read of "Zeta" in the database and has the page read its files again, as a finished job does. */
+async function finishReading(page: Page, userData: string) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  db.prepare("UPDATE sources SET status = 'ready' WHERE id = 'zeta'").run();
+  db.close();
+  // The import of another file ends with an update that makes the page read its files again.
+  await pasteLoose(page, "Sonda");
+}
+
+for (const zeta of ["ready", "extracting"] as const) {
+  test(
+    zeta === "ready"
+      ? 'A file moved behind "Mostra tutti" shows where it went and keeps the keyboard\'s place'
+      : "A file moved while it is still being read shows where it went, and stays there when its read ends",
+    async () => {
+      test.setTimeout(240000);
+      const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+      try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await seedFullShelf(page, userData, zeta);
+        const group = page.getByRole("region", { name: "Da sistemare" });
+        await expect(group.locator(".px-unsorted-row")).toHaveCount(2);
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+
+        // Chosen in "Da sistemare": the shelf opens so the cover is there, and focus goes to the next row's choice.
+        await group.getByRole("combobox", { name: "Materia di Zeta" }).selectOption({ label: "Analisi 1" });
+        await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+        await expect(group.getByRole("combobox", { name: "Materia di Zulu" })).toBeFocused();
+
+        if (zeta === "extracting") {
+          // Its read ends: by title it now sorts behind the fourteen, and the shelf must not fold it away.
+          await expect(cover(page, "Analisi 1", "Zeta")).toContainText("Lettura");
+          await finishReading(page, userData);
+          await expect(cover(page, "Analisi 1", "Zeta")).not.toContainText("Lettura");
+          await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
+          await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+          return;
+        }
+
+        // By the file's menu, with the shelf folded again: the cover is shown and takes focus.
+        await shelf(page, "Analisi 1").getByRole("button", { name: "Mostra meno" }).click();
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+        await page.getByRole("button", { name: "Azioni per Zulu" }).click();
+        await moveTo(page, "Analisi 1");
+        const zulu = cover(page, "Analisi 1", "Zulu");
+        await expect(zulu).toBeVisible();
+        await expect(zulu.getByRole("button", { name: "Zulu", exact: true })).toBeFocused();
+        await expect(group).toBeHidden();
+      } finally {
+        await app.close();
+        removeTestFolder(userData);
+      }
+    },
+  );
+}
+
+test("A file moved from its menu while it is still being read shows where it went, and stays there when its read ends", async () => {
   test.setTimeout(240000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const analysis = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
-      (subject) => subject.name === "Analisi 1",
-    )!;
-    // Fifteen covers that sort before "Zeta" and "Zulu": the shelf shows fourteen, so a moved file lands behind the button.
-    for (let n = 1; n <= 15; n++) {
-      const id = await pasteLoose(page, `Appunti ${String(n).padStart(2, "0")}`);
-      await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
-        id,
-        subjectId: analysis.id,
-      });
-    }
-    await pasteLoose(page, "Zeta");
-    await pasteLoose(page, "Zulu");
-    const group = page.getByRole("region", { name: "Da sistemare" });
-    await expect(group.locator(".px-unsorted-row")).toHaveCount(2);
+    await seedFullShelf(page, userData, "extracting");
     await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
-
-    // Chosen in "Da sistemare": the shelf opens so the cover is there, and focus goes to the next row's choice.
-    await group.getByRole("combobox", { name: "Materia di Zeta" }).selectOption({ label: "Analisi 1" });
-    await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
-    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
-    await expect(group.getByRole("combobox", { name: "Materia di Zulu" })).toBeFocused();
-
-    // By the file's menu, with the shelf folded again: the cover is shown and takes focus.
-    await shelf(page, "Analisi 1").getByRole("button", { name: "Mostra meno" }).click();
-    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
-    await page.getByRole("button", { name: "Azioni per Zulu" }).click();
+    await page.getByRole("button", { name: "Azioni per Zeta" }).click();
     await moveTo(page, "Analisi 1");
-    const zulu = cover(page, "Analisi 1", "Zulu");
-    await expect(zulu).toBeVisible();
-    await expect(zulu.getByRole("button", { name: "Zulu", exact: true })).toBeFocused();
-    await expect(group).toBeHidden();
+    const zeta = cover(page, "Analisi 1", "Zeta");
+    await expect(zeta).toBeVisible();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+    await finishReading(page, userData);
+    await expect(zeta).not.toContainText("Lettura");
+    await expect(zeta).toBeVisible();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookLabel, byShelfOrder, coverColour, coverKind, mixedReasons, needsStudent, nextPickerRow, unsortedReasons } from "./shelf";
+import { bookLabel, byShelfOrder, coverColour, coverKind, mixedReasons, needsStudent, nextPickerRow, placeWhenReady, unsortedReasons } from "./shelf";
 
 describe("the Library's shelf", () => {
   it("gives a subject the same cover colour every time, from its id alone", () => {
@@ -92,5 +92,22 @@ describe("the Library's shelf", () => {
       "Sparito",
       "Scansione",
     ]);
+  });
+
+  it("places a file where it will sit once read, whatever its state now", () => {
+    const shelf = Array.from({ length: 14 }, (_, n) => ({
+      id: `a${n}`,
+      title: `Appunti ${String(n + 1).padStart(2, "0")}`,
+      status: "ready",
+    }));
+    const zeta = { id: "zeta", title: "Zeta", status: "reading" };
+    // Being read, it would sort first; ready, it sorts after the fourteen by title.
+    expect([...shelf, zeta].sort(byShelfOrder).indexOf(zeta)).toBe(0);
+    expect(placeWhenReady(shelf, zeta)).toBe(14);
+    // A failed file on the shelf goes first and moves it one place on.
+    expect(placeWhenReady([...shelf, { id: "bad", title: "Zulu", status: "failed" }], zeta)).toBe(15);
+    // Its own old copy on the shelf is not counted twice, and a title that sorts early stays in view.
+    expect(placeWhenReady([...shelf, zeta], zeta)).toBe(14);
+    expect(placeWhenReady(shelf, { id: "b", title: "Algebra", status: "failed" })).toBe(0);
   });
 });
