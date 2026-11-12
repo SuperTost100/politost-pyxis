@@ -184,7 +184,9 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
       await dialog.dismiss();
       return message;
     });
-    await open.getByRole("menuitem").last().click();
+    // The menu's own last item, by name: "Sposta in" draws its submenu inside the menu, and where the pointer comes to
+    // rest on it after the right-click (the macOS layout), the last item counted would be the submenu's.
+    await open.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
     expect(await confirmed).toMatch(/^Rimuovere «Dispensa \d\d»\?$/);
 
     // The same cover's dots open the menu inside the window. "Sposta in", taller than the window, opens inside it too and
