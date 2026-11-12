@@ -115,7 +115,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     // One click builds the map: the page shows the working mark where the map will appear, and no second button.
     await expect(page.locator(".px-map-working")).toBeVisible();
     await expect(page.getByRole("button", { name: "Crea la mappa", exact: true })).toHaveCount(0);
-    await expect(page.locator(".px-map-title p")).toHaveText("Fisica I");
+    await expect(page.locator(".px-map-sub")).toHaveText("Fisica I");
     await saveShot(page, "maps-subject/building-after-confirm.png");
     await expect(page.locator(".react-flow__node")).toHaveCount(labels.length, { timeout: 60_000 });
     // The map is named after the subject, and so is its root.

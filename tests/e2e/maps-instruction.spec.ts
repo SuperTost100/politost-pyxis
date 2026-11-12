@@ -191,12 +191,9 @@ test("a map asked for in the student's own words reaches the engine, and a secon
     expect(maps.map((map) => map.instruction)).toEqual([first, second]);
     await expect(page).toHaveURL(new RegExp(`map=${maps[1]!.id}$`));
     expect(readFileSync(prompts, "utf8").trim().split("\n")).toHaveLength(2);
-    // The map's own menu tells the two apart.
-    await page.getByRole("button", { name: "Altro" }).click();
-    await expect(page.getByRole("group", { name: "Scegli una mappa" }).getByRole("menuitemradio")).toHaveText([
-      `Limiti«${first}»`,
-      `Limiti«${second}»`,
-    ]);
+    // The switcher beside the title tells the two apart by what each was asked for.
+    await page.locator(".px-map-title-row").getByRole("button", { name: /^Mappe di Limiti, ora: / }).click();
+    await expect(page.getByRole("menuitemradio")).toHaveText([`«${first}»Limiti`, `«${second}»Limiti`]);
     await saveShot(page, "maps-instruction/picker.png");
     await page.keyboard.press("Escape");
 
@@ -326,7 +323,7 @@ test("asking again for a request that failed follows that build, while a newer r
     expect(maps.map((map) => map.instruction)).toEqual([b, a]);
     await expect(page).toHaveURL(new RegExp(`map=${maps[1]!.id}$`));
     // The map's own controls are there, and the working state is gone.
-    await expect(page.getByRole("button", { name: "Altro" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Altro", exact: true })).toBeVisible();
     await expect(page.locator(".px-map-working")).toHaveCount(0);
     expect(readFileSync(prompts, "utf8").trim().split("\n")).toHaveLength(3);
     expect(errors).toEqual([]);
@@ -499,9 +496,9 @@ test("Cambia la richiesta on a topic that already has a map shows the request, a
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-instruction/change-request-with-map.png");
 
-    // The map is still there: the page's own menu opens it, and the request is gone from the page.
-    await page.getByRole("button", { name: "Altro" }).click();
-    await page.getByRole("group", { name: "Scegli una mappa" }).getByRole("menuitemradio").first().click();
+    // The map is still there: the switcher beside the title opens it, and the request is gone from the page.
+    await page.locator(".px-map-title-row").getByRole("button", { name: /^Mappe di Limiti, ora: / }).click();
+    await page.getByRole("menuitemradio").first().click();
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     await expect(field).toHaveCount(0);
 
@@ -780,9 +777,9 @@ test("the only map of a topic is one choice away from a request that found nothi
     await ask("solo i teoremi sulle onde gravitazionali", "Limiti · 1 mappa");
     const field = page.getByLabel("Come la vuoi?");
     await expect(field).toBeVisible({ timeout: 60_000 });
-    // The page's menu offers the one map, and choosing it shows the map and takes the request away.
-    await page.getByRole("button", { name: "Altro" }).click();
-    await page.getByRole("group", { name: "Scegli una mappa" }).getByRole("menuitemradio").first().click();
+    // The switcher offers the one map, and choosing it shows the map and takes the request away.
+    await page.locator(".px-map-title-row").getByRole("button", { name: /^Mappe di Limiti, ora: / }).click();
+    await page.getByRole("menuitemradio").first().click();
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     await expect(field).toHaveCount(0);
     expect(errors).toEqual([]);

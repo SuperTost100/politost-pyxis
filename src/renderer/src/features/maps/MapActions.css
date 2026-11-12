@@ -1,0 +1,41 @@
+/* The confirmation before a map is deleted: its question in the display face, as a dialog's title, and the body quieter
+   under it. Only its confirming button is solid red. */
+.px-map-confirm .ant-modal-confirm-title {
+  font: 400 calc(24px * var(--text-scale, 1)) / 1.15 var(--font-display);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.px-map-confirm .ant-modal-confirm-content {
+  color: var(--ink-muted);
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: 1.45;
+}
+
+/* The map's name, edited in place: the field takes the title's size, the word about it sits under it. */
+.px-map-name {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.px-map-name-field {
+  min-width: 0;
+  height: calc(38px * var(--text-scale, 1));
+  padding: 0 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+}
+.px-map-name-field:focus-visible {
+  border-color: var(--primary-text);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+.px-map-name-field[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.px-map-name-error {
+  color: var(--danger);
+  font-size: calc(12.5px * var(--text-scale, 1));
+}

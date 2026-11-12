@@ -211,7 +211,7 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       .toBe(true);
     const opened = await view();
     // Under the title: the exam's icon and link, a dot, then the hint, all centred on one line.
-    const line = page.locator(".px-map-title p");
+    const line = page.locator(".px-map-sub");
     await expect(line).toHaveText(/^Analisi·clicca un concetto/);
     const middles = await line.evaluate((p) =>
       [...p.querySelectorAll("svg, a > span, :scope > span")].map((el) => {

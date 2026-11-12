@@ -209,18 +209,12 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       )
       .toBe(true);
     const pinned = (await graph()).nodes.find((n) => n.id === nodeId)!;
-    // The layout sits in the "…" menu, which Esc closes, giving focus back to its button.
-    const more = page.getByRole("button", { name: "Altro", exact: true });
-    await more.click();
-    await expect(
-      page.getByRole("menuitemradio", { name: "Albero" }),
-    ).toHaveAttribute("aria-checked", "true");
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(more).toBeFocused();
-    await more.click();
-    await page.getByRole("menuitemradio", { name: "Radiale" }).click();
-    await expect(page.getByRole("menu")).toHaveCount(0);
+    // The layout sits in the tools on the canvas, a choice of two, and changing it keeps the focus on the choice.
+    const canvasTools = page.getByRole("toolbar", { name: "Strumenti della mappa" });
+    await expect(canvasTools.getByRole("radio", { name: "Albero" })).toHaveAttribute("aria-checked", "true");
+    await canvasTools.getByRole("radio", { name: "Radiale" }).click();
+    await expect(canvasTools.getByRole("radio", { name: "Radiale" })).toHaveAttribute("aria-checked", "true");
+    await expect(canvasTools.getByRole("radio", { name: "Radiale" })).toBeFocused();
     await expect.poll(async () => (await graph()).layout).toBe("radial");
     expect((await graph()).nodes.find((n) => n.id === nodeId)).toMatchObject({
       x: pinned.x,
@@ -247,7 +241,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await expect(foot.locator(".px-map-node-label")).toHaveText(
       "Regola del prodotto",
     );
-    const tools = foot.getByRole("toolbar", { name: "Strumenti della mappa" });
+    const tools = foot.getByRole("toolbar", { name: "Strumenti del concetto" });
     for (const tool of [
       "Aggiungi un ramo",
       "Rinomina nodo",
@@ -366,11 +360,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         );
       }, output);
       await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
-      await page
-        .getByRole("menuitem", {
-          name: /^(Vista sullo schermo|On-screen view) \(PNG\)$/,
-        })
-        .click();
+      await page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }).click();
+      await page.getByRole("menuitem", { name: /^(Solo quello che vedi|Just what you see)/ }).click();
       await expect
         .poll(() => existsSync(output), { timeout: 20000 })
         .toBe(true);

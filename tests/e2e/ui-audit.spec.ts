@@ -179,7 +179,20 @@ const routes = [
   // The new-map dialog for a subject whose exams have topics (the topic select shown) and for one without (no select).
   ["maps-new-topics", "/maps"],
   ["maps-new-no-topics", "/maps"],
+  // The map's dots menu (Rinomina, Esporta and Elimina la mappa…), with Esporta's formats open, the map's name edited in
+  // place, and the confirmation before it is deleted.
+  ["map-menu", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  // A map with the topic's last build failed, or cut off, still stored: the line under the head offers it again.
+  ["map-build-failed", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-build-stopped", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
   ["map-export", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-rename", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  ["map-delete", "/plans/audit-plan/map/audit-topic?from=maps&map=audit-map-entry"],
+  // A subject with two maps: the switcher beside the title, open on both.
+  ["map-switcher", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
+  // A tile's menu on Mappe, opened by a right-click, and its delete confirmation.
+  ["maps-tile-menu", "/maps"],
+  ["maps-delete", "/maps"],
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
@@ -1020,7 +1033,7 @@ function prepareCardBrowser(name: string) {
       UPDATE topics SET archived_at = NULL WHERE archived_at = 7;`);
     // A subject with no exam, hence no topics, for the new-map dialog.
     if (name === "maps-new-no-topics") seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
-    if (name === "map-cards-no-exam") {
+    if (name === "map-cards-no-exam" || name === "map-switcher") {
       // The whole-subject map of Chimica, which has no exam: the dialog opens from this page and names this subject.
       seedSubjects(db, [{ id: "audit-chem", name: "Chimica", position: 1 }]);
       const node = (id: string, label: string, parent: string | null, x: number) => ({ id, label, parent, x, y: parent ? 160 : 0, pinned: false });
@@ -1048,6 +1061,23 @@ function prepareCardBrowser(name: string) {
                 undo: null,
               },
             },
+            // A second map of the subject, asked for in words, for the switcher.
+            ...(name === "map-switcher"
+              ? [
+                  {
+                    id: "audit-chem-bonds-entry",
+                    title: "Legami chimici",
+                    instruction: "solo i legami, con un esempio per ognuno",
+                    passageIds: [],
+                    graph: {
+                      layout: "tree",
+                      nodes: [node("bond-root", "Legami chimici", null, 0), node("bond-ionic", "Legame ionico", "bond-root", 120)],
+                      edges: [{ from: "bond-root", to: "bond-ionic" }],
+                      undo: null,
+                    },
+                  },
+                ]
+              : []),
           ],
         }),
       );
@@ -1692,7 +1722,7 @@ function prepareState(name: string) {
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
     // The requests that found nothing go too: one stays in every later state's Attività button until it is dismissed.
-    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%'");
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%' OR id LIKE 'audit-ended-%'");
     db.exec(
       "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
     );
@@ -1739,6 +1769,21 @@ function prepareState(name: string) {
           input: { planId: "audit-ready-plan", topicId: "audit-ready-topic" },
           instruction: "solo i teoremi sulle onde gravitazionali",
         }),
+        now,
+        now,
+      );
+      return;
+    }
+    if (name === "map-build-failed" || name === "map-build-stopped") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-ended-map','map-build',?,?,0,?,?,?)",
+      ).run(
+        JSON.stringify({
+          input: { planId: "audit-plan", topicId: "audit-topic" },
+          instruction: "solo le leggi di Newton, con un esempio per ognuna",
+        }),
+        name === "map-build-failed" ? "failed" : "interrupted",
+        name === "map-build-failed" ? "offline" : null,
         now,
         now,
       );
@@ -3097,7 +3142,7 @@ async function openState(page: Page, name: string) {
     }
     case "map-subject":
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      await expect(page.locator(".px-map-title p")).toContainText("Fisica");
+      await expect(page.locator(".px-map-sub")).toContainText("Fisica");
       break;
     case "map-source": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
@@ -3121,15 +3166,60 @@ async function openState(page: Page, name: string) {
       await expect(dialog.locator("#mc-plan")).toHaveCount(name === "map-cards" ? 1 : 0);
       break;
     }
-    case "map-export":
-      // The map's "…" menu holds the layout, the build, the exports, undo and the shortcuts.
+    case "map-build-failed":
+    case "map-build-stopped": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      await page.getByRole("button", { name: both("Altro", "More") }).click();
+      const line = page.locator(".px-map-recover");
+      await expect(line).toContainText(
+        name === "map-build-failed"
+          ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
+          : /^(L’ultima costruzione della mappa si è fermata|The last build of this map stopped)/,
+      );
       await expect(
-        page.getByRole("menuitemradio", { name: both("Albero", "Tree") }),
+        line.getByRole("button", {
+          name: name === "map-build-failed" ? both("Riprova", "Try again") : both("Riprendi", "Resume"),
+        }),
       ).toBeVisible();
-      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      await expect(line.getByRole("button", { name: both("Chiudi", "Dismiss") })).toBeVisible();
       break;
+    }
+    case "map-menu":
+    case "map-export":
+    case "map-rename":
+    case "map-delete":
+      // The map's dots hold three actions on the map; its tools sit on the canvas.
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page.locator(".px-map-actions").getByRole("button", { name: both("Altro", "More") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Rinomina", "Rename") })).toBeVisible();
+      if (name === "map-export") {
+        await page.getByRole("menuitem", { name: both("Esporta", "Export") }).click();
+        await expect(page.getByRole("menuitem", { name: /^(Schema in testo|Outline as text)/ })).toBeVisible();
+      }
+      if (name === "map-rename") {
+        await page.getByRole("menuitem", { name: both("Rinomina", "Rename") }).click();
+        await expect(page.getByRole("textbox", { name: both("Nome della mappa", "Map name") })).toBeFocused();
+      }
+      if (name === "map-delete") {
+        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete map…") }).click();
+        await expect(dialog).toBeVisible();
+      }
+      break;
+    case "map-switcher":
+      await expect(page.locator(".react-flow__node")).toHaveCount(3);
+      await page.locator(".px-map-switch").click();
+      await expect(page.getByRole("menuitemradio")).toHaveCount(2);
+      break;
+    case "maps-tile-menu":
+    case "maps-delete": {
+      const tile = page.locator(".px-maps-tilew").first();
+      await tile.locator(".px-maps-thumb").click({ button: "right" });
+      await expect(page.getByRole("menuitem", { name: both("Apri", "Open") })).toBeVisible();
+      if (name === "maps-delete") {
+        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete map…") }).click();
+        await expect(dialog).toBeVisible();
+      }
+      break;
+    }
     case "exams-archived":
       await page.getByRole("button", { name: both("Archiviati", "Archived") }).click();
       await expect(page.getByRole("list", { name: both("Esami archiviati", "Archived exams") })).toBeVisible();
@@ -3919,8 +4009,17 @@ test("M14 every application route in both languages, themes and supported widths
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||
-                  name === "map-export") &&
+                  name === "map-menu" ||
+                  name === "map-export" ||
+                  name === "map-switcher" ||
+                  name === "maps-tile-menu") &&
                 !(await page.getByRole("menuitem").first().isVisible())
+              )
+                await openState(page, name);
+              // Tabbing away from the name field ends the rename; it opens again for the visual and axe checks.
+              if (
+                name === "map-rename" &&
+                !(await page.getByRole("textbox", { name: both("Nome della mappa", "Map name") }).isVisible())
               )
                 await openState(page, name);
               // Moving focus can clear a text selection, and the menu goes with it.
