@@ -463,14 +463,17 @@ export function NewCardDialog({
         <p id="nc-leave-text" className="small">
           {t(`flashcards.new.leave.${leaving}`)}
         </p>
-        <span ref={keepButton}>
-          <Button variant="secondary" onClick={stay}>
-            {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
+        {/* The two answers together under the question, the safe one first and focused (keepButton). */}
+        <div className="px-nc-leave-actions">
+          <span ref={keepButton}>
+            <Button variant="secondary" onClick={stay}>
+              {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
+            </Button>
+          </span>
+          <Button variant="danger" onClick={close}>
+            {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
           </Button>
-        </span>
-        <Button variant="danger" onClick={close}>
-          {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
-        </Button>
+        </div>
       </div>
     );
   else if (side === "hand")

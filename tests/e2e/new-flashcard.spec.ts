@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,25 @@ async function shot(page: Page, name: string) {
   await page.mouse.move(1, 1);
   await animationsSettled(page);
   await saveShot(page, `new-flashcard/${name}.png`);
+}
+
+/**
+ * The dialog's question before it closes, laid out as a confirmation: the sentence, then the two buttons together on one
+ * line under it, the safe one first and focused.
+ */
+async function expectCloseQuestion(page: Page, dialog: Locator, text: RegExp, safe: string, leave: string) {
+  const question = dialog.getByRole("group").filter({ hasText: text });
+  await expect(question).toBeVisible();
+  const keep = question.getByRole("button", { name: safe, exact: true });
+  const go = question.getByRole("button", { name: leave, exact: true });
+  await expect(keep).toBeFocused();
+  await animationsSettled(page);
+  const said = (await question.getByText(text).boundingBox())!;
+  const a = (await keep.boundingBox())!;
+  const b = (await go.boundingBox())!;
+  expect(Math.abs(a.y - b.y), "the two buttons share a line").toBeLessThan(1);
+  expect(a.x + a.width, "the safe one comes first").toBeLessThan(b.x);
+  expect(said.y + said.height, "the sentence is above the buttons").toBeLessThanOrEqual(a.y);
 }
 
 async function toFlashcards(page: Page) {
@@ -296,6 +315,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await shot(page, "5-pyxis-working");
     await page.keyboard.press("Escape");
     await expect(dialog.getByText(/Pyxis sta ancora scrivendo/)).toBeVisible();
+    await expectCloseQuestion(page, dialog, /Pyxis sta ancora scrivendo/, "Continua", "Ferma e chiudi");
     await dialog.getByRole("button", { name: "Continua", exact: true }).click();
 
     // The proposals: the one the subject has already is left out and counted; nothing is saved yet.
@@ -375,6 +395,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     // Closing with proposals not saved asks first; then nothing is saved.
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(dialog.getByText(/Non hai salvato le flashcard proposte/)).toBeVisible();
+    await expectCloseQuestion(page, dialog, /Non hai salvato le flashcard proposte/, "Torna alle flashcard", "Chiudi senza salvare");
     await dialog.getByRole("button", { name: "Chiudi senza salvare" }).click();
     await expect(dialog).toHaveCount(0);
     expect(cards(userData).filter((row) => row.subject === "Fisica 2")).toHaveLength(1);
