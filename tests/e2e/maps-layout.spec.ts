@@ -10,6 +10,10 @@ import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { DatabaseSync } from "node:sqlite";
+import type { Page } from "@playwright/test";
+import { seedSubjects } from "./seed";
+import { radialFixtures, storedGraph } from "../fixtures/maps";
 
 test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async () => {
   test.setTimeout(240_000);
@@ -422,6 +426,199 @@ test("MAP-05 large map: left-to-right layout, folding, quiet cross-links", async
       await saveShot(page, `map-large-${total}-${language}-${theme}-1280.png`);
       await expectNoAxeViolations(page);
     }
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** The concept boxes on screen, in screen pixels. */
+async function conceptBoxes(page: Page) {
+  return page.locator(".react-flow__node").evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { id: (el as HTMLElement).dataset.id!, x: r.x, y: r.y, w: r.width, h: r.height };
+    }),
+  );
+}
+/** Every pair of concept boxes that intersect, as "a×b". */
+async function overlapping(page: Page) {
+  const boxes = await conceptBoxes(page);
+  const found: string[] = [];
+  for (const [i, a] of boxes.entries())
+    for (const b of boxes.slice(i + 1))
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) found.push(`${a.id}×${b.id}`);
+  return found;
+}
+/** Waits until the map has stopped moving and its view and boxes hold still. */
+async function mapAtRest(page: Page) {
+  await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
+  let seen = "";
+  await expect
+    .poll(async () => {
+      const next = JSON.stringify([
+        await page.locator(".react-flow__viewport").evaluate((el) => getComputedStyle(el).transform),
+        await conceptBoxes(page),
+      ]);
+      const still = next === seen;
+      seen = next;
+      return still;
+    })
+    .toBe(true);
+}
+const viewZoom = (page: Page) =>
+  page.locator(".react-flow__viewport").evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+
+test("MAP-11 radial layout: no overlaps, readable fit, folding, switch back and Annulla", async () => {
+  test.setTimeout(240_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-map-radial-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // The five fixture maps, all of one subject with no exam.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "cinema", name: "Cinema" }]);
+    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cinema','cinema',?,'general',1)").run(
+      JSON.stringify({
+        version: 1,
+        maps: Object.entries(radialFixtures).map(([id, map]) => ({
+          id,
+          title: map.title,
+          passageIds: [],
+          grounding: "general",
+          graph: storedGraph(map),
+        })),
+      }),
+    );
+    db.close();
+    const open = async (id: string) => {
+      await page.evaluate((id) => {
+        location.hash = `/maps/cinema?from=maps&map=${id}`;
+      }, id);
+      await page.reload();
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await mapAtRest(page);
+    };
+    const layout = (name: string) => page.getByRole("radio", { name, exact: true });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await open("filmHistory");
+    await expect(page.locator(".react-flow__node")).toHaveCount(radialFixtures.filmHistory.nodes.length);
+    await layout("Radiale").click();
+    await expect(layout("Radiale")).toHaveAttribute("aria-checked", "true");
+    await mapAtRest(page);
+    expect(await overlapping(page)).toEqual([]);
+    // The root in the middle of the canvas, every main branch around it.
+    const canvas = (await page.locator(".px-map-canvas").boundingBox())!;
+    const placed = await conceptBoxes(page);
+    const root = placed.find((box) => box.id === "root")!;
+    expect(Math.abs(root.x + root.w / 2 - (canvas.x + canvas.width / 2))).toBeLessThan(canvas.width / 4);
+    expect(Math.abs(root.y + root.h / 2 - (canvas.y + canvas.height / 2))).toBeLessThan(canvas.height / 4);
+    // Labels stay readable: the view never opens below the tree's minimum zoom, so 14 px text shows at 11 px or more.
+    expect(await viewZoom(page)).toBeGreaterThanOrEqual(0.85 - 1e-3);
+    const text = page.locator('.react-flow__node[data-id="b2a"] .px-markdown');
+    const fontSize = await text.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(fontSize * (await viewZoom(page))).toBeGreaterThanOrEqual(11);
+    // Links outside the hierarchy show only while an end is selected, with their label.
+    await expect(page.locator(".px-cross-edge")).toHaveCount(0);
+    await page.locator('.react-flow__node[data-id="b3"]').focus();
+    await expect(page.locator(".px-cross-edge")).toHaveCount(1);
+    await expect(page.locator(".px-cross-label")).toHaveText("ispira");
+    await page.locator(".react-flow__pane").click({ position: { x: 4, y: 4 } });
+    await expect(page.locator(".px-cross-edge")).toHaveCount(0);
+
+    // Folding Hollywood classica hides its five concepts and keeps the rest apart; unfolding brings them back.
+    const fold = page.locator('.react-flow__node[data-id="b2"] .px-concept-fold');
+    await fold.dispatchEvent("click");
+    await expect(fold).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator(".react-flow__node")).toHaveCount(radialFixtures.filmHistory.nodes.length - 5);
+    await mapAtRest(page);
+    expect(await overlapping(page)).toEqual([]);
+    await fold.dispatchEvent("click");
+    await expect(fold).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".react-flow__node")).toHaveCount(radialFixtures.filmHistory.nodes.length);
+    await mapAtRest(page);
+    expect(await overlapping(page)).toEqual([]);
+
+    // Back to the tree, then Annulla brings the radial layout back.
+    await layout("Albero").click();
+    await expect(layout("Albero")).toHaveAttribute("aria-checked", "true");
+    await mapAtRest(page);
+    const tree = await conceptBoxes(page);
+    const treeRoot = tree.find((box) => box.id === "root")!;
+    for (const box of tree) if (box.id !== "root") expect(box.x).toBeGreaterThan(treeRoot.x + treeRoot.w);
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(layout("Radiale")).toHaveAttribute("aria-checked", "true");
+    await mapAtRest(page);
+    expect(await overlapping(page)).toEqual([]);
+
+    // The switch moves every concept from its place in the tree to its place in the radial layout.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await layout("Albero").click();
+    await mapAtRest(page);
+    const from = new Map((await conceptBoxes(page)).map((box) => [box.id, box]));
+    const moving = page.evaluate(
+      () =>
+        new Promise<number>((done) => {
+          const canvas = document.querySelector(".px-map-canvas")!;
+          let frames = 0;
+          const watch = new MutationObserver(() => {
+            if (canvas.hasAttribute("data-moving")) frames++;
+            else if (frames) {
+              watch.disconnect();
+              done(frames);
+            }
+          });
+          watch.observe(canvas, { subtree: true, attributes: true, attributeFilter: ["style", "data-moving"] });
+        }),
+    );
+    await layout("Radiale").click();
+    expect(await moving).toBeGreaterThan(1);
+    await mapAtRest(page);
+    const to = await conceptBoxes(page);
+    expect(to.filter((box) => Math.hypot(box.x - from.get(box.id)!.x, box.y - from.get(box.id)!.y) > 40).length).toBeGreaterThan(10);
+    expect(await overlapping(page)).toEqual([]);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+
+    // Every fixture in both layouts: Italian dark at 1280, and English light at 960 with large text. No two concepts
+    // touch in the radial layout, which opens at a readable zoom.
+    for (const [language, theme, width, textSize] of [
+      ["it", "dark", 1280, "md"],
+      ["en", "light", 960, "lg"],
+    ] as const) {
+      await page.evaluate(
+        async ({ language, theme, textSize }) => {
+          localStorage.setItem("pyxis.lang", language);
+          await window.pyxis.setAppearance(theme);
+          await window.pyxis.invoke("profile.save", { dyslexia: false, textSize });
+        },
+        { language, theme, textSize },
+      );
+      await page.setViewportSize({ width, height: 800 });
+      for (const id of Object.keys(radialFixtures)) {
+        for (const kind of ["radial", "tree"] as const) {
+          await page.evaluate(
+            ({ id, kind }) => window.pyxis.invoke("maps.layout", { subjectId: "cinema", mapId: id, layout: kind }),
+            { id, kind },
+          );
+          await open(id);
+          if (kind === "radial") {
+            expect(await overlapping(page), `${id} at ${width}`).toEqual([]);
+            expect(await viewZoom(page)).toBeGreaterThanOrEqual(0.85 - 1e-3);
+          }
+          await animationsSettled(page);
+          await saveShot(page, `map-${id}-${kind}-${language}-${theme}-${width}${textSize === "lg" ? "-large" : ""}.png`);
+        }
+      }
+    }
+    await expectNoAxeViolations(page);
     expect(errors).toEqual([]);
   } finally {
     await app.close();

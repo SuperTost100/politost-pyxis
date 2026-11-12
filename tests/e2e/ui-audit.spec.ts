@@ -27,6 +27,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
+import { radialFixtures, storedGraph } from "../fixtures/maps";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -200,6 +201,10 @@ const routes = [
   ["maps-delete", "/maps"],
   // A map of the whole subject, and a topic's map at its subject address with a concept's source open beside it.
   ["map-subject", "/maps/audit-subject?from=maps&map=audit-subject-map-entry"],
+  // Two maps in the radial layout: one with long labels, uneven branches and links across them, open; one of sixty
+  // concepts, opened folded, with one branch unfolded.
+  ["map-radial-film", "/maps/audit-cinema?from=maps&map=audit-film-entry"],
+  ["map-radial-physics", "/maps/audit-cinema?from=maps&map=audit-physics-entry"],
   ["map-source", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
@@ -1532,7 +1537,29 @@ function prepareNewCards(name: string) {
   else writeFileSync(newCardsHold(), "");
 }
 
+/** The radial maps' subject, Cinema, with its two maps, for the radial states only. */
+function prepareRadialMaps(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM maps WHERE id = 'audit-cinema-map';
+      DELETE FROM subjects WHERE id = 'audit-cinema';`);
+    if (!name.startsWith("map-radial-")) return;
+    seedSubjects(db, [{ id: "audit-cinema", name: "Cinema", position: 1 }]);
+    db.prepare(
+      "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('audit-cinema-map','audit-cinema',?,'general',1)",
+    ).run(
+      JSON.stringify({
+        version: 1,
+        maps: [
+          { id: "audit-film-entry", title: radialFixtures.filmHistory.title, passageIds: [], graph: storedGraph(radialFixtures.filmHistory, "radial") },
+          { id: "audit-physics-entry", title: radialFixtures.physics.title, passageIds: [], graph: storedGraph(radialFixtures.physics, "radial") },
+        ],
+      }),
+    );
+  });
+}
+
 function prepareState(name: string) {
+  prepareRadialMaps(name);
   prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
@@ -3180,6 +3207,20 @@ async function openState(page: Page, name: string) {
       await dialog
         .getByLabel(/^(Come la vuoi\?|How do you want it\?)/)
         .fill("solo le leggi di Newton, con un esempio per ognuna");
+      break;
+    }
+    case "map-radial-film":
+      await expect(page.locator(".react-flow__node")).toHaveCount(radialFixtures.filmHistory.nodes.length);
+      await expect(page.getByRole("radio", { name: both("Radiale", "Radial") })).toHaveAttribute("aria-checked", "true");
+      break;
+    case "map-radial-physics": {
+      // The root and its six branches, folded; then the second branch opens, with its five sections.
+      await expect(page.locator(".react-flow__node")).toHaveCount(7);
+      const fold = page.locator('.react-flow__node[data-id="t1"] .px-concept-fold');
+      await fold.click();
+      await expect(fold).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator(".react-flow__node")).toHaveCount(12);
+      await expect(page.locator(".px-map-canvas[data-moving]")).toHaveCount(0);
       break;
     }
     case "map-subject":
