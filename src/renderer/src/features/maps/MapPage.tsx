@@ -1261,7 +1261,14 @@ export function MapPage() {
               />
             </>
           ) : (
-            <h1 ref={heading} tabIndex={-1} title={shownTitle}>
+            // A double-click renames in place, like Rinomina in the menu, which is off while a map is written or busy.
+            <h1
+              ref={heading}
+              tabIndex={-1}
+              title={shownTitle}
+              data-renamable={hasMap && !writingJob && !disabled ? "" : undefined}
+              onDoubleClick={hasMap && !writingJob && !disabled ? () => setRenaming(true) : undefined}
+            >
               {shownTitle}
             </h1>
           )}

@@ -918,7 +918,16 @@ function SubjectCard({
             }}
           />
         ) : null}
-        <h2 id={headId} className="px-shelf-subject-name" hidden={renaming}>
+        {/* A double-click renames in place, like Rinomina in the menu. */}
+        <h2
+          id={headId}
+          className="px-shelf-subject-name"
+          hidden={renaming}
+          onDoubleClick={() => {
+            setError(null);
+            onRename();
+          }}
+        >
           {subject.name}
         </h2>
         <span id={countId} className="small px-shelf-subject-count">

@@ -296,6 +296,34 @@ test("a map is renamed in place on its page and on its tile, and an empty name i
   }
 });
 
+test("a double-click on a map's title renames it in place, and a double-click on a tile opens the map instead", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await openMaps(page);
+    // A tile opens its map on a click, so a double-click on its title opens it and renames nothing.
+    await tile(page, "Limiti").getByRole("heading", { level: 3 }).dblclick();
+    const title = page.getByRole("heading", { level: 1, name: "Limiti" });
+    await expect(title).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Nome della mappa" })).toHaveCount(0);
+    // On its page the title is the map's name: a double-click edits it, with the name selected.
+    await title.dblclick();
+    const field = page.getByRole("textbox", { name: "Nome della mappa" });
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue("Limiti");
+    expect(await field.evaluate((input: HTMLInputElement) => input.value.slice(input.selectionStart!, input.selectionEnd!))).toBe("Limiti");
+    await field.fill("Limiti e continuità");
+    await field.press("Enter");
+    const renamed = page.getByRole("heading", { level: 1, name: "Limiti e continuità" });
+    await expect(renamed).toBeVisible();
+    await expect(renamed).toBeFocused();
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a map is deleted after one confirmation, from its page or its tile, and its links land on Mappe", async () => {
   test.setTimeout(180_000);
   const { app, page, userData, errors } = await startApp();
