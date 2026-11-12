@@ -89,6 +89,36 @@ async function expectMenuInWindow(page: Page, menu: Locator) {
 /** Puts `item` at the window's bottom edge and right-clicks it near the window's bottom-right corner. */
 async function rightClickInCorner(page: Page, item: Locator) {
   await item.evaluate((node) => node.scrollIntoView({ block: "end" }));
+  // A scroll or a resize closes a right-click menu, and the window can still be delivering the ones this test made
+  // (its own scroll just above, the widening in `coverInCorner`) after the layout already shows them: on Apple Silicon
+  // the menu opened and was gone before its item could be clicked. The right-click waits until the item has kept its
+  // place for ten frames with no scroll or resize event. A student cannot resize, scroll and right-click that fast.
+  await item.evaluate(
+    (node) =>
+      new Promise<void>((resolve) => {
+        const place = () => {
+          const box = node.getBoundingClientRect();
+          return [box.left, box.top, box.width, box.height, innerWidth, innerHeight].join(" ");
+        };
+        let last = place();
+        let quiet = 0;
+        const restart = () => {
+          quiet = 0;
+        };
+        addEventListener("resize", restart);
+        addEventListener("scroll", restart, true);
+        const frame = () => {
+          const now = place();
+          quiet = now === last ? quiet + 1 : 0;
+          last = now;
+          if (quiet < 10) return void requestAnimationFrame(frame);
+          removeEventListener("resize", restart);
+          removeEventListener("scroll", restart, true);
+          resolve();
+        };
+        requestAnimationFrame(frame);
+      }),
+  );
   const box = (await item.boundingBox())!;
   const view = page.viewportSize()!;
   const x = Math.min(box.x + box.width, view.width) - 12;

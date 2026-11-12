@@ -8,6 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan } from "./seed";
+import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 
 /** Eight questions of every kind a quiz asks, on «Cinematica», with formulas in the stems and the options. */
@@ -253,6 +254,8 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
       "Consegni con 5 domande vuote e 1 domanda segnata per dopo? Le vuote contano come «non lo so».",
     );
     await expect(confirm.getByRole("button", { name: "Consegna" })).toBeFocused();
+    // The confirmation fades in: axe waits for it, or it measures the button's contrast halfway through (Apple Silicon).
+    await animationsSettled(page);
     await expectNoAxeViolations(page);
     await shoot(page, "confirm", async () => {
       await sheet(page).locator(".px-qz-handin > .px-btn").click();
