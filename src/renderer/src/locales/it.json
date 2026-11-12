@@ -777,6 +777,8 @@
       "emptySubjectNoFiles": "Ancora niente.",
       "showAll": "Mostra tutti i {{count}} file",
       "showFewer": "Mostra meno",
+      "needsFirst_one": "il file da controllare è il primo",
+      "needsFirst_other": "i {{count}} da controllare sono i primi",
       "working": "Sto scegliendo la materia di questi file.",
       "subjectsFailed": "Non sono riuscito a leggere le materie. I file sono qui sotto, senza la divisione per materia.",
       "detachedTitle": "File",

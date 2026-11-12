@@ -777,6 +777,8 @@
       "emptySubjectNoFiles": "Nothing here yet.",
       "showAll": "Show all {{count}} files",
       "showFewer": "Show fewer",
+      "needsFirst_one": "the one to check comes first",
+      "needsFirst_other": "the {{count}} to check come first",
       "working": "I'm choosing the subject of these files.",
       "subjectsFailed": "I couldn't load your subjects. Your files are below, without the split by subject.",
       "detachedTitle": "Files",

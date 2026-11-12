@@ -1,5 +1,7 @@
 /** How the Library's shelf draws a file and a subject, kept free of the page so a unit test reads it. */
 
+import { isPdfPasswordError } from "../../../../shared/source-errors";
+
 /** The number of subject cover colours (`--cover-1` to `--cover-6` in tokens.css). */
 const COVER_COLOURS = 6;
 
@@ -72,3 +74,37 @@ export function unsortedReasons(sources: { sort: SortState }[]): Set<"working" |
  * the lines for the others must not claim to speak for all of them.
  */
 export const mixedReasons = (reasons: ReadonlySet<string>) => reasons.size > 1;
+
+/** The states of a file whose read went wrong, which the student has to look at. */
+export const PROBLEM = new Set(["failed", "needs-ocr", "interrupted", "cancelled"]);
+
+type ShelfFile = {
+  title: string;
+  status: string;
+  error?: string | null;
+  errorJobId?: string | null;
+  linked?: { missing?: boolean } | null;
+};
+
+/**
+ * How much a file needs the student, most first: its read failed (0), its file is gone from the linked folder (1), it is
+ * a PDF waiting for its password (2), it is still being read (3); anything else needs nothing (4).
+ */
+function need(source: ShelfFile): number {
+  if (source.errorJobId && isPdfPasswordError(source.error)) return 2;
+  if (PROBLEM.has(source.status)) return 0;
+  if (source.linked?.missing) return 1;
+  if (source.status !== "ready") return 3;
+  return 4;
+}
+
+/** Whether a file needs the student: a failed read, a missing file, a password to give, or a read still under way. */
+export const needsStudent = (source: ShelfFile) => need(source) < 4;
+
+/**
+ * The order of a shelf and of "Da sistemare": the files that need the student first, as `need` ranks them, so none
+ * hides behind "Mostra tutti", then by title, numbers in order ("Lezione 2" before "Lezione 10").
+ */
+export function byShelfOrder(a: ShelfFile, b: ShelfFile): number {
+  return need(a) - need(b) || a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
+}

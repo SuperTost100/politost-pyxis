@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookLabel, coverColour, coverKind, mixedReasons, nextPickerRow, unsortedReasons } from "./shelf";
+import { bookLabel, byShelfOrder, coverColour, coverKind, mixedReasons, needsStudent, nextPickerRow, unsortedReasons } from "./shelf";
 
 describe("the Library's shelf", () => {
   it("gives a subject the same cover colour every time, from its id alone", () => {
@@ -61,5 +61,36 @@ describe("the Library's shelf", () => {
     // One file Pyxis is still choosing for and one it could not place: "some files", not "these files".
     expect(mixedReasons(unsortedReasons([{ sort: "working" }, { sort: "unsure" }]))).toBe(true);
     expect(mixedReasons(unsortedReasons([{ sort: "unsure" }, { sort: null }]))).toBe(true);
+  });
+
+  it("puts the files that need the student first: failed, missing, locked, then being read, then the rest by title", () => {
+    const file = (title: string, more: Record<string, unknown> = {}) => ({ title, status: "ready", ...more });
+    const files = [
+      file("Appunti"),
+      file("Lezione 10"),
+      file("Lezione 2"),
+      file("Slide in lettura", { status: "reading" }),
+      file("Zeta illeggibile", { status: "failed" }),
+      file("Bloccato", { status: "failed", error: "pdf-password-required", errorJobId: "job-1" }),
+      file("Sparito", { linked: { missing: true } }),
+      file("Scansione", { status: "needs-ocr" }),
+    ];
+    expect([...files].sort(byShelfOrder).map((source) => source.title)).toEqual([
+      "Scansione",
+      "Zeta illeggibile",
+      "Sparito",
+      "Bloccato",
+      "Slide in lettura",
+      "Appunti",
+      "Lezione 2",
+      "Lezione 10",
+    ]);
+    expect(files.filter(needsStudent).map((source) => source.title)).toEqual([
+      "Slide in lettura",
+      "Zeta illeggibile",
+      "Bloccato",
+      "Sparito",
+      "Scansione",
+    ]);
   });
 });

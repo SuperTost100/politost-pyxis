@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { seedSource, seedSubjects } from "./seed";
 
 /** Recorded answers of the AI tool that chooses subjects, by the `id` each file is sent with (its place in the call): file 1 fits a subject the student has, file 2 needs a new one. */
 const replies = JSON.stringify({
@@ -1203,6 +1204,55 @@ test("A cover's dots and a subject's dots work from the keyboard alone: Sposta i
     await page.keyboard.press("Enter");
     await expect(shelf(page, "Fisica tecnica").locator(".px-cover", { hasText: "Limiti" })).toBeVisible();
     expect(await subjectNames(page)).toEqual(["Analisi 1", "Fisica tecnica"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Files that need the student come first on their shelf and in Da sistemare, so none hides behind Mostra tutti", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-library-order-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [{ id: "an", name: "Analisi 1" }]);
+    // Sixteen files read, and two whose titles sort last: one whose read failed and one still being read.
+    for (let index = 1; index <= 16; index++)
+      seedSource(db, { id: `an-${index}`, title: `Dispensa ${String(index).padStart(2, "0")}`, subjectId: "an" });
+    seedSource(db, { id: "an-failed", title: "Zeta, scansione illeggibile", subjectId: "an", status: "failed" });
+    seedSource(db, { id: "an-reading", title: "Zeta, slide in lettura", subjectId: "an", status: "extracting" });
+    // Nine files without a subject, the one that failed last by title.
+    for (let index = 1; index <= 8; index++) seedSource(db, { id: `loose-${index}`, title: `Appunti ${index}` });
+    seedSource(db, { id: "loose-failed", title: "Zeta, foto rovinata", status: "failed" });
+    db.close();
+    await toLibrary(page);
+
+    const shelf = page.getByRole("region", { name: /^Analisi 1/ });
+    const covers = shelf.locator(".px-cover-title");
+    await expect(covers).toHaveCount(14);
+    await expect(covers.nth(0)).toHaveText("Zeta, scansione illeggibile");
+    await expect(covers.nth(1)).toHaveText("Zeta, slide in lettura");
+    await expect(covers.nth(2)).toHaveText("Dispensa 01");
+    // The count line says so while some covers are behind Mostra tutti, which is a button that looks like one.
+    await expect(shelf.locator(".px-shelf-subject-head")).toContainText(/18 file\s*· i 2 da controllare sono i primi/);
+    const all = shelf.getByRole("button", { name: "Mostra tutti i 18 file" });
+    await expect(all).toHaveClass(/px-btn-secondary/);
+    await all.click();
+    await expect(covers).toHaveCount(18);
+    await expect(shelf.locator(".px-shelf-subject-head")).not.toContainText("da controllare");
+    await expect(shelf.getByRole("button", { name: "Mostra meno" })).toHaveClass(/px-btn-secondary/);
+
+    const unsorted = page.getByRole("region", { name: "Da sistemare" });
+    const rows = unsorted.locator(".px-unsorted-row");
+    await expect(rows).toHaveCount(8);
+    await expect(rows.first()).toContainText("Zeta, foto rovinata");
+    await expect(unsorted.getByRole("button", { name: "Mostra tutti i 9 file" })).toHaveClass(/px-btn-secondary/);
+    await expectNoAxeViolations(page);
   } finally {
     await app.close();
     removeTestFolder(userData);
