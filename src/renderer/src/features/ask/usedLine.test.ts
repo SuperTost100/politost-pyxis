@@ -59,9 +59,23 @@ describe("the line that says what an answer used", () => {
   });
 
   it("says plainly when the answer comes from general knowledge, and says nothing when nothing was searched", () => {
-    expect(usedLine({ grounding: "general", citations: [] })).toEqual({ key: "ask.used.general", values: {} });
+    expect(usedLine({ grounding: "general", citations: [], searched: { found: false, where: "library" } })).toEqual({
+      key: "ask.used.general",
+      values: {},
+    });
     expect(usedLine({ grounding: null, citations: [] })).toBeNull();
     // An attached file with no citation makes no claim either.
     expect(usedLine({ grounding: "sources", citations: [] })).toBeNull();
+  });
+
+  it("says where Pyxis looked when it found nothing, and that the answer cites nothing when it found something", () => {
+    const none = { grounding: "general", citations: [] } as const;
+    expect(usedLine({ ...none, searched: { found: false, where: "library" } })).toEqual({ key: "ask.used.general", values: {} });
+    // A chat limited to files picked by hand did not look in the whole Library, and must not say so.
+    expect(usedLine({ ...none, searched: { found: false, where: "files" } })).toEqual({ key: "ask.used.generalFiles", values: {} });
+    expect(usedLine({ ...none, searched: { found: true, where: "library" } })).toEqual({ key: "ask.used.generalUnused", values: {} });
+    expect(usedLine({ ...none, searched: { found: true, where: "files" } })).toEqual({ key: "ask.used.generalUnused", values: {} });
+    // A reply saved without the note, or stopped, only says what is known: it cites no source.
+    expect(usedLine(none)).toEqual({ key: "ask.used.generalNoSource", values: {} });
   });
 });

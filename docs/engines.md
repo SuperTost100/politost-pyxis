@@ -149,7 +149,7 @@ Pyxis decides where a question looks and files the chat under a subject; the com
 | A subject                                                             | The subject's Library files and the files its exams study        |
 | Neither                                                               | The student's whole material: the Library and every exam's files |
 
-The chat's attachments always come along. A subject with nothing relevant on a question widens the search to the whole material; the reply is then stored with grounding `mixed` (read as `wider`) and its line says the chat's subject had nothing. An exam chat without files and without a subject searches nothing, and an empty Library is not searched, so those replies make no claim about the student's material.
+The chat's attachments always come along. A subject with nothing relevant on a question widens the search to the whole material; the reply is then stored with grounding `mixed` (read as `wider`) and its line says the chat's subject had nothing. An exam chat without files and without a subject searches nothing, and an empty Library is not searched, so those replies make no claim about the student's material. A reply that cites nothing is stored as `general`, with a note in `messages.passages_json` (`{ found, where }`) that tells apart a search that found nothing relevant (the line says where Pyxis looked: the Library, or the files the chat is limited to) from one that found passages the answer did not cite. A reply that cites a file outside the chat's subject is stored as `mixed` too, even when the search did not have to widen.
 
 ### The subject Pyxis picks
 

@@ -2856,6 +2856,8 @@ export const requests = {
           provider: z.string().nullable(),
           /** `wider`: the chat's subject had nothing, so the cited material comes from elsewhere in the Library. */
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
+          /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
+          searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
           followups: z.array(z.string()),
           reaction: z.enum(["up", "down"]).nullable(),
           stopped: z.boolean(),
@@ -2934,6 +2936,8 @@ export const requests = {
           provider: z.string().nullable(),
           /** `wider`: the chat's subject had nothing, so the cited material comes from elsewhere in the Library. */
           grounding: z.enum(["sources", "wider", "general"]).nullable(),
+          /** For a reply from general knowledge: whether passages were found and not cited, and where Pyxis looked. */
+          searched: z.object({ found: z.boolean(), where: z.enum(["library", "files"]) }).optional(),
           followups: z.array(z.string()),
           citations: z.array(
             z.object({

@@ -283,7 +283,10 @@
       "library_wider_other": "Nella materia della chat non c'era niente, quindi ho usato {{count}} fonti dal resto della tua Libreria",
       "attached_one": "Ho usato il file che hai allegato",
       "attached_other": "Ho usato i {{count}} file che hai allegato",
-      "general": "Nella tua Libreria non c'è niente su questa domanda, quindi ti rispondo con quello che so in generale.",
+      "general": "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
+      "generalFiles": "Non ho trovato niente su questa domanda nei file di questa chat, quindi ti rispondo con quello che so in generale.",
+      "generalUnused": "Nelle tue fonti ho trovato qualcosa, ma questa risposta non ne cita nessuna, quindi viene da quello che so in generale.",
+      "generalNoSource": "Questa risposta non cita nessuna fonte, quindi viene da quello che so in generale.",
       "list": "Fonti usate"
     },
     "chip": {

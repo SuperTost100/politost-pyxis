@@ -4,13 +4,26 @@
  */
 export type UsedLine = { key: string; values: Record<string, string | number> } | null;
 
+/**
+ * What a reply from general knowledge says. Nothing relevant found: where Pyxis looked, the whole Library or the files
+ * the chat is limited to. Passages found but not cited: that the answer cites no source. Without the note, which a stopped
+ * or older reply lacks, only that it cites none.
+ */
+function generalKey(searched: { found: boolean; where: "library" | "files" } | undefined): string {
+  if (!searched) return "generalNoSource";
+  if (searched.found) return "generalUnused";
+  return searched.where === "files" ? "generalFiles" : "general";
+}
+
 type Cited = { sourceId: string; subject?: string | null; attached?: boolean };
 
 export function usedLine(reply: {
   grounding: "sources" | "wider" | "general" | null;
   citations: readonly Cited[];
+  /** For a reply from general knowledge: whether the search found passages the answer did not cite, and where it looked. */
+  searched?: { found: boolean; where: "library" | "files" };
 }): UsedLine {
-  if (reply.grounding === "general") return { key: "ask.used.general", values: {} };
+  if (reply.grounding === "general") return { key: `ask.used.${generalKey(reply.searched)}`, values: {} };
   if (reply.grounding === null || reply.citations.length === 0) return null;
   // The line counts files: two files cited three times are two sources. The list under it keeps every passage.
   const passages = reply.citations.length;

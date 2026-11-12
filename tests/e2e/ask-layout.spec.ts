@@ -201,7 +201,7 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
       await expect(page.getByRole("button", { name: "Interrompi" })).toHaveCount(0, { timeout: 90000 });
     }
     // With nothing in the Library about the question, the reply is still given, and says it comes from general knowledge.
-    const general = "Nella tua Libreria non c'è niente su questa domanda, quindi ti rispondo con quello che so in generale.";
+    const general = "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.";
     const before = await page.getByText(general).count();
     await box.fill("Una domanda fuori materia");
     await box.press("Enter");

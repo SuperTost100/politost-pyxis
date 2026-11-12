@@ -189,7 +189,7 @@ const Reply = memo(function Reply({
       engine={
         engineNames.label(row.provider, row.modelId) || undefined
       }
-      lead={<UsedSources grounding={row.grounding} citations={row.citations} />}
+      lead={<UsedSources grounding={row.grounding} citations={row.citations} searched={row.searched} />}
       switchWay={
         onSwitchWay && !row.stopped
           ? row.way === "guided"

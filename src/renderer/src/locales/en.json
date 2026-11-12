@@ -283,7 +283,10 @@
       "library_wider_other": "This chat's subject had nothing on it, so I used {{count}} sources from the rest of your Library",
       "attached_one": "I used the file you attached",
       "attached_other": "I used the {{count}} files you attached",
-      "general": "There is nothing on this in your Library, so I'm answering from what I know in general.",
+      "general": "I found nothing on this in your Library, so I'm answering from what I know in general.",
+      "generalFiles": "I found nothing on this in the files of this chat, so I'm answering from what I know in general.",
+      "generalUnused": "I found something in your sources, but this answer cites none of it, so it comes from what I know in general.",
+      "generalNoSource": "This answer cites no source, so it comes from what I know in general.",
       "list": "Sources used"
     },
     "chip": {

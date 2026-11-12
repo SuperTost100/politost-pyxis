@@ -337,7 +337,7 @@ test("Ask: an answer with nothing in the Library says it comes from general know
     await ask(page, "Ricetta della carbonara");
     await expect(
       lastReply(page).getByText(
-        "Nella tua Libreria non c'è niente su questa domanda, quindi ti rispondo con quello che so in generale.",
+        "Non ho trovato niente su questa domanda nella tua Libreria, quindi ti rispondo con quello che so in generale.",
       ),
     ).toBeVisible();
     await expect(lastReply(page).getByRole("button", { name: /^Ho usato/ })).toHaveCount(0);
@@ -400,6 +400,39 @@ test("Ask: a chat opened from an exam with no subject says it is that exam, not 
     await saveShot(page, "ask-subject/exam-menu.png");
     await menu.getByRole("menuitemradio", { name: "Analisi 1" }).click();
     await expect(chip(page)).toHaveText("Analisi 1");
+  } finally {
+    await finish(app, userData, db);
+  }
+});
+
+test("Ask: an answer that cites no source says so when passages were found, and where Pyxis looked when nothing was", async () => {
+  test.setTimeout(150000);
+  // The recorded engine answers without a citation, so the passages the search finds are left unused.
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY: "Il campo è radiale, senza citare niente." });
+  const db = seedLibrary(userData);
+  try {
+    await openAsk(page);
+    await ask(page, "Campo elettrico di un filo carico");
+    await expect(
+      lastReply(page).getByText("Nelle tue fonti ho trovato qualcosa, ma questa risposta non ne cita nessuna, quindi viene da quello che so in generale."),
+    ).toBeVisible();
+    await expect(page.getByText("Non ho trovato niente su questa domanda")).toHaveCount(0);
+    await saveShot(page, "ask-subject/general-unused.png");
+    await expectNoAxeViolations(page);
+    // The saved reply says the same after a reload.
+    await page.reload();
+    await expect(lastReply(page).getByText(/^Nelle tue fonti ho trovato qualcosa/)).toBeVisible();
+
+    // A chat limited to files picked by hand says it looked there, not in the whole Library.
+    db.exec(`
+      INSERT INTO chats(id,title,scope_json,created_at,updated_at) VALUES ('c-old','Serie e limiti','["src-an"]',1,1);
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES ('m-old','c-old','user','Che cos''è una serie?',1);
+    `);
+    await openAsk(page, "/ask/c-old");
+    await ask(page, "Campo elettrico di un filo carico");
+    await expect(
+      lastReply(page).getByText("Non ho trovato niente su questa domanda nei file di questa chat, quindi ti rispondo con quello che so in generale."),
+    ).toBeVisible();
   } finally {
     await finish(app, userData, db);
   }

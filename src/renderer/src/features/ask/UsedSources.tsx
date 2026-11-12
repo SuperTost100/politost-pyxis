@@ -22,16 +22,18 @@ type Cited = {
 export function UsedSources({
   grounding,
   citations,
+  searched,
 }: {
   grounding: "sources" | "wider" | "general" | null;
   citations: readonly Cited[];
+  searched?: { found: boolean; where: "library" | "files" };
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const list = useId();
-  const line = usedLine({ grounding, citations });
+  const line = usedLine({ grounding, citations, searched });
   if (!line) return null;
-  if (line.key === "ask.used.general")
+  if (grounding === "general")
     return (
       <p className="ask-used ask-used-general">
         <Icon name="info" size={15} />

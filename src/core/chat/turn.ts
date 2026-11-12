@@ -89,7 +89,15 @@ export type ChatMessageView = {
   figures?: Record<string, string>;
   /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
   checking: boolean;
+  /**
+   * For a reply from general knowledge: whether the search found relevant passages the answer then did not cite, and
+   * where it looked (the whole Library, or the files the chat is limited to). Absent when the reply cites sources, and
+   * for a reply stopped or saved before this was kept.
+   */
+  searched?: SearchNote;
 };
+
+export type SearchNote = { found: boolean; where: "library" | "files" };
 
 export type AskResult = {
   chatId: string;
@@ -941,6 +949,12 @@ async function answer(
       widened = true;
     }
   }
+  // What the search did, kept with a reply that cites nothing: a chat with a subject widens to the whole Library before
+  // it gives up, and one limited to files looks only in them. A Continue searches nothing.
+  const searched: SearchNote | undefined =
+    searches && !kept
+      ? { found: gathered.relevant.length > 0, where: subject || !narrowed ? "library" : "files" }
+      : undefined;
   // Pyxis picks the chat's subject from a search of the whole Library, unless the student already chose (see subject.ts).
   const subjects = sourceSubjects(db, gathered.hits.map((hit) => hit.sourceId));
   const picked =
@@ -1091,6 +1105,7 @@ async function answer(
           attached: thisTurnFile,
           widened: widened || Boolean(input.resumeFrom?.widened),
           within,
+          searched,
           template,
           citations,
           stopped: true,
@@ -1123,6 +1138,7 @@ async function answer(
     attached: thisTurnFile,
     widened: widened || Boolean(input.resumeFrom?.widened),
     within,
+    searched,
     template,
     citations,
     stopped: false,
@@ -1178,6 +1194,8 @@ type SavedReply = {
    * outside them is wider even when the search itself did not have to widen (a file picked by hand in an older chat).
    */
   within?: ReadonlySet<string> | null;
+  /** What the search did, kept with a reply that ends up citing nothing (see `ChatMessageView.searched`). */
+  searched?: SearchNote;
   template: string;
   citations: ChatCitation[];
   stopped: boolean;
@@ -1218,6 +1236,8 @@ function saveReply(
     passages: meta.citations.length,
     widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
+  // A finished reply from general knowledge records what the search did, in the column a stopped reply keeps its passages in.
+  const note = !meta.stopped && grounding === "general" ? meta.searched : undefined;
   db.prepare(
     `INSERT INTO messages
       (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding,
@@ -1239,7 +1259,9 @@ function saveReply(
       ? JSON.stringify(
           meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
         )
-      : null,
+      : note
+        ? JSON.stringify(note)
+        : null,
     meta.figures ? JSON.stringify(meta.figures) : null,
     meta.now + 1,
   );
@@ -1266,6 +1288,7 @@ function saveReply(
       error: meta.error,
       checks: splitChecks(parsed.body).checks,
       checking: false,
+      ...(note ? { searched: note } : {}),
       ...(meta.figures ? { figures: meta.figures } : {}),
     },
   };
@@ -1439,13 +1462,27 @@ export function chatSubject(
   return liveSubject(db, row?.subject);
 }
 
+/** The note of a finished reply from general knowledge, which a stopped reply's list of passages is not. */
+function searchNote(stored: string | null): { searched?: SearchNote } {
+  if (!stored) return {};
+  try {
+    const value = JSON.parse(stored) as Partial<SearchNote> | unknown[];
+    if (!Array.isArray(value) && typeof value.found === "boolean" && (value.where === "library" || value.where === "files"))
+      return { searched: { found: value.found, where: value.where } };
+  } catch {
+    return {};
+  }
+  return {};
+}
+
 export function readChat(
   db: Database.Database,
   chatId: string,
 ): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error
+      `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error,
+              passages_json
        FROM messages WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
@@ -1460,6 +1497,7 @@ export function readChat(
     stopped: number;
     figures_json: string | null;
     error: string | null;
+    passages_json: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
   // Every message's citations in one read, in the primary key's order, which one read per message also had.
@@ -1526,6 +1564,7 @@ export function readChat(
       stopped: row.stopped === 1,
       error: row.error,
       checks: metadata.checks,
+      ...searchNote(row.passages_json),
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),

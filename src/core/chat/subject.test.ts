@@ -328,4 +328,40 @@ describe("a chat's subject", () => {
     expect(inside.reply.grounding).toBe("sources");
     db.close();
   });
+
+  it("tells an answer with nothing relevant found from one that found passages and cites none, and says where it looked", async () => {
+    const db = library([
+      { id: "fis", subject: "Fisica 2", texts: physics },
+      { id: "an", subject: "Analisi 1", texts: calculus },
+    ]);
+    const uncited = (db: Database.Database, text: string, chatId?: string) =>
+      askTurn(db, {
+        chatId,
+        text,
+        embed: null,
+        python: null,
+        run: async () => ({ text: "Te lo spiego a parole mie.", model: "m", provider: "claude", inputTokens: 1 }),
+      }).then((result) => readChat(db, result.chatId).at(-1)!);
+    // The Library has nothing on it.
+    const nothing = await uncited(db, "Ricetta della carbonara");
+    expect(nothing.grounding).toBe("general");
+    expect(nothing.searched).toEqual({ found: false, where: "library" });
+    // It has passages, and the answer cites none of them. The note is stored with the reply, so a reload says the same.
+    const unused = await uncited(db, "Campo elettrico di un filo carico");
+    expect(unused.grounding).toBe("general");
+    expect(unused.searched).toEqual({ found: true, where: "library" });
+    // A reply that cites a source makes no such note.
+    expect((await ask(db, "Campo elettrico di un filo carico")).reply.searched).toBeUndefined();
+    // A chat limited to a file picked by hand looked only there, not in the whole Library.
+    db.prepare(
+      `INSERT INTO chats (id, title, scope_json, created_at, updated_at) VALUES ('old', 'Vecchia', '["an"]', 1, 1)`,
+    ).run();
+    const files = await uncited(db, "Campo elettrico di un filo carico", "old");
+    expect(files.searched).toEqual({ found: false, where: "files" });
+    // A chat with a subject widens to the whole Library before it gives up.
+    setChatSubject(db, "old", "Analisi 1");
+    const wider = await uncited(db, "Ricetta della carbonara", "old");
+    expect(wider.searched).toEqual({ found: false, where: "library" });
+    db.close();
+  });
 });

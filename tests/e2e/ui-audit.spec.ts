@@ -386,7 +386,7 @@ Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('audit-guided-reply','audit-passage','P1');
     INSERT INTO chats(id,title,created_at,updated_at) VALUES('audit-general','Teorema di Bayes',1,1);
     INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('audit-general-user','audit-general','user','Che cos''è il teorema di Bayes?',1);
-    INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver',2);`);
+    INSERT INTO messages(id,chat_id,role,body,grounding,prompt_template,passages_json,created_at) VALUES('audit-general-reply','audit-general','assistant','Il teorema di Bayes dice come cambia la probabilità di un''ipotesi dopo un fatto osservato: $P(A|B) = P(B|A)P(A)/P(B)$.','general','chat.solver','{"found":false,"where":"files"}',2);`);
   db.prepare(
     "INSERT INTO settings(key,value_json,updated_at) VALUES('plan-import:audit-plan',?,?)",
   ).run(JSON.stringify({ author: "Example author", exportedAt: now }), now);
@@ -2556,7 +2556,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("button", { name: both("Dammi la soluzione", "Give me the solution") })).toBeVisible();
       break;
     case "ask-general":
-      await expect(page.getByText(/^(Nella tua Libreria non c'è niente|There is nothing on this in your Library)/)).toBeVisible();
+      await expect(page.getByText(/^(Non ho trovato niente su questa domanda|I found nothing on this)/)).toBeVisible();
       break;
     case "ask-delete":
       await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
