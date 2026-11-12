@@ -1034,23 +1034,33 @@ test("When the subjects cannot be read, the files stay on the page and the stude
 test("A rename that answers late does not close another subject's rename field", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
-  const core = await app.evaluate(({ app }) => app.getAppMetrics().find((metric) => metric.name === "pyxis-core")?.pid);
-  expect(core).toBeGreaterThan(0);
+  let lock: DatabaseSync | undefined;
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     await fileUnder(page, "Limiti", "Analisi 1");
-    // Analisi 1 is renamed; the core, which answers it, is stopped from here until the student has gone on to Fisica 2.
+    // The test holds the database's write lock, as new-flashcard.spec.ts does, so that the core waits on it in the middle
+    // of a request. That works on every platform, unlike stopping the core with a signal. A rename itself cannot be the
+    // request that waits: it reads before it writes, and SQLite refuses that upgrade at once while another connection
+    // holds the lock. A chat rename starts with a write, so it waits, and the core answers nothing until the lock is let
+    // go, which leaves the renames sent after it waiting in its queue.
+    lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    lock.exec("BEGIN IMMEDIATE");
+    const stuck = page.evaluate(() => window.pyxis.invoke("chats.rename", { chatId: "nothing", title: "Nothing" })).catch(() => undefined);
+    // Analisi 1 is renamed: leaving its field sends the new name, whose answer waits until the student has gone on to Fisica 2.
     await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
     await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
     await page.getByRole("textbox", { name: "Nome della materia Analisi 1" }).fill("Analisi uno");
-    process.kill(core!, "SIGSTOP");
-    // Leaving the field sends the new name, whose answer waits.
     await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
     await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
     const second = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
     await second.fill("Fisica due");
     await expect(second).toBeFocused();
-    process.kill(core!, "SIGCONT");
+    // Nothing is renamed while the lock is held.
+    await expect(shelf(page, "Analisi 1")).toBeVisible();
+    lock.exec("ROLLBACK");
+    lock.close();
+    lock = undefined;
+    await stuck;
     // Analisi 1 is renamed; the field of Fisica 2 is still there, with its text and the focus.
     await expect.poll(() => subjectNames(page)).toContain("Analisi uno");
     await expect(shelf(page, "Analisi uno")).toBeVisible();
@@ -1059,11 +1069,8 @@ test("A rename that answers late does not close another subject's rename field",
     await expect(second).toHaveValue("Fisica due");
     await expect(second).toBeFocused();
   } finally {
-    try {
-      process.kill(core!, "SIGCONT");
-    } catch {
-      // The core is gone already.
-    }
+    // Still open only when the test failed before it let the write go.
+    lock?.close();
     await app.close();
     removeTestFolder(userData);
   }
