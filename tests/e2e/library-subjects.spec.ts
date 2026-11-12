@@ -399,6 +399,22 @@ test("A subject offers its delete as soon as its last file is removed", async ()
 const gap = (box: { x: number; y: number; width: number; height: number }, at: { x: number; y: number }) =>
   Math.hypot(Math.max(box.x - at.x, 0, at.x - (box.x + box.width)), Math.max(box.y - at.y, 0, at.y - (box.y + box.height)));
 
+/**
+ * How a menu opened by its dots sits against them: the distance between their right edges, and between the menu and the
+ * dots' bottom (or top, when the menu opens above them). A menu that hangs from its dots has its right edge on theirs
+ * and the dropdown's offset, 4 px, between them.
+ */
+const hangsFrom = async (menu: Locator, dots: Locator) => {
+  const box = (await menu.boundingBox())!;
+  const from = (await dots.boundingBox())!;
+  const below = box.y >= from.y;
+  return {
+    edges: Math.round(box.x + box.width - (from.x + from.width)),
+    offset: Math.round(below ? box.y - (from.y + from.height) : from.y - (box.y + box.height)),
+  };
+};
+const HANGS = { edges: 0, offset: 4 };
+
 /** The menu that is open: the one with `item`, whatever the page scrolled or did while it opened. */
 const openMenu = (page: Page, item: string) =>
   page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").filter({ has: page.getByRole("menuitem", { name: item, exact: true }) });
@@ -554,26 +570,20 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // shift (a group appearing above the shelves) does not: a right-click menu stays at the pointer, and the one opened
     // by the dots follows them. Resizing the window closes a right-click menu, and the dots' menu follows them.
     for (const way of ["dots", "right-click"] as const) {
-      /** Opens the menu of "Serie" and says where it was asked from: the dots, or the pointer. */
-      let from = { x: 0, y: 0 };
+      /** Opens the menu of "Serie" by its dots or by a right-click at its centre. */
       const open = async () => {
         const file = cover(page, "Analisi 1", "Serie");
         await file.scrollIntoViewIfNeeded();
         if (way === "dots") {
           await file.hover();
           await page.getByRole("button", { name: "Azioni per Serie" }).click();
-          from = centre((await page.getByRole("button", { name: "Azioni per Serie" }).boundingBox())!);
         } else {
-          from = centre((await file.boundingBox())!);
+          const from = centre((await file.boundingBox())!);
           await page.mouse.click(from.x, from.y, { button: "right" });
         }
         await expect(fileMenu).toBeVisible();
         await animationsSettled(page);
       };
-      /** Where the menu should be: at the dots, wherever they are now, or at the pointer's old place. */
-      const asked = async () =>
-        way === "dots" ? centre((await page.getByRole("button", { name: "Azioni per Serie" }).boundingBox())!) : from;
-
       await open();
       await page.mouse.move(480, 450);
       await page.mouse.wheel(0, -200);
@@ -597,8 +607,11 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       await expect(fileMenu, `${way} menu after a layout shift`).toBeVisible();
       const after = (await fileMenu.boundingBox())!;
       if (way === "dots") {
-        expect(gap(after, await asked()), `menu ${JSON.stringify(after)} follows its dots`).toBeLessThan(40);
-        expect(after.y).not.toBeCloseTo(before.y, 0);
+        // The menu follows its dots a frame after they move.
+        await expect
+          .poll(() => hangsFrom(fileMenu, page.getByRole("button", { name: "Azioni per Serie" })), "follows its dots")
+          .toEqual(HANGS);
+        expect((await fileMenu.boundingBox())!.y).not.toBeCloseTo(before.y, 0);
       } else expect(after).toEqual(before);
       // The owner keeps its hover look while its menu is open, and nothing else has it.
       await expect.poll(hovered).toEqual([await sourceId(cover(page, "Analisi 1", "Serie"))]);
@@ -609,8 +622,9 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       if (way === "right-click") await expect(fileMenu, "right-click menu after a resize").toHaveCount(0);
       else {
         await expect(fileMenu, "dots menu after a resize").toBeVisible();
-        await animationsSettled(page);
-        expect(gap((await fileMenu.boundingBox())!, await asked())).toBeLessThan(40);
+        await expect
+          .poll(() => hangsFrom(fileMenu, page.getByRole("button", { name: "Azioni per Serie" })), "follows its dots")
+          .toEqual(HANGS);
       }
       await page.setViewportSize({ width: 960, height: 900 });
       await page.keyboard.press("Escape");

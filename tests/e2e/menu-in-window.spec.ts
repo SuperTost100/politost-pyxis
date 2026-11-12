@@ -11,6 +11,8 @@ import { animationsSettled } from "./settled";
 
 const WIDTH = 960;
 const HEIGHT = 600;
+/** Less room than this to the right of a point, and a menu, at least as wide, has to open on its left. */
+const NARROW = 200;
 
 /**
  * Sixteen subjects, so "Sposta in" is taller than the window; the first has enough files to fill rows of covers, and an
@@ -88,12 +90,46 @@ async function expectMenuInWindow(page: Page, menu: Locator) {
 async function rightClickInCorner(page: Page, item: Locator) {
   await item.evaluate((node) => node.scrollIntoView({ block: "end" }));
   const box = (await item.boundingBox())!;
-  const x = Math.min(box.x + box.width, WIDTH) - 12;
-  const y = Math.min(box.y + box.height, HEIGHT) - 8;
+  const view = page.viewportSize()!;
+  const x = Math.min(box.x + box.width, view.width) - 12;
+  const y = Math.min(box.y + box.height, view.height) - 8;
   // The point is on the item, near the corner: there is less room below it than any of these menus needs.
-  expect(x).toBeGreaterThan(WIDTH - 200);
-  expect(y).toBeGreaterThan(HEIGHT - 120);
+  expect(x).toBeGreaterThan(view.width - NARROW);
+  expect(y).toBeGreaterThan(view.height - 120);
   await page.mouse.click(x, y, { button: "right" });
+}
+
+/**
+ * Widens the window until the shelf's rightmost column of covers ends near its right edge, and returns the last cover of
+ * that column. The shelf wraps its covers by its width, which the sidebar shares (it is wider on macOS), so at 960 px the
+ * last column can end up to one cover's width before the shelf does.
+ */
+async function coverInCorner(page: Page, covers: Locator): Promise<number> {
+  const layout = () =>
+    covers.evaluateAll((nodes) => {
+      const boxes = nodes.map((node) => node.getBoundingClientRect());
+      const right = Math.max(...boxes.map((box) => box.right));
+      const lefts = [...new Set(boxes.map((box) => Math.round(box.left)))].sort((a, b) => a - b);
+      return {
+        right,
+        // The last cover whose right edge is the rightmost: the lowest of the rightmost column.
+        index: boxes.map((box, index) => [box.right, index] as const).filter(([edge]) => edge === right).at(-1)![1],
+        pitch: lefts[1]! - lefts[0]!,
+        // Where the shelf's covers can end: its box without its padding.
+        shelfEnd:
+          nodes[0]!.parentElement!.getBoundingClientRect().right -
+          parseFloat(getComputedStyle(nodes[0]!.parentElement!).paddingRight),
+      };
+    });
+  const view = page.viewportSize()!;
+  const found = await layout();
+  if (view.width - (found.right - 12) >= NARROW) {
+    // One more column fits once the shelf has grown by what it lacks for one.
+    const width = view.width + Math.ceil(found.pitch - (found.shelfEnd - found.right));
+    await page.setViewportSize({ width, height: view.height });
+    await expect.poll(async () => (await layout()).right).toBeGreaterThan(found.right);
+  }
+  return (await layout()).index;
 }
 
 test("A right-click menu near the window's bottom-right corner opens inside the window and its last item acts", async () => {
@@ -139,23 +175,8 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     await page.reload();
     const covers = page.locator(".px-cover");
     await expect(covers).toHaveCount(14);
-    // The rightmost cover of the shelf's last row.
-    const rights = await covers.evaluateAll((nodes) =>
-      nodes
-        .map((node) => node.getBoundingClientRect())
-        .map((box) => [box.top, box.right]),
-    );
-    const rowTops = [...new Set(rights.map(([top]) => Math.round(top!)))].sort(
-      (a, b) => a - b,
-    );
-    const lastRow = rights
-      .map(([top, right], index) => ({
-        top: Math.round(top!),
-        right: right!,
-        index,
-      }))
-      .filter((entry) => entry.top === rowTops.at(-1));
-    const last = lastRow.reduce((a, b) => (b.right > a.right ? b : a));
+    // The lowest cover of the shelf's rightmost column, with that column at the window's right edge.
+    const last = { index: await coverInCorner(page, covers) };
     await rightClickInCorner(page, covers.nth(last.index));
     await expectMenuInWindow(page, open);
     const confirmed = page.waitForEvent("dialog").then(async (dialog) => {
@@ -187,8 +208,8 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     const box = (await sub.boundingBox())!;
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x).toBeGreaterThanOrEqual(0);
-    expect(box.y + box.height).toBeLessThanOrEqual(HEIGHT);
-    expect(box.x + box.width).toBeLessThanOrEqual(WIDTH);
+    expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     expect(
       await sub.evaluate((list) => list.scrollHeight > list.clientHeight),
     ).toBe(true);

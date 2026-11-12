@@ -296,7 +296,11 @@ export function useItemMenu({
   const [at, setAt] = useState<MenuPoint | null>(null);
   // For a menu opened with the keyboard: where focus goes back to when it closes.
   const origin = useRef<HTMLElement | null>(null);
+  // Whether the menu is open, kept with the events rather than the render, which may not have happened yet when the next
+  // event of the same key press arrives.
+  const shown = useRef(false);
   const close = (restoreFocus: boolean, scrollBack = true) => {
+    shown.current = false;
     setAt(null);
     const back = origin.current;
     origin.current = null;
@@ -305,11 +309,16 @@ export function useItemMenu({
   };
   // The item the menu belongs to, read when it opens: the menu closes when the page scrolls under it or the window resizes.
   const item = useRef<Element | null>(null);
-  const bind = menuTrigger((point, byKey, target) => {
-    origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    item.current = target instanceof Element ? target : null;
-    setAt(point);
-  }, !disabled);
+  const bind = menuTrigger(
+    (point, byKey, target) => {
+      shown.current = true;
+      origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      item.current = target instanceof Element ? target : null;
+      setAt(point);
+    },
+    !disabled,
+    () => shown.current,
+  );
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
@@ -365,7 +374,7 @@ export function MenuItemArea({
   region?: string;
   disabled?: boolean;
   children: ReactNode;
-} & Omit<HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown" | "onPointerDown">) {
+} & Omit<HTMLAttributes<HTMLElement>, "onContextMenu" | "onKeyDown" | "onKeyUp" | "onPointerDown">) {
   const { bind, popup } = useItemMenu({ menu, region, disabled });
   return (
     <Tag {...rest} {...bind}>

@@ -84,26 +84,69 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
       await expect(name, key).toBeFocused();
     }
 
-    // Windows sends a contextmenu for the menu key when the key is released, after the key press opened the menu, on the
-    // focused element and at its place. The menu stays under the name as the keyboard's, and Escape gives the focus back.
+    // A platform can send a contextmenu for the menu key besides the key press: Chromium on Windows sends one when the key
+    // is released unless the page handles the release, to the element that has focus then. The menu takes the focus a
+    // frame after it opens, so that element is the name or the menu. The orders below are sent to the name before the
+    // menu takes the focus, and to whatever has the focus a frame later. In each, the menu opens once under the name as
+    // the keyboard's: Escape gives the focus back to the name, and a right-click moves the menu to the pointer.
     await name.focus();
     await page.keyboard.press("ContextMenu");
     expect(await itemsOf(page, "Azioni")).toEqual(fromDots);
     const keyMenu = (await page.getByRole("menu").boundingBox())!;
-    await page.evaluate(() => {
-      const focused = document.activeElement!;
-      const at = focused.getBoundingClientRect();
-      focused.dispatchEvent(
-        new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: at.left + at.width / 2, clientY: at.top + at.height / 2 }),
-      );
-    });
-    await expect(page.getByRole("menu")).toHaveCount(1);
-    expect((await page.getByRole("menu").boundingBox())!).toEqual(keyMenu);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(name).toBeFocused();
+    type Sent = "keydown" | "keyup" | "contextmenu";
+    const send = (order: Sent[], to: "name" | "focused") =>
+      name.evaluate(
+        async (button, { order, to }) => {
+          const prevented: string[] = [];
+          for (const type of order) {
+            const target = to === "name" ? button : document.activeElement!;
+            const at = target.getBoundingClientRect();
+            const event =
+              type === "contextmenu"
+                ? new MouseEvent(type, { bubbles: true, cancelable: true, clientX: at.left + at.width / 2, clientY: at.top + at.height / 2 })
+                : new KeyboardEvent(type, { key: "ContextMenu", bubbles: true, cancelable: true });
+            target.dispatchEvent(event);
+            if (event.defaultPrevented) prevented.push(type);
+            // The platform sends each event as a task of its own; "focused" lets the menu take the focus between them.
+            await new Promise((resolve) => (to === "name" ? setTimeout(resolve, 0) : requestAnimationFrame(resolve)));
+          }
+          return prevented;
+        },
+        { order, to },
+      );
+    const orders: Sent[][] = [["keydown", "keyup", "contextmenu"], ["contextmenu", "keydown", "keyup"], ["contextmenu"]];
+    for (const order of orders)
+      for (const to of ["name", "focused"] as const) {
+        const step = `${order.join(", ")} to the ${to}`;
+        await name.focus();
+        // Every event is handled, the key's release too, so Windows sends no contextmenu of its own.
+        expect(await send(order, to), step).toEqual(order);
+        await expect(page.getByRole("menu"), step).toHaveCount(1);
+        await expect.poll(async () => page.getByRole("menu").boundingBox(), { message: step }).toEqual(keyMenu);
+        expect(await itemsOf(page, "Azioni"), step).toEqual(fromDots);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu"), step).toHaveCount(0);
+        await expect(name, step).toBeFocused();
+
+        await send(order, to);
+        await expect.poll(async () => page.getByRole("menu").boundingBox(), { message: step }).toEqual(keyMenu);
+        const nameNow = (await name.boundingBox())!;
+        const pointer = { x: nameNow.x + nameNow.width - 4, y: nameNow.y + nameNow.height / 2 };
+        await page.mouse.click(pointer.x, pointer.y, { button: "right" });
+        await expect
+          .poll(async () => {
+            const menuBox = (await page.getByRole("menu").boundingBox())!;
+            return [Math.abs(menuBox.x - pointer.x) < 24, Math.abs(menuBox.y - pointer.y) < 24];
+          }, { message: step })
+          .toEqual([true, true]);
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu"), step).toHaveCount(0);
+      }
 
     // A right-click on the name's far end while the key's menu is open moves the menu to the pointer.
+    await name.focus();
     await page.keyboard.press("ContextMenu");
     await expect(page.getByRole("menu")).toBeVisible();
     const nameAt = (await name.boundingBox())!;
