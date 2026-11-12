@@ -89,7 +89,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     await expect(back).toBeFocused();
     await page.keyboard.type("C_nH_{2n+2}");
     await expect(back).toHaveValue("Sono $ C_nH_{2n+2} $");
-    await expect(dialog.locator(".px-nc-preview .katex")).toBeVisible();
+    await expect(dialog.locator(".px-formula-preview .katex")).toBeVisible();
     await shot(page, "2-hand-new-subject");
 
     // Escape with text typed asks first, and the safe answer keeps it.
@@ -659,6 +659,66 @@ test("the Flashcard page's cleanup of `?new=` never lands on the page opened rig
     await expect(dialog).toBeVisible();
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(dialog.getByRole("combobox", { name: "Materia" })).toHaveValue("ana");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a proposed face with a formula shows its preview, and a long face wraps in its field", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-formula-"));
+  const long =
+    "Enuncia il teorema della permanenza del segno per una funzione continua in un punto, spiegando perché il segno del limite si conserva in tutto un intorno del punto";
+  const env = {
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+      subjectCards: [
+        {
+          cards: [
+            { kind: "qa", front: "Che cos'è il limite sinistro?", back: "Il limite per $x < x_0$.", passageId: "{{passage:0}}" },
+            { kind: "qa", front: long, back: "Se il limite è positivo, la funzione è positiva vicino al punto.", passageId: "{{passage:0}}" },
+          ],
+        },
+      ],
+    }),
+  };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    seedAnalisi(userData);
+    await toFlashcards(page);
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await dialog.getByRole("combobox", { name: "Argomento" }).selectOption({ label: "Limiti" });
+    await dialog.getByRole("button", { name: "Crea le flashcard" }).click();
+    const list = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
+    await expect(list).toHaveCount(2);
+
+    // The back with a formula shows it drawn under the field; a face without one has no preview.
+    const first = list.nth(0);
+    await expect(first.locator(".px-formula-preview")).toHaveCount(1);
+    await expect(first.locator(".px-formula-preview .katex")).toBeVisible();
+    await expect(first.locator(".px-formula-preview")).toContainText("Anteprima");
+    // Editing the face updates the preview, and a face that loses its formula loses the preview.
+    await first.getByRole("textbox", { name: "Retro" }).fill("Il limite per x minore di x0.");
+    await expect(first.locator(".px-formula-preview")).toHaveCount(0);
+    await first.getByRole("textbox", { name: "Fronte" }).fill("Che cos'è $\\lim_{x \\to x_0^-} f(x)$?");
+    await expect(first.locator(".px-formula-preview .katex")).toBeVisible();
+
+    // The long front wraps on several lines inside the dialog instead of running on in one.
+    await animationsSettled(page);
+    const field = list.nth(1).getByRole("textbox", { name: "Fronte" });
+    const box = (await field.boundingBox())!;
+    const card = (await list.nth(1).boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(card.x + card.width + 0.5);
+    expect(await field.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    // Taller than a one-line face: the long one runs on several lines.
+    const short = (await list.nth(1).getByRole("textbox", { name: "Retro" }).boundingBox())!;
+    expect(box.height).toBeGreaterThan(short.height + 10);
   } finally {
     await app.close();
     removeTestFolder(userData);

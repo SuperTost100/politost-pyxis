@@ -8,6 +8,7 @@ import { Button } from "../../components/Button";
 import { Segmented, Stepper } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
 import { Logo } from "../../components/Logo";
+import { FormulaPreview } from "../../components/FormulaPreview";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
@@ -27,8 +28,6 @@ type Proposal = RequestOutput<"study.cardsForSubject">;
 const NEW_SUBJECT = "\u0000new";
 /** A topic option's value: its exam and its id. The empty value is the whole subject. */
 const topicValue = (planId: string, topicId: string) => `${planId}\u0000${topicId}`;
-/** A face with a formula in it, `$…$` with something between the dollars. */
-const HAS_FORMULA = /\$(?=[^$]*\S)[^$]+\$/;
 
 export const newCardsQuery = { queryKey: ["new-card-places"], queryFn: () => invoke("study.newCardPlaces", {}) };
 
@@ -974,14 +973,7 @@ function FaceField({
         onChange={(event) => onChange(event.target.value)}
       />
       <FieldError id={`${id}-error`} text={error} />
-      {HAS_FORMULA.test(value) ? (
-        <div className="px-nc-preview">
-          <span>{t("flashcards.new.preview")}</span>
-          <div className="px-nc-preview-face">
-            <MarkdownView variant="body">{value}</MarkdownView>
-          </div>
-        </div>
-      ) : null}
+      <FormulaPreview label={t("flashcards.new.preview")} value={value} />
     </div>
   );
 }

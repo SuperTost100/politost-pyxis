@@ -7,6 +7,8 @@
 }
 .px-pc-card {
   display: grid;
+  /* One column as wide as the list, so a long face wraps in its field instead of widening the card. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
   padding: 12px 0 16px;
   border-top: 1px solid var(--border);
@@ -31,9 +33,11 @@
   color: var(--ink-subtle);
   font-weight: 500;
 }
-/* Several lines of text: the field grows with what it holds, up to six lines, then scrolls. */
+/* Several lines of text: the field grows with what it holds, up to six lines, then scrolls. Its padding and border are
+   inside its width, also in a dialog drawn outside the app's border-box rule, so a long face wraps inside the card. */
 .px-pc-field {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   min-height: calc(20px * var(--text-scale, 1) + 18px);
   max-height: calc(6 * 20px * var(--text-scale, 1) + 18px);
@@ -72,4 +76,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.px-pc-card .px-formula-preview {
+  margin-top: 0;
 }

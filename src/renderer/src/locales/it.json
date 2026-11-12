@@ -3369,6 +3369,7 @@
     "drop": "Scarta la flashcard {{n}}",
     "front": "Fronte",
     "back": "Retro",
+    "preview": "Anteprima",
     "source": "Fonte",
     "cloze": "Cloze: le parole dentro {{markup}} restano nascoste mentre studi.",
     "allDropped": "Hai scartato tutte le flashcard. Crea di nuovo per averne altre.",

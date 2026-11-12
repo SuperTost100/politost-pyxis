@@ -3369,6 +3369,7 @@
     "drop": "Drop flashcard {{n}}",
     "front": "Front",
     "back": "Back",
+    "preview": "Preview",
     "source": "Source",
     "cloze": "Cloze: the words inside {{markup}} are hidden when you study.",
     "allDropped": "You dropped every flashcard. Make again to get new ones.",

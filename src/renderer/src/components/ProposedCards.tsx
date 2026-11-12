@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { isCloze } from "../../../core/study/cloze";
 import { CitationChip } from "./CitationChip";
+import { FormulaPreview } from "./FormulaPreview";
 import { IconButton } from "./IconButton";
 import { openSourceViewer } from "./SourceViewer";
 import "./ProposedCards.css";
@@ -21,8 +22,8 @@ export type ProposedRow = {
 const EXIT_MS = 420;
 
 /**
- * The flashcards Pyxis wrote, to check before they are saved: each one editable, with its source and a button that
- * drops it. A dropped card leaves `rows` at once, so it can no longer be saved; its place in the list shows a copy that
+ * The flashcards Pyxis wrote, to check before they are saved: each one editable, with its source, a button that drops
+ * it and, under a face with a formula, the face as the flashcard draws it. A dropped card leaves `rows` at once, so it can no longer be saved; its place in the list shows a copy that
  * fades, then the gap closes after it. Focus moves to the next card's button. Shared by the dialog that makes flashcards
  * from a selection, an answer or a map, and the new-flashcard dialog, which keep it mounted while the dialog is in the
  * review step so the last card can leave the same way.
@@ -113,6 +114,7 @@ export function ProposedCards({
           disabled={disabled || gone}
           onChange={(event) => onChange(row.key, { front: event.target.value })}
         />
+        <FormulaPreview label={t("makeCards.preview")} value={row.front} />
         {isCloze(row.front) ? (
           <p className="small px-pc-cloze">{t("makeCards.cloze", { markup: "{{c1::…}}" })}</p>
         ) : null}
@@ -127,6 +129,7 @@ export function ProposedCards({
           disabled={disabled || gone}
           onChange={(event) => onChange(row.key, { back: event.target.value })}
         />
+        <FormulaPreview label={t("makeCards.preview")} value={row.back} />
       </>
     );
   };

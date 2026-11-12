@@ -3577,7 +3577,7 @@ async function openState(page: Page, name: string) {
         await dialog
           .getByRole("textbox", { name: both("Retro", "Back") })
           .fill("Vale 1. Si vede confrontando le aree di due triangoli e di un settore circolare.");
-        await expect(dialog.locator(".px-nc-preview .katex").first()).toBeVisible();
+        await expect(dialog.locator(".px-formula-preview .katex").first()).toBeVisible();
         break;
       }
       await dialog.getByRole("radio", { name: both("Falla fare a Pyxis", "Let Pyxis write them") }).click();

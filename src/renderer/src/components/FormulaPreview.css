@@ -1,0 +1,27 @@
+/* Under a flashcard face with a formula: the face as the flashcard shows it (FormulaPreview.tsx). A long face wraps. */
+.px-formula-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-field);
+  background: var(--surface-sunken);
+}
+[data-theme="dark"] .px-formula-preview {
+  background: var(--bg);
+}
+.px-formula-preview > span {
+  flex: none;
+  color: var(--ink-subtle);
+  font: 500 calc(12.5px * var(--text-scale, 1)) / 1 var(--font-sans);
+}
+.px-formula-preview-face {
+  min-width: 0;
+  overflow: auto hidden;
+  padding-block: 2px;
+  overflow-wrap: anywhere;
+}
+.px-formula-preview-face :is(p, ul, ol) {
+  margin: 0;
+}
