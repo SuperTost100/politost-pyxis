@@ -411,6 +411,7 @@ const routes = {
   "chats.seed": ["chats", "seed"],
   "chats.leave": ["chats", "leave"],
   "chats.clearContext": ["chats", "clearContext"],
+  "chats.setSubject": ["chats", "setSubject"],
   "chats.rate": ["chats", "rate"],
   "chats.rename": ["chats", "rename"],
   "chats.delete": ["chats", "remove"],

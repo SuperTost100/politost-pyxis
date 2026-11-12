@@ -139,6 +139,36 @@ When the engine Pyxis chose for a task hits a usage limit, is signed out (a refu
 - CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in`, `refused` and `model-not-included`. The last one matches the wording vendors use when a plan leaves a model out, such as Cursor's "is not included in your weekly usage". Credits that ran out ("out of credits", "insufficient credits", "buy credits") stop every model on the account, so they count as a usage limit.
 - A lesson that falls back to the book text after an engine failure carries the failure's message key as `fallbackReason`, and the lesson page shows it with a link to the engine settings.
 
+## What a chat searches
+
+Pyxis decides where a question looks and files the chat under a subject; the composer has no subject, source or mode control. Each turn searches one of these, in order (`answer()` in `src/core/chat/turn.ts`):
+
+| The chat has                                                          | The turn searches                                                |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Files or an exam chosen for it (opened from an exam, a lesson, a map) | Those files, plus its subject's files when it has a subject      |
+| A subject                                                             | The subject's Library files and the files its exams study        |
+| Neither                                                               | The student's whole material: the Library and every exam's files |
+
+The chat's attachments always come along. A subject with nothing relevant on a question widens the search to the whole material; the reply is then stored with grounding `mixed` (read as `wider`) and its line says the chat's subject had nothing. An exam chat without files and without a subject searches nothing, and an empty Library is not searched, so those replies make no claim about the student's material. A reply that cites nothing is stored as `general`, with a note in `messages.passages_json` (`{ found, where }`) that tells apart a search that found nothing relevant (the line says where Pyxis looked: the Library, or the files the chat is limited to) from one that found passages the answer did not cite. A reply that cites a file outside the chat's subject is stored as `mixed` too, even when the search did not have to widen.
+
+### The subject Pyxis picks
+
+A chat with no subject, which the student has not set either, gets one from its first search of the whole material that finds something. The rule works on the search's own scores, so it needs no model call (`pickSubject()` in `src/core/chat/subject.ts`):
+
+1. Count only the passages that pass the search's relevance bar, the same one `covered` is made of: a lexical match that holds at least 40% of the question's words, or a vector at L2 distance 0.6 or less.
+2. Give each passage the subject of its file: the Library subject, or else the subject of the exams that study it when they all have one subject. A file with neither counts in the total and for no subject.
+3. The subject with the most passages wins when it has at least 2 and at least two thirds of all of them. So 4 against 2 picks, 3 against 2 picks nothing, a single relevant passage picks nothing, and passages mostly from files without a subject pick nothing.
+
+The subject is stored with the reply only when the reply is saved whole: a turn that fails or is stopped leaves the chat as it was. `scope_json` then records `subjectBy: "pyxis"`. The student can change the subject from the chip in the chat's header at any time, or choose the whole Library, which sets `subjectBy: "student"`; Pyxis never changes a subject the student set. On a new chat's first page the chip offers the same choice before anything is sent, and the first question carries it. A chat saved with a subject before `subjectBy` existed counts as the student's.
+
+An older chat whose sources were picked by hand keeps answering from them, and its chip shows how many. Choosing a subject or the whole Library from the chip replaces them; the chat's attachments stay.
+
+### The way of answering
+
+Pyxis solves and explains when the student asks for an answer, and guides one step at a time when the student asks for help understanding, asks to be guided, shows their own attempt, or answers a guided step without asking for the solution. `answerWay()` in `src/core/chat/way.ts` decides it from the question's words and the way the previous reply took, so it is tested without a model. A request for the solution wins over a request for help, but a solve verb that only names the task ("guidami a risolvere questo integrale", "walk me through how to solve it") or a refused solution ("non darmi la soluzione") is not a request for the solution.
+
+The way picks the template: `chat.socratic` for a guided step, `chat.solver` for a solved answer (with the math checks and figures), and `chat.general` for a solved answer when nothing was searched. The reply stores its template in `messages.prompt_template`, which is how the chat knows which way it went after a reload. Under the last reply one action asks the same question again the other way ("Guidami passo passo" or "Dammi la soluzione"), which is `chats.regenerate` with `way`. Regenerate and Continue keep the way of the reply they replace.
+
 ## Chat conversations and prompt caching
 
 Each chat keeps one conversation with its engine while the student stays in it. The first question sends the whole context: the system prompt (tutor template, profile, plan line, subject), then the pinned context and the earlier turns, then this question's passages and the question. The parts that stay the same come first so a provider's prompt cache keeps the start of the prompt. Later questions send only the new question and its passages, numbered from P1 again.
@@ -155,7 +185,7 @@ The conversation ends, and a live process with it, when:
 
 - the student leaves the chat (`chats.leave`), deletes it or clears its pinned context;
 - no question came for 10 minutes;
-- the chat's engine, effort or system prompt changed, or the student changed any engine choice;
+- the chat's engine, effort or system prompt changed (a new subject or the other way of answering changes the system prompt), or the student changed any engine choice;
 - a turn was stopped or failed, or a reply is regenerated;
 - a second question ran beside a turn still in progress, so the conversation would miss that exchange;
 - an API key changed (core also drops every stored API history then);

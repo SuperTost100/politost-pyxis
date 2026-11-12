@@ -235,7 +235,6 @@ test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and k
       window.pyxis.invoke("chats.ask", {
         text: "calcola 6 per 7",
         allowGeneral: true,
-        mode: "solver",
       }),
     )) as { chatId: string };
     await page.evaluate((chatId) => {

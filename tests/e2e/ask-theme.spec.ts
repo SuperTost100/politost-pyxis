@@ -131,9 +131,7 @@ test("Ask: a live theme switch repaints the page, sidebar and cited reply like a
       location.hash = "/ask";
     });
     await page.reload();
-    // A subject brings its sources, so the reply is grounded and carries a citation chip.
-    await page.getByRole("button", { name: /^Materia:/ }).click();
-    await page.getByRole("button", { name: "Fisica", exact: true }).click();
+    // Pyxis finds the passage in the Library, so the reply is grounded and carries a citation chip.
     const box = page.getByRole("textbox", { name: "Messaggio" });
     await box.fill("Come si risolve un integrale per parti?");
     await box.press("Enter");

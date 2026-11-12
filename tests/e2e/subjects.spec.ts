@@ -80,8 +80,9 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("subjects.list", {})) as Array<{ name: string }>).map((row) => row.name)).toEqual(["Fisica"]);
     await page.keyboard.press("Escape");
     await page.getByRole("link", { name: "Nuova chat", exact: true }).click();
-    await page.getByRole("button", { name: /^Materia:/ }).click();
-    await page.getByRole("button", { name: "Fisica", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Materia: Fisica" })).toHaveText("Fisica");
+    // The new chat's subject chip lists what is left.
+    await page.getByRole("button", { name: /^Materia: sceglie Pyxis/ }).click();
+    await page.getByRole("menuitemradio", { name: "Fisica", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Materia della chat: Fisica, scelta da te" })).toHaveText("Fisica");
   } finally { await app.close(); removeTestFolder(userData); }
 });

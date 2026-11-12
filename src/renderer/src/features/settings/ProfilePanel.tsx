@@ -36,7 +36,6 @@ export type ProfilePatch = {
   course?: string;
   dyslexia?: boolean;
   textSize?: "sm" | "md" | "lg";
-  tutorMode?: "solver" | "socratic";
   interests?: string[];
   interestsOn?: boolean;
   crashReports?: boolean;

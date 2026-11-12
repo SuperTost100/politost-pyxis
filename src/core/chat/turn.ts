@@ -38,6 +38,8 @@ import {
   chatTemplateId,
   dataBlock,
 } from "./prompts";
+import { liveSubject, pickSubject, sourceSubjects, subjectSourceIds, type SubjectBy } from "./subject";
+import { answerWay, wayOfTemplate, type AnswerWay } from "./way";
 
 export type ChatContext = {
   kind: "answer" | "passage";
@@ -52,7 +54,20 @@ export type ChatCitation = {
   sourceId: string;
   sectionPath: string | null;
   locator: PassageHit["locator"];
+  /** The file's title, for the list under "I used N sources". */
+  sourceTitle?: string;
+  /** The subject the file belongs to (see `sourceSubjects`), null for one without. */
+  subject?: string | null;
+  /** The file was attached to the chat rather than taken from the Library. */
+  attached?: boolean;
 };
+
+/**
+ * What a reply rests on. `sources`: it cites the student's material. `wider`: it cites material from outside the chat's
+ * subject, which had nothing on the question (stored as `mixed`). `general`: Pyxis searched and the reply cites nothing,
+ * so it comes from general knowledge. Null: nothing was searched (an older reply, or a turn with only an attached file).
+ */
+export type Grounding = "sources" | "wider" | "general";
 
 export type ChatMessageView = {
   id: string;
@@ -60,7 +75,9 @@ export type ChatMessageView = {
   body: string;
   modelId: string | null;
   provider: string | null;
-  grounding: "sources" | "general" | null;
+  grounding: Grounding | null;
+  /** Solved in full, or guided one step at a time. */
+  way: AnswerWay;
   followups: string[];
   citations: ChatCitation[];
   reaction: "up" | "down" | null;
@@ -72,7 +89,15 @@ export type ChatMessageView = {
   figures?: Record<string, string>;
   /** The math check for this reply is still running; its badges arrive with a `chats.checks` broadcast. */
   checking: boolean;
+  /**
+   * For a reply from general knowledge: whether the search found relevant passages the answer then did not cite, and
+   * where it looked (the whole Library, or the files the chat is limited to). Absent when the reply cites sources, and
+   * for a reply stopped or saved before this was kept.
+   */
+  searched?: SearchNote;
 };
+
+export type SearchNote = { found: boolean; where: "library" | "files" };
 
 export type AskResult = {
   chatId: string;
@@ -88,9 +113,11 @@ type AskInput = {
   sourceIds?: string[];
   /** ASK-07: a plan scopes the chat to the plan's sources; null clears it, undefined keeps it. */
   planId?: string | null;
-  mode?: "solver" | "socratic";
+  /** The way the student asked for with the action under an answer. Without it the question decides (`answerWay`). */
+  way?: AnswerWay;
   allowGeneral?: boolean;
-  subject?: string;
+  /** A subject the student chose for the chat, null for the whole Library. Undefined keeps the chat's own. */
+  subject?: string | null;
   files?: string[];
   workspace?: string;
   recognize?: (bytes: Uint8Array, cachePath: string) => Promise<string>;
@@ -110,7 +137,7 @@ type AskInput = {
    * Continue: the reply that was cut short. The model writes only the rest, appended to its text, from the passages it
    * was written with (null for a reply saved before they were recorded, which retrieves them again).
    */
-  resumeFrom?: { text: string; passages: KeptPassage[] | null };
+  resumeFrom?: { text: string; passages: KeptPassage[] | null; widened?: boolean };
 };
 
 /** A passage a stopped reply was written with, and the P-number it had. */
@@ -220,10 +247,22 @@ export function replyGrounding(turn: {
   /** The reply is a Socratic question, which is not expected to cite. */
   question: boolean;
   passages: number;
-}): "sources" | "general" | null {
-  if (turn.cited > 0 || turn.attached) return "sources";
+  /** The passages came from outside the chat's subject, which had nothing on the question. */
+  widened?: boolean;
+}): Grounding | null {
+  if (turn.cited > 0) return turn.widened ? "wider" : "sources";
+  if (turn.attached) return "sources";
   if (!turn.selected) return null;
-  return turn.question && turn.passages > 0 ? "sources" : "general";
+  return turn.question && turn.passages > 0 ? (turn.widened ? "wider" : "sources") : "general";
+}
+
+/** `wider` is stored as `mixed`, a value the column has allowed from the start. */
+function storedGrounding(grounding: Grounding | null): string | null {
+  return grounding === "wider" ? "mixed" : grounding;
+}
+
+function readGrounding(stored: string | null): Grounding | null {
+  return stored === "mixed" ? "wider" : stored === "sources" || stored === "general" ? stored : null;
 }
 
 export function splitFollowups(text: string): { body: string; followups: string[] } {
@@ -330,27 +369,58 @@ function isFollowUp(text: string): boolean {
   return words.length === 0 || words.every((word) => FOLLOW.has(word));
 }
 
-type Scope = { planId: string | null; ids: string[] };
+/** `subjectBy` says who set the chat's subject (or chose the whole Library); undefined while Pyxis may still pick one. */
+type Scope = { planId: string | null; ids: string[]; subjectBy?: SubjectBy };
 
-/** scope_json holds a source ID array, or { planId, sourceIds } for a plan-scoped chat. */
+/**
+ * scope_json holds a source ID array, or { planId, sourceIds, subjectBy } once the chat has a plan or someone set its
+ * subject. A chat saved with a subject before `subjectBy` existed had it picked by the student.
+ */
 function readScope(db: Database.Database, chatId: string): Scope {
   const row = db
-    .prepare(`SELECT scope_json FROM chats WHERE id = ?`)
-    .get(chatId) as { scope_json: string } | undefined;
+    .prepare(`SELECT scope_json, subject FROM chats WHERE id = ?`)
+    .get(chatId) as { scope_json: string; subject: string | null } | undefined;
   if (!row) return { planId: null, ids: [] };
   const parsed = JSON.parse(row.scope_json) as unknown;
   const strings = (value: unknown) =>
     Array.isArray(value)
       ? value.filter((id): id is string => typeof id === "string")
       : [];
-  if (Array.isArray(parsed)) return { planId: null, ids: strings(parsed) };
-  const object = (parsed ?? {}) as { planId?: unknown; sourceIds?: unknown };
+  const legacy: SubjectBy | undefined = row.subject ? "student" : undefined;
+  // A subject that was deleted leaves the chat on the whole Library, as a choice of the student's: Pyxis picked the
+  // subject, and a chat with none of its own must not look as if Pyxis were still choosing.
+  const gone = (by: SubjectBy | undefined): SubjectBy | undefined =>
+    by === "pyxis" && !liveSubject(db, row.subject) ? "student" : by;
+  if (Array.isArray(parsed)) return { planId: null, ids: strings(parsed), subjectBy: legacy };
+  const object = (parsed ?? {}) as { planId?: unknown; sourceIds?: unknown; subjectBy?: unknown };
   const planId =
     typeof object.planId === "string" &&
     db.prepare(`SELECT 1 FROM plans WHERE id = ?`).get(object.planId)
       ? object.planId
       : null;
-  return { planId, ids: strings(object.sourceIds) };
+  const subjectBy =
+    object.subjectBy === "pyxis" || object.subjectBy === "student" ? object.subjectBy : legacy;
+  return { planId, ids: strings(object.sourceIds), subjectBy: gone(subjectBy) };
+}
+
+/** The stored form of a scope: the plain ID array while there is nothing else to keep, as older chats have it. */
+function scopeJson(scope: Scope): string {
+  if (!scope.planId && !scope.subjectBy) return JSON.stringify(scope.ids);
+  return JSON.stringify({
+    ...(scope.planId ? { planId: scope.planId } : {}),
+    sourceIds: scope.ids,
+    ...(scope.subjectBy ? { subjectBy: scope.subjectBy } : {}),
+  });
+}
+
+/** Chat attachments among `ids`: files outside the Library that stay in the chat's scope whatever else changes. */
+function hiddenSources(db: Database.Database, ids: readonly string[]): string[] {
+  if (ids.length === 0) return [];
+  return (
+    db
+      .prepare(`SELECT id FROM sources WHERE library = 0 AND id IN (SELECT value FROM json_each(?))`)
+      .all(JSON.stringify(ids)) as Array<{ id: string }>
+  ).map((row) => row.id);
 }
 
 function planSourceIds(db: Database.Database, planId: string): string[] {
@@ -382,6 +452,29 @@ export function chatPlan(db: Database.Database, chatId: string): string | null {
 /** Sources picked by hand or attached, without the plan's own. */
 export function chatPickedSources(db: Database.Database, chatId: string): string[] {
   return readScope(db, chatId).ids;
+}
+
+/** Who set the chat's subject, or chose the whole Library; null while Pyxis may still pick one. */
+export function chatSubjectBy(db: Database.Database, chatId: string): SubjectBy | null {
+  return readScope(db, chatId).subjectBy ?? null;
+}
+
+/**
+ * The student sets the chat's subject from its chip, or the whole Library with null. It replaces any sources and exam
+ * picked by hand for the chat (an older chat's "Fonti scelte"); the chat's attachments stay. Pyxis never changes it.
+ */
+export function setChatSubject(db: Database.Database, chatId: string, subject: string | null): void {
+  db.transaction(() => {
+    const scope = readScope(db, chatId);
+    // The Library's spelling of the name, and only a subject that exists: the chip lists them, but one may have been
+    // renamed or deleted since.
+    const name = subject?.trim() ? liveSubject(db, subject) : null;
+    if (subject?.trim() && !name) throw new IpcError("invalid", "errors.invalidSubject");
+    const info = db
+      .prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`)
+      .run(name, scopeJson({ planId: null, ids: hiddenSources(db, scope.ids), subjectBy: "student" }), chatId);
+    if (info.changes === 0) throw new Error("chat-missing");
+  })();
 }
 
 /** ASK-09: the plan's language and name, falling back to the profile for an unscoped chat. */
@@ -464,16 +557,23 @@ function requireChat(db: Database.Database, chatId: string) {
     throw new DOMException("chat-deleted", "AbortError");
 }
 
+/** Where a turn searches: `sourceIds` alone, or the whole Library plus them (`withLibrary`). */
+type SearchScope = { sourceIds: string[]; withLibrary: boolean };
+
 /** `question` embeds `text` alone; `embed` is the turn's own embedder, for the wider search a follow-up may need. */
 async function gather(
   db: Database.Database,
   chatId: string,
   text: string,
-  sourceIds: string[],
+  scope: SearchScope,
   embed: AskInput["embed"],
   question: AskInput["embed"],
-) {
-  const options = { sourceIds, embed, limit: CHAT_PASSAGES };
+): Promise<{ hits: PassageHit[]; covered: boolean; usedVectors: boolean; relevant: string[] }> {
+  // A subject with no files yet has nothing to search; an empty list would otherwise mean the whole Library.
+  if (!scope.withLibrary && scope.sourceIds.length === 0)
+    return { hits: [], covered: false, usedVectors: false, relevant: [] };
+  const sourceIds = scope.sourceIds;
+  const options = { ...scope, embed, limit: CHAT_PASSAGES };
   const found = await retrieveWithModel(db, text, { ...options, embed: question });
   if (found.covered || !isFollowUp(text)) return found;
   const earlier = db
@@ -490,9 +590,9 @@ async function gather(
     );
     if (wider.covered) return wider;
   }
-  const prior = priorPassages(db, chatId, sourceIds);
+  const prior = priorPassages(db, chatId, scope.withLibrary ? [] : sourceIds);
   if (prior.length > 0)
-    return { hits: prior, covered: true, usedVectors: false };
+    return { hits: prior, covered: true, usedVectors: false, relevant: [] };
   return found;
 }
 
@@ -512,6 +612,18 @@ export function seedChat(
   const chatId = uuidv7(now);
   // The name is read in a list and a header, where a formula's TeX would show as source.
   const title = plainTitle(input.title);
+  // A chat opened from an exam, a lesson or a source knows its subject: the one given, the exam's, or the subject all
+  // the given files share.
+  const fromPlan = input.planId
+    ? (
+        db
+          .prepare(`SELECT s.name FROM plans p JOIN subjects s ON s.id = p.subject_id WHERE p.id = ?`)
+          .get(input.planId) as { name: string } | undefined
+      )?.name
+    : undefined;
+  const fromFiles = [...new Set(sourceSubjects(db, input.sourceIds ?? []).values())];
+  const subject =
+    liveSubject(db, input.subject) || fromPlan || (fromFiles.length === 1 && fromFiles[0] ? fromFiles[0] : "");
   const context: ChatContext = {
     kind: input.kind,
     title,
@@ -523,8 +635,13 @@ export function seedChat(
   ).run(
     chatId,
     title,
-    JSON.stringify(input.planId ? { planId: input.planId, sourceIds: input.sourceIds ?? [] } : input.sourceIds ?? []),
-    input.subject ?? null,
+    // A chat opened from an exam or a lesson already knows its subject, which Pyxis then keeps.
+    scopeJson({
+      planId: input.planId ?? null,
+      ids: input.sourceIds ?? [],
+      subjectBy: subject ? "student" : undefined,
+    }),
+    subject || null,
     JSON.stringify(context),
     now,
     now,
@@ -564,6 +681,53 @@ function passageLabels(citations: ChatCitation[]) {
     index: cite.index,
     label: cite.sectionPath || `P${cite.index}`,
   }));
+}
+
+/** Whether any file of the Library or of an exam has passages to search. */
+function libraryHasPassages(db: Database.Database): boolean {
+  return Boolean(
+    db
+      .prepare(
+        `SELECT 1 FROM passages p JOIN sources s ON s.id = p.source_id
+          WHERE (s.library = 1 OR s.id IN (SELECT source_id FROM plan_sources WHERE role = 'material'))
+            AND s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted') LIMIT 1`,
+      )
+      .get(),
+  );
+}
+
+/** How the reply before this question answered, so a student answering a guided step keeps being guided. */
+function previousWay(db: Database.Database, chatId: string, replacing?: string): AnswerWay | null {
+  const row = db
+    .prepare(
+      `SELECT prompt_template FROM messages WHERE chat_id = ? AND role = 'assistant' AND id IS NOT ?
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(chatId, replacing ?? null) as { prompt_template: string | null } | undefined;
+  return row ? wayOfTemplate(row.prompt_template) : null;
+}
+
+/** Adds each citation's file title, its subject and whether it was attached to the chat, for the "I used" line. */
+function describeCitations(db: Database.Database, citations: ChatCitation[]): ChatCitation[] {
+  if (citations.length === 0) return citations;
+  const ids = [...new Set(citations.map((cite) => cite.sourceId))];
+  const files = new Map(
+    (
+      db
+        .prepare(`SELECT id, title, library FROM sources WHERE id IN (SELECT value FROM json_each(?))`)
+        .all(JSON.stringify(ids)) as Array<{ id: string; title: string; library: number }>
+    ).map((row) => [row.id, row]),
+  );
+  const subjects = sourceSubjects(db, ids);
+  return citations.map((cite) => {
+    const file = files.get(cite.sourceId);
+    return {
+      ...cite,
+      sourceTitle: file?.title ?? "",
+      subject: subjects.get(cite.sourceId) ?? null,
+      attached: file ? file.library === 0 : false,
+    };
+  });
 }
 
 export async function askTurn(
@@ -649,14 +813,21 @@ async function answer(
     );
     const picked = [...new Set([...picked0, ...hidden, ...attachedIds])];
     const sourceIds = effectiveSources(db, { planId, ids: picked });
-    const storedSubject = (
-      db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
-        { subject: string | null } | undefined
-    )?.subject;
-    const subject =
-      input.subject === undefined ? (storedSubject ?? "") : input.subject.trim();
+    const current = readScope(db, chatId);
+    const storedSubject = liveSubject(
+      db,
+      (db.prepare(`SELECT subject FROM chats WHERE id = ?`).get(chatId) as
+        { subject: string | null } | undefined)?.subject,
+    );
+    // A subject the student chose with this question (the new chat's chip) is theirs, in the Library's spelling; the
+    // whole Library is null. A name no subject has any more (renamed or deleted since the chip showed it) counts as no
+    // choice, so the chat keeps its own and Pyxis may still pick.
+    const chosen =
+      input.subject == null ? input.subject : (liveSubject(db, input.subject) ?? undefined);
+    const subject = chosen === undefined ? (storedSubject ?? "") : (chosen ?? "");
+    const subjectBy: SubjectBy | undefined = chosen === undefined ? current.subjectBy : "student";
     db.prepare(`UPDATE chats SET scope_json = ?, subject = ? WHERE id = ?`).run(
-      JSON.stringify(planId ? { planId, sourceIds: picked } : picked),
+      scopeJson({ planId, ids: picked, subjectBy }),
       subject || null,
       chatId,
     );
@@ -695,7 +866,7 @@ async function answer(
         attach.run(uuidv7(now + 4), userMessageId, image.original.sha, image.original.mime, now);
     }
     db.prepare(`UPDATE chats SET updated_at = ? WHERE id = ?`).run(now, chatId);
-    return { sourceIds, subject, userMessageId, attachedIds };
+    return { sourceIds, subject, subjectBy, userMessageId, attachedIds };
   };
   // A document this chat already holds (a retry after a failed turn sends the same file again) is reused, not stored twice.
   // Nothing awaits between this lookup and the commit, so the source cannot be removed in between.
@@ -714,7 +885,7 @@ async function answer(
       }),
     };
   }
-  const { sourceIds, subject, userMessageId, attachedIds } = staged
+  const { sourceIds, subject, subjectBy, userMessageId, attachedIds } = staged
     ? commitStaged(db, input.workspace!, staged, (ids) => persist([...new Set([...reused, ...ids])])).value
     : db.transaction(() => persist([]))();
   input.onQuestion?.(userMessageId, chatId);
@@ -733,21 +904,68 @@ async function answer(
   const kept = input.resumeFrom?.passages
     ? keptPassages(db, input.resumeFrom.passages)
     : undefined;
-  const searches = !kept && !(
-    input.allowGeneral ||
-    (thisTurnFile && sourceIds.length === 0) ||
-    (planId && sourceIds.length === 0)
-  );
+  // Where the turn searches (see docs/engines.md, "What a chat searches"): the files chosen for the chat (an exam's, or
+  // ones picked by hand in an older chat) and its subject's files when it has either, otherwise the whole Library. The
+  // chat's attachments always come along.
+  const attachments = hiddenSources(db, sourceIds);
+  const chosen = sourceIds.filter((id) => !attachments.includes(id));
+  const subjectFiles = subject ? subjectSourceIds(db, subject) : [];
+  // The files that belong to the chat's subject, and its attachments: a reply that cites any other file is "wider".
+  const within = subject ? new Set([...subjectFiles, ...attachments]) : null;
+  // An exam's chat stays on the exam's files even when it has none (ASK-07); its subject, if any, is searched next.
+  const narrowed = chosen.length > 0 || Boolean(planId) || Boolean(subject);
+  const scope: SearchScope = narrowed
+    ? { sourceIds: [...new Set([...chosen, ...subjectFiles, ...attachments])], withLibrary: false }
+    : { sourceIds: attachments, withLibrary: true };
+  // A turn that only brings a file, in a chat with nothing chosen, is about that file: the Library is left out of it.
+  // An empty Library has nothing to search, so its replies make no claim about the student's material.
+  const searches =
+    !kept &&
+    !(input.allowGeneral || (thisTurnFile && !narrowed)) &&
+    (narrowed || attachments.length > 0 || libraryHasPassages(db));
   // The question is embedded once, for its own search and for the search within each attached document.
   const questionEmbed =
     searches || (!kept && attachedIds.length > 0)
       ? await queryEmbedder(input.text, input.embed)
       : input.embed;
-  const gathered = kept
-    ? { hits: kept.hits, covered: true, usedVectors: false }
+  let gathered = kept
+    ? { hits: kept.hits, covered: true, usedVectors: false, relevant: [] as string[] }
     : !searches
-      ? { hits: [] as PassageHit[], covered: true, usedVectors: false }
-      : await gather(db, chatId, input.text, sourceIds, input.embed, questionEmbed);
+      ? { hits: [] as PassageHit[], covered: true, usedVectors: false, relevant: [] as string[] }
+      : await gather(db, chatId, input.text, scope, input.embed, questionEmbed);
+  // A subject with nothing relevant on this question: the whole Library is searched, and the reply says it looked wider.
+  let widened = false;
+  if (searches && subject && gathered.relevant.length === 0) {
+    const wider = await gather(
+      db,
+      chatId,
+      input.text,
+      { sourceIds: attachments, withLibrary: true },
+      input.embed,
+      questionEmbed,
+    );
+    if (wider.relevant.length > 0) {
+      gathered = wider;
+      widened = true;
+    }
+  }
+  // What the search did, kept with a reply that cites nothing: a chat with a subject widens to the whole Library before
+  // it gives up, and one limited to files looks only in them. A Continue searches nothing.
+  const searched: SearchNote | undefined =
+    searches && !kept
+      ? { found: gathered.relevant.length > 0, where: subject || !narrowed ? "library" : "files" }
+      : undefined;
+  // Pyxis picks the chat's subject from a search of the whole Library, unless the student already chose (see subject.ts).
+  const subjects = sourceSubjects(db, gathered.hits.map((hit) => hit.sourceId));
+  const picked =
+    searches && !narrowed && !subjectBy
+      ? pickSubject(
+          gathered.hits.map((hit) => ({
+            subject: subjects.get(hit.sourceId) ?? null,
+            relevant: gathered.relevant.includes(hit.id),
+          })),
+        )
+      : null;
   const found = {
     ...gathered,
     hits: [
@@ -755,7 +973,7 @@ async function answer(
       ...(kept ? [] : await attachedPassages(db, input.text, attachedIds, gathered.hits, questionEmbed)),
     ],
   };
-  const selected = sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
+  const selected = searches || sourceIds.length > 0 || Boolean(planId) || Boolean(subject);
 
   const citations: ChatCitation[] = found.hits.map((hit, index) => ({
     label: hit.sectionPath || hit.locator.paragraph || `P${kept?.numbers[index] ?? index + 1}`,
@@ -788,11 +1006,12 @@ async function answer(
       ? `Attached text:\n${dataBlock("attached", notes.join("\n"))}\n\n`
       : "";
   const profile = readProfile(db);
-  const mode = input.mode ?? profile?.tutorMode ?? "solver";
-  const template = chatTemplateId({ ...input, mode });
+  const way = answerWay({ text: input.text, previous: previousWay(db, chatId, replacing?.assistantId), asked: input.way });
+  // Nothing searched and no file: the reply can only come from the model's own knowledge.
+  const template = chatTemplateId({ way, general: !searches && !thisTurnFile && !kept });
   const where = chatPrompt(db, planId);
-  // A Socratic turn asks a question, so only answers offer figures.
-  const python = template === "chat.socratic" ? null : await figureRunner(input.python);
+  // A guided step asks the student to do the next part, so only solved answers offer figures.
+  const python = way === "guided" ? null : await figureRunner(input.python);
   const system = [
     chatSystemPrompt(
       template,
@@ -884,7 +1103,9 @@ async function answer(
           model: answering.model,
           selected,
           attached: thisTurnFile,
-          mode,
+          widened: widened || Boolean(input.resumeFrom?.widened),
+          within,
+          searched,
           template,
           citations,
           stopped: true,
@@ -915,7 +1136,9 @@ async function answer(
     model: result.model,
     selected,
     attached: thisTurnFile,
-    mode,
+    widened: widened || Boolean(input.resumeFrom?.widened),
+    within,
+    searched,
     template,
     citations,
     stopped: false,
@@ -923,8 +1146,19 @@ async function answer(
     figures,
     now,
   });
+  // The subject Pyxis picked is kept only with a whole reply, and only if nobody set one while it was written: a failed
+  // or stopped turn leaves the chat as it was.
+  if (picked) {
+    const scopeNow = readScope(db, chatId);
+    if (!scopeNow.subjectBy && !chatSubject(db, chatId))
+      db.prepare(`UPDATE chats SET subject = ?, scope_json = ? WHERE id = ?`).run(
+        picked,
+        scopeJson({ ...scopeNow, subjectBy: "pyxis" }),
+        chatId,
+      );
+  }
   // The check stays on the chat's own engine: it is a short extraction, not part of a stronger answer.
-  const checking = mode !== "socratic" && needsSolverChecks(parsed.body);
+  const checking = way === "solved" && needsSolverChecks(parsed.body);
   if (checking)
     startChecks(
       db,
@@ -953,7 +1187,15 @@ type SavedReply = {
   model: string;
   selected: boolean;
   attached: boolean;
-  mode: string;
+  /** The passages came from outside the chat's subject (see replyGrounding). */
+  widened: boolean;
+  /**
+   * The files of the chat's subject and its attachments, null for a chat without a subject. A reply that cites a file
+   * outside them is wider even when the search itself did not have to widen (a file picked by hand in an older chat).
+   */
+  within?: ReadonlySet<string> | null;
+  /** What the search did, kept with a reply that ends up citing nothing (see `ChatMessageView.searched`). */
+  searched?: SearchNote;
   template: string;
   citations: ChatCitation[];
   stopped: boolean;
@@ -985,13 +1227,17 @@ function saveReply(
     ),
   );
   const linked = meta.citations.filter((cite) => used.has(cite.index));
+  const { within } = meta;
   const grounding = replyGrounding({
     selected: meta.selected,
     cited: linked.length,
     attached: meta.attached,
-    question: meta.mode === "socratic" && parsed.body.trim().endsWith("?"),
+    question: meta.template === "chat.socratic" && parsed.body.trim().endsWith("?"),
     passages: meta.citations.length,
+    widened: meta.widened || (within != null && linked.some((cite) => !within.has(cite.sourceId))),
   });
+  // A finished reply from general knowledge records what the search did, in the column a stopped reply keeps its passages in.
+  const note = !meta.stopped && grounding === "general" ? meta.searched : undefined;
   db.prepare(
     `INSERT INTO messages
       (id, chat_id, role, body, engine_provider, model_id, model_source, prompt_template, prompt_version, grounding,
@@ -1006,14 +1252,16 @@ function saveReply(
     meta.template,
     // Stored with each assistant message: the template ID and its own version.
     promptProvenance(meta.template as ChatTemplateId).version,
-    grounding,
+    storedGrounding(grounding),
     meta.stopped ? 1 : 0,
     meta.error,
     meta.stopped
       ? JSON.stringify(
           meta.citations.map((cite): KeptPassage => ({ passageId: cite.passageId, index: cite.index })),
         )
-      : null,
+      : note
+        ? JSON.stringify(note)
+        : null,
     meta.figures ? JSON.stringify(meta.figures) : null,
     meta.now + 1,
   );
@@ -1032,13 +1280,15 @@ function saveReply(
       modelId: meta.model || null,
       provider: meta.provider || null,
       grounding,
+      way: wayOfTemplate(meta.template),
       followups: parsed.followups,
-      citations: linked,
+      citations: describeCitations(db, linked),
       reaction: null,
       stopped: meta.stopped,
       error: meta.error,
       checks: splitChecks(parsed.body).checks,
       checking: false,
+      ...(note ? { searched: note } : {}),
       ...(meta.figures ? { figures: meta.figures } : {}),
     },
   };
@@ -1056,10 +1306,19 @@ export async function regenerateTurn(
   requireIdle(input.chatId);
   const last = db
     .prepare(
-      `SELECT id, role, body, stopped, passages_json FROM messages WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
+      `SELECT id, role, body, stopped, passages_json, grounding, prompt_template FROM messages
+       WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
     .get(input.chatId) as
-    | { id: string; role: string; body: string; stopped: number; passages_json: string | null }
+    | {
+        id: string;
+        role: string;
+        body: string;
+        stopped: number;
+        passages_json: string | null;
+        grounding: string | null;
+        prompt_template: string | null;
+      }
     | undefined;
   const user = db
     .prepare(
@@ -1076,11 +1335,14 @@ export async function regenerateTurn(
       ? {
           text: splitFollowups(splitChecks(last.body).body).body,
           passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
+          widened: last.grounding === "mixed",
         }
       : undefined;
+  // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.
+  const way = input.way ?? (last?.role === "assistant" ? wayOfTemplate(last.prompt_template) : undefined);
   const result = await askTurn(
     db,
-    { ...rest, text: user.body, resumeFrom },
+    { ...rest, way, text: user.body, resumeFrom },
     last?.role === "assistant"
       ? { assistantId: last.id, userId: user.id }
       : undefined,
@@ -1197,7 +1459,20 @@ export function chatSubject(
   const row = db
     .prepare(`SELECT subject FROM chats WHERE id = ?`)
     .get(chatId) as { subject: string | null } | undefined;
-  return row?.subject ?? null;
+  return liveSubject(db, row?.subject);
+}
+
+/** The note of a finished reply from general knowledge, which a stopped reply's list of passages is not. */
+function searchNote(stored: string | null): { searched?: SearchNote } {
+  if (!stored) return {};
+  try {
+    const value = JSON.parse(stored) as Partial<SearchNote> | unknown[];
+    if (!Array.isArray(value) && typeof value.found === "boolean" && (value.where === "library" || value.where === "files"))
+      return { searched: { found: value.found, where: value.where } };
+  } catch {
+    return {};
+  }
+  return {};
 }
 
 export function readChat(
@@ -1206,8 +1481,9 @@ export function readChat(
 ): ChatMessageView[] {
   const rows = db
     .prepare(
-      `SELECT id, role, body, model_id, engine_provider, grounding, reaction, stopped, figures_json, error FROM messages
-       WHERE chat_id = ? ORDER BY created_at`,
+      `SELECT id, role, body, model_id, engine_provider, grounding, prompt_template, reaction, stopped, figures_json, error,
+              passages_json
+       FROM messages WHERE chat_id = ? ORDER BY created_at`,
     )
     .all(chatId) as Array<{
     id: string;
@@ -1215,11 +1491,13 @@ export function readChat(
     body: string;
     model_id: string | null;
     engine_provider: string | null;
-    grounding: "sources" | "general" | null;
+    grounding: string | null;
+    prompt_template: string | null;
     reaction: string | null;
     stopped: number;
     figures_json: string | null;
     error: string | null;
+    passages_json: string | null;
   }>;
   const chips = readProfile(db)?.followups !== false;
   // Every message's citations in one read, in the primary key's order, which one read per message also had.
@@ -1253,6 +1531,14 @@ export function readChat(
     });
     links.set(link.message_id, list);
   }
+  // The files behind every citation, read once for the whole chat.
+  const all = describeCitations(db, [...links.values()].flat());
+  const described = new Map<string, ChatCitation[]>();
+  let at = 0;
+  for (const [messageId, list] of links) {
+    described.set(messageId, all.slice(at, at + list.length));
+    at += list.length;
+  }
   return rows.map((row) => {
     const metadata =
       row.role === "assistant"
@@ -1262,14 +1548,15 @@ export function readChat(
       row.role === "assistant"
         ? splitFollowups(metadata.body)
         : { body: metadata.body, followups: [] };
-    const citations = links.get(row.id) ?? [];
+    const citations = described.get(row.id) ?? [];
     return {
       id: row.id,
       role: row.role,
       body: parsed.body,
       modelId: row.model_id,
       provider: row.engine_provider,
-      grounding: row.grounding,
+      grounding: row.role === "assistant" ? readGrounding(row.grounding) : null,
+      way: wayOfTemplate(row.prompt_template),
       followups: chips ? parsed.followups : [],
       citations,
       reaction:
@@ -1277,6 +1564,7 @@ export function readChat(
       stopped: row.stopped === 1,
       error: row.error,
       checks: metadata.checks,
+      ...searchNote(row.passages_json),
       ...(row.figures_json
         ? { figures: figureImages(JSON.parse(row.figures_json)) }
         : {}),

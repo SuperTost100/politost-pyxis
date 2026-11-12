@@ -436,7 +436,7 @@ describe("math check after the reply", () => {
     const check = heldCheck();
     const prose = await askTurn(db, { text: "Cos'è un vettore?", allowGeneral: true, run: async () => reply("Una freccia.") });
     expect(prose.message?.checking).toBe(false);
-    const socratic = await askTurn(db, { text: "Deriva", mode: "socratic", run: check.run });
+    const socratic = await askTurn(db, { text: "Deriva", way: "guided", run: check.run });
     expect(socratic.message?.checking).toBe(false);
     expect(check.started()).toBe(0);
   });

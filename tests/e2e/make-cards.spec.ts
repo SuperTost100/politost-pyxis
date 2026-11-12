@@ -111,8 +111,9 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       location.hash = "/ask";
     });
     await page.reload();
-    await page.getByRole("button", { name: /^Subject:/ }).click();
-    await page.getByRole("button", { name: "Analisi", exact: true }).click();
+    // The subject is chosen on the new chat's first page, from the chip in its header.
+    await page.getByRole("button", { name: /^Subject: Pyxis picks/ }).click();
+    await page.getByRole("menuitemradio", { name: "Analisi", exact: true }).click();
     const box = page.getByRole("textbox", { name: "Message" });
     await box.fill("Come si risolve un integrale per parti?");
     await box.press("Enter");

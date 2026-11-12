@@ -3,20 +3,12 @@
 .px-composer:focus-within { border-color: var(--border-control); }
 /* The field has no outline of its own, so the card carries the design system's focus ring, also while a formula is open. A click gets the border change above and no ring. */
 html[data-focus-source="keyboard"] .px-composer:has(.px-composer-field:focus-within) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.px-composer-top { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .px-composer-field { width: 100%; min-height: 52px; max-height: 200px; font: 400 calc(17px * var(--text-scale))/calc(26px * var(--text-scale)) var(--font-sans); padding: 0 var(--space-1); }
 .px-composer-count { margin: 0; color: var(--ink-muted); font: 400 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); }
 .px-composer-count.is-full { color: var(--danger); }
 .px-composer-bar { display: flex; align-items: center; gap: var(--space-1); }
 .px-composer-bar .px-spacer { flex: 1; }
-.px-subject, .px-source-chip { display: inline-flex; align-items: center; gap: var(--space-2); height: 28px; max-width: 100%; padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--surface-raised); color: var(--ink); font: 500 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); border: 1px solid transparent; }
-.px-subject > span, .px-source-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.px-subject, button.px-source-chip { cursor: pointer; }
-button.px-subject:hover, button.px-source-chip:hover, button.px-subject[aria-expanded="true"], button.px-source-chip[aria-expanded="true"] { border-color: var(--border-control); }
-.px-chip-caret { flex: none; color: var(--ink-muted); }
-.px-source-chip.is-empty { color: var(--ink-muted); }
-.px-mode { display: inline-flex; padding: 2px; border-radius: var(--radius-field); background: var(--surface-raised); }
-.px-mode button { height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink-muted); font: 500 calc(13px * var(--text-scale))/calc(18px * var(--text-scale)) var(--font-sans); cursor: pointer; }
-.px-mode button[aria-pressed="true"] { background: var(--primary-soft); color: var(--primary-text); }
+/* The tools are quiet icons; Invia is the one filled button. */
+.px-composer-bar .px-iconbtn { color: var(--ink-muted); }
 /* Files dragged over the Ask page land here. */
 .px-composer.is-dropping { border-color: var(--primary); border-style: dashed; background: var(--primary-soft); }

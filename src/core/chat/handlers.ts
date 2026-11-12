@@ -3,7 +3,8 @@ import { endConversation } from "../engine/funnel";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
-import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat } from "./turn";
+import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
+import type { AnswerWay } from "./way";
 
 /** Recorded reply for tests. With a delay it waits, then streams the words, so the thinking and streaming states can be seen. */
 function recordedReply(text: string, delayMs: number) {
@@ -52,6 +53,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
         sourceIds: chatPickedSources(db, input.chatId),
         planId: chatPlan(db, input.chatId),
         subject: chatSubject(db, input.chatId),
+        subjectBy: chatSubjectBy(db, input.chatId),
         context: chatContext(db, input.chatId),
         held: heldSources(db, input.chatId),
         usage: chatUsage(db, input.chatId),
@@ -67,6 +69,10 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       subject?: string;
     }) {
       return seedChat(db, input);
+    },
+    setSubject(input: { chatId: string; subject: string | null }) {
+      setChatSubject(db, input.chatId, input.subject);
+      return { ok: true as const };
     },
     clearContext(input: { chatId: string }) {
       clearChatContext(db, input.chatId);
@@ -101,14 +107,11 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       chatId: string;
       engine?: "chat" | "strong";
       resume?: boolean;
-      sourceIds?: string[];
-      planId?: string | null;
-      mode?: "solver" | "socratic";
+      way?: AnswerWay;
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
-      subject?: string;
       files?: string[];
     }) {
       return regenerateTurn(db, {
@@ -122,13 +125,12 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       text: string;
       sourceIds?: string[];
       planId?: string | null;
-      mode?: "solver" | "socratic";
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
       onQuestion?: (messageId: string, chatId: string) => void;
-      subject?: string;
+      subject?: string | null;
       files?: string[];
     }) {
       return askTurn(db, {

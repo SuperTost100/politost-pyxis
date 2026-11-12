@@ -16,7 +16,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { ControlList, ControlRow, PreviewTiles, RadioRows, Segmented, Stepper, SwitchRow } from "../../components/Controls";
+import { ControlList, ControlRow, PreviewTiles, Segmented, Stepper, SwitchRow } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import "./SettingsPage.css";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -181,15 +181,6 @@ export function SettingsPage() {
     engines: <EnginesPanel />,
     tutor: (
       <>
-        <RadioRows
-          label="settings-tutor-title"
-          value={profile.data?.tutorMode ?? "solver"}
-          options={[
-            { value: "solver", title: t("settings.how.solver"), description: t("settings.how.solverHint") },
-            { value: "socratic", title: t("settings.how.socratic"), description: t("settings.how.socraticHint") },
-          ]}
-          onChange={(tutorMode) => patch({ tutorMode })}
-        />
         <ControlList>
           <SwitchRow
             title={t("settings.how.followups")}

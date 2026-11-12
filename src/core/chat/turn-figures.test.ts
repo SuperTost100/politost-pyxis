@@ -122,7 +122,7 @@ it("offers no figures without a sandbox or in a Socratic turn, and keeps none in
   expect(plain.message!.figures).toBeUndefined();
   expect(readChat(db, plain.chatId).at(-1)!.figures).toBeUndefined();
 
-  await askTurn(db, { text: "Il seno?", mode: "socratic", run, python });
+  await askTurn(db, { text: "Il seno?", way: "guided", run, python });
   expect(calls.at(-1)!.system).not.toContain("pyxis-figure");
 
   const stopped = await askTurn(db, {

@@ -122,50 +122,55 @@ describe("profile context in the tutor prompt", () => {
   });
 });
 
-describe("tutor mode and follow-ups", () => {
-  it("ASK-02: the saved default mode applies when the turn names none, and an explicit mode wins", async () => {
+describe("the way of answering and follow-ups", () => {
+  const guided = "Guide the student one step at a time.";
+
+  it("guides a question that asks for help, solves one that asks for the answer, and the asked way wins", async () => {
     const { db, sourceId } = setup();
-    saveProfile(db, { tutorMode: "socratic" });
-    const byDefault = await systemFor(db, { text: question, sourceIds: [sourceId] });
-    expect(byDefault.system).toContain("Do not give the final answer.");
-    const explicit = await systemFor(db, {
-      text: question,
+    const help = await systemFor(db, {
+      text: "Non ho capito il vettore posizione, mi aiuti a ragionarci?",
       sourceIds: [sourceId],
-      mode: "solver",
     });
-    expect(explicit.system).not.toContain("Do not give the final answer.");
+    expect(help.system).toContain(guided);
+    expect(readChat(db, help.result.chatId).at(-1)?.way).toBe("guided");
+    const solve = await systemFor(db, { text: question, sourceIds: [sourceId] });
+    expect(solve.system).not.toContain(guided);
+    expect(solve.system).toContain("opening line is exactly ```check");
+    expect(readChat(db, solve.result.chatId).at(-1)?.way).toBe("solved");
+    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided" });
+    expect(asked.system).toContain(guided);
     db.close();
   });
 
-  it("Socratic mode holds when the student answers from general knowledge, and on Try again", async () => {
+  it("keeps guiding while the student answers a step, and Regenerate and the switch under the reply keep or change the way", async () => {
     const { db, sourceId } = setup();
-    for (const allowGeneral of [true, false]) {
-      const asked = await systemFor(db, {
-        text: question,
-        sourceIds: [sourceId],
-        mode: "socratic",
-        allowGeneral,
-      });
-      expect(asked.system, String(allowGeneral)).toContain("Do not give the final answer.");
-    }
-    // The saved default applies too, and the stored message names the template that answered.
-    saveProfile(db, { tutorMode: "socratic" });
-    const first = await systemFor(db, { text: question, allowGeneral: true });
-    expect(first.system).toContain("Do not give the final answer.");
+    const first = await systemFor(db, { text: "Guidami passo passo sul vettore posizione", sourceIds: [sourceId] });
+    expect(first.system).toContain(guided);
+    // The student's answer to the step names no way: Pyxis keeps guiding.
+    const answer = await systemFor(db, { chatId: first.result.chatId, text: "Il punto rispetto all'origine" });
+    expect(answer.system).toContain(guided);
     let again = "";
-    await regenerateTurn(db, {
-      chatId: first.result.chatId,
-      allowGeneral: true,
-      run: async (call) => {
-        again = call.system ?? "";
-        return reply;
-      },
-    });
-    expect(again).toContain("Do not give the final answer.");
-    saveProfile(db, { tutorMode: "solver" });
-    const solver = await systemFor(db, { text: question, allowGeneral: true });
-    expect(solver.system).not.toContain("Do not give the final answer.");
-    expect(solver.system).toContain("No passages from the student's material are attached");
+    const run = async (call: { system?: string }) => {
+      again = call.system ?? "";
+      return reply;
+    };
+    await regenerateTurn(db, { chatId: first.result.chatId, run });
+    expect(again).toContain(guided);
+    await regenerateTurn(db, { chatId: first.result.chatId, way: "solved", run });
+    expect(again).not.toContain(guided);
+    expect(readChat(db, first.result.chatId).at(-1)?.way).toBe("solved");
+    // Asking for the solution ends the guide.
+    const solution = await systemFor(db, { chatId: first.result.chatId, text: "Dammi la soluzione" });
+    expect(solution.system).not.toContain(guided);
+    db.close();
+  });
+
+  it("guides from general knowledge too, and answers from general knowledge with chat.general when nothing is searched", async () => {
+    const { db, sourceId } = setup();
+    const asked = await systemFor(db, { text: question, sourceIds: [sourceId], way: "guided", allowGeneral: true });
+    expect(asked.system).toContain(guided);
+    const general = await systemFor(db, { text: question, allowGeneral: true });
+    expect(general.system).toContain("No passages from the student's material are attached");
     db.close();
   });
 

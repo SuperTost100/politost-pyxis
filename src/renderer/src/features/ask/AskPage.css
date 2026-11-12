@@ -36,7 +36,8 @@
   align-items: center;
   gap: var(--space-2);
   min-height: 46px;
-  padding: 0 10px 0 14px;
+  /* The subject chip on the right stops short of Attività, which sits in the window's corner over this bar. */
+  padding: 0 var(--corner-room) 0 14px;
   background: var(--bg);
 }
 

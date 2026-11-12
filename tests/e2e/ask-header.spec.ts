@@ -62,9 +62,8 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     });
     await page.reload();
 
-    // With one subject, a new chat starts on it and on its plan's source.
-    await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Fisica");
-    await expect(page.getByRole("button", { name: "1 fonte", exact: true })).toBeVisible();
+    // A new chat leaves the subject to Pyxis; the student can choose one from the chip in the header.
+    await expect(page.locator(".ask-bar").getByRole("button", { name: /^Materia: sceglie Pyxis/ })).toBeVisible();
 
     // Home is the greeting and the composer, with no suggested questions.
     await expect(page.locator(".ask-starters")).toHaveCount(0);
@@ -96,16 +95,12 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     });
     await expect(page.getByText(/Alcuni file sono stati saltati/)).toBeVisible();
 
-    // The image comes off again, and the first question goes with the chat's subject.
+    // The image comes off again, and the first question goes out.
     await page.getByRole("button", { name: "Rimuovi Immagine incollata" }).click();
     await expect(page.getByAltText("Immagine incollata")).toHaveCount(0);
     await page.getByRole("textbox", { name: "Messaggio" }).fill("Spiegami i concetti chiave di Cinematica");
     await page.getByRole("textbox", { name: "Messaggio" }).press("Enter");
     await expect(page.getByText("Fammi un esempio")).toBeVisible({ timeout: 30000 });
-    const chat = await page.evaluate(() =>
-      window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
-    );
-    expect((chat as { subject: string | null }).subject).toBe("Fisica");
 
     // The header names the open chat, and a click renames it: Esc cancels, Enter saves.
     const title = page.getByRole("button", { name: "Rinomina Spiegami i concetti chiave di Cinematica" });
@@ -119,55 +114,6 @@ test("Ask: Home has no suggested questions, the title in the header, and a paste
     await field.press("Enter");
     await expect(page.getByRole("button", { name: "Rinomina Cinematica di base" })).toBeVisible();
     await expect(page.getByRole("list", { name: "Chat" }).getByRole("link", { name: /^Cinematica di base/ })).toBeVisible();
-  } finally {
-    await finish(app, userData, db);
-  }
-});
-
-test("Ask: a new chat starts on the only subject, and on none once a second subject exists", async () => {
-  test.setTimeout(120000);
-  const { app, page, userData, db } = await launch();
-  try {
-    seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
-    seedSource(db, { id: "src-fis", title: "Appunti di fisica" });
-    seedPlan(db, {
-      id: "p-fis",
-      subjectId: "s-fis",
-      title: "Fisica 1",
-      language: "it",
-      target: 0.75,
-      sourceIds: ["src-fis"],
-      topics: [{ id: "t1", title: "Cinematica" }],
-    });
-    await page.evaluate(() => {
-      location.hash = "/ask";
-    });
-    await page.reload();
-    const box = page.getByRole("textbox", { name: "Messaggio" });
-    const sentSubject = async () => {
-      await expect(page).toHaveURL(/#\/ask\/.+/);
-      await expect(page.getByText("Fammi un esempio")).toBeVisible({ timeout: 30000 });
-      const chat = await page.evaluate(() =>
-        window.pyxis.invoke("chats.read", { chatId: location.hash.split("/").at(-1)! }),
-      );
-      return (chat as { subject: string | null }).subject;
-    };
-
-    // A question typed at once goes out with the only subject.
-    await box.fill("Che cos'è la velocità?");
-    await box.press("Enter");
-    expect(await sentSubject()).toBe("Fisica");
-
-    // A subject added since the list was read counts: the next new chat has two and starts on none.
-    await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Chimica" }));
-    await page.getByRole("link", { name: "Nuova chat" }).click();
-    await expect(page).toHaveURL(/#\/ask$/);
-    // The empty chat's greeting: the composer now belongs to the new chat.
-    await expect(page.getByRole("heading", { level: 1, name: /^(Buongiorno|Buon pomeriggio|Buonasera)$/ })).toBeVisible();
-    await box.fill("Che cos'è l'accelerazione?");
-    await box.press("Enter");
-    expect(await sentSubject()).toBeNull();
-    await expect(page.getByRole("button", { name: /^Materia:/ })).toHaveText("Nessuna materia");
   } finally {
     await finish(app, userData, db);
   }
