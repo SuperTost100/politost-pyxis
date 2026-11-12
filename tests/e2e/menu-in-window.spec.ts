@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, atRest } from "./settled";
 
 const WIDTH = 960;
 const HEIGHT = 600;
@@ -89,36 +89,8 @@ async function expectMenuInWindow(page: Page, menu: Locator) {
 /** Puts `item` at the window's bottom edge and right-clicks it near the window's bottom-right corner. */
 async function rightClickInCorner(page: Page, item: Locator) {
   await item.evaluate((node) => node.scrollIntoView({ block: "end" }));
-  // A scroll or a resize closes a right-click menu, and the window can still be delivering the ones this test made
-  // (its own scroll just above, the widening in `coverInCorner`) after the layout already shows them: on Apple Silicon
-  // the menu opened and was gone before its item could be clicked. The right-click waits until the item has kept its
-  // place for ten frames with no scroll or resize event. A student cannot resize, scroll and right-click that fast.
-  await item.evaluate(
-    (node) =>
-      new Promise<void>((resolve) => {
-        const place = () => {
-          const box = node.getBoundingClientRect();
-          return [box.left, box.top, box.width, box.height, innerWidth, innerHeight].join(" ");
-        };
-        let last = place();
-        let quiet = 0;
-        const restart = () => {
-          quiet = 0;
-        };
-        addEventListener("resize", restart);
-        addEventListener("scroll", restart, true);
-        const frame = () => {
-          const now = place();
-          quiet = now === last ? quiet + 1 : 0;
-          last = now;
-          if (quiet < 10) return void requestAnimationFrame(frame);
-          removeEventListener("resize", restart);
-          removeEventListener("scroll", restart, true);
-          resolve();
-        };
-        requestAnimationFrame(frame);
-      }),
-  );
+  // After this scroll and the widening in `coverInCorner`, whose events can still be on their way.
+  await atRest(item);
   const box = (await item.boundingBox())!;
   const view = page.viewportSize()!;
   const x = Math.min(box.x + box.width, view.width) - 12;
@@ -224,6 +196,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     const file = covers.nth(last.index);
     const title = (await file.locator(".px-cover-title").textContent())!;
     await file.evaluate((node) => node.scrollIntoView({ block: "end" }));
+    await atRest(file);
     await file.hover();
     await file.getByRole("button", { name: `Azioni per ${title}` }).click();
     await expectMenuInWindow(page, open);
@@ -258,6 +231,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     // The menu key on a cover at the bottom edge opens the menu inside the window too.
     const low = covers.nth(last.index - 1);
     await low.evaluate((node) => node.scrollIntoView({ block: "end" }));
+    await atRest(low);
     await low.locator(".px-cover-open").focus();
     await page.keyboard.press("Shift+F10");
     await expectMenuInWindow(page, open);
@@ -419,6 +393,8 @@ test("In a window too narrow for a submenu on either side, the submenu leaves th
     await expect(page.locator(".react-flow__node")).toHaveCount(4);
     // 440 px: the menu opens at x 200, and neither the 200 px on its left nor the room on its right holds its formats.
     await page.setViewportSize({ width: 440, height: 600 });
+    // The narrowing's resize event can come after the layout shows it, and it would close the menu (Apple Silicon).
+    await atRest(page.locator(".px-map-canvas"));
     await page.locator(".px-map-canvas").dispatchEvent("contextmenu", { clientX: 200, clientY: 120, button: 2 });
     const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
     const row = open.getByRole("menuitem", { name: "Esporta", exact: true });
@@ -428,15 +404,12 @@ test("In a window too narrow for a submenu on either side, the submenu leaves th
     const sub = page.locator(".ant-dropdown-menu-sub:visible");
     await expect(sub.getByRole("menuitem").first()).toBeVisible();
     await animationsSettled(page);
-    // The card is moved after the trigger places it, so wait for it to stop moving.
-    await expect
-      .poll(async () => {
-        const opener = (await row.boundingBox())!;
-        const box = (await sub.boundingBox())!;
-        return box.y >= opener.y + opener.height || box.y + box.height <= opener.y;
-      })
-      .toBe(true);
+    // The card is moved after the trigger places it: the submenu zooms in from where the trigger put it, and a frame after
+    // the zoom ends it moves into the window. Measured in that frame, it ended 10 px past the window (Intel Mac).
+    await atRest(sub);
+    const opener = (await row.boundingBox())!;
     const box = (await sub.boundingBox())!;
+    expect(box.y >= opener.y + opener.height || box.y + box.height <= opener.y, "the opener stays in sight").toBe(true);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.y).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(440);
@@ -474,6 +447,7 @@ test("A submenu taller than a narrow window holds still, stays inside the window
     await page.reload();
     await page.setViewportSize({ width: 440, height: 600 });
     const loose = page.getByRole("region", { name: "Da sistemare" }).locator(".px-unsorted-row", { hasText: "Appunti sciolti" });
+    await atRest(loose);
     await loose.hover();
     await loose.getByRole("button", { name: "Azioni per Appunti sciolti" }).click();
     const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");

@@ -8,6 +8,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { expectNoAxeViolations } from "./axe";
+import { atRest } from "./settled";
 import { saveShot } from "./shots";
 
 /** A map of `root` with these branches, each with its concepts. */
@@ -694,6 +695,8 @@ test("a tile's menu closes when the page scrolls, follows its dots when the wind
     // A right-click menu stays at the pointer when the page shifts, and closes on a resize.
     const thumb = tile(page, "Successioni").locator(".px-maps-thumb");
     await thumb.scrollIntoViewIfNeeded();
+    // The wheel above returns before its scroll lands, and a scroll that moves the tile would close this menu.
+    await atRest(thumb);
     await thumb.click({ button: "right" });
     await expect(menu).toBeVisible();
     await page.setViewportSize({ width: 1280, height: 420 });
@@ -727,6 +730,7 @@ test("a tile's menu opened with the keyboard gives focus back to its dots when a
     const farthest = await scrolled();
     await page.mouse.wheel(0, -900);
     await expect.poll(scrolled).toBe(0);
+    await atRest(dots);
     await dots.focus();
     await page.keyboard.press("Enter");
     await expect(menu).toBeVisible();
