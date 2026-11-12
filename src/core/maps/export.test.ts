@@ -4,6 +4,8 @@ import { openDatabase } from "../db/connection";
 import { exportMap, mapOutline, mapSvg, wrapText } from "./export";
 import type { ConceptGraph } from "./graph";
 import { storeMap } from "./store";
+import { crosses, drawingProblems } from "../../../tests/fixtures/map-svg";
+import { filmHistory, physics, radialFixtures, storedGraph } from "../../../tests/fixtures/maps";
 
 const node = (
   id: string,
@@ -129,20 +131,17 @@ describe("mapSvg", () => {
     expect(height).toBeGreaterThan(900);
   });
 
-  it("uses saved positions for the radial layout", () => {
+  it("keeps a dragged concept of a radial map where it was dropped and plans the rest around the root", () => {
     const radial: ConceptGraph = {
       layout: "radial",
       undo: null,
-      nodes: [
-        node("a", "A", null, { x: -100, y: -50 }),
-        node("b", "B", "a", { x: 400, y: 300 }),
-      ],
+      nodes: [node("a", "A", null), node("b", "B", "a", { x: 400, y: 300, pinned: true })],
       edges: [{ from: "a", to: "b" }],
     };
     const svg = mapSvg("A", radial);
-    expect(/width="(\d+)"/.exec(svg)![1]).toBe(String(500 + NODE_WIDTH + 80));
-    expect(svg).toContain('<rect x="40" y="40" width="240"');
-    expect(svg).toContain('<rect x="540" y="390" width="240"');
+    // The root is centred on 0,0 by the plan, a 240 by 64 box, so it starts at -120,-32; the drawing starts 40 before that.
+    expect(svg).toContain('<rect x="40" y="40" width="240" height="64"');
+    expect(svg).toContain('<rect x="560" y="372" width="240" height="64"');
   });
 
   it("keeps an edge that bows past the leftmost node inside the drawing", () => {
@@ -214,5 +213,54 @@ describe("exportMap", () => {
     const file = exportMap(db, { subjectId: "s" }, { language: "it" });
     expect(file.markdown).toContain("Materia: Analisi I\n");
     expect(file.markdown).not.toContain("Esame:");
+  });
+});
+
+// How far the root's middle may be from the drawing's middle, as a share of its size. A branch of twenty leaves fans out
+// on its own side, so that map keeps the root only inside the middle half, and a chain of single branches grows one way
+// from its root, which is not in the middle at all.
+describe.each([
+  ["film history", filmHistory, 0.1],
+  ["60 concepts", physics, 0.1],
+  ["twelve leaves", radialFixtures.twelveLeaves, 0.1],
+  ["one big branch", radialFixtures.oneBigBranch, 0.25],
+  ["six levels", radialFixtures.deepChain, null],
+])("mapSvg of the radial map %s", (_, fixture, off) => {
+  const map = storedGraph(fixture, "radial") as ConceptGraph;
+  const problems = drawingProblems(mapSvg(fixture.title, map), map);
+
+  it("draws no two concept boxes over each other", () => {
+    expect(problems.overlaps).toEqual([]);
+  });
+
+  it("draws no link through a box that is not one of its ends", () => {
+    expect(problems.behind).toEqual([]);
+  });
+
+  it("puts the root in the middle of the drawing", () => {
+    if (off === null) return;
+    expect(problems.rootOffset.x).toBeLessThan(off);
+    expect(problems.rootOffset.y).toBeLessThan(off);
+  });
+
+  it("leaves out the links outside the hierarchy, which would run behind other concepts", () => {
+    const svg = mapSvg(fixture.title, map);
+    expect(svg).not.toMatch(/stroke-dasharray="6 5"[^>]*><path/);
+    for (const link of fixture.links) expect(svg).not.toContain(`>${link.label}</tspan>`);
+  });
+});
+
+describe("the drawing check", () => {
+  const box = { left: -119, right: 119, top: 49, bottom: 111 };
+
+  it("sees a long straight link that passes through a box between two of its samples", () => {
+    expect(crosses({ x: 0, y: 32 }, { x: 0, y: 2400 }, box)).toBe(true);
+    expect(crosses({ x: -300, y: 80 }, { x: 300, y: 80 }, box)).toBe(true);
+  });
+
+  it("lets a link pass beside a box or stop at its edge", () => {
+    expect(crosses({ x: 200, y: 32 }, { x: 200, y: 2400 }, box)).toBe(false);
+    expect(crosses({ x: 0, y: 0 }, { x: 0, y: 49 }, box)).toBe(false);
+    expect(crosses({ x: -300, y: 20 }, { x: 300, y: 40 }, box)).toBe(false);
   });
 });
