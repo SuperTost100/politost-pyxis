@@ -31,6 +31,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
+import { applySpellCheckerLanguages } from "./spellcheck";
 import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuPopupOptions, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
@@ -929,6 +930,11 @@ function installMenu(): void {
   );
 }
 
+/** The spell checker follows the interface language, set on the session where Electron lets the app choose (not macOS). */
+function installSpellChecker(): void {
+  applySpellCheckerLanguages(session.defaultSession, menuLanguage ?? systemLanguage());
+}
+
 let newerWorkspaceShown = false;
 
 async function showNewerWorkspace(): Promise<void> {
@@ -1239,6 +1245,7 @@ function registerIpc(): void {
     if (language === (menuLanguage ?? systemLanguage())) return;
     menuLanguage = language;
     installMenu();
+    installSpellChecker();
   });
   const installer = updateInstaller({
     repository,
@@ -1814,6 +1821,7 @@ app.whenReady().then(() => {
   applyAppearance(readAppearanceSource());
   installCsp();
   installMenu();
+  installSpellChecker();
   installNavigationGuards();
   installPermissionHandlers();
   registerProtocols();
