@@ -634,6 +634,7 @@
       "renameField": "Nuovo nome della fonte",
       "save": "Salva",
       "cancel": "Annulla",
+      "loadFailed": "Non riesco a leggere i dettagli di questa fonte.",
       "pages": "Pagine",
       "pagesFromText": "dal testo del file",
       "pagesAllOcr": "tutte lette con l'OCR",

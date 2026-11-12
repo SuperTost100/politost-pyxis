@@ -11,6 +11,7 @@ import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import {
   deleteBody,
+  isMissingActivity,
   resumePath,
   unfinishedDetail,
   unfinishedTitle,
@@ -81,16 +82,23 @@ export function UnfinishedSection({ planId }: { planId: string }) {
       {said}
     </p>
   );
-  if (!entries.length && !failed) return status;
+  // A list that cannot be read is said so in place: an absent block would look like nothing left to finish.
+  const unreadable = list.isError && !list.data;
+  if (!entries.length && !failed && !unreadable) return status;
 
   async function remove(entry: UnfinishedEntry) {
     const title = unfinishedTitle(entry, t);
     setFailed(null);
     try {
       await invoke("plans.deleteUnfinished", { planId, id: entry.id });
-    } catch {
-      setFailed(entry);
-      return;
+    } catch (error) {
+      // Already gone (a review that expired while its row was on screen) counts as deleted, and the row goes with it.
+      if (!isMissingActivity(error)) {
+        setFailed(entry);
+        // The row may be stale: read the list again.
+        void client.invalidateQueries({ queryKey: ["unfinished", planId] });
+        return;
+      }
     }
     focusAt.current = entries.findIndex((item) => item.id === entry.id);
     setSaid(t("examPage.unfinished.deleted", { title }));
@@ -187,10 +195,23 @@ export function UnfinishedSection({ planId }: { planId: string }) {
       >
         <h2 id={`px-unf-${planId}`}>
           {t("examPage.unfinished.title")}
-          <span>
-            {t("examPage.unfinished.count", { count: entries.length })}
-          </span>
+          {unreadable ? null : (
+            <span>
+              {t("examPage.unfinished.count", { count: entries.length })}
+            </span>
+          )}
         </h2>
+        {unreadable ? (
+          <Notice
+            tone="danger"
+            action={{
+              label: t("components.notice.retry"),
+              onClick: () => void list.refetch(),
+            }}
+          >
+            {t("examPage.unfinished.loadFailed")}
+          </Notice>
+        ) : null}
         {failed ? (
           <Notice
             tone="danger"

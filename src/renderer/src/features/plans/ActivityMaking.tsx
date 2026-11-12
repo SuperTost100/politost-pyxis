@@ -4,9 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
-import type { MadeActivity } from "./ExamCreateDialog";
-
-const SETTLED = ["succeeded", "failed", "cancelled", "interrupted"];
+import { SETTLED, simulationSettled, type MadeActivity } from "./making";
 
 /**
  * Adesso while Crea's quiz or simulation is being written: the working mark and what Pyxis is doing, in the card where
@@ -52,9 +50,7 @@ export function ActivityMaking({
           quiz.data &&
           (quiz.data.questions.length > 0 || SETTLED.includes(quiz.data.state)),
         )
-      : build.isError ||
-        build.data === null ||
-        SETTLED.includes(build.data?.state ?? "");
+      : simulationSettled(made.jobId, build);
   useEffect(() => {
     if (!ready) return;
     onDone();

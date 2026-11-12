@@ -488,6 +488,115 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
   }
 });
 
+/** Starts a quiz on a topic through core and waits until its questions are written. */
+async function startQuiz(page: Page, planId: string, topicId: string) {
+  const started = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+    planId,
+    topicId,
+    count: 5,
+    types: ["tf"],
+  });
+  await expect
+    .poll(
+      async () =>
+        (
+          await invoke<{ state: string }>(page, "study.quizRead", {
+            attemptId: started.attemptId,
+            planId,
+          })
+        ).state,
+      { timeout: 30_000 },
+    )
+    .toBe("succeeded");
+  return started.attemptId;
+}
+
+test("Da finire says when its list cannot be read, and Riprova reads it again", async () => {
+  test.setTimeout(120_000);
+  const { page, planId, topics, userData, done } = await launch();
+  try {
+    await startQuiz(page, planId, topics[0]!.id);
+    // A quiz row whose body cannot be read makes the whole list fail, as a damaged workspace would.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    db.prepare(
+      "INSERT INTO items (id, plan_id, topic_id, kind, body_json, created_at) VALUES ('broken', ?, ?, 'quiz', '[]', 1)",
+    ).run(planId, topics[0]!.id);
+    db.prepare(
+      "INSERT INTO attempts (id, plan_id, item_id, started_at) VALUES ('broken-attempt', ?, 'broken', 1)",
+    ).run(planId);
+    await openExam(page, planId);
+    const block = page.locator(".px-unf");
+    await expect(block).toContainText("Non riesco a leggere le attività da finire.");
+    await expectNoAxeViolations(page);
+    // Mended, Riprova shows what was there.
+    db.prepare("DELETE FROM attempts WHERE id = 'broken-attempt'").run();
+    db.prepare("DELETE FROM items WHERE id = 'broken'").run();
+    db.close();
+    await block.getByRole("button", { name: "Riprova" }).click();
+    await expect(block.getByRole("button", { name: /^Riprendi: Quiz su Limiti/ })).toBeVisible();
+    await expect(block).not.toContainText("Non riesco a leggere");
+  } finally {
+    await done();
+  }
+});
+
+test("Elimina on a row whose activity is already gone drops the row, with no failure to retry", async () => {
+  test.setTimeout(120_000);
+  const { page, planId, topics, userData, done } = await launch();
+  try {
+    const attemptId = await startQuiz(page, planId, topics[0]!.id);
+    await openExam(page, planId);
+    const block = page.locator(".px-unf");
+    await expect(block.getByRole("button", { name: /^Riprendi: Quiz su Limiti/ })).toBeVisible();
+    // The activity goes while its row is still on screen (a review expiring does the same).
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    db.prepare("DELETE FROM attempts WHERE id = ?").run(attemptId);
+    db.close();
+    await block.getByRole("button", { name: "Azioni su Quiz su Limiti" }).click();
+    await page.getByRole("menuitem", { name: "Elimina…" }).click();
+    await page
+      .getByRole("dialog", { name: "Eliminare «Quiz su Limiti»?" })
+      .getByRole("button", { name: "Elimina", exact: true })
+      .click();
+    await expect(page.locator(".px-unf")).toHaveCount(0);
+    await expect(page.getByText("Non riesco a eliminare")).toHaveCount(0);
+  } finally {
+    await done();
+  }
+});
+
+test("a quiz started in a dialog that was cancelled and reopened leaves the new dialog as it was", async () => {
+  test.setTimeout(120_000);
+  const { page, planId, userData, done } = await launch();
+  try {
+    await openExam(page, planId);
+    // Another connection holds the workspace's write lock, so Crea's request waits in core.
+    const lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
+    lock.exec("BEGIN IMMEDIATE");
+    let dialog = await fromAltro(page);
+    await dialog.getByRole("button", { name: "Crea", exact: true }).click();
+    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await expect(dialog).toBeHidden();
+    // Open again and change something: a simulation, which Crea would not have started.
+    dialog = await fromAltro(page);
+    await kind(dialog, "Simulazione").click();
+    // The first request goes through now, and its reply reaches the page before the answer to any later call.
+    lock.exec("ROLLBACK");
+    lock.close();
+    await expect
+      .poll(async () => (await invoke<unknown[]>(page, "plans.unfinished", { planId })).length, { timeout: 30_000 })
+      .toBe(1);
+    // A reply that closed the dialog would be shrinking it now: let any such animation finish before looking.
+    await animationsSettled(page);
+    await expect(dialog).toBeVisible();
+    await expect(kind(dialog, "Simulazione")).toHaveAttribute("aria-checked", "true");
+    // The page did not take the cancelled quiz for something to show in Adesso.
+    await expect(page.locator(".px-exam-now.is-working")).toHaveCount(0);
+  } finally {
+    await done();
+  }
+});
+
 test("Oggi counts the day's minutes against the goal: the introduction alone does not fill it, and a day done does", async () => {
   test.setTimeout(180_000);
   const { page, planId, topics, done } = await launch();

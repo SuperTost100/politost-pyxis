@@ -35,7 +35,7 @@ export type Unfinished = {
   startedAt: number;
 };
 
-const ACTIVE_JOB = new Set(["queued", "running", "interrupted"]);
+const ACTIVE_JOB = new Set(["queued", "running"]);
 
 type AttemptRow = {
   id: string;

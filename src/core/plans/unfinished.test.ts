@@ -177,6 +177,30 @@ describe("unfinished activities", () => {
     });
   });
 
+  it("shows an interrupted build as stopped, since nothing is writing it", () => {
+    const db = openDatabase(":memory:");
+    plan(db);
+    attempt(db, "w", {
+      body: { complete: false, config: { count: 8 }, questions: questions(2) },
+    });
+    job(db, "build", "quiz-build", "interrupted", { attemptId: "w" });
+    job(db, "sb", "simulation-build", "interrupted", {
+      planId: "p",
+      minutes: 60,
+      batches: [1, 2],
+      next: 1,
+      questions: [],
+    });
+    expect(
+      unfinishedActivities(db, "p", NOW).map((entry) => [entry.id, entry.state]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["attempt:w", "stopped"],
+        ["build:sb", "stopped"],
+      ]),
+    );
+  });
+
   it("counts a timed quiz or a simulation whose time ran out as expired until it is handed in", () => {
     const db = openDatabase(":memory:");
     plan(db);

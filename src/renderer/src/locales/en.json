@@ -634,6 +634,7 @@
       "renameField": "New source name",
       "save": "Save",
       "cancel": "Cancel",
+      "loadFailed": "Could not read the details of this source.",
       "pages": "Pages",
       "pagesFromText": "from the file's text",
       "pagesAllOcr": "all read with OCR",

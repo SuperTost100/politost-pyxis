@@ -20,6 +20,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { grow } from "../../lib/grow";
 import { invoke } from "../../lib/ipc";
 import { pastPapersQuery } from "../../lib/queries";
+import type { MadeActivity } from "./making";
 import "./ExamCreateDialog.css";
 
 type Plan = NonNullable<RequestOutput<"plans.read">>;
@@ -49,11 +50,6 @@ type Duration = (typeof DURATIONS)[number];
 /** What a simulation is drawn from: new questions shaped like the past papers, the book's exam exercises or all of its
  * exercises, or the past papers' own questions (a quiz without a clock). */
 type Material = "styled" | "exam" | "mixed" | "past";
-
-/** What Crea started that takes a while: the exam page shows it working in Adesso, then opens it. */
-export type MadeActivity =
-  | { kind: "quiz"; attemptId: string; topicId: string; topicTitle: string }
-  | { kind: "simulation"; jobId: string };
 
 /**
  * "Crea un'attività": one step. What to make (six kinds as small tiles), the topic, and the chosen kind's options in place
@@ -113,6 +109,12 @@ export function ExamCreateDialog({
     action?: { label: string; onClick: () => void };
   } | null>(null);
   const [closing, setClosing] = useState(false);
+  // Each opening of the dialog has a number, and a request acts only while its opening is still the current one: closing
+  // the dialog, or leaving it for a page, moves the number on, so a reply that comes after cannot touch the next opening.
+  const opening = useRef(0);
+  useEffect(() => {
+    opening.current += 1;
+  }, [open]);
   const shownMaterial: Material =
     material ?? (readyPapers ? "styled" : "mixed");
 
@@ -148,6 +150,7 @@ export function ExamCreateDialog({
   function close() {
     const node = dialog.current;
     if (!node?.open || closing) return;
+    opening.current += 1;
     setClosing(true);
     const back = origin();
     grow(node, back, "out", () => {
@@ -158,6 +161,7 @@ export function ExamCreateDialog({
   }
   /** Leaves for the page of what was made: no shrinking back, the page changes under it. */
   function leave(to: string, state?: unknown) {
+    opening.current += 1;
     dialog.current?.close();
     onClose();
     navigate(to, state ? { state } : undefined);
@@ -225,6 +229,7 @@ export function ExamCreateDialog({
         build: true,
         instruction: instruction.trim(),
       });
+    const mine = opening.current;
     setBusy(true);
     setError(null);
     try {
@@ -235,8 +240,11 @@ export function ExamCreateDialog({
           count,
           types: quizKinds,
         });
+        // The student closed the dialog while it was written: what was started stays in "Da finire".
+        if (opening.current !== mine) return;
         onMade({
           kind: "quiz",
+          planId,
           attemptId: started.attemptId,
           topicId,
           topicTitle: topic?.title ?? "",
@@ -244,6 +252,7 @@ export function ExamCreateDialog({
         close();
       } else if (shownMaterial === "past") {
         const started = await invoke("study.pastPracticeStart", { planId });
+        if (opening.current !== mine) return;
         leave(`${base}/past?attempt=${encodeURIComponent(started.attemptId)}`);
       } else {
         const prepared = await invoke("study.simulationPrepare", {
@@ -252,16 +261,17 @@ export function ExamCreateDialog({
           source: shownMaterial === "exam" ? "exam" : "mixed",
           matchPast: shownMaterial === "styled",
         });
+        if (opening.current !== mine) return;
         if (prepared.attemptId) leave(`${base}/exam/${prepared.attemptId}`);
         else if (prepared.jobId) {
-          onMade({ kind: "simulation", jobId: prepared.jobId });
+          onMade({ kind: "simulation", planId, jobId: prepared.jobId });
           close();
         } else leave(`${base}/simulation`);
       }
     } catch (err) {
-      failed(err);
+      if (opening.current === mine) failed(err);
     } finally {
-      setBusy(false);
+      if (opening.current === mine) setBusy(false);
     }
   }
 

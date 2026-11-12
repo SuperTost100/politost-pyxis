@@ -139,3 +139,13 @@ export function deleteBody(entry: UnfinishedEntry, t: T): string {
     lines.push(t("examPage.unfinished.diagnosticAgain"));
   return lines.join(" ");
 }
+
+/**
+ * Whether a delete failed because the activity is no longer there (a review that expired, one deleted elsewhere). Core's
+ * errors reach the page as plain objects with the error's text in `detail`.
+ */
+export function isMissingActivity(error: unknown): boolean {
+  if (error == null || typeof error !== "object") return false;
+  const { detail, message } = error as { detail?: unknown; message?: unknown };
+  return [detail, message].some((text) => typeof text === "string" && text.includes("unfinished-missing"));
+}

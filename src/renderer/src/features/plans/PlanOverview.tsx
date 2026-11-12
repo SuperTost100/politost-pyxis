@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "antd";
 import dayjs from "dayjs";
@@ -34,7 +34,8 @@ import { useSaveCalendar } from "../share/CalendarButton";
 import { ExportButton } from "../share/ExportButton";
 import { setPlanArchived } from "./archivePlan";
 import { ActivityMaking } from "./ActivityMaking";
-import { ExamCreateDialog, type MadeActivity } from "./ExamCreateDialog";
+import { madeFor, type MadeActivity } from "./making";
+import { ExamCreateDialog } from "./ExamCreateDialog";
 import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
 import { PlanPath, type TopicAction } from "./PlanPath";
 import { PlanSources } from "./PlanSources";
@@ -97,6 +98,11 @@ function ExamPage({ planId }: { planId: string }) {
   // What opened "Crea un'attività": it grows out of it and gives the focus back to it.
   const createOrigin = useRef<HTMLElement | null>(null);
   const [made, setMade] = useState<MadeActivity | null>(null);
+  // An activity being made belongs to its exam: going to another exam leaves it out of sight and forgets it.
+  const making = madeFor(made, planId);
+  useEffect(() => {
+    if (made && !making) setMade(null);
+  }, [made, making]);
   const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -330,8 +336,8 @@ function ExamPage({ planId }: { planId: string }) {
         </div>
       ) : null}
       <div className="px-exam-grid">
-        {made ? (
-          <ActivityMaking planId={planId} made={made} onDone={() => setMade(null)} />
+        {making ? (
+          <ActivityMaking planId={planId} made={making} onDone={() => setMade(null)} />
         ) : (
           <NowCard
             planId={planId}

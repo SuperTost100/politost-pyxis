@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deleteBody,
+  isMissingActivity,
   resumePath,
   startedWhen,
   unfinishedDetail,
@@ -88,5 +89,18 @@ describe("Da finire", () => {
         t,
       ),
     ).toBe("examPage.unfinished.lostPrepared");
+  });
+});
+
+describe("a delete that finds nothing to delete", () => {
+  it("is told apart from one that failed, as core's error reaches the page", () => {
+    // What the page receives from core: a plain object with the error's text in `detail`.
+    expect(
+      isMissingActivity({ code: "internal", messageKey: "errors.internal", params: {}, detail: "unfinished-missing" }),
+    ).toBe(true);
+    expect(isMissingActivity(new Error("unfinished-missing"))).toBe(true);
+    expect(isMissingActivity({ code: "internal", detail: "database is locked" })).toBe(false);
+    expect(isMissingActivity("unfinished-missing")).toBe(false);
+    expect(isMissingActivity(null)).toBe(false);
   });
 });
