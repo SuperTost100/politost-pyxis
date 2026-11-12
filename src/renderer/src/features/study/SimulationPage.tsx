@@ -110,18 +110,24 @@ export function SimulationPage() {
     building?.state ?? "",
   );
   const run = open.data?.planId === planId ? open.data : undefined;
-  // Worked out once per attempt, so a later read (every second) never moves the question the student is on.
-  const resumed = useMemo(
-    () =>
-      run
-        ? resumeIndex(
-            run.questions.map((q) => q.id),
-            run.current,
-            (id) => (run.picks[id] ?? "").trim() !== "",
-          )
-        : 0,
-    [run?.attemptId],
-  );
+  // Worked out once per attempt, from the first read that succeeds after the page opened, so a later read (every second)
+  // never moves the question the student is on. A read cached from an earlier visit can predate the last draft that visit
+  // saved, as when Avanti and "Segna per dopo" come just before leaving; until a fresh read is in, the cached one stands in,
+  // and a fresh read that fails does not count.
+  const questionOf = (read: NonNullable<typeof run>) =>
+    resumeIndex(
+      read.questions.map((q) => q.id),
+      read.current,
+      (id) => (read.picks[id] ?? "").trim() !== "",
+    );
+  const standIn = useMemo(() => (run ? questionOf(run) : 0), [run?.attemptId]);
+  const [resumedFrom, setResumedFrom] = useState<{ attemptId: string; index: number } | null>(null);
+  const fresh = open.isFetchedAfterMount && open.isSuccess;
+  useEffect(() => {
+    if (!run || !fresh || resumedFrom?.attemptId === run.attemptId) return;
+    setResumedFrom({ attemptId: run.attemptId, index: questionOf(run) });
+  }, [run?.attemptId, fresh]);
+  const resumed = run && resumedFrom?.attemptId === run.attemptId ? resumedFrom.index : standIn;
   const index = run && moved?.attemptId === run.attemptId ? moved.index : resumed;
   function startFailed(err: unknown) {
     const text = String((err as { code?: string })?.code ?? err);

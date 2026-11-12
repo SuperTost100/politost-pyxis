@@ -177,6 +177,28 @@ html[data-platform="darwin"] {
   gap: var(--space-1);
   -webkit-app-region: no-drag;
 }
+/* "Riprendi l'esame" while an exam is in progress (Shell.tsx): in the top strip, centred on Attività's row, at the left
+   edge of the page under it. The row takes the page's own width classes, so it lines up with the page's title on every
+   page and with the sidebar folded or not; it has no height, so the page under it keeps its place. A map's page fills
+   the column and pads itself, and its title sits 10px in from that (MapPage.css), so the row starts there too. It
+   scrolls away with the page, so it never sits over what scrolls under the strip. */
+.px-resume-strip {
+  position: relative;
+  z-index: 95;
+  height: 0;
+}
+.px-shell-container.px-resume-row {
+  height: 0;
+  padding-block: 0;
+}
+.px-shell-container.px-shell-bleed.px-resume-row {
+  padding-inline: calc(var(--space-4) + 10px);
+}
+.px-resume-row > .px-btn {
+  margin-top: calc(10px + (36px - var(--control-sm)) / 2);
+  -webkit-app-region: no-drag;
+}
+
 /* Notices (antd message, configured in App.tsx) open in the page column, centred on it, below the drag strip and
    Attività (10px from the top, 36px tall), so they never cover the traffic lights or the sidebar. The host sits at the
    top of the column with no height, so it takes no click, and above dialogs, whose actions also report this way. */

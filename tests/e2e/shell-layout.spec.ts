@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
-import { seedPlan } from "./seed";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { animationsSettled } from "./settled";
@@ -266,6 +266,117 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       expect(await page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight)).toBe(0);
       await saveShot(page, `notice-${language}-${theme}-${width}.png`, { animations: "disabled" });
       await expect(notice).toHaveCount(0, { timeout: 10000 });
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("an exam in progress shows Riprendi l'esame in the top strip, beside the page's left edge, and moves no page", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-resume-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "an", name: "Analisi 1" }]);
+    seedPlan(db, { id: "p-an", subjectId: "an", title: "Appello del 14 gennaio", language: "it", topics: [{ id: "t-lim", title: "Limiti" }] });
+    seedSource(db, { id: "dispensa", title: "Dispensa limiti", subjectId: "an" });
+    const nodes = ["Limiti", "Definizioni", "Teoremi"].map((label, index) => ({
+      id: `n${index}`,
+      label,
+      parent: index ? "n0" : null,
+      x: 0,
+      y: 0,
+      pinned: false,
+    }));
+    db.prepare("INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES('row-lim','p-an','t-lim',?,'sources',1)").run(
+      JSON.stringify({
+        version: 1,
+        maps: [
+          {
+            id: "m-lim",
+            title: "Limiti",
+            passageIds: [],
+            grounding: "sources",
+            graph: { layout: "tree", undo: null, redo: null, nodes, edges: [{ from: "n0", to: "n1" }, { from: "n0", to: "n2" }] },
+          },
+        ],
+      }),
+    );
+    // An exam simulation started and not handed in.
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('sim','p-an','t-lim','simulation',?,'fixture','sources',?)",
+    ).run(JSON.stringify({ minutes: 60, questions: [], picks: {} }), Date.now());
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('sim-attempt','p-an','sim',?)").run(Date.now());
+    db.close();
+
+    const side = page.getByRole("complementary", { name: "Barra laterale" });
+    const resume = page.getByRole("button", { name: "Riprendi l’esame" });
+    // Pages in the shell and the heading at their top left (Settings has its own sections' column on the left, under
+    // its heading); a map's page fills the window, so it is the one a taller page would cut off.
+    const pages: Array<[string, string, (1 | 2)?]> = [
+      ["#/maps/an/t-lim", "Limiti"],
+      ["#/exams/library", "Libreria"],
+      ["#/exams", "Esami"],
+      ["#/maps", "Mappe"],
+      ["#/flashcards", "Flashcard"],
+      ["#/plans/p-an", "Appello del 14 gennaio"],
+      ["#/settings", "Impostazioni", 2],
+    ];
+    for (const [width, height, textSize] of [
+      [1280, 800, "md"],
+      [960, 640, "lg"],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate((textSize) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize }), textSize);
+      // Below 1100px the sidebar is always folded.
+      for (const folded of width < 1100 ? [true] : [false, true]) {
+        for (const [hash, title, level = 1] of pages) {
+          const where = `${hash} at ${width}${folded ? ", sidebar folded" : ""}`;
+          await page.evaluate((hash) => {
+            location.hash = hash;
+          }, hash);
+          await page.reload();
+          const heading = page.getByRole("heading", { level, name: title, exact: true });
+          await expect(heading, where).toBeVisible();
+          if (hash === "#/maps/an/t-lim") await expect(page.locator(".react-flow__node")).toHaveCount(3);
+          await expect(resume, where).toBeVisible();
+          const sideWidth = (await side.boundingBox())!.width;
+          if (width >= 1100 && (sideWidth < 100) !== folded) {
+            await side.getByRole("button", { name: folded ? "Riduci la barra" : "Espandi la barra" }).click();
+            await expect.poll(async () => (await side.boundingBox())!.width < 100).toBe(folded);
+          }
+          await animationsSettled(page);
+          const pill = (await resume.boundingBox())!;
+          const head = (await heading.boundingBox())!;
+          // In the top strip, above the title's line box with room between them (the title's own leading adds to it),
+          // and lined up with the page's left edge.
+          expect(pill.y + pill.height + 4, `${where}: the pill reaches the title`).toBeLessThanOrEqual(head.y);
+          expect(Math.abs(pill.x - head.x), `${where}: pill at ${pill.x}, title at ${head.x}`).toBeLessThanOrEqual(2);
+          // It takes no room from the page: the page is as tall and as wide without it, and no wider than the window.
+          const sizes = await resume.evaluate((button) => {
+            const root = document.documentElement;
+            const withIt = [root.scrollWidth, root.scrollHeight];
+            const hidden = button.style.display;
+            button.style.display = "none";
+            const without = [root.scrollWidth, root.scrollHeight];
+            button.style.display = hidden;
+            return { withIt, without, window: [innerWidth, innerHeight] };
+          });
+          expect(sizes.withIt, where).toEqual(sizes.without);
+          expect(sizes.withIt[0], `${where}: wider than the window`).toBeLessThanOrEqual(sizes.window[0]!);
+          // The map's page fills the window and no more, so its request field shows whole.
+          if (hash === "#/maps/an/t-lim") {
+            expect(sizes.withIt[1], `${where}: taller than the window`).toBeLessThanOrEqual(sizes.window[1]!);
+            const field = (await page.getByRole("textbox", { name: /Chiedi una modifica/ }).boundingBox())!;
+            expect(field.y + field.height, where).toBeLessThanOrEqual(height);
+          }
+        }
+      }
     }
   } finally {
     await app.close();

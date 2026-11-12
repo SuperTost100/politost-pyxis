@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
@@ -307,7 +307,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     const askDelete = async () => {
       await dots.click();
       await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-      const dialog = page.getByRole("dialog", { name: "Elimini la mappa «Teoremi sui limiti»?" });
+      const dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Teoremi sui limiti»?" });
       await expect(dialog).toBeVisible();
       return dialog;
     };
@@ -344,7 +344,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await expect(campo).toHaveClass(/is-ctx/);
     expect(await menuItems(page)).toEqual(["Apri", "Rinomina", "Esporta", "-", "Elimina la mappa…"]);
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    dialog = page.getByRole("dialog", { name: "Elimini la mappa «Campo elettrico»?" });
+    dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Campo elettrico»?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(campo).toHaveCount(1);
     await campo.locator(".px-maps-thumb").click({ button: "right" });
@@ -431,7 +431,7 @@ test("deleting a map still being written stops its build, and the build never br
     await expect(page.getByRole("menuitem", { name: "Rinomina" })).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("menuitem", { name: "Esporta" })).toHaveAttribute("aria-disabled", "true");
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    const dialog = page.getByRole("dialog", { name: `Elimini la mappa «${asked}»?` });
+    const dialog = page.getByRole("dialog", { name: `Eliminare la mappa «${asked}»?` });
     await expect(dialog).toContainText("Pyxis smette di scriverla");
     await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
     await expect(page).toHaveURL(/#\/maps\?subject=an$/);
@@ -741,3 +741,201 @@ test("a tile's menu opened with the keyboard gives focus back to its dots when a
     removeTestFolder(userData);
   }
 });
+
+test("Riprova on a failed build shows Pyxis at work in place at once, and a retry that fails brings the line back", async () => {
+  test.setTimeout(180_000);
+  const theorems = reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"]);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([theorems, { fail: "offline" }, { fail: "offline" }, theorems]),
+    PYXIS_E2E_MAP_DELAY: "1500",
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await askAndWait(page, "solo i teoremi", "failed");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+
+    // The line is a notice: its icon, Riprova as its action and Chiudi beside it.
+    const line = recovery(page);
+    await expect(line.locator(".px-notice")).toContainText("L’ultima costruzione della mappa non è riuscita");
+    await expect(line.locator(".px-notice svg").first()).toBeVisible();
+    await expect(line.getByRole("button")).toHaveText(["Riprova", "Chiudi"]);
+    await expectNoAxeViolations(page);
+
+    // Riprova: Pyxis at work where the map will be, at once, as for a new map, with the words asked for.
+    await line.getByRole("button", { name: "Riprova" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(working).toContainText("solo i teoremi");
+    await expect(line).toHaveCount(0);
+    // It fails again: the line comes back and says so, and the map is there again.
+    await expect(line).toContainText("L’ultima costruzione della mappa non è riuscita", { timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    // The canvas drawn again opens on the whole map, not at the corner of an empty view: every concept is inside it.
+    await expect
+      .poll(async () => {
+        const area = (await page.locator(".px-map-canvas").boundingBox())!;
+        const boxes = await page.locator(".react-flow__node").evaluateAll((nodes) =>
+          nodes.map((node) => {
+            const box = node.getBoundingClientRect();
+            return [box.top, box.left, box.bottom, box.right];
+          }),
+        );
+        return boxes.every(
+          ([top, left, bottom, right]) =>
+            top! >= area.y && left! >= area.x && bottom! <= area.y + area.height && right! <= area.x + area.width,
+        );
+      })
+      .toBe(true);
+
+    // Again, and this time it is built: the new map opens.
+    await line.getByRole("button", { name: "Riprova" }).click();
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(line).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Riprendi on a stopped build shows Pyxis at work in place at once", async () => {
+  test.setTimeout(180_000);
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+    PYXIS_E2E_MAP_DELAY: "3000",
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await page.evaluate(() => window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }));
+    await page.evaluate(async () => {
+      const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+      await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+    });
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    const line = recovery(page);
+    await expect(line.locator(".px-notice")).toContainText("Hai fermato la creazione della mappa");
+    await expect(line.getByRole("button")).toHaveText(["Riprendi", "Chiudi"]);
+    await line.getByRole("button", { name: "Riprendi" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect(line).toHaveCount(0);
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** A model reply that waits until the test creates `hold`, so a build can be left running for as long as the test needs. */
+const held = (concepts: string[], hold: string) => ({ ...reply(concepts), hold });
+
+test("Riprendi keeps following the resumed build when the read right after it fails", async () => {
+  test.setTimeout(180_000);
+  const concepts = ["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"];
+  const holdFolder = mkdtempSync(join(tmpdir(), "pyxis-maps-hold-"));
+  const hold = join(holdFolder, "go");
+  const lose = join(holdFolder, "lose");
+  const { app, page, userData, errors } = await startApp({
+    PYXIS_E2E_MAP_REPLIES: recorded([null, held(concepts, hold), held(concepts, hold)]),
+    PYXIS_E2E_READ_FAIL: `maps.build=${lose}`,
+  });
+  try {
+    await askAndWait(page, undefined, "succeeded");
+    await page.evaluate(() =>
+      window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }),
+    );
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("running");
+    await page.evaluate(async () => {
+      const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+      await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+    });
+    await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+    await page.evaluate(() => {
+      location.hash = "#/maps/an/t-real";
+    });
+    await expect(page.locator(".react-flow__node").first()).toBeVisible();
+    const line = recovery(page);
+    // The resume is accepted, but the first read of the build after it is lost: the seam fails the next `maps.build` once.
+    writeFileSync(lose, "");
+    await line.getByRole("button", { name: "Riprendi" }).click();
+    const working = page.locator(".px-map-card .px-map-working");
+    await expect(working).toBeVisible({ timeout: 1000 });
+    await expect.poll(() => existsSync(lose)).toBe(false);
+    // Not a failed resume: no notice, no old map, and the build that runs is still followed a few seconds on.
+    await page.waitForTimeout(3000);
+    expect((await buildOf(page))?.state).toBe("running");
+    await expect(working).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(0);
+    await expect(page.getByText("Non riesco a creare la mappa")).toHaveCount(0);
+    writeFileSync(hold, "");
+    await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+    await expect(working).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    removeTestFolder(dirname(hold));
+  }
+});
+
+for (const way of ["Riprendi", "Riprova"] as const) {
+  test(`${way} keeps Pyxis at work in place for as long as the build runs, and the new map shows when it ends`, async () => {
+    test.setTimeout(180_000);
+    const concepts = ["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"];
+    const holdFolder = mkdtempSync(join(tmpdir(), "pyxis-maps-hold-"));
+    const hold = join(holdFolder, "go");
+    // Model call 0 is the whole topic's map; the request in words is call 1. A stopped one waits in its call, and the
+    // resumed one is call 2. A failed one fails at call 1, and its retry is call 2. Call 2 waits for the test.
+    const calls = way === "Riprendi" ? [null, held(concepts, hold), held(concepts, hold)] : [null, { fail: "offline" }, held(concepts, hold)];
+    const { app, page, userData, errors } = await startApp({ PYXIS_E2E_MAP_REPLIES: recorded(calls) });
+    try {
+      await askAndWait(page, undefined, "succeeded");
+      if (way === "Riprendi") {
+        await page.evaluate(() =>
+          window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-real", instruction: "solo i teoremi" }),
+        );
+        await expect.poll(async () => (await buildOf(page))?.state).toBe("running");
+        await page.evaluate(async () => {
+          const build = (await window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-real" }))!;
+          await window.pyxis.invoke("jobs.cancel", { jobId: build.jobId });
+        });
+        await expect.poll(async () => (await buildOf(page))?.state).toBe("cancelled");
+      } else await askAndWait(page, "solo i teoremi", "failed");
+      await page.evaluate(() => {
+        location.hash = "#/maps/an/t-real";
+      });
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      const line = recovery(page);
+      await line.getByRole("button", { name: way }).click();
+      const working = page.locator(".px-map-card .px-map-working");
+      await expect(working).toBeVisible({ timeout: 1000 });
+      // The build is still running a few seconds on: the page still shows Pyxis at work, not the old map or its line.
+      await page.waitForTimeout(3000);
+      expect((await buildOf(page))?.state).toBe("running");
+      await expect(working).toBeVisible();
+      await expect(page.locator(".react-flow__node")).toHaveCount(0);
+      await expect(line).toHaveCount(0);
+      // It ends: the new map shows.
+      writeFileSync(hold, "");
+      await expect(page.locator(".react-flow__node", { hasText: "Permanenza del segno" })).toBeVisible({ timeout: 30_000 });
+      await expect(working).toHaveCount(0);
+      await expect(line).toHaveCount(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+      removeTestFolder(dirname(hold));
+    }
+  });
+}

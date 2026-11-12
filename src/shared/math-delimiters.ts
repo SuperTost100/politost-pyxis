@@ -14,6 +14,19 @@ export function mathSpans(text: string): Array<[number, number]> {
   return [...text.matchAll(MATH_SPAN)].map((m) => [m.index, m.index + m[0].length]);
 }
 
+/** A `$…$` or `$$…$$` pair with something between the dollars, spaces at its edges included, as the renderer draws it. */
+const DOLLAR_FORMULA = /\$(?=[^$]*\S)[^$]+\$/;
+
+/** Whether `text` has a formula in any delimiter the app renders: `$…$`, `$$…$$`, `\\(…\\)` or `\\[…\\]`. Code does not count. */
+export function hasFormula(text: string): boolean {
+  let found = false;
+  mapOutsideCode(normalizeMathDelimiters(text), (chunk) => {
+    if (DOLLAR_FORMULA.test(chunk)) found = true;
+    return chunk;
+  });
+  return found;
+}
+
 /**
  * KaTeX has no Markdown: `**b**` inside a formula draws two asterisk glyphs around b. Writes it as `\mathbf{b}`.
  * Needs `**` hugging its text, so `f ** g` stays.

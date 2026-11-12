@@ -24,7 +24,7 @@ import { refreshSubjects } from "../../lib/refreshSubjects";
 import { newCardPath } from "../flashcards/FlashcardsHome";
 import { jobErrorKey } from "../jobs/jobErrors";
 import { isUnsorted, NewSubjectDialog, SubjectPicker, UnsortedGroup } from "./LibrarySubjects";
-import { bookLabel, coverColour, coverKind, nextPickerRow } from "./shelf";
+import { bookLabel, byShelfOrder, coverColour, coverKind, needsStudent, nextPickerRow, placeWhenReady, PROBLEM } from "./shelf";
 import "./LibraryShelf.css";
 
 export type LibrarySource = RequestOutput<"sources.list">[number];
@@ -45,11 +45,6 @@ const messageKeyOf = (err: unknown): string =>
 const SHELF_CAP = 14;
 /** How many rows "Da sistemare" shows before "Mostra tutti", so twenty files to sort do not push the shelves away. */
 const UNSORTED_CAP = 8;
-const PROBLEM = new Set(["failed", "needs-ocr", "interrupted", "cancelled"]);
-
-/** Sorted the way a shelf reads: by title, numbers in order ("Lezione 2" before "Lezione 10"). */
-const byTitle = (a: LibrarySource, b: LibrarySource) =>
-  a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
 
 /** Where a move started, so the file's new cover can come out of it, and what gets focus once it has landed. */
 type Landing = { from?: DOMRect; focus: "cover" | { picker: string } | null };
@@ -147,7 +142,7 @@ export function LibraryShelf({
     }
   });
 
-  const unsorted = sources.filter((source) => !source.subjectId || isUnsorted(source)).sort(byTitle);
+  const unsorted = sources.filter((source) => !source.subjectId || isUnsorted(source)).sort(byShelfOrder);
   const unsortedShown = unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP);
   const bySubject = new Map<string, LibrarySource[]>();
   for (const source of sources) {
@@ -183,9 +178,9 @@ export function LibraryShelf({
       const subject = await invoke("sources.move", { sourceId: source.id, ...to });
       landing.current.set(source.id, { from, focus });
       setSaid(t("sources.shelf.moved", { name: subject.name }));
-      // A shelf shows its first covers only: when the file sorts past them, the shelf opens so the cover is there.
-      const there = [...(bySubject.get(subject.id) ?? []).filter((item) => item.id !== source.id), source].sort(byTitle);
-      if (there.findIndex((item) => item.id === source.id) >= SHELF_CAP)
+      // A shelf shows its first covers only. A file sorts first while it is read and by title after, so the shelf opens
+      // when the file would be behind them once ready, and its cover stays there when the read ends.
+      if (placeWhenReady(bySubject.get(subject.id) ?? [], source) >= SHELF_CAP)
         setExpanded((current) => new Set(current).add(subject.id));
       // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
       if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
@@ -264,7 +259,7 @@ export function LibraryShelf({
   const shownSubjects = filtering ? subjects.filter((subject) => bySubject.has(subject.id)) : subjects;
   // With the subjects unread, a file that has one is in no card: it shows in a group of its own, so it is still there.
   const detached = subjectsFailed
-    ? sources.filter((source) => source.subjectId && !isUnsorted(source) && !known.has(source.subjectId)).sort(byTitle)
+    ? sources.filter((source) => source.subjectId && !isUnsorted(source) && !known.has(source.subjectId)).sort(byShelfOrder)
     : [];
   return (
     <div className="px-shelves" ref={root}>
@@ -285,7 +280,7 @@ export function LibraryShelf({
           sources={unsorted}
           more={
             unsorted.length > UNSORTED_CAP && !filtering ? (
-              <Button variant="ghost" size="sm" expanded={unsortedOpen} onClick={() => setUnsortedOpen((open) => !open)}>
+              <Button variant="secondary" size="sm" expanded={unsortedOpen} onClick={() => setUnsortedOpen((open) => !open)}>
                 {unsortedOpen ? t("sources.shelf.showFewer") : t("sources.shelf.showAll", { count: unsorted.length })}
               </Button>
             ) : null
@@ -337,7 +332,7 @@ export function LibraryShelf({
       {shownSubjects.length ? (
         <div className="px-shelf-subjects">
           {shownSubjects.map((subject) => {
-            const files = (bySubject.get(subject.id) ?? []).sort(byTitle);
+            const files = (bySubject.get(subject.id) ?? []).sort(byShelfOrder);
             const open = filtering || expanded.has(subject.id);
             const shown = open ? files : files.slice(0, SHELF_CAP);
             const count = counts.get(subject.id) ?? 0;
@@ -362,10 +357,16 @@ export function LibraryShelf({
                 onNewMap={() => navigate(`/maps?subject=${encodeURIComponent(subject.id)}&new=1`)}
                 onNewCards={() => navigate(newCardPath("pyxis", subject.id))}
                 onDelete={(index) => remove(subject, index)}
+                ahead={
+                  // With covers behind "Mostra tutti", the count line says the files that need the student come first.
+                  !open && files.length > SHELF_CAP && files.some(needsStudent)
+                    ? t("sources.shelf.needsFirst", { count: files.filter(needsStudent).length })
+                    : undefined
+                }
                 more={
                   files.length > SHELF_CAP && !filtering ? (
                     <Button
-                      variant="ghost"
+                      variant="secondary"
                       size="sm"
                       expanded={open}
                       onClick={() =>
@@ -744,6 +745,7 @@ function SubjectCard({
   subject,
   index,
   count,
+  ahead,
   fresh,
   made,
   renaming,
@@ -761,6 +763,8 @@ function SubjectCard({
   subject: Subject;
   index: number;
   count: number;
+  /** A note after the count: the files that need the student come first, while some are behind "Mostra tutti". */
+  ahead?: string;
   fresh: boolean;
   /** Files Pyxis made this subject for, which its "Materia nuova" note counts. */
   made: number;
@@ -812,7 +816,9 @@ function SubjectCard({
   };
   return (
     <section
-      className={["px-shelf-subject", fresh ? "is-fresh" : "", itemMenu.popup ? "is-menu" : ""].filter(Boolean).join(" ")}
+      className={["px-shelf-subject", count === 0 ? "is-empty" : "", fresh ? "is-fresh" : "", itemMenu.popup ? "is-menu" : ""]
+        .filter(Boolean)
+        .join(" ")}
       data-subject-id={subject.id}
       aria-labelledby={`${headId} ${countId}`}
     >
@@ -856,6 +862,7 @@ function SubjectCard({
         <span id={countId} className="small px-shelf-subject-count">
           {count ? t("sources.shelf.count", { count }) : t("sources.shelf.countNone")}
         </span>
+        {ahead ? <span className="small px-shelf-subject-count">· {ahead}</span> : null}
         <MenuButton
           menu={menu}
           className="px-shelf-subject-dots"

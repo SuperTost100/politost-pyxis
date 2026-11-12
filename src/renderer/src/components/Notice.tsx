@@ -21,9 +21,10 @@ export function Notice({
 }: {
   tone: keyof typeof tones;
   children: ReactNode;
-  action?: { label: string; onClick: () => void };
-  /** A second, quieter choice beside the main action, such as going on without it. */
-  secondary?: { label: string; onClick: () => void };
+  /** The notice's one action; `disabled` while what it starts can't start yet. */
+  action?: { label: string; onClick: () => void; disabled?: boolean };
+  /** A second, quieter choice beside the main action, such as going on without it or dismissing the notice. */
+  secondary?: { label: string; onClick: () => void; disabled?: boolean };
   details?: string;
   /** A short heading above the sentence, for a message that stands for the whole page. */
   title?: ReactNode;
@@ -68,12 +69,12 @@ export function Notice({
       {action || secondary ? (
         <span className="px-notice-line px-notice-actions">
           {action ? (
-            <Button type="text" size="small" onClick={action.onClick}>
+            <Button type="text" size="small" disabled={action.disabled} onClick={action.onClick}>
               {action.label}
             </Button>
           ) : null}
           {secondary ? (
-            <Button type="text" size="small" onClick={secondary.onClick}>
+            <Button type="text" size="small" disabled={secondary.disabled} onClick={secondary.onClick}>
               {secondary.label}
             </Button>
           ) : null}

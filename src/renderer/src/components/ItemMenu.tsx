@@ -17,12 +17,92 @@ const submenuArrow = <Icon name="chevron-right" size={14} className="px-item-men
 const FIT_IN_WINDOW = { adjustX: 1 as const, adjustY: 1 as const, shiftX: true, shiftY: true };
 
 /**
- * A submenu opens beside its item, on the left when the right has no room, and moves up when it would end below the
- * window, as desktop menus do.
+ * A submenu opens beside its menu, never over it: on the right of its item, on the left when the right has no room, and
+ * moved up when it would end below the window, as desktop menus do. The offset takes it past the menu's 6px padding with
+ * a 4px gap, and lines its first item up with the item it grows from; on the left the trigger mirrors it.
  */
 const submenuPlacements: MenuProps["builtinPlacements"] = {
-  rightTop: { points: ["tl", "tr"], overflow: { adjustX: 1, shiftY: true } },
+  rightTop: { points: ["tl", "tr"], offset: [10, -6], overflow: { adjustX: 1, shiftX: true, shiftY: true } },
 };
+
+/** The room a submenu keeps from the window's edges and from the item it grows from. */
+const EDGE = 8;
+const GAP = 4;
+
+/**
+ * When neither side of the menu has room for a submenu (a very narrow window), the trigger moves it along the window's
+ * edge and over its menu. It then moves down below the item that opened it, or above it when there is more room there,
+ * so that item stays in sight, kept inside the window, and it scrolls inside itself when it is taller than that room. The card inside the
+ * submenu is moved, not the box the trigger places, so the trigger's next alignment does not undo it.
+ *
+ * The answer comes from what does not depend on the answer: the menu's box, the row that opened the submenu, the window
+ * and the submenu's natural size (its content's height, whatever limit it has now). Where the trigger placed the box and
+ * how tall the limit made it never enter the decision, so the same inputs give the same result and the placement
+ * settles, instead of limiting the box, measuring the shorter box, lifting the limit and starting again.
+ */
+function keepOpenerInSight(root: HTMLElement) {
+  for (const popup of root.querySelectorAll<HTMLElement>(".ant-dropdown-menu-submenu-popup:not(.ant-dropdown-menu-submenu-hidden)")) {
+    const card = popup.querySelector<HTMLElement>(":scope > ul");
+    const opener = root.querySelector<HTMLElement>(
+      ".ant-dropdown-menu-root > .ant-dropdown-menu-submenu-open > .ant-dropdown-menu-submenu-title",
+    );
+    const menu = opener?.closest<HTMLElement>(".ant-dropdown-menu-root");
+    if (!card || !opener || !menu) continue;
+    const box = popup.getBoundingClientRect();
+    const row = opener.getBoundingClientRect();
+    const sides = menu.getBoundingClientRect();
+    // The card's content height, which a limit on the card does not change, and its borders.
+    const natural = card.scrollHeight + card.offsetHeight - card.clientHeight;
+    const beside = sides.right + GAP + box.width <= innerWidth || sides.left - GAP - box.width >= 0;
+    let transform = "";
+    let maxHeight = "";
+    if (!beside) {
+      const below = innerHeight - EDGE - (row.bottom + GAP);
+      const above = row.top - GAP - EDGE;
+      const room = Math.max(below, above);
+      const height = Math.min(natural, room);
+      const top = below >= natural || below >= above ? row.bottom + GAP : row.top - GAP - height;
+      // The trigger keeps it inside the document, which a page wider than the window outgrows: inside the window here.
+      const left = Math.max(EDGE, Math.min(box.left, innerWidth - EDGE - box.width));
+      transform = `translate(${Math.round(left - box.left)}px, ${Math.round(top - box.top)}px)`;
+      if (height < natural) maxHeight = `${Math.floor(height)}px`;
+    }
+    if (card.style.transform !== transform) card.style.transform = transform;
+    if (card.style.maxHeight !== maxHeight) card.style.maxHeight = maxHeight;
+  }
+}
+
+/**
+ * Holds a menu's list and the submenus drawn inside it, and keeps the item that opened a submenu in sight
+ * (`keepOpenerInSight`) each time the trigger places the submenu.
+ */
+function SubmenuRoom({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    let frame = 0;
+    const check = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        keepOpenerInSight(root);
+        // What was just written is not a change to react to.
+        observer.takeRecords();
+      });
+    };
+    const observer: MutationObserver = new MutationObserver(check);
+    observer.observe(root, { attributes: true, attributeFilter: ["style", "class"], subtree: true, childList: true });
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  return (
+    <div className="px-submenu-room" ref={ref}>
+      {children}
+    </div>
+  );
+}
 
 /**
  * The items as the menu draws them: a submenu (an item with `children`) gets the drawn arrow and stays inside the window,
@@ -33,9 +113,9 @@ function drawn(menu: MenuProps, close: () => void): MenuProps {
   return {
     expandIcon: submenuArrow,
     builtinPlacements: submenuPlacements,
-    // A submenu opens inside the menu's landmark, or the menu itself when it has none, so it is fixed to the window with
-    // it instead of loose in the document's body.
-    getPopupContainer: (node) => node.closest<HTMLElement>("[role=region], .px-item-menu") ?? document.body,
+    // A submenu opens inside its menu (in the menu's landmark when it has one), so it is fixed to the window with it
+    // instead of loose in the document's body, and its menu keeps the item that opened it in sight (`SubmenuRoom`).
+    getPopupContainer: (node) => node.closest<HTMLElement>(".px-submenu-room") ?? document.body,
     ...menu,
     onClick: (info) => {
       close();
@@ -86,7 +166,7 @@ function MenuRegion({
   }, [open, arrow]);
   return (
     <div role="region" aria-label={label} ref={ref}>
-      {children}
+      <SubmenuRoom>{children}</SubmenuRoom>
     </div>
   );
 }
@@ -254,14 +334,14 @@ export function useItemMenu({
           onOpenChange={(next) => {
             if (!next) close(true);
           }}
-          popupRender={
-            region
-              ? (list) => (
-                  <MenuRegion label={region} open>
-                    {list}
-                  </MenuRegion>
-                )
-              : undefined
+          popupRender={(list) =>
+            region ? (
+              <MenuRegion label={region} open>
+                {list}
+              </MenuRegion>
+            ) : (
+              <SubmenuRoom>{list}</SubmenuRoom>
+            )
           }
           menu={drawn(menu, () => close(true))}
         >

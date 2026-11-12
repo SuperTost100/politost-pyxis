@@ -145,13 +145,9 @@
   margin: 0;
   padding-inline: 10px;
 }
-
-/* How the last build ended, with its way back: the words, then Riprova or Riprendi and Chiudi as quiet buttons. */
-.px-map-recover {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 var(--space-2);
+/* How the last build ended is a notice over the map, as wide as the map's card under it. */
+.px-map-notice.px-map-recover {
+  padding-inline: 0;
 }
 
 .px-map-error {
