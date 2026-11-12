@@ -305,3 +305,61 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
     removeTestFolder(userData);
   }
 });
+
+test("in the make-flashcards dialog a proposed face with a formula shows its preview, and a long face wraps", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-make-cards-formula-"));
+  const long =
+    "Spiega quando conviene integrare per parti invece che per sostituzione, e come si sceglie quale fattore derivare e quale integrare";
+  const env = {
+    PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+      cards: {
+        cards: [
+          { kind: "qa", front: "Quanto vale l'integrale per parti?", back: "$\\int u\\,dv = uv - \\int v\\,du$", passageId: "{{passage:0}}" },
+          { kind: "qa", front: long, back: "Quando l'integrando è un prodotto.", passageId: "{{passage:0}}" },
+        ],
+      },
+    }),
+  };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    seed(userData);
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Sezioni" })).toBeVisible();
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent("pyxis:make-cards", {
+          detail: { text: "L'integrale per parti", origin: "selection", planId: "p-an", topicId: "t-int", passageIds: ["pa1"] },
+        }),
+      ),
+    );
+    const dialog = page.getByRole("dialog", { name: "Crea flashcard" });
+    await dialog.getByRole("button", { name: "Crea flashcard" }).click();
+    const cards = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
+    await expect(cards).toHaveCount(2);
+    await expect(cards.nth(0).locator(".px-formula-preview .katex")).toBeVisible();
+    await expect(cards.nth(1).locator(".px-formula-preview")).toHaveCount(0);
+
+    await animationsSettled(page);
+    const field = cards.nth(1).getByRole("textbox", { name: "Fronte" });
+    const box = (await field.boundingBox())!;
+    const card = (await cards.nth(1).boundingBox())!;
+    // The list keeps the height of its cards, so none runs over what follows it.
+    const list = dialog.getByRole("list", { name: "Flashcard proposte" });
+    expect(await list.evaluate((node) => node.scrollHeight <= node.clientHeight + 1)).toBe(true);
+    expect(box.x + box.width).toBeLessThanOrEqual(card.x + card.width + 0.5);
+    expect(await field.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    // Taller than a one-line face: the long one runs on several lines.
+    const short = (await cards.nth(1).getByRole("textbox", { name: "Retro" }).boundingBox())!;
+    expect(box.height).toBeGreaterThan(short.height + 10);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

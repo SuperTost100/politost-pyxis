@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -103,9 +103,9 @@ function seed(db: DatabaseSync) {
   attempt.run("a-sim", "i-sim", now);
 }
 
-async function launch() {
+async function launch(env: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-sheet-"));
-  const app = await launchPyxis({ userData });
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
@@ -344,6 +344,151 @@ test("a running exam reopens on the question it was left on, with its clock stil
     await go(page, "/plans/p-fis/exam/a-sim");
     await expect(heading(page)).toHaveText("Domanda 3 di 3");
   } finally {
+    await done();
+  }
+});
+
+test("Avanti and Segna per dopo pressed back to back, then leaving at once, reopen the exam on that question, marked", async () => {
+  test.setTimeout(180_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    const stored = () =>
+      page
+        .evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }))
+        .then((run) => [run.current, run.marked ?? []]);
+    // Five times with a reload right after the two presses, three times leaving for Esami and coming back from the
+    // shell's Riprendi l'esame: within the 500 ms a draft waits, and while the page still holds an older read.
+    for (let round = 0; round < 8; round++) {
+      const where = `round ${round + 1}`;
+      await page.getByRole("button", { name: "Avanti" }).click();
+      await mark.click();
+      if (round < 5) await page.reload();
+      else {
+        await go(page, "/exams");
+        await page.getByRole("button", { name: "Riprendi l’esame" }).click();
+      }
+      await expect(heading(page), where).toHaveText("Domanda 2 di 3");
+      await expect(mark, where).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(stored, { message: where }).toEqual(["e-2", ["e-2"]]);
+      // Back to the first question with nothing marked, saved, for the next round.
+      await mark.click();
+      await page.getByRole("button", { name: "Indietro" }).click();
+      await expect(heading(page)).toHaveText("Domanda 1 di 3");
+      await expect.poll(stored, { message: where }).toEqual(["e-1", []]);
+    }
+  } finally {
+    await done();
+  }
+});
+
+test("the exam reopens on the question the first read that succeeds gives, when the first read after opening fails", async () => {
+  test.setTimeout(120_000);
+  const lose = join(tmpdir(), `pyxis-quiz-sheet-lose-${process.pid}-${Date.now()}`);
+  const { page, done } = await launch({ PYXIS_E2E_READ_FAIL: `study.simulationRead=${lose}` });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // The page reads the exam on question 1 and keeps that read when the student leaves.
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    await go(page, "/exams");
+    await page.getByRole("button", { name: "Riprendi l’esame" }).waitFor();
+    // The exam moves on to question 2 while the page is away, and the first read after it opens again is lost.
+    await page.evaluate(() =>
+      window.pyxis.invoke("study.simulationDraft", { attemptId: "a-sim", picks: {}, marked: [], current: "e-2" }),
+    );
+    writeFileSync(lose, "");
+    await page.getByRole("button", { name: "Riprendi l’esame" }).click();
+    // The next read, a second later, comes back: the exam is on question 2, not on the one the old read held.
+    await expect(heading(page)).toHaveText("Domanda 2 di 3", { timeout: 15_000 });
+    expect(existsSync(lose)).toBe(false);
+    // And it stays there across the reads that follow.
+    await page.waitForTimeout(2500);
+    await expect(heading(page)).toHaveText("Domanda 2 di 3");
+  } finally {
+    rmSync(lose, { force: true });
+    await done();
+  }
+});
+
+test("the quiz too reopens on the question after Avanti and Segna per dopo pressed back to back just before leaving", async () => {
+  test.setTimeout(180_000);
+  const { page, done } = await launch();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const quiz = "/plans/p-fis/quiz/t-kin?attempt=a-quiz";
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    const stored = () => read(page, "a-quiz").then((run) => [run.draft?.index, run.draft?.marked?.length ?? 0]);
+    for (let round = 0; round < 5; round++) {
+      const where = `round ${round + 1}`;
+      await page.getByRole("button", { name: "Avanti" }).click();
+      await mark.click();
+      if (round < 3) await page.reload();
+      else {
+        await go(page, "/plans/p-fis");
+        await go(page, quiz);
+      }
+      await expect(heading(page), where).toHaveText("Domanda 2 di 8");
+      await expect(mark, where).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(stored, { message: where }).toEqual([1, 1]);
+      await mark.click();
+      await page.getByRole("button", { name: "Indietro" }).click();
+      await expect(heading(page)).toHaveText("Domanda 1 di 8");
+      await expect.poll(stored, { message: where }).toEqual([0, 0]);
+    }
+  } finally {
+    await done();
+  }
+});
+
+test("a slow save on its way, a queued draft and a newer one sent on leaving: the newest answers are the ones stored", async () => {
+  test.setTimeout(120_000);
+  const { page, userData, done } = await launch();
+  let lock: DatabaseSync | undefined;
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/exam/a-sim");
+    await expect(heading(page)).toHaveText("Domanda 1 di 3");
+    const mark = page.getByRole("button", { name: "Segna per dopo", exact: true });
+    // The test holds the database's write lock, as new-flashcard.spec.ts does, so the core waits on the first save
+    // in the middle of it: no signal, no timing guess, and the same on every platform.
+    lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    lock.exec("BEGIN IMMEDIATE");
+    // Draft A (question 2) is sent after 500 ms and stays on its way, waiting for the lock.
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await expect(heading(page)).toHaveText("Domanda 2 di 3");
+    await page.waitForTimeout(800);
+    // Draft B (question 3) has to wait behind A.
+    await page.getByRole("button", { name: "Avanti" }).click();
+    await expect(heading(page)).toHaveText("Domanda 3 di 3");
+    await page.waitForTimeout(800);
+    // Draft C (question 3, marked) is the page's last, sent as it leaves.
+    await mark.click();
+    await expect(mark).toHaveAttribute("aria-pressed", "true");
+    await go(page, "/plans/p-fis");
+    lock.exec("ROLLBACK");
+    lock.close();
+    lock = undefined;
+    // Every save has landed once the core answers a read; the last one in order must be C, never B.
+    await expect
+      .poll(
+        () =>
+          page
+            .evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }))
+            .then((run) => [run.current, run.marked ?? []]),
+        { timeout: 30_000 },
+      )
+      .toEqual(["e-3", ["e-3"]]);
+    await page.waitForTimeout(1500);
+    const run = await page.evaluate(() => window.pyxis.invoke("study.simulationRead", { attemptId: "a-sim" }));
+    expect([run.current, run.marked ?? []]).toEqual(["e-3", ["e-3"]]);
+  } finally {
+    lock?.close();
     await done();
   }
 });

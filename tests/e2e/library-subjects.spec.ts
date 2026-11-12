@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { animationsSettled } from "./settled";
 import { saveShot } from "./shots";
+import { seedSource, seedSubjects } from "./seed";
 
 /** Recorded answers of the AI tool that chooses subjects, by the `id` each file is sent with (its place in the call): file 1 fits a subject the student has, file 2 needs a new one. */
 const replies = JSON.stringify({
@@ -310,43 +311,97 @@ async function pasteLoose(page: Page, title: string): Promise<string> {
   return sourceId;
 }
 
-test("A file moved behind \"Mostra tutti\" shows where it went and keeps the keyboard's place", async () => {
+/**
+ * Sixteen files on the way to Analisi 1's shelf: fifteen that sort before "Zeta" and "Zulu" (the shelf shows fourteen, so a
+ * moved file lands behind the button), and "Zeta" and "Zulu" waiting in "Da sistemare". The files are written to the
+ * database, so a spec decides whether "Zeta" is still being read when it moves, and when its read ends.
+ */
+async function seedFullShelf(page: Page, userData: string, zeta: "ready" | "extracting") {
+  const analysis = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
+    (subject) => subject.name === "Analisi 1",
+  )!;
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  for (let n = 1; n <= 15; n++)
+    seedSource(db, { id: `appunti-${n}`, title: `Appunti ${String(n).padStart(2, "0")}`, subjectId: analysis.id });
+  seedSource(db, { id: "zeta", title: "Zeta", status: zeta });
+  seedSource(db, { id: "zulu", title: "Zulu" });
+  db.close();
+  await page.reload();
+}
+
+/** Ends the read of "Zeta" in the database and has the page read its files again, as a finished job does. */
+async function finishReading(page: Page, userData: string) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  db.prepare("UPDATE sources SET status = 'ready' WHERE id = 'zeta'").run();
+  db.close();
+  // The import of another file ends with an update that makes the page read its files again.
+  await pasteLoose(page, "Sonda");
+}
+
+for (const zeta of ["ready", "extracting"] as const) {
+  test(
+    zeta === "ready"
+      ? 'A file moved behind "Mostra tutti" shows where it went and keeps the keyboard\'s place'
+      : "A file moved while it is still being read shows where it went, and stays there when its read ends",
+    async () => {
+      test.setTimeout(240000);
+      const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+      try {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await seedFullShelf(page, userData, zeta);
+        const group = page.getByRole("region", { name: "Da sistemare" });
+        await expect(group.locator(".px-unsorted-row")).toHaveCount(2);
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+
+        // Chosen in "Da sistemare": the shelf opens so the cover is there, and focus goes to the next row's choice.
+        await group.getByRole("combobox", { name: "Materia di Zeta" }).selectOption({ label: "Analisi 1" });
+        await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+        await expect(group.getByRole("combobox", { name: "Materia di Zulu" })).toBeFocused();
+
+        if (zeta === "extracting") {
+          // Its read ends: by title it now sorts behind the fourteen, and the shelf must not fold it away.
+          await expect(cover(page, "Analisi 1", "Zeta")).toContainText("Lettura");
+          await finishReading(page, userData);
+          await expect(cover(page, "Analisi 1", "Zeta")).not.toContainText("Lettura");
+          await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
+          await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+          return;
+        }
+
+        // By the file's menu, with the shelf folded again: the cover is shown and takes focus.
+        await shelf(page, "Analisi 1").getByRole("button", { name: "Mostra meno" }).click();
+        await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
+        await page.getByRole("button", { name: "Azioni per Zulu" }).click();
+        await moveTo(page, "Analisi 1");
+        const zulu = cover(page, "Analisi 1", "Zulu");
+        await expect(zulu).toBeVisible();
+        await expect(zulu.getByRole("button", { name: "Zulu", exact: true })).toBeFocused();
+        await expect(group).toBeHidden();
+      } finally {
+        await app.close();
+        removeTestFolder(userData);
+      }
+    },
+  );
+}
+
+test("A file moved from its menu while it is still being read shows where it went, and stays there when its read ends", async () => {
   test.setTimeout(240000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const analysis = (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).find(
-      (subject) => subject.name === "Analisi 1",
-    )!;
-    // Fifteen covers that sort before "Zeta" and "Zulu": the shelf shows fourteen, so a moved file lands behind the button.
-    for (let n = 1; n <= 15; n++) {
-      const id = await pasteLoose(page, `Appunti ${String(n).padStart(2, "0")}`);
-      await page.evaluate(({ id, subjectId }) => window.pyxis.invoke("sources.move", { sourceId: id, subjectId }), {
-        id,
-        subjectId: analysis.id,
-      });
-    }
-    await pasteLoose(page, "Zeta");
-    await pasteLoose(page, "Zulu");
-    const group = page.getByRole("region", { name: "Da sistemare" });
-    await expect(group.locator(".px-unsorted-row")).toHaveCount(2);
+    await seedFullShelf(page, userData, "extracting");
     await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
-
-    // Chosen in "Da sistemare": the shelf opens so the cover is there, and focus goes to the next row's choice.
-    await group.getByRole("combobox", { name: "Materia di Zeta" }).selectOption({ label: "Analisi 1" });
-    await expect(cover(page, "Analisi 1", "Zeta")).toBeVisible();
-    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
-    await expect(group.getByRole("combobox", { name: "Materia di Zulu" })).toBeFocused();
-
-    // By the file's menu, with the shelf folded again: the cover is shown and takes focus.
-    await shelf(page, "Analisi 1").getByRole("button", { name: "Mostra meno" }).click();
-    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(14);
-    await page.getByRole("button", { name: "Azioni per Zulu" }).click();
+    await page.getByRole("button", { name: "Azioni per Zeta" }).click();
     await moveTo(page, "Analisi 1");
-    const zulu = cover(page, "Analisi 1", "Zulu");
-    await expect(zulu).toBeVisible();
-    await expect(zulu.getByRole("button", { name: "Zulu", exact: true })).toBeFocused();
-    await expect(group).toBeHidden();
+    const zeta = cover(page, "Analisi 1", "Zeta");
+    await expect(zeta).toBeVisible();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
+    await finishReading(page, userData);
+    await expect(zeta).not.toContainText("Lettura");
+    await expect(zeta).toBeVisible();
+    await expect(shelf(page, "Analisi 1").locator(".px-cover")).toHaveCount(16);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -397,6 +452,22 @@ test("A subject offers its delete as soon as its last file is removed", async ()
 /** How far a point is from a box, in px: 0 inside it. */
 const gap = (box: { x: number; y: number; width: number; height: number }, at: { x: number; y: number }) =>
   Math.hypot(Math.max(box.x - at.x, 0, at.x - (box.x + box.width)), Math.max(box.y - at.y, 0, at.y - (box.y + box.height)));
+
+/**
+ * How a menu opened by its dots sits against them: the distance between their right edges, and between the menu and the
+ * dots' bottom (or top, when the menu opens above them). A menu that hangs from its dots has its right edge on theirs
+ * and the dropdown's offset, 4 px, between them.
+ */
+const hangsFrom = async (menu: Locator, dots: Locator) => {
+  const box = (await menu.boundingBox())!;
+  const from = (await dots.boundingBox())!;
+  const below = box.y >= from.y;
+  return {
+    edges: Math.round(box.x + box.width - (from.x + from.width)),
+    offset: Math.round(below ? box.y - (from.y + from.height) : from.y - (box.y + box.height)),
+  };
+};
+const HANGS = { edges: 0, offset: 4 };
 
 /** The menu that is open: the one with `item`, whatever the page scrolled or did while it opened. */
 const openMenu = (page: Page, item: string) =>
@@ -553,26 +624,20 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // shift (a group appearing above the shelves) does not: a right-click menu stays at the pointer, and the one opened
     // by the dots follows them. Resizing the window closes a right-click menu, and the dots' menu follows them.
     for (const way of ["dots", "right-click"] as const) {
-      /** Opens the menu of "Serie" and says where it was asked from: the dots, or the pointer. */
-      let from = { x: 0, y: 0 };
+      /** Opens the menu of "Serie" by its dots or by a right-click at its centre. */
       const open = async () => {
         const file = cover(page, "Analisi 1", "Serie");
         await file.scrollIntoViewIfNeeded();
         if (way === "dots") {
           await file.hover();
           await page.getByRole("button", { name: "Azioni per Serie" }).click();
-          from = centre((await page.getByRole("button", { name: "Azioni per Serie" }).boundingBox())!);
         } else {
-          from = centre((await file.boundingBox())!);
+          const from = centre((await file.boundingBox())!);
           await page.mouse.click(from.x, from.y, { button: "right" });
         }
         await expect(fileMenu).toBeVisible();
         await animationsSettled(page);
       };
-      /** Where the menu should be: at the dots, wherever they are now, or at the pointer's old place. */
-      const asked = async () =>
-        way === "dots" ? centre((await page.getByRole("button", { name: "Azioni per Serie" }).boundingBox())!) : from;
-
       await open();
       await page.mouse.move(480, 450);
       await page.mouse.wheel(0, -200);
@@ -596,8 +661,11 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       await expect(fileMenu, `${way} menu after a layout shift`).toBeVisible();
       const after = (await fileMenu.boundingBox())!;
       if (way === "dots") {
-        expect(gap(after, await asked()), `menu ${JSON.stringify(after)} follows its dots`).toBeLessThan(40);
-        expect(after.y).not.toBeCloseTo(before.y, 0);
+        // The menu follows its dots a frame after they move.
+        await expect
+          .poll(() => hangsFrom(fileMenu, page.getByRole("button", { name: "Azioni per Serie" })), "follows its dots")
+          .toEqual(HANGS);
+        expect((await fileMenu.boundingBox())!.y).not.toBeCloseTo(before.y, 0);
       } else expect(after).toEqual(before);
       // The owner keeps its hover look while its menu is open, and nothing else has it.
       await expect.poll(hovered).toEqual([await sourceId(cover(page, "Analisi 1", "Serie"))]);
@@ -608,8 +676,9 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       if (way === "right-click") await expect(fileMenu, "right-click menu after a resize").toHaveCount(0);
       else {
         await expect(fileMenu, "dots menu after a resize").toBeVisible();
-        await animationsSettled(page);
-        expect(gap((await fileMenu.boundingBox())!, await asked())).toBeLessThan(40);
+        await expect
+          .poll(() => hangsFrom(fileMenu, page.getByRole("button", { name: "Azioni per Serie" })), "follows its dots")
+          .toEqual(HANGS);
       }
       await page.setViewportSize({ width: 960, height: 900 });
       await page.keyboard.press("Escape");
@@ -1203,6 +1272,94 @@ test("A cover's dots and a subject's dots work from the keyboard alone: Sposta i
     await page.keyboard.press("Enter");
     await expect(shelf(page, "Fisica tecnica").locator(".px-cover", { hasText: "Limiti" })).toBeVisible();
     expect(await subjectNames(page)).toEqual(["Analisi 1", "Fisica tecnica"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Files that need the student come first on their shelf and in Da sistemare, so none hides behind Mostra tutti", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-library-order-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [{ id: "an", name: "Analisi 1" }]);
+    // Sixteen files read, and two whose titles sort last: one whose read failed and one still being read.
+    for (let index = 1; index <= 16; index++)
+      seedSource(db, { id: `an-${index}`, title: `Dispensa ${String(index).padStart(2, "0")}`, subjectId: "an" });
+    seedSource(db, { id: "an-failed", title: "Zeta, scansione illeggibile", subjectId: "an", status: "failed" });
+    seedSource(db, { id: "an-reading", title: "Zeta, slide in lettura", subjectId: "an", status: "extracting" });
+    // Nine files without a subject, the one that failed last by title.
+    for (let index = 1; index <= 8; index++) seedSource(db, { id: `loose-${index}`, title: `Appunti ${index}` });
+    seedSource(db, { id: "loose-failed", title: "Zeta, foto rovinata", status: "failed" });
+    db.close();
+    await toLibrary(page);
+
+    const shelf = page.getByRole("region", { name: /^Analisi 1/ });
+    const covers = shelf.locator(".px-cover-title");
+    await expect(covers).toHaveCount(14);
+    await expect(covers.nth(0)).toHaveText("Zeta, scansione illeggibile");
+    await expect(covers.nth(1)).toHaveText("Zeta, slide in lettura");
+    await expect(covers.nth(2)).toHaveText("Dispensa 01");
+    // The count line says so while some covers are behind Mostra tutti, which is a button that looks like one.
+    await expect(shelf.locator(".px-shelf-subject-head")).toContainText(/18 file\s*· i 2 da controllare sono i primi/);
+    const all = shelf.getByRole("button", { name: "Mostra tutti i 18 file" });
+    await expect(all).toHaveClass(/px-btn-secondary/);
+    await all.click();
+    await expect(covers).toHaveCount(18);
+    await expect(shelf.locator(".px-shelf-subject-head")).not.toContainText("da controllare");
+    await expect(shelf.getByRole("button", { name: "Mostra meno" })).toHaveClass(/px-btn-secondary/);
+
+    const unsorted = page.getByRole("region", { name: "Da sistemare" });
+    const rows = unsorted.locator(".px-unsorted-row");
+    await expect(rows).toHaveCount(8);
+    await expect(rows.first()).toContainText("Zeta, foto rovinata");
+    await expect(unsorted.getByRole("button", { name: "Mostra tutti i 9 file" })).toHaveClass(/px-btn-secondary/);
+    await expectNoAxeViolations(page);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Subjects with no files keep one column width each, and the last row is not stretched", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-library-empty-cards-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [
+      { id: "an", name: "Analisi 1" },
+      { id: "fis", name: "Fisica 2" },
+      { id: "chem", name: "Chimica generale" },
+      { id: "lab", name: "Laboratorio di fisica" },
+    ]);
+    db.close();
+    const cards = page.locator(".px-shelf-subject");
+    for (const [width, textSize] of [
+      [1280, "md"],
+      [960, "lg"],
+    ] as const) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.evaluate((textSize) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize }), textSize);
+      await toLibrary(page);
+      await page.reload();
+      await expect(cards).toHaveCount(4);
+      const widths = await cards.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().width)));
+      const row = (await page.locator(".px-shelf-subjects").boundingBox())!;
+      // Every card has the same width, the one of a column, never the whole row.
+      expect(new Set(widths).size, `${width}: ${widths.join(", ")}`).toBe(1);
+      expect(widths[0]!, `${width}: a card is ${widths[0]} of ${row.width}`).toBeLessThan(row.width * 0.6);
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);

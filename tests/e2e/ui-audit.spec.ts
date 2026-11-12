@@ -268,6 +268,10 @@ const routes = [
   ["library-book-update", "/exams/library"],
   ["library-books-update", "/exams/library"],
   ["shell-exam-active", "/exams"],
+  // The same, over the map's page, which fills the window, and over the Library: Resume sits in the top strip and the
+  // page keeps its height.
+  ["map-exam-active", "/plans/audit-plan/map/audit-topic"],
+  ["library-exam-active", "/exams/library"],
   ["library-ocr-refused", "/exams/library"],
   ["library-ocr-ready", "/exams/library"],
   ["ask-ocr-refused", "/ask"],
@@ -1741,7 +1745,7 @@ function prepareState(name: string) {
     db.exec(
       `DELETE FROM attempts WHERE id = 'audit-active-attempt'; DELETE FROM items WHERE id = 'audit-active-exam'`,
     );
-    if (name !== "shell-exam-active") return;
+    if (!name.endsWith("-exam-active")) return;
     // An unsubmitted simulation that has not started grading is what the Shell reads as the exam in progress.
     const now = Date.now();
     db.prepare(
@@ -2872,7 +2876,10 @@ async function openState(page: Page, name: string) {
       expect(row).toBe("needs-ocr");
       break;
     }
+    case "map-exam-active":
+    case "library-exam-active":
     case "shell-exam-active":
+      if (name === "map-exam-active") await expect(page.locator(".react-flow__node")).toHaveCount(3);
       await expect(
         page.getByRole("button", {
           name: both("Riprendi l’esame", "Resume the exam"),
@@ -3204,7 +3211,7 @@ async function openState(page: Page, name: string) {
     case "map-build-failed":
     case "map-build-stopped": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
-      const line = page.locator(".px-map-recover");
+      const line = page.locator(".px-map-notice .px-notice");
       await expect(line).toContainText(
         name === "map-build-failed"
           ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
@@ -3265,7 +3272,8 @@ async function openState(page: Page, name: string) {
       break;
     case "library-sorting":
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
-      await expect(page.getByText(both("Materia nuova.", "New subject."))).toBeVisible();
+      // The notice that Pyxis made a subject, not the "New subject…" choice of the pickers beside it.
+      await expect(page.locator(".px-library-newsubject").getByText(both("Materia nuova\\.", "New subject\\."))).toBeVisible();
       break;
     case "library-unsorted": {
       const group = page.getByRole("region", { name: both("Da sistemare", "To sort") });
@@ -3570,7 +3578,7 @@ async function openState(page: Page, name: string) {
         await dialog
           .getByRole("textbox", { name: both("Retro", "Back") })
           .fill("Vale 1. Si vede confrontando le aree di due triangoli e di un settore circolare.");
-        await expect(dialog.locator(".px-nc-preview .katex").first()).toBeVisible();
+        await expect(dialog.locator(".px-formula-preview .katex").first()).toBeVisible();
         break;
       }
       await dialog.getByRole("radio", { name: both("Falla fare a Pyxis", "Let Pyxis write them") }).click();
@@ -4147,6 +4155,30 @@ test("M14 every application route in both languages, themes and supported widths
               const overflow = await page.evaluate(
                 () => document.documentElement.scrollWidth > innerWidth + 1,
               );
+              // Resume takes no room from the page under it: the page is as tall without it and its title stays where
+              // it is, Resume ends above the title, and a map's page, which fills the window, is no taller than it.
+              if (name.endsWith("-exam-active")) {
+                const sizes = await page
+                  .getByRole("button", { name: both("Riprendi l’esame", "Resume the exam") })
+                  .evaluate((button) => {
+                    const root = document.documentElement;
+                    const title = () => document.querySelector("main h1")!.getBoundingClientRect().top;
+                    const withIt = { height: root.scrollHeight, title: title() };
+                    const bottom = button.getBoundingClientRect().bottom;
+                    button.style.display = "none";
+                    const without = { height: root.scrollHeight, title: title() };
+                    button.style.display = "";
+                    return { withIt, without, bottom, window: innerHeight };
+                  });
+                if (sizes.withIt.height !== sizes.without.height)
+                  errors.push(`Resume makes the page ${sizes.withIt.height - sizes.without.height}px taller`);
+                if (sizes.withIt.title !== sizes.without.title)
+                  errors.push(`Resume moves the title by ${sizes.withIt.title - sizes.without.title}px`);
+                if (sizes.bottom + 4 > sizes.withIt.title)
+                  errors.push(`Resume ends ${Math.round(sizes.withIt.title - sizes.bottom)}px above the title`);
+                if (name === "map-exam-active" && sizes.withIt.height > sizes.window)
+                  errors.push(`The map's page is ${sizes.withIt.height - sizes.window}px taller than the window`);
+              }
               records.push({
                 name,
                 route,

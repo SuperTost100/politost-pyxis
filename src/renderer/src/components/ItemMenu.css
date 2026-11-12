@@ -20,9 +20,12 @@
 }
 /* A submenu is drawn inside its menu (`drawn` in ItemMenu.tsx). There Ant Design's rule for a submenu's row, whose class
    the submenu shares, would make it take room in the menu and stretch the menu down the window: it floats beside its row
-   instead. Its wrapper also shares the list's class, and only the list inside it is drawn as a card. */
+   instead. Its wrapper also shares the list's class, and only the list inside it is drawn as a card. It takes the width
+   of its items wherever it sits: an absolute box inside the menu would otherwise shrink to the room left of it, so the
+   trigger measured it as wide as the menu while it was placed and flipped it to the left by too little, over the menu. */
 .px-item-menu .ant-dropdown-menu-submenu.ant-dropdown-menu-submenu-popup {
   position: absolute;
+  width: max-content;
   min-width: 0;
   max-width: none;
   padding: 0;

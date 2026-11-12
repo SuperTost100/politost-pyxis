@@ -8,7 +8,7 @@ import { Button } from "../../components/Button";
 import { Segmented, Stepper } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
 import { Logo } from "../../components/Logo";
-import { MarkdownView } from "../../components/MarkdownView";
+import { FormulaPreview } from "../../components/FormulaPreview";
 import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
 import { errorProvider, useEngineError } from "../../lib/engineError";
@@ -27,8 +27,6 @@ type Proposal = RequestOutput<"study.cardsForSubject">;
 const NEW_SUBJECT = "\u0000new";
 /** A topic option's value: its exam and its id. The empty value is the whole subject. */
 const topicValue = (planId: string, topicId: string) => `${planId}\u0000${topicId}`;
-/** A face with a formula in it, `$…$` with something between the dollars. */
-const HAS_FORMULA = /\$(?=[^$]*\S)[^$]+\$/;
 
 export const newCardsQuery = { queryKey: ["new-card-places"], queryFn: () => invoke("study.newCardPlaces", {}) };
 
@@ -464,14 +462,17 @@ export function NewCardDialog({
         <p id="nc-leave-text" className="small">
           {t(`flashcards.new.leave.${leaving}`)}
         </p>
-        <span ref={keepButton}>
-          <Button variant="secondary" onClick={stay}>
-            {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
+        {/* The two answers together under the question, the safe one first and focused (keepButton). */}
+        <div className="px-nc-leave-actions">
+          <span ref={keepButton}>
+            <Button variant="secondary" onClick={stay}>
+              {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
+            </Button>
+          </span>
+          <Button variant="danger" onClick={close}>
+            {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
           </Button>
-        </span>
-        <Button variant="danger" onClick={close}>
-          {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
-        </Button>
+        </div>
       </div>
     );
   else if (side === "hand")
@@ -974,14 +975,7 @@ function FaceField({
         onChange={(event) => onChange(event.target.value)}
       />
       <FieldError id={`${id}-error`} text={error} />
-      {HAS_FORMULA.test(value) ? (
-        <div className="px-nc-preview">
-          <span>{t("flashcards.new.preview")}</span>
-          <div className="px-nc-preview-face">
-            <MarkdownView variant="body">{value}</MarkdownView>
-          </div>
-        </div>
-      ) : null}
+      <FormulaPreview label={t("flashcards.new.preview")} value={value} />
     </div>
   );
 }

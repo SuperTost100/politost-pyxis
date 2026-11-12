@@ -1,4 +1,3 @@
-import { Button } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +10,7 @@ import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
 import { profileQuery } from "../../lib/queries";
+import { Button } from "../../components/Button";
 import { Sidebar } from "./Sidebar";
 
 export function Shell() {
@@ -102,6 +102,21 @@ export function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [inSetup, simulation]);
 
+  // The page column's width rules for the page being opened; the strip with an exam in progress follows them too.
+  const container =
+    target.pathname.startsWith("/settings")
+      ? "px-shell-container px-shell-wide"
+      : target.pathname.startsWith("/ask") || isMapPath(target.pathname)
+        ? "px-shell-container px-shell-bleed"
+        : // The exam list and an exam's page set their own widths (ExamsList.css, ExamPage.css).
+          target.pathname === "/exams"
+          ? "px-shell-container px-shell-exams"
+          : isExamPagePath(target.pathname)
+            ? "px-shell-container px-shell-exam"
+            : target.pathname.startsWith("/exams/library")
+              ? "px-shell-container px-shell-library"
+              : "px-shell-container";
+
   return (
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>
       {inSetup ? (
@@ -121,6 +136,23 @@ export function Shell() {
       <div className="px-column">
         {/* Where notices open (App.tsx): the top of this column, so they stay beside the sidebar. */}
         <div className="px-message-host" />
+        {activeSimulation.data ? (
+          // An exam in progress, on every page of the shell: in the top strip, beside Attività's row and lined up with
+          // the page's left edge (the strip takes the page's own width rules), so it takes no height from the page.
+          <div className="px-resume-strip">
+            <div className={`${container} px-resume-row`}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  navigate(`/plans/${activeSimulation.data!.planId}/exam/${activeSimulation.data!.attemptId}`)
+                }
+              >
+                {t("simulation.resume")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         <div className="px-drag" aria-hidden />
         {inSetup ? null : (
           // Attività, in the top-right corner of every page, with its list opening under it.
@@ -129,34 +161,8 @@ export function Shell() {
           </div>
         )}
       <LaunchEngineNotice ready={profile.isSuccess && Boolean(profile.data)} />
-      <main
-        className={
-          target.pathname.startsWith("/settings")
-            ? "px-shell-container px-shell-wide"
-            : target.pathname.startsWith("/ask") || isMapPath(target.pathname)
-              ? "px-shell-container px-shell-bleed"
-              : // The exam list and an exam's page set their own widths (ExamsList.css, ExamPage.css).
-                target.pathname === "/exams"
-                ? "px-shell-container px-shell-exams"
-                : isExamPagePath(target.pathname)
-                  ? "px-shell-container px-shell-exam"
-                  : target.pathname.startsWith("/exams/library")
-                    ? "px-shell-container px-shell-library"
-                    : "px-shell-container"
-        }
-      >
+      <main className={container}>
         <div className="shell-page">
-          {activeSimulation.data ? (
-            <Button
-              onClick={() =>
-                navigate(
-                  `/plans/${activeSimulation.data!.planId}/exam/${activeSimulation.data!.attemptId}`,
-                )
-              }
-            >
-              {t("simulation.resume")}
-            </Button>
-          ) : null}
           <Outlet />
         </div>
       </main>

@@ -206,33 +206,6 @@ select.px-nc-field {
   margin-top: 2px;
 }
 
-/* A formula's preview under its field, as the flashcard shows it. */
-.px-nc-preview {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-field);
-  background: var(--surface-sunken);
-}
-[data-theme="dark"] .px-nc-preview {
-  background: var(--bg);
-}
-.px-nc-preview > span {
-  flex: none;
-  color: var(--ink-subtle);
-  font: 500 calc(12.5px * var(--text-scale, 1)) / 1 var(--font-sans);
-}
-.px-nc-preview-face {
-  min-width: 0;
-  overflow: auto hidden;
-  padding-block: 2px;
-}
-.px-nc-preview-face :is(p, ul, ol) {
-  margin: 0;
-}
-
 /* How many: the name and its line on the left, the stepper on the right. */
 .px-nc-count {
   display: flex;
@@ -324,18 +297,21 @@ select.px-nc-field {
   color: var(--ink-muted);
 }
 /* Asking before something is lost takes the buttons' place. */
+/* The question before the dialog closes, as a confirmation: the sentence, then its two buttons together on one line
+   at the right, the safe one first. */
 .px-nc-leave {
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: var(--space-3);
 }
 .px-nc-leave p {
-  flex: 1 1 220px;
   margin: 0;
   color: var(--ink);
+}
+.px-nc-leave-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 @media (prefers-reduced-motion: no-preference) {
   .px-nc-leave {
