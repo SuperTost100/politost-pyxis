@@ -25,13 +25,25 @@ describe("the chat's subject chip", () => {
     expect(chipState({ ...chat, subjectBy: "student" })).toEqual({ kind: "library" });
   });
 
-  it("shows an older chat's hand-picked sources, counting an exam once and leaving its attachments out", () => {
-    expect(
-      chipState({ ...chat, planId: "p", sourceIds: ["a", "b", "att"], held: [{ id: "att" }] }),
-    ).toEqual({ kind: "picked", count: 3 });
+  it("shows an older chat's hand-picked sources, leaving its attachments out", () => {
+    expect(chipState({ ...chat, sourceIds: ["a", "b", "att"], held: [{ id: "att" }] })).toEqual({ kind: "picked", count: 2 });
     expect(chipState({ ...chat, sourceIds: ["att"], held: [{ id: "att" }] })).toEqual({ kind: "auto" });
     // A chat opened from an exam knows its subject, which the chip shows.
     expect(chipState({ ...chat, subject: "Analisi 1", planId: "p" })).toMatchObject({ kind: "subject" });
+  });
+
+  it("names the exam when the chat is opened from one with no subject and no sources picked by hand", () => {
+    expect(chipState({ ...chat, planId: "p", planTitle: "Analisi 1, luglio" })).toEqual({
+      kind: "exam",
+      title: "Analisi 1, luglio",
+      extra: 0,
+    });
+    // Before the exam is read the chip still says it is one.
+    expect(chipState({ ...chat, planId: "p" })).toEqual({ kind: "exam", title: null, extra: 0 });
+    // Sources picked by hand beside the exam are counted apart, and the chat's attachments are not.
+    expect(
+      chipState({ ...chat, planId: "p", planTitle: "Analisi 1", sourceIds: ["a", "b", "att"], held: [{ id: "att" }] }),
+    ).toEqual({ kind: "exam", title: "Analisi 1", extra: 2 });
   });
 
   it("sends a new chat's choice with its first question, and nothing when Pyxis picks", () => {

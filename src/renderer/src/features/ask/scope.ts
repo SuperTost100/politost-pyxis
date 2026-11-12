@@ -13,20 +13,25 @@ export type ChipState =
   | { kind: "subject"; name: string; by: "pyxis" | "student" }
   /** The student chose the whole Library. */
   | { kind: "library" }
-  /** An older chat whose sources were picked by hand (or an exam with no subject): it keeps answering from them. */
-  | { kind: "picked"; count: number };
+  /** An older chat whose sources were picked by hand: it keeps answering from them. */
+  | { kind: "picked"; count: number }
+  /** A chat opened from an exam that has no subject: it searches the exam's files, plus `extra` picked by hand. */
+  | { kind: "exam"; title: string | null; extra: number };
 
 /** The chip of a saved chat, from what `chats.read` returns. */
 export function chipState(chat: {
   subject: string | null;
   subjectBy: "pyxis" | "student" | null;
   planId: string | null;
+  /** The title of the exam `planId` names, once it is read. */
+  planTitle?: string | null;
   sourceIds: readonly string[];
   held: ReadonlyArray<{ id: string }>;
 }): ChipState {
   if (chat.subject) return { kind: "subject", name: chat.subject, by: chat.subjectBy ?? "student" };
   const attached = new Set(chat.held.map((source) => source.id));
-  const picked = chat.sourceIds.filter((id) => !attached.has(id)).length + (chat.planId ? 1 : 0);
+  const picked = chat.sourceIds.filter((id) => !attached.has(id)).length;
+  if (chat.planId) return { kind: "exam", title: chat.planTitle ?? null, extra: picked };
   if (picked > 0) return { kind: "picked", count: picked };
   return chat.subjectBy === "student" ? { kind: "library" } : { kind: "auto" };
 }

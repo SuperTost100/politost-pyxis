@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { seedSource, seedSubjects } from "./seed";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
 import { saveShot } from "./shots";
 
@@ -375,6 +375,31 @@ test("Ask: an older chat with sources picked by hand keeps them and shows it, an
     await menu.getByRole("menuitemradio", { name: "Fisica 2" }).click();
     await expect(chip(page)).toHaveText("Fisica 2");
     expect(await stored(page)).toMatchObject({ subject: "Fisica 2", subjectBy: "student", sourceIds: [] });
+  } finally {
+    await finish(app, userData, db);
+  }
+});
+
+test("Ask: a chat opened from an exam with no subject says it is that exam, not a chosen source, and a subject from the chip replaces it", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  const db = seedLibrary(userData);
+  try {
+    seedPlan(db, { id: "p-exam", title: "Analisi, scritto di luglio", sourceIds: ["src-an"] });
+    db.exec(`
+      INSERT INTO chats(id,title,scope_json,created_at,updated_at) VALUES ('c-exam','Limiti','{"planId":"p-exam","sourceIds":[]}',1,1);
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES ('m-exam','c-exam','user','Che cos''è un limite?',1);
+    `);
+    await openAsk(page, "/ask/c-exam");
+    await expect(chip(page)).toHaveText("Esame: Analisi, scritto di luglio");
+    await expect(chip(page)).toHaveAccessibleName("Fonti della chat: i file dell'esame Analisi, scritto di luglio");
+    await atRest(chip(page));
+    await chip(page).click();
+    const menu = page.getByRole("region", { name: "Materia della chat" });
+    await expect(menu.getByRole("menuitemradio", { name: "I file dell'esame Analisi, scritto di luglio" })).toHaveAttribute("aria-checked", "true");
+    await saveShot(page, "ask-subject/exam-menu.png");
+    await menu.getByRole("menuitemradio", { name: "Analisi 1" }).click();
+    await expect(chip(page)).toHaveText("Analisi 1");
   } finally {
     await finish(app, userData, db);
   }

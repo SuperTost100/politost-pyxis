@@ -50,7 +50,7 @@ import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { questionStored, runsIn, turns, type Turn } from "./turns";
 import "./AskPage.css";
-import { useChats, useProfile, useSources, useSubjects } from "../../lib/queries";
+import { useChats, usePlan, useProfile, useSources, useSubjects } from "../../lib/queries";
 import type { MathTextEditorHandle } from "../../components/math/MathTextEditor";
 
 function errorKey(err: unknown): string {
@@ -428,7 +428,13 @@ export function AskPage() {
   const lastRow = messages.at(-1);
   const lastTutor = lastRow?.role === "assistant" ? lastRow : undefined;
   const unanswered = lastRow?.role === "user";
-  const chip = chatId ? (thread.data ? chipState(thread.data) : null) : newChipState(newSubject);
+  // The exam a chat was opened from names the chip when the chat has no subject of its own.
+  const plan = usePlan(thread.data?.planId, Boolean(thread.data?.planId) && !thread.data?.subject);
+  const chip = chatId
+    ? thread.data
+      ? chipState({ ...thread.data, planTitle: plan.data?.title })
+      : null
+    : newChipState(newSubject);
   const subjectNames = (subjects.data ?? []).map((row) => row.name);
 
   // The page fills the viewport, so the composer sits at the foot of the window even with one short message. The shell

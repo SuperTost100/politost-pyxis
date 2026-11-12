@@ -41,7 +41,7 @@ export function SubjectChip({
   focusAfterChoice?: () => void;
 }) {
   const { t } = useTranslation();
-  // A chat can keep a subject that has since been renamed or removed in the Library; it stays in the list while chosen.
+  // A new chat's choice can name a subject the Library no longer lists; it stays in the list while chosen.
   const names = state.kind === "subject" && !subjects.includes(state.name) ? [...subjects, state.name] : [...subjects];
   const current =
     state.kind === "subject"
@@ -51,6 +51,10 @@ export function SubjectChip({
         : state.kind === "auto"
           ? AUTO
           : PICKED;
+  // An exam's files, like sources picked by hand, are a scope the menu shows but does not offer again.
+  const scopeItem = state.kind === "exam"
+    ? state.title ? t("ask.chip.examItem", { title: state.title }) : t("ask.chip.examItemPlain")
+    : state.kind === "picked" ? t("ask.chip.pickedItem", { count: state.count }) : "";
   const choice = (key: string, label: string) => ({
     key,
     role: "menuitemradio",
@@ -67,7 +71,7 @@ export function SubjectChip({
     ),
   });
   const items = [
-    ...(state.kind === "picked" ? [choice(PICKED, t("ask.chip.pickedItem", { count: state.count })), { type: "divider" as const }] : []),
+    ...(scopeItem ? [choice(PICKED, scopeItem), { type: "divider" as const }] : []),
     ...(allowAuto || state.kind === "auto" ? [choice(AUTO, t("ask.chip.letPyxis"))] : []),
     ...names.map((name, index) => choice(subjectKey(index), name)),
     { type: "divider" as const },
@@ -80,7 +84,9 @@ export function SubjectChip({
         ? t("ask.chip.library")
         : state.kind === "auto"
           ? t("ask.chip.auto")
-          : t("ask.chip.picked", { count: state.count });
+          : state.kind === "exam"
+            ? state.title ? t("ask.chip.exam", { title: state.title }) : t("ask.chip.examPlain")
+            : t("ask.chip.picked", { count: state.count });
   const label =
     state.kind === "subject"
       ? t(state.by === "pyxis" ? "ask.chip.labelPyxis" : "ask.chip.labelStudent", { name: state.name })
@@ -88,7 +94,11 @@ export function SubjectChip({
         ? t("ask.chip.labelLibrary")
         : state.kind === "auto"
           ? t("ask.chip.labelAuto")
-          : t("ask.chip.labelPicked", { count: state.count });
+          : state.kind === "exam"
+            ? !state.title ? t("ask.chip.labelExamPlain")
+              : state.extra > 0 ? t("ask.chip.labelExamExtra", { title: state.title, count: state.extra })
+              : t("ask.chip.labelExam", { title: state.title })
+            : t("ask.chip.labelPicked", { count: state.count });
   // A new value fades up in place: Pyxis's pick after the first answer, or the student's choice. Opening another chat
   // shows its subject at once, as nothing animates on the way between chats.
   const textRef = useRef<HTMLSpanElement>(null);
