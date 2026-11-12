@@ -313,6 +313,11 @@
 .px-map-canvas[data-moving] .react-flow__handle {
   transition: none;
 }
+/* The picture of the view (Esporta, Solo quello che vedi) leaves out what only works the page: the tools strip, the fold
+   buttons and the dots a link is drawn from. The links, the concepts and their selection stay as drawn. */
+.px-map-canvas[data-exporting] :is(.px-map-strip, .px-concept-fold, .react-flow__handle) {
+  visibility: hidden;
+}
 .px-map-canvas .react-flow__edge-path {
   stroke-linecap: round;
 }

@@ -35,6 +35,13 @@ const pdf = z.object({
     .refine((s) => s.startsWith("<svg"))
     .optional(),
 });
+// A rectangle of the window, in CSS pixels. 16384 is the largest picture a window can be asked for.
+const rect = z.object({
+  x: z.number().min(0).max(16384),
+  y: z.number().min(0).max(16384),
+  width: z.number().positive().max(16384),
+  height: z.number().positive().max(16384),
+});
 type PrintJob = { markdown: string; svg?: string; ready: () => void };
 
 export function registerArtifactHandlers(
@@ -69,6 +76,24 @@ export function registerArtifactHandlers(
     authorize(event.sender.id);
     const parsed = artifact.parse(input);
     return save(parsed.filename, Buffer.from(parsed.base64, "base64"));
+  });
+  ipcMain.handle(mainChannels.viewCapture, async (event, input: unknown) => {
+    authorize(event.sender.id);
+    const bounds = rect.parse(input);
+    const window = mainWindow();
+    if (!window || window.isDestroyed()) throw new Error("window-closed");
+    // The window's own pixels, so the web fonts, the links and the theme are exactly what the student sees. The box
+    // grows to whole pixels, so a canvas on a half pixel is not cut short.
+    const left = Math.floor(bounds.x);
+    const top = Math.floor(bounds.y);
+    const image = await window.webContents.capturePage({
+      x: left,
+      y: top,
+      width: Math.max(1, Math.ceil(bounds.x + bounds.width) - left),
+      height: Math.max(1, Math.ceil(bounds.y + bounds.height) - top),
+    });
+    if (image.isEmpty()) throw new Error("capture-empty");
+    return image.toPNG().toString("base64");
   });
   ipcMain.handle(mainChannels.printData, (event) => {
     const job = printJobs.get(event.sender.id);
