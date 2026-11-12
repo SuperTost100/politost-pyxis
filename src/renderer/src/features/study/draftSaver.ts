@@ -45,6 +45,12 @@ export function draftSaver<T>(
   };
 }
 
+/** The window, as far as this file uses it: the unit tests compile this file without the DOM's types. */
+const page = globalThis as unknown as {
+  addEventListener(type: "pagehide", listener: () => void): void;
+  removeEventListener(type: "pagehide", listener: () => void): void;
+};
+
 /**
  * A draftSaver for a page: it calls the latest `save` and `onError`, and saves what is left at once when the page
  * closes, whether it is left for another page or the window reloads.
@@ -66,9 +72,9 @@ export function useDraftSaver<T>(
   useEffect(() => {
     // A reload unloads the page without running its effects' cleanup.
     const leave = () => void saver.flush(true);
-    window.addEventListener("pagehide", leave);
+    page.addEventListener("pagehide", leave);
     return () => {
-      window.removeEventListener("pagehide", leave);
+      page.removeEventListener("pagehide", leave);
       leave();
     };
   }, [saver]);

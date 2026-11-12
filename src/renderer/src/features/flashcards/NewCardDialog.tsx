@@ -9,7 +9,6 @@ import { Segmented, Stepper } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
 import { Logo } from "../../components/Logo";
 import { FormulaPreview } from "../../components/FormulaPreview";
-import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
 import { errorProvider, useEngineError } from "../../lib/engineError";
