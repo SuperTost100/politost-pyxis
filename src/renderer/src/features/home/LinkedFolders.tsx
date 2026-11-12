@@ -18,7 +18,28 @@ import "./LinkedFolders.css";
 type LinkedFolder = RequestOutput<"sources.linkedFolders">[number];
 
 /** A folder's short name: its last two folders, "Polito › Fisica", as the student knows it. */
-export const folderLabel = (path: string) => path.split(/[\\/]/).filter(Boolean).slice(-2).join(" › ");
+const folderParts = (path: string) => path.split(/[\\/]/).filter(Boolean).slice(-2);
+const folderLabel = (path: string) => folderParts(path).join(" › ");
+
+/**
+ * A folder's short name in a row. When it is too long, the parent's name gives way first, so two folders with one long
+ * parent still read apart; the whole path is in the tooltip.
+ */
+function FolderName({ path }: { path: string }) {
+  const parts = folderParts(path);
+  const [parent, own] = parts.length > 1 ? parts : [null, parts[0] ?? path];
+  return (
+    <b title={path}>
+      {parent ? (
+        <>
+          <span className="px-folders-parent">{parent}</span>
+          {" › "}
+        </>
+      ) : null}
+      {own}
+    </b>
+  );
+}
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -309,7 +330,7 @@ export function LinkedFolders({
                   )}
                 </span>
                 <span className="px-folders-name">
-                  <b title={folder.path}>{name}</b>
+                  <FolderName path={folder.path} />
                   <small>{line(folder)}</small>
                 </span>
                 <MenuButton

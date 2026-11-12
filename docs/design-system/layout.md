@@ -28,7 +28,7 @@ What opens beside a screen, such as a source at its page, is a sheet along the r
 
 ## Popovers
 
-A popover belongs to the button that opened it: it sits 8px from it, lines up with its edge and grows out of it. Escape and a click outside close it, and focus goes back to the button.
+A popover belongs to the button that opened it: it sits 8px from it, lines up with its edge and grows out of it. Escape and a click outside close it, and focus goes back to the button. A menu or a dialog opened from inside it counts as inside, so Escape closes that first. A popover taller than the room under its button scrolls inside itself, and the window never scrolls for it. `Popover` in `components/Popover.tsx` draws one; the button that opens it says so with `hasPopup="dialog"`, `expanded` and `controls`.
 
 ## Item menus
 

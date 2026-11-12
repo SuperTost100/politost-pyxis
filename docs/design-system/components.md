@@ -20,6 +20,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `Stepper` (`Controls.tsx`)           | A whole number with − and +                                                                              |
 | `TagsField`                          | A free list of words, each a tag                                                                         |
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
+| `Popover`                            | A panel that grows from its button, such as the Library's linked folders, and scrolls inside itself      |
 | `Chip`                               | A small rounded choice or filter                                                                         |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
 | `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |

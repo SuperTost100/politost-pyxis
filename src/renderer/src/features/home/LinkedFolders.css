@@ -87,6 +87,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A long parent gives way first, so the folder's own name stays readable. */
+.px-folders-parent {
+  display: inline-block;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
 .px-folders-name small {
   font-size: calc(12.5px * var(--text-scale, 1));
   line-height: 1.35;
