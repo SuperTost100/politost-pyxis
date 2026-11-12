@@ -107,6 +107,9 @@ export function LibraryShelf({
   const landing = useRef(new Map<string, Landing>());
   // Rows of "Da sistemare" whose file just got a subject: they stay, fading and closing in place, until their motion ends.
   const [leaving, setLeaving] = useState<ReadonlyMap<string, { source: LibrarySource; at: number }>>(() => new Map());
+  // Files whose move was accepted and whose refreshed list has not arrived: they are out of "Da sistemare" already, so a
+  // slow refresh cannot bring their row back after it closed.
+  const [moved, setMoved] = useState<ReadonlySet<string>>(() => new Set());
   const pendingFocus = useRef<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const detachedId = useId();
@@ -151,7 +154,9 @@ export function LibraryShelf({
     }
   });
 
-  const unsorted = sources.filter((source) => !source.subjectId || isUnsorted(source)).sort(byShelfOrder);
+  const unsorted = sources
+    .filter((source) => (!source.subjectId || isUnsorted(source)) && !moved.has(source.id))
+    .sort(byShelfOrder);
   const unsortedShown = unsortedOpen || filtering ? unsorted : unsorted.slice(0, UNSORTED_CAP);
   // A row that is leaving stays where it was in the list while the files have already moved on without it.
   const goneRows = [...leaving.values()]
@@ -168,7 +173,7 @@ export function LibraryShelf({
   }
   const counts = new Map<string, number>();
   for (const source of all) if (source.subjectId) counts.set(source.subjectId, (counts.get(source.subjectId) ?? 0) + 1);
-  const unsortedTotal = all.filter((source) => !source.subjectId || isUnsorted(source)).length;
+  const unsortedTotal = all.filter((source) => (!source.subjectId || isUnsorted(source)) && !moved.has(source.id)).length;
   // How many files of each subject Pyxis made the subject for, so its note can say "these 3 files".
   const madeFor = new Map<string, number>();
   for (const source of all)
@@ -194,6 +199,7 @@ export function LibraryShelf({
     try {
       const subject = await invoke("sources.move", { sourceId: source.id, ...to });
       landing.current.set(source.id, { from, grow: fromRow, focus });
+      if (fromRow) setMoved((current) => new Set(current).add(source.id));
       const at = unsortedShown.findIndex((row) => row.id === source.id);
       if (fromRow && at >= 0 && !window.matchMedia(STILL).matches)
         setLeaving((current) => new Map(current).set(source.id, { source, at }));
@@ -204,10 +210,19 @@ export function LibraryShelf({
         setExpanded((current) => new Set(current).add(subject.id));
       // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
       if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
-      await Promise.all([
-        client.invalidateQueries({ queryKey: ["sources"] }),
-        client.invalidateQueries({ queryKey: ["subjects"] }),
-      ]);
+      try {
+        await Promise.all([
+          client.invalidateQueries({ queryKey: ["sources"] }),
+          client.invalidateQueries({ queryKey: ["subjects"] }),
+        ]);
+      } finally {
+        // The list is read again now: it shows the file sorted, or it still shows it waiting and the row returns.
+        setMoved((current) => {
+          const next = new Set(current);
+          next.delete(source.id);
+          return next;
+        });
+      }
       return subject;
     } catch (err) {
       if (rethrow) throw err;
