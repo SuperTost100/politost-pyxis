@@ -1,0 +1,80 @@
+/**
+ * How Pyxis answers a question: `solved` explains and solves it in full, `guided` takes the student one step at a time
+ * and asks them to do the next one. The reply stores its template, which says which way it went (`wayOfTemplate`).
+ */
+export type AnswerWay = "solved" | "guided";
+
+/** Words with which a student asks for the answer itself. They win over the guide cues: "I don't get it, just solve it". */
+const SOLVE = [
+  /\bsoluzion/,
+  /\brisolv/,
+  /\bsvolg/,
+  /\bdammi (la|il) (risposta|risultato)/,
+  /\bdimmi (la|il) (risposta|risultato)/,
+  /\bquanto (vale|viene|fa)\b/,
+  /\bsolution\b/,
+  /\bsolve\b/,
+  /\bjust (tell|give) me\b/,
+  /\b(give|tell) me the (answer|result)\b/,
+  /\bwork (it )?out\b/,
+  /\bfull answer\b/,
+];
+
+/** Words with which a student asks to be helped through it, or shows their own attempt. */
+const GUIDE = [
+  /\bguidami\b/,
+  /\bguidarmi\b/,
+  /passo (a|per) passo/,
+  /un passo alla volta/,
+  /\bnon (ho )?capi(to|sco)\b/,
+  /\b(aiutami|mi aiuti|aiutarmi) a (capir|ragionar)/,
+  /\bragionarci\b/,
+  /\bsuggeriment/,
+  /\bindizio\b/,
+  /\bbloccat[oaie]\b/,
+  /\bda dove (inizio|comincio|parto)\b/,
+  /\bcome (si )?(imposta|comincia|inizia)\b/,
+  /\bdove sbaglio\b/,
+  /\bho provato\b/,
+  /\be giusto\b/,
+  /\bstep[- ]by[- ]step\b/,
+  /\bone step at a time\b/,
+  /\bguide me\b/,
+  /\bwalk me through\b/,
+  /\bhelp me (understand|figure|work)/,
+  /\bdon'?t (get|understand)\b/,
+  /\bhint\b/,
+  /\bstuck\b/,
+  /\bwhere do i (start|begin)\b/,
+  /\bwhere did i go wrong\b/,
+  /\bis (this|it|my answer) (right|correct)\b/,
+  /\bi tried\b/,
+];
+
+function plain(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[’`]/g, "'");
+}
+
+/**
+ * The way to answer this question. In order: the way the student asked for with the action under an answer; the answer
+ * itself when the question asks for it; a guide when the question asks for help understanding or shows an attempt; a guide
+ * again while the student answers a guided step (the previous reply was guided); otherwise a solved answer.
+ */
+export function answerWay(input: {
+  text: string;
+  /** How the reply before this question answered, if there is one. */
+  previous?: AnswerWay | null;
+  /** The way the student chose with "Guidami passo passo" or "Dammi la soluzione". */
+  asked?: AnswerWay;
+}): AnswerWay {
+  if (input.asked) return input.asked;
+  const text = plain(input.text);
+  if (SOLVE.some((cue) => cue.test(text))) return "solved";
+  if (GUIDE.some((cue) => cue.test(text))) return "guided";
+  return input.previous === "guided" ? "guided" : "solved";
+}
+
+/** The way a stored reply answered, from its template. Replies saved before the way was automatic read the same. */
+export function wayOfTemplate(template: string | null | undefined): AnswerWay {
+  return template === "chat.socratic" ? "guided" : "solved";
+}

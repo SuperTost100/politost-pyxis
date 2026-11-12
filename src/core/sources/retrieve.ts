@@ -52,6 +52,8 @@ export async function retrieveWithModel(
   query: string,
   options?: {
     sourceIds?: string[];
+    /** Search the whole Library as well as `sourceIds`, which then only adds sources outside it (a chat's attachments). */
+    withLibrary?: boolean;
     limit?: number;
     embed?: Embedder | null;
     signal?: AbortSignal;
@@ -175,20 +177,32 @@ export function hitOf(row: PassageRow): PassageHit {
   };
 }
 
+/**
+ * The passages a search may return: those of `sourceIds`, or with `withLibrary` (or no ids) every Library passage, plus
+ * the given ids. Passages with no source (none are written today) count as the Library's.
+ */
+function scopeClause(sourceIds: string[] | undefined, withLibrary: boolean): { sql: string; params: string[] } {
+  const ids = sourceIds ?? [];
+  const listed = ids.length > 0 ? `p.source_id IN (${ids.map(() => "?").join(", ")})` : "";
+  if (ids.length > 0 && !withLibrary) return { sql: ` AND ${listed}`, params: ids };
+  return {
+    sql: ` AND (p.source_id IS NULL OR s.library = 1${listed ? ` OR ${listed}` : ""})`,
+    params: ids,
+  };
+}
+
 function lexical(
   db: Database.Database,
   query: string,
   sourceIds?: string[],
+  withLibrary = false,
 ): Row[] {
   const words = contentWords(query);
   if (words.length === 0) return [];
   const match = words
     .map((word) => `"${word.replaceAll('"', "")}"`)
     .join(" OR ");
-  const scope =
-    sourceIds && sourceIds.length > 0
-      ? ` AND p.source_id IN (${sourceIds.map(() => "?").join(", ")})`
-      : " AND (p.source_id IS NULL OR s.library = 1)";
+  const scope = scopeClause(sourceIds, withLibrary);
   return db
     .prepare(
       `SELECT p.id, p.source_id, p.text, p.section_path, p.locator_json,
@@ -196,7 +210,7 @@ function lexical(
        FROM passages_fts
        JOIN passages p ON p.rowid = passages_fts.rowid
        LEFT JOIN sources s ON s.id = p.source_id
-       WHERE passages_fts MATCH ?${scope}
+       WHERE passages_fts MATCH ?${scope.sql}
          AND (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))
          AND (
            p.source_id IS NULL
@@ -205,7 +219,7 @@ function lexical(
        ORDER BY rank
        LIMIT 30`,
     )
-    .all(match, ...(sourceIds ?? [])) as Row[];
+    .all(match, ...scope.params) as Row[];
 }
 
 function vectorHits(
@@ -213,7 +227,8 @@ function vectorHits(
   embed: Embedder,
   query: string,
   sourceIds?: string[],
-): { ids: string[]; bestDistance: number | null } {
+  withLibrary = false,
+): { ids: string[]; near: string[]; bestDistance: number | null } {
   const vector = embed(`query: ${query}`);
   const bytes = Buffer.from(
     vector.buffer,
@@ -221,9 +236,7 @@ function vectorHits(
     vector.byteLength,
   );
   // Scope before KNN ranking. Filtering a global top 30 can hide all scoped hits.
-  const scope = sourceIds?.length
-    ? `AND p.source_id IN (${sourceIds.map(() => "?").join(",")})`
-    : "AND (p.source_id IS NULL OR s.library = 1)";
+  const scope = scopeClause(sourceIds, withLibrary);
   // The scope already keeps only live, latest-version passages in the chosen sources, so each hit only needs its ID.
   const rows = db
     .prepare(
@@ -231,36 +244,46 @@ function vectorHits(
          SELECT passage_rowid, distance FROM passages_vec
          WHERE embedding MATCH ? AND k = 30 AND passage_rowid IN (
            SELECT p.rowid FROM passages p LEFT JOIN sources s ON s.id = p.source_id
-           WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted')) ${scope}
+           WHERE (p.source_id IS NULL OR s.status NOT IN ('removed', 'failed', 'cancelled', 'interrupted'))${scope.sql}
            AND (p.source_id IS NULL OR p.document_id = ${latestDocument("p.source_id")}))
        ) v
        JOIN passages p ON p.rowid = v.passage_rowid
        ORDER BY v.distance`,
     )
-    .all(bytes, ...(sourceIds ?? [])) as Array<{
+    .all(bytes, ...scope.params) as Array<{
     id: string;
     distance: number;
   }>;
   const ids = rows
     .filter((row) => row.distance <= VECTOR_MAX_DISTANCE)
     .map((row) => row.id);
-  return { ids, bestDistance: rows[0]?.distance ?? null };
+  const near = rows
+    .filter((row) => row.distance <= VECTOR_COVERED_MAX_DISTANCE)
+    .map((row) => row.id);
+  return { ids, near, bestDistance: rows[0]?.distance ?? null };
 }
 
+/**
+ * `relevant` lists the hits that pass the bar `covered` is made of: a lexical match with enough of the question's words,
+ * or a vector at or under VECTOR_COVERED_MAX_DISTANCE. The rest are near enough to rank, not to count as on topic.
+ */
 export function retrieve(
   db: Database.Database,
   query: string,
-  options?: { sourceIds?: string[]; limit?: number; embed?: Embedder | null },
-): { hits: PassageHit[]; covered: boolean; usedVectors: boolean } {
+  options?: { sourceIds?: string[]; withLibrary?: boolean; limit?: number; embed?: Embedder | null },
+): { hits: PassageHit[]; covered: boolean; usedVectors: boolean; relevant: string[] } {
   const limit = options?.limit ?? 8;
-  const lexicalRows = lexical(db, query, options?.sourceIds);
+  const withLibrary = options?.withLibrary ?? false;
+  const lexicalRows = lexical(db, query, options?.sourceIds, withLibrary);
   const byId = new Map(lexicalRows.map((row) => [row.id, hitOf(row)]));
   const lists = [lexicalRows.map((row) => row.id)];
   let usedVectors = false;
   let bestDistance: number | null = null;
+  const onTopic = new Set<string>();
   if (options?.embed) {
-    const vectors = vectorHits(db, options.embed, query, options.sourceIds);
+    const vectors = vectorHits(db, options.embed, query, options.sourceIds, withLibrary);
     bestDistance = vectors.bestDistance;
+    for (const id of vectors.near) onTopic.add(id);
     const vectorNear =
       bestDistance != null && bestDistance <= VECTOR_MAX_DISTANCE;
     if (vectorNear) {
@@ -287,7 +310,7 @@ export function retrieve(
       ),
     ),
   ];
-  const lexicalOk = lexicalRows.some((row) => {
+  for (const row of lexicalRows) {
     const tokens = new Set(
       row.text
         .normalize("NFD")
@@ -296,10 +319,9 @@ export function retrieve(
         .match(/\p{L}[\p{L}\p{N}]*/gu) ?? [],
     );
     const matches = words.filter((word) => tokens.has(word)).length;
-    return (
-      -row.rank >= 1e-7 && matches >= Math.max(1, Math.ceil(words.length * 0.4))
-    );
-  });
+    if (-row.rank >= 1e-7 && matches >= Math.max(1, Math.ceil(words.length * 0.4))) onTopic.add(row.id);
+  }
+  const lexicalOk = lexicalRows.some((row) => onTopic.has(row.id));
   const vectorOk =
     bestDistance != null && bestDistance <= VECTOR_COVERED_MAX_DISTANCE;
   const covered = options?.embed ? lexicalOk || vectorOk : lexicalOk;
@@ -308,5 +330,5 @@ export function retrieve(
       .map((id) => byId.get(id))
       .filter((hit): hit is PassageHit => hit != null),
   ).slice(0, limit);
-  return { hits, covered, usedVectors };
+  return { hits, covered, usedVectors, relevant: hits.filter((hit) => onTopic.has(hit.id)).map((hit) => hit.id) };
 }

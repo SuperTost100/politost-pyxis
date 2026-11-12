@@ -24,7 +24,6 @@ export type Profile = {
   year: string;
   school: string;
   course: string;
-  tutorMode: "solver" | "socratic";
   contentLanguage: string;
   interests: string[];
   interestsOn: boolean;
@@ -45,7 +44,6 @@ const empty: Profile = {
   year: "",
   school: "",
   course: "",
-  tutorMode: "solver",
   contentLanguage: "Italian",
   interests: [],
   interestsOn: true,
@@ -68,7 +66,7 @@ function setting(db: Database.Database, key: string): unknown {
 export function readProfile(db: Database.Database): Profile | null {
   const row = db
     .prepare(
-      `SELECT display_name, education_level, school, course, tutor_mode, content_language
+      `SELECT display_name, education_level, school, course, content_language
        FROM profile LIMIT 1`,
     )
     .get() as
@@ -77,7 +75,6 @@ export function readProfile(db: Database.Database): Profile | null {
         education_level: string | null;
         school: string | null;
         course: string | null;
-        tutor_mode: string | null;
         content_language: string | null;
       }
     | undefined;
@@ -103,7 +100,6 @@ export function readProfile(db: Database.Database): Profile | null {
     year: typeof tutor?.year === "string" ? tutor.year : "",
     school: row.school ?? "",
     course: row.course ?? "",
-    tutorMode: row.tutor_mode === "socratic" ? "socratic" : "solver",
     contentLanguage: row.content_language ?? "Italian",
     interests: interests?.items ?? [],
     interestsOn: interests?.on !== false,
@@ -126,7 +122,7 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
   if (existing) {
     db.prepare(
       `UPDATE profile
-       SET display_name = ?, education_level = ?, school = ?, course = ?, tutor_mode = ?,
+       SET display_name = ?, education_level = ?, school = ?, course = ?,
            content_language = ?, updated_at = ?
        WHERE id = ?`,
     ).run(
@@ -134,7 +130,6 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
       next.educationLevel,
       next.school,
       next.course,
-      next.tutorMode,
       next.contentLanguage,
       now,
       existing.id,
@@ -142,15 +137,14 @@ export function saveProfile(db: Database.Database, input: Partial<Profile>, now 
   } else {
     db.prepare(
       `INSERT INTO profile
-        (id, display_name, education_level, school, course, tutor_mode, content_language, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, display_name, education_level, school, course, content_language, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       uuidv7(now),
       next.displayName,
       next.educationLevel,
       next.school,
       next.course,
-      next.tutorMode,
       next.contentLanguage,
       now,
       now,

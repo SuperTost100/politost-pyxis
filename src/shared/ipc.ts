@@ -2502,7 +2502,6 @@ export const requests = {
         year: z.string(),
         school: z.string(),
         course: z.string(),
-        tutorMode: z.enum(["solver", "socratic"]),
         contentLanguage: z.string(),
         interests: z.array(z.string()),
         interestsOn: z.boolean(),
@@ -2532,7 +2531,6 @@ export const requests = {
       year: z.string().max(PROFILE_LIMITS.year).optional(),
       school: z.string().max(PROFILE_LIMITS.school).optional(),
       course: z.string().max(PROFILE_LIMITS.course).optional(),
-      tutorMode: z.enum(["solver", "socratic"]).optional(),
       contentLanguage: z.string().max(PROFILE_LIMITS.language).optional(),
       interests: z.array(z.string().max(PROFILE_LIMITS.interest)).max(PROFILE_LIMITS.interests).optional(),
       interestsOn: z.boolean().optional(),
@@ -2548,7 +2546,6 @@ export const requests = {
       year: z.string(),
       school: z.string(),
       course: z.string(),
-      tutorMode: z.enum(["solver", "socratic"]),
       contentLanguage: z.string(),
       interests: z.array(z.string()),
       interestsOn: z.boolean(),
@@ -2757,11 +2754,9 @@ export const requests = {
       engine: z.enum(["chat", "strong"]).optional(),
       /** Continue the last reply, which was cut short, instead of replacing it. */
       resume: z.boolean().optional(),
-      sourceIds: z.array(z.string()).optional(),
-      planId: z.string().nullable().optional(),
-      mode: z.enum(["solver", "socratic"]).optional(),
+      /** Answer again the other way: "Guidami passo passo" or "Dammi la soluzione" under the reply. */
+      way: z.enum(["solved", "guided"]).optional(),
       allowGeneral: z.boolean().optional(),
-      subject: z.string().optional(),
       files: z.array(z.string()).optional(),
     }),
     output: z.object({
@@ -2796,6 +2791,8 @@ export const requests = {
       sourceIds: z.array(z.string()),
       planId: z.string().nullable(),
       subject: z.string().nullable(),
+      /** Who set the subject (or chose the whole Library); null while Pyxis may still pick one. */
+      subjectBy: z.enum(["pyxis", "student"]).nullable(),
       context: z
         .object({
           kind: z.enum(["answer", "passage"]),
@@ -2816,7 +2813,8 @@ export const requests = {
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
-          grounding: z.enum(["sources", "general"]).nullable(),
+          /** `wider`: the chat's subject had nothing, so the cited material comes from elsewhere in the Library. */
+          grounding: z.enum(["sources", "wider", "general"]).nullable(),
           followups: z.array(z.string()),
           reaction: z.enum(["up", "down"]).nullable(),
           stopped: z.boolean(),
@@ -2824,6 +2822,8 @@ export const requests = {
           error: z.string().nullable(),
           /** The math check is still running; `chats.checks` says when it ends. */
           checking: z.boolean(),
+          /** Solved in full, or guided one step at a time. */
+          way: z.enum(["solved", "guided"]),
           citations: z.array(
             z.object({
               label: z.string(),
@@ -2832,6 +2832,9 @@ export const requests = {
               sourceId: z.string(),
               sectionPath: z.string().nullable(),
               locator: locatorSchema,
+              sourceTitle: z.string().optional(),
+              subject: z.string().nullable().optional(),
+              attached: z.boolean().optional(),
             }),
           ),
         }),
@@ -2849,6 +2852,11 @@ export const requests = {
     }),
     output: z.object({ chatId: z.string() }),
   },
+  /** The student sets the chat's subject from its chip, or the whole Library with null. Hand-picked sources go. */
+  "chats.setSubject": {
+    input: z.object({ chatId: z.string(), subject: z.string().max(200).nullable() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "chats.clearContext": {
     input: z.object({ chatId: z.string() }),
     output: z.object({ ok: z.literal(true) }),
@@ -2862,11 +2870,12 @@ export const requests = {
     input: z.object({
       chatId: z.string().optional(),
       text: z.string().max(CHAT_TEXT_MAX),
+      /** Sources and an exam the chat answers from, as a chat opened with them has; the chat keeps its own when absent. */
       sourceIds: z.array(z.string()).optional(),
       planId: z.string().nullable().optional(),
-      mode: z.enum(["solver", "socratic"]).optional(),
       allowGeneral: z.boolean().optional(),
-      subject: z.string().optional(),
+      /** The subject the student chose on a new chat's first page, null for the whole Library. Absent lets Pyxis pick. */
+      subject: z.string().max(200).nullable().optional(),
       files: z.array(z.string()).optional(),
     }),
     output: z.object({
@@ -2882,7 +2891,8 @@ export const requests = {
           body: z.string(),
           modelId: z.string().nullable(),
           provider: z.string().nullable(),
-          grounding: z.enum(["sources", "general"]).nullable(),
+          /** `wider`: the chat's subject had nothing, so the cited material comes from elsewhere in the Library. */
+          grounding: z.enum(["sources", "wider", "general"]).nullable(),
           followups: z.array(z.string()),
           citations: z.array(
             z.object({

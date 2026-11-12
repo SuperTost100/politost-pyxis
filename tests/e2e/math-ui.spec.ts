@@ -86,7 +86,6 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
       window.pyxis.invoke("chats.ask", {
         text: "derive x^2 sin x",
         allowGeneral: true,
-        mode: "solver",
       }),
     )) as { chatId: string };
     await page.evaluate((chatId) => {
@@ -169,7 +168,6 @@ test("MATH-02 ASK-05 live Solver verification and attached drawing vision", asyn
       window.pyxis.invoke("chats.ask", {
         text: "derive x^2 sin x",
         allowGeneral: true,
-        mode: "solver",
       }),
     )) as {
       chatId: string;

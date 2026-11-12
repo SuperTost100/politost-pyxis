@@ -1,20 +1,22 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App, Input } from "antd";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 
 /**
- * The bar above the conversation with the open chat's title. A click on the title renames the chat in place; Enter or
- * leaving the field saves, Esc cancels.
+ * The bar above the conversation with the open chat's title and, on its right, the chat's subject chip. A click on the
+ * title renames the chat in place; Enter or leaving the field saves, Esc cancels.
  */
 export function ChatHeader({
   chatId,
   title,
+  chip,
 }: {
   chatId?: string;
   /** The open chat's title, null when it has none yet, undefined while the list loads or for a new chat. */
   title?: string | null;
+  chip?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -79,6 +81,7 @@ export function ChatHeader({
           )
         ) : null}
       </div>
+      {chip}
     </div>
   );
 }

@@ -1,0 +1,25 @@
+/* The chat's subject in its header: a soft pill with the subject and a chevron. A long name is cut, never the chevron. */
+.ant-btn.px-menu-button.ask-subject-chip {
+  flex: none;
+  height: var(--control-sm);
+  max-width: min(320px, 38vw);
+  padding-inline: 12px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 600 calc(13px * var(--text-scale, 1)) / 1 var(--font-sans);
+}
+.ant-btn.px-menu-button.ask-subject-chip .px-icon {
+  color: var(--ink-muted);
+}
+/* Before Pyxis has picked, the chip reads as a quiet offer rather than a value. */
+.ant-btn.px-menu-button.ask-subject-chip.is-auto {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.ask-subject-chip-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -113,7 +113,7 @@ describe("askTurn", () => {
     const input = {
       text: "Che cos'è il vettore posizione?",
       sourceIds: [imported.sourceId],
-      mode: "socratic" as const,
+      way: "guided" as const,
     };
     const question = await askTurn(db, {
       ...input,
@@ -129,7 +129,7 @@ describe("askTurn", () => {
     );
     const factual = await askTurn(db, {
       ...input,
-      mode: "solver",
+      way: "solved",
       run: async () => ({
         ...reply,
         text: "Il vettore posizione descrive il punto.",
