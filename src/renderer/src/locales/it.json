@@ -774,6 +774,7 @@
       "renamed": "Materia rinominata in {{name}}.",
       "emptySubject": "Ancora niente. Sposta qui un file dai suoi tre puntini, oppure scegli questa materia in «Da sistemare».",
       "emptySubjectNoUnsorted": "Ancora niente. Sposta qui un file dai suoi tre puntini.",
+      "emptySubjectNoFiles": "Ancora niente.",
       "showAll": "Mostra tutti i {{count}} file",
       "showFewer": "Mostra meno",
       "working": "Sto scegliendo la materia di questi file.",

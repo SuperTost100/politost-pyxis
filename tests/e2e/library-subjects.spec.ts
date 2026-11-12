@@ -968,6 +968,10 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
     await expect(empty).toBeVisible();
     // The student can see both subjects, and act on them.
     for (const name of ["Analisi 1", "Fisica 2"]) await expect(shelf(page, name)).toContainText("nessun file");
+    // With no file anywhere there is none to move, so the cards say only that they are empty.
+    for (const name of ["Analisi 1", "Fisica 2"]) {
+      await expect(shelf(page, name).locator(".px-shelf-subject-none")).toHaveText("Ancora niente.");
+    }
     await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
     await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();

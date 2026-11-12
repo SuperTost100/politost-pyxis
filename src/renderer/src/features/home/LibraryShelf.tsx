@@ -351,6 +351,7 @@ export function LibraryShelf({
                 fresh={fresh.includes(subject)}
                 made={made}
                 renaming={renaming === subject.id}
+                hasFiles={all.length > 0}
                 hasUnsorted={unsortedTotal > 0}
                 onRename={() => setRenaming(subject.id)}
                 onRenameDone={(next) => rename(subject, next)}
@@ -746,6 +747,7 @@ function SubjectCard({
   fresh,
   made,
   renaming,
+  hasFiles,
   hasUnsorted,
   onRename,
   onRenameDone,
@@ -763,6 +765,8 @@ function SubjectCard({
   /** Files Pyxis made this subject for, which its "Materia nuova" note counts. */
   made: number;
   renaming: boolean;
+  /** The Library has a file somewhere; with none, the page above the cards already says to add one. */
+  hasFiles: boolean;
   hasUnsorted: boolean;
   onRename: () => void;
   /** Saves the new name; resolves with the key of what refused it, or null. */
@@ -886,7 +890,11 @@ function SubjectCard({
       ) : null}
       {children ?? (
         <p className="small px-shelf-subject-none">
-          {hasUnsorted ? t("sources.shelf.emptySubject") : t("sources.shelf.emptySubjectNoUnsorted")}
+          {!hasFiles
+            ? t("sources.shelf.emptySubjectNoFiles")
+            : hasUnsorted
+              ? t("sources.shelf.emptySubject")
+              : t("sources.shelf.emptySubjectNoUnsorted")}
         </p>
       )}
       {more ? <div className="px-shelf-subject-more">{more}</div> : null}
