@@ -37,6 +37,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam   |
 | 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library       |
 | 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash          |
+| 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -72,7 +73,9 @@ Migration 29 records, for a file added from the Library page, where Pyxis is wit
 
 Migration 30 indexes `sources.blob_sha` where it is set, so the lookup that an import and a folder scan run for every file (`EXISTING_SOURCE_SQL` in `src/core/sources/quality.ts`) reads a few rows through `sources_blob_sha` and `linked_files_hash` instead of the whole table. The step only adds the index and changes no row.
 
-Current version is 30. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 31 adds `sources.chosen_kind`, empty for every source. It holds a kind only after the student picks one from the file's "Tipo" menu: `book`, `slides`, `exam`, `notes`, `exercises`, `photo` or `handout` (`FILE_KINDS` in `src/shared/file-kind.ts`). The kind the rules compute is never stored: `sources.list` works it out each time from the file's type, title, linked folder and pages, as [File kinds](file-kinds.md) explains. A rename, a new reading of a linked file and a Library copy that a linked file takes over all keep the same source row, so they keep the choice. The column has no CHECK, so a later kind needs no rebuilt table, and core reads a value it does not know as no choice.
+
+Current version is 31. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |

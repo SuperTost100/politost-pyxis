@@ -123,6 +123,9 @@ const routes = [
   ["library-sorting", "/exams/library"],
   ["library-unsorted", "/exams/library"],
   ["library-move-menu", "/exams/library"],
+  // A shelf with a file of each of the seven kinds, one being read and one that failed, and a file's "Tipo" open.
+  ["library-kinds", "/exams/library"],
+  ["library-kind-menu", "/exams/library"],
   // The shelf by subject: a subject's menu by its dots, and an empty subject's menu by a right-click on its name, with
   // Elimina only there.
   ["library-subject-menu", "/exams/library"],
@@ -1363,6 +1366,16 @@ function prepareLibraryShelf(name: string) {
     file.run("audit-shelf-slides", "pptx", "Slide del corso");
     file.run("audit-shelf-paper", "pdf", "Temi d'esame 2022-2025");
     db.prepare("INSERT INTO plan_sources(plan_id,source_id,role) VALUES('audit-plan','audit-shelf-paper','past_paper')").run();
+    if (name !== "library-kinds") return;
+    const state = db.prepare(
+      "INSERT INTO sources(id,kind,title,status,library,subject_id,created_at,updated_at) VALUES(?,?,?,?,1,'audit-shelf-analysis',1,1)",
+    );
+    state.run("audit-shelf-notes", "pdf", "Appunti lezioni 1-12", "ready");
+    state.run("audit-shelf-exercises", "pdf", "Esercizi serie 3", "ready");
+    state.run("audit-shelf-photo", "image", "Lavagna 6 novembre", "ready");
+    state.run("audit-shelf-handout", "pdf", "Dispense sui limiti", "ready");
+    state.run("audit-shelf-reading", "pdf", "Slide lezione 7", "extracting");
+    state.run("audit-shelf-failed", "pdf", "Esercitazione 4, scansione", "failed");
   });
 }
 
@@ -3385,6 +3398,14 @@ async function openState(page: Page, name: string) {
       await page.getByRole("menuitem", { name: both("Sposta in", "Move to") }).hover();
       await expect(page.getByRole("menuitem", { name: both("Nuova materia…", "New subject…") })).toBeVisible();
       break;
+    case "library-kind-menu":
+      await page.getByRole("button", { name: /^(Azioni per|Actions for) Temi d'esame 2022-2025$/ }).click();
+      await page.getByRole("menuitem", { name: both("Tipo", "Kind") }).hover();
+      await expect(page.getByRole("menuitemradio", { name: both("Tema d'esame", "Exam paper") })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      break;
     case "plan-unfinished":
       await expect(page.locator(".px-unf-open")).toHaveCount(3);
       await page.locator(".px-unf-more").click();
@@ -4220,6 +4241,7 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  name === "library-kind-menu" ||
                   name === "plan-unfinished-menu" ||
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||

@@ -436,6 +436,7 @@ const routes = {
   "sources.linkedFolders": ["sources", "linkedFolders", "bare"],
   "sources.preview": ["sources", "preview", "signal"],
   "sources.rename": ["sources", "rename"],
+  "sources.setKind": ["sources", "setKind"],
   "sources.replace": ["sources", "replace"],
   "sources.syllabus": ["sources", "syllabus", "signal"],
   "sources.reextract": ["sources", "reextract"],

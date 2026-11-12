@@ -26,8 +26,12 @@ import {
   scheduleQuery,
   usePlan,
   useRecommend,
+  useSources,
   useSubjects,
 } from "../../lib/queries";
+import { classifyFile } from "@shared/file-kind";
+import { FileCover } from "../../components/FileCover";
+import { coverColour } from "../home/shelf";
 import { mapPath } from "../maps/mapPath";
 import { MapThumb } from "../maps/MapThumb";
 import { useSaveCalendar } from "../share/CalendarButton";
@@ -551,16 +555,6 @@ function Pending({
   return <>{children()}</>;
 }
 
-/** The kind of drawing a source gets in Materiale, from what the app knows of it today. */
-function coverKind(
-  kind: string,
-): "book" | "slides" | "exam" | "notebook" | "photo" {
-  if (kind === "smartbook" || kind === "book") return "book";
-  if (kind === "image" || kind === "photo") return "photo";
-  if (kind === "slides" || kind === "pptx") return "slides";
-  return "notebook";
-}
-
 /** Flashcard, Da rifare, Mappe and Materiale, beside the path. */
 function ExamAside({
   planId,
@@ -589,6 +583,8 @@ function ExamAside({
     queryFn: () => invoke("maps.all", {}),
   });
   const papers = useQuery(pastPapersQuery(planId));
+  // The Library's list knows each file's kind and subject, so Materiale draws the covers the shelf draws.
+  const library = useSources();
   const subjects = useSubjects();
   // Subject names are unique regardless of case, as the exam names its subject.
   const subjectId = plan.subject
@@ -613,19 +609,22 @@ function ExamAside({
           plan.subject.toLocaleLowerCase()),
   );
   const paperIds = new Set(papers.data?.papers.map((paper) => paper.sourceId));
+  const listed = new Map((library.data ?? []).map((source) => [source.id, source]));
+  const cover = (id: string, title: string, kind: string, pastPaper: boolean) => {
+    const source = listed.get(id);
+    return {
+      id,
+      title,
+      kind: source?.fileKind ?? classifyFile({ kind, title, pastPaper }).kind,
+      colour: source?.subjectId ? coverColour(source.subjectId) : subjectId ? coverColour(subjectId) : null,
+      symbol: source?.subject ?? plan.subject ?? title,
+    };
+  };
   const covers = [
     ...plan.sources
       .filter((source) => !paperIds.has(source.id))
-      .map((source) => ({
-        id: source.id,
-        title: source.title,
-        art: coverKind(source.kind),
-      })),
-    ...(papers.data?.papers ?? []).map((paper) => ({
-      id: paper.sourceId,
-      title: paper.title,
-      art: "exam" as const,
-    })),
+      .map((source) => cover(source.id, source.title, source.kind, false)),
+    ...(papers.data?.papers ?? []).map((paper) => cover(paper.sourceId, paper.title, "pdf", true)),
   ];
   async function redo() {
     setRedoing(true);
@@ -802,8 +801,8 @@ function ExamAside({
                   className="px-exam-cov"
                   onClick={() => setDetailSourceId(cover.id)}
                 >
-                  <span className={`px-exam-art is-${cover.art}`} aria-hidden>
-                    {cover.art === "book" ? cover.title : null}
+                  <span className="px-exam-art">
+                    <FileCover kind={cover.kind} colour={cover.colour} symbol={cover.symbol} scale={0.62} />
                   </span>
                   <span className="px-exam-cov-title">{cover.title}</span>
                 </button>

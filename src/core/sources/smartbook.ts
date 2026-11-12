@@ -10,6 +10,8 @@ import { chunkText } from "./chunk";
 import { latestDocument } from "./documents";
 import { sectionCount } from "./details";
 import { uuidv7 } from "../../shared/ids";
+import { fileKindOf, isFileKind } from "../../shared/file-kind";
+import { MATERIAL_KINDS, type MaterialKind } from "../../shared/linked-folders";
 import type { PassageHit } from "./retrieve";
 import { suggestSourceRebuild } from "../plans/views";
 
@@ -397,11 +399,13 @@ export function listSources(db: Database.Database) {
          (SELECT count(*) FROM plan_sources ps WHERE ps.source_id = sources.id) AS planCount,
          EXISTS (SELECT 1 FROM plan_sources ps WHERE ps.source_id = sources.id AND ps.role = 'past_paper') AS pastPaper,
          (SELECT name FROM subjects WHERE subjects.id = sources.subject_id) AS subject,
-         sources.subject_id AS subjectId, sources.subject_sort AS subjectSort,
-         lf.folder_id AS linkedFolderId, lf.missing_at AS linkedMissingAt, f.path AS linkedRoot
+         sources.subject_id AS subjectId, sources.subject_sort AS subjectSort, sources.chosen_kind AS chosenKind,
+         lf.folder_id AS linkedFolderId, lf.missing_at AS linkedMissingAt, f.path AS linkedRoot,
+         lf.rel_path AS linkedPath, ls.kinds_json AS folderKinds
        FROM sources
        LEFT JOIN linked_files lf ON lf.source_id = sources.id
        LEFT JOIN linked_folders f ON f.id = lf.folder_id
+       LEFT JOIN linked_subfolders ls ON ls.folder_id = lf.folder_id AND ls.name = lf.subfolder
        WHERE status != 'removed' AND library = 1
        ORDER BY sources.created_at DESC`,
     )
@@ -419,21 +423,62 @@ export function listSources(db: Database.Database) {
     subject: string | null;
     subjectId: string | null;
     subjectSort: string | null;
+    chosenKind: string | null;
     linkedFolderId: string | null;
     linkedMissingAt: number | null;
     linkedRoot: string | null;
+    linkedPath: string | null;
+    folderKinds: string | null;
   }>;
+  // The last page a document's passages point at: its length, for the rule that tells a book from a handout.
+  const lastPage = db.prepare(
+    `SELECT MAX(CAST(json_extract(locator_json, '$.page') AS INTEGER)) FROM passages WHERE document_id = ?`,
+  );
   // The figure is the one the source panel shows for the current version, not a count of passages or of saved versions.
-  return rows.map(({ documentId, linkedFolderId, linkedMissingAt, linkedRoot, pastPaper, ...source }) => ({
+  return rows.map(({ documentId, linkedFolderId, linkedMissingAt, linkedRoot, linkedPath, folderKinds, pastPaper, chosenKind, ...source }) => {
+    const pages = documentId ? pageCount(lastPage.pluck().get(documentId)) : null;
+    const kindChosen = isFileKind(chosenKind);
+    return {
     ...source,
     pastPaper: pastPaper === 1,
     sections: documentId ? sectionCount(db, documentId) : 0,
+    pages,
+    fileKind: fileKindOf({
+      kind: source.kind,
+      title: source.title,
+      pastPaper: pastPaper === 1,
+      originUrl: source.originUrl,
+      // The folders between the linked folder and the file, stored with the system's separator.
+      folders: linkedPath ? linkedPath.split(/[\\/]/).slice(0, -1) : [],
+      folderKinds: kindsOf(folderKinds),
+      pages,
+      chosenKind,
+    }),
+    kindChosen,
     // A file read in place from a linked folder, and whether the last look found it there.
     linked:
       linkedFolderId && linkedRoot
         ? { folderId: linkedFolderId, folder: basename(linkedRoot), missing: linkedMissingAt !== null }
         : null,
-  }));
+  };
+  });
+}
+
+/** A stored page number as a count, or null when the document has no pages. */
+function pageCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : null;
+}
+
+/** The kinds of material setup stored for a linked subfolder, keeping only the ones this build knows. */
+function kindsOf(json: string | null): MaterialKind[] {
+  if (!json) return [];
+  try {
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((kind): kind is MaterialKind => (MATERIAL_KINDS as readonly unknown[]).includes(kind)) : [];
+  } catch {
+    // A value that is not JSON says nothing about the folder's material.
+    return [];
+  }
 }
 
 function mapPassages(
