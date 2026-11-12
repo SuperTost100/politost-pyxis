@@ -180,10 +180,10 @@ html[data-platform="darwin"] {
 /* "Riprendi l'esame" while an exam is in progress (Shell.tsx): in the top strip, centred on Attività's row, at the left
    edge of the page under it. The row takes the page's own width classes, so it lines up with the page's title on every
    page and with the sidebar folded or not; it has no height, so the page under it keeps its place. A map's page fills
-   the column and pads itself, and its title sits 10px in from that (MapPage.css), so the row starts there too. */
+   the column and pads itself, and its title sits 10px in from that (MapPage.css), so the row starts there too. It
+   scrolls away with the page, so it never sits over what scrolls under the strip. */
 .px-resume-strip {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 95;
   height: 0;
 }
