@@ -168,6 +168,92 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
   }
 });
 
+test("Ask: All chats shows in the sidebar only when there are more chats than it lists", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await launch();
+  try {
+    const list = page.getByRole("list", { name: "Chat" });
+    const allChats = page.getByRole("button", { name: "Tutte le chat" });
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    await page.reload();
+
+    // No chats: the empty note shows and nothing leads to a list.
+    await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
+    await expect(allChats).toHaveCount(0);
+
+    // Two chats, both listed: no link.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    const insert = db.prepare("INSERT INTO chats(id,title,created_at,updated_at) VALUES(?,?,?,?)");
+    const seedChats = (from: number, to: number) => {
+      for (let i = from; i <= to; i += 1) {
+        const n = String(i).padStart(2, "0");
+        insert.run(`c${n}`, `Argomento ${n}`, 100 + i, 100 + i);
+      }
+    };
+    seedChats(1, 2);
+    await page.reload();
+    await expect(list.getByRole("listitem")).toHaveCount(2);
+    await expect(allChats).toHaveCount(0);
+
+    // Exactly as many chats as the sidebar lists: still no link.
+    seedChats(3, 20);
+    await page.reload();
+    await expect(list.getByRole("listitem")).toHaveCount(20);
+    await expect(allChats).toHaveCount(0);
+
+    // A new chat takes the list over its limit, and the link appears without a reload.
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.fill("Che cos'è l'integrazione per parti?");
+    await box.press("Enter");
+    await expect(page.getByText("Fammi un altro esempio")).toBeVisible({ timeout: 30000 });
+    await expect(list.getByRole("listitem")).toHaveCount(20);
+    await expect(list.getByRole("link", { name: "Argomento 01" })).toHaveCount(0);
+    await expect(allChats).toBeVisible();
+
+    // Folded, the sidebar shows no chats and no link; unfolded, the link is back.
+    await page.getByRole("button", { name: "Riduci la barra" }).click();
+    await expect(allChats).toBeHidden();
+    await page.getByRole("button", { name: "Espandi la barra" }).click();
+    await expect(allChats).toBeVisible();
+
+    // The link opens every chat, including the one the sidebar does not list.
+    await allChats.click();
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    await expect(finder.getByRole("option")).toHaveCount(21);
+    await expect(finder.getByRole("option", { name: /^Argomento 01/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(finder).toBeHidden();
+
+    // Deleting a chat leaves exactly as many as the sidebar lists, and the link goes without a reload.
+    await answerNextMenu(app, "Elimina");
+    await list.getByRole("button", { name: "Azioni per Argomento 20" }).click();
+    await page.getByRole("button", { name: "Elimina per sempre" }).click();
+    await expect(list.getByRole("link", { name: "Argomento 01" })).toBeVisible();
+    await expect(list.getByRole("listitem")).toHaveCount(20);
+    await expect(allChats).toHaveCount(0);
+
+    // With 20 chats the search still reaches them all, and each row's three dots offer the same menu as in the search.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    await expect(finder.getByRole("group", { name: "Chat" }).getByRole("option", { name: "Tutte le chat" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await answerNextMenu(app, null);
+    await list.getByRole("button", { name: "Azioni per Argomento 01" }).click();
+    expect(await lastMenuLabels(app)).toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
+
+    // In English the link is named the same way and follows the same rule.
+    seedChats(21, 21);
+    db.close();
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+    await expect(page.getByRole("button", { name: "All chats" })).toBeVisible();
+    await expect(list.getByRole("listitem")).toHaveCount(20);
+  } finally {
+    await finish(app, userData);
+  }
+});
+
 test("Ask: composer stays docked, the newest message is in view and nothing overlaps", async () => {
   test.setTimeout(150000);
   const { app, page, userData } = await launch();
