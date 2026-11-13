@@ -129,6 +129,25 @@
   line-height: calc(19px * var(--text-scale, 1));
   color: var(--ink-subtle);
 }
+/* The kicker keeps its line while the suggestion loads, since it may turn out to be "Riprendi da". */
+.px-exam-kicker.is-pending {
+  visibility: hidden;
+}
+/* Scegli altro: a quiet menu under the line, its text in line with the text above it. */
+.ant-btn.px-menu-button.px-exam-other {
+  margin: 10px 0 0 -8px;
+  padding-inline: 8px 6px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+.ant-btn.px-menu-button.px-exam-other:hover,
+.ant-btn.px-menu-button.px-exam-other[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
 /* Adesso while Crea's activity is written: the working mark beside what Pyxis is doing. */
 .px-exam-now.is-working {
   flex-wrap: nowrap;

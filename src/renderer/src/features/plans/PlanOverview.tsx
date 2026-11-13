@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Modal } from "antd";
+import { Modal, type MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
@@ -10,6 +10,8 @@ import { Button } from "../../components/Button";
 import { emptyRings, ExamRings, RingLegend } from "../../components/ExamRings";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
+import { MathText } from "../../components/math/MathText";
+import { MenuButton } from "../../components/ItemMenu";
 import { ToolbarMenu } from "../../components/ListToolbar";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -21,6 +23,7 @@ import { Working } from "../../components/Working";
 import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import {
+  partsQuery,
   pastPapersQuery,
   ringsQuery,
   scheduleQuery,
@@ -41,7 +44,8 @@ import { ActivityMaking } from "./ActivityMaking";
 import { madeFor, type MadeActivity } from "./making";
 import { ExamCreateDialog } from "./ExamCreateDialog";
 import { draftsFromSessions, nextUpcomingDay } from "./examSessions";
-import { PlanPath, type TopicAction } from "./PlanPath";
+import { activityIcons, PlanPath, type TopicAction } from "./PlanPath";
+import { nowPartText, partPath } from "./partsText";
 import { PlanSources } from "./PlanSources";
 import { skipDiagnosticPath, stepPath } from "./reopen";
 import { UnfinishedSection } from "./Unfinished";
@@ -443,7 +447,10 @@ function ExamWhen({ plan }: { plan: Plan }) {
   );
 }
 
-/** Adesso: the path's one suggested step, with the page's only primary button. */
+/**
+ * Consigliato adesso: the path's one suggested step, with the page's only primary button. A lesson in parts names the
+ * part to read next, or "Riprendi da" the part after the one finished on an earlier day.
+ */
 function NowCard({
   planId,
   plan,
@@ -455,25 +462,44 @@ function NowCard({
   guide: Guide | undefined;
   loading: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const next = guide?.next ?? null;
-  const topic = next?.topicId
-    ? plan.topics.find((item) => item.id === next.topicId)?.title
+  const topicId = next?.topicId ?? null;
+  const topic = topicId
+    ? plan.topics.find((item) => item.id === topicId)?.title
     : null;
   const activity = next ? t(`plans.path.activity.${next.activity}`) : null;
   const skipTo = skipDiagnosticPath(planId, plan.topics, plan.steps);
+  const part = next?.part ?? null;
+  const text =
+    part && topic != null
+      ? nowPartText(t, { part, topic, now: Date.now(), language: i18n.language })
+      : null;
+  const resume = Boolean(part?.resumeFrom);
   const go = () => {
-    const to = next ? stepPath(planId, next.activity, next.topicId) : null;
+    const to = next
+      ? part && topicId
+        ? partPath(planId, topicId, part.position)
+        : stepPath(planId, next.activity, next.topicId)
+      : null;
     if (to) navigate(to);
   };
   return (
     <section className="px-exam-now" aria-labelledby="px-exam-now-title">
       <div className="px-exam-now-text">
-        <span className="px-exam-kicker">{t("plans.path.next")}</span>
+        {/* While the suggestion loads the kicker keeps its place, since it may turn out to be "Riprendi da". */}
+        <span
+          className={loading ? "px-exam-kicker is-pending" : "px-exam-kicker"}
+          aria-hidden={loading || undefined}
+        >
+          {t(resume ? "examPage.resumeKicker" : "examPage.nowKicker")}
+        </span>
         <h2 id="px-exam-now-title">
           {loading ? (
             <i className="px-skeleton-bar is-title" />
+          ) : text ? (
+            <MathText text={text.title} />
           ) : next ? (
             topic ? (
               t("examPage.nowTitle", { activity, topic })
@@ -484,8 +510,19 @@ function NowCard({
             t("plans.path.pick")
           )}
         </h2>
-        {next ? (
+        {text ? (
+          <p>{text.line}</p>
+        ) : next ? (
           <p>{t(`plans.path.reason.${next.reason}`, { count: next.count })}</p>
+        ) : null}
+        {next && topicId && topic != null ? (
+          <ChooseOther
+            planId={planId}
+            topicId={topicId}
+            topic={topic}
+            suggested={next.activity}
+            dueCards={guide?.topics.find((entry) => entry.topicId === topicId)?.dueCards ?? 0}
+          />
         ) : null}
       </div>
       {next?.activity === "diagnostic" && skipTo ? (
@@ -495,10 +532,120 @@ function NowCard({
       ) : null}
       {next ? (
         <Button size="lg" onClick={go}>
-          {t("planOverview.start")}
+          {t(resume ? "examPage.resume" : "examPage.continue")}
         </Button>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * "Scegli altro" under the suggestion: other short things on its topic, the ones that exist. Its exercises and its
+ * flashcards (the suggested one left out), and, once some part of its lesson is read, a part to read again.
+ */
+function ChooseOther({
+  planId,
+  topicId,
+  topic,
+  suggested,
+  dueCards,
+}: {
+  planId: string;
+  topicId: string;
+  topic: string;
+  suggested: string;
+  dueCards: number;
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const parts = useQuery(partsQuery(planId, topicId));
+  // The practice page's own read, which only reads: exercises are written when that page asks for them.
+  const exercises = useQuery({
+    queryKey: ["exercises", planId, topicId],
+    queryFn: () => invoke("study.exercises", { topicId, planId }),
+  });
+  const cards = useQuery({
+    queryKey: ["card-browse", "", planId, topicId, "all", "count"],
+    queryFn: () => invoke("study.browse", { planId, topicId, limit: 1 }),
+  });
+  const read = parts.data?.outline?.parts.filter((entry) => entry.done) ?? [];
+  const practiceCount = exercises.data?.exercises.length ?? 0;
+  const cardsTotal = cards.data?.total;
+  const choice = (label: string, note: string | null) => (
+    <span className="px-item-menu-choice">
+      <span>{label}</span>
+      {note ? <small>{note}</small> : null}
+    </span>
+  );
+  const items: NonNullable<MenuProps["items"]> = [
+    ...(suggested === "practice"
+      ? []
+      : [
+          {
+            key: "practice",
+            icon: <Icon name={activityIcons.practice} size={16} />,
+            label: choice(
+              t("examPage.otherPractice", { topic }),
+              practiceCount ? t("examPage.otherPracticeCount", { count: practiceCount }) : null,
+            ),
+          },
+        ]),
+    ...(suggested === "cards"
+      ? []
+      : [
+          {
+            key: "cards",
+            icon: <Icon name={activityIcons.cards} size={16} />,
+            label: choice(
+              t("examPage.otherCards", { topic }),
+              dueCards > 0
+                ? t("examPage.otherCardsDue", { count: dueCards })
+                : cardsTotal
+                  ? t("examPage.otherCardsCount", { count: cardsTotal })
+                  : cardsTotal === 0
+                    ? t("examPage.otherCardsNone")
+                    : null,
+            ),
+          },
+        ]),
+    ...(read.length
+      ? [
+          {
+            key: "reread",
+            icon: <Icon name="rotate-ccw" size={16} />,
+            label: choice(t("examPage.otherReread"), t("examPage.otherRereadCount", { count: read.length })),
+            children: read.map((entry) => ({
+              key: `part:${entry.position}`,
+              label:
+                entry.kind === "recap" ? (
+                  t("plans.path.recapRow")
+                ) : (
+                  <MathText text={`${t("plans.path.partNumber", { n: entry.position })} · ${entry.title}`} />
+                ),
+            })),
+          },
+        ]
+      : []),
+  ];
+  return (
+    <MenuButton
+      label={t("examPage.chooseOther")}
+      align="start"
+      size="sm"
+      className="px-exam-other"
+      menu={{
+        items,
+        onClick: ({ key }) => {
+          if (key.startsWith("part:")) navigate(partPath(planId, topicId, Number(key.slice(5))));
+          else {
+            const to = stepPath(planId, key, topicId);
+            if (to) navigate(to);
+          }
+        },
+      }}
+    >
+      {t("examPage.chooseOther")}
+    </MenuButton>
   );
 }
 
