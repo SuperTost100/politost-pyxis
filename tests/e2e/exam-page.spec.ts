@@ -470,15 +470,10 @@ test("Adesso and Percorso stay the same distance apart whatever the exam has and
     for (const width of [1280, 960]) {
       await page.setViewportSize({ width, height: 800 });
       for (const state of states) {
-        const settings = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
-        if (state.hours === null) settings.prepare("DELETE FROM settings WHERE key = 'planner'").run();
-        else
-          settings
-            .prepare(
-              "INSERT INTO settings(key,value_json,updated_at) VALUES('planner',?,1) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
-            )
-            .run(JSON.stringify({ weeklyHours: state.hours, weeks: {} }));
-        settings.close();
+        // The hours are saved with the call the exam's settings use, and the page reads them again from a fresh start. It
+        // keeps the hours it read for the previous state, and the exam opened next draws its first frames with them.
+        await page.evaluate((hours) => window.pyxis.invoke("plans.plannerHours", { hours }), state.hours);
+        await page.reload();
         await openExam(page, state.id, `Analisi ${state.id}`);
         await expect(page.locator(".px-exam-now h2")).toBeVisible();
         await expect(page.locator(".px-exam-path .px-exam-sech")).toBeVisible();
