@@ -100,3 +100,28 @@ export function addressPart(
   if (address.position || address.itemId || !fresh || read?.mode !== "parts") return null;
   return read.position;
 }
+
+/** What changed on the part page: another part opened, the part waited for arrived, a rewrite of it started or ended. */
+export type PageChange = "opened" | "arrived" | "rewriteStarted" | "rewriteEnded";
+
+/**
+ * Where the part page scrolls and what takes the focus when what it shows changes, one rule for every case, so a change
+ * moves the page once:
+ * - another part opened (Continua, the column, a link): the top of the page at once, never smoothly, with the focus on
+ *   the title, or on the working block's way back when a block is working there (the part planned or written, or a
+ *   rewrite of it running). Back and Forward keep where the student was, as the browser restores it.
+ * - a rewrite started on the part on screen: the page moves to the block, which takes the focus.
+ * - the part waited for arrived, or a rewrite ended: the title takes the focus, and the page moves to it, only when the
+ *   focus was in the block that goes, or nowhere; otherwise nothing moves.
+ */
+export function pageMove(
+  change: PageChange,
+  input: { back: boolean; working: boolean; focusInBlock: boolean },
+): { scroll: "top" | "block" | "title" | null; focus: "title" | "block" | null } {
+  if (change === "opened") {
+    if (input.back) return { scroll: null, focus: null };
+    return { scroll: "top", focus: input.working ? "block" : "title" };
+  }
+  if (change === "rewriteStarted") return { scroll: "block", focus: "block" };
+  return input.focusInBlock ? { scroll: "title", focus: "title" } : { scroll: null, focus: null };
+}

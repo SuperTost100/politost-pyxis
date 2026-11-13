@@ -3,6 +3,7 @@ import {
   addressPart,
   focusFollowsAnswer,
   freshRead,
+  pageMove,
   partMark,
   partStateWord,
   startsOnOpen,
@@ -162,5 +163,25 @@ describe("the part an address without one names", () => {
     expect(addressPart(read(2), { itemId: "i" }, true)).toBeNull();
     expect(addressPart({ mode: "legacy" } as never, {}, true)).toBeNull();
     expect(addressPart(undefined, {}, true)).toBeNull();
+  });
+});
+
+describe("where the page moves", () => {
+  const at = (back = false, working = false, focusInBlock = false) => ({ back, working, focusInBlock });
+
+  it("opens another part at the top, with the focus on its title or on the block working there", () => {
+    expect(pageMove("opened", at())).toEqual({ scroll: "top", focus: "title" });
+    expect(pageMove("opened", at(false, true))).toEqual({ scroll: "top", focus: "block" });
+    // Back and Forward leave the page where the browser puts it.
+    expect(pageMove("opened", at(true))).toEqual({ scroll: null, focus: null });
+  });
+
+  it("moves to the block when a rewrite starts, and back to the title when the block goes with the focus in it", () => {
+    expect(pageMove("rewriteStarted", at())).toEqual({ scroll: "block", focus: "block" });
+    for (const change of ["arrived", "rewriteEnded"] as const) {
+      expect(pageMove(change, at(false, false, true))).toEqual({ scroll: "title", focus: "title" });
+      // The student moved on meanwhile: nothing moves under them.
+      expect(pageMove(change, at())).toEqual({ scroll: null, focus: null });
+    }
   });
 });

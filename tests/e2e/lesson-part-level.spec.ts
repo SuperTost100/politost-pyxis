@@ -170,6 +170,15 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     await expect(levelButton(page)).toBeDisabled();
     await expectNoAxeViolations(page);
     await saveShot(page, "lesson-part-level/rewriting-it-light.png");
+    // Another part and back while the rewrite runs: part 2 opens at the top once, with the focus on the working block's
+    // way back, not on the title the block is under.
+    await parts(page).getByRole("link", { name: /^Intorni e distanza/ }).click();
+    await expect(page.getByText("Intorni: l'idea")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Intorni e distanza" })).toBeFocused();
+    await parts(page).getByRole("link", { name: /^Interno, esterno, frontiera/ }).click();
+    await expect(working(page, "Sto riscrivendo la parte 2")).toBeVisible();
+    await expect(page.locator(".px-part-working").getByRole("button", { name: "Torna al percorso" })).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
     writeFileSync(simpleHold, "");
     await expect(page.getByText("Frontiera semplice: l'idea")).toBeVisible({ timeout: 30_000 });
     await expect(working(page, "Sto riscrivendo la parte 2")).toHaveCount(0);
