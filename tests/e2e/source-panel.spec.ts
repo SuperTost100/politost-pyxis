@@ -142,6 +142,49 @@ test("the Library opens each file in the source panel, at its first page, and pa
   }
 });
 
+test("one Escape closes the panel's menu and leaves the panel open, whichever way the menu was opened", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await launch();
+  try {
+    await toLibrary(page);
+    const cover = page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true });
+    await cover.click();
+    const sheet = panel(page);
+    const title = sheet.getByRole("heading", { name: "Fisica I · Mazzoldi, Nigro, Voci" });
+    await expect(title).toBeFocused();
+    const dots = sheet.getByRole("button", { name: "Azioni su «Fisica I · Mazzoldi, Nigro, Voci»" });
+    const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+    const opened: Array<[string, () => Promise<void>]> = [
+      ["a click on the dots", () => dots.click()],
+      ["a right-click on the dots", () => dots.click({ button: "right" })],
+      ["a right-click on the name", () => title.click({ button: "right" })],
+      ["Shift+F10 on the name", async () => {
+        await title.focus();
+        await page.keyboard.press("Shift+F10");
+      }],
+      ["Shift+F10 on the dots", async () => {
+        await dots.focus();
+        await page.keyboard.press("Shift+F10");
+      }],
+    ];
+    for (const [how, open] of opened) {
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu, how).toHaveCount(0);
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet, how).not.toHaveClass(/is-leaving/);
+    }
+    // With the menu gone, the next Escape closes the panel.
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a citation in a chat opens the panel at the cited page with the passage marked, and a second one moves it", async () => {
   test.setTimeout(240_000);
   const { app, page, userData } = await launch();

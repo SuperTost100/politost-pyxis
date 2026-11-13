@@ -293,6 +293,33 @@ export function leaveMenuTo(trigger: HTMLElement | null | undefined): void {
   if (trigger?.isConnected && active instanceof Element && active.closest(".px-item-menu")) trigger.focus({ preventScroll: true });
 }
 
+/** An item menu that is open: the dropdown keeps a closed menu in the page, hidden, so it is told apart by its class. */
+const OPEN_MENU = ".px-item-menu:not(.ant-dropdown-hidden)";
+
+/** The Escape key presses that came while an item menu was open, noted before anything else hears them. */
+const escapesForMenu = new WeakSet<Event>();
+
+// One listener for the whole page, added when this file loads, so it comes before any other capture listener on the
+// document, and before the menu's own handling of the key can have closed it and redrawn the page.
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key === "Escape" && document.querySelector(OPEN_MENU)) escapesForMenu.add(event);
+  },
+  true,
+);
+
+/**
+ * Whether an Escape belongs to an open item menu, which closes on it, rather than to the panel, popover or page around
+ * it. A menu opened by a right-click or by Shift+F10 leaves the focus on the element it was opened from for a moment
+ * (a menu without a landmark, such as the source panel's, longer), so the key reaches that element's own handler
+ * first, and a handler that judged by the focus would close its panel together with the menu. Escape closes the
+ * innermost thing only.
+ */
+export function menuTakesEscape(event: Event): boolean {
+  return escapesForMenu.has(event);
+}
+
 /**
  * Opens an item's three-dots menu on a right-click, at the pointer, and on the context-menu key and Shift+F10, under the
  * focused element (the rules are in `lib/itemMenu.ts`). Spread `bind` on the item, put `popup` inside it, and hand the
@@ -305,10 +332,16 @@ export function useItemMenu({
   menu,
   region,
   disabled = false,
+  returnTo,
 }: {
   menu: MenuProps;
   region?: string;
   disabled?: boolean;
+  /**
+   * Where the focus goes when the menu closes while it holds the focus (or nothing has it) and no key opened it: a menu
+   * opened by the pointer on a button that does not take the focus on a click, as on a Mac, would leave it nowhere.
+   */
+  returnTo?: () => HTMLElement | null;
 }): { bind: ReturnType<typeof menuTrigger>; popup: ReactNode; open: boolean } {
   const [at, setAt] = useState<MenuPoint | null>(null);
   // For a menu opened with the keyboard: where focus goes back to when it closes.
@@ -319,7 +352,9 @@ export function useItemMenu({
   const close = (restoreFocus: boolean, scrollBack = true) => {
     shown.current = false;
     setAt(null);
-    const back = origin.current;
+    const active = document.activeElement;
+    const lost = !active || active === document.body || active.closest(".px-item-menu");
+    const back = origin.current ?? (lost ? (returnTo?.() ?? null) : null);
     origin.current = null;
     // A scroll closes the menu from under the student's hand: the focus goes back, but the page stays where they took it.
     if (restoreFocus && back?.isConnected) back.focus({ preventScroll: !scrollBack });
@@ -438,9 +473,16 @@ export function MenuButton({
   children,
   onOpenChange,
   focusAfterChoice,
+  rightClick = false,
 }: {
   menu: MenuProps;
   label: string;
+  /**
+   * The button is the whole item, so a right-click on it opens the menu at the pointer, and the context-menu key and
+   * Shift+F10 open it under the button, as for any item with a menu (`useItemMenu`). Leave it off where an item around
+   * the button has the same menu, which then answers them.
+   */
+  rightClick?: boolean;
   /** The icon of a button without `children`. */
   icon?: IconName;
   region?: string;
@@ -503,64 +545,83 @@ export function MenuButton({
     true,
   );
   const dots = children === undefined;
+  const own = useItemMenu({
+    menu,
+    region: region ?? label,
+    disabled: disabled || !rightClick,
+    returnTo: () => document.getElementById(id),
+  });
   return (
-    <Dropdown
-      open={open}
-      autoFocus
-      trigger={["click"]}
-      placement={align === "start" ? "bottomLeft" : "bottomRight"}
-      rootClassName="px-item-menu"
-      autoAdjustOverflow={FIT_IN_WINDOW}
-      disabled={disabled}
-      onOpenChange={(next) => {
-        if (next) {
-          setOpenings((count) => count + 1);
-          return setOpen(true);
-        }
-        // Escape, or a choice, leaves the focus in the menu as it closes, so it goes back to the button. A click away
-        // or on the button leaves it where the click put it.
-        const fromMenu = document.activeElement instanceof Element && document.activeElement.closest(".px-item-menu");
-        if (fromMenu || escaped.current) close();
-        else setOpen(false);
-      }}
-      popupRender={(list) => (
-        <MenuRegion key={openings} label={region ?? label} open={open} arrow={arrow}>
-          {list}
-        </MenuRegion>
-      )}
-      menu={drawn(menu, () => close(true))}
-    >
-      <AntButton
-        id={id}
-        type={dots ? "text" : "default"}
-        size={size === "sm" ? "small" : "middle"}
-        className={[
-          "px-btn",
-          dots ? "px-btn-ghost px-iconbtn" : "px-btn-secondary px-menu-button",
-          size === "sm" && "px-btn-sm",
-          className,
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onKeyDown={(event) => {
-          if (!open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return;
-          event.preventDefault();
-          arrow.current = event.key === "ArrowDown" ? "first" : "last";
-        }}
-        title={dots ? label : undefined}
+    <>
+      <Dropdown
+        open={open}
+        autoFocus
+        trigger={["click"]}
+        placement={align === "start" ? "bottomLeft" : "bottomRight"}
+        rootClassName="px-item-menu"
+        autoAdjustOverflow={FIT_IN_WINDOW}
         disabled={disabled}
-        icon={dots ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : undefined}
-      >
-        {dots ? null : (
-          <>
-            <span className="px-menu-button-text">{children}</span>
-            <Icon name="chevron-down" size={14} />
-          </>
+        onOpenChange={(next) => {
+          if (next) {
+            setOpenings((count) => count + 1);
+            return setOpen(true);
+          }
+          // Escape, or a choice, leaves the focus in the menu as it closes, so it goes back to the button. A click away
+          // or on the button leaves it where the click put it.
+          const fromMenu = document.activeElement instanceof Element && document.activeElement.closest(".px-item-menu");
+          if (fromMenu || escaped.current) close();
+          else setOpen(false);
+        }}
+        popupRender={(list) => (
+          <MenuRegion key={openings} label={region ?? label} open={open} arrow={arrow}>
+            {list}
+          </MenuRegion>
         )}
-      </AntButton>
-    </Dropdown>
+        menu={drawn(menu, () => close(true))}
+      >
+        <AntButton
+          id={id}
+          type={dots ? "text" : "default"}
+          size={size === "sm" ? "small" : "middle"}
+          className={[
+            "px-btn",
+            dots ? "px-btn-ghost px-iconbtn" : "px-btn-secondary px-menu-button",
+            size === "sm" && "px-btn-sm",
+            className,
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          {...(rightClick ? { onPointerDown: own.bind.onPointerDown, onKeyUp: own.bind.onKeyUp } : {})}
+          onContextMenu={
+            rightClick
+              ? (event) => {
+                  // One menu at a time: a click that opened the button's own menu gives way to the pointer's.
+                  setOpen(false);
+                  own.bind.onContextMenu(event);
+                }
+              : undefined
+          }
+          onKeyDown={(event) => {
+            if (!open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return rightClick ? own.bind.onKeyDown(event) : undefined;
+            event.preventDefault();
+            arrow.current = event.key === "ArrowDown" ? "first" : "last";
+          }}
+          title={dots ? label : undefined}
+          disabled={disabled}
+          icon={dots ? <Icon name={icon} size={size === "sm" ? 16 : 18} /> : undefined}
+        >
+          {dots ? null : (
+            <>
+              <span className="px-menu-button-text">{children}</span>
+              <Icon name="chevron-down" size={14} />
+            </>
+          )}
+        </AntButton>
+      </Dropdown>
+      {own.popup}
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu, lastMenuAt, lastMenuLabels } from "./native-menu";
-import { seedSource } from "./seed";
+import { seedPlan, seedSource, seedSubjects } from "./seed";
 
 /** The labels of the open menu, a separator left out. */
 const itemsOf = async (page: Page, region: string) => {
@@ -241,6 +241,181 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     expect(Math.abs(askedFor.y - (optionBox.y + optionBox.height))).toBeLessThan(4);
     // The search is still open: Alt+Enter did not open the chat.
     await expect(finder).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/**
+ * The three dots that stand alone on a page, with no item around them: each opens its menu by a click, by a right-click
+ * on the dots, and by the context-menu key and Shift+F10 on them, with the same items, and one Escape closes the menu
+ * and gives the focus back to the dots.
+ */
+async function opensEveryWay(page: Page, dots: Locator, region: string, expected?: string[]) {
+  const menu = page.getByRole("region", { name: region }).getByRole("menu");
+  const itemsNow = async () => {
+    await expect(menu).toBeVisible();
+    return menu.getByRole("menuitem").allTextContents();
+  };
+  const ways: Array<[string, () => Promise<void>]> = [
+    ["a click", () => dots.click()],
+    ["a right-click", () => dots.click({ button: "right" })],
+    ["the context-menu key", async () => {
+      await dots.focus();
+      await page.keyboard.press("ContextMenu");
+    }],
+    ["Shift+F10", async () => {
+      await dots.focus();
+      await page.keyboard.press("Shift+F10");
+    }],
+  ];
+  let first: string[] | undefined = expected;
+  for (const [how, open] of ways) {
+    await open();
+    const items = await itemsNow();
+    first ??= items;
+    expect(items, how).toEqual(first);
+    // A pointer opens it at the pointer's place and the keys under the button, so it is never far from the dots.
+    const box = (await dots.boundingBox())!;
+    const at = (await menu.boundingBox())!;
+    expect(Math.abs(at.y - (box.y + box.height)) < 60 || Math.abs(at.y - (box.y + box.height / 2)) < 60, how).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(menu, how).toBeHidden();
+    await expect(dots, how).toBeFocused();
+  }
+  return first!;
+}
+
+test("an answer's, a lesson's and a map's three dots open by click, right-click and the menu keys, and Escape closes only the menu", async () => {
+  test.setTimeout(240_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-dots-alone-"));
+  const reply = "Una funzione continua su un intervallo chiuso ha un massimo.";
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSubjects(db, [{ id: "cin", name: "Cinema" }]);
+    seedSource(db, {
+      id: "s-cin",
+      title: "Manuale di cinema",
+      subjectId: "cin",
+      document: { id: "d-cin" },
+      passages: [{ id: "pc-1", text: "Il montaggio lega le inquadrature.", section: "Montaggio" }],
+    });
+    seedPlan(db, { id: "p-les", title: "Fisica 1", topics: [{ id: "t-les", title: "Forze" }] });
+    db.exec(`
+      INSERT INTO chats(id,title,created_at,updated_at) VALUES('c1','Weierstrass',1,2);
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q','c1','user','Che cosa dice il teorema?',1);
+      INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at)
+        VALUES('m-a','c1','assistant','Dice che una funzione continua è limitata.','claude','claude-sonnet-5','reported',2);
+    `);
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('i-les','p-les','t-les','lesson',?,'fixture','sources',1)",
+    ).run(
+      JSON.stringify({
+        cacheKey: JSON.stringify({ kind: "lesson", scopeId: "t-les", promptVersion: "model-1", passageIds: [] }),
+        markdown: "## La dinamica\n\nLa seconda legge di Newton è $F=ma$.",
+      }),
+    );
+    const node = (id: string, label: string, parent: string | null, sources?: string[]) => ({
+      id,
+      label,
+      parent,
+      x: 0,
+      y: 0,
+      pinned: false,
+      ...(sources ? { sources } : {}),
+    });
+    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cin','cin',?,'sources',1)").run(
+      JSON.stringify({
+        version: 1,
+        maps: [
+          {
+            id: "m-cin",
+            title: "Il montaggio",
+            passageIds: [],
+            grounding: "sources",
+            graph: {
+              layout: "tree",
+              undo: null,
+              redo: null,
+              nodes: [node("n0", "Montaggio", null, ["pc-1"]), node("n1", "Taglio", "n0"), node("n2", "Dissolvenza", "n0")],
+              edges: [
+                { from: "n0", to: "n1" },
+                { from: "n0", to: "n2" },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    db.close();
+
+    // An answer: the menu under it has one item, which asks again with the strongest model.
+    await page.evaluate(() => {
+      location.hash = "/ask/c1";
+    });
+    await page.reload();
+    const answer = page.locator(".px-msg:not(.px-msg-user)").last();
+    await expect(answer).toContainText("Dice che una funzione continua è limitata.");
+    // The right-click on the answer's own text is still the system's: nothing is prevented, no menu opens.
+    const onText = await answer.locator(".px-msg-text").evaluate((text) => {
+      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+      text.dispatchEvent(event);
+      return event.defaultPrevented;
+    });
+    expect(onText).toBe(false);
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    const answerDots = answer.getByRole("button", { name: "Altre azioni" });
+    const stronger = "Rispondi di nuovo con il modello più potente";
+    expect(await opensEveryWay(page, answerDots, "Altre azioni", [stronger])).toEqual([stronger]);
+    await answerDots.click({ button: "right" });
+    await page.getByRole("menuitem", { name: stronger }).click();
+    await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text")).toHaveText(reply, { timeout: 30_000 });
+
+    // A lesson: regenerate, rewrite a part, the map and export; the last one opens the export dialog.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-les/lesson/t-les";
+    });
+    await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
+    const lessonDots = page.getByRole("button", { name: "Altre azioni" });
+    const lessonItems = await opensEveryWay(page, lessonDots, "Altre azioni");
+    expect(lessonItems).toEqual(["Riscrivi", "Riscrivi una parte", "Mappa", "Esporta"]);
+    await lessonDots.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Esporta" }).click();
+    const exportDialog = page.getByRole("dialog", { name: "Esporta" });
+    await expect(exportDialog.getByRole("button", { name: "Salva file" })).toBeVisible();
+    await exportDialog.getByRole("button", { name: "Annulla" }).click();
+    await expect(exportDialog).toBeHidden();
+
+    // A map: rename, export (with its formats) and delete; the last one asks first.
+    await page.evaluate(() => {
+      location.hash = "/maps/cin?from=maps&map=m-cin";
+    });
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    const mapDots = page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true });
+    expect(await opensEveryWay(page, mapDots, "Altro")).toEqual(["Rinomina", "Esporta", "Elimina la mappa…"]);
+    // With the concept's source open beside the map, an Escape for the menu leaves the panel, and the next one closes it.
+    await page.locator('.react-flow__node[data-id="n0"]').click();
+    const sourceButton = page.locator(".px-map-foot").getByRole("button", { name: "Manuale di cinema", exact: true });
+    await sourceButton.click();
+    const panel = page.getByRole("complementary", { name: /Manuale di cinema/ });
+    await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
+    await opensEveryWay(page, mapDots, "Altro");
+    await expect(panel).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await mapDots.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    const confirm = page.getByRole("dialog");
+    await expect(confirm.getByRole("button", { name: "Elimina la mappa" })).toBeVisible();
+    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await expect(confirm).toBeHidden();
   } finally {
     await app.close();
     removeTestFolder(userData);
