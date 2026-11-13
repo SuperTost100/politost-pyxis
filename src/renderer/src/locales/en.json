@@ -1336,7 +1336,7 @@
     "readEarlier": "Read the earlier version",
     "earlierNote": "This is the earlier version of the lesson, as it was. The lesson is now in short parts.",
     "backToParts": "Back to the parts",
-    "rewriteFailed": "I couldn't rewrite the lesson in parts. The earlier version is below, as it was.",
+    "oldRewriteFailed": "I couldn't rewrite the lesson in parts. The earlier version is below, as it was.",
     "flag": "Report",
     "flagged": "Reported",
     "generalNote": "Written from general knowledge, not from your sources.",
@@ -1350,6 +1350,7 @@
     "rewriteSectionHint": "The rest of the lesson stays as it is.",
     "rewriteSectionNote": "What should change? (optional)",
     "rewriteSectionFailed": "This section could not be rewritten. The lesson is unchanged. Try again.",
+    "rewriteSectionChanged": "The lesson was rewritten in the meantime, so this section wasn't changed. Try again on the new version.",
     "rewritingSection": "Rewriting “{{title}}”…",
     "markDone": "Mark as done",
     "done": "Done",
@@ -1416,7 +1417,30 @@
     "partRetry": "Try again",
     "partUnwritten": "not written yet",
     "partWriting": "being written",
-    "partRead": "read"
+    "partRead": "read",
+    "partLevelHint": "For this part and the ones after it",
+    "rewriteThisPart": "Rewrite this part",
+    "rewriteConfirm": {
+      "part": "Rewrite this part?",
+      "lesson": "Rewrite this lesson?",
+      "recap": "Rewrite the chapter recap?"
+    },
+    "rewritePartNote": "The current version is replaced only if the new one succeeds, and what you've already finished stays finished.",
+    "rewritePartSectionHint": "The rest of the part stays as it is.",
+    "rewritePartSectionFailed": "This section could not be rewritten. The part is unchanged. Try again.",
+    "rewritePartSectionChanged": "The part was rewritten in the meantime, so this section wasn't changed. Try again on the new version.",
+    "rewriteWhat": {
+      "part": "part {{n}}",
+      "lesson": "the lesson",
+      "recap": "the chapter recap"
+    },
+    "rewritingTitle": "Rewriting {{what}}",
+    "rewritingLevelLine": "At the {{level}} level. Until the new version is ready, the current one stays below.",
+    "rewritingAgainLine": "Until the new version is ready, the current one stays below.",
+    "rewriteFailed": "I couldn't rewrite {{what}}. The current version hasn't changed.",
+    "rewriteFailedLevel": "I couldn't rewrite {{what}} at the {{level}} level. The current version hasn't changed.",
+    "keepVersion": "Keep this version",
+    "rewriteNeedsEngine": "Needs a working AI engine"
   },
   "sessions": {
     "heading": "Session {{n}}",

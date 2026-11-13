@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { finalRecap, parseSmartText } from "../../shared/smart-text";
 import { readSteps } from "../plans/steps";
+import { partTextSql } from "./partText";
 import { smartAnswers } from "./smartText";
 
 // Lessons written before lessons came in parts, and the one rule that says whether such a lesson is finished. An
@@ -24,8 +25,7 @@ const OLD_LESSONS_SQL = `SELECT i.id, i.body_json AS body,
     (SELECT MAX(e.created_at) FROM learning_events e WHERE e.item_id = i.id AND e.kind = 'answer_given') AS answeredAt
   FROM items i
   WHERE i.plan_id = ? AND i.topic_id = ? AND i.kind = 'lesson' AND i.engine_provider IS NOT NULL
-    AND COALESCE(i.prompt_template, '') <> 'lesson.part'
-    AND i.id NOT IN (SELECT item_id FROM lesson_parts WHERE item_id IS NOT NULL)
+    AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "i")})
   ORDER BY i.created_at DESC, i.rowid DESC`;
 
 /** Whether every question of the lesson's closing recap has an answer. A lesson without a recap is finished by "Fatto". */

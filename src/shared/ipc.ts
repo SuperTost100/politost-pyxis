@@ -892,6 +892,13 @@ export const requests = {
       write: z.boolean().optional(),
       /** A saved lesson item of the topic, from a finished step. */
       itemId: z.string().optional(),
+      /**
+       * The level the student chose on the part: kept on the outline for the parts written after it, and the written
+       * part shown at it, from a text written at that level before or written again in the part's job.
+       */
+      wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      /** Write the written part again ("Riscrivi questa parte"), at `wording` or at the level of its text. */
+      regenerate: z.boolean().optional(),
     }),
     output: z.discriminatedUnion("mode", [
       z.object({
@@ -921,6 +928,19 @@ export const requests = {
         next: PartView.nullable(),
         /** The lesson written before parts that this lesson in parts rewrites, or is about to: "Leggi la versione di prima". */
         replaces: z.object({ itemId: z.string() }).nullable(),
+        /**
+         * The written part being written again (`writing`), or the last time that failed (`failed`, with the job's
+         * error, null after a quit): `level` at a level the student chose, `again` at its own. Its text stays readable.
+         */
+        rewrite: z
+          .object({
+            state: z.enum(["writing", "failed"]),
+            rewrite: z.enum(["level", "again"]),
+            wording: z.enum(["simple", "balanced", "technical"]),
+            error: z.string().nullable(),
+            jobId: z.string(),
+          })
+          .nullable(),
       }),
     ]),
   },
@@ -931,6 +951,8 @@ export const requests = {
       section: z.number().int().min(0),
       note: z.string().max(500).optional(),
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      /** A section of this part of the topic's lesson in parts, in the text the part shows now. */
+      position: z.number().int().min(1).optional(),
     }),
     output: LessonOutput,
   },

@@ -83,7 +83,7 @@ function RewriteFallback({
     <LegacyLessonPage
       itemId={data.replaces!.itemId}
       notice={{
-        text: engine ? `${t("lesson.rewriteFailed")} ${engine.text}` : t("lesson.rewriteFailed"),
+        text: engine ? `${t("lesson.oldRewriteFailed")} ${engine.text}` : t("lesson.oldRewriteFailed"),
         action: { label: t("lesson.partRetry"), onClick: () => retry.mutate(), disabled: retry.isPending },
         secondary:
           engine?.action ??

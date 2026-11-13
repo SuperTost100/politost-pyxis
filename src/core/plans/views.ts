@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { IpcError } from "../../shared/ipc";
 import { startAttempt } from "../study/attempt";
 import { BOOK_VERSION } from "../study/lesson";
+import { partTextSql } from "../study/partText";
 import { putSetting } from "../settings";
 import { topicTitle } from "../../shared/book-text";
 
@@ -117,17 +118,18 @@ export function topicContent(
   // lesson. Book text of passages no model lesson covers (new material after a rebuild) stays, and so does a lesson
   // without an engine under any other key (one from a shared plan file). A quiz without a question is a build that
   // failed or has not written anything yet. A part of a lesson in parts opens from the lesson, not as an item of its
-  // own, and is no model lesson that makes book text a leftover.
+  // own, and is no model lesson that makes book text a leftover. That holds for every text of a part, also one written
+  // at a level the part no longer shows (`partTextSql`).
   const items = db
     .prepare(
       `SELECT id,kind,created_at AS createdAt FROM items i WHERE plan_id=@plan AND topic_id=@topic
-         AND id NOT IN (SELECT item_id FROM lesson_parts WHERE item_id IS NOT NULL)
+         AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "i")})
          AND NOT (kind='lesson' AND engine_provider IS NULL
            AND coalesce((SELECT CASE WHEN json_valid(k) THEN json_extract(k,'$.promptVersion') END
                 FROM (SELECT json_extract(i.body_json,'$.cacheKey') AS k)), '') = @book
            AND EXISTS (SELECT 1 FROM items m WHERE m.plan_id=i.plan_id AND m.topic_id=i.topic_id AND m.kind='lesson'
              AND m.engine_provider IS NOT NULL
-             AND m.id NOT IN (SELECT item_id FROM lesson_parts WHERE item_id IS NOT NULL)
+             AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "m")})
              AND NOT EXISTS (SELECT 1 FROM item_passages b WHERE b.item_id=i.id
                AND b.passage_id NOT IN (SELECT passage_id FROM item_passages c WHERE c.item_id=m.id))))
          AND NOT (kind='quiz' AND coalesce(json_array_length(body_json,'$.questions'),0)=0)

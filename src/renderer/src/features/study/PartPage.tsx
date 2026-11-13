@@ -25,8 +25,9 @@ import { stepPath } from "../plans/reopen";
 import { ExportButton } from "../share/ExportButton";
 import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
-import { focusFollowsAnswer, oldLessonView, startsOnOpen, workingCopy, type PartData } from "./partPage";
+import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
+import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
 import "./PartPage.css";
 
@@ -54,7 +55,10 @@ export function usePartQuery(planId: string, topicId: string, position: number |
       previousQuery?.queryKey[1] === planId && previousQuery.queryKey[2] === topicId ? previous : undefined,
     refetchInterval: (query) => {
       const data = query.state.data;
-      return data?.mode === "parts" && (data.state === "planning" || data.state === "writing") ? 1000 : false;
+      return data?.mode === "parts" &&
+        (data.state === "planning" || data.state === "writing" || data.rewrite?.state === "writing")
+        ? 1000
+        : false;
     },
     queryFn: async () => {
       const input = {
@@ -142,27 +146,26 @@ export function PartPage({
   const answered = questions.length > 0 && questions.every((id) => lesson?.answers[id] !== undefined);
   const active = Boolean(part?.done) || answered;
 
-  const focusTitleNow = () =>
-    requestAnimationFrame(() =>
-      document.querySelector<HTMLElement>(".px-reader-head h1")?.focus({ preventScroll: false }),
-    );
-  // A part the page shows from its own read opens at its title, which takes the focus, however the student came to it:
-  // Continua, the parts column or its popover, Rileggi una parte, a link. Back and Forward (and a reload) keep where
-  // the student was in that part, which the browser restores on every page of the app. A part being planned or written
-  // gives the focus to its working block instead. Never a smooth scroll: the page changes in place.
+  // Moves the page as `pageMove` decides, the one rule for where the page scrolls and what takes the focus when a part
+  // opens or arrives and when a rewrite starts or ends. The working block gives the focus to its way back itself, as it
+  // appears.
+  const place = (move: ReturnType<typeof pageMove>) => {
+    if (move.scroll === "top") window.scrollTo({ top: 0, behavior: "instant" });
+    if (move.scroll === "block")
+      workRef.current?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    const title = () => document.querySelector<HTMLElement>(".px-reader-head h1");
+    if (move.focus === "title" && move.scroll === "title") requestAnimationFrame(() => title()?.focus({ preventScroll: false }));
+    else if (move.focus === "title") title()?.focus({ preventScroll: true });
+  };
+  /** Whether the focus is in the working block that is going, or nowhere. */
+  const focusInBlock = () => {
+    const active = document.activeElement;
+    return !active || active === document.body || Boolean(workRef.current?.contains(active));
+  };
   const navigation = useNavigationType();
-  const presented = useRef<number | null>(null);
-  useEffect(() => {
-    if (query.isPlaceholderData || presented.current === data.position) return;
-    presented.current = data.position;
-    if (navigation === "POP") return;
-    window.scrollTo({ top: 0, behavior: "instant" });
-    if (data.state !== "planning" && data.state !== "writing")
-      document.querySelector<HTMLElement>(".px-reader-head h1")?.focus({ preventScroll: true });
-  }, [data.position, data.state, query.isPlaceholderData, navigation]);
 
   // Old lessons in parts: a lesson written before parts being rewritten, until its first part is written.
-  const rewriting = oldLessonView(data) === "rewriting";
+  const rewritingOld = oldLessonView(data) === "rewriting";
 
   // The block that closes as the part it waited for arrives, and the text that fades in under it.
   const [arriving, setArriving] = useState<{
@@ -173,19 +176,17 @@ export function PartPage({
   const seen = useRef<{ position: number; state: PartData["state"]; rewriting: boolean } | null>(null);
   useEffect(() => {
     const before = seen.current;
-    seen.current = { position: data.position, state: data.state, rewriting };
+    seen.current = { position: data.position, state: data.state, rewriting: rewritingOld };
     if (
       before?.position === data.position &&
       (before.state === "writing" || before.state === "planning") &&
       data.state === "written"
     ) {
-      // The focus was on the block's way back, which goes with it, or nowhere: the title of the part takes it.
-      const active = document.activeElement;
-      const inBlock = !active || active === document.body || Boolean(workRef.current?.contains(active));
+      const inBlock = focusInBlock();
       if (!reducedMotion()) setArriving({ position: before.position, state: before.state, rewriting: before.rewriting });
-      if (inBlock) focusTitleNow();
+      place(pageMove("arrived", { back: false, working: false, focusInBlock: inBlock }));
     } else if (before && before.position !== data.position) setArriving(null);
-  }, [data.position, data.state, rewriting]);
+  }, [data.position, data.state, rewritingOld]);
   useEffect(() => {
     if (!arriving) return;
     // Ends the closing when no transition runs, as in a hidden window.
@@ -308,13 +309,44 @@ export function PartPage({
     }
   };
 
+  // The part's level and rewrites: "Livello" in the bar, the rewrites in the part's menu, and their states over the text.
+  const rewrites = usePartRewrites({ planId, topicId, data, query, queryKey, written });
+  const rewriting = written && rewrites.writing;
+  const rewriteArrived = useRewriteArrival(data, rewriting, reducedMotion(), () =>
+    place(pageMove("rewriteEnded", { back: false, working: false, focusInBlock: focusInBlock() })),
+  );
+
+  // A part the page shows from its own read opens at its title, however the student came to it: Continua, the parts
+  // column or its popover, Rileggi una parte, a link. A part planned or written, or one being rewritten, opens at its
+  // working block instead.
+  const presented = useRef<number | null>(null);
+  useEffect(() => {
+    if (query.isPlaceholderData || presented.current === data.position) return;
+    presented.current = data.position;
+    const working = data.state === "planning" || data.state === "writing" || rewriting;
+    place(pageMove("opened", { back: navigation === "POP", working, focusInBlock: false }));
+  }, [data.position, data.state, query.isPlaceholderData, navigation, rewriting]);
+
+  // A rewrite starts from the bar or the part's menu, wherever the student is in the part: the page moves to the block
+  // that shows it, over the text that is about to change. A part opened while its rewrite runs is placed as it opens.
+  const wasRewriting = useRef({ position: data.position, rewriting });
+  useEffect(() => {
+    const last = wasRewriting.current;
+    wasRewriting.current = { position: data.position, rewriting };
+    if (rewriting && !last.rewriting && last.position === data.position)
+      place(pageMove("rewriteStarted", { back: false, working: true, focusInBlock: false }));
+  }, [data.position, rewriting]);
+
   // The part's menu: the dots in the bar, and a right-click or the menu keys on the part's head.
   const menu: MenuProps = {
     items: [
+      ...rewrites.menuItems,
+      { type: "divider" },
       { key: "map", icon: <Network size={16} aria-hidden />, label: t("map.title") },
       { key: "export", icon: <Download size={16} aria-hidden />, label: t("export.title"), disabled: !written },
     ],
     onClick: ({ key }) => {
+      if (rewrites.onMenu(key)) return;
       if (key === "map") navigate(`/plans/${planId}/map/${topicId}`);
       if (key === "export") setExportOpen(true);
     },
@@ -365,7 +397,7 @@ export function PartPage({
   const block = working ? (
     <WorkingBlock
       copy={
-        rewriting
+        rewritingOld
           ? rewritingCopy
           : workingCopy({
               state: data.state === "planning" || !outline ? "planning" : "writing",
@@ -375,7 +407,7 @@ export function PartPage({
             })
       }
       onBack={() => navigate(`/plans/${planId}`)}
-      onEarlier={rewriting ? readEarlier : undefined}
+      onEarlier={rewritingOld ? readEarlier : undefined}
     />
   ) : arriving?.position === data.position ? (
     <WorkingBlock
@@ -388,6 +420,8 @@ export function PartPage({
       onEarlier={arriving.rewriting ? readEarlier : undefined}
       still
     />
+  ) : rewriting || rewriteArrived ? (
+    <WorkingBlock copy={rewrites.copy} onBack={() => navigate(`/plans/${planId}`)} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";
@@ -423,10 +457,16 @@ export function PartPage({
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
       onBack={() => navigate(`/plans/${planId}`)}
-      actions={<MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
+      actions={
+        <>
+          {rewrites.levelMenu}
+          <MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />
+        </>
+      }
       sheetClassName="px-part-sheet"
     >
       {headMenu.popup}
+      {rewrites.dialogs}
       {outline && many ? (
         <Popover
           open={listOpen}
@@ -447,7 +487,17 @@ export function PartPage({
       ) : null}
       <div key={data.position} className={turned.current ? "px-part-body is-turned" : "px-part-body"}>
         {block ? (
-          <div ref={workRef} className={working ? "px-part-work" : "px-part-work is-closing"} aria-hidden={working ? undefined : true}>
+          <div
+            ref={workRef}
+            className={[
+              "px-part-work",
+              working || rewriting ? "" : "is-closing",
+              !working && (rewriting || rewriteArrived) ? "is-rewrite" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            aria-hidden={working || rewriting ? undefined : true}
+          >
             <div>{block}</div>
           </div>
         ) : null}
@@ -474,6 +524,8 @@ export function PartPage({
             </Notice>
           </div>
         ) : null}
+        {rewrites.failure}
+        {rewrites.sectionProgress}
         {written && lesson?.general ? (
           <div className="px-reader-note">
             <Tag tone="general">{t("components.tags.general")}</Tag>
@@ -481,7 +533,7 @@ export function PartPage({
           </div>
         ) : null}
         {(written || data.state === "book") && lesson ? (
-          <div className={arriving?.position === data.position ? "px-part-text is-arriving" : "px-part-text"}>
+          <div className={arriving?.position === data.position || rewriteArrived ? "px-part-text is-arriving" : "px-part-text"}>
             <SelectionMenu
               planId={planId}
               topicId={topicId}
@@ -491,7 +543,7 @@ export function PartPage({
               <SmartText
                 figures={lesson.figures}
                 answers={lesson.answers}
-                onAnswer={written && lesson.itemId ? answer : undefined}
+                onAnswer={written && lesson.itemId && !rewriting ? answer : undefined}
                 final={written ? { label: t("lesson.finalCheck"), keys: true } : undefined}
                 onCitationClick={(number) => {
                   const passageId = lesson.passageIds[number - 1];
