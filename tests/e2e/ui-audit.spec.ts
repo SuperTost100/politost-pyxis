@@ -2749,6 +2749,8 @@ async function openState(page: Page, name: string) {
       // view. Opened again while it is open (the reopen after the keyboard walk), the text shown until then is replaced,
       // and a selection made in it is lost with it; the scroll's event comes a frame later and hides the toolbar of a
       // selection made before it. A slow runner selects in between, so the text must be in place and at rest first.
+      // The title keeps the focus from one opening to the next, so the focus alone does not say the new text is there:
+      // `atRest` starts again when the paragraph it watches is replaced.
       await expect(page.locator(".source-panel .source-viewer-title")).toBeFocused();
       await atRest(page.locator(".source-viewer-paragraph p").first());
       await selectText(page, ".source-viewer-paragraph p");

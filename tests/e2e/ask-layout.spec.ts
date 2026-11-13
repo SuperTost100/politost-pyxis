@@ -212,8 +212,11 @@ test("Ask: composer stays docked, the newest message is in view and nothing over
 
     // The saved reply replaces the streamed one off screen, so it is skipped (content-visibility) at its 240px placeholder
     // until the window draws its next frame, which lays it out and scrolls to it. A Mac runner draws few frames and can
-    // measure in between, before what the student sees exists; wait for the last message to settle first.
-    await atRest(page.locator(".ask-thread > .px-msg").last());
+    // measure in between, before what the student sees exists; wait for the last message to settle first. Only a saved
+    // reply has a foot, so the wait is on the saved one and not on the streamed one it replaces.
+    const saved = page.locator(".ask-thread > .px-msg").last();
+    await expect(saved.locator(".px-msg-foot")).toBeAttached();
+    await atRest(saved);
     // The page scrolls to the newest message after the reply ends; a slow runner can measure before it gets there.
     await expect
       .poll(() =>
