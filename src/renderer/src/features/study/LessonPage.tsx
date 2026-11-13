@@ -372,23 +372,29 @@ export function LessonPage() {
         </div>
       ) : lesson.isError || data?.fallback ? (
         <div className="px-reader-note">
-          <Notice
-            tone={cancelled ? "info" : data?.fallback ? "warning" : "danger"}
-            action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
-            secondary={
-              // A refused sign-in names its engine and opens its sign-in; any other engine failure opens the engines page.
-              fallbackError?.action ??
-              ((lesson.isError && !cancelled) || data?.fallbackReason
-                ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }
-                : undefined)
-            }
-          >
-            {data?.fallback
-              ? fallbackError
-                ? `${t("lesson.sourceFallback")} ${fallbackError.text}`
-                : t("lesson.sourceFallback")
-              : t(cancelled ? "lesson.cancelled" : "lesson.failed")}
-          </Notice>
+          {/* What the notice says and its tone come from one kind, so a text for one cannot be drawn as another. */}
+          {(() => {
+            const kind = data?.fallback ? "fallback" : cancelled ? "cancelled" : "failed";
+            return (
+              <Notice
+                tone={{ fallback: "warning", cancelled: "info", failed: "danger" }[kind] as "warning" | "info" | "danger"}
+                action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
+                secondary={
+                  // A refused sign-in names its engine and opens its sign-in; any other engine failure opens the engines page.
+                  fallbackError?.action ??
+                  ((lesson.isError && !cancelled) || data?.fallbackReason
+                    ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }
+                    : undefined)
+                }
+              >
+                {kind === "fallback"
+                  ? fallbackError
+                    ? `${t("lesson.sourceFallback")} ${fallbackError.text}`
+                    : t("lesson.sourceFallback")
+                  : t(kind === "cancelled" ? "lesson.cancelled" : "lesson.failed")}
+              </Notice>
+            );
+          })()}
         </div>
       ) : null}
       {rewritePart.isPending ? (

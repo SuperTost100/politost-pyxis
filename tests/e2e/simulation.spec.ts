@@ -10,6 +10,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { seedPlan, seedSubjects } from "./seed";
 
 test("LES-20 through LES-23 exam timer restart, auto-submit and named grading model", async () => {
   test.setTimeout(240000);
@@ -308,6 +309,56 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
         "Live simulation graders",
         result.results.map((r) => r.model),
       );
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a failure that is not a missing AI tool is red with no Settings action, even after one that was", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-simulation-notice-"));
+  // No engine anywhere, so handing in cannot start the grading.
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+    seedPlan(db, { id: "p-sim", subjectId: "s-fis", title: "Fisica 1", language: "it", target: 0.75, topics: [{ id: "t1", title: "Dinamica" }] });
+    db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('run-exam','p-sim','t1','simulation',?,'fixture','sources',?)").run(
+      JSON.stringify({
+        minutes: 60,
+        questions: [{ id: "run-1", topicId: "t1", stem: "Calcola la forza con $m=2$ e $a=3$.", answer: { kind: "completion", accepted: [["6 N"]] } }],
+        picks: { "run-1": "6 N" },
+      }),
+      Date.now(),
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('run-attempt','p-sim','run-exam',?)").run(Date.now());
+    await page.evaluate(() => {
+      location.hash = "/plans/p-sim/exam/run-attempt";
+    });
+    await page.reload();
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    await expect(answer).toBeVisible();
+    const settings = page.getByRole("button", { name: "Apri le Impostazioni" });
+
+    // Handing in with no AI tool to grade: the one case that asks to set one up, so amber, with the way to Settings.
+    await page.getByRole("button", { name: "Consegna" }).first().click();
+    const missing = page.locator(".px-notice", { hasText: "Scegli uno strumento per la correzione" });
+    await expect(missing).toBeVisible();
+    await expect(missing).toHaveClass(/\bis-warning\b/);
+    await expect(settings).toBeVisible();
+
+    // Then the answer cannot be saved (the attempt is gone): a failure, so red, and not the "set up a tool" notice.
+    db.exec("DELETE FROM attempts; DELETE FROM items WHERE id = 'run-exam'");
+    await answer.fill("6 N, quindi sei newton");
+    const failed = page.locator(".px-notice", { hasText: "L’ultima risposta non si è salvata" });
+    await expect(failed).toBeVisible();
+    await expect(failed).toHaveClass(/\bis-danger\b/);
+    await expect(settings).toHaveCount(0);
+    db.close();
   } finally {
     await app.close();
     removeTestFolder(userData);
