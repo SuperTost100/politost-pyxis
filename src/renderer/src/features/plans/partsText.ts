@@ -80,3 +80,12 @@ export function partsHeading(t: T, outline: Outline): string {
   const recap = outline.parts.some((part) => part.kind === "recap");
   return t(recap ? "plans.path.lessonPartsRecap" : "plans.path.lessonParts", { count: outline.teaching });
 }
+
+/**
+ * Old lessons in parts: whether a topic's lesson step stays on its row beside the parts. A lesson finished before it
+ * was rewritten in parts keeps its done step, which reopens the version the student finished, while the parts are not
+ * all read again; the parts of a lesson finished by reading them stand for the step.
+ */
+export function keepsLessonStep(outline: Outline, lessonDone: boolean): boolean {
+  return lessonDone && outline.parts.some((part) => !part.done);
+}

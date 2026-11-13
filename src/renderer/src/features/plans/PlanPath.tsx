@@ -18,7 +18,7 @@ import {
   type StepChip,
   type TopicRow,
 } from "./pathRows";
-import { partPath, partsHeading, partsLine, type Outline } from "./partsText";
+import { keepsLessonStep, partPath, partsHeading, partsLine, type Outline } from "./partsText";
 import { reopenPath, stepPath } from "./reopen";
 import type { useGapDrill } from "./useGapDrill";
 import "./PlanPath.css";
@@ -147,12 +147,16 @@ export function PlanPath({
       ? t("plans.path.late")
       : t("examPage.by", { date: day(date) });
   }
+  function lessonDone(row: TopicRow) {
+    return row.steps.some((chip) => chip.activity === "lesson" && chip.state === "done");
+  }
   function sub(row: TopicRow, outline: Outline | null) {
     if (row.atGoal)
       return row.gaps > 0
         ? t("examPage.toReview", { count: row.gaps })
         : t("plans.path.atGoal");
-    const reading = outline ? partsLine(t, outline) : null;
+    // A lesson finished before it was rewritten in parts stays finished: the row keeps its usual line.
+    const reading = outline && !lessonDone(row) ? partsLine(t, outline) : null;
     if (reading) return reading;
     if (row.current)
       return t("examPage.stepsDone", {
@@ -422,8 +426,13 @@ export function PlanPath({
                     className="px-xpath-substeps"
                     aria-label={t("plans.path.stepsFor", { topic: row.title })}
                   >
-                    {/* A lesson in parts lists its parts above, in the lesson step's place. */}
-                    {row.steps.filter((chip) => !(outline && chip.activity === "lesson")).map((chip) => (
+                    {/* A lesson in parts lists its parts above, in the lesson step's place; one finished before it was rewritten in parts keeps its step. */}
+                    {row.steps
+                      .filter(
+                        (chip) =>
+                          !(outline && chip.activity === "lesson" && !keepsLessonStep(outline, lessonDone(row))),
+                      )
+                      .map((chip) => (
                       <li key={chip.activity}>
                         <button
                           type="button"
