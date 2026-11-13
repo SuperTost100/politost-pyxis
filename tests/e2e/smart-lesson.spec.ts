@@ -117,7 +117,8 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     }),
   );
   const replies = {
-    markdown: { markdown: lesson },
+    // The rewrite of the unfinished lesson in parts fails; the lesson written again at another level is the recorded one.
+    markdown: [{ fail: "Il motore non ha risposto." }, { markdown: lesson }],
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Che cosa cambia una forza ${i + 1}?`,
@@ -206,25 +207,22 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await saveShot(page, `smart-text/intro-answered-it-light.png`);
 
     const learn = { topicId: (await read()).topics[0]!.id };
-    // The lesson this spec reads is on the reader that came before parts; lessons in parts have their own spec.
+    // The student's own smart lesson, written before lessons came in parts and never finished. Opening it rewrites it in
+    // parts, and the recorded engine fails that, so it stays in the reader that came before parts, as it was; lessons
+    // in parts have their own spec.
     const before = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    seedLessonBeforeParts(before, planId, [learn.topicId]);
+    seedLessonBeforeParts(before, planId, [learn.topicId], { markdown: lesson, wording: "balanced" });
     before.close();
 
-    // Generating: an in-place status with Stop and skeleton lines, then the lesson.
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;
       },
       { planId, topicId: learn.topicId },
     );
-    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
-    await expect(status).toBeVisible();
-    // Stop sits beside the status line, outside the live region.
-    await expect(status.locator("xpath=..").getByRole("button", { name: "Interrompi" })).toBeVisible();
-    await saveShot(page, `smart-text/lesson-generating-it-light.png`);
+    await expect(page.getByRole("status").filter({ hasText: "Sto riscrivendo la lezione in parti brevi" })).toBeVisible();
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
-    await expect(status).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a riscrivere la lezione in parti.", { exact: false })).toBeVisible();
     // Opening the lesson did not mark it done.
     expect(await done("lesson", learn.topicId)).toBe(false);
     await expect(page.getByText("Rispondi al ripasso finale per completare la lezione, oppure segnala che hai finito.")).toBeVisible();
@@ -262,12 +260,6 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       await language(page, lang, theme);
       await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
       await saveShot(page, `smart-text/lesson-top-${lang}-${theme}.png`);
-      await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
-      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una sezione|Rewrite a section)$/ })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
-      await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);
-      await page.keyboard.press("Escape");
     }
     await language(page, "it", "light");
     // Export opens from the menu.
@@ -321,6 +313,28 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect(await done("lesson", learn.topicId)).toBe(true);
 
+    // Finished, the lesson opens in its reader as it was, with every action of its menu.
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}/lesson/${topicId}`;
+      },
+      { planId, topicId: learn.topicId },
+    );
+    await expect(page.getByText("Non sono riuscito a riscrivere la lezione in parti.", { exact: false })).toHaveCount(0);
+    await expect(recap.getByText("2 su 3 giuste")).toBeVisible({ timeout: 20000 });
+    for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
+      await language(page, lang, theme);
+      await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
+      await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
+      await expect(page.getByRole("menuitem", { name: /^(Riscrivi in parti|Rewrite in parts)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una sezione|Rewrite a section)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
+      await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);
+      await page.keyboard.press("Escape");
+    }
+    await language(page, "it", "light");
+
     // Another wording is another lesson: the same recap there starts unanswered, and its answer is saved for it.
     // The topic's own answers: the introduction's check answered above has no topic.
     const checkAnswers = () => {
@@ -341,7 +355,12 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.getByRole("button", { name: "Livello Bilanciato" }).click();
     await page.getByRole("menuitem", { name: "Semplice" }).click();
     await expect(page.getByRole("button", { name: "Livello Semplice" })).toBeVisible();
+    // Writing: an in-place status with Stop and skeleton lines, then the lesson.
+    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
     await expect(status).toBeVisible();
+    // Stop sits beside the status line, outside the live region.
+    await expect(status.locator("xpath=..").getByRole("button", { name: "Interrompi" })).toBeVisible();
+    await saveShot(page, `smart-text/lesson-generating-it-light.png`);
     await expect(status).toHaveCount(0, { timeout: 20000 });
     await expect(recap.getByText("2 su 3 giuste")).toHaveCount(0);
     await recap.getByRole("button", { name: /^[A-C] Newton$/ }).click();
