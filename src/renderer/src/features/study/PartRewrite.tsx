@@ -146,7 +146,11 @@ export function usePartRewrites({
     },
   });
 
-  const writing = rewrite?.state === "writing" || choose.isPending;
+  // A choice on its way to core writes the part again unless it names the level the text already has, which only
+  // keeps that level for the parts after this one.
+  const changing =
+    choose.isPending && (choose.variables?.regenerate === true || choose.variables?.wording !== wording);
+  const writing = rewrite?.state === "writing" || changing;
   const noun = partNoun(data);
   const named = t(`lesson.rewriteWhat.${noun}`, { n: data.position });
   const busy = writing || rewriteSection.isPending;
@@ -198,14 +202,16 @@ export function usePartRewrites({
     return false;
   };
 
-  // The level the new text is written at, named while it is written: the job's, or the one just chosen.
-  const toLevel = rewrite
-    ? rewrite.rewrite === "level"
-      ? rewrite.wording
-      : undefined
-    : choose.isPending
-      ? choose.variables?.wording
-      : undefined;
+  // The level the new text is written at, named only while it is written: the job's, or the one just chosen. After a
+  // failure the menu names the level of the text on screen, and the failure names the level that failed.
+  const toLevel =
+    rewrite?.state === "writing"
+      ? rewrite.rewrite === "level"
+        ? rewrite.wording
+        : undefined
+      : changing
+        ? choose.variables?.wording
+        : undefined;
   const copy: { title: [string, Record<string, unknown>?]; line: [string, Record<string, unknown>?] | null } = {
     title: ["lesson.rewritingTitle", { what: named }],
     line: toLevel ? ["lesson.rewritingLevelLine", { level: t(`lesson.wording.${toLevel}`) }] : ["lesson.rewritingAgainLine"],
@@ -216,7 +222,8 @@ export function usePartRewrites({
     <LevelMenu
       wording={toLevel ?? wording}
       disabled={busy}
-      onChoose={(value) => value !== wording && choose.mutate({ wording: value })}
+      // The level the text already has is a choice too: core keeps it for the parts after this one, with no call.
+      onChoose={(value) => choose.mutate({ wording: value })}
     />
   ) : null;
 

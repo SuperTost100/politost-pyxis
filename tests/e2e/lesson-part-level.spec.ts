@@ -86,6 +86,8 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
           // Writing part 2 again fails, and Riprova writes it.
           { fail: "engine down" },
           { markdown: partText("Frontiera riprovata") },
+          // "Tecnico" on part 2 fails.
+          { fail: "engine down" },
         ],
       }),
       PYXIS_E2E_PLAN_DELAY: "300",
@@ -246,6 +248,19 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     await expect(failed).toHaveCount(0);
     await expect(parts(page).getByRole("link", { name: /Interno, esterno, frontiera.*letta/ })).toBeVisible();
 
+    // A level that fails: the menu names the level of the text on screen, and the failure names the one that failed.
+    await levelButton(page).click();
+    await page.getByRole("menuitem", { name: "Tecnico" }).click();
+    const levelFailed = page.getByText("Non sono riuscito a riscrivere la parte 2 al livello Tecnico.", { exact: false });
+    await expect(levelFailed).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { level: 2, name: "Frontiera riprovata: l'idea" })).toBeVisible();
+    await expect(levelButton(page)).toHaveText(/Semplice/);
+    await levelButton(page).click();
+    await expect(page.getByRole("menuitem", { name: "Semplice" })).toHaveClass(/ant-dropdown-menu-item-selected/);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Tieni questa versione" }).click();
+    await expect(levelFailed).toHaveCount(0);
+
     // The part's menu from the keyboard: the dots, a right-click and Shift+F10 open it, and one Escape closes only it.
     await dots(page).focus();
     await page.keyboard.press("Enter");
@@ -268,13 +283,33 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Riscrivere questa parte?" })).toHaveCount(0);
     await expect(page).toHaveURL(/\/lesson\/t-funzioni\?part=2$/);
-    // Riscrivi questa parte twice, the second one retried: two jobs. The section was rewritten by the page's own call.
+    // Riscrivi questa parte twice, the second one retried: two jobs. "Tecnico"'s failed job went with "Tieni questa
+    // versione", and the section was rewritten by the page's own call.
     expect(jobCount()).toBe(jobs + 2);
 
     // Part 3 opens at the level chosen on part 2.
     await page.getByRole("button", { name: /^Continua/ }).click();
     await expect(page.getByText("Aperti semplice: l'idea")).toBeVisible({ timeout: 30_000 });
     await expect(levelButton(page)).toHaveText(/Semplice/);
+
+    // Back on part 1, done at "Bilanciato", the student picks "Bilanciato" for the parts to come: core keeps it on the
+    // outline, with nothing to write, and the menu still says what the level applies to.
+    await parts(page).getByRole("link", { name: /Intorni e distanza/ }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "Intorni: l'idea" })).toBeVisible({ timeout: 30_000 });
+    await expect(levelButton(page)).toHaveText(/Bilanciato/);
+    const before = jobCount();
+    await levelButton(page).click();
+    await expect(page.getByText("Vale per questa parte e per le prossime")).toBeVisible();
+    await page.getByRole("menuitem", { name: "Bilanciato" }).click();
+    const outlineWording = () => {
+      const read = db();
+      const row = read.prepare("SELECT wording FROM lesson_outlines WHERE topic_id = 't-funzioni'").get() as { wording: string | null };
+      read.close();
+      return row.wording;
+    };
+    await expect.poll(outlineWording).toBe("balanced");
+    await expect(levelButton(page)).toHaveText(/Bilanciato/);
+    expect(jobCount()).toBe(before);
     expect(errors).toEqual([]);
   } finally {
     await app.close();
