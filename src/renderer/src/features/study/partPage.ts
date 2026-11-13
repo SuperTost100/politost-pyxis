@@ -56,3 +56,17 @@ export function focusFollowsAnswer(before: unknown, now: unknown, body: unknown)
 export function startsOnOpen(read: RequestOutput<"study.part">): boolean {
   return read.mode === "parts" && read.state === "failed" && read.error === null;
 }
+
+// Old lessons in parts.
+
+/**
+ * How the page shows a lesson in parts that rewrites one written before parts, while none of its parts is written:
+ * `rewriting` while it is planned or written, with the way to the earlier version; `fallback` when the rewrite failed,
+ * stopped or found no AI tool, so the old lesson shows as it was, under what happened and Riprova. Null otherwise.
+ */
+export function oldLessonView(data: Pick<PartData, "replaces" | "outline" | "state">): "rewriting" | "fallback" | null {
+  if (!data.replaces || data.outline?.parts.some((part) => part.state === "written")) return null;
+  if (data.state === "planning" || data.state === "writing") return "rewriting";
+  if (data.state === "failed" || data.state === "book") return "fallback";
+  return null;
+}

@@ -366,7 +366,7 @@ describe("a rewrite keeps everything the student made", () => {
 });
 
 describe("a rewrite that does not finish leaves the old lesson as it was", () => {
-  async function failed(setUpFailure: (db: Db, engine: ReturnType<typeof engine>) => void) {
+  async function failed(setUpFailure: (db: Db, recorded: ReturnType<typeof engine>) => void) {
     const { db, runner, engine } = setUp();
     saveOld(db, { id: "old" });
     answer(db, "old", 0);

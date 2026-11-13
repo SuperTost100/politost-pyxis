@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Download,
   Ellipsis,
+  ListOrdered,
   Network,
   PencilLine,
   RefreshCw,
@@ -47,7 +48,25 @@ type Wording = "simple" | "balanced" | "technical";
 type Lesson = RequestOutput<"study.lesson">;
 const wordings: Wording[] = ["simple", "balanced", "technical"];
 
-export function LegacyLessonPage() {
+/** A rewrite in parts that did not finish: what happened, with Riprova, above the old lesson it leaves as it was. */
+type RewriteNotice = {
+  text: string;
+  action: { label: string; onClick: () => void; disabled?: boolean };
+  secondary?: { label: string; onClick: () => void };
+  details?: string;
+};
+
+/**
+ * The reader that came before lessons in parts. Old lessons in parts: `old: "finished"` is a finished lesson written
+ * before parts, whose menu gets "Riscrivi in parti"; `old: "earlier"` is the version a lesson in parts rewrote, shown
+ * as it was, read-only, with the way back to the parts. `itemId` with `notice` shows the old lesson in place of a
+ * rewrite that did not finish: the student can still answer it and finish it, but not rewrite it in one piece.
+ */
+export function LegacyLessonPage({
+  old,
+  itemId,
+  notice,
+}: { old?: "finished" | "earlier"; itemId?: string; notice?: RewriteNotice } = {}) {
   const { t } = useTranslation();
   const { planId = "", topicId = "" } = useParams();
   useActiveTime(planId, topicId || null);
@@ -71,7 +90,12 @@ export function LegacyLessonPage() {
   // Opened from a finished step: that saved lesson is shown as it was read, until the student picks a level or
   // rewrites it. Without it (or if it is gone) the topic's lesson opens as usual.
   const [searchParams] = useSearchParams();
-  const [reopened] = useState(() => searchParams.get("item") ?? undefined);
+  const [reopened] = useState(() => itemId ?? searchParams.get("item") ?? undefined);
+  // The earlier version of a lesson now in parts is read as it was; neither it nor the old lesson a rewrite fell back
+  // to is rewritten in one piece, by level or by section.
+  const readOnly = old === "earlier";
+  const fixed = readOnly || itemId !== undefined;
+  const [partsOpen, setPartsOpen] = useState(false);
   const reading = useRef(true);
   const key = ["lesson", planId, topicId, chosen ?? null, reopened ?? null];
   const lesson = useQuery({
@@ -130,6 +154,15 @@ export function LegacyLessonPage() {
       client.setQueryData(key, next);
       setSectionOpen(false);
       setNote("");
+    },
+  });
+  // "Riscrivi in parti" on a finished lesson: the rewrite starts, and the page opens part 1, which shows it at work.
+  const toParts = useMutation({
+    mutationFn: () => invoke("study.rewriteInParts", { planId, topicId }),
+    onSuccess: () => {
+      setPartsOpen(false);
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+      navigate(`/plans/${planId}/lesson/${topicId}?part=1`);
     },
   });
   const openNext = useOpenNext(planId);
@@ -270,19 +303,33 @@ export function LegacyLessonPage() {
       placement="bottomRight"
       menu={{
         items: [
-          {
-            key: "regenerate",
-            icon: <RefreshCw size={16} aria-hidden />,
-            label: t("lesson.regenerate"),
-            disabled: busy,
-          },
-          {
-            key: "section",
-            icon: <PencilLine size={16} aria-hidden />,
-            label: t("lesson.rewriteSection"),
-            disabled: busy || sections.length === 0,
-          },
-          { type: "divider" },
+          ...(old === "finished"
+            ? [
+                {
+                  key: "parts",
+                  icon: <ListOrdered size={16} aria-hidden />,
+                  label: t("lesson.rewriteInParts"),
+                  disabled: busy,
+                },
+              ]
+            : []),
+          ...(fixed
+            ? []
+            : [
+                {
+                  key: "regenerate",
+                  icon: <RefreshCw size={16} aria-hidden />,
+                  label: t("lesson.regenerate"),
+                  disabled: busy,
+                },
+                {
+                  key: "section",
+                  icon: <PencilLine size={16} aria-hidden />,
+                  label: t("lesson.rewriteSection"),
+                  disabled: busy || sections.length === 0,
+                },
+                { type: "divider" as const },
+              ]),
           {
             key: "map",
             icon: <Network size={16} aria-hidden />,
@@ -296,6 +343,10 @@ export function LegacyLessonPage() {
           },
         ],
         onClick: ({ key: action }) => {
+          if (action === "parts") {
+            toParts.reset();
+            setPartsOpen(true);
+          }
           if (action === "regenerate")
             void modal.confirm({
               icon: null,
@@ -351,12 +402,28 @@ export function LegacyLessonPage() {
       onBack={() => navigate(`/plans/${planId}`)}
       actions={
         <>
-          {levelMenu}
+          {fixed ? null : levelMenu}
           {moreMenu}
         </>
       }
     >
       {modalContext}
+      {notice ? (
+        <div className="px-reader-note">
+          <Notice tone="warning" action={notice.action} secondary={notice.secondary} details={notice.details}>
+            {notice.text}
+          </Notice>
+        </div>
+      ) : readOnly ? (
+        <div className="px-reader-note">
+          <Notice
+            tone="info"
+            action={{ label: t("lesson.backToParts"), onClick: () => navigate(`/plans/${planId}/lesson/${topicId}`) }}
+          >
+            {t("lesson.earlierNote")}
+          </Notice>
+        </div>
+      ) : null}
       {(writing ? liveGeneral : data?.general) ? (
         <div className="px-reader-note">
           <Tag tone="general">{t("components.tags.general")}</Tag>
@@ -411,7 +478,7 @@ export function LegacyLessonPage() {
           figures={data?.figures}
           answers={data?.answers}
           onAnswer={
-            writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
+            readOnly ? undefined : writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined
           }
           onCitationClick={(number) => {
             const passageId = (fromLive ? livePassages : data?.passageIds)?.[
@@ -440,7 +507,7 @@ export function LegacyLessonPage() {
       ) : null}
       {data && !writing ? (
         <>
-          <ReaderEnd
+          {readOnly ? null : <ReaderEnd
             state={!plan.data || !topic ? "other" : read ? "done" : "current"}
             doneLabel={t("lesson.doneTitle")}
             pendingHint={recapOpen ? t("lesson.recapPrompt") : undefined}
@@ -449,7 +516,7 @@ export function LegacyLessonPage() {
             onDone={() => markDone.mutate("done")}
             onContinue={() => markDone.mutate("continue")}
             onBack={() => navigate(`/plans/${planId}`)}
-          />
+          />}
           <SourcesFooter sources={data.sources} />
         </>
       ) : null}
@@ -461,6 +528,22 @@ export function LegacyLessonPage() {
         open={exportOpen}
         onOpenChange={setExportOpen}
       />
+      <Modal
+        open={partsOpen}
+        title={t("lesson.rewriteInPartsTitle")}
+        okText={t("lesson.rewriteInParts")}
+        cancelText={t("jobs.cancel")}
+        confirmLoading={toParts.isPending}
+        onOk={() => toParts.mutate()}
+        onCancel={() => !toParts.isPending && setPartsOpen(false)}
+        closable={!toParts.isPending}
+        maskClosable={!toParts.isPending}
+      >
+        <div className="px-reader-section">
+          <p>{t("lesson.rewriteInPartsNote")}</p>
+          {toParts.isError ? <Notice tone="danger">{t("lesson.rewriteInPartsFailed")}</Notice> : null}
+        </div>
+      </Modal>
       <Modal
         open={sectionOpen}
         title={t("lesson.rewriteSectionTitle")}
