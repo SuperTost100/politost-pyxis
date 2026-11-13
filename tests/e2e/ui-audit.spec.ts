@@ -27,7 +27,7 @@ import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
-import { saveShot } from "./shots";
+import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
@@ -3135,8 +3135,12 @@ async function openState(page: Page, name: string) {
       await auditApp!.evaluate((_, path) => {
         process.env.PYXIS_E2E_FILE = path;
       }, photo);
+      // Attaching lives in the composer's plus menu.
       await page
-        .getByRole("button", {
+        .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
+        .click();
+      await page
+        .getByRole("menuitem", {
           name: both("Allega file o immagine", "Attach file or image"),
         })
         .click();
@@ -4428,7 +4432,8 @@ test("M14 every application route in both languages, themes and supported widths
               const violations = await axeViolations(page);
               await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
-              await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });
+              // Without PYXIS_SHOTS (every CI run) nothing keeps it, and the full-page capture has already ended the animations.
+              if (SHOTS) await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });
               const errors = pageErrors.slice(before);
               const untranslated = (await page.locator("body").innerText())
                 .match(untranslatedKey)

@@ -100,8 +100,10 @@ jobs:
     if: ${{ !inputs.dev }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
-    # macOS arm64 also audits large text and took 35-40 minutes in October 2026, close to the old 45.
-    timeout-minutes: 60
+    # A run of the audit covers one combination: 207 states took 7.5 minutes on macOS arm64 in November 2026 (8.8 with large
+    # text) and 5 on Linux. macOS arm64 makes eight runs, four of them with large text, so a healthy job takes about 66
+    # minutes, and one run on a slow runner took 17. That is why 45 and then 60 minutes cancelled it.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
