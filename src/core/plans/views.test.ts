@@ -151,6 +151,30 @@ describe("plan views and material", () => {
     expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["new-book", "model"]);
     db.close();
   });
+  it("lists no part of a lesson in parts, and lets no part hide the book text", () => {
+    const db = fixture();
+    const insert = db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,created_at) VALUES(?,'p','t','lesson',?,?,?)",
+    );
+    const link = db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,'passage')");
+    const bookKey = JSON.stringify({ kind: "lesson", scopeId: "t", promptVersion: "book-1", passageIds: ["passage"] });
+    insert.run("book", JSON.stringify({ cacheKey: bookKey, markdown: "Velocity" }), null, 1);
+    link.run("book");
+    // Part 1 is written from the same passage; part 2 is not written yet.
+    insert.run("part1", JSON.stringify({ cacheKey: "part", markdown: "Velocity, briefly" }), "claude", 2);
+    link.run("part1");
+    db.exec(`
+      INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES('o','p','t','k','model',2);
+      INSERT INTO lesson_parts(id,outline_id,position,kind,title,passage_ids_json,minutes,item_id) VALUES
+        ('a','o',1,'part','Velocity','["passage"]',5,'part1'),('b','o',2,'part','Position','[]',5,NULL);
+    `);
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["book"]);
+    // An old model lesson on the same passage still replaces the book text, as it always did.
+    insert.run("model", JSON.stringify({ cacheKey: "model", markdown: "Velocity [P1]" }), "claude", 3);
+    link.run("model");
+    expect(topicContent(db, "p", "t").items.map((item) => item.id)).toEqual(["model"]);
+    db.close();
+  });
   it("marks real imports and opens an existing topic quiz without duplicating an unfinished attempt", () => {
     const db = fixture();
     markPlanImported(db, "p", 1);
