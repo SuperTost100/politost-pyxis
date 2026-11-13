@@ -383,16 +383,19 @@ describe("a part that is not finished leaves nothing half-saved", () => {
 });
 
 describe("opening a part", () => {
-  it("validates the part and the topic, and sends a lesson written before parts to the existing reader", async () => {
+  it("validates the part and the topic, and sends a finished lesson written before parts to the existing reader", async () => {
     const { db, runner } = setUp(6);
     expect(() => openPart(db, runner, { planId: "p", topicId: "t", position: 3, write: true })).toThrow("part-missing");
     expect(() => openPart(db, runner, { planId: "p", topicId: "other" })).toThrow("topic-missing");
     expect(() => openPart(db, runner, { planId: "p", topicId: "t", itemId: "nothing" })).toThrow("item-missing");
     expect(jobs(db)).toEqual([]);
+    // Finished with "Fatto": the lesson step is recorded. An unfinished one is rewritten in parts (oldLessons.test.ts).
     db.exec(`INSERT INTO items (id, plan_id, topic_id, kind, body_json, engine_provider, prompt_template, created_at)
-      VALUES ('old', 'p', 't', 'lesson', '{"cacheKey": "k", "markdown": "## Vecchia"}', 'claude', 'lesson.write', 1)`);
-    expect(openPart(db, runner, { planId: "p", topicId: "t", write: true })).toEqual({ mode: "legacy" });
-    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy" });
+      VALUES ('old', 'p', 't', 'lesson', '{"cacheKey": "k", "markdown": "## Vecchia"}', 'claude', 'lesson.write', 1);
+      INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+      VALUES ('done', 'lesson_completed', 'p', 't', '{"activity": "lesson", "itemId": "old"}', 2)`);
+    expect(openPart(db, runner, { planId: "p", topicId: "t", write: true })).toEqual({ mode: "legacy", old: "finished" });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "finished" });
     expect(openPart(db, runner, { planId: "p", topicId: "t" }, { agentLesson: true })).toEqual({ mode: "legacy" });
     expect(jobs(db)).toEqual([]);
   });

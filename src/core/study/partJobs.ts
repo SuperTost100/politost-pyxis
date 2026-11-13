@@ -7,6 +7,7 @@ import type { Runner } from "../jobs/runner";
 import type { FigureRunner } from "../math/figures";
 import { aboutPlan } from "./jobAbout";
 import { loadLessonById } from "./lesson";
+import { oldLesson } from "./oldLessons";
 import { bookMarkdown, requireTopic } from "./openLesson";
 import {
   RECAP_FROM,
@@ -34,6 +35,8 @@ export type PartJobParams = {
   position: number;
   /** The engine when the job was made; missing when none was set up, so the job fails as `engine-missing`. */
   selection?: GenerateInput["selection"];
+  /** Old lessons in parts: the lesson written before parts that the outline this job makes rewrites. */
+  replaces?: string;
 };
 
 type JobRow = { id: string; state: string; error: string | null };
@@ -111,7 +114,14 @@ export function registerPartJobs(
           const params = ctx.params as PartJobParams;
           // No engine, no outline: a topic of one part would be planned without a call, but its part cannot be written.
           const selection = params.selection ?? selectionFor(db, "lesson");
-          await planParts(db, { planId: params.planId, topicId: params.topicId, selection, run, signal: ctx.signal });
+          await planParts(db, {
+            planId: params.planId,
+            topicId: params.topicId,
+            selection,
+            run,
+            signal: ctx.signal,
+            ...(params.replaces ? { replaces: params.replaces } : {}),
+          });
           return true;
         },
       },
@@ -136,7 +146,13 @@ export function registerPartJobs(
   });
 }
 
-export type PartStart = { planId: string; topicId: string; position: number };
+export type PartStart = {
+  planId: string;
+  topicId: string;
+  position: number;
+  /** Old lessons in parts: the lesson written before parts that a new job's outline rewrites. */
+  replaces?: string;
+};
 
 /**
  * The one place a part job starts, in one transaction. `open`: the student opened the part, so an unwritten part's
@@ -251,14 +267,55 @@ export function topicParts(db: Database.Database, input: { planId: string; topic
   return { outline: outline ? outlineView(db, outline) : null, estimate: { parts, minutes } };
 }
 
-/** The topic has a lesson written before parts existed: a model's, or one imported from a plan file. */
-function hasOldLesson(db: Database.Database, planId: string, topicId: string): boolean {
-  return !!db
-    .prepare(
-      `SELECT 1 FROM items WHERE plan_id = ? AND topic_id = ? AND kind = 'lesson' AND engine_provider IS NOT NULL
-         AND COALESCE(prompt_template, '') <> 'lesson.part' LIMIT 1`,
-    )
-    .get(planId, topicId);
+// Old lessons in parts. A topic with a lesson written before parts and no outline: an unfinished lesson is rewritten in
+// parts when the student opens it, and a finished one opens in the existing reader until the student asks for parts
+// ("Riscrivi in parti", `rewriteInParts`). The outline names the old lesson it rewrites (`replaces_item_id`), whose
+// row, answers and citations stay.
+
+/** How the existing reader shows a lesson written before parts: finished, with "Riscrivi in parti"; or an earlier version. */
+export type OldMode = "finished" | "earlier";
+
+/**
+ * A finished old lesson opens in parts only while the rewrite the student asked for is under way: part 1's job is
+ * queued or running, or the page asked for a part (`?part=1`, where "Riscrivi in parti" leads) and the job failed or
+ * stopped with Pyxis, so the page can say so and offer Riprova. A cancelled rewrite leaves the lesson as it was.
+ */
+function rewriting(db: Database.Database, topicId: string, position: number | undefined): boolean {
+  const job = partJob(db, topicId, 1);
+  if (!job) return false;
+  return LIVE.has(job.state) || (position !== undefined && (job.state === "failed" || job.state === "interrupted"));
+}
+
+/**
+ * A saved lesson that is no part, opened by its item: the earlier version of a lesson now in parts, or of an
+ * unfinished one about to be rewritten, which the reader shows as it was; a finished old lesson, which keeps its menu
+ * and gets "Riscrivi in parti"; any other lesson (book text, a topic without old lessons) as it was before.
+ */
+function legacyItem(db: Database.Database, planId: string, topicId: string): PartResult {
+  if (liveOutline(db, topicId)) return { mode: "legacy", old: "earlier" };
+  const old = oldLesson(db, planId, topicId);
+  if (!old) return { mode: "legacy" };
+  return { mode: "legacy", old: old.finished ? "finished" : "earlier" };
+}
+
+/** The old lesson an outline rewrote, while its row is still there. */
+function replacedItem(db: Database.Database, outline: Outline): { itemId: string } | null {
+  if (!outline.replacesItemId) return null;
+  return db.prepare("SELECT 1 FROM items WHERE id = ?").get(outline.replacesItemId) ? { itemId: outline.replacesItemId } : null;
+}
+
+/**
+ * "Riscrivi in parti" on a finished lesson written before parts (`study.rewriteInParts`): starts part 1's job, whose
+ * outline names the old lesson, or retries one that failed. The topic's lesson step stays, so its progress does not
+ * move back; the parts start not done. A topic already in parts, or with no old lesson, has nothing to rewrite.
+ */
+export function rewriteInParts(db: Database.Database, runner: Runner, input: { planId: string; topicId: string }): { ok: true } {
+  requireTopic(db, input.planId, input.topicId);
+  if (liveOutline(db, input.topicId)) throw new Error("parts-exist");
+  const old = oldLesson(db, input.planId, input.topicId);
+  if (!old) throw new Error("lesson-missing");
+  ensurePart(db, runner, { planId: input.planId, topicId: input.topicId, position: 1, replaces: old.itemId });
+  return { ok: true };
 }
 
 export type PartInput = {
@@ -284,7 +341,7 @@ type PartLesson = {
 };
 
 export type PartResult =
-  | { mode: "legacy" }
+  | { mode: "legacy"; old?: OldMode }
   | {
       mode: "parts";
       outline: OutlineView | null;
@@ -295,13 +352,15 @@ export type PartResult =
       lesson: PartLesson | null;
       summary: string | null;
       next: PartView | null;
+      /** The lesson written before parts that this lesson in parts rewrites, or is about to. */
       replaces: { itemId: string } | null;
     };
 
 /**
  * Opens one part of a topic's lesson (`study.part`). `mode: "legacy"` sends the page to the existing reader: a lesson
- * item that is not a part, a topic with a lesson written before parts and no outline, and the developer agent lesson.
- * A written part comes with its text and starts the part after it (`ensureAhead`), with or without `write`. An
+ * item that is not a part, a finished lesson written before parts on a topic with no outline (`oldLesson`), and the
+ * developer agent lesson. An unfinished lesson written before parts is rewritten in parts: its first open with `write`
+ * starts part 1's job with the old lesson named, and `replaces` names it until the topic is in parts. A written part comes with its text and starts the part after it (`ensureAhead`), with or without `write`. An
  * unwritten one comes with the state of its job: `planning` before the outline exists, then `writing`, `failed` when
  * its job failed or stopped (with the job's error, or null when it was cancelled, interrupted or never started), and
  * `book` when no engine is set up, with the part's passages (the topic's before the outline) as book text, not saved.
@@ -319,16 +378,22 @@ export function openPart(
     if (!loadLessonById(db, { planId: input.planId, topicId: input.topicId, itemId: input.itemId }))
       throw new Error("item-missing");
     const owner = liveOutline(db, input.topicId)?.parts.find((part) => part.itemId === input.itemId);
-    if (!owner) return { mode: "legacy" };
+    if (!owner) return legacyItem(db, input.planId, input.topicId);
     position ??= owner.position;
   }
   let outline = liveOutline(db, input.topicId);
-  if (!outline && hasOldLesson(db, input.planId, input.topicId)) return { mode: "legacy" };
+  let replaces = outline ? replacedItem(db, outline) : null;
+  if (!outline) {
+    const old = oldLesson(db, input.planId, input.topicId);
+    if (old?.finished && !rewriting(db, input.topicId, input.position)) return { mode: "legacy", old: "finished" };
+    if (old) replaces = { itemId: old.itemId };
+  }
   position ??= outline?.parts.find((part) => part.doneAt === null)?.position ?? 1;
   const at = { planId: input.planId, topicId: input.topicId, position };
   if (outline ? !outline.parts.some((part) => part.position === position) : position !== 1)
     throw new Error("part-missing");
-  if (input.write && runner) ensurePart(db, runner, at);
+  // Before the outline exists, the job that makes it names the old lesson it rewrites.
+  if (input.write && runner) ensurePart(db, runner, !outline && replaces ? { ...at, replaces: replaces.itemId } : at);
   let part = outline?.parts.find((entry) => entry.position === position);
   if (part?.itemId && runner) {
     ensureAhead(db, runner, at);
@@ -347,7 +412,7 @@ export function openPart(
     position,
     summary: part?.summary ?? null,
     next: after && view ? (view.parts.find((entry) => entry.position === after.position) ?? null) : null,
-    replaces: null,
+    replaces,
   };
   if (saved)
     return {
