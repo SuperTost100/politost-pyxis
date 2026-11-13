@@ -183,6 +183,7 @@ const routes = [
   ["lesson-part-other", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-part-writing", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
+  ["lesson-part-failed-dismissed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-recap", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=9"],
   ["lesson-part-popover", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-one-part", "/plans/audit-parts-plan/lesson/audit-one-topic?part=1"],
@@ -1119,6 +1120,7 @@ const PART_STATES = new Set([
   "lesson-part-other",
   "lesson-part-writing",
   "lesson-part-failed",
+  "lesson-part-failed-dismissed",
   "lesson-part-recap",
   "lesson-part-popover",
   "lesson-one-part",
@@ -1224,6 +1226,9 @@ function prepareLessonParts(name: string) {
       JSON.stringify({ planId: "audit-parts-plan", topicId, position });
     if (name === "lesson-part-writing") job.run(params("audit-parts-topic", 4), "running", null, now, now);
     if (name === "lesson-part-failed") job.run(params("audit-parts-topic", 4), "failed", "lesson-part-invalid", now, now);
+    // A failed write whose job the student dismissed in Attività: the part keeps the mark and no job is left.
+    if (name === "lesson-part-failed-dismissed")
+      db.prepare("UPDATE lesson_parts SET write_failed_at = ? WHERE id = 'audit-part-4'").run(now);
     if (name === "lesson-part-book")
       job.run(params("audit-parts-topic", 5), "failed", "engines.errors.engine-missing", now, now);
     if (name === "lesson-part-planning") job.run(params("audit-new-topic", 1), "running", null, now, now);
@@ -2997,6 +3002,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("status").filter({ hasText: /Sto scrivendo la parte 4|Writing part 4/ })).toBeVisible();
       break;
     case "lesson-part-failed":
+    case "lesson-part-failed-dismissed":
       await expect(page.getByText(/Non sono riuscito a scrivere la parte 4\.|I couldn't write part 4\./)).toBeVisible();
       break;
     case "lesson-part-recap": {
