@@ -16,7 +16,7 @@ A button that starts work keeps its place and its label says what it is doing ("
 
 ## Skeletons for short loads
 
-A list or a page that loads from this computer shows a skeleton in its final layout, so nothing jumps when it arrives. It appears only after 150ms, so a fast load never flashes it. AI work never gets a skeleton; it gets the working mark.
+A list or a page that loads from this computer shows a skeleton in its final layout, so nothing jumps when it arrives. It appears only after 150ms, so a fast load never flashes it. AI work never gets a skeleton; it gets the working mark. A lesson part being written is the one place with shapes under the working mark: still lines where its text will be, which never pulse, so the sheet keeps the shape of a page while the student waits.
 
 ## Progress for long jobs
 

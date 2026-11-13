@@ -428,14 +428,14 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     await page.getByRole("menuitem", { name: stronger }).click();
     await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text")).toHaveText(reply, { timeout: 30_000 });
 
-    // A lesson: regenerate, rewrite a part, the map and export; the last one opens the export dialog.
+    // A lesson: regenerate, rewrite a section, the map and export; the last one opens the export dialog.
     await page.evaluate(() => {
       location.hash = "/plans/p-les/lesson/t-les";
     });
     await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
     const lessonDots = page.getByRole("button", { name: "Altre azioni" });
     const lessonItems = await opensEveryWay(page, lessonDots, "Altre azioni");
-    expect(lessonItems).toEqual(["Riscrivi", "Riscrivi una parte", "Mappa", "Esporta"]);
+    expect(lessonItems).toEqual(["Riscrivi", "Riscrivi una sezione", "Mappa", "Esporta"]);
     await oneMenuAtATime(page, lessonDots, "Altre azioni");
     await lessonDots.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Esporta" }).click();

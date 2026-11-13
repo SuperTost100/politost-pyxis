@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -205,6 +206,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await saveShot(page, `smart-text/intro-answered-it-light.png`);
 
     const learn = { topicId: (await read()).topics[0]!.id };
+    // The lesson this spec reads is on the reader that came before parts; lessons in parts have their own spec.
+    const before = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(before, planId, [learn.topicId]);
+    before.close();
 
     // Generating: an in-place status with Stop and skeleton lines, then the lesson.
     await page.evaluate(
@@ -281,7 +286,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
       await saveShot(page, `smart-text/lesson-top-${lang}-${theme}.png`);
       await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
-      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una parte|Rewrite a part)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una sezione|Rewrite a section)$/ })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
       await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);

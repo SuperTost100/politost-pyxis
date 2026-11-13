@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -156,6 +157,10 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
       page.evaluate((planId) => window.pyxis.invoke("plans.read", { planId }), planId) as Promise<Read>;
     const topics = (await read()).topics;
     expect(topics.map((topic) => topic.title)).toEqual(chapters.map((c) => c.title));
+    // The lessons this spec reads are on the reader that came before parts; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, topics.map((topic) => topic.id));
+    seeding.close();
 
     // A new plan: the introduction is suggested, every topic is a row, nothing is locked.
     await page.evaluate((planId) => {
@@ -346,6 +351,10 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     }>;
     const read = () => invoke<Omit<Read, "steps"> & { steps: Steps }>("plans.read", { planId });
     const topic = (await read()).topics[0]!;
+    // The lesson this spec reads is on the reader that came before parts; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topic.id]);
+    seeding.close();
 
     // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.
     await page.evaluate(
@@ -396,7 +405,7 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     const lessonRows = () => {
       const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
       try {
-        return (db.prepare("SELECT COUNT(*) AS n FROM items WHERE kind = 'lesson'").get() as { n: number }).n;
+        return (db.prepare("SELECT COUNT(*) AS n FROM items WHERE kind = 'lesson' AND id NOT LIKE 'before-parts-%'").get() as { n: number }).n;
       } finally {
         db.close();
       }
