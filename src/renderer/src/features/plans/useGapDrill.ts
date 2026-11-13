@@ -48,10 +48,11 @@ export function useGapDrill(planId: string) {
     state === "failed" || state === "cancelled" || state === "interrupted";
   const readyAttempt =
     drill && state === "succeeded" ? drillRead.data?.attemptId : null;
+  // The drill opens only while this page is the one the router shows: the read can come back after the student has left.
   useEffect(() => {
     if (!drill || !readyAttempt) return;
     setDrill(null);
-    navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
+    if (stillHere()) navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
   }, [drill, readyAttempt, planId]);
 
   async function start(topicId: string, gapId?: string) {

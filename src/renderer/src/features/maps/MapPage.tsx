@@ -1408,9 +1408,10 @@ export function MapPage() {
       if (onCanvas(event.target as EventTarget)) canvasMenu.bind.onKeyUp(event);
     },
   };
-  // A link to a map that was deleted since lands on Mappe, which says so, rather than on another map of the scope.
+  // A link to a map that was deleted since lands on Mappe, which says so, rather than on another map of the scope. Only
+  // while this page is the one the router shows: the read can come back after the student has left.
   useEffect(() => {
-    if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId)
+    if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId && stillHere())
       navigate(backTo, { replace: true, state: { gone: true } });
   }, [openMap, list.isSuccess, list.isFetching, list.data, jobId]);
   // Several maps of one topic, or of one subject, are told apart by what the student asked for each.
