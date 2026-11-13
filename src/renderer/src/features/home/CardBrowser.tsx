@@ -5,20 +5,19 @@ import {
 } from "@tanstack/react-query";
 import {
   Button,
-  Dropdown,
   type MenuProps,
   Modal,
   Pagination,
   Select,
   Skeleton,
 } from "antd";
-import { MoreHorizontal, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
-import { MenuItemArea } from "../../components/ItemMenu";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -476,24 +475,12 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
               >
                 {t(card.leech ? "cardBrowser.rewrite" : "cards.edit")}
               </Button>
-              <Dropdown
-                trigger={["click"]}
-                autoFocus
-                popupRender={(list) => (
-                  <div role="region" aria-label={t("cardBrowser.moreActions")}>
-                    {list}
-                  </div>
-                )}
+              <MenuButton
+                size="sm"
                 menu={menu}
-              >
-                <Button
-                  size="small"
-                  shape="circle"
-                  type="text"
-                  aria-label={label("cardBrowser.moreActions")}
-                  icon={<MoreHorizontal size={16} strokeWidth={1.75} />}
-                />
-              </Dropdown>
+                label={label("cardBrowser.moreActions")}
+                region={t("cardBrowser.moreActions")}
+              />
             </>
           )}
         </div>
