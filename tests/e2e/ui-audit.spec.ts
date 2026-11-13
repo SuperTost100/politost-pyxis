@@ -3190,7 +3190,7 @@ async function openState(page: Page, name: string) {
     case "quiz-grading-failed":
       await expect(
         page.getByRole("button", {
-          name: /Riprova la correzione|Retry grading/,
+          name: /^(Riprendi la correzione|Resume grading)$/,
         }),
       ).toBeVisible();
       // Grading is not a question: the header shows no position, the count says graded rather than correct, and the
@@ -3250,7 +3250,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       await expect(
         page.getByRole("button", {
-          name: /^(Riprendi la correzione|Retry grading)$/,
+          name: /^(Riprendi la correzione|Resume grading)$/,
         }),
       ).toHaveClass(/ant-btn-primary/);
       await expect(

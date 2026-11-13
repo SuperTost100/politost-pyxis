@@ -665,7 +665,7 @@ export function SimulationPage() {
           primary={
             gradingStopped ? (
               <Button type="primary" shape="round" size="large" disabled={busy} onClick={() => void submit()}>
-                {t("simulation.retryGrade")}
+                {t("simulation.resumeGrade")}
               </Button>
             ) : run.submitted && simMistakes ? undefined : (
               <Button type="primary" shape="round" size="large" onClick={() => navigate(`/plans/${planId}`)}>

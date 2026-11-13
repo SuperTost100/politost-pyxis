@@ -247,7 +247,7 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
     await page.evaluate((planId) => {
       window.location.hash = `/plans/${planId}/simulation`;
     }, plan.planId);
-    const retry = page.getByRole("button", { name: "Retry grading" });
+    const retry = page.getByRole("button", { name: "Resume grading" });
     await expect
       .poll(async () => {
         const next = (await page.evaluate(
