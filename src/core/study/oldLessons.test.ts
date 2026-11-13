@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
 import { IpcError } from "../../shared/ipc";
 import { parseSmartText, smartQuestions } from "../../shared/smart-text";
 import { createRunner } from "../jobs/runner";
+import { examRings, savePlannerHours } from "../plans/planner";
 import { planMasteryBreakdown } from "../plans/progress";
 import { readSteps, recordStep } from "../plans/steps";
 import { topicContent } from "../plans/views";
@@ -123,6 +124,7 @@ const finishThroughRecap = (db: Db, itemId: string) => [0, 1, 2, 3].map((questio
 
 let opened: Db[] = [];
 afterEach(() => {
+  vi.useRealTimers();
   for (const db of opened) if (db.open) db.close();
   opened = [];
 });
@@ -351,6 +353,48 @@ describe("a rewrite keeps everything the student made", () => {
     const first = liveOutline(db, "t")!.parts[0]!.itemId!;
     expect(partOfItem(db, first)).not.toBeNull();
     expect(oldLesson(db, "p", "t")?.itemId).toBe("old");
+  });
+
+  it("counts today's minutes once: a finished lesson's 30 and its parts read again, or only the parts of an unfinished one", async () => {
+    // Only the date is fixed, at noon, so the day cannot turn during the test; the jobs' timers still run.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 13, 12));
+    /** Today's minutes on the exam's ring, with the exam a month away and six hours a week. */
+    const today = (db: Db) => {
+      db.prepare("UPDATE plans SET exam_at = ? WHERE id = 'p'").run(Date.now() + 30 * 86_400_000);
+      savePlannerHours(db, { hours: 6 }, Date.now());
+      return examRings(db).find((ring) => ring.planId === "p")?.todayMinutes?.done;
+    };
+    const readAll = (db: Db) => {
+      const outline = liveOutline(db, "t")!;
+      db.transaction(() => {
+        for (const part of outline.parts)
+          finishPart(db, { partId: part.id, outlineId: outline.id, position: part.position }, Date.now());
+      })();
+      return outline.parts.reduce((sum, part) => sum + part.minutes, 0);
+    };
+
+    // Finished today and rewritten: its step names the old lesson, read whole, and keeps its 30 beside the parts.
+    const finished = setUp();
+    saveOld(finished.db, { id: "old" });
+    finishThroughRecap(finished.db, "old");
+    expect(today(finished.db)).toBe(30);
+    rewriteInParts(finished.db, finished.runner, { planId: "p", topicId: "t" });
+    await settle(finished.db);
+    const parts = readAll(finished.db);
+    expect(lessonSteps(finished.db).map((step) => step.itemId)).toEqual(["old"]);
+    expect(today(finished.db)).toBe(30 + parts);
+
+    // Unfinished and rewritten when opened: the step its last part records names a part's text and adds nothing.
+    const unfinished = setUp();
+    saveOld(unfinished.db, { id: "old" });
+    answer(unfinished.db, "old", 0);
+    openPart(unfinished.db, unfinished.runner, { planId: "p", topicId: "t", write: true });
+    await settle(unfinished.db);
+    const read = readAll(unfinished.db);
+    const step = lessonSteps(unfinished.db)[0]!;
+    expect(step.itemId).toBe(liveOutline(unfinished.db, "t")!.parts[0]!.itemId);
+    expect(today(unfinished.db)).toBe(read);
   });
 
   it("refuses a topic already in parts and one with no old lesson", async () => {
