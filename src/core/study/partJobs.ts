@@ -92,6 +92,18 @@ function partTitle(db: Database.Database, params: PartJobParams): string | null 
   return part.kind === "recap" ? part.title : `${partLabel(planLanguage(db, params.planId), part.position)} · ${part.title}`;
 }
 
+/**
+ * Marks the part a job was writing as not written by a failed or cancelled write. The mark is on the part's row, so it
+ * outlives a job the student dismissed in Attività, and the part ahead still waits for the student.
+ */
+function markWriteFailed(db: Database.Database, params: PartJobParams): void {
+  db.prepare(
+    `UPDATE lesson_parts SET write_failed_at = ?
+     WHERE position = ? AND item_id IS NULL
+       AND outline_id = (SELECT id FROM lesson_outlines WHERE topic_id = ? AND retired_at IS NULL)`,
+  ).run(Date.now(), params.position, params.topicId);
+}
+
 export function registerPartJobs(
   db: Database.Database,
   runner: Runner,
@@ -106,6 +118,9 @@ export function registerPartJobs(
     title: (params) => partTitle(db, params as PartJobParams),
     ref: (params) => partRef((params as PartJobParams).topicId, (params as PartJobParams).position),
     retryParams: (params) => ({ ...(params as PartJobParams), selection: selectionFor(db, "lesson") }),
+    // A quit is neither: the next start marks the job interrupted, to be resumed.
+    onFailed: (params) => markWriteFailed(db, params as PartJobParams),
+    onCancelled: (params) => markWriteFailed(db, params as PartJobParams),
     steps: [
       {
         name: "outline",
@@ -156,10 +171,12 @@ export type PartStart = {
 
 /**
  * The one place a part job starts, in one transaction. `open`: the student opened the part, so an unwritten part's
- * job starts, resumes or is retried, and one already queued or running is left to finish. `ahead`: the student opened
- * the written part before it, so the part's job starts or resumes only when no part job of the topic is queued or
- * running, and a failed or cancelled one is left for the student, so a failing call never repeats in the background.
- * At any time a topic has at most one job ahead of what the student reads, plus the jobs of parts the student opened.
+ * job starts, resumes or is retried, and one already queued or running is left to finish; once a job is queued, the
+ * part's mark of a failed or cancelled write is cleared. `ahead`: the student opened the written part before it, so the
+ * part's job starts or resumes only when no part job of the topic is queued or running. A part whose last write failed
+ * or was cancelled is left for the student, by its job or, once that job is dismissed, by the mark on its row, so a
+ * failing call never repeats in the background. At any time a topic has at most one job ahead of what the student
+ * reads, plus the jobs of parts the student opened.
  */
 function startPart(db: Database.Database, runner: Runner, input: PartStart, reason: "open" | "ahead"): void {
   db.transaction(() => {
@@ -171,6 +188,7 @@ function startPart(db: Database.Database, runner: Runner, input: PartStart, reas
     const job = partJob(db, input.topicId, input.position);
     if (job && LIVE.has(job.state)) return;
     if (reason === "ahead") {
+      if (part?.writeFailedAt != null) return;
       if (!job || job.state === "interrupted" || job.state === "succeeded") {
         if (db.prepare(BUSY_SQL).get(input.topicId)) return;
       } else return;
@@ -181,6 +199,9 @@ function startPart(db: Database.Database, runner: Runner, input: PartStart, reas
       const params: PartJobParams = { ...input, selection: currentSelection(db) };
       runner.start(PART_JOB, params);
     }
+    // A retry the runner refused (no engine to retry with) leaves the job failed, and the mark with it.
+    if (part?.writeFailedAt != null && LIVE.has(partJob(db, input.topicId, input.position)?.state ?? ""))
+      db.prepare("UPDATE lesson_parts SET write_failed_at = NULL WHERE id = ?").run(part.id);
   })();
 }
 
@@ -232,7 +253,7 @@ function partView(part: OutlinePart, job: JobRow | undefined): PartView {
       ? "written"
       : job && LIVE.has(job.state)
         ? "writing"
-        : job?.state === "failed"
+        : job?.state === "failed" || part.writeFailedAt !== null
           ? "failed"
           : "unwritten",
     done: part.doneAt !== null,
@@ -373,8 +394,9 @@ export type PartResult =
  * developer agent lesson. An unfinished lesson written before parts is rewritten in parts: its first open with `write`
  * starts part 1's job with the old lesson named, and `replaces` names it until the topic is in parts. A written part comes with its text and starts the part after it (`ensureAhead`), with or without `write`. An
  * unwritten one comes with the state of its job: `planning` before the outline exists, then `writing`, `failed` when
- * its job failed or stopped (with the job's error, or null when it was cancelled, interrupted or never started), and
- * `book` when no engine is set up, with the part's passages (the topic's before the outline) as book text, not saved.
+ * its job failed or stopped (with the job's error, or null when it was cancelled, interrupted, never started or
+ * dismissed), and `book` when no engine is set up, with the part's passages (the topic's before the outline) as book
+ * text, not saved.
  */
 export function openPart(
   db: Database.Database,

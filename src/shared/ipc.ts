@@ -498,7 +498,7 @@ const PartView = z.object({
   about: z.string(),
   /** An estimate until the part is written, then measured from its words. */
   minutes: z.number().int().min(1),
-  /** `writing`: its job is queued or running. `failed`: its last job failed. */
+  /** `writing`: its job is queued or running. `failed`: its last write failed or was cancelled, until it is asked for again. */
   state: z.enum(["unwritten", "writing", "written", "failed"]),
   done: z.boolean(),
 });
@@ -909,7 +909,10 @@ export const requests = {
         position: z.number().int().min(1),
         /** `book`: no engine is set up, and `lesson` is the part's passages as book text, not saved. */
         state: z.enum(["planning", "writing", "written", "failed", "book"]),
-        /** The part job's error as the jobs list has it (`jobErrorKey` reads it); null for a cancelled or unstarted job. */
+        /**
+         * The part job's error as the jobs list has it (`jobErrorKey` reads it). Null for a cancelled, interrupted or
+         * unstarted job, and for a failed job the student dismissed: the part still reads `failed`, with no message.
+         */
         error: z.string().nullable(),
         /** The written part, or its book text. */
         lesson: LessonOutput.nullable(),

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { menuTakesEscape } from "./ItemMenu";
 import { placePopover, type PopoverPlace } from "./popoverPlace";
 import "./Popover.css";
 
@@ -131,7 +132,11 @@ export function Popover({
       }
       onKeyDown={(event) => {
         // A menu opened from a row inside closes on its own Escape first; this one is for the popover.
-        if (event.key !== "Escape" || (event.target instanceof Element && event.target.closest(ESCAPE_NOT_MINE)))
+        if (
+          event.key !== "Escape" ||
+          menuTakesEscape(event.nativeEvent) ||
+          (event.target instanceof Element && event.target.closest(ESCAPE_NOT_MINE))
+        )
           return;
         event.stopPropagation();
         latest.current(true);

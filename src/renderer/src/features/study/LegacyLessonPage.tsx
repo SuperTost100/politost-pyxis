@@ -3,7 +3,6 @@ import { Button, Dropdown, Input, Modal, Radio } from "antd";
 import {
   ChevronDown,
   Download,
-  Ellipsis,
   ListOrdered,
   Network,
   PencilLine,
@@ -27,6 +26,7 @@ import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { createAnswerQueue } from "./answerQueue";
 import { ErrorState } from "../../components/ErrorState";
+import { MenuButton } from "../../components/ItemMenu";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -298,9 +298,9 @@ export function LegacyLessonPage({
     </>
   );
   const moreMenu = (
-    <Dropdown
-      trigger={["click"]}
-      placement="bottomRight"
+    <MenuButton
+      rightClick
+      label={t("lesson.more")}
       menu={{
         items: [
           ...(old === "finished"
@@ -368,15 +368,7 @@ export function LegacyLessonPage({
           if (action === "export") setExportOpen(true);
         },
       }}
-    >
-      <Button
-        shape="circle"
-        type="text"
-        aria-label={t("lesson.more")}
-        title={t("lesson.more")}
-        icon={<Ellipsis size={18} strokeWidth={1.75} />}
-      />
-    </Dropdown>
+    />
   );
 
   // Above the title, what the lesson was written from: its first two sources and how many more.

@@ -42,7 +42,7 @@ import { Button } from "../../components/Button";
 import { Notice } from "../../components/Notice";
 import { IconButton } from "../../components/IconButton";
 import { Icon } from "../../components/Icon";
-import { MenuButton, useItemMenu } from "../../components/ItemMenu";
+import { MenuButton, menuTakesEscape, useItemMenu } from "../../components/ItemMenu";
 import { Segmented } from "../../components/Controls";
 import { LoadError } from "../../components/LoadError";
 import { Working } from "../../components/Working";
@@ -66,6 +66,8 @@ import {
   radialPlan,
   smoothPath,
   startViewport,
+  fitViewport,
+  CANVAS_MIN_ZOOM,
   revealViewport,
   visibleNodes,
 } from "./mapLayout";
@@ -501,10 +503,12 @@ export function MapPage() {
   useEffect(() => {
     if (!sourceOpen) return;
     const escape = (event: KeyboardEvent) => {
-      // A dialog over the map takes its own Esc, and a menu that handled the key stopped it already.
+      // A dialog over the map takes its own Esc, and so does a menu that is open (the panel's own menu, opened by a
+      // right-click, has not taken the focus yet): Escape closes the innermost thing only.
       if (
         event.key !== "Escape" ||
         event.defaultPrevented ||
+        menuTakesEscape(event) ||
         (event.target instanceof Element && event.target.closest("dialog, [role='dialog']"))
       )
         return;
@@ -997,16 +1001,28 @@ export function MapPage() {
     }
     return result;
   }, [graph, nodes, selected, radial, plan]);
-  function startView(duration = 0) {
+  // The boxes of the concepts shown now, in the flow's coordinates, and the canvas's size.
+  function shownBoxes() {
     const size = canvas.current?.getBoundingClientRect();
-    if (!size || !spots.length) return;
+    if (!size || !spots.length) return null;
     const boxes = spots.map(({ node, at }) => ({
       ...at,
       width: radial ? (widths.get(node.id) ?? NODE_WIDTH) : NODE_WIDTH,
       height: heights.get(node.id) ?? 64,
     }));
+    return { size, boxes };
+  }
+  function startView(duration = 0) {
+    const shown = shownBoxes();
+    if (!shown) return;
+    const { size, boxes } = shown;
     const root = boxes[spots.findIndex(({ node }) => node.parent === null)];
     void flow.current?.setViewport(startViewport(boxes, root ?? boxes[0]!, size, radial), { duration });
+  }
+  // "Adatta la mappa": the whole map in the window, however small that makes it (see `fitViewport`).
+  function fitMap() {
+    const shown = shownBoxes();
+    if (shown) void flow.current?.setViewport(fitViewport(shown.boxes, shown.size), { duration: 0 });
   }
   // Open on the whole map, or on the root at a readable size when it will not fit. A switch between the tree and the
   // radial layout moves the view there with the nodes.
@@ -1505,7 +1521,7 @@ export function MapPage() {
             </Button>
           ) : null}
           {(hasMap && !nothingMatched) || writingJob ? (
-            <MenuButton menu={actions.menu} label={t("map.more")} />
+            <MenuButton rightClick menu={actions.menu} label={t("map.more")} />
           ) : null}
         </div>
         <p className="px-map-sub">
@@ -1646,7 +1662,7 @@ export function MapPage() {
                 proOptions={{ hideAttribution: true }}
                 edgeTypes={edgeTypes}
                 edgesFocusable={false}
-                minZoom={0.15}
+                minZoom={CANVAS_MIN_ZOOM}
                 maxZoom={2}
                 nodesDraggable={!disabled}
                 nodesConnectable={!disabled}
@@ -1732,7 +1748,7 @@ export function MapPage() {
                 <IconButton icon="undo-2" size="sm" variant="ghost" label={t("map.undo")} disabled={disabled || !graph.undo} onClick={undo} />
                 <IconButton icon="redo-2" size="sm" variant="ghost" label={t("map.redo")} disabled={disabled || !graph.redo} onClick={redo} />
                 <span className="px-map-strip-sep" aria-hidden />
-                <IconButton icon="scan" size="sm" variant="ghost" label={t("map.fit")} onClick={startView} />
+                <IconButton icon="scan" size="sm" variant="ghost" label={t("map.fit")} onClick={fitMap} />
               </div>
               {canvasMenu.popup}
             </div>

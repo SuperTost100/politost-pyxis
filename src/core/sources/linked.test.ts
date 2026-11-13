@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { blobSize } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
@@ -658,11 +658,20 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
   const count = (sql: string) => db.prepare(sql).pluck().get() as number;
   const queuedImports = () =>
     count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import' AND state IN ('queued', 'running')`);
+  // Waits for the work itself: the look, then every recorded file handed to the queue and read. A slow runner reads
+  // 5,000 files in about a minute, so no time limit of its own: only the test's timeout, which a reading that never
+  // ends still runs into. When the test that made this ends, by its timeout too, every wait of it stops, so nothing
+  // of a failed test keeps polling under the tests that follow.
+  let ended = false;
+  onTestFinished(() => {
+    ended = true;
+  });
   const settled = async () => {
     await linked.idle();
-    await expect
-      .poll(() => queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`), { timeout: 60_000 })
-      .toBe(0);
+    while (queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`) > 0) {
+      if (ended) throw new Error("the test ended while files were still waiting to be read");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
   };
   return { db, runner, linked, updates, count, queuedImports, settled, reads: () => reads, mostQueued: () => mostQueued };
 }

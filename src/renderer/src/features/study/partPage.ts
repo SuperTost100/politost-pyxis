@@ -52,9 +52,14 @@ export function focusFollowsAnswer(before: unknown, now: unknown, body: unknown)
   return now === before || now === body || now === null;
 }
 
-/** The first read of a part starts its job when nothing is writing it and it has no error of its own to show. */
+/**
+ * The first read of a part starts its job when nothing is writing it and it has nothing of its own to show. A part whose
+ * write failed or was cancelled stays failed after its job is dismissed: core then gives no error, but the outline marks
+ * the part failed, and it waits for Riprova as a failed job does.
+ */
 export function startsOnOpen(read: RequestOutput<"study.part">): boolean {
-  return read.mode === "parts" && read.state === "failed" && read.error === null;
+  if (read.mode !== "parts" || read.state !== "failed" || read.error !== null) return false;
+  return read.outline?.parts.find((part) => part.position === read.position)?.state !== "failed";
 }
 
 // Old lessons in parts.
