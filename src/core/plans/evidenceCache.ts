@@ -42,10 +42,11 @@ const SOURCES: Array<{ table: string; columns?: string; plan: string }> = [
   },
   // A flag can hide evidence in any plan.
   { table: "flags", plan: "NULL" },
-  // Which lesson a quick check counts toward depends on whether its item is a part.
+  // Which lesson a quick check counts toward depends on whether its item is a part. A part done changes no evidence,
+  // but it moves the suggestion and Oggi, which the exam page reloads when it hears of a change here.
   {
     table: "lesson_parts",
-    columns: "item_id",
+    columns: "item_id, done_at",
     plan: "(SELECT plan_id FROM lesson_outlines WHERE id = #.outline_id)",
   },
 ];

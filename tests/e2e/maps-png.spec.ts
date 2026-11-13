@@ -143,6 +143,7 @@ function compare(page: Page, exported: string, reference: string, probes: Probes
         picture: [picture.width, picture.height],
         shot: [shot.width, shot.height],
         differing: 1,
+        regions: [] as Array<{ x: number; y: number; width: number; height: number; pixels: number }>,
         controlsDiffering: [] as number[],
         linksFound: 0,
         linksLooked: probes.link.points.length,
@@ -152,10 +153,56 @@ function compare(page: Page, exported: string, reference: string, probes: Probes
         const i = (y * picture.width + x) * 4;
         return [0, 1, 2].some((c) => Math.abs(picture.data[i + c]! - shot.data[i + c]!) > 40);
       };
+      // The differing pixels are counted in cells of 8 by 8, and touching cells are joined into regions, so a failure
+      // says where the picture differs: the tools strip sits at the canvas's bottom right, the fold buttons on the
+      // concepts, the Esporta menu at the top right.
+      const CELL = 8;
+      const columns = Math.ceil(picture.width / CELL);
+      const rows = Math.ceil(picture.height / CELL);
+      const cells = new Uint32Array(columns * rows);
       let count = 0;
-      for (let y = 0; y < picture.height; y++) for (let x = 0; x < picture.width; x++) if (differs(x, y)) count++;
+      for (let y = 0; y < picture.height; y++)
+        for (let x = 0; x < picture.width; x++)
+          if (differs(x, y)) {
+            count++;
+            cells[Math.floor(y / CELL) * columns + Math.floor(x / CELL)]!++;
+          }
       out.differing = count / (picture.width * picture.height);
       const scale = picture.width / probes.canvas.width;
+      const seen = new Uint8Array(cells.length);
+      for (let start = 0; start < cells.length; start++) {
+        if (!cells[start] || seen[start]) continue;
+        const region = { left: columns, top: rows, right: 0, bottom: 0, pixels: 0 };
+        const stack = [start];
+        seen[start] = 1;
+        while (stack.length) {
+          const at = stack.pop()!;
+          const cx = at % columns;
+          const cy = Math.floor(at / columns);
+          region.left = Math.min(region.left, cx);
+          region.top = Math.min(region.top, cy);
+          region.right = Math.max(region.right, cx + 1);
+          region.bottom = Math.max(region.bottom, cy + 1);
+          region.pixels += cells[at]!;
+          for (let ny = cy - 1; ny <= cy + 1; ny++)
+            for (let nx = cx - 1; nx <= cx + 1; nx++) {
+              const next = ny * columns + nx;
+              if (nx < 0 || ny < 0 || nx >= columns || ny >= rows || seen[next] || !cells[next]) continue;
+              seen[next] = 1;
+              stack.push(next);
+            }
+        }
+        // The box in the canvas's CSS pixels, as the probes are, so it reads against the page's own layout; the count
+        // in the picture's pixels.
+        out.regions.push({
+          x: Math.round((region.left * CELL) / scale),
+          y: Math.round((region.top * CELL) / scale),
+          width: Math.round(((region.right - region.left) * CELL) / scale),
+          height: Math.round(((region.bottom - region.top) * CELL) / scale),
+          pixels: region.pixels,
+        });
+      }
+      out.regions.sort((a, b) => b.pixels - a.pixels);
       for (const box of probes.controls) {
         let n = 0;
         let all = 0;
@@ -341,6 +388,10 @@ async function plainCanvas(page: Page) {
   }
 }
 
+function roundBox(box: { x: number; y: number; width: number; height: number }) {
+  return { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+}
+
 function keep(name: string, picture: string, reference: string) {
   if (!SHOTS) return;
   mkdirSync(join(SHOTS, "maps-png"), { recursive: true });
@@ -355,6 +406,12 @@ async function checkPicture(page: Page, saved: string, name: string) {
   // Taken without moving the pointer, so a concept under it is drawn the same in both.
   const reference = await plainCanvas(page);
   keep(name, picture, reference);
+  // Both pictures go into the test's own output folder, which CI uploads when a test fails.
+  for (const [what, base64] of [["export", picture], ["canvas", reference]] as const) {
+    const path = test.info().outputPath(`${name}-${what}.png`);
+    writeFileSync(path, Buffer.from(base64, "base64"));
+    await test.info().attach(`${name}-${what}.png`, { path, contentType: "image/png" });
+  }
   const result = await compare(page, picture, reference, probes);
   // The visible canvas's size times the screen's pixel ratio: sharp on a display with more pixels than CSS pixels.
   // (A canvas on a fraction of a pixel is saved with its outer pixels, so the size is off by less than two: one on each side.)
@@ -364,19 +421,23 @@ async function checkPicture(page: Page, saved: string, name: string) {
   expect(result.shot).toEqual(result.picture);
   // The same concepts in the same places with the app's own fonts and colours: a picture in a fallback font, or without
   // the links, differs from the screen in a few per cent of its pixels.
-  // A failed comparison keeps both pictures with the test's report, and says whether the page was still loading fonts
-  // when the picture was saved: the numbers alone do not say what differed.
-  if (result.differing >= 0.003) {
-    await test.info().attach(`${name}-export.png`, { body: Buffer.from(picture, "base64"), contentType: "image/png" });
-    await test.info().attach(`${name}-canvas.png`, { body: Buffer.from(reference, "base64"), contentType: "image/png" });
-  }
-  expect(result.differing, `fonts were ${fonts} at the export`).toBeLessThan(0.003);
+  // A failed comparison says whether the page was still loading fonts when the picture was saved, where the controls in
+  // sight were, and where the pictures differ (the largest regions first), in the canvas's CSS pixels.
+  const inSight = probes.controls.filter(
+    (box) => box.x + box.width > 0 && box.y + box.height > 0 && box.x < probes.canvas.width && box.y < probes.canvas.height,
+  );
+  const where = [
+    `fonts were ${fonts} at the export`,
+    `controls ${JSON.stringify(inSight.map(({ what, ...box }) => ({ what: what.split(" ")[0], ...roundBox(box) })))}`,
+    `differing regions ${JSON.stringify(result.regions.slice(0, 8))}`,
+  ].join("; ");
+  expect(result.differing, where).toBeLessThan(0.003);
   // The links drawn between concepts are in the picture.
   expect(result.linksLooked).toBeGreaterThan(10);
   expect(result.linksFound).toBeGreaterThanOrEqual(Math.ceil(result.linksLooked * 0.95));
   // The tools strip and the fold buttons are not.
   expect(probes.controls.length).toBeGreaterThan(1);
-  for (const share of result.controlsDiffering) expect(share).toBeLessThan(0.02);
+  for (const share of result.controlsDiffering) expect(share, where).toBeLessThan(0.02);
 }
 
 for (const item of cases) {

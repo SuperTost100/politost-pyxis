@@ -97,4 +97,26 @@ describe("opening a part", () => {
     expect(startsOnOpen(read("written", null))).toBe(false);
     expect(startsOnOpen({ mode: "legacy" })).toBe(false);
   });
+
+  it("leaves a part whose failed or cancelled job was dismissed for Riprova, as the outline marks it", () => {
+    const outline = (state: "unwritten" | "failed") =>
+      ({
+        id: "o",
+        teaching: 2,
+        done: 0,
+        minutesLeft: 10,
+        parts: [1, 2].map((position) => ({
+          id: `p${position}`,
+          position,
+          kind: "part",
+          title: `Parte ${position}`,
+          about: "",
+          minutes: 5,
+          state: position === 1 ? state : "unwritten",
+          done: false,
+        })),
+      }) as NonNullable<PartData["outline"]>;
+    expect(startsOnOpen({ ...read("failed", null), outline: outline("failed") })).toBe(false);
+    expect(startsOnOpen({ ...read("failed", null), outline: outline("unwritten") })).toBe(true);
+  });
 });

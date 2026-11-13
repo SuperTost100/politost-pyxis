@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
-import { recordStep } from "./steps";
+import { readSteps, recordStep } from "./steps";
 import { planGuide, pathState } from "./create";
 import { markPartDone } from "../study/partProgress";
 import { seedOutline } from "../study/test-parts";
@@ -679,13 +679,21 @@ describe("exam rings", () => {
   });
 
   describe("a lesson in parts", () => {
-    /** Parts of 6, 5 and 7 minutes and a recap of 4 on a-t0, none written: "Fatto" finishes each. */
-    const withParts = (db: Db, createdAt = day(-3)) =>
+    /**
+     * Parts of 6, 5 and 7 minutes and a recap of 4 on a topic, each written without a question, so "Fatto" finishes
+     * each and the lesson step names part 1's text.
+     */
+    const withParts = (db: Db, createdAt = day(-3), topicId = "a-t0", id?: string) =>
       seedOutline(db, {
         planId: "a",
-        topicId: "a-t0",
+        topicId,
+        id,
         createdAt,
-        parts: [{ minutes: 6 }, { minutes: 5 }, { minutes: 7 }, { kind: "recap", minutes: 4 }],
+        parts: [6, 5, 7, 4].map((minutes, index) => ({
+          minutes,
+          kind: index === 3 ? ("recap" as const) : ("part" as const),
+          markdown: `## Parte ${index + 1}\n\nUn testo senza domanda.`,
+        })),
       });
     const done = (db: Db, position: number, at: number) => markPartDone(db, { planId: "a", topicId: "a-t0", position }, at);
 
@@ -735,6 +743,38 @@ describe("exam rings", () => {
       withParts(db, day(0, 9));
       done(db, 1, day(0, 9));
       expect(ringOf(db, "a").todayMinutes).toEqual({ done: 36, target: 51 });
+      db.close();
+    });
+
+    it("keeps today's minutes when the outline is replaced after its lesson was finished in parts", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      withParts(db);
+      savePlannerHours(db, { hours: 6 }, now);
+      for (const position of [1, 2, 3, 4]) done(db, position, day(0, 9));
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 22, target: 51 });
+      // "Riscrivi in parti" half an hour later: the first outline is retired and a newer one is live.
+      db.prepare("UPDATE lesson_outlines SET retired_at = ? WHERE topic_id = 'a-t0'").run(day(0, 9) + 30 * 60_000);
+      withParts(db, day(0, 9) + 30 * 60_000, "a-t0", "again");
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 22, target: 51 });
+      db.close();
+    });
+
+    it("gives a lesson read whole its 30 minutes also when its topic already has an outline", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      savePlannerHours(db, { hours: 6 }, now);
+      withParts(db, day(0, 8));
+      db.prepare(
+        "INSERT INTO items (id, plan_id, topic_id, kind, body_json, engine_provider, created_at) VALUES ('old', 'a', 'a-t0', 'lesson', '{\"markdown\":\"Tutto\"}', 'claude', 1)",
+      ).run();
+      recordStep(db, "a", { activity: "lesson", topicId: "a-t0", itemId: "old" }, day(0, 9));
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 30, target: 51 });
+      // "Fatto" on a lesson that names no item gets the topic's newest lesson that is not a part, here none.
+      withParts(db, day(-3), "a-t1");
+      recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 10));
+      expect(readSteps(db, "a").find((step) => step.topicId === "a-t1")?.itemId).toBeNull();
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 60, target: 51 });
       db.close();
     });
 

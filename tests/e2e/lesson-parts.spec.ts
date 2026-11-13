@@ -158,6 +158,24 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(page.getByText("Riassunto di intorni: la cosa giusta.")).toBeVisible();
     await expectNoAxeViolations(page);
     await saveShot(page, "lesson-parts/part-1-it-light.png");
+    // The part's dots are a lone button, so they open its menu by click, right-click and Shift+F10, and one Escape
+    // closes it with the focus back on them.
+    const dots = page.getByRole("button", { name: "Altre azioni" });
+    for (const openMenu of [
+      () => dots.click(),
+      () => dots.click({ button: "right" }),
+      async () => {
+        await dots.focus();
+        await page.keyboard.press("Shift+F10");
+      },
+    ]) {
+      await openMenu();
+      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
+      await expect(dots).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(dots).toBeFocused();
+    }
 
     // Part 2's job, started ahead, fails on its shape while part 1 is read.
     await expect
@@ -315,6 +333,62 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
   } finally {
     await close();
     rmSync(holdDir, { recursive: true, force: true });
+  }
+});
+
+test("a part whose failed job was dismissed in Attività stays failed, and Riprova writes it", async () => {
+  test.setTimeout(180_000);
+  const { page, close } = await start(
+    [
+      { markdown: partText("Intorni") },
+      // Part 2, written ahead, comes back twice in a shape the reader cannot show, then right on Riprova.
+      { markdown: "Testo senza sezioni." },
+      { markdown: "Ancora testo senza sezioni." },
+      { markdown: partText("Frontiera") },
+      { markdown: partText("Aperti e chiusi") },
+    ],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+  );
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const partTwoJobs = async () =>
+    ((await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))) as Array<{ kind: string; state: string; title: string | null }>).filter(
+      (job) => job.kind === "lesson-part" && job.title?.startsWith("Parte 2 "),
+    );
+  try {
+    await open(page, "t-funzioni");
+    await expect(page.getByText("Intorni: l'idea")).toBeVisible({ timeout: 30_000 });
+    await expect.poll(async () => (await partTwoJobs()).map((job) => job.state), { timeout: 20_000 }).toEqual(["failed"]);
+
+    // Attività lists the failure, and Chiudi removes its job.
+    await page.getByRole("button", { name: /^Attività/ }).click();
+    const problem = page.locator(".px-jobs-problem").filter({ hasText: "Parte 2" });
+    await expect(problem).toContainText("non riuscita");
+    await problem.getByRole("button", { name: /^Chiudi/ }).click();
+    await expect.poll(partTwoJobs).toEqual([]);
+    await page.keyboard.press("Escape");
+
+    // Back on the path, then on part 2: the page says the part could not be written and waits for Riprova, with no
+    // job started, and the column has the part as the open one, not as one being written.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-an2";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await open(page, "t-funzioni", 2);
+    await expect(page.getByText("Non sono riuscito a scrivere la parte 2.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Riprova" })).toBeVisible();
+    expect(await partTwoJobs()).toEqual([]);
+    await expect(parts(page).locator("a[aria-current=page]")).toContainText("Interno, esterno, frontiera");
+    await expect(parts(page).getByRole("link", { name: /Interno, esterno, frontiera.*in scrittura/ })).toHaveCount(0);
+    await expectNoAxeViolations(page);
+
+    // Riprova writes it.
+    await page.getByRole("button", { name: "Riprova" }).click();
+    await expect(page.getByText("Frontiera: l'idea")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Non sono riuscito a scrivere la parte 2.")).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await close();
   }
 });
 

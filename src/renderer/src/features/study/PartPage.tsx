@@ -38,10 +38,10 @@ export function partKey(planId: string, topicId: string, position: number | unde
 
 /**
  * Reads `study.part` for the lesson page. The first read of a part that nothing is writing starts its job (`write`),
- * resuming one stopped by a quit; a part whose job failed shows its error until the student presses Riprova, so a failing
- * call never repeats on its own. While the part is planned or written the page reads it again every second, and a job's
- * updates make it read at once (`staleFamilies`). Moving to another part of the same topic keeps the part on screen
- * until the next one is read, so the page changes without a blank.
+ * resuming one stopped by a quit; a part whose job failed shows its error until the student presses Riprova, also once
+ * that job is dismissed, so a failing call never repeats on its own. While the part is planned or written the page
+ * reads it again every second, and a job's updates make it read at once (`staleFamilies`). Moving to another part of
+ * the same topic keeps the part on screen until the next one is read, so the page changes without a blank.
  */
 export function usePartQuery(planId: string, topicId: string, position: number | undefined, itemId: string | undefined) {
   const opened = useRef(new Set<string>());
@@ -396,7 +396,7 @@ export function PartPage({
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
       onBack={() => navigate(`/plans/${planId}`)}
-      actions={<MenuButton menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
+      actions={<MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
       sheetClassName="px-part-sheet"
     >
       {headMenu.popup}

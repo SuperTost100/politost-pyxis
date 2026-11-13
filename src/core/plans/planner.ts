@@ -6,7 +6,8 @@ import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks, NO_
 import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
-import { outlineProgress, partsDoneSince } from "../study/partProgress";
+import { partsDoneSince } from "../study/partProgress";
+import { partOfText } from "../study/partText";
 
 /**
  * The session planner and Oggi. See "Session planner" in docs/mastery.md: remaining work is an estimate in minutes from
@@ -232,14 +233,13 @@ function studiedPlan(db: Database.Database, row: PlanRow, now: number) {
   if (!state) return null;
   const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
   const partsToday = partsDoneSince(db, row.id, today);
-  const outlines = outlineProgress(db, row.id);
   const remainingNow = remainingMinutes(state);
-  // A lesson in parts counts each part's minutes when it is done, so the step its last part records adds none. A
-  // lesson step recorded before its topic had parts was a lesson read whole, and keeps its minutes.
+  // A lesson in parts counts each part's minutes when it is done, so the step its last part records, which names a
+  // part's text, adds none. A step that names another lesson was a lesson read whole and keeps its minutes.
+  // shortcut: a lesson whose parts were all finished as book text names no item and counts 30 on top of its parts;
+  // store the outline on the step if lessons without an AI tool become common.
   const minutesOf = (step: Step) =>
-    step.activity === "lesson" && step.topicId && (outlines.get(step.topicId)?.createdAt ?? Infinity) <= step.at
-      ? 0
-      : stepMinutes[step.activity];
+    step.activity === "lesson" && step.itemId && partOfText(db, step.itemId) ? 0 : stepMinutes[step.activity];
   const doneMinutes =
     doneToday.reduce((sum, step) => sum + minutesOf(step), 0) +
     partsToday.reduce((sum, part) => sum + part.minutes, 0);
