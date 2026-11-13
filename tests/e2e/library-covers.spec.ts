@@ -368,8 +368,11 @@ test("The focus stays in the page when the file that held it is renamed out of a
     await search.fill("Fotogrammi di Quarto");
     await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeVisible();
     await choose("Fotogrammi di Quarto potere", "Sposta in", "Fisica 2");
-    await expect(shelf(page, "Fisica fisica 2")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeFocused();
+    // The move is done when the file is on the shelf it was sent to and gone from the one it left.
+    const moved = { name: "Fotogrammi di Quarto potere", exact: true } as const;
+    await expect(shelf(page, "Fisica 2").getByRole("button", moved)).toBeVisible();
+    await expect(shelf(page, "Linguaggio cinematografico e storia del cinema").getByRole("button", moved)).toHaveCount(0);
+    await expect(page.getByRole("button", moved)).toBeFocused();
 
     // Removed while it is the last match: the message takes the list's place and the search field has the focus.
     page.once("dialog", (dialog) => void dialog.accept());
