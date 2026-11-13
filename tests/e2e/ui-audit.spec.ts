@@ -1168,7 +1168,8 @@ function prepareLessonParts(name: string) {
   if (!wanted && !auditLessonParts) return;
   auditLessonParts = wanted;
   withDb((db) => {
-    db.exec("DELETE FROM jobs WHERE id = 'audit-part-job'; DELETE FROM plans WHERE id = 'audit-parts-plan';");
+    // A state before this one can have started a part's write (the page does when it opens a part with none), and that job's failure would show here.
+    db.exec("DELETE FROM jobs WHERE id = 'audit-part-job' OR (kind = 'lesson-part' AND params_json LIKE '%audit-parts-topic%'); DELETE FROM plans WHERE id = 'audit-parts-plan';");
     if (!wanted) return;
     const now = Date.now();
     seedPlan(db, {
@@ -2703,12 +2704,12 @@ async function openState(page: Page, name: string) {
       const toggle = page.getByRole("switch", { name: /^(Opzioni avanzate|Advanced options)$/ });
       await expect(toggle).toBeVisible();
       if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
-      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toHaveCount(0);
+      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toHaveCount(0);
       break;
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toBeVisible();
+      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toBeVisible();
       break;
     case "settings-engines-debug":
       await openAdvancedEngines(page);
@@ -2717,6 +2718,10 @@ async function openState(page: Page, name: string) {
     // The download state lives in main and outlasts a reload, so the plain route starts from no download.
     case "settings-updates":
       await page.evaluate(() => window.pyxis.cancelUpdate());
+      // The installed version is written once, under "Versione e licenze", as the About text writes it ("0.5.0 dev.10"),
+      // and the updates block repeats nothing of it.
+      await expect(page.locator(".px-about-version dd").first()).toHaveText(/^\d+\.\d+\.\d+( [a-z]+\.\d+)?$/);
+      await expect(page.getByText(/Versione installata|Installed version/)).toHaveCount(0);
       break;
     case "updates-available":
       await page.evaluate(() => window.pyxis.cancelUpdate());
@@ -2918,6 +2923,14 @@ async function openState(page: Page, name: string) {
               /Il nuovo materiale lo chiama|The new material calls it/,
             ),
         ).toBeVisible();
+      // While it works the dialog shows Pyxis at work in its body, with a line on what it is doing (feedback.md).
+      if (name === "rebuild-running") {
+        const working = dialog.last().getByRole("status");
+        await expect(working).toContainText(
+          /Sto rileggendo le fonti per confrontare gli argomenti|I'm reading your sources again to compare the topics/,
+        );
+        await expect(working.locator(".px-logo-working")).toBeVisible();
+      }
       break;
     case "guided-period":
     case "guided-modules":
@@ -3136,9 +3149,13 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("status").filter({ hasText: /Sto scrivendo la parte 4|Writing part 4/ })).toBeVisible();
       break;
     case "lesson-part-failed":
-    case "lesson-part-failed-dismissed":
-      await expect(page.getByText(/Non sono riuscito a scrivere la parte 4\.|I couldn't write part 4\./)).toBeVisible();
+    case "lesson-part-failed-dismissed": {
+      const failed = page.locator(".px-notice", { hasText: /Non sono riuscito a scrivere la parte 4\.|I couldn't write part 4\./ });
+      await expect(failed).toBeVisible();
+      // A write that failed is red; one with no error left (its job dismissed) only waits for Riprova, so amber.
+      await expect(failed).toHaveClass(name === "lesson-part-failed" ? /\bis-danger\b/ : /\bis-warning\b/);
       break;
+    }
     case "lesson-part-recap": {
       const recap = page.getByRole("region", { name: both("Ripasso finale", "Recap") });
       for (const answer of ["chiuso", "aperto e chiuso", "aperta"])
@@ -3193,7 +3210,9 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("region", { name: both("Verifica", "Check") })).toBeVisible();
       break;
     case "lesson-part-rewrite-failed":
-      await expect(page.getByText(/Non sono riuscito a riscrivere la parte 3 al livello Semplice|I couldn't rewrite part 3 at the Simple level/)).toBeVisible();
+      await expect(
+        page.locator(".px-notice", { hasText: /Non sono riuscito a riscrivere la parte 3 al livello Semplice|I couldn't rewrite part 3 at the Simple level/ }),
+      ).toHaveClass(/\bis-danger\b/);
       break;
     case "lesson-one-part":
       await expect(page.getByRole("heading", { level: 1, name: "Formula di Taylor" })).toBeVisible();
@@ -3229,7 +3248,10 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
       break;
     case "lesson-rewrite-failed":
-      await expect(page.getByText(/Non sono riuscito a riscrivere la lezione in parti|I couldn't rewrite the lesson in parts/)).toBeVisible();
+      // The rewrite stopped for want of an AI tool, a step the student takes: amber, not red.
+      await expect(
+        page.locator(".px-notice", { hasText: /Non sono riuscito a riscrivere la lezione in parti|I couldn't rewrite the lesson in parts/ }),
+      ).toHaveClass(/\bis-warning\b/);
       await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
       break;
     case "quiz-setup":
@@ -3329,7 +3351,7 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(
           list.getByText(
-            /Il tuo abbonamento a Cursor Agent non include questo modello, quindi ha risposto Claude Code\.|Your Cursor Agent subscription doesn't include this model, so Claude Code answered\./,
+            /Il tuo abbonamento a Cursor non include questo modello, quindi ha risposto Claude\.|Your Cursor subscription doesn't include this model, so Claude answered\./,
           ),
         ).toBeVisible();
         await expect(
@@ -3613,7 +3635,7 @@ async function openState(page: Page, name: string) {
     case "quiz-grading-failed":
       await expect(
         page.getByRole("button", {
-          name: /Riprova la correzione|Retry grading/,
+          name: /^(Riprendi la correzione|Resume grading)$/,
         }),
       ).toBeVisible();
       // Grading is not a question: the header shows no position, the count says graded rather than correct, and the
@@ -3621,7 +3643,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(/^(Domanda|Question) \d+ (di|of) \d+$/)).toHaveCount(0);
       await expect(page.getByText(/\d+ su \d+ risposte? apert[ae] valutat[ae]|\d+ of \d+ open answers? graded/)).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /^(Apri Motori AI|Open AI engines)$/ }),
+        page.getByRole("button", { name: /^(Apri gli strumenti AI|Open the AI tools)$/ }),
       ).toBeVisible();
       break;
     case "simulation-ready":
@@ -3644,7 +3666,7 @@ async function openState(page: Page, name: string) {
       await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
       await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
       await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
-      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
       // One primary button, Ripasso mirato; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
@@ -3662,7 +3684,7 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-res-q.is-queued")).toContainText(/In coda|Queued/);
       await expect(page.locator(".px-res-working .px-logo-working")).toBeVisible();
       await expect(page.locator(".px-res-changes")).toContainText(/Lo vedi a correzione finita|once grading is done/);
-      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
       break;
     case "simulation-grading-failed":
@@ -3673,7 +3695,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       await expect(
         page.getByRole("button", {
-          name: /^(Riprendi la correzione|Retry grading)$/,
+          name: /^(Riprendi la correzione|Resume grading)$/,
         }),
       ).toHaveClass(/ant-btn-primary/);
       await expect(
@@ -3872,6 +3894,8 @@ async function openState(page: Page, name: string) {
     case "map-build-stopped": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
       const line = page.locator(".px-map-notice .px-notice");
+      // A failure is red and one that stopped by itself is amber (feedback.md, notices).
+      await expect(line).toHaveClass(name === "map-build-failed" ? /\bis-danger\b/ : /\bis-warning\b/);
       await expect(line).toContainText(
         name === "map-build-failed"
           ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
@@ -4215,21 +4239,21 @@ async function openState(page: Page, name: string) {
     case "engine-details-disabled":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: /^Antigravity/ })
+        .getByRole("button", { name: /^Gemini/ })
         .click();
       await expect(dialog).toBeVisible();
       break;
     case "engine-add-cli":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
+        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
         .click();
       await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
       break;
     case "engine-add-key":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
+        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
         .click();
       await dialog
         .getByRole("tab", { name: both("Chiave API", "API key") })
@@ -4949,6 +4973,18 @@ test("M14 every application route in both languages, themes and supported widths
               });
               if (apart && Math.abs(apart.apart - apart.gap) > 1)
                 errors.push(`Adesso and Percorso are ${apart.apart}px apart, the grid's gap is ${apart.gap}px`);
+              // Every disclosure draws the app's chevron (global.css), never the browser's triangle.
+              const triangles = await page.evaluate(() =>
+                [...document.querySelectorAll<HTMLElement>("details > summary")]
+                  .filter(
+                    (summary) =>
+                      summary.checkVisibility() &&
+                      (getComputedStyle(summary).listStyleType !== "none" ||
+                        getComputedStyle(summary, "::before").content === "none"),
+                  )
+                  .map((summary) => summary.textContent?.trim().slice(0, 40)),
+              );
+              if (triangles.length) errors.push(`Disclosures without the chevron: ${triangles.join(", ")}`);
               records.push({
                 name,
                 route,

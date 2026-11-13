@@ -161,12 +161,18 @@ html[data-platform="darwin"] {
   -webkit-app-region: drag;
 }
 /* Attività, in the top-right corner of every page, over the strip that drags the window. --corner-room is the width a
-   page leaves it at the right: its 16px from the edge and its 46px while nothing runs, whose clock sits in the middle,
-   and 2px more.
-   shortcut: a count beside the clock (jobs running or to fix) widens it past that room while it shows; measure the button
-   if pages should clear it then too. */
+   page leaves it at the right: its 16px from the edge, its own width and 2px more. This is the room for the button
+   while nothing runs, 46px with a clock in the middle; Shell.tsx sets --corner-tools to the measured room when a count
+   (jobs running or to fix) widens the button. Beside the source panel (SourceViewer.css) the page ends 536px from the
+   window's edge and nothing of it is near the corner, so it needs none. */
 :root {
-  --corner-room: 64px;
+  --corner-tools: 64px;
+  --corner-room: var(--corner-tools);
+}
+@media (min-width: 1180px) {
+  :root[data-source-panel] {
+    --corner-room: 24px;
+  }
 }
 .px-corner-tools {
   position: fixed;
@@ -658,6 +664,48 @@ html[data-platform="darwin"] .canvas-bar {
     transition-property: color, background-color, border-color, outline-color, box-shadow, opacity !important;
     transition-delay: 0s !important;
   }
+}
+
+/* A disclosure, whatever reveals something in place, has one sign: a chevron that points right and turns down when it
+   opens, over --duration-small and --ease-out. A `details` draws it itself, before its summary, and anything else that
+   discloses puts <span className="px-chevron" aria-hidden /> inside the button whose aria-expanded it follows. It is
+   drawn with borders so it takes the label's colour, and it never uses the browser's own triangle. Under reduced motion
+   the global rule above lets it jump to its end (motion.md). */
+details > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+.px-chevron,
+details > summary::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  border-radius: 0 0 1px;
+  /* Pointing right, nudged back so the glyph, not its box, sits on the box's centre; opened, it points down. */
+  rotate: -45deg;
+  translate: -2px 0;
+  transition:
+    rotate var(--duration-small) var(--ease-out),
+    translate var(--duration-small) var(--ease-out);
+}
+details > summary::before {
+  margin-inline-end: var(--space-1);
+}
+details[open] > summary::before,
+[aria-expanded="true"] .px-chevron {
+  rotate: 45deg;
+  translate: 0 -2px;
 }
 
 /* Study forms share the same controls and spacing as the composer. */

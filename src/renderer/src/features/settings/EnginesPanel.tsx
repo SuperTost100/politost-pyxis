@@ -14,7 +14,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useStillHere } from "../../lib/useStillHere";
@@ -23,6 +22,7 @@ import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
 import { engineProviders as providers } from "@shared/limits";
+import { TOOL_PROGRAMS } from "@shared/tool-names";
 import {
   EngineNoticeModal,
   unacknowledged,
@@ -490,9 +490,14 @@ export function EnginesPanel() {
           kind={row.kind}
           name={row.name}
           model={
-            names.modelsLine(row.id, features.data, row.refusedModels, row.allowed) ||
-            row.version ||
-            row.id
+            // The program behind a tool's name shows once, here, in every state: it is what the student installs or signs
+            // in to, whatever models the plan gives it.
+            [
+              row.kind === "cli" ? TOOL_PROGRAMS[row.id] : undefined,
+              names.modelsLine(row.id, features.data, row.refusedModels, row.allowed) || row.version,
+            ]
+              .filter(Boolean)
+              .join(" · ") || row.id
           }
           isDefault={
             !simple &&
@@ -690,7 +695,6 @@ export function EnginesPanel() {
           {/* Closed until opened: the engine and effort for each function are for students who want to tune them. */}
           <details className="engines-section">
             <summary>
-              <ChevronRight className="engines-section-caret" size={16} strokeWidth={1.75} aria-hidden />
               <h2 className="title-3">{t("engines.perFeature")}</h2>
             </summary>
           <div className="engines-heading">
@@ -878,6 +882,12 @@ export function EnginesPanel() {
       </p>
       <Drawer
         title={engine?.name ?? t("engines.details")}
+        // The program behind the tool, quietly beside its name; it stays out of the dialog's name.
+        extra={
+          engine?.kind === "cli" && TOOL_PROGRAMS[engine.id] ? (
+            <span className="small ink-muted engines-drawer-program">{TOOL_PROGRAMS[engine.id]}</span>
+          ) : null
+        }
         open={!!drawer}
         onClose={() => setDrawer(null)}
         width={440}

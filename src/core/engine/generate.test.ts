@@ -417,7 +417,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     });
     expect(asked).toEqual(["claude", "codex"]);
     expect(output.text).toBe("ciao");
-    expect(output.fallback).toEqual({ from: "Claude Code", to: "Codex", reason: "limit" });
+    expect(output.fallback).toEqual({ from: "Claude", to: "ChatGPT", reason: "limit" });
     expect(heard).toEqual([output.fallback]);
     db.close();
   });
@@ -459,7 +459,7 @@ describe("switching engines on a usage limit or sign-out", () => {
       },
     });
     expect(output.text).toBe("ciao");
-    expect(output.fallback).toEqual({ from: "Claude Code", to: "Codex", reason: "model" });
+    expect(output.fallback).toEqual({ from: "Claude", to: "ChatGPT", reason: "model" });
     expect(heard).toEqual([output.fallback]);
     db.close();
   });
@@ -503,8 +503,8 @@ describe("switching engines on a usage limit or sign-out", () => {
     expect(asked).toEqual(["claude/claude-sonnet-5", "claude/claude-haiku-5"]);
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({
-      from: "Claude Code",
-      to: "Claude Code (Claude Haiku 5)",
+      from: "Claude",
+      to: "Claude (Claude Haiku 5)",
       reason: "model",
     });
     db.close();
@@ -721,8 +721,8 @@ describe("a chosen engine whose subscription refuses the model", () => {
     expect(asked).toEqual(["claude-opus-5-5", "grok-4.7"]);
     expect(output.text).toBe("ciao");
     expect(output.fallback).toEqual({
-      from: "Cursor Agent",
-      to: "Cursor Agent (Grok 4.7)",
+      from: "Cursor",
+      to: "Cursor (Grok 4.7)",
       reason: "model",
     });
     db.close();

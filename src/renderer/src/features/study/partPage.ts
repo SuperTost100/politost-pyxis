@@ -63,6 +63,16 @@ export function startsOnOpen(read: RequestOutput<"study.part">): boolean {
   return read.outline?.parts.find((part) => part.position === read.position)?.state !== "failed";
 }
 
+/**
+ * The tone of the notice for a write or a rewrite that did not end in text. Core gives the job's error when the job
+ * failed, and none when it was cancelled or interrupted (or never started): a failure is the danger tone, and a stop
+ * with nothing failed, or one that only waits for an AI tool to be set up, is the warning tone, a step that waits for
+ * the student (docs/design-system/feedback.md).
+ */
+export function stoppedTone(error: string | null | undefined): "danger" | "warning" {
+  return error?.trim() && !error.includes("engine-missing") ? "danger" : "warning";
+}
+
 // Old lessons in parts.
 
 /**

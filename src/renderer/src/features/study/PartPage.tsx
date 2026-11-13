@@ -6,7 +6,6 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
 import { Button } from "../../components/Button";
-import { ErrorState } from "../../components/ErrorState";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
@@ -25,7 +24,7 @@ import { stepPath } from "../plans/reopen";
 import { ExportButton } from "../share/ExportButton";
 import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
-import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, workingCopy, type PartData } from "./partPage";
+import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, stoppedTone, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
@@ -504,13 +503,14 @@ export function PartPage({
         {working ? <PageShape /> : null}
         {data.state === "failed" && !retry.isPending ? (
           <div className="px-reader-note">
-            <ErrorState
+            <Notice
+              tone={stoppedTone(error)}
               action={{ label: t("lesson.partRetry"), onClick: () => retry.mutate() }}
               secondary={engineError?.action ?? { label: t("lesson.backToPath"), onClick: () => navigate(`/plans/${planId}`) }}
-              details={error || undefined}
+              details={error.trim() ? error.trim().slice(0, 2000) : undefined}
             >
               {failedText}
-            </ErrorState>
+            </Notice>
           </div>
         ) : null}
         {data.state === "book" && lesson ? (

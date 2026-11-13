@@ -271,7 +271,7 @@ export function PracticePage() {
       ) : null}
       {stopped || generate.isError ? (
         <Notice
-          tone={job?.state === "cancelled" ? "info" : "warning"}
+          tone={job?.state === "cancelled" ? "info" : job?.state === "interrupted" ? "warning" : "danger"}
           details={job?.error ?? undefined}
           action={{ label: t("lesson.retry"), onClick: () => generate.mutate() }}
         >

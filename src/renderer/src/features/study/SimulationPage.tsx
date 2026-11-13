@@ -48,8 +48,9 @@ export function SimulationPage() {
   // Where the student moved to in this attempt; until they move, the exam opens where it was left.
   const [moved, setMoved] = useState<{ attemptId: string; index: number } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [noEngine, setNoEngine] = useState(false);
+  // The message and what it is travel as one value: a failure to save is red whatever came before it, and only a missing
+  // AI tool is the amber notice that opens Settings.
+  const [notice, setNotice] = useState<{ text: string; needsTool: boolean } | null>(null);
   // Questions marked "Segna per dopo", once the student changes them; until then the saved list.
   const [markedHere, setMarkedHere] = useState<string[] | null>(null);
   // The Consegna question, open under the button that asked it.
@@ -60,7 +61,7 @@ export function SimulationPage() {
   const drafts = useDraftSaver(
     (draft: { attemptId: string; picks: Record<string, string>; marked: string[]; current: string }) =>
       invoke("study.simulationDraft", draft),
-    () => setNotice(t("simulation.saveFailed")),
+    () => setNotice({ text: t("simulation.saveFailed"), needsTool: false }),
     DRAFT_DELAY_MS,
   );
   const plan = usePlan(planId);
@@ -131,19 +132,18 @@ export function SimulationPage() {
   const index = run && moved?.attemptId === run.attemptId ? moved.index : resumed;
   function startFailed(err: unknown) {
     const text = String((err as { code?: string })?.code ?? err);
-    setNotice(
-      text.includes("engine-missing")
+    setNotice({
+      text: text.includes("engine-missing")
         ? t("simulation.noEngine")
         : text.includes("simulation-empty")
           ? t("simulation.empty")
           : t("simulation.startFailed"),
-    );
-    setNoEngine(text.includes("engine-missing"));
+      needsTool: text.includes("engine-missing"),
+    });
   }
   function begin(request: Promise<{ attemptId: string }>) {
     setBusy(true);
-    setNotice("");
-    setNoEngine(false);
+    setNotice(null);
     return request
       .then(async ({ attemptId: next }) => {
         navigate(`/plans/${planId}/exam/${next}`, { replace: true });
@@ -157,7 +157,7 @@ export function SimulationPage() {
   async function control(action: "jobs.cancel" | "jobs.retry" | "jobs.resume") {
     if (!building) return;
     await invoke(action, { jobId: building.jobId }).catch(() =>
-      setNotice(t("simulation.actionFailed")),
+      setNotice({ text: t("simulation.actionFailed"), needsTool: false }),
     );
     await client.invalidateQueries({ queryKey: ["simulation-build", planId] });
   }
@@ -245,7 +245,7 @@ export function SimulationPage() {
     if (!run || busy) return;
     setConfirmFrom(null);
     setBusy(true);
-    setNotice("");
+    setNotice(null);
     try {
       await drafts.flush();
       await invoke("study.simulationSubmit", {
@@ -254,18 +254,8 @@ export function SimulationPage() {
       });
       await client.invalidateQueries({ queryKey: ["simulation", planId] });
     } catch (err) {
-      setNotice(
-        String((err as { code?: string })?.code ?? err).includes(
-          "engine-missing",
-        )
-          ? t("simulation.noEngine")
-          : t("simulation.actionFailed"),
-      );
-      setNoEngine(
-        String((err as { code?: string })?.code ?? err).includes(
-          "engine-missing",
-        ),
-      );
+      const missing = String((err as { code?: string })?.code ?? err).includes("engine-missing");
+      setNotice({ text: missing ? t("simulation.noEngine") : t("simulation.actionFailed"), needsTool: missing });
     } finally {
       setBusy(false);
     }
@@ -278,8 +268,7 @@ export function SimulationPage() {
   // The setup's one action: write the questions first when the material has no exam exercises, then start the clock.
   function prepare() {
     setBusy(true);
-    setNotice("");
-    setNoEngine(false);
+    setNotice(null);
     void invoke("study.simulationPrepare", {
       planId,
       minutes: length,
@@ -314,9 +303,9 @@ export function SimulationPage() {
   const topicCount = plan.data?.topics.length ?? 0;
   const noticeBox = notice ? (
     <Notice
-      tone="danger"
+      tone={notice.needsTool ? "warning" : "danger"}
       action={
-        noEngine
+        notice.needsTool
           ? {
               label: t("simulation.openSettings"),
               onClick: () => navigate("/settings"),
@@ -324,7 +313,7 @@ export function SimulationPage() {
           : undefined
       }
     >
-      {notice}
+      {notice.text}
     </Notice>
   ) : null;
   // The results screen. While grading runs the job grades the exercises in order, so the first `gradedCount` have a grade.
@@ -349,7 +338,7 @@ export function SimulationPage() {
       });
       navigate(`/ask/${seeded.chatId}`);
     } catch {
-      setNotice(t("simulation.actionFailed"));
+      setNotice({ text: t("simulation.actionFailed"), needsTool: false });
     }
   }
   const simItems: ResultItem[] = (run?.questions ?? []).map((q, i) => {
@@ -447,7 +436,7 @@ export function SimulationPage() {
         <Notice tone="warning">{generated}</Notice>
       )}
       {open.isError && (
-        <Notice tone="warning">{t("simulation.actionFailed")}</Notice>
+        <Notice tone="danger">{t("simulation.actionFailed")}</Notice>
       )}
       {!run ? (
         <ActivityIntro
@@ -665,7 +654,7 @@ export function SimulationPage() {
           primary={
             gradingStopped ? (
               <Button type="primary" shape="round" size="large" disabled={busy} onClick={() => void submit()}>
-                {t("simulation.retryGrade")}
+                {t("simulation.resumeGrade")}
               </Button>
             ) : run.submitted && simMistakes ? undefined : (
               <Button type="primary" shape="round" size="large" onClick={() => navigate(`/plans/${planId}`)}>
@@ -754,7 +743,7 @@ export function SimulationPage() {
                   </Notice>
                 ) : null}
                 {generated ? <Notice tone="warning">{generated}</Notice> : null}
-                {open.isError ? <Notice tone="warning">{t("simulation.actionFailed")}</Notice> : null}
+                {open.isError ? <Notice tone="danger">{t("simulation.actionFailed")}</Notice> : null}
               </>
             ) : undefined
           }

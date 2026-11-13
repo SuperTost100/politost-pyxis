@@ -19,6 +19,7 @@ import { clearSignOut } from "./bench";
 import { shellPathReady } from "./shell-path";
 import { setRedact, startCall } from "../debug/log";
 import { currentUsageScope } from "./usage";
+import { TOOL_NAMES } from "../../shared/tool-names";
 
 // Debug mode's log masks every line with cli-funnel's redact before it writes it.
 setRedact(redact);
@@ -139,9 +140,9 @@ export function getFunnel(): Funnel {
   return funnel;
 }
 
-/** The provider's own name, such as "Claude Code", for notices. */
+/** The provider's name as a student knows it ("Claude" for the program Claude Code), for notices. */
 export function providerName(id: string): string {
-  return getFunnel().providers[id as ProviderId]?.displayName ?? id;
+  return TOOL_NAMES[id] ?? getFunnel().providers[id as ProviderId]?.displayName ?? id;
 }
 
 type Conversation = {

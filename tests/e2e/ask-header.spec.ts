@@ -12,6 +12,8 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu } from "./native-menu";
+import { atRest } from "./settled";
+import { saveShot } from "./shots";
 
 const REPLY = ["La cinematica descrive il moto: $v = \\frac{dx}{dt}$.", "", "<followups>", "Fammi un esempio", "</followups>"].join(
   "\n",
@@ -201,3 +203,68 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
   }
 });
 
+
+test("Ask: the subject chip never overlaps Attività, in either language, at any width, with a long subject, large text and the source panel open", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData, db } = await launch();
+  try {
+    const now = Date.now();
+    const subject = "Fisica dei sistemi complessi e metodi matematici per l’ingegneria";
+    seedSubjects(db, [{ id: "s-fis", name: subject }]);
+    seedSource(db, {
+      id: "src-fis",
+      title: "Appunti di fisica",
+      document: { id: "doc-fis" },
+      passages: [{ id: "pa-1", text: "La forza è il prodotto di massa e accelerazione.", locator: { chapter: 1, paragraph: "p1" }, section: "1. Dinamica" }],
+    });
+    db.exec(`
+      INSERT INTO chats(id,title,subject,created_at,updated_at) VALUES ('c-1','Seconda legge di Newton','${subject}',${now},${now});
+      INSERT INTO messages(id,chat_id,role,body,created_at) VALUES ('m1','c-1','user','Come calcolo la forza?',${now});
+    `);
+    // Jobs that run and jobs that wait for the student widen Attività past its 46px, which is when the chip met it.
+    const job = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES(?,'demo','{}',?,0,?,?,?)",
+    );
+    for (const id of ["run-1", "run-2"]) job.run(id, "running", null, now, now);
+    for (const id of ["fix-1", "fix-2", "fix-3"]) job.run(id, "failed", "engine-failed", now, now);
+    await page.evaluate(() => {
+      location.hash = "/ask/c-1";
+    });
+    await page.reload();
+    const chip = page.locator(".ask-bar .ask-subject-chip");
+    const tools = page.locator(".px-corner-tools");
+    const apart = async (label: string) => {
+      await expect(chip, label).toBeVisible();
+      await atRest(chip);
+      const [a, b] = [(await chip.boundingBox())!, (await tools.boundingBox())!];
+      // Attività has grown past its resting 46px, so the jobs are counted and the check means something.
+      expect(b.width, `${label}: Attività shows its counts`).toBeGreaterThan(70);
+      expect(
+        a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y,
+        `${label}: the chip (${Math.round(a.x)}–${Math.round(a.x + a.width)}) stays clear of Attività (${Math.round(b.x)}–${Math.round(b.x + b.width)})`,
+      ).toBe(true);
+    };
+    for (const text of ["md", "lg"] as const) {
+      await page.evaluate((textSize) => window.pyxis.invoke("profile.save", { dyslexia: false, textSize }), text);
+      for (const language of ["it", "en"]) {
+        await page.evaluate((language) => localStorage.setItem("pyxis.lang", language), language);
+        await page.reload();
+        for (const panel of [false, true]) {
+          if (panel)
+            await page.evaluate(() =>
+              window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-1" } })),
+            );
+          else await page.keyboard.press("Escape");
+          for (const width of [960, 1180, 1280, 1440]) {
+            await page.setViewportSize({ width, height: 800 });
+            await apart(`${language}, ${text} text, ${width}px${panel ? ", source panel open" : ""}`);
+            await saveShot(page, `ask-chip-${language}-${text}-${width}${panel ? "-panel" : ""}.png`);
+          }
+        }
+        await page.keyboard.press("Escape");
+      }
+    }
+  } finally {
+    await finish(app, userData, db);
+  }
+});

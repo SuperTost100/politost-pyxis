@@ -792,6 +792,8 @@ test("Riprova on a failed build shows Pyxis at work in place at once, and a retr
     // The line is a notice: its icon, Riprova as its action and Chiudi beside it.
     const line = recovery(page);
     await expect(line.locator(".px-notice")).toContainText("L’ultima costruzione della mappa non è riuscita");
+    // A failure is the danger tone, as for a failed flashcard or a failed review question.
+    await expect(line.locator(".px-notice")).toHaveClass(/\bis-danger\b/);
     await expect(line.locator(".px-notice svg").first()).toBeVisible();
     await expect(line.getByRole("button")).toHaveText(["Riprova", "Chiudi"]);
     await expectNoAxeViolations(page);
@@ -855,6 +857,8 @@ test("Riprendi on a stopped build shows Pyxis at work in place at once", async (
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     const line = recovery(page);
     await expect(line.locator(".px-notice")).toContainText("Hai fermato la creazione della mappa");
+    // One the student stopped is not a failure: the info tone.
+    await expect(line.locator(".px-notice")).toHaveClass(/\bis-info\b/);
     await expect(line.getByRole("button")).toHaveText(["Riprendi", "Chiudi"]);
     await line.getByRole("button", { name: "Riprendi" }).click();
     const working = page.locator(".px-map-card .px-map-working");

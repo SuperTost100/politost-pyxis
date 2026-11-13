@@ -1,11 +1,15 @@
+import { dropCitationChips } from "./citationChips";
+
 /**
  * The text of a selection as a student would paste it. KaTeX draws a formula twice, as MathML for screen readers and as
  * HTML for the eye, and the browser's own `toString()` reads both ("X" and then "X"). Each formula here becomes its TeX
- * source once, between `$` (or `$$` for a display formula), so the text can be drawn again as math.
+ * source once, between `$` (or `$$` for a display formula), so the text can be drawn again as math. A citation chip is
+ * a control that points to a source, not words the student selected, so it is left out, with the space before it when that space only set the chip apart (citationChips.ts).
  */
 export function selectedText(range: Range): string {
   const holder = document.createElement("div");
   holder.append(range.cloneContents());
+  dropCitationChips(holder);
   for (const formula of holder.querySelectorAll<HTMLElement>(".katex-display, .katex")) {
     // The `.katex` inside a display formula went with it.
     if (!holder.contains(formula)) continue;

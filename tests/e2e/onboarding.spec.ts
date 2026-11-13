@@ -95,7 +95,7 @@ const cardState = (page: Page, name: string) =>
 // The engine rows under Advanced, found by the engine's name alone (a row's models can name another vendor).
 const engineRow = (page: Page, name: string) =>
   page
-    .getByRole("list", { name: "Motori su questo computer" })
+    .getByRole("list", { name: "Strumenti su questo computer" })
     .getByRole("listitem")
     .filter({
       has: page.locator(".px-engine-name", { hasText: new RegExp(`^${name}$`) }),
@@ -829,8 +829,8 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     app = await launch(userData, { ...env, ...reply });
     page = await app.firstWindow();
     await expect(notice(page)).toBeVisible({ timeout: 30000 });
-    await expect(notice(page).getByText("Claude Code li invia ad Anthropic.")).toBeVisible();
-    await expect(notice(page).getByText("Codex li invia ad OpenAI.")).toBeVisible();
+    await expect(notice(page).getByText("Claude li invia ad Anthropic.")).toBeVisible();
+    await expect(notice(page).getByText("ChatGPT li invia ad OpenAI.")).toBeVisible();
     await noAxeViolations(page);
     await notice(page).getByRole("button", { name: "Non ora" }).click();
     await expect(notice(page)).toHaveCount(0);

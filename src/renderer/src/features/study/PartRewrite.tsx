@@ -4,14 +4,13 @@ import { ChevronDown, PencilLine, RefreshCw } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { smartSections } from "@shared/smart-text";
-import { ErrorState } from "../../components/ErrorState";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Notice } from "../../components/Notice";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
-import { sectionFailedKey, type PartData } from "./partPage";
+import { sectionFailedKey, stoppedTone, type PartData } from "./partPage";
 import { ReaderProgress } from "./Reader";
 
 // The level of a part and its rewrites, as an old lesson has them: "Livello" in the bar, and "Riscrivi questa parte" and
@@ -247,17 +246,18 @@ export function usePartRewrites({
   const failure =
     rewrite?.state === "failed" && !choose.isPending ? (
       <div className="px-reader-note">
-        <ErrorState
+        <Notice
+          tone={stoppedTone(error)}
           action={{
             label: t("lesson.partRetry"),
             onClick: () =>
               choose.mutate(rewrite.rewrite === "level" ? { wording: rewrite.wording } : { regenerate: true }),
           }}
           secondary={engineError?.action ?? { label: t("lesson.keepVersion"), onClick: () => keep.mutate(rewrite.jobId) }}
-          details={error || undefined}
+          details={error.trim() ? error.trim().slice(0, 2000) : undefined}
         >
           {failedText}
-        </ErrorState>
+        </Notice>
       </div>
     ) : null;
 

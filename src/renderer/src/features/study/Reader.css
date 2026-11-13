@@ -329,32 +329,8 @@
 }
 
 .px-reader-sources summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   padding: var(--space-4) 0;
-  cursor: pointer;
-  list-style: none;
   color: var(--ink-muted);
-}
-
-.px-reader-sources summary::-webkit-details-marker {
-  display: none;
-}
-
-.px-reader-sources summary::after {
-  content: "";
-  width: 7px;
-  height: 7px;
-  margin-left: var(--space-1);
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-  transform: translateY(-2px) rotate(45deg);
-  transition: transform 160ms ease-out;
-}
-
-.px-reader-sources[open] summary::after {
-  transform: translateY(2px) rotate(225deg);
 }
 
 .px-reader-sources ul {
@@ -380,8 +356,7 @@
     animation: none;
   }
 
-  .px-studybar.px-reader-bar,
-  .px-reader-sources summary::after {
+  .px-studybar.px-reader-bar {
     transition: none;
   }
 }

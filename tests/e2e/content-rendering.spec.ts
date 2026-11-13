@@ -31,7 +31,7 @@ const lesson = [
   "",
   "Il modulo è {{formula:1.5}}: vedi [testo](ref:chapter/1#p2), con $m\\vec{g}\\sin\theta$ e $\frac{a}{b}$.",
   "",
-  "Un punto $P$ nello spazio.",
+  "Un punto $P$ nello spazio [P1].",
   "",
   block("recap", {
     questions: [
@@ -185,6 +185,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
         selection.addRange(range);
       });
     await paragraph.scrollIntoViewIfNeeded();
+    // The sentence ends in a citation chip, which is selected with it.
+    await expect(paragraph.locator(".px-cite")).toHaveCount(1);
     await select();
     const menu = page.getByRole("group", { name: "Chiedi al tutor" });
     await expect(menu).toBeVisible();
@@ -193,6 +195,8 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(dialog).toBeVisible();
     // The quote draws its formula once.
     await expect(dialog.locator(".px-mc-source .katex")).toHaveCount(1);
+    // The citation chip's own words (the book's title) are not part of what was selected.
+    await expect(dialog.locator(".px-mc-source")).not.toContainText("Misure e vettori");
     await expect(menu).toHaveCount(0);
     // Moving focus into the dialog makes the browser report the (still selected) text again; the menu stays away.
     await page.evaluate(() => document.dispatchEvent(new Event("selectionchange")));
@@ -222,6 +226,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(quote.locator(".katex")).toHaveCount(1);
     expect((await quote.innerText()).match(/Un punto/g)).toHaveLength(1);
     await expect(page.locator(".ask-bar-name")).toHaveText("Un punto P nello spazio.");
+    await saveShot(page, "chat-from-selection.png");
     const named = await invoke<Array<{ title: string }>>("chats.list", {});
     expect(named[0]!.title).toBe("Un punto P nello spazio.");
     // It goes with the first question: the composer is clear after it is sent.

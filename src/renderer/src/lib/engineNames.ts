@@ -7,7 +7,7 @@ export type EngineNames = {
   models: Record<string, Record<string, string>>;
 };
 
-/** "Cursor Agent" for `agent`, before and after core has told the names. */
+/** "Cursor" for `agent`, before and after core has told the names. */
 export function engineName(names: EngineNames | undefined, provider: string): string {
   return names?.engines[provider] ?? ENGINE_NAMES[provider] ?? provider;
 }
@@ -23,7 +23,7 @@ export function modelName(
 
 /**
  * An engine and its model as the student reads them everywhere, the way the model picker does:
- * "Cursor Agent · Codex 5.3". Either part may be missing on an old record.
+ * "Cursor · Codex 5.3". Either part may be missing on an old record.
  */
 export function engineLabel(
   names: EngineNames | undefined,

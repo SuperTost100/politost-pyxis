@@ -72,7 +72,7 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
     await expect(details).toContainText("Scrivi la lezione sul moto.");
     await details.getByText("Risposta", { exact: true }).click();
     await expect(details).toContainText("Il moto è il cambiamento di posizione.");
-    await expect(details.getByText("1 evento del motore")).toBeVisible();
+    await expect(details.getByText("1 evento dello strumento")).toBeVisible();
 
     // "Open the log" shows the job's file in the file manager.
     await app.evaluate(({ shell }) => {

@@ -217,7 +217,7 @@ export function BackupsGroup({
         </ControlList>
       ) : null}
       {status && last && !last.ok && !status.running ? (
-        <Notice tone="warning">
+        <Notice tone="danger">
           {t(`settings.autoBackup.reason.${last.reason}`, {
             size: number.format(Math.ceil(((last.size ?? 0) / GIB) * 10) / 10),
             limit: number.format(2),

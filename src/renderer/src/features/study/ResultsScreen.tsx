@@ -10,6 +10,7 @@ import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
+import { currentToolLabel } from "@shared/tool-names";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { questionPoints, stemText, type AnswerSource, type Citation } from "./quizText";
@@ -185,8 +186,8 @@ export function ResultsScreen({
                 <Icon name="info" size={16} />
                 <span>
                   {t(`engines.fallback.${fallback.reason}`, {
-                    from: fallback.from,
-                    to: fallback.to,
+                    from: currentToolLabel(fallback.from),
+                    to: currentToolLabel(fallback.to),
                   })}
                 </span>
               </p>
@@ -378,7 +379,7 @@ function Question({ item, number, planId }: { item: ResultItem; number: number; 
             <InlineMarkdown>{stemText(item.stem)}</InlineMarkdown>
           </span>
           <Status item={item} />
-          <Icon name="chevron-down" size={16} className="px-res-chevron" />
+          <span className="px-chevron px-res-chevron" aria-hidden />
         </button>
         {open ? <Answer id={body} item={item} planId={planId} /> : null}
       </li>

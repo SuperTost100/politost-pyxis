@@ -8,6 +8,7 @@ import {
   partMark,
   partStateWord,
   startsOnOpen,
+  stoppedTone,
   workingCopy,
   type PartData,
 } from "./partPage";
@@ -195,5 +196,15 @@ describe("a section rewrite that failed", () => {
     expect(sectionFailedKey(changed, "part")).toBe("lesson.rewritePartSectionChanged");
     expect(sectionFailedKey(other, "lesson")).toBe("lesson.rewriteSectionFailed");
     expect(sectionFailedKey(other, "part")).toBe("lesson.rewritePartSectionFailed");
+  });
+});
+
+describe("the tone of a write that did not end in text", () => {
+  it("is danger when the job failed and warning when nothing failed or a tool is missing", () => {
+    expect(stoppedTone("lesson-part-invalid")).toBe("danger");
+    expect(stoppedTone("engines.errors.timeout")).toBe("danger");
+    expect(stoppedTone(null)).toBe("warning");
+    expect(stoppedTone("")).toBe("warning");
+    expect(stoppedTone("engines.errors.engine-missing")).toBe("warning");
   });
 });

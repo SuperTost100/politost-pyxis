@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Progress } from "antd";
-import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useJobs } from "../features/jobs/queries";
@@ -151,7 +150,6 @@ export function OcrDataRow() {
       </div>
       <details className="px-ctl-why">
         <summary>
-          <ChevronRight size={14} strokeWidth={2} aria-hidden />
           {t("settings.ocrRow.more")}
         </summary>
         <div className="px-ctl-why-body">

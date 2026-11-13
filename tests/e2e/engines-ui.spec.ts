@@ -75,11 +75,24 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           ).toBeVisible();
           await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(8);
           // CLI Funnel enforces text-only access for every offered engine, so none is disabled.
-          for (const name of ["Cursor Agent", "Antigravity"])
+          for (const name of ["Cursor", "Gemini"])
             await expect(
               page.locator(".engines-list .engines-row", { hasText: name }),
             ).toHaveCount(1);
           await expect(page.locator(".engines-row.is-disabled")).toHaveCount(0);
+          // A row reads by the tool's name, and the program behind it shows once, as the detail under it: it is what the
+          // student installs or signs in to.
+          const gemini = page.locator(".engines-list .engines-row", { hasText: "Gemini" });
+          await expect(gemini.locator(".px-engine-name")).toHaveText("Gemini");
+          await expect(gemini.locator(".px-engine-model")).toHaveText("Antigravity");
+          // Also a tool that has a model: the program stays in its row, once, beside the model.
+          for (const [name, program] of [["Claude", "Claude Code"], ["Cursor", "Cursor Agent"], ["Gemini", "Antigravity"]] as const) {
+            const toolRow = page
+              .locator(".engines-list .engines-row")
+              .filter({ has: page.locator(".px-engine-name", { hasText: new RegExp(`^${name}`) }) });
+            await expect(toolRow.locator(".px-engine-model"), `${language}, ${name}`).toContainText(program);
+            expect((await toolRow.innerText()).split(program).length - 1, `${language}, ${name}: the program shows once`).toBe(1);
+          }
           // Every function starts automatic. Nothing is pinned on a fresh profile.
           await expect(
             page.getByRole("button", {
@@ -90,13 +103,15 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             }),
           ).toBeDisabled();
           // The row's visible words name the button; "Details for ..." is its description.
-          const details = page.getByRole("button", { name: /^Claude Code/ });
+          const details = page.getByRole("button", { name: /^Claude/ });
           await details.click();
           const drawer = page.getByRole("dialog", {
-            name: "Claude Code",
+            name: "Claude",
             exact: true,
           });
           await expect(drawer).toBeVisible();
+          // The drawer's head names the program once, quietly, beside the tool's name.
+          await expect(drawer.locator(".engines-drawer-program")).toHaveText("Claude Code");
           await expect(
             drawer.getByRole("combobox", {
               name: language === "en" ? "Model" : "Modello",
@@ -110,15 +125,15 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           // Each row's action names its engine, so a screen reader can tell the buttons apart.
           await expect(
             page.getByRole("button", {
-              name: /^(Install|Test|Sign in|Installa|Prova|Accedi) Antigravity$/,
+              name: /^(Install|Test|Sign in|Installa|Prova|Accedi) Gemini$/,
             }),
           ).toHaveCount(1);
           // Antigravity has no sign-out command: the drawer says how to sign out instead of offering a button that fails.
           await page
-            .getByRole("button", { name: /^Antigravity/ })
+            .getByRole("button", { name: /^Gemini/ })
             .click();
           const agy = page.getByRole("dialog", {
-            name: "Antigravity",
+            name: "Gemini",
             exact: true,
           });
           await expect(
@@ -138,7 +153,7 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             .click();
           await page
             .getByRole("button", {
-              name: language === "en" ? "Add engine" : "Aggiungi motore",
+              name: language === "en" ? "Add AI tool" : "Aggiungi strumento AI",
             })
             .click();
           const modal = page.getByRole("dialog");
@@ -225,19 +240,19 @@ test("Automatic engines: simple view says it in one sentence, and advanced can p
     // Engines that are ready but not acknowledged get their notice here, and take no part in the plan before it.
     const notice = page.getByRole("dialog", { name: "What leaves this computer" });
     await expect(notice).toBeVisible({ timeout: 30000 });
-    await expect(notice.getByText("Claude Code sends them to Anthropic.")).toBeVisible();
+    await expect(notice.getByText("Claude sends them to Anthropic.")).toBeVisible();
     await expect(page.locator(".engines-summary")).toHaveCount(0);
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
     // One plain sentence, with the engines' names and no list of which does what.
     await expect(page.locator(".engines-summary-body")).toHaveText(
-      "Automatic choicePyxis picks the right tool for each job by itself, out of Codex and Claude Code, and uses the cheapest model that is good enough.",
+      "Automatic choicePyxis picks the right tool for each job by itself, out of ChatGPT and Claude, and uses the cheapest model that is good enough.",
       { timeout: 30000 },
     );
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
     await expect(page.locator(".engines-feature-row")).toHaveCount(0);
     // Which engines Pyxis may use waits under Advanced options, and the week's tokens under debug mode.
-    const choice = page.getByRole("radiogroup", { name: "Which engines Pyxis may use" });
+    const choice = page.getByRole("radiogroup", { name: "Which AI tools Pyxis may use" });
     const week = page.getByRole("region", { name: "This week" });
     await expect(choice).toHaveCount(0);
     await expect(week).toHaveCount(0);
@@ -260,7 +275,7 @@ test("Automatic engines: simple view says it in one sentence, and advanced can p
     await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
     // Advanced options add no second primary button: Add engine is a secondary one.
     await expect(
-      page.getByRole("button", { name: "Add engine" }),
+      page.getByRole("button", { name: "Add AI tool" }),
     ).not.toHaveClass(/ant-btn-primary/);
     const chat = page
       .locator(".engines-feature-row")
@@ -295,9 +310,9 @@ test("Automatic engines: simple view says it in one sentence, and advanced can p
     await page.getByRole("combobox", { name: "Chat", exact: true }).click();
     // Models are named with their engine as the student knows it, never with an internal id such as "claude".
     const options = page.locator(".ant-select-item-option");
-    await expect(options.filter({ hasText: /^Claude Code · / }).first()).toBeVisible();
+    await expect(options.filter({ hasText: /^Claude · / }).first()).toBeVisible();
     await expect(options.filter({ hasText: /^(claude|codex|agent) · / })).toHaveCount(0);
-    await options.filter({ hasText: /^Claude Code · / }).first().click();
+    await options.filter({ hasText: /^Claude · / }).first().click();
     await expect(chat).not.toContainText("Automatic");
     const back = page.getByRole("button", {
       name: "Back to automatic choice",
@@ -378,7 +393,7 @@ esac`,
       timeout: 30000,
     });
     // Four engines still make one sentence that names each of them, with no line per engine.
-    for (const name of ["Claude Code", "Codex", "Cursor Agent", "Antigravity"])
+    for (const name of ["Claude", "ChatGPT", "Cursor", "Gemini"])
       await expect(summary).toContainText(name);
     await expect(summary.locator("li")).toHaveCount(0);
     await expect(summary).not.toContainText("chat");
@@ -439,23 +454,23 @@ esac`,
     await page.reload();
     const row = (name: string) =>
       page.locator(".engines-list .px-engine", { hasText: name });
-    await expect(row("Cursor Agent")).toContainText("Ready", { timeout: 30000 });
-    await expect(page.locator(".engines-summary")).toContainText("Cursor Agent", {
+    await expect(row("Cursor")).toContainText("Ready", { timeout: 30000 });
+    await expect(page.locator(".engines-summary")).toContainText("Cursor", {
       timeout: 30000,
     });
 
-    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    await page.getByRole("button", { name: "Test Cursor" }).click();
     // The message names the engine and offers its sign-in here, instead of sending the student to the page they are on.
     await expect(
       page.getByText(
-        "Cursor Agent refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+        "Cursor refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
       ),
     ).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText(/Settings, AI engines/)).toHaveCount(0);
-    await expect(row("Cursor Agent")).toContainText("Sign-in expired");
-    await expect(row("Cursor Agent")).not.toContainText("Ready");
+    await expect(page.getByText(/Settings, AI tools/)).toHaveCount(0);
+    await expect(row("Cursor")).toContainText("Sign-in expired");
+    await expect(row("Cursor")).not.toContainText("Ready");
     await expect(page.locator(".engines-summary")).not.toContainText(
-      "Cursor Agent",
+      "Cursor",
       { timeout: 30000 },
     );
     expect(
@@ -467,9 +482,9 @@ esac`,
       tags: ["wcag2a", "wcag2aa", "wcag21aa"],
     });
     await saveShot(page, "engines-refused-en.png", { fullPage: true });
-    await page.getByRole("button", { name: "Sign in to Cursor Agent" }).click();
+    await page.getByRole("button", { name: "Sign in to Cursor" }).click();
     await expect(
-      page.getByRole("dialog", { name: "Set up Cursor Agent" }),
+      page.getByRole("dialog", { name: "Set up Cursor" }),
     ).toBeVisible();
     await page.keyboard.press("Escape");
 
@@ -489,20 +504,20 @@ esac`,
     await box.fill("What is a vector?");
     await box.press("Enter");
     const named = page.getByText(
-      "Cursor Agent refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
+      "Cursor refused the sign-in, which has probably expired. Pyxis won't use it until you sign in again.",
     );
     await expect(named.first()).toBeVisible({ timeout: 30000 });
-    await expect(page.getByText(/Sign in again in Settings, AI engines/)).toHaveCount(0);
+    await expect(page.getByText(/Sign in again in Settings, AI tools/)).toHaveCount(0);
     await expectNoAxeViolations(page, {
       tags: ["wcag2a", "wcag2aa", "wcag21aa"],
     });
     await page
-      .getByRole("button", { name: "Sign in to Cursor Agent" })
+      .getByRole("button", { name: "Sign in to Cursor" })
       .first()
       .click();
     await expect(page).toHaveURL(/#\/settings\/engines$/);
     await expect(
-      page.getByRole("dialog", { name: "Set up Cursor Agent" }),
+      page.getByRole("dialog", { name: "Set up Cursor" }),
     ).toBeVisible();
   } finally {
     await app.close();
@@ -556,15 +571,18 @@ esac`,
       location.hash = "/settings/engines";
     });
     await page.reload();
-    const row = page.locator(".engines-list .px-engine", { hasText: "Cursor Agent" });
+    const row = page.locator(".engines-list .px-engine", { hasText: "Cursor" });
     await expect(row).toContainText("Ready", { timeout: 30000 });
     // The row names the models the plan gives the engine, never their ids.
     await expect(row).toContainText("Claude Opus 5.5", { timeout: 30000 });
     await expect(row).not.toContainText("claude-opus-5-5");
+    // A tool with models in its row still names its program, once.
+    await expect(row.locator(".px-engine-model")).toContainText("Cursor Agent");
+    expect((await row.innerText()).split("Cursor Agent").length - 1).toBe(1);
 
-    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    await page.getByRole("button", { name: "Test Cursor" }).click();
     await expect(
-      page.getByText("Your Cursor Agent subscription doesn't include the chosen model."),
+      page.getByText("Your Cursor subscription doesn't include the chosen model."),
     ).toBeVisible({ timeout: 30000 });
     await expect(row).toContainText("Ready, with limits");
     await expect(row).toContainText("Gemini 3.8 Flash isn't in your subscription");
@@ -585,7 +603,7 @@ esac`,
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
     await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
     // The next Prova skips the refused model, answers on Grok and names it as the engine lists it.
-    await page.getByRole("button", { name: "Test Cursor Agent" }).click();
+    await page.getByRole("button", { name: "Test Cursor" }).click();
     await expect(page.locator(".engines-result")).toContainText("Grok 4.7", { timeout: 30000 });
     await expect(page.locator(".engines-result")).not.toContainText("grok-4.7");
   } finally {

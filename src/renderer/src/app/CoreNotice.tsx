@@ -16,7 +16,7 @@ export function CoreNotice() {
   return (
     <div className="core-notice">
       <Notice
-        tone="warning"
+        tone={unavailable ? "danger" : "warning"}
         action={{
           label: t("errors.retry"),
           onClick: () => {

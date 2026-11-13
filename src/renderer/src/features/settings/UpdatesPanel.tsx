@@ -97,7 +97,7 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
   }
 
   const problemNotice = problem ? (
-    <Notice tone="warning">{t(`updates.install.${problem}`)}</Notice>
+    <Notice tone={problem === "finishFailed" ? "danger" : "warning"}>{t(`updates.install.${problem}`)}</Notice>
   ) : null;
 
   if (view.state === "downloading") {
@@ -279,11 +279,6 @@ export function UpdatesPanel() {
               ? t(`updates.${state}`)
               : t("updates.checking")}
       </p>
-      {query.data ? (
-        <p className="small section-hint">
-          {t("updates.installed", { version: query.data.current })}
-        </p>
-      ) : null}
       {query.data?.checkedAt ? (
         <p className="small section-hint">
           {t("updates.checked", {

@@ -15,7 +15,7 @@ describe("engineErrorView", () => {
   it("names the engine before the engine list has loaded", () => {
     expect(
       engineErrorView("engines.errors.not-logged-in", "agent").params,
-    ).toEqual({ name: "Cursor Agent" });
+    ).toEqual({ name: "Cursor" });
   });
 
   it("offers no sign-in for an API key, and keeps every other message", () => {

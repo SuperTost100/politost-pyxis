@@ -50,7 +50,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
     const reply = page.locator(".px-msg:not(.px-msg-user)").last();
     await expect(reply.getByText("Interrotta")).toBeVisible();
     await expect(
-      reply.getByText("Il motore si è fermato prima di finire la risposta."),
+      reply.getByText("Lo strumento si è fermato prima di finire la risposta."),
     ).toBeVisible();
 
     await reply.getByRole("button", { name: "Continua" }).click();

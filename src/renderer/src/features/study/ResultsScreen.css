@@ -328,10 +328,6 @@
 .px-res-chevron {
   flex: none;
   color: var(--ink-subtle);
-  transition: transform var(--duration-micro) var(--ease-out);
-}
-.px-res-q.is-open .px-res-chevron {
-  transform: rotate(180deg);
 }
 .px-res-q.is-correct .px-res-q-body {
   padding: 0 22px 16px;
@@ -508,7 +504,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .px-res-chevron,
   .px-res-q.is-correct .px-res-q-head {
     transition: none;
   }

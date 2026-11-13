@@ -1547,7 +1547,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                     control.mutate(gradeState === "interrupted" ? "jobs.resume" : "jobs.retry")
                   }
                 >
-                  {t(gradeState === "interrupted" ? "quiz.gradeResume" : "quiz.gradeRetry")}
+                  {t("quiz.gradeResume")}
                 </Button>
               ) : (
                 <Button type="primary" shape="round" size="large" onClick={() => void close()}>

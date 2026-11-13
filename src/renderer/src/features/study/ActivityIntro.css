@@ -69,12 +69,6 @@
 .px-intro-options-toggle + .px-intro-options-panel {
   margin-top: var(--space-4);
 }
-.px-intro-chevron {
-  transition: transform 150ms ease-out;
-}
-.px-intro-options-toggle[aria-expanded="true"] .px-intro-chevron {
-  transform: rotate(90deg);
-}
 .px-intro-options-panel {
   width: 100%;
   padding: var(--space-5);
