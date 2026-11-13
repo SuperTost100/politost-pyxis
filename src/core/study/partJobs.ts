@@ -18,6 +18,7 @@ import {
   partBounds,
   partLabel,
   planParts,
+  shownOutline,
   writePart,
   type Outline,
   type OutlinePart,
@@ -273,12 +274,13 @@ function outlineView(db: Database.Database, outline: Outline): OutlineView {
 }
 
 /**
- * A topic's parts for the path (`study.parts`), and for a topic not planned yet an estimate of its teaching parts and
+ * A topic's parts for the path (`study.parts`), when its outline is the lesson the student has (`shownOutline`), and
+ * for a topic not planned yet, or whose rewrite in parts has no part written, an estimate of its teaching parts and
  * minutes from the same character rules the planning uses. Reads only.
  */
 export function topicParts(db: Database.Database, input: { planId: string; topicId: string }) {
   requireTopic(db, input.planId, input.topicId);
-  const outline = liveOutline(db, input.topicId);
+  const outline = shownOutline(db, input.topicId);
   const passages = outlinePassages(db, input.topicId);
   const chars = passages.reduce((sum, passage) => sum + passage.text.length, 0);
   const bounds = partBounds(chars, passages.length);
@@ -308,22 +310,15 @@ function rewriting(db: Database.Database, topicId: string, position: number | un
 }
 
 /**
- * Whether the topic's lesson is in parts: it has a live outline, and that outline is not a rewrite of an old lesson
- * with no part written yet. Until a part of such a rewrite is written, the old lesson is still the topic's lesson, so
- * the rule for old lessons decides; an outline made for a topic never read is in parts at once.
- */
-function inParts(outline: Outline | null): outline is Outline {
-  return !!outline && (!outline.replacesItemId || outline.parts.some((part) => part.itemId !== null));
-}
-
-/**
- * A saved lesson that is no part, opened by its item: the earlier version of a lesson now in parts, or of an
- * unfinished one about to be rewritten, which the reader shows as it was; a finished old lesson, which keeps its menu
- * and gets "Riscrivi in parti"; any other lesson (book text, a topic without old lessons) as it was before.
+ * A saved lesson that is no part, opened by its item. While the topic has an outline, shown or still a replacement
+ * with no part written, or part 1's job is making one, the old lesson is the earlier version: read as it was, with
+ * nothing that could rewrite or overwrite the row the rewrite keeps. Otherwise an unfinished old lesson is the earlier
+ * version of the rewrite its next open starts, a finished one keeps its menu and gets "Riscrivi in parti", and any
+ * other lesson (book text, a topic without old lessons) opens as it was before.
  */
 function legacyItem(db: Database.Database, planId: string, topicId: string): PartResult {
-  const outline = liveOutline(db, topicId);
-  if (inParts(outline)) return { mode: "legacy", old: "earlier" };
+  const job = partJob(db, topicId, 1);
+  if (liveOutline(db, topicId) || (job && LIVE.has(job.state))) return { mode: "legacy", old: "earlier" };
   const old = oldLesson(db, planId, topicId);
   if (!old) return { mode: "legacy" };
   return { mode: "legacy", old: old.finished ? "finished" : "earlier" };
@@ -343,7 +338,7 @@ function replacedItem(db: Database.Database, outline: Outline): { itemId: string
  */
 export function rewriteInParts(db: Database.Database, runner: Runner, input: { planId: string; topicId: string }): { ok: true } {
   requireTopic(db, input.planId, input.topicId);
-  if (inParts(liveOutline(db, input.topicId))) throw new Error("parts-exist");
+  if (shownOutline(db, input.topicId)) throw new Error("parts-exist");
   const old = oldLesson(db, input.planId, input.topicId);
   if (!old) throw new Error("lesson-missing");
   ensurePart(db, runner, { planId: input.planId, topicId: input.topicId, position: 1, replaces: old.itemId });
@@ -414,12 +409,15 @@ export function openPart(
     if (!owner) return legacyItem(db, input.planId, input.topicId);
     position ??= owner.position;
   }
+  // The stored outline, shown or not: a replacement with no part written opens on its working state or its failure,
+  // which show the old lesson in its place (`outlineShown` is the rule; the renderer's `oldLessonView` reads it from
+  // `replaces` and the parts' states), and Riprova goes on from it.
   let outline = liveOutline(db, input.topicId);
   let replaces = outline ? replacedItem(db, outline) : null;
-  if (!inParts(outline)) {
+  if (!outline) {
     const old = oldLesson(db, input.planId, input.topicId);
     if (old?.finished && !rewriting(db, input.topicId, input.position)) return { mode: "legacy", old: "finished" };
-    if (old) replaces ??= { itemId: old.itemId };
+    if (old) replaces = { itemId: old.itemId };
   }
   position ??= outline?.parts.find((part) => part.doneAt === null)?.position ?? 1;
   const at = { planId: input.planId, topicId: input.topicId, position };

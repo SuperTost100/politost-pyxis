@@ -267,20 +267,24 @@ test("an unfinished old lesson is rewritten in parts when it is opened, once, an
   }
 });
 
-test("a rewrite that fails or finds no AI tool leaves the old lesson as it was, to read and finish, and Riprova rewrites it", async () => {
+test("a rewrite whose part 1 fails, or that finds no AI tool, leaves the old lesson as the topic's lesson, to read and finish, and Riprova rewrites it", async () => {
   test.setTimeout(240_000);
   const topics = [
     { id: "t-funzioni", title: "Funzioni di più variabili" },
     { id: "t-serie", title: "Serie di funzioni" },
   ];
   const { page, prompts, db, close } = await start(
-    { lessonParts: [{ fail: "Il motore non ha risposto." }, outline], markdown: [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }] },
+    {
+      lessonParts: outline,
+      markdown: [{ fail: "Il motore non ha risposto." }, { markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    },
     (seeding) =>
       seedLessonBeforeParts(seeding, "p-an2", ["t-funzioni", "t-serie"], { markdown: oldText, wording: "balanced" }),
     topics,
   );
   try {
-    // The plan of the parts fails: the old lesson shows as it was, under what happened, and it can still be answered.
+    // The plan of the parts is saved and part 1 fails: the old lesson shows as it was, under what happened, and it can
+    // still be answered; nothing on this screen rewrites it.
     await openLesson(page);
     await expect(working(page, "Sto riscrivendo la lezione in parti brevi")).toBeVisible();
     const failed = page.getByText("Non sono riuscito a riscrivere la lezione in parti. Qui sotto c'è la versione di prima, com'era.");
@@ -288,14 +292,23 @@ test("a rewrite that fails or finds no AI tool leaves the old lesson as it was, 
     await expect(page.getByText("Un intorno di un punto è una palla aperta", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Livello/ })).toHaveCount(0);
     const quick = page.getByRole("region", { name: "Verifica rapida" });
+    await page.getByRole("button", { name: "Altre azioni" }).click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Mappa", "Esporta"]);
+    await page.keyboard.press("Escape");
     await quick.getByRole("button", { name: /Una palla aperta/ }).click();
     await expect(quick.getByText("Giusto.", { exact: true })).toBeVisible();
     await expectNoAxeViolations(page);
     await saveShot(page, "old-lessons/rewrite-failed-it-light.png");
 
-    // The exam page still suggests the lesson as one lesson, and opening it again shows the failure, starting nothing.
+    // The stored plan is no lesson of the student's yet: the exam page suggests the lesson as one lesson, the Percorso
+    // keeps its one lesson step and lists no parts, and opening it again shows the failure, starting nothing.
     await openExam(page);
     await expect(nowHeading(page)).toHaveText("Lezione: Funzioni di più variabili");
+    await expect(page.locator(".px-exam-now p")).not.toContainText("Parte");
+    const steps = page.getByRole("list", { name: "Passi di Funzioni di più variabili" });
+    await expect(steps.getByRole("button", { name: /^Lezione/ })).toBeVisible();
+    await expect(page.getByText("Lezione in 4 parti e un ripasso")).toHaveCount(0);
+    await saveShot(page, "old-lessons/rewrite-failed-exam-it-light.png");
     const calls = sent(prompts).length;
     await openLesson(page);
     await expect(failed).toBeVisible();
@@ -307,8 +320,12 @@ test("a rewrite that fails or finds no AI tool leaves the old lesson as it was, 
     await expect(working(page, "Sto riscrivendo la lezione in parti brevi")).toBeVisible();
     await expect(page.getByText("Intorni: l'idea")).toBeVisible({ timeout: 20_000 });
     await expect(failed).toHaveCount(0);
+    // Now the parts are the lesson: the card names part 1 and the Percorso lists the parts in the lesson step's place.
     await openExam(page);
     await expect(nowHeading(page)).toHaveText("Intorni e distanza");
+    await expect(page.locator(".px-exam-now p")).toHaveText(/^Parte 1 di 4 · Funzioni di più variabili · circa \d+ minuti$/);
+    await expect(page.getByText("Lezione in 4 parti e un ripasso")).toBeVisible();
+    await expect(steps.getByRole("button", { name: /^Lezione/ })).toHaveCount(0);
 
     // No AI tool: the next topic's old lesson shows as it was with the engine's notice, and its recap still finishes it.
     const write = db();
@@ -333,9 +350,10 @@ test("a rewrite that fails or finds no AI tool leaves the old lesson as it was, 
 test("a finished old lesson opens as it was, and Riscrivi in parti asks first, can be cancelled, and keeps the lesson done", async () => {
   test.setTimeout(240_000);
   const holdDir = mkdtempSync(join(tmpdir(), "pyxis-old-hold-"));
-  const hold = join(holdDir, "outline");
+  // Part 1's reply waits for this file, so the test reads the earlier version while the rewrite has no part.
+  const hold = join(holdDir, "part-1");
   const { page, prompts, close } = await start(
-    { lessonParts: { ...outline, hold }, markdown: [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }] },
+    { lessonParts: outline, markdown: [{ markdown: partText("Intorni"), hold }, { markdown: partText("Frontiera") }] },
     (seeding) =>
       seedLessonBeforeParts(seeding, "p-an2", ["t-funzioni"], { markdown: oldText, wording: "balanced", finished: true }),
   );
@@ -410,7 +428,19 @@ test("a finished old lesson opens as it was, and Riscrivi in parti asks first, c
     await dialog.getByRole("button", { name: "Riscrivi in parti" }).click();
     await expect(page).toHaveURL(/\/lesson\/t-funzioni\?part=1$/);
     await expect(working(page, "Sto riscrivendo la lezione in parti brevi")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Leggi la versione di prima" })).toBeVisible();
+    // The plan is saved and part 1 is being written. The version the rewrite keeps opens read-only: no Livello, no
+    // rewrite in its menu, and the way back to the parts.
+    await expect(parts(page).getByRole("link")).toHaveCount(5, { timeout: 20_000 });
+    await page.getByRole("button", { name: "Leggi la versione di prima" }).click();
+    await expect(page).toHaveURL(/\?item=before-parts-t-funzioni$/);
+    await expect(page.getByText("Questa è la versione di prima della lezione, così com'era.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Un intorno di un punto è una palla aperta", { exact: false })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: /^Livello/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Altre azioni" }).click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Mappa", "Esporta"]);
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Torna alle parti" }).click();
+    await expect(working(page, "Sto riscrivendo la lezione in parti brevi")).toBeVisible();
     writeFileSync(hold, "");
     await expect(page.getByText("Intorni: l'idea")).toBeVisible({ timeout: 20_000 });
     await expect(parts(page).getByRole("link", { name: /letta/ })).toHaveCount(0);
