@@ -658,11 +658,13 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
   const count = (sql: string) => db.prepare(sql).pluck().get() as number;
   const queuedImports = () =>
     count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import' AND state IN ('queued', 'running')`);
+  // Waits for the work itself: the look, then every recorded file handed to the queue and read. A slow runner reads
+  // 5,000 files in about a minute, so no time limit of its own: only the test's timeout, which a reading that never
+  // ends still runs into.
   const settled = async () => {
     await linked.idle();
-    await expect
-      .poll(() => queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`), { timeout: 60_000 })
-      .toBe(0);
+    while (queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`) > 0)
+      await new Promise((resolve) => setTimeout(resolve, 50));
   };
   return { db, runner, linked, updates, count, queuedImports, settled, reads: () => reads, mostQueued: () => mostQueued };
 }
