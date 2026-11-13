@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { jsonSchema, type GenerateInput } from "../engine/generate";
 import { IpcError } from "../../shared/ipc";
+import { exportMarkdown } from "../share/markdown";
+import { removePlanSource } from "../plans/views";
+import { CONTEXT_CHARS, readLesson } from "./openLesson";
 import {
   ESTIMATE_MAX_MINUTES,
+  MATERIAL_HEADING_CHARS,
   ESTIMATE_MIN_MINUTES,
   MAX_PARTS,
   OUTLINE_LABEL_CHARS,
@@ -16,8 +20,12 @@ import {
   outlineReply,
   outlineRequest,
   partBounds,
+  partMinutes,
   partOfItem,
+  partShape,
+  partsMarkdown,
   planParts,
+  writePart,
   type OutlinePassage,
   type OutlineReply,
   type OutlineRequest,
@@ -658,5 +666,343 @@ describe("reading parts", () => {
     const db = workspace([10, 10, 10, 10, 10], ["p. 3", "slide 2", "text", "1. Moti", "Capitolo 2"]);
     db.prepare("UPDATE passages SET locator_json = ? WHERE id = 'ps004'").run(JSON.stringify({ chapter: 1, title: "Velocità media" }));
     expect(outlinePassages(db, "t").map((passage) => passage.section)).toEqual([null, null, null, "Velocità media", "Capitolo 2"]);
+  });
+});
+
+const words = (tag: string, count: number) => Array.from({ length: count }, (_, i) => `parola${tag}n${i}`).join(" ");
+const checkBlock = (tag: string) =>
+  `\`\`\`pyxis-check\n${JSON.stringify({ question: `Domanda ${tag}?`, options: ["uno", "due", "tre"], answer: 1, explanation: "Perché." })}\n\`\`\``;
+const takeawayBlock = (text: string) => `\`\`\`pyxis-takeaway\n${JSON.stringify({ text })}\n\`\`\``;
+const section = (title: string, count = 150, tag = title) => `## ${title}\n\n${words(tag.replace(/\W/g, ""), count)}`;
+
+/** A reply with the shape a teaching part must have. */
+function partText(tag: string): string {
+  return [
+    "Riprendiamo da dove eravamo.",
+    section(`Passo ${tag} primo`),
+    section(`Passo ${tag} secondo`),
+    checkBlock(tag),
+    takeawayBlock(`Hai imparato il passo ${tag}.`),
+  ].join("\n\n");
+}
+
+const recapQuestion = { question: "Quale?", options: ["a", "b", "c"], answer: 0 };
+const recapBlock = (count: number) =>
+  `\`\`\`pyxis-recap\n${JSON.stringify({ questions: Array(count).fill(recapQuestion) })}\n\`\`\``;
+const recapText = (count = 3) =>
+  ["## Riepilogo\n\n- uno\n- due\n- tre\n- quattro", recapBlock(count), takeawayBlock("Hai ripassato il capitolo.")].join(
+    "\n\n",
+  );
+
+const first = { kind: "part", headings: [], last: false } as const;
+
+describe("partShape", () => {
+  it("accepts a sound part and keeps its takeaway as the summary", () => {
+    const shape = partShape(partText("1"), first);
+    expect(shape).toMatchObject({ ok: true, summary: "Hai imparato il passo 1.", question: true });
+    if (!shape.ok) return;
+    expect(shape.markdown).not.toContain("pyxis-takeaway");
+    expect(shape.markdown.endsWith("```")).toBe(true);
+    // 300 words of prose, 4 in the opening line, 6 in the headings, and the question with its options.
+    expect(shape.words).toBe(300 + 4 + 6 + 2 + 3);
+  });
+
+  it("repairs a fence around the reply, a title, a recap block and checks before the last one", () => {
+    const reply = [
+      "```markdown",
+      "# Insiemi aperti",
+      "",
+      "Riprendiamo.",
+      section("Primo passo"),
+      checkBlock("presto"),
+      section("Secondo passo"),
+      recapBlock(3),
+      "```pyxis-check\n{not json at all\n```",
+      checkBlock("finale"),
+      takeawayBlock("Sai riconoscere un insieme aperto."),
+      "```",
+    ].join("\n\n");
+    const shape = partShape(reply, first);
+    expect(shape).toMatchObject({ ok: true, summary: "Sai riconoscere un insieme aperto.", question: true });
+    if (!shape.ok) return;
+    expect(shape.markdown.startsWith("Riprendiamo.")).toBe(true);
+    expect(shape.markdown).not.toContain("# Insiemi aperti");
+    expect(shape.markdown).not.toContain("pyxis-recap");
+    expect(shape.markdown.match(/pyxis-check/g)).toHaveLength(1);
+    expect(shape.markdown).toContain("Domanda finale?");
+    expect(shape.markdown).not.toContain("Domanda presto?");
+    expect(shape.markdown).not.toMatch(/\n{3,}/);
+  });
+
+  it.each([
+    ["one section", [section("Solo", 300), checkBlock("a"), takeawayBlock("Fatto.")], /has 1 ## sections\. Write 2 or 3\./],
+    [
+      "four sections",
+      [section("A", 80), section("B", 80), section("C", 80), section("D", 80), checkBlock("a"), takeawayBlock("Fatto.")],
+      /has 4 ## sections/,
+    ],
+    ["no check", [section("A"), section("B"), takeawayBlock("Fatto.")], /does not end with one pyxis-check/],
+    [
+      "text after the check",
+      [section("A"), section("B"), checkBlock("a"), "E adesso un'ultima cosa.", takeawayBlock("Fatto.")],
+      /does not end with one pyxis-check/,
+    ],
+    ["too few words", [section("A", 100), section("B", 100), checkBlock("a"), takeawayBlock("Fatto.")], /words\. Write between 250/],
+    ["too many words", [section("A", 750), section("B", 750), checkBlock("a"), takeawayBlock("Fatto.")], /words\. Write between 250/],
+    ["no takeaway", [section("A"), section("B"), checkBlock("a")], /pyxis-takeaway block is missing/],
+    ["a long takeaway", [section("A"), section("B"), checkBlock("a"), takeawayBlock("x ".repeat(200))], /399 characters/],
+  ])("rejects a part with %s, naming that rule alone", (_, blocks, problem) => {
+    const shape = partShape(blocks.join("\n\n"), first);
+    expect(shape.ok).toBe(false);
+    if (shape.ok) return;
+    expect(shape.problems).toHaveLength(1);
+    expect(shape.problems[0]).toMatch(problem);
+  });
+
+  it("rejects a heading another part already has, with case, accents and punctuation ignored", () => {
+    const reply = [section("Insièmi APERTI!", 150, "a"), section("Chiusura", 150), checkBlock("a"), takeawayBlock("Fatto.")];
+    const shape = partShape(reply.join("\n\n"), { ...first, headings: ["Insiemi aperti", "Distanza"] });
+    expect(shape).toEqual({
+      ok: false,
+      problems: [
+        'The section "Insièmi APERTI!" has the heading of a section of another part. Teach this part\'s own step, under a heading of its own.',
+      ],
+    });
+  });
+
+  it("wants one section and a recap of 3 questions in the recap part, and removes its checks", () => {
+    const recap = { kind: "recap", headings: [], last: false } as const;
+    const sound = partShape(recapText().replace("## Riepilogo", `${checkBlock("via")}\n\n## Riepilogo`), recap);
+    expect(sound).toMatchObject({ ok: true, question: true, summary: "Hai ripassato il capitolo." });
+    expect(sound.ok && sound.markdown).not.toContain("pyxis-check");
+    expect(partShape(recapText(2), recap)).toMatchObject({
+      ok: false,
+      problems: [expect.stringMatching(/does not end with one pyxis-recap of 3 questions/)],
+    });
+    expect(partShape(`${section("Prima", 20)}\n\n${recapText()}`, recap)).toMatchObject({
+      ok: false,
+      problems: [expect.stringMatching(/has 2 ## sections\. Write exactly 1\./)],
+    });
+  });
+
+  it("accepts a second reply a page can show, without its question or takeaway", () => {
+    const last = { ...first, last: true };
+    const bare = partShape(section("Solo", 300), last);
+    expect(bare).toMatchObject({ ok: true, question: false, summary: null });
+    const long = partShape([section("A"), section("B"), checkBlock("a"), takeawayBlock("parola ".repeat(80))].join("\n\n"), last);
+    expect(long.ok && long.summary!.length).toBeLessThanOrEqual(300);
+    expect(long.ok && long.summary!.endsWith("…")).toBe(true);
+    expect(partShape(["A", "B", "C", "D", "E"].map((title) => section(title, 50)).join("\n\n"), last).ok).toBe(false);
+    expect(partShape([section("A", 1_100), section("B", 1_000)].join("\n\n"), last).ok).toBe(false);
+    expect(partShape("", last).ok).toBe(false);
+  });
+});
+
+describe("partMinutes", () => {
+  it("reads 200 words a minute, adds one for the question, and keeps 2 to 12", () => {
+    expect(partMinutes(0)).toBe(2);
+    expect(partMinutes(1_000)).toBe(6);
+    expect(partMinutes(1_001)).toBe(7);
+    expect(partMinutes(5_000)).toBe(12);
+  });
+});
+
+describe("writePart", () => {
+  /** Six passages of 4,000 characters, each starting with its own marker, planned in four parts and a recap. */
+  async function planned() {
+    const db = workspace(Array(6).fill(4_000));
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, {
+      planId: "p",
+      topicId: "t",
+      run: recorded(reply(["Uno", ["P1", "P2"]], ["Due", ["P3", "P4"]], ["Tre", ["P5"]], ["Quattro", ["P6"]])).run,
+    });
+    return db;
+  }
+  const write = (db: ReturnType<typeof workspace>, position: number, ...replies: string[]) => {
+    const engine = recorded(...replies);
+    return { engine, done: writePart(db, { planId: "p", topicId: "t", position, run: engine.run, python: null }) };
+  };
+
+  it("gives the call the outline, the written parts and only this part's passages, and saves the part", async () => {
+    const db = await planned();
+    await write(db, 1, partText("1")).done;
+    const { engine, done } = write(db, 2, partText("2"));
+    const outline = await done;
+    expect(engine.calls).toHaveLength(1);
+    const prompt = engine.calls[0]!.prompt;
+    expect(prompt).toContain("Topic: Funzioni di più variabili\n\nPart 2 of 4.");
+    expect(prompt).toContain(
+      [
+        "1. Uno: Dopo Uno sai farlo. (written)",
+        "2. Due: Dopo Due sai farlo. (this part)",
+        "3. Tre: Dopo Tre sai farlo.",
+        "4. Quattro: Dopo Quattro sai farlo.",
+        "5. Ripasso del capitolo (recap)",
+      ].join("\n"),
+    );
+    expect(prompt).toContain(
+      'Part 1, Uno (before this part). Sections: "Passo 1 primo", "Passo 1 secondo".\nWhat it taught: Hai imparato il passo 1.',
+    );
+    expect(prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps003", "MARK-ps004"]);
+    expect(engine.calls[0]!.system).toContain("You write one part of a lesson");
+
+    const part = outline.parts[1]!;
+    const shape = partShape(partText("2"), first);
+    expect(part).toMatchObject({ summary: "Hai imparato il passo 2.", minutes: partMinutes(shape.ok ? shape.words : 0) });
+    const item = db
+      .prepare("SELECT kind, prompt_template, prompt_version, engine_provider, body_json FROM items WHERE id = ?")
+      .get(part.itemId) as { kind: string; prompt_template: string; prompt_version: string; engine_provider: string; body_json: string };
+    expect([item.kind, item.prompt_template, item.prompt_version, item.engine_provider]).toEqual([
+      "lesson",
+      "lesson.part",
+      "part-1",
+      "claude",
+    ]);
+    const body = JSON.parse(item.body_json) as { cacheKey: string; markdown: string };
+    expect(JSON.parse(body.cacheKey)).toMatchObject({ kind: "lesson", scopeId: part.id, passageIds: ["ps003", "ps004"] });
+    expect(body.markdown).not.toContain("pyxis-takeaway");
+    expect(db.prepare("SELECT passage_id FROM item_passages WHERE item_id = ? ORDER BY passage_id").pluck().all(part.itemId)).toEqual([
+      "ps003",
+      "ps004",
+    ]);
+    // The topic's lesson as the old reader finds it is still the book text: parts are not lessons it shows.
+    expect(readLesson(db, "p", "t")).not.toHaveProperty("provider");
+    // A written part is not written again.
+    const again = write(db, 2, "no call");
+    await again.done;
+    expect(again.engine.calls).toHaveLength(0);
+  });
+
+  it("asks once more with the problems, and keeps the second reply", async () => {
+    const db = await planned();
+    const { engine, done } = write(db, 1, section("Solo", 300), partText("1"));
+    const outline = await done;
+    expect(engine.calls).toHaveLength(2);
+    const [ask, retry] = engine.calls.map((call) => call.prompt);
+    expect(retry!.startsWith(ask!)).toBe(true);
+    expect(retry!.slice(ask!.length)).toMatch(/^\n\nProblems with your previous reply:\n- The part has 1 ## sections\./);
+    expect(outline.parts[0]!.itemId).not.toBeNull();
+  });
+
+  it("asks again when a heading repeats a heading of a written part", async () => {
+    const db = await planned();
+    await write(db, 1, partText("1")).done;
+    const repeated = partText("2").replace("Passo 2 primo", "passo 1, primo");
+    const { engine, done } = write(db, 2, repeated, partText("2"));
+    await done;
+    expect(engine.calls[1]!.prompt).toContain('- The section "passo 1, primo" has the heading of a section of another part.');
+  });
+
+  it("saves a second reply without its question, with the part's line as its summary", async () => {
+    const db = await planned();
+    const { engine, done } = write(db, 1, "Niente.", section("Solo", 300));
+    const outline = await done;
+    expect(engine.calls).toHaveLength(2);
+    expect(outline.parts[0]).toMatchObject({ summary: "Dopo Uno sai farlo." });
+    expect(outline.parts[0]!.itemId).not.toBeNull();
+  });
+
+  it("fails with lesson-part-invalid after two replies it cannot read, and saves nothing", async () => {
+    const db = await planned();
+    await expect(write(db, 1, "Niente.", "Ancora niente.").done).rejects.toThrow("lesson-part-invalid");
+    expect(db.prepare("SELECT COUNT(*) FROM items").pluck().get()).toBe(0);
+    expect(liveOutline(db, "t")!.parts.every((part) => part.itemId === null)).toBe(true);
+  });
+
+  it("keeps every passage of a long part, and both asks within the per-call bound", async () => {
+    const db = workspace([30_000, 30_000, 30_000]);
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, { planId: "p", topicId: "t", run: recorded(reply(["Uno", ["P1", "P2"]], ["Due", ["P3"]])).run });
+    const { engine, done } = write(db, 1, "Niente.", partText("1"));
+    await done;
+    for (const call of engine.calls) {
+      expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      expect(call.prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps001", "MARK-ps002"]);
+    }
+  });
+
+  it("cuts headings longer than the bound to a label and keeps text of every passage", async () => {
+    // Two passages under headings of 14,000 characters: one part, planned with no call.
+    const db = workspace([3_000, 3_000], [`A ${"y".repeat(13_998)}`, `B ${"z".repeat(13_998)}`]);
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, { planId: "p", topicId: "t" });
+    const { engine, done } = write(db, 1, "Niente.", partText("1"));
+    await done;
+    for (const call of engine.calls) {
+      expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      expect(call.prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps001", "MARK-ps002"]);
+      const headings = call.prompt.match(/^### .*$/gm)!;
+      expect(headings).toHaveLength(2);
+      for (const heading of headings) expect(heading.length).toBeLessThanOrEqual(4 + MATERIAL_HEADING_CHARS);
+    }
+  });
+
+  it("keeps text of every passage of a part with many long headings, within the bound", async () => {
+    // Sixty short passages under headings of 1,000 characters: one part (6,000 characters of text), planned with no call.
+    const count = 60;
+    const db = workspace(
+      Array(count).fill(100),
+      Array.from({ length: count }, (_, i) => `Sezione ${i + 1} ${"y".repeat(1_000)}`),
+    );
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, { planId: "p", topicId: "t" });
+    const { engine, done } = write(db, 1, "Niente.", partText("1"));
+    await done;
+    for (const call of engine.calls) {
+      expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      expect(call.prompt.match(/MARK-\w+/g)).toHaveLength(count);
+    }
+  });
+
+  it("exports the sources of the written parts, not material removed before they were written", async () => {
+    const db = await planned();
+    db.exec(`
+      UPDATE passages SET section_path = 'Sezione ' || id;
+      INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s2', 'pdf', 'Appunti', 'ready', 1, 1);
+      UPDATE passages SET source_id = 's2' WHERE id IN ('ps003', 'ps004');
+      INSERT INTO plan_sources (plan_id, source_id) VALUES ('p', 's'), ('p', 's2');
+    `);
+    removePlanSource(db, "p", "s2");
+    await write(db, 1, partText("1")).done;
+    await write(db, 2, partText("2")).done;
+    expect(liveOutline(db, "t")!.parts[1]!.passageIds).toEqual(["ps003", "ps004"]);
+    const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
+    expect(lesson).toContain("## Fonti\n\n- Sezione ps001\n- Sezione ps002\n");
+    expect(lesson).not.toContain("Sezione ps003");
+    expect(lesson).not.toContain("Sezione ps004");
+  });
+
+  it("writes the recap from the summaries of the written parts, with no material", async () => {
+    const db = await planned();
+    await write(db, 1, partText("1")).done;
+    // A jump: part 3 is written before part 2.
+    await write(db, 3, partText("3")).done;
+    const { engine, done } = write(db, 5, recapText());
+    const outline = await done;
+    const prompt = engine.calls[0]!.prompt;
+    expect(prompt).toContain("This is the recap part, after the 4 parts");
+    expect(prompt).toContain("What it taught: Hai imparato il passo 1.");
+    expect(prompt).toContain("Part 3, Tre (before this part)");
+    expect(prompt).not.toContain("MARK-");
+    expect(prompt).not.toContain("Material of this part");
+    expect(outline.parts[4]).toMatchObject({ kind: "recap", summary: "Hai ripassato il capitolo." });
+  });
+
+  it("joins the written parts in order under their titles for export", async () => {
+    const db = await planned();
+    expect(partsMarkdown(db, "t")).toBeNull();
+    await write(db, 3, partText("3")).done;
+    await write(db, 1, partText("1")).done;
+    const joined = partsMarkdown(db, "t")!;
+    expect(joined.passageIds).toEqual(["ps001", "ps002", "ps005"]);
+    expect(joined.markdown.match(/^#{2,3} .+$/gm)).toEqual([
+      "## Uno",
+      "### Passo 1 primo",
+      "### Passo 1 secondo",
+      "## Tre",
+      "### Passo 3 primo",
+      "### Passo 3 secondo",
+    ]);
   });
 });

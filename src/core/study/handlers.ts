@@ -46,6 +46,7 @@ import {
   type Wording,
 } from "./openLesson";
 import { writeAgentLesson } from "./agentLesson";
+import { openPart, registerPartJobs, topicParts, type PartInput } from "./partJobs";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
@@ -130,6 +131,7 @@ export function studyHandlers(
   if (runner) {
     registerQuizJobs(db, runner, run);
     registerExerciseJobs(db, runner, run);
+    registerPartJobs(db, runner, run);
     registerQuizGradingJobs(db, runner, run);
     registerSimulationJobs(db, runner, simulationRun);
     registerPastPaperJobs(db, runner, run);
@@ -247,6 +249,13 @@ export function studyHandlers(
         // The book text shown when the engine failed is no lesson written.
         (lesson) => !lesson.fallback,
       ).then((lesson) => withReading(lesson));
+    },
+    parts(input: { planId: string; topicId: string }) {
+      return topicParts(db, input);
+    },
+    part(input: PartInput) {
+      const result = openPart(db, runner, input, options);
+      return result.mode === "parts" && result.lesson ? { ...result, lesson: withReading(result.lesson) } : result;
     },
     lessonSection(
       input: {
