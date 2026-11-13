@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arrowTarget, letterIndex, letterKeysHere } from "./finalKeys";
+import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 
 /** An element that matches the selectors listed in `inside`, as `closest` would find an ancestor. */
 const element = (tagName: string, ...inside: string[]) => ({
@@ -36,5 +36,21 @@ describe("letter keys on the final question", () => {
     expect(arrowTarget("ArrowDown", 2, 3)).toBe(0);
     expect(arrowTarget("ArrowUp", 0, 3)).toBe(2);
     expect(arrowTarget("ArrowLeft", 0, 3)).toBeNull();
+  });
+
+  it("answers the question whose options have the focus, or the first one open from elsewhere", () => {
+    const recap = ["q1", "q2", "q3"];
+    const done = new Set<string>();
+    const answered = (id: string) => done.has(id);
+    expect(letterQuestion(recap, answered, "q2")).toBe("q2");
+    expect(letterQuestion(recap, answered, null)).toBe("q1");
+    done.add("q2");
+    // An answered question takes no second answer, and the letter does not move on to another question.
+    expect(letterQuestion(recap, answered, "q2")).toBeNull();
+    expect(letterQuestion(recap, answered, null)).toBe("q1");
+    // A question outside the final block counts as elsewhere.
+    expect(letterQuestion(recap, answered, "other")).toBe("q1");
+    done.add("q1").add("q3");
+    expect(letterQuestion(recap, answered, null)).toBeNull();
   });
 });

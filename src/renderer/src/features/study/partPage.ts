@@ -61,3 +61,28 @@ export function startsOnOpen(read: RequestOutput<"study.part">): boolean {
   if (read.mode !== "parts" || read.state !== "failed" || read.error !== null) return false;
   return read.outline?.parts.find((part) => part.position === read.position)?.state !== "failed";
 }
+
+/**
+ * Whether a read of the lesson's address can decide for it: one this visit to the address made (`updatedAt` at or after
+ * `since`, when the page came to the address), finished (no read of it running), and not a placeholder carried over
+ * from the address before. Data cached from an earlier visit, or shown while the next read runs, is neither: after a
+ * part is finished it still names that part, and after a stopped rewrite it names the part from before.
+ */
+export function freshRead(read: { fetching: boolean; placeholder: boolean; updatedAt: number }, since: number): boolean {
+  return !read.fetching && !read.placeholder && read.updatedAt >= since;
+}
+
+/**
+ * The part a lesson opened without one writes into its address, so finishing that part does not move the page on to
+ * the next one when the part is read again: the part core chose in a fresh read (`freshRead`) of this address. Null
+ * for an address that names a part or a saved item, for a lesson in the reader that came before parts, and until such
+ * a read arrives.
+ */
+export function addressPart(
+  read: RequestOutput<"study.part"> | undefined,
+  address: { position?: number; itemId?: string },
+  fresh: boolean,
+): number | null {
+  if (address.position || address.itemId || !fresh || read?.mode !== "parts") return null;
+  return read.position;
+}

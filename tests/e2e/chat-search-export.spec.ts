@@ -70,12 +70,21 @@ test("a student finds a chat by an accented word, opens it and exports it as Mar
     const list = page.getByRole("list", { name: "Chat" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
 
-    // "Tutte le chat" opens the search over every chat. The plain spelling finds the accented word; the snippet shows
-    // where.
-    await page.getByRole("button", { name: "Tutte le chat" }).click();
+    // Both chats fit in the sidebar, so it has no "Tutte le chat" link. Searching everything shows the chats, and with
+    // more than six of them a row that lists them all, which is the search over every chat. The plain spelling finds the
+    // accented word; the snippet shows where.
+    await expect(page.getByRole("button", { name: "Tutte le chat" })).toHaveCount(0);
+    const more = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    for (let i = 1; i <= 5; i += 1) {
+      more.prepare("INSERT INTO chats(id,title,created_at,updated_at) VALUES(?,?,1,1)").run(`c-x${i}`, `Esercizio ${i}`);
+    }
+    more.close();
+    await page.reload();
+    await page.getByRole("button", { name: "Cerca", exact: true }).click();
     const finder = page.getByRole("dialog", { name: "Cerca" });
     const search = finder.getByRole("combobox", { name: "Cerca" });
-    await expect(finder.getByRole("option")).toHaveCount(2);
+    await finder.getByRole("group", { name: "Chat" }).getByRole("option", { name: "Tutte le chat" }).click();
+    await expect(finder.getByRole("option")).toHaveCount(7);
     await search.fill("perche");
     await expect(finder.getByRole("option")).toHaveCount(1);
     await expect(finder.getByRole("option", { name: /^Termodinamica/ })).toContainText("Perché il calore passa");

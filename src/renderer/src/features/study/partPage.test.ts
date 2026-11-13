@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { focusFollowsAnswer, partMark, partStateWord, startsOnOpen, workingCopy, type PartData } from "./partPage";
+import {
+  addressPart,
+  focusFollowsAnswer,
+  freshRead,
+  partMark,
+  partStateWord,
+  startsOnOpen,
+  workingCopy,
+  type PartData,
+} from "./partPage";
 
 const part = (position: number, state: "unwritten" | "writing" | "written" | "failed", done = false) => ({
   position,
@@ -118,5 +127,40 @@ describe("opening a part", () => {
       }) as NonNullable<PartData["outline"]>;
     expect(startsOnOpen({ ...read("failed", null), outline: outline("failed") })).toBe(false);
     expect(startsOnOpen({ ...read("failed", null), outline: outline("unwritten") })).toBe(true);
+  });
+});
+
+describe("the part an address without one names", () => {
+  const read = (position: number) =>
+    ({
+      mode: "parts",
+      outline: null,
+      position,
+      state: "written",
+      error: null,
+      lesson: null,
+      summary: null,
+      next: null,
+      replaces: null,
+    }) as PartData;
+  const since = 1_000;
+
+  it("takes only a read this visit made and finished, never a cached or placeholder one", () => {
+    expect(freshRead({ fetching: false, placeholder: false, updatedAt: 1_200 }, since)).toBe(true);
+    // Cached from the visit before, when part 1 was still the first part not read.
+    expect(freshRead({ fetching: false, placeholder: false, updatedAt: 900 }, since)).toBe(false);
+    // The cached read while the new one runs.
+    expect(freshRead({ fetching: true, placeholder: false, updatedAt: 900 }, since)).toBe(false);
+    // The part the page came from, shown while this address is read.
+    expect(freshRead({ fetching: false, placeholder: true, updatedAt: 1_200 }, since)).toBe(false);
+  });
+
+  it("names the part core chose, only for an address without a part or an item", () => {
+    expect(addressPart(read(2), {}, true)).toBe(2);
+    expect(addressPart(read(2), {}, false)).toBeNull();
+    expect(addressPart(read(2), { position: 1 }, true)).toBeNull();
+    expect(addressPart(read(2), { itemId: "i" }, true)).toBeNull();
+    expect(addressPart({ mode: "legacy" } as never, {}, true)).toBeNull();
+    expect(addressPart(undefined, {}, true)).toBeNull();
   });
 });

@@ -9,7 +9,7 @@ import {
   type SmartBlock,
   type SmartSegment,
 } from "@shared/smart-text";
-import { arrowTarget, letterIndex, letterKeysHere } from "./finalKeys";
+import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
 import { MarkdownView, type CitationResolver } from "./MarkdownView";
@@ -112,7 +112,11 @@ export function SmartText({
     const onKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
       const now = latest.current;
-      const open = closing.questions.find((id) => now.picks[id] === undefined);
+      const active = document.activeElement;
+      // The question whose options have the focus, when it is one of the final block's; otherwise the first one open.
+      const holder = active?.closest<HTMLElement>("[data-question]");
+      const focused = holder?.closest(`[data-final="${closing.blockId}"]`) ? (holder.dataset.question ?? null) : null;
+      const open = letterQuestion(closing.questions, (id) => now.picks[id] !== undefined, focused);
       if (!open) return;
       const question = segments.flatMap((segment) =>
         segment.type !== "block"
@@ -125,7 +129,6 @@ export function SmartText({
       ).find((item) => item.id === open);
       const index = question ? letterIndex(event.key, question.options.length) : null;
       if (index === null) return;
-      const active = document.activeElement;
       const inQuestion = Boolean(active?.closest(`[data-final="${closing.blockId}"]`));
       // The selection menu takes the keys while it shows, even with the focus on the page.
       if (!letterKeysHere(active, inQuestion) || document.querySelector(".px-selection-menu")) return;
@@ -222,7 +225,7 @@ function Question({
   const answered = picked !== undefined;
   const right = picked === question.answer;
   return (
-    <div className="px-sb-question">
+    <div className="px-sb-question" data-question={question.id}>
       {counter ? <p className="meta ink-muted">{counter}</p> : null}
       <MarkdownView variant="body">{question.question}</MarkdownView>
       <fieldset
