@@ -11,7 +11,7 @@ import { fromChiediToExams } from "./doors";
 import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { partText } from "./part-texts";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, atRest } from "./settled";
 import { saveShot } from "./shots";
 
 // Lessons written before parts, with the recorded engine: an unfinished one is rewritten in parts when it is opened,
@@ -359,6 +359,35 @@ test("a finished old lesson opens as it was, and Riscrivi in parti asks first, c
     await expect(page.getByRole("menuitem")).toHaveText(["Riscrivi in parti", "Riscrivi", "Riscrivi una sezione", "Mappa", "Esporta"]);
     await animationsSettled(page);
     await saveShot(page, "old-lessons/finished-menu-it-light.png");
+    await page.keyboard.press("Escape");
+    // The same menu in the other language and theme, at both widths.
+    for (const [lang, theme, width] of [["it", "dark", 960], ["en", "light", 1280]] as const) {
+      await page.evaluate(
+        async ({ lang, theme }) => {
+          localStorage.setItem("pyxis.lang", lang);
+          await window.pyxis.setAppearance(theme);
+        },
+        { lang, theme },
+      );
+      await page.setViewportSize({ width, height: 800 });
+      await page.reload();
+      const more = page.getByRole("button", { name: /^(Altre azioni|More actions)$/ });
+      await atRest(more);
+      await more.click();
+      await expect(page.getByRole("menuitem").first()).toHaveText(lang === "it" ? "Riscrivi in parti" : "Rewrite in parts");
+      await animationsSettled(page);
+      await saveShot(page, `old-lessons/finished-menu-${lang}-${theme}-${width}.png`);
+      await page.keyboard.press("Escape");
+    }
+    await page.evaluate(async () => {
+      localStorage.setItem("pyxis.lang", "it");
+      await window.pyxis.setAppearance("light");
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.reload();
+    await expect(page.getByText("Un intorno di un punto è una palla aperta", { exact: false })).toBeVisible();
+    await atRest(page.getByRole("button", { name: "Altre azioni" }));
+    await page.getByRole("button", { name: "Altre azioni" }).click();
 
     // It asks first; Annulla leaves everything as it was.
     await page.getByRole("menuitem", { name: "Riscrivi in parti" }).click();
