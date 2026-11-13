@@ -1,8 +1,8 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 /**
- * After a step is done or a rating saved: each plan's path, its next step, its progress chart, its dates and its
- * topics' lesson parts, and the exam list that sums the plans up. Only the plans named are read again.
+ * After a step is done or a rating saved: each plan's path, its next step, its progress chart, its dates and its topics'
+ * lesson parts, and the exam list that sums the plans up. Only the plans named are read again.
  */
 export function refreshPlan(
   client: Pick<QueryClient, "invalidateQueries">,
