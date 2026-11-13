@@ -232,8 +232,10 @@ input.px-ctl-field.px-shelf-subject-rename {
   box-shadow: var(--shadow-overlay);
 }
 
-/* "Da sistemare": a card of rows, each with its picture, name, the subject choice and its menu. */
+/* "Da sistemare": a card of rows, each with its picture, name, the subject choice and its menu. A row wraps by the
+   card's width, not the window's, since the Library sits beside the source panel on a wide window. */
 .px-unsorted-card {
+  container: px-unsorted / inline-size;
   margin: var(--space-2) 0 0;
   padding: 6px;
   border-radius: var(--radius-card);
@@ -305,9 +307,14 @@ input.px-ctl-field.px-shelf-subject-rename {
   width: 220px;
   margin: 0;
 }
-@media (max-width: 720px) {
+/* Too narrow for the picture, a readable name, the subject choice and the menu in one line: the subject choice goes under
+   the name, and the name keeps a width a student can read. */
+@container px-unsorted (max-width: 500px) {
   .px-unsorted-row {
     flex-wrap: wrap;
+  }
+  .px-unsorted-name {
+    flex: 1 1 140px;
   }
   /* A select is as wide as its longest option, so a very long subject name would push it out of the window. */
   .px-unsorted-row select.px-ctl-field.px-library-picker,
@@ -316,6 +323,8 @@ input.px-ctl-field.px-shelf-subject-rename {
     min-width: 0;
     max-width: 100%;
     flex: 1 1 180px;
+    /* Under the name, not under the picture. */
+    margin-inline-start: 70px;
   }
 }
 

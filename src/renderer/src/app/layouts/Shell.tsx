@@ -102,20 +102,21 @@ export function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [inSetup, simulation]);
 
-  // Attività grows past its 46px when jobs run or wait, and pages keep clear of it by `--corner-room` (global.css), so
-  // the room is what the button measures now: the chat's subject chip and every page's right edge stop at its left edge.
+  // Attività grows past its 46px when jobs run or wait. Pages keep clear of it by `--corner-room` (global.css), which
+  // follows `--corner-tools`, the room the button measures now, so the chat's subject chip and every page's right edge
+  // stop at its left edge.
   const corner = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const tools = corner.current;
     if (!tools) return;
     const root = document.documentElement;
-    const place = () => root.style.setProperty("--corner-room", `${Math.max(64, Math.ceil(tools.offsetWidth) + 18)}px`);
+    const place = () => root.style.setProperty("--corner-tools", `${Math.max(64, Math.ceil(tools.offsetWidth) + 18)}px`);
     place();
     const observer = new ResizeObserver(place);
     observer.observe(tools);
     return () => {
       observer.disconnect();
-      root.style.removeProperty("--corner-room");
+      root.style.removeProperty("--corner-tools");
     };
   }, [inSetup]);
 

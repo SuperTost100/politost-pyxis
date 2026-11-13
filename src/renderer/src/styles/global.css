@@ -162,10 +162,17 @@ html[data-platform="darwin"] {
 }
 /* Attività, in the top-right corner of every page, over the strip that drags the window. --corner-room is the width a
    page leaves it at the right: its 16px from the edge, its own width and 2px more. This is the room for the button
-   while nothing runs, 46px with a clock in the middle; Shell.tsx sets it to the measured width when a count (jobs
-   running or to fix) widens the button. */
+   while nothing runs, 46px with a clock in the middle; Shell.tsx sets --corner-tools to the measured room when a count
+   (jobs running or to fix) widens the button. Beside the source panel (SourceViewer.css) the page ends 536px from the
+   window's edge and nothing of it is near the corner, so it needs none. */
 :root {
-  --corner-room: 64px;
+  --corner-tools: 64px;
+  --corner-room: var(--corner-tools);
+}
+@media (min-width: 1180px) {
+  :root[data-source-panel] {
+    --corner-room: 24px;
+  }
 }
 .px-corner-tools {
   position: fixed;
