@@ -1168,7 +1168,8 @@ function prepareLessonParts(name: string) {
   if (!wanted && !auditLessonParts) return;
   auditLessonParts = wanted;
   withDb((db) => {
-    db.exec("DELETE FROM jobs WHERE id = 'audit-part-job'; DELETE FROM plans WHERE id = 'audit-parts-plan';");
+    // A state before this one can have started a part's write (the page does when it opens a part with none), and that job's failure would show here.
+    db.exec("DELETE FROM jobs WHERE id = 'audit-part-job' OR (kind = 'lesson-part' AND params_json LIKE '%audit-parts-topic%'); DELETE FROM plans WHERE id = 'audit-parts-plan';");
     if (!wanted) return;
     const now = Date.now();
     seedPlan(db, {
