@@ -161,8 +161,15 @@ export default function PdfSourcePage({
         render = current.render({ canvas: scratch, viewport, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0] });
         await render.promise;
         if (disposed) return;
+        const bitmap = await createImageBitmap(scratch);
+        // The panel may have moved on while the picture was made: an old picture must not come back after the clean-up
+        // or take the place of a newer one.
+        if (disposed) {
+          bitmap.close();
+          return;
+        }
         // One picture a page: a resize passes through many widths, and only the last one is kept.
-        keepPicture(pictures.current, page, key, await createImageBitmap(scratch));
+        keepPicture(pictures.current, page, key, bitmap);
       }
       const content = await current.getTextContent();
       if (disposed) return;
