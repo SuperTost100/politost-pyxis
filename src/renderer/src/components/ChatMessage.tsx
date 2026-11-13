@@ -1,5 +1,5 @@
-import { Button as AntButton, Dropdown } from "antd";
-import { ArrowRight, Ellipsis } from "lucide-react";
+import { Button as AntButton } from "antd";
+import { ArrowRight } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "./Button";
@@ -7,6 +7,7 @@ import { Chip } from "./Chip";
 import type { IconName } from "./Icon";
 import { InlineMarkdown } from "./InlineMarkdown";
 import { IconButton } from "./IconButton";
+import { MenuButton } from "./ItemMenu";
 import { Logo } from "./Logo";
 import { RunnablePython } from "./PythonBlock";
 import { Tag } from "./Tag";
@@ -205,26 +206,17 @@ export function ChatMessage({
               />
             ) : null}
             {onAnswerStronger ? (
-              <Dropdown
-                trigger={["click"]}
-                placement="bottomLeft"
+              <MenuButton
+                rightClick
+                size="sm"
+                align="start"
+                label={t("components.chat.more")}
                 disabled={regenerateDisabled}
                 menu={{
                   items: [{ key: "strong", label: t("components.chat.answerStronger") }],
                   onClick: () => onAnswerStronger(),
                 }}
-              >
-                <AntButton
-                  type="text"
-                  shape="circle"
-                  size="small"
-                  className="px-btn px-btn-ghost px-iconbtn px-btn-sm"
-                  aria-label={t("components.chat.more")}
-                  title={t("components.chat.more")}
-                  disabled={regenerateDisabled}
-                  icon={<Ellipsis size={16} aria-hidden />}
-                />
-              </Dropdown>
+              />
             ) : null}
             {engine ? <span className="px-msg-engine">{engine}</span> : null}
           </div>

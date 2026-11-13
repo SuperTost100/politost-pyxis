@@ -627,6 +627,81 @@ test("MAP-11 radial layout: no overlaps, readable fit, folding, switch back and 
   }
 });
 
+test("MAP-13 Adatta la mappa brings the whole large map into the window, radial and tree, at both window sizes", async () => {
+  test.setTimeout(240_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-map-fit-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    // The 25-concept map, which opens at a readable zoom and then needs far less to be shown whole.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "cinema", name: "Cinema" }]);
+    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cinema','cinema',?,'general',1)").run(
+      JSON.stringify({
+        version: 1,
+        maps: (["radial", "tree"] as const).map((kind) => ({
+          id: kind,
+          title: radialFixtures.filmHistory.title,
+          passageIds: [],
+          grounding: "general",
+          graph: storedGraph(radialFixtures.filmHistory, kind),
+        })),
+      }),
+    );
+    db.close();
+    const fit = page.getByRole("button", { name: "Adatta la mappa" });
+    for (const [width, height] of [
+      [960, 640],
+      [1280, 800],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      for (const kind of ["radial", "tree"] as const) {
+        const where = `${kind} at ${width}`;
+        await page.evaluate((id) => {
+          location.hash = `/maps/cinema?from=maps&map=${id}`;
+        }, kind);
+        await page.reload();
+        await expect(page.locator(".react-flow__node").first()).toBeVisible();
+        await mapAtRest(page);
+        await expect(page.locator(".react-flow__node"), where).toHaveCount(radialFixtures.filmHistory.nodes.length);
+        const outside = async () => {
+          const canvas = (await page.locator(".px-map-canvas").boundingBox())!;
+          return (await conceptBoxes(page))
+            .filter((box) => box.x < canvas.x || box.y < canvas.y || box.x + box.w > canvas.x + canvas.width || box.y + box.h > canvas.y + canvas.height)
+            .map((box) => box.id);
+        };
+        // The page opens at a readable zoom, which cuts this map: the button must change that.
+        const before = await viewZoom(page);
+        expect(await outside(), `${where} opens with part of the map out of the window`).not.toEqual([]);
+        await fit.click();
+        await mapAtRest(page);
+        expect(await outside(), `${where} after Adatta la mappa`).toEqual([]);
+        expect(await viewZoom(page), where).toBeLessThan(before);
+        // Pressed again with the whole map in view, it leaves the view where it is.
+        const fitted = await page.locator(".react-flow__viewport").evaluate((el) => getComputedStyle(el).transform);
+        await fit.click();
+        await mapAtRest(page);
+        expect(await page.locator(".react-flow__viewport").evaluate((el) => getComputedStyle(el).transform), where).toBe(fitted);
+        // Zoomed in and moved off, the button brings the whole map back.
+        await page.locator(".react-flow__pane").hover();
+        await page.mouse.wheel(0, -600);
+        await mapAtRest(page);
+        expect(await outside(), `${where} zoomed in`).not.toEqual([]);
+        await fit.click();
+        await mapAtRest(page);
+        expect(await outside(), `${where} after Adatta la mappa from a zoomed view`).toEqual([]);
+      }
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("MAP-12 exporting a radial map as SVG draws the picture the page shows", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-map-radial-export-"));

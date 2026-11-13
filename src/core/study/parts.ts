@@ -22,8 +22,13 @@ export const MAX_PARTS = 8;
 export const PART_SLACK = 1;
 /** From this many teaching parts on, a recap part follows them. */
 export const RECAP_FROM = 3;
-/** The passage list of the planning call stays within the bound every lesson call has. */
+/** The planning request, as it is sent, stays within the bound every lesson call has. */
 export const OUTLINE_PROMPT_CHARS = CONTEXT_CHARS;
+/**
+ * Longest topic title, file title or heading in the planning request. They are labels, and a long one must not crowd
+ * the passages out of the request or make planning skip the model.
+ */
+export const OUTLINE_LABEL_CHARS = 200;
 /** An unwritten part's minutes: its material read at this many characters a minute, plus a fixed share, kept in bounds. */
 export const ESTIMATE_CHARS_PER_MINUTE = 1_500;
 export const ESTIMATE_EXTRA_MINUTES = 3;
@@ -90,11 +95,18 @@ const foldTitle = (title: string) => title.normalize("NFC").toLocaleLowerCase().
 
 /**
  * Repairs what it can in a reply and rejects the rest, with one line per broken rule for the second ask. `passageIds`
- * are the topic's passages in reading order, labelled P1, P2 and so on in the call. Repairs: an unknown label is
- * dropped; a passage in two parts stays in the first part that lists it; a part's passages are sorted into reading
- * order and the parts by their first passage; a part left with no passage is dropped; a passage in no part joins the
- * part of the nearest earlier passage, or the first part. Rejections: fewer than `min` or more than `max` parts after
- * the repairs, and an empty or repeated title. What it accepts gives every passage to exactly one part.
+ * are the topic's passages in reading order, labelled P1, P2 and so on in the call.
+ *
+ * A part may gather passages that are apart. A topic often holds several files on the same subjects (a book chapter,
+ * then the course slides on that chapter), and parts cut only from runs of neighbouring passages would teach the
+ * slides' subjects again after the book's. So what an accepted outline holds is: every passage in exactly one part,
+ * each part's passages in reading order, and the parts ordered by their first passage, where their subject first
+ * appears.
+ *
+ * Repairs: an unknown label is dropped; a passage in two parts stays in the first part that lists it; a part's passages
+ * are sorted into reading order and the parts by their first passage; a part left with no passage is dropped; a passage
+ * in no part joins the part of the nearest earlier passage, or the first part. Rejections: fewer than `min` or more than
+ * `max` parts after the repairs, and an empty or repeated title.
  */
 export function checkOutline(
   reply: OutlineReply,
@@ -153,8 +165,17 @@ export function checkOutline(
   };
 }
 
-/** A passage as planning reads it: `section` is its heading, or null when it has none worth naming. */
-export type OutlinePassage = { id: string; text: string; section: string | null };
+/**
+ * A passage as planning reads it: `section` is its heading, or null when it has none worth naming, and `fileId` and
+ * `file` are the source it comes from and that source's title.
+ */
+export type OutlinePassage = {
+  id: string;
+  text: string;
+  section: string | null;
+  fileId: string | null;
+  file: string | null;
+};
 
 /** The plan's word for a part, as in "Parte 3": Italian for Italian material, English for any other language. */
 function partName(language: string, position: number): string {
@@ -172,8 +193,10 @@ function headingTitle(section: string): string {
 }
 
 /**
- * Cuts a topic into at most `count` parts without a model. It walks the passages in reading order and closes a part
- * once it holds its share of what is left, never splitting a passage and never leaving a part empty. Within
+ * Cuts a topic into at most `count` parts without a model. Unlike a model's outline, each part is a run of neighbouring
+ * passages, because code cannot tell which passages of two files treat the same subject. It walks the passages in
+ * reading order and closes a part once it holds its share of what is left, never splitting a passage and never leaving
+ * a part empty. Within
  * `SECTION_SLACK` of that share it cuts where the section changes instead. Each part is titled with the heading of its
  * first passage, or "Parte N" ("Part N") when it has none, and a repeated title gets its number, as in "Intorni (2)".
  * A topic with no passages is one part.
@@ -245,13 +268,26 @@ function passageSection(sectionPath: string | null, locatorJson: string | null):
 export function outlinePassages(db: Database.Database, topicId: string): OutlinePassage[] {
   const rows = db
     .prepare(
-      `SELECT p.id, p.text, p.section_path, p.locator_json
-       FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id
+      `SELECT p.id, p.text, p.section_path, p.locator_json, p.source_id, s.title
+       FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id LEFT JOIN sources s ON s.id = p.source_id
        WHERE tp.topic_id = ?
        ORDER BY p.created_at, p.id`,
     )
-    .all(topicId) as Array<{ id: string; text: string; section_path: string | null; locator_json: string | null }>;
-  return rows.map((row) => ({ id: row.id, text: row.text, section: passageSection(row.section_path, row.locator_json) }));
+    .all(topicId) as Array<{
+    id: string;
+    text: string;
+    section_path: string | null;
+    locator_json: string | null;
+    source_id: string | null;
+    title: string | null;
+  }>;
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.text,
+    section: passageSection(row.section_path, row.locator_json),
+    fileId: row.source_id,
+    file: row.title,
+  }));
 }
 
 /** The first `count` characters of a passage, with its runs of white space as one space. */
@@ -264,33 +300,57 @@ function excerpt(text: string, count: number): string {
 export type OutlineRequest = {
   topic: string;
   parts: PartBounds;
-  passages: Array<{ label: string; section?: string; chars: number; excerpt: string }>;
+  passages: Array<{ label: string; file?: string; section?: string; chars: number; excerpt: string }>;
   problems?: string[];
 };
 
+/** A label cut to `OUTLINE_LABEL_CHARS` characters, the last of them an ellipsis when it was longer. */
+function labelText(text: string): string {
+  const chars = Array.from(text);
+  return chars.length <= OUTLINE_LABEL_CHARS ? text : `${chars.slice(0, OUTLINE_LABEL_CHARS - 1).join("")}…`;
+}
+
 /**
- * The planning call's input. Each passage is listed by its label, its heading when it starts a new one, its length and
- * its first characters, cut to an equal share so the whole list stays within `OUTLINE_PROMPT_CHARS`. Null when even the
- * labels and lengths alone do not fit: the topic is then cut by the fallback without a call.
+ * The planning call's input, `problems` included on the second ask. Each passage is listed by its label, its file's
+ * title when the file changes, its heading when it starts a new one (a new file starts its headings afresh), its length
+ * and its first characters. The file and the heading are what let the model gather the passages of two files on the
+ * same subject. Titles and headings are cut to `OUTLINE_LABEL_CHARS`, and the excerpts to an equal share, so the whole
+ * request as it is sent stays within `OUTLINE_PROMPT_CHARS`. Null when it does not fit even with no excerpts: the
+ * topic is then cut by the fallback without a call.
  */
 export function outlineRequest(
   topic: string,
   passages: readonly OutlinePassage[],
   bounds: PartBounds,
+  problems: readonly string[] = [],
 ): OutlineRequest | null {
   let heading: string | null = null;
   const bare = passages.map((passage, index) => {
+    const newFile = index === 0 || passage.fileId !== passages[index - 1]!.fileId;
+    if (newFile) heading = null;
     const section = passage.section !== null && passage.section !== heading ? passage.section : undefined;
     heading = passage.section ?? heading;
-    return { label: `P${index + 1}`, ...(section ? { section } : {}), chars: passage.text.length, excerpt: "" };
+    return {
+      label: `P${index + 1}`,
+      ...(newFile && passage.file ? { file: labelText(passage.file) } : {}),
+      ...(section ? { section: labelText(section) } : {}),
+      chars: passage.text.length,
+      excerpt: "",
+    };
   });
-  const size = (list: unknown) => JSON.stringify(list).length;
+  const request = (list: OutlineRequest["passages"]): OutlineRequest => ({
+    topic: labelText(topic),
+    parts: bounds,
+    passages: list,
+    ...(problems.length > 0 ? { problems: [...problems] } : {}),
+  });
+  const size = (list: OutlineRequest["passages"]) => JSON.stringify(request(list)).length;
   if (size(bare) > OUTLINE_PROMPT_CHARS) return null;
   let share = Math.floor((OUTLINE_PROMPT_CHARS - size(bare)) / Math.max(1, passages.length));
   for (;;) {
     const list = bare.map((entry, index) => ({ ...entry, excerpt: excerpt(passages[index]!.text, share) }));
-    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the list fits.
-    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return { topic, parts: bounds, passages: list };
+    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the request fits.
+    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return request(list);
     share = Math.floor(share * 0.9);
   }
 }
@@ -306,6 +366,8 @@ export type OutlinePart = {
   itemId: string | null;
   summary: string | null;
   doneAt: number | null;
+  /** When the part's last write failed or was cancelled; null once a write succeeds. */
+  writeFailedAt: number | null;
 };
 
 export type Outline = {
@@ -343,7 +405,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
   if (!row) return null;
   const parts = db
     .prepare(
-      `SELECT id, position, kind, title, about, passage_ids_json, minutes, item_id, summary, done_at
+      `SELECT id, position, kind, title, about, passage_ids_json, minutes, item_id, summary, done_at, write_failed_at
        FROM lesson_parts WHERE outline_id = ? ORDER BY position`,
     )
     .all(row.id) as Array<{
@@ -357,6 +419,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
     item_id: string | null;
     summary: string | null;
     done_at: number | null;
+    write_failed_at: number | null;
   }>;
   return {
     ...row,
@@ -371,6 +434,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
       itemId: part.item_id,
       summary: part.summary,
       doneAt: part.done_at,
+      writeFailedAt: part.write_failed_at,
     })),
   };
 }
@@ -394,17 +458,19 @@ type Plan = {
 };
 
 /**
- * Saves an outline unless the topic got a live one meanwhile, and returns the topic's live outline. Teaching parts
+ * Saves an outline unless the topic got a live one meanwhile, and returns the topic's live outline. A cancelled call
+ * saves nothing and throws the abort, whichever way the outline was made. Teaching parts
  * get their estimated minutes; from `RECAP_FROM` teaching parts on, the recap follows them. Only a model's cut carries
  * engine and prompt provenance: the fallback and a one-part topic are cut by code.
  */
 function saveOutline(
   db: Database.Database,
-  input: { planId: string; topicId: string },
+  input: { planId: string; topicId: string; signal?: AbortSignal },
   passages: readonly OutlinePassage[],
   plan: Plan,
   language: string,
 ): Outline {
+  input.signal?.throwIfAborted();
   const chars = new Map(passages.map((passage) => [passage.id, passage.text.length]));
   const rows: Array<PlannedPart & Pick<OutlinePart, "kind" | "minutes">> = plan.parts.map((part) => ({
     ...part,
@@ -459,8 +525,9 @@ export type PlanPartsInput = {
  * Makes a topic's outline when it has no live one, and returns the live outline. A topic of one part is saved with no
  * call (`origin = 'single'`, the topic's title). Otherwise the model plans the parts from the passage list; a reply
  * `checkOutline` rejects is asked again once with its problems, and a second rejection, a reply the schema repair could
- * not fix, or a passage list too long to send is cut by `fallbackOutline` (`origin = 'fallback'`). An engine error or a
- * cancel saves nothing and is thrown, so the next open tries again.
+ * not fix, or a request over `OUTLINE_PROMPT_CHARS` even with no excerpts, on either ask, is cut by `fallbackOutline`
+ * (`origin = 'fallback'`). No call goes out above that bound. An engine error or a cancel saves nothing and is thrown,
+ * so the next open tries again.
  */
 export async function planParts(db: Database.Database, input: PlanPartsInput): Promise<Outline> {
   requireTopic(db, input.planId, input.topicId);
@@ -476,12 +543,14 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     return saveOutline(db, input, passages, { origin: "single", parts: [{ title: topic.title, about: "", passageIds }] }, language);
   const fallback = () =>
     saveOutline(db, input, passages, { origin: "fallback", parts: fallbackOutline(passages, bounds.target, language) }, language);
-  const request = outlineRequest(topic.title, passages, bounds);
-  if (!request) return fallback();
-  const selection = input.selection ?? selectionFor(db, "lesson");
+  let selection = input.selection;
   const system = systemPrompt("lesson.outline", { contentLanguage: language });
   let problems: string[] = [];
   for (let ask = 0; ask < 2; ask++) {
+    // Built for each ask, so the second, with its problems, is measured against the bound as it is sent too.
+    const request = outlineRequest(topic.title, passages, bounds, problems);
+    if (!request) return fallback();
+    selection ??= selectionFor(db, "lesson");
     let result: Awaited<ReturnType<typeof generate>>;
     try {
       result = await generate({
@@ -491,7 +560,7 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
         schema: outlineReply,
         system,
         // The problems travel inside the JSON, which the recorded engine and the structured providers read as it is.
-        prompt: JSON.stringify(problems.length > 0 ? { ...request, problems } : request),
+        prompt: JSON.stringify(request),
       });
     } catch (error) {
       if (error instanceof IpcError && error.code === "invalid-output") return fallback();

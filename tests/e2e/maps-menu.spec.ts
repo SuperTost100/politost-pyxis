@@ -971,3 +971,46 @@ for (const way of ["Riprendi", "Riprova"] as const) {
     }
   });
 }
+
+test("a map page's menu stays open when a build of the map starts elsewhere, with Rinomina turned off", async () => {
+  test.setTimeout(240_000);
+  // The dots stay enabled while a map is written, since deleting stops the build; so the menu is not closed for it, but
+  // Rinomina follows the build as it starts, and Elimina, which stops the build, is still there.
+  const ways: Array<[string, (page: Page) => Promise<void>]> = [
+    ["a click", (page) => page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click()],
+    ["a right-click", (page) => page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click({ button: "right" })],
+    ["Shift+F10", async (page) => {
+      await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).focus();
+      await page.keyboard.press("Shift+F10");
+    }],
+  ];
+  for (const [how, open] of ways) {
+    const { app, page, userData } = await startApp({
+      PYXIS_E2E_MAP_REPLIES: recorded([reply(["Teoremi", "Unicità del limite", "Confronto", "Permanenza del segno"])]),
+      PYXIS_E2E_MAP_DELAY: "8000",
+    });
+    try {
+      await page.evaluate(() => {
+        location.hash = "#/maps/an/t-lim";
+      });
+      await expect(page.locator(".react-flow__node").first()).toBeVisible();
+      await open(page);
+      const rename = page.getByRole("menuitem", { name: "Rinomina" });
+      await expect(rename, how).toBeVisible();
+      await expect(rename, how).not.toHaveAttribute("aria-disabled", "true");
+      // A build of this map starts without the student touching the page.
+      await page.evaluate(() => window.pyxis.invoke("maps.generate", { planId: "p-an", topicId: "t-lim", instruction: "solo i teoremi" }));
+      await expect.poll(async () => (await page.evaluate(() => window.pyxis.invoke("maps.build", { planId: "p-an", topicId: "t-lim" })))?.state, { message: how }).toMatch(/queued|running/);
+      // The page notices the build a few seconds later: rename turns off in the open menu, which stays, and deleting, which
+      // stops the build, stays available.
+      await expect(rename, how).toHaveAttribute("aria-disabled", "true", { timeout: 30_000 });
+      await expect(page.getByRole("menuitem", { name: "Elimina la mappa…" }), how).not.toHaveAttribute("aria-disabled", "true");
+      await expect(page.getByRole("menu"), how).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu"), how).toHaveCount(0);
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+    }
+  }
+});
