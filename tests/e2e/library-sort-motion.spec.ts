@@ -14,17 +14,21 @@ import { saveShot } from "./shots";
 type Box = { left: number; top: number; right: number; bottom: number };
 /**
  * `row` is the file's row in "Da sistemare": `leaving` once its exit has started, `active` while it still works.
- * `rowMotion` counts the animations running on the row.
+ * `exit` is the row's own animation of its height, as the page holds it: its length and the heights its keyframes give.
  */
+type Exit = { duration: number; heights: Array<{ offset: number; height: number }> };
 type Frame = {
   t: number;
   art: Box | null;
   row: Box | null;
   rowState: "active" | "leaving" | null;
-  rowMotion: number;
+  exit: Exit | null;
   card: Box | null;
   shelf: Box | null;
 };
+
+/** How long a row of "Da sistemare" takes to fade and close: `ROW_EXIT_MS` in LibraryShelf.tsx. */
+const ROW_EXIT_MS = 420;
 
 /** The recording ends once the page has been still for this many frames after the move. */
 const STILL_FRAMES = 5;
@@ -65,6 +69,19 @@ async function sortAndRecord(page: Page, title: string, subjectId: string, subje
           let covered = false;
           let still = 0;
           let finished = false;
+          // The animation on the row that changes its height, read from the page and not from what a frame happened to draw.
+          const exitOf = (row: Element | null): Exit | null => {
+            for (const animation of row?.getAnimations() ?? []) {
+              const effect = animation.effect as KeyframeEffect | null;
+              const keyframes = (effect?.getKeyframes() ?? []).filter((keyframe) => keyframe.height !== undefined);
+              if (!effect || keyframes.length === 0) continue;
+              return {
+                duration: Number(effect.getComputedTiming().duration),
+                heights: keyframes.map((keyframe) => ({ offset: Number(keyframe.computedOffset), height: parseFloat(String(keyframe.height)) })),
+              };
+            }
+            return null;
+          };
           const sample = (): Frame => {
             const row = document.querySelector(`.px-unsorted-row[data-source-id="${id}"]`);
             const art = document.querySelector(`.px-shelf .px-cover[data-source-id="${id}"] .px-cover-art`);
@@ -73,7 +90,7 @@ async function sortAndRecord(page: Page, title: string, subjectId: string, subje
               art: box(art),
               row: box(row),
               rowState: row ? (row.hasAttribute("data-leaving") ? "leaving" : "active") : null,
-              rowMotion: row?.getAnimations().length ?? 0,
+              exit: exitOf(row),
               card: box(document.querySelector(".px-unsorted-card")),
               shelf: box(document.querySelector(`[data-subject-id="${subject}"] .px-shelf`)),
             };
@@ -135,7 +152,7 @@ const describeFrames = (frames: Frame[]) =>
     .map(
       (f) =>
         `${f.t.toFixed(0)}ms art=${f.art ? `${f.art.left.toFixed(0)},${f.art.top.toFixed(0)} ${(f.art.right - f.art.left).toFixed(0)}w` : "-"} ` +
-        `row=${f.row ? `${f.row.left.toFixed(0)},${f.row.top.toFixed(0)} ${(f.row.bottom - f.row.top).toFixed(0)}h ${f.rowState} ${f.rowMotion}a` : "-"}`,
+        `row=${f.row ? `${f.row.left.toFixed(0)},${f.row.top.toFixed(0)} ${(f.row.bottom - f.row.top).toFixed(0)}h ${f.rowState} ${f.exit ? `exit ${f.exit.duration}ms ${f.exit.heights.map((h) => `${h.offset}:${h.height}`).join(" ")}` : "no exit"}` : "-"}`,
     )
     .join("\n");
 
@@ -221,9 +238,22 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
   heights.forEach((height, at) => {
     if (at > 0) expect(height, where).toBeLessThanOrEqual(heights[at - 1]! + 0.5);
   });
-  // It closes with a motion of its own, and was not removed in one step: a slow window can draw too few frames to see
-  // it half closed, but the row has an animation from the moment it starts to leave.
-  expect(Math.max(...rowFrames.map((frame) => frame.rowMotion)), `the row had no animation:\n${where}`).toBeGreaterThan(0);
+  // It closes: from the moment it starts to leave, the row has an animation of its height that runs from the height it
+  // had to nothing in the time the Library gives a row's exit. This is read from the animation, so it holds however few
+  // frames a slow window drew, and a row that only fades or is removed in one step does not pass.
+  const leaving = rowFrames.filter((frame) => frame.rowState === "leaving");
+  expect(leaving.length, `no frame saw the row leave:\n${where}`).toBeGreaterThan(0);
+  for (const { exit } of leaving) {
+    expect(exit, `the leaving row has no animation of its height:\n${where}`).not.toBeNull();
+    expect(exit!.duration, where).toBe(ROW_EXIT_MS);
+    const offsets = exit!.heights.map((step) => step.offset);
+    expect([offsets[0], offsets.at(-1)], where).toEqual([0, 1]);
+    expect(Math.abs(exit!.heights[0]!.height - originalRow.height), where).toBeLessThanOrEqual(1);
+    expect(exit!.heights.at(-1)!.height, where).toBe(0);
+    exit!.heights.forEach((step, at) => {
+      if (at > 0) expect(step.height, where).toBeLessThanOrEqual(exit!.heights[at - 1]!.height);
+    });
+  }
   // Focus went on with the file, to the next row's choice or the new cover, and was not left on the row that closed.
   const focus = await page.evaluate(() => ({
     onPage: document.activeElement !== document.body,
