@@ -604,3 +604,45 @@ describe("the level the text already has", () => {
     expect(shown(db, 3)).toBe("3-balanced-1");
   });
 });
+
+describe("the parts a level applies to", () => {
+  it("follows a level kept on an earlier part past a part done at another level, and leaves the parts before it", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    // "Semplice" on part 2, answered, so part 2 is done at "semplice"; part 3 follows as the part ahead.
+    read(db, runner, 2, { wording: "simple" });
+    await settle(db);
+    const second = read(db, runner, 2);
+    const question = [...smartQuestions(parseSmartText(second.lesson!.markdown)).keys()][0]!;
+    answerSmartCheck(db, { planId: "p", itemId: second.lesson!.itemId!, blockId: question, pick: 1 });
+    await settle(db);
+    expect(shown(db, 3)).toBe("3-simple-2");
+    // Back on part 1, done at "bilanciato", the student picks "bilanciato" for the parts to come: nothing is written.
+    const calls = engine.calls.length;
+    read(db, runner, 1, { wording: "balanced" });
+    await settle(db);
+    expect(liveOutline(db, "t")!.wording).toBe("balanced");
+    expect(engine.calls.slice(calls).map((call) => `${call.part}:${call.wording}`)).toEqual([]);
+    // Part 2 stays as it was read; part 3, reached from the path, follows the level: its text at "bilanciato" again.
+    expect(shown(db, 2)).toBe("2-simple-2");
+    read(db, runner, 3);
+    await settle(db);
+    expect(shown(db, 3)).toBe("3-balanced-1");
+    // No call wrote part 3 again (opening it writes part 4 ahead, as any part does).
+    expect(engine.calls.slice(calls).filter((call) => call.part === "3")).toEqual([]);
+  });
+
+  it("does not write again a part before the one the level was chosen on", async () => {
+    const { db, runner } = setUp();
+    await readToPartTwo(db, runner);
+    // "Semplice" chosen on part 3; part 2 is not done and at "bilanciato".
+    read(db, runner, 3, { wording: "simple" });
+    await settle(db);
+    read(db, runner, 1);
+    await settle(db);
+    read(db, runner, 2);
+    await settle(db);
+    expect(shown(db, 2)).toBe("2-balanced-1");
+    expect(part(db, 2).doneAt).toBeNull();
+  });
+});

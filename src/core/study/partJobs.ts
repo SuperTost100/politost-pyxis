@@ -320,15 +320,26 @@ export function choosePart(
 }
 
 /**
- * The student opened the written part `position`, and the part after it is written but not done, at another level
- * than the one chosen on the outline: it is written again at that level as the part ahead, or pointed at its text at
- * that level when one was written before.
+ * Whether a part follows the level chosen on the outline but is not at it: written, not done, at another level, and
+ * after a part whose text is at the chosen level, which is where the level was chosen ("Vale per questa parte e per
+ * le prossime"). A part done keeps the text it was read in, and a part before the one the level was chosen on keeps
+ * its own.
+ */
+function followsLevel(db: Database.Database, outline: Outline, part: OutlinePart | undefined): part is OutlinePart {
+  if (!outline.wording || !part?.itemId || part.doneAt !== null || !partOffLevel(db, outline, part)) return false;
+  return outline.parts.some((entry) => entry.position < part.position && entry.itemId && !partOffLevel(db, outline, entry));
+}
+
+/**
+ * The student opened the written part `position`, and the part after it follows the chosen level but is not at it
+ * (`followsLevel`): it is written again at that level as the part ahead, or pointed at its text at that level when
+ * one was written before.
  */
 export function ensureAheadLevel(db: Database.Database, runner: Runner, input: PartStart): void {
   const outline = liveOutline(db, input.topicId);
   const opened = outline?.parts.find((entry) => entry.position === input.position);
   const next = outline?.parts.find((entry) => entry.position === input.position + 1);
-  if (!outline?.wording || !opened?.itemId || !next?.itemId || next.doneAt !== null || !partOffLevel(db, outline, next)) return;
+  if (!outline || !opened?.itemId || !followsLevel(db, outline, next)) return;
   if (db.prepare(BUSY_SQL).get(input.topicId)) return;
   const wording = outline.wording as Wording;
   const at = { planId: input.planId, topicId: input.topicId, position: next.position };
@@ -336,17 +347,14 @@ export function ensureAheadLevel(db: Database.Database, runner: Runner, input: P
 }
 
 /**
- * The student opened a written part that is not done, at another level than the one chosen on the outline, right
- * after a part written at the chosen level: it was written ahead before the level changed, or while it changed, so it
- * is written again at the chosen level now that it is reached, or pointed at its text at that level written before.
- * A part before the one the level was chosen on keeps its text: the part before it is not at the chosen level.
+ * The student opened a part that follows the chosen level but is not at it (`followsLevel`): written ahead before the
+ * level changed, or while it changed. It is written again at the chosen level now that it is reached, or pointed at
+ * its text at that level written before.
  */
 export function ensureLevelReached(db: Database.Database, runner: Runner, input: PartStart): void {
   const outline = liveOutline(db, input.topicId);
   const opened = outline?.parts.find((entry) => entry.position === input.position);
-  const before = outline?.parts.find((entry) => entry.position === input.position - 1);
-  if (!outline?.wording || !opened?.itemId || opened.doneAt !== null || !partOffLevel(db, outline, opened)) return;
-  if (!before?.itemId || partOffLevel(db, outline, before)) return;
+  if (!outline || !followsLevel(db, outline, opened)) return;
   const wording = outline.wording as Wording;
   if (choosePartLevel(db, { ...input, wording }) === "write") startRewrite(db, runner, { ...input, rewrite: "level", wording }, "reached");
 }
