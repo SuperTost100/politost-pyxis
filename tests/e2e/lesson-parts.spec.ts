@@ -215,25 +215,6 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(page.getByText("Riassunto di intorni: la cosa giusta.")).toBeVisible();
     await expectNoAxeViolations(page);
     await saveShot(page, "lesson-parts/part-1-it-light.png");
-    // The part's dots are a lone button, so they open its menu by click, right-click and Shift+F10, and one Escape
-    // closes it with the focus back on them.
-    const dots = page.getByRole("button", { name: "Altre azioni" });
-    for (const openMenu of [
-      () => dots.click(),
-      () => dots.click({ button: "right" }),
-      async () => {
-        await dots.focus();
-        await page.keyboard.press("Shift+F10");
-      },
-    ]) {
-      await openMenu();
-      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
-      await expect(dots).toHaveAttribute("aria-expanded", "true");
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("menu")).toHaveCount(0);
-      await expect(dots).toBeFocused();
-    }
-
     // Part 2's job, started ahead, fails on its shape while part 1 is read.
     await expect
       .poll(async () => {
@@ -425,7 +406,30 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(continueButton(page)).toHaveText(/^Continua: (?!Lezione)/);
     await saveShot(page, "lesson-parts/recap-done-it-light.png");
 
-    // The part's menu opens from the dots and from a right-click on its head.
+    // The part's dots are a lone button, so they open its menu by click, right-click and Shift+F10, and one Escape
+    // closes it with the focus back on them, also on a page scrolled to its foot, where the focus moving to the dots in
+    // the sticky bar scrolls the page a little.
+    await page.getByText("Fine del capitolo").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const dots = page.getByRole("button", { name: "Altre azioni" });
+    for (const openMenu of [
+      () => dots.click(),
+      () => dots.click({ button: "right" }),
+      async () => {
+        await dots.focus();
+        await page.keyboard.press("Shift+F10");
+      },
+    ]) {
+      await openMenu();
+      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
+      await expect(dots).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(dots).toBeFocused();
+    }
+
+    // The part's menu opens from a right-click on its head too.
     await page.getByRole("heading", { level: 1 }).click({ button: "right" });
     await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
     await page.keyboard.press("Escape");

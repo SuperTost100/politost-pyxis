@@ -33,6 +33,24 @@ export function pointBelow(box: { left: number; bottom: number; right: number })
   return { x: Math.min(box.left + 8, box.right), y: box.bottom };
 }
 
+/** The edges of an element's box, as `getBoundingClientRect` gives them. */
+type Box = { left: number; top: number; right: number; bottom: number };
+
+/**
+ * Whether the page's scroll moved an item from where `before` drew it to `now`. An edge that moved by more than a pixel
+ * counts only when the centre moved with it: a button shrinks about its centre while it is pressed (`Button.css`),
+ * which moves its edges by up to a pixel and its centre not at all, and the menu of a right-click opens while the button
+ * is still pressed, before it is released. And a centre that moved counts only when an edge did: an item that grew or
+ * shrank with its top left corner in place moves its centre, and the page did not scroll.
+ */
+export function movedBy(before: Box, now: Box): boolean {
+  const along = (edge: number, centre: number) => Math.abs(edge) > 1 && Math.abs(centre) > 1;
+  return (
+    along(now.left - before.left, (now.left + now.right - before.left - before.right) / 2) ||
+    along(now.top - before.top, (now.top + now.bottom - before.top - before.bottom) / 2)
+  );
+}
+
 type MenuMouseEvent = {
   clientX: number;
   clientY: number;
