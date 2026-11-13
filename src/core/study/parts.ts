@@ -616,8 +616,8 @@ export const PART_MIN_MINUTES = 2;
 export const PART_MAX_MINUTES = 12;
 /** Room kept in the request for the problems of a second ask, so both asks stay within `CONTEXT_CHARS`. */
 const PROBLEMS_CHARS = 1_000;
-/** Longest source heading in a part's material: a heading is a label, and a longer one is cut. */
-export const MATERIAL_HEADING_CHARS = 200;
+/** Longest source heading in a part's material: a label, cut like the labels of the planning request. */
+export const MATERIAL_HEADING_CHARS = OUTLINE_LABEL_CHARS;
 /** A heading as the request lists it for a written part. */
 const HEADING_CHARS = 120;
 /** The topic's title and a part's line on what it teaches, as the request lists them. */
