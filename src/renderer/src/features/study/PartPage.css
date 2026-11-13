@@ -1,0 +1,300 @@
+/* A lesson part (docs/design-system/motion.md and feedback.md): the parts column, the working block, the foot. */
+
+/* The parts of the chapter, beside the sheet and in the narrow window's popover. */
+.px-parts-label {
+  margin: 0 0 8px 10px;
+  color: var(--ink-subtle);
+  font: 600 12.5px/1.3 var(--font-sans);
+}
+
+.px-parts ol {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.px-parts-link {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font: 400 calc(13.5px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  text-decoration: none;
+  transition: background-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out);
+}
+
+.px-parts-link:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.px-parts-link.is-current,
+.px-parts-link[aria-current="page"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.px-parts-link .px-markdown {
+  font: inherit;
+  color: inherit;
+}
+
+.px-parts-mark {
+  display: inline-flex;
+  margin-top: 2px;
+}
+
+.px-parts-link.is-done .px-parts-mark {
+  color: var(--ink-muted);
+}
+
+/* A part not read: a circle, dashed while it is not written yet. */
+.px-parts-circle {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  margin: 3px 0 0 1px;
+  border: 1.5px solid var(--border-control);
+  border-radius: 50%;
+}
+
+.px-parts-circle.is-dashed {
+  border-style: dashed;
+}
+
+.px-parts-minutes {
+  padding-top: 1px;
+  color: var(--ink-subtle);
+  font-size: calc(12px * var(--text-scale, 1));
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.px-parts-note {
+  margin: 14px 0 0 10px;
+  color: var(--ink-subtle);
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.45;
+}
+
+.px-parts-popover {
+  width: 320px;
+}
+
+/* The line under a part's title: its minutes and its question. */
+.px-part-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-muted);
+  font-size: calc(14px * var(--text-scale, 1));
+}
+
+/* Continua to a written part is a page change: a short cross-fade. */
+.px-part-body.is-turned {
+  animation: px-part-fade 150ms var(--ease-out);
+}
+
+@keyframes px-part-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The working block, whose row closes as the part it waited for arrives, while the text fades in under the title. */
+.px-part-work {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--duration-small) var(--ease-out);
+}
+
+.px-part-work > div {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.px-part-work.is-closing {
+  grid-template-rows: 0fr;
+}
+
+.px-part-text.is-arriving {
+  animation: px-part-fade var(--duration-small) var(--ease-out);
+}
+
+.px-part-working {
+  display: grid;
+  gap: 14px;
+  padding: 20px 24px;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.px-part-working-status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--ink-muted);
+}
+
+.px-part-working-status p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.px-part-working-title {
+  color: var(--ink);
+  font: 600 calc(16px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+}
+
+.px-part-working-line {
+  color: var(--ink-muted);
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: 1.45;
+}
+
+.px-part-working-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding-left: 50px;
+}
+
+.px-part-working-ready {
+  color: var(--ink-muted);
+  font-size: calc(13.5px * var(--text-scale, 1));
+}
+
+/* Where the part's text will be: still shapes, since AI work gets the working mark and never a pulsing skeleton. */
+.px-part-shape {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.px-part-shape span {
+  display: block;
+  width: 96%;
+  height: 13px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+}
+
+.px-part-shape .is-short {
+  width: 64%;
+}
+
+.px-part-shape .is-heading {
+  width: 46%;
+  height: 22px;
+  margin-top: 18px;
+}
+
+.px-part-shape .is-box {
+  width: 100%;
+  height: 64px;
+  border-radius: var(--radius-md);
+}
+
+/* The end of the part: what it taught, then Continua, Scegli altro and Per oggi basta. */
+.px-part-foot {
+  display: grid;
+  gap: 10px;
+  margin-top: var(--space-8);
+  padding: 24px 26px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-sunken);
+}
+
+.px-part-foot > p {
+  margin: 0;
+}
+
+.px-part-foot-title {
+  color: var(--ink-muted);
+  font: 600 calc(12.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+
+.px-part-foot-summary {
+  color: var(--ink);
+  font-size: calc(15.5px * var(--text-scale, 1));
+  line-height: 1.6;
+}
+
+.px-part-foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 8px;
+  margin-top: 8px;
+}
+
+.px-part-continue .px-btn {
+  max-width: 100%;
+}
+
+.px-part-continue-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.px-part-continue-label .px-markdown {
+  font: inherit;
+  color: inherit;
+}
+
+.px-part-continue-minutes {
+  margin-left: 10px;
+  font-weight: 400;
+  opacity: 0.88;
+}
+
+/* "Scegli altro" is quiet: a text button that keeps a soft ground while its menu is open. */
+.px-part-foot .px-part-foot-other .ant-btn {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink-muted);
+}
+
+.px-part-foot .px-part-foot-other .ant-btn:not(:disabled):hover,
+.px-part-foot .px-part-foot-other .ant-btn[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.px-part-enough.px-btn {
+  margin-left: auto;
+  color: var(--ink-muted);
+}
+
+.px-part-other {
+  display: grid;
+  gap: 1px;
+  line-height: 1.35;
+}
+
+.px-part-other .px-markdown {
+  font: inherit;
+  color: inherit;
+}
+
+.px-part-other-detail {
+  color: var(--ink-muted);
+  font-size: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-parts-link {
+    transition: none;
+  }
+}

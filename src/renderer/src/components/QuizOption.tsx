@@ -19,6 +19,7 @@ export function QuizOption({
   children,
   state = "idle",
   shortcut,
+  letterKey,
   math,
   disabled,
   plain,
@@ -29,6 +30,8 @@ export function QuizOption({
   state?: QuizOptionState;
   /** The number key that picks it, shown at the end of the row. */
   shortcut?: string;
+  /** Its letter picks it, as on the final question of a lesson part; the letter is already drawn. */
+  letterKey?: boolean;
   /**
    * The option's Markdown. A screen reader gets nothing from KaTeX inside a button, so an option with `$` math is named
    * from this text, formulas spoken as signs and words.
@@ -59,7 +62,7 @@ export function QuizOption({
         .filter(Boolean)
         .join(" ")}
       aria-pressed={state === "idle" || state === "selected" ? state === "selected" : undefined}
-      aria-keyshortcuts={state === "muted" ? undefined : shortcut}
+      aria-keyshortcuts={state === "muted" ? undefined : letterKey && state === "idle" ? letter : shortcut}
       aria-label={
         answer === undefined ? undefined : [letter, answer, feedback?.word].filter(Boolean).join(" ")
       }
