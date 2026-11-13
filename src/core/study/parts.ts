@@ -623,6 +623,8 @@ export const MATERIAL_HEADING_CHARS = OUTLINE_LABEL_CHARS;
 const HEADING_CHARS = 120;
 /** The topic's title and a part's line on what it teaches, as the request lists them. */
 const TOPIC_CHARS = 200;
+/** Material a section rewrite keeps room for before it shortens the part it sends. */
+const SECTION_MATERIAL_CHARS = 4_000;
 const ABOUT_CHARS = 200;
 
 /** The plan's word for a part with its number, such as "Parte 3", for job titles. */
@@ -1214,21 +1216,46 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
       : closes && asked
         ? "This section ends the part: end it with exactly one pyxis-check on this part's idea."
         : "Write no pyxis-check and no pyxis-recap in it.";
-  const head = [
-    `Topic: ${topic}`,
-    part.kind === "recap" ? "This is the recap part of the lesson." : `Part ${part.position} of ${teaching}: ${part.title}.`,
-    `This part's sections: ${sections.map((entry) => entry.title).join(" | ")}`,
-    `Rewrite only the section "${section.title}" so it teaches better. Return only the new section, starting with its ## heading, about as long as it is now. ${question} Then add one pyxis-takeaway block, {"text": "..."}, on what the student learns from the whole part with the new section, in at most two sentences.`,
+  const asks = [
+    `Topic: ${cutText(topic, TOPIC_CHARS)}`,
+    part.kind === "recap"
+      ? "This is the recap part of the lesson."
+      : `Part ${part.position} of ${teaching}: ${cutText(part.title, TITLE_CHARS)}.`,
+    `This part's sections: ${sections.map((entry) => cutText(entry.title, HEADING_CHARS)).join(" | ")}`,
+    `Rewrite only the section "${cutText(section.title, HEADING_CHARS)}" so it teaches better. Return only the new section, starting with its ## heading, about as long as it is now. ${question} Then add one pyxis-takeaway block, {"text": "..."}, on what the student learns from the whole part with the new section, in at most two sentences.`,
     note ? `The student asked: ${JSON.stringify(note)}` : "",
-    `The whole part as it is now:\n\n${saved.markdown}`,
   ]
     .filter(Boolean)
     .join("\n\n");
   const label = "\n\nMaterial of this part:\n\n";
-  const request =
-    passages.length > 0
-      ? `${head}${label}${fittedMaterial(passages, Math.max(0, CONTEXT_CHARS - head.length - label.length - PROBLEMS_CHARS))}`
-      : head;
+  // The request stays within the bound that every part call keeps, with room for the problems of a second ask. The part
+  // is sent whole when it fits with some of its material; a longer one keeps the section to rewrite whole and only the
+  // headings of the others, and is cut only when that section alone is too long. The material gets what is left.
+  const bound = CONTEXT_CHARS - PROBLEMS_CHARS;
+  const intro = "\n\nThe whole part as it is now:\n\n";
+  const room = bound - asks.length - intro.length - (passages.length > 0 ? label.length + SECTION_MATERIAL_CHARS : 0);
+  const shown =
+    saved.markdown.length <= room
+      ? saved.markdown
+      : cutText(
+          sections
+            .map((entry, index) =>
+              index === input.section ? lines.slice(entry.start, entry.end).join("\n") : `${lines[entry.start]}\n\n[…]`,
+            )
+            .join("\n\n"),
+          Math.max(0, room),
+        );
+  const head = `${asks}${intro}${shown}`;
+  let request = head;
+  if (passages.length > 0) {
+    let budget = bound - head.length - label.length;
+    request = `${head}${label}${fittedMaterial(passages, budget)}`;
+    // Measured as `partRequest` does: a request still over the bound is fitted again with less room for material.
+    for (let round = 0; request.length > bound && round < 3; round++) {
+      budget -= request.length - bound;
+      request = `${head}${label}${fittedMaterial(passages, budget)}`;
+    }
+  }
   const python = await figureRunner(input.python);
   const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)].filter(Boolean).join("\n");
   const selection = input.selection ?? selectionFor(db, "lesson");
@@ -1236,12 +1263,15 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
   let shaped: Extract<PartShape, { ok: true }> | null = null;
   let engine: { provider: string; model: string } | null = null;
   for (let ask = 0; ask < 2 && !shaped; ask++) {
+    const prompt = problems.length > 0 ? partRetry(request, problems) : request;
+    // As in `writePart`: the bounds above keep a request within this, and none is sent over it.
+    if (prompt.length > CONTEXT_CHARS) throw new Error("lesson-part-too-long");
     const result = await generate({
       selection,
       run: input.run,
       signal: input.signal,
       system,
-      prompt: problems.length > 0 ? partRetry(request, problems) : request,
+      prompt,
     });
     input.signal?.throwIfAborted();
     let text = lessonText(result.text);

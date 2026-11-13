@@ -5,7 +5,8 @@ import { createRunner } from "../jobs/runner";
 import { exportPlan } from "../plans/file";
 import { planFootprint } from "../plans/settings";
 import { topicContent } from "../plans/views";
-import { parseSmartText, smartQuestions } from "../../shared/smart-text";
+import { parseSmartText, smartQuestions, smartSections } from "../../shared/smart-text";
+import { CONTEXT_CHARS } from "./openLesson";
 import { itemWording, liveOutline, rewritePartSection } from "./parts";
 import { PART_JOB, openPart, registerPartJobs, type PartResult } from "./partJobs";
 import { partsDoneSince } from "./partProgress";
@@ -331,6 +332,34 @@ describe("a section rewritten in a part", () => {
     expect(engine.calls.at(-1)!.prompt).toContain("Problems with your previous reply");
     expect(read(db, runner, 2).lesson!.markdown).toBe(before);
     expect(part(db, 2).summary).toBe(summary);
+  });
+
+  it("keeps both asks within the request bound for a long part under a long title, and still sends the section", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    // A part of 800 long words, about 30,000 characters, in a topic whose title is 5,000.
+    const long = partText("x".repeat(30), 400);
+    expect(long.length).toBeGreaterThan(CONTEXT_CHARS);
+    db.prepare("UPDATE items SET body_json = json_set(body_json, '$.markdown', ?) WHERE id = ?").run(long, part(db, 2).itemId);
+    db.prepare("UPDATE topics SET title = ? WHERE id = 't'").run("Funzioni ".repeat(560));
+    const calls = engine.calls.length;
+    engine.reply(
+      `## Passo senza domanda\n\n${words("senza", 150)}\n\n${takeaway("niente")}`,
+      `## Passo nuovo secondo\n\n${words("nuovo", 150)}\n\n${check("nuova")}\n\n${takeaway("la sezione nuova")}`,
+    );
+    const result = await rewritePartSection(db, { planId: "p", topicId: "t", position: 2, section: 1, run: engine.run, python: null });
+    expect(result.markdown).toContain("## Passo nuovo secondo");
+    const target = smartSections(long)[1]!;
+    const section = long.split("\n").slice(target.start, target.end).join("\n");
+    const sent = engine.calls.slice(calls).map((call) => call.prompt);
+    expect(sent).toHaveLength(2);
+    for (const prompt of sent) {
+      expect(prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      // The section to rewrite is sent whole, with the other section's heading and this part's material.
+      expect(prompt).toContain(section);
+      expect(prompt).toContain(`## Passo ${"x".repeat(30)} primo`);
+      expect(prompt).toContain("MARK-2");
+    }
   });
 
   it("refuses a part that is not written", async () => {
