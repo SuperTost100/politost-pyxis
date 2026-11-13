@@ -293,8 +293,22 @@ export function leaveMenuTo(trigger: HTMLElement | null | undefined): void {
   if (trigger?.isConnected && active instanceof Element && active.closest(".px-item-menu")) trigger.focus({ preventScroll: true });
 }
 
-/** An item menu that is open: the dropdown keeps a closed menu in the page, hidden, so it is told apart by its class. */
-const OPEN_MENU = ".px-item-menu:not(.ant-dropdown-hidden)";
+/**
+ * The item menus that are open now, by what their own code holds open: the dropdown keeps a closed menu in the page for
+ * its leave animation, so the page cannot tell an open menu from one that is leaving.
+ */
+const openMenus = new Set<object>();
+
+/** Notes that this menu is open while `open` is true, so that an Escape that comes meanwhile is the menu's. */
+function useOpenMenu(open: boolean) {
+  const key = useRef({});
+  useLayoutEffect(() => {
+    if (!open) return;
+    const menu = key.current;
+    openMenus.add(menu);
+    return () => void openMenus.delete(menu);
+  }, [open]);
+}
 
 /** The Escape key presses that came while an item menu was open, noted before anything else hears them. */
 const escapesForMenu = new WeakSet<Event>();
@@ -304,7 +318,7 @@ const escapesForMenu = new WeakSet<Event>();
 document.addEventListener(
   "keydown",
   (event) => {
-    if (event.key === "Escape" && document.querySelector(OPEN_MENU)) escapesForMenu.add(event);
+    if (event.key === "Escape" && openMenus.size > 0) escapesForMenu.add(event);
   },
   true,
 );
@@ -342,7 +356,7 @@ export function useItemMenu({
    * opened by the pointer on a button that does not take the focus on a click, as on a Mac, would leave it nowhere.
    */
   returnTo?: () => HTMLElement | null;
-}): { bind: ReturnType<typeof menuTrigger>; popup: ReactNode; open: boolean } {
+}): { bind: ReturnType<typeof menuTrigger>; popup: ReactNode; open: boolean; dismiss: () => void } {
   const [at, setAt] = useState<MenuPoint | null>(null);
   // For a menu opened with the keyboard: where focus goes back to when it closes.
   const origin = useRef<HTMLElement | null>(null);
@@ -389,6 +403,7 @@ export function useItemMenu({
     },
   };
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
+  useOpenMenu(at !== null);
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
   const popup: ReactNode = at
@@ -423,7 +438,8 @@ export function useItemMenu({
         document.body,
       )
     : null;
-  return { bind, popup, open: at !== null };
+  // Closes the menu for another one that opens, leaving the focus where it is.
+  return { bind, popup, open: at !== null, dismiss: () => close(false) };
 }
 
 /**
@@ -551,6 +567,17 @@ export function MenuButton({
     disabled: disabled || !rightClick,
     returnTo: () => document.getElementById(id),
   });
+  useOpenMenu(open);
+  // The button has two menus, the dropdown of its click and the one of its right-click and keys, which are the same
+  // items: whichever opens last closes the other, however each was asked for.
+  const was = useRef({ open: false, own: false });
+  useLayoutEffect(() => {
+    if (open && own.open) {
+      if (was.current.own) own.dismiss();
+      else setOpen(false);
+    }
+    was.current = { open, own: own.open };
+  });
   return (
     <>
       <Dropdown
@@ -593,15 +620,11 @@ export function MenuButton({
             .join(" ")}
           aria-label={label}
           aria-haspopup="menu"
-          aria-expanded={open}
+          aria-expanded={open || own.open}
           {...(rightClick ? { onPointerDown: own.bind.onPointerDown, onKeyUp: own.bind.onKeyUp } : {})}
           onContextMenu={
             rightClick
-              ? (event) => {
-                  // One menu at a time: a click that opened the button's own menu gives way to the pointer's.
-                  setOpen(false);
-                  own.bind.onContextMenu(event);
-                }
+              ? own.bind.onContextMenu
               : undefined
           }
           onKeyDown={(event) => {

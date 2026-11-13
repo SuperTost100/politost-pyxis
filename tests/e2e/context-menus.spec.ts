@@ -8,6 +8,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu, lastMenuAt, lastMenuLabels } from "./native-menu";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { animationsSettled } from "./settled";
 
 /** The labels of the open menu, a separator left out. */
 const itemsOf = async (page: Page, region: string) => {
@@ -276,6 +277,8 @@ async function opensEveryWay(page: Page, dots: Locator, region: string, expected
     const items = await itemsNow();
     first ??= items;
     expect(items, how).toEqual(first);
+    // A screen reader hears the button as expanded while the menu is on screen, whichever way it was opened.
+    await expect(dots, how).toHaveAttribute("aria-expanded", "true");
     // A pointer opens it at the pointer's place and the keys under the button, so it is never far from the dots.
     const box = (await dots.boundingBox())!;
     const at = (await menu.boundingBox())!;
@@ -283,8 +286,54 @@ async function opensEveryWay(page: Page, dots: Locator, region: string, expected
     await page.keyboard.press("Escape");
     await expect(menu, how).toBeHidden();
     await expect(dots, how).toBeFocused();
+    await expect(dots, how).toHaveAttribute("aria-expanded", "false");
   }
   return first!;
+}
+
+/**
+ * Two ways of opening a menu in a row, with no wait between them, leave one menu, whichever came first. The menus of
+ * the button's own click and of its right-click and keys are two, and opening one closes the other.
+ */
+async function oneMenuAtATime(page: Page, dots: Locator, region: string) {
+  const menus = page.getByRole("region", { name: region }).getByRole("menu");
+  const pairs: Array<[string, () => Promise<void>]> = [
+    ["Enter, then Shift+F10", async () => {
+      await dots.focus();
+      await page.keyboard.press("Enter");
+      await page.keyboard.press("Shift+F10");
+    }],
+    ["Enter and Shift+F10 in the same instant, before the menu has the focus", () =>
+      dots.evaluate((element) => {
+        const button = element as HTMLElement;
+        button.focus();
+        button.click();
+        button.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true }));
+      })],
+    ["Shift+F10, then Enter", async () => {
+      await dots.focus();
+      await page.keyboard.press("Shift+F10");
+      await page.keyboard.press("Enter");
+    }],
+    ["a click, then a right-click", async () => {
+      await dots.click();
+      await dots.click({ button: "right" });
+    }],
+    ["Shift+F10, then a click", async () => {
+      await dots.focus();
+      await page.keyboard.press("Shift+F10");
+      await dots.click();
+    }],
+  ];
+  for (const [how, act] of pairs) {
+    await act();
+    await expect(menus.first(), how).toBeVisible();
+    await expect(menus, how).toHaveCount(1);
+    await expect(dots, how).toHaveAttribute("aria-expanded", "true");
+    await page.keyboard.press("Escape");
+    await expect(menus, how).toHaveCount(0);
+    await expect(dots, how).toHaveAttribute("aria-expanded", "false");
+  }
 }
 
 test("an answer's, a lesson's and a map's three dots open by click, right-click and the menu keys, and Escape closes only the menu", async () => {
@@ -374,6 +423,7 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     const answerDots = answer.getByRole("button", { name: "Altre azioni" });
     const stronger = "Rispondi di nuovo con il modello più potente";
     expect(await opensEveryWay(page, answerDots, "Altre azioni", [stronger])).toEqual([stronger]);
+    await oneMenuAtATime(page, answerDots, "Altre azioni");
     await answerDots.click({ button: "right" });
     await page.getByRole("menuitem", { name: stronger }).click();
     await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text")).toHaveText(reply, { timeout: 30_000 });
@@ -386,6 +436,7 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     const lessonDots = page.getByRole("button", { name: "Altre azioni" });
     const lessonItems = await opensEveryWay(page, lessonDots, "Altre azioni");
     expect(lessonItems).toEqual(["Riscrivi", "Riscrivi una parte", "Mappa", "Esporta"]);
+    await oneMenuAtATime(page, lessonDots, "Altre azioni");
     await lessonDots.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Esporta" }).click();
     const exportDialog = page.getByRole("dialog", { name: "Esporta" });
@@ -408,8 +459,22 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
     await opensEveryWay(page, mapDots, "Altro");
     await expect(panel).toBeVisible();
+    await oneMenuAtATime(page, mapDots, "Altro");
+    await expect(panel).toBeVisible();
+    // With animations on the menu is still fading out when a second Escape comes, which is the panel's.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await animationsSettled(page);
+    await mapDots.click();
+    await expect(page.getByRole("menuitem", { name: "Rinomina" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeVisible();
+    await animationsSettled(page);
+    await mapDots.click();
+    await expect(page.getByRole("menuitem", { name: "Rinomina" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(panel).toBeHidden();
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await mapDots.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
     const confirm = page.getByRole("dialog");

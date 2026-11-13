@@ -185,6 +185,44 @@ test("one Escape closes the panel's menu and leaves the panel open, whichever wa
   }
 });
 
+test("with animations on, a second Escape closes the panel while the menu is still fading out", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await launch();
+  try {
+    await toLibrary(page);
+    await page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true }).click();
+    const sheet = panel(page);
+    await expect(sheet).toHaveCount(1);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const dots = sheet.getByRole("button", { name: "Azioni su «Fisica I · Mazzoldi, Nigro, Voci»" });
+    const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+    for (const [how, open] of [
+      ["a click", () => dots.click()],
+      ["a right-click", () => dots.click({ button: "right" })],
+    ] as const) {
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      // One Escape closes the menu only.
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet, how).not.toHaveClass(/is-leaving/);
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      // Two in a row, with no wait between them: the first closes the menu, the second the panel.
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(0);
+      await page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true }).click();
+      await expect(sheet).toHaveCount(1);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a citation in a chat opens the panel at the cited page with the passage marked, and a second one moves it", async () => {
   test.setTimeout(240_000);
   const { app, page, userData } = await launch();
