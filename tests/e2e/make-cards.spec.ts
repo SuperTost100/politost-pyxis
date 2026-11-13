@@ -220,7 +220,9 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       await page.setViewportSize({ width: 1280, height: 800 });
       await dialog.getByRole("button", { name: "Cancel" }).click();
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
-      await page.locator(".ant-drawer").getByRole("button", { name: "Close" }).click();
+      // The source opened above sits in the source panel, which Escape closes.
+      await page.keyboard.press("Escape");
+      await expect(page.locator("aside.source-panel")).toHaveCount(0);
       await animationsSettled(page);
       await shot(page, "8-reply-action-dark");
     }
