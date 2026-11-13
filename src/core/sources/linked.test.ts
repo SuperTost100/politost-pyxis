@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { blobSize } from "../blobs";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
@@ -660,12 +660,16 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
     count(`SELECT COUNT(*) FROM jobs WHERE kind = 'source-import' AND state IN ('queued', 'running')`);
   // Waits for the work itself: the look, then every recorded file handed to the queue and read. A slow runner reads
   // 5,000 files in about a minute, so no time limit of its own: only the test's timeout, which a reading that never
-  // ends still runs into. `ended` is the test's own signal: when the test times out the wait stops with it, so
-  // nothing of a failed test keeps polling under the tests that follow.
-  const settled = async (ended?: AbortSignal) => {
+  // ends still runs into. When the test that made this ends, by its timeout too, every wait of it stops, so nothing
+  // of a failed test keeps polling under the tests that follow.
+  let ended = false;
+  onTestFinished(() => {
+    ended = true;
+  });
+  const settled = async () => {
     await linked.idle();
     while (queuedImports() + count(`SELECT COUNT(*) FROM linked_files WHERE pending > 0`) > 0) {
-      ended?.throwIfAborted();
+      if (ended) throw new Error("the test ended while files were still waiting to be read");
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   };
@@ -673,7 +677,7 @@ function bulk(options: { db?: ReturnType<typeof openDatabase>; paused?: boolean;
 }
 
 describe("a large linked folder", () => {
-  it("reads 5,000 files with no cap, keeps core free while it walks, and queues them a window at a time", async ({ signal }) => {
+  it("reads 5,000 files with no cap, keeps core free while it walks, and queues them a window at a time", async () => {
     const root = bigTree(5_000);
     const app = bulk({ engine: false, listAfterMs: 0 });
     // A timer that should fire every few milliseconds: a walk that held the event loop would leave a long gap.
@@ -698,7 +702,7 @@ describe("a large linked folder", () => {
       console.info(`linked folder: 5,000 files walked and recorded in ${Math.round(walked)} ms, longest event-loop gap ${Math.round(longest)} ms over ${ticks} ticks`);
       expect(ticks).toBeGreaterThan(10);
       expect(longest).toBeLessThan(250);
-      await app.settled(signal);
+      await app.settled();
       console.info(`linked folder: 5,000 files queued and read in ${Math.round(performance.now() - started)} ms`);
     } finally {
       clearInterval(timer);
