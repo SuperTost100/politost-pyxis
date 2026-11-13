@@ -350,6 +350,7 @@ function keep(name: string, picture: string, reference: string) {
 
 async function checkPicture(page: Page, saved: string, name: string) {
   const probes = await readProbes(page);
+  const fonts = await page.evaluate(() => document.fonts.status);
   const picture = await exportView(page, saved);
   // Taken without moving the pointer, so a concept under it is drawn the same in both.
   const reference = await plainCanvas(page);
@@ -363,7 +364,13 @@ async function checkPicture(page: Page, saved: string, name: string) {
   expect(result.shot).toEqual(result.picture);
   // The same concepts in the same places with the app's own fonts and colours: a picture in a fallback font, or without
   // the links, differs from the screen in a few per cent of its pixels.
-  expect(result.differing).toBeLessThan(0.003);
+  // A failed comparison keeps both pictures with the test's report, and says whether the page was still loading fonts
+  // when the picture was saved: the numbers alone do not say what differed.
+  if (result.differing >= 0.003) {
+    await test.info().attach(`${name}-export.png`, { body: Buffer.from(picture, "base64"), contentType: "image/png" });
+    await test.info().attach(`${name}-canvas.png`, { body: Buffer.from(reference, "base64"), contentType: "image/png" });
+  }
+  expect(result.differing, `fonts were ${fonts} at the export`).toBeLessThan(0.003);
   // The links drawn between concepts are in the picture.
   expect(result.linksLooked).toBeGreaterThan(10);
   expect(result.linksFound).toBeGreaterThanOrEqual(Math.ceil(result.linksLooked * 0.95));

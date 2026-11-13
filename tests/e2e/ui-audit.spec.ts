@@ -2738,21 +2738,24 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "selection-source":
-      await page.evaluate(() =>
+      await page.evaluate(() => {
+        // Marks the text of an opening already shown, so the wait below can tell it from the text of this opening.
+        for (const old of document.querySelectorAll(".source-viewer-paragraph p")) old.setAttribute("data-audit-old", "");
         window.dispatchEvent(
           new CustomEvent("pyxis:source-viewer", {
             detail: { passageId: "audit-passage" },
           }),
-        ),
-      );
+        );
+      });
       // The panel takes each opening with its title focused and the page drawn anew, then scrolls the cited passage into
       // view. Opened again while it is open (the reopen after the keyboard walk), the text shown until then is replaced,
       // and a selection made in it is lost with it; the scroll's event comes a frame later and hides the toolbar of a
       // selection made before it. A slow runner selects in between, so the text must be in place and at rest first.
       // The title keeps the focus from one opening to the next, so the focus alone does not say the new text is there:
-      // `atRest` starts again when the paragraph it watches is replaced.
+      // the text of the opening before must be gone, and the text of this one in place.
       await expect(page.locator(".source-panel .source-viewer-title")).toBeFocused();
-      await atRest(page.locator(".source-viewer-paragraph p").first());
+      await expect(page.locator(".source-viewer-paragraph p[data-audit-old]")).toHaveCount(0);
+      await atRest(page.locator(".source-viewer-paragraph p:not([data-audit-old])").first());
       await selectText(page, ".source-viewer-paragraph p");
       break;
     case "selection-lesson":
