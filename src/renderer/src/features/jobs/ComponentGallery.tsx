@@ -9,6 +9,7 @@ import { CitationChip } from "../../components/CitationChip";
 import { UsedSources } from "../ask/UsedSources";
 import { Composer } from "../../components/Composer";
 import { ContextBlock } from "../../components/ContextBlock";
+import { DialogGallery } from "./DialogGallery";
 import { EngineRow } from "../../components/EngineRow";
 import { GapItem } from "../../components/GapItem";
 import { Icon } from "../../components/Icon";
@@ -511,6 +512,8 @@ export function ComponentGallery() {
           {t("gallery.markdownSample")}
         </MarkdownView>
       </Section>
+
+      <DialogGallery />
     </>
   );
 }

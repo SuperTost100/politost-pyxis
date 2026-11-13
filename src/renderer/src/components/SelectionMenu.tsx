@@ -46,7 +46,8 @@ export function SelectionMenu({ children, sourceIds = [], planId, topicId, passa
     };
     const hide = () => setSelection(null);
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && selected.current) {
+      // An Escape in a dialog over the page is the dialog's, which closes alone.
+      if (event.key === "Escape" && selected.current && !(event.target instanceof Element && event.target.closest(".px-dialog"))) {
         event.preventDefault();
         event.stopPropagation();
         hide();
