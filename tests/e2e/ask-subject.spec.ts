@@ -212,6 +212,16 @@ test("Ask: the subject can be chosen on a new chat's first page, from the keyboa
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(chip(page)).toBeFocused();
+    // A slow computer can take the first arrow before the menu exists, let alone has the focus: it is the menu's all the
+    // same. The click and the key go in one task here, so the arrow always comes first.
+    await chip(page).evaluate((button) => {
+      (button as HTMLElement).click();
+      button.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    });
+    await expect(menu.getByRole("menuitemradio", { name: "Lascia scegliere a Pyxis" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(chip(page)).toBeFocused();
     await page.keyboard.press("Enter");
     for (const name of ["Lascia scegliere a Pyxis", "Analisi 1", "Fisica 2"]) {
       await page.keyboard.press("ArrowDown");

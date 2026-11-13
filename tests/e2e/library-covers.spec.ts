@@ -248,6 +248,16 @@ test("The kind is changed from the file's menu by its dots, a right-click or the
     // By the keyboard alone: Shift+F10 on the cover, the arrows to "Tipo" and into it, Enter.
     const photo = page.getByRole("button", { name: "IMG_2041", exact: true });
     await photo.focus();
+    // A slow computer can take the first arrow before the menu exists, let alone has the focus: it is the menu's all the
+    // same. Both keys go in one task here, so the arrow always comes first.
+    await photo.evaluate((cover) => {
+      cover.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true, cancelable: true }));
+      cover.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
+    });
+    await expect(page.getByRole("menuitem", { name: "Dettagli della fonte", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem")).toHaveCount(0);
+    await expect(photo).toBeFocused();
     await page.keyboard.press("Shift+F10");
     for (const item of ["Dettagli della fonte", "Rinomina", "Tipo"]) {
       await page.keyboard.press("ArrowDown");

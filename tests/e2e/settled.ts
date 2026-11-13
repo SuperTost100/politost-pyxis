@@ -20,11 +20,20 @@ import { expect, type Locator, type Page } from "@playwright/test";
  * a right-click menu closes on any resize, and a menu closes on a scroll that moved its item. A student cannot resize or
  * scroll and open a menu inside one frame, so this is a test-only wait for what the test itself set in motion. It also
  * waits for a box that the app is still placing, such as a submenu moved into the window a frame after it opens.
+ *
+ * The page can replace the element while this waits (a streamed reply by its saved one, a panel's text by the text of
+ * its next opening). An element that has left the page keeps a still, empty box, so the wait then starts again on the
+ * element the locator finds now.
  */
 export async function atRest(element: Locator) {
-  await element.evaluate(
+  while (!(await stillThereAtRest(element)));
+}
+
+/** One wait of `atRest`: true when the element found at the start was still in the page when it came to rest. */
+function stillThereAtRest(element: Locator) {
+  return element.evaluate(
     (node) =>
-      new Promise<void>((resolve) => {
+      new Promise<boolean>((resolve) => {
         const place = () => {
           const box = node.getBoundingClientRect();
           return [box.left, box.top, box.width, box.height, innerWidth, innerHeight].join(" ");
@@ -43,7 +52,7 @@ export async function atRest(element: Locator) {
           if (quiet < 10) return void requestAnimationFrame(frame);
           removeEventListener("resize", restart);
           removeEventListener("scroll", restart, true);
-          resolve();
+          resolve(node.isConnected);
         };
         requestAnimationFrame(frame);
       }),
