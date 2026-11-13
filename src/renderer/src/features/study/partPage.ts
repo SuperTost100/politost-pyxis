@@ -1,4 +1,4 @@
-import type { RequestOutput } from "@shared/ipc";
+import type { RequestOutput } from "../../../../shared/ipc";
 
 // The rules of the part page that do not need the page: how a part is marked in the parts list, what the working block
 // says, and whether the focus may move to Continua. Kept here so a unit test checks them.
