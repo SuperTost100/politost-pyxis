@@ -22,6 +22,7 @@ import type { TFunction } from "i18next";
 import { automaticEffort, studentEffort } from "@shared/effort";
 import type { RequestOutput } from "@shared/ipc";
 import { engineProviders as providers } from "@shared/limits";
+import { TOOL_PROGRAMS } from "@shared/tool-names";
 import {
   EngineNoticeModal,
   unacknowledged,
@@ -490,7 +491,10 @@ export function EnginesPanel() {
           name={row.name}
           model={
             names.modelsLine(row.id, features.data, row.refusedModels, row.allowed) ||
-            row.version ||
+            // The program behind a tool's name shows once, here, where the student installs it or signs in to it.
+            (row.kind === "cli"
+              ? [TOOL_PROGRAMS[row.id], row.version].filter(Boolean).join(" · ")
+              : row.version) ||
             row.id
           }
           isDefault={

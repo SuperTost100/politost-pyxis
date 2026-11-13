@@ -10,6 +10,7 @@ import { openMakeCards } from "../../components/MakeCardsDialog";
 import { MarkdownView } from "../../components/MarkdownView";
 import { openSourceViewer } from "../../components/SourceViewer";
 import type { RequestOutput } from "@shared/ipc";
+import { currentToolLabel } from "@shared/tool-names";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale, type GradeFormat } from "../../lib/useGradeScale";
 import { questionPoints, stemText, type AnswerSource, type Citation } from "./quizText";
@@ -185,8 +186,8 @@ export function ResultsScreen({
                 <Icon name="info" size={16} />
                 <span>
                   {t(`engines.fallback.${fallback.reason}`, {
-                    from: fallback.from,
-                    to: fallback.to,
+                    from: currentToolLabel(fallback.from),
+                    to: currentToolLabel(fallback.to),
                   })}
                 </span>
               </p>

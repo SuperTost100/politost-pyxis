@@ -3,6 +3,7 @@ import { App } from "antd";
 import { Info, Lock, LogIn, Pause, CircleAlert, Search } from "lucide-react";
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { currentToolLabel } from "@shared/tool-names";
 import { useNavigate } from "react-router";
 import type { JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
@@ -412,7 +413,7 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
       {fallback ? (
         <p className="px-jobs-note px-jobs-batch-note">
           <Info size={16} strokeWidth={1.75} aria-hidden />
-          <span>{t(`engines.fallback.${fallback.reason}`, { from: fallback.from, to: fallback.to })}</span>
+          <span>{t(`engines.fallback.${fallback.reason}`, { from: currentToolLabel(fallback.from), to: currentToolLabel(fallback.to) })}</span>
         </p>
       ) : null}
       <div className="px-jobs-more" id={listId} inert={!open}>
@@ -460,8 +461,8 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
             <Info size={16} strokeWidth={1.75} aria-hidden />
             <span>
               {t(`engines.fallback.${job.fallback.reason}`, {
-                from: job.fallback.from,
-                to: job.fallback.to,
+                from: currentToolLabel(job.fallback.from),
+                to: currentToolLabel(job.fallback.to),
               })}
             </span>
           </p>

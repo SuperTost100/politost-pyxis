@@ -149,8 +149,8 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     );
     await sidebar.getByRole("button", { name: "Strumenti AI" }).click();
     await page.getByRole("switch", { name: "Opzioni avanzate" }).click();
-    await page.getByRole("button", { name: /^Claude Code/ }).click();
-    const drawer = page.getByRole("dialog", { name: "Claude Code", exact: true });
+    await page.getByRole("button", { name: /^Claude/ }).click();
+    const drawer = page.getByRole("dialog", { name: "Claude", exact: true });
     await expect(drawer).toBeVisible();
     await page.setViewportSize({ width: 800, height: 800 });
     await expect(sidebar).toHaveCount(0);

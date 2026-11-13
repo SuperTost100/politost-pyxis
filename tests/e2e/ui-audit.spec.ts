@@ -2389,12 +2389,12 @@ async function openState(page: Page, name: string) {
       const toggle = page.getByRole("switch", { name: /^(Opzioni avanzate|Advanced options)$/ });
       await expect(toggle).toBeVisible();
       if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
-      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toHaveCount(0);
+      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toHaveCount(0);
       break;
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await expect(page.getByRole("radiogroup", { name: both("Quali motori può usare Pyxis", "Which engines Pyxis may use") })).toBeVisible();
+      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toBeVisible();
       break;
     case "settings-engines-debug":
       await openAdvancedEngines(page);
@@ -2918,7 +2918,7 @@ async function openState(page: Page, name: string) {
         ).toBeVisible();
         await expect(
           list.getByText(
-            /Il tuo abbonamento a Cursor Agent non include questo modello, quindi ha risposto Claude Code\.|Your Cursor Agent subscription doesn't include this model, so Claude Code answered\./,
+            /Il tuo abbonamento a Cursor non include questo modello, quindi ha risposto Claude\.|Your Cursor subscription doesn't include this model, so Claude answered\./,
           ),
         ).toBeVisible();
         await expect(
@@ -3210,7 +3210,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(/^(Domanda|Question) \d+ (di|of) \d+$/)).toHaveCount(0);
       await expect(page.getByText(/\d+ su \d+ risposte? apert[ae] valutat[ae]|\d+ of \d+ open answers? graded/)).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /^(Apri Motori AI|Open AI engines)$/ }),
+        page.getByRole("button", { name: /^(Apri gli strumenti AI|Open the AI tools)$/ }),
       ).toBeVisible();
       break;
     case "simulation-ready":
@@ -3233,7 +3233,7 @@ async function openState(page: Page, name: string) {
       await expect(changes).toContainText(/Nuovo passo: ripasso mirato|New step: targeted review/);
       await expect(changes).toContainText(/Force · (una lacuna seria|a serious gap)/);
       await expect(page.locator(".px-res-rises")).toContainText(/Energy (sale|rises)/);
-      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
       // One primary button, Ripasso mirato; every exercise in order, the one to review open.
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveText(/Ripasso mirato|Targeted review/);
@@ -3251,7 +3251,7 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-res-q.is-queued")).toContainText(/In coda|Queued/);
       await expect(page.locator(".px-res-working .px-logo-working")).toBeVisible();
       await expect(page.locator(".px-res-changes")).toContainText(/Lo vedi a correzione finita|once grading is done/);
-      await expect(page.locator(".px-res-fallback")).toContainText("Codex");
+      await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
       await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
       break;
     case "simulation-grading-failed":
@@ -3798,21 +3798,21 @@ async function openState(page: Page, name: string) {
     case "engine-details-disabled":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: /^Antigravity/ })
+        .getByRole("button", { name: /^Gemini/ })
         .click();
       await expect(dialog).toBeVisible();
       break;
     case "engine-add-cli":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
+        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
         .click();
       await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
       break;
     case "engine-add-key":
       await openAdvancedEngines(page);
       await page
-        .getByRole("button", { name: both("Aggiungi motore", "Add engine") })
+        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
         .click();
       await dialog
         .getByRole("tab", { name: both("Chiave API", "API key") })

@@ -8,6 +8,7 @@ import {
   installers,
   type InstallableProvider,
 } from "@shared/installers";
+import { TOOL_NAMES } from "@shared/tool-names";
 import { invoke, onBroadcast } from "../lib/ipc";
 import { Notice } from "./Notice";
 import "./ProviderSetup.css";
@@ -22,13 +23,6 @@ const makers: Record<InstallableProvider, { vendor: string; account: string }> =
     agent: { vendor: "Cursor", account: "Cursor" },
     antigravity: { vendor: "Google", account: "Google" },
   };
-
-const fallbackNames: Record<InstallableProvider, string> = {
-  claude: "Claude Code",
-  codex: "Codex",
-  agent: "Cursor Agent",
-  antigravity: "Antigravity",
-};
 
 function errorDetail(err: unknown): string {
   if (err && typeof err === "object" && "detail" in err)
@@ -278,7 +272,7 @@ export function useProviderSetup(
   provider: InstallableProvider,
   row: Engine | undefined,
   onChanged: () => void,
-  name = row?.name ?? fallbackNames[provider],
+  name = row?.name ?? TOOL_NAMES[provider]!,
 ) {
   const { t } = useTranslation();
   const { vendor, account } = makers[provider];

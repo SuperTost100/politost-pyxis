@@ -233,6 +233,8 @@ describe("engine status and login recovery", () => {
       finish();
       expect(await launch).toEqual(await screen);
       expect(scans).toBe(1);
+      // The row carries the name a student knows, not the program's ("Claude Code").
+      expect((await screen)[0]).toMatchObject({ id: "claude", name: "Claude" });
       // A later call scans again.
       const later = handlers.overview();
       await vi.waitFor(() => expect(scans).toBe(2));

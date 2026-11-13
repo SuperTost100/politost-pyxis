@@ -38,6 +38,7 @@ import {
   signedOutSince,
 } from "./bench";
 import { isAllowed, readAllowed, writeAllowed } from "./choice";
+import { TOOL_NAMES } from "../../shared/tool-names";
 import {
   effortsOf,
   modelNames,
@@ -219,7 +220,7 @@ async function readProviders(): Promise<Omit<OverviewRow, "refused">[]> {
       }
       return {
         id: row.id,
-        name: row.displayName,
+        name: TOOL_NAMES[row.id] ?? row.displayName,
         kind: kindOf(row.id),
         installed: row.installation.installed,
         loggedIn,

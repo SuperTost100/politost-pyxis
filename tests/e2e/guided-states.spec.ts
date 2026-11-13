@@ -65,7 +65,7 @@ async function expectState(page: Page, state: State) {
     await expect(page.locator(".px-notice")).toHaveCount(0);
     await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toHaveCount(0);
   } else {
-    await expect(page.locator(".px-notice")).toContainText(/Il motore non ha risposto|The engine could not answer/);
+    await expect(page.locator(".px-notice")).toContainText(/Lo strumento non ha risposto|The AI tool could not answer/);
     await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toBeVisible();
   }
   await expect(page.getByRole("button", { name: both("Indietro", "Back") })).toBeVisible();

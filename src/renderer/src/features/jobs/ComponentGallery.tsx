@@ -369,12 +369,12 @@ export function ComponentGallery() {
       >
         <EngineRow
           kind="cli"
-          name="Claude Code"
+          name="Claude"
           model="claude-sonnet-4-6"
           status="ok"
           isDefault
         />
-        <EngineRow kind="cli" name="Codex" model="gpt-5-codex" status="warn" />
+        <EngineRow kind="cli" name="ChatGPT" model="gpt-5-codex" status="warn" />
         <EngineRow
           kind="local"
           name="Ollama"
