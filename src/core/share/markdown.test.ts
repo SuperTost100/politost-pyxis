@@ -269,6 +269,7 @@ describe("markdown export", () => {
       INSERT INTO items (id,plan_id,topic_id,kind,body_json,engine_provider,prompt_template,created_at) VALUES
         ('i1','p','t','lesson','{"cacheKey":"k1","markdown":"Primo.\\n\\n## Distanza\\n\\nTesto."}','claude','lesson.part',1),
         ('i2','p','t','lesson','{"cacheKey":"k2","markdown":"## Aperti\\n\\nAltro testo."}','claude','lesson.part',2);
+      INSERT INTO item_passages (item_id,passage_id) VALUES ('i1','a'), ('i2','b');
       INSERT INTO lesson_outlines (id,plan_id,topic_id,passage_key,origin,created_at) VALUES ('o','p','t','key','model',1);
       INSERT INTO lesson_parts (id,outline_id,position,kind,title,passage_ids_json,minutes,item_id) VALUES
         ('p2','o',2,'part','Insiemi aperti','["b"]',5,'i2'),
