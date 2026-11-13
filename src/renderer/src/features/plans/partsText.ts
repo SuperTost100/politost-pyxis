@@ -44,7 +44,7 @@ export function nowPartText(
   const recap = part.kind === "recap";
   const resume = part.resumeFrom;
   const title = recap
-    ? t("plans.path.recapRow")
+    ? t("lesson.recapTitle")
     : resume
       ? t("examPage.partTitle", { n: part.position, title: part.title })
       : part.title;

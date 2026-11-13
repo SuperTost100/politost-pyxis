@@ -1892,15 +1892,7 @@
       "lessonParts": "Lesson in {{count}} parts",
       "lessonPartsRecap": "Lesson in {{count}} parts and a recap",
       "partNumber": "Part {{n}}",
-      "recapRow": "Chapter recap",
-      "partMinutes": "{{count}} min",
       "partNow": "now · {{count}} min",
-      "partsNote": "Pyxis writes the dashed parts once you reach the one before.",
-      "partState": {
-        "done": "read",
-        "unwritten": "not written yet",
-        "writing": "being written"
-      },
       "recapState": {
         "done": "done",
         "unwritten": "not written yet",
@@ -3563,17 +3555,8 @@
     },
     "continue": "Continue",
     "resume": "Resume",
-    "chooseOther": "Something else",
-    "otherPractice": "Exercises · {{topic}}",
-    "otherPracticeCount_one": "1 exercise",
-    "otherPracticeCount_other": "{{count}} exercises",
-    "otherCards": "Flashcards · {{topic}}",
-    "otherCardsDue_one": "1 to review",
-    "otherCardsDue_other": "{{count}} to review",
     "otherCardsCount_one": "1 flashcard",
     "otherCardsCount_other": "{{count}} flashcards",
-    "otherCardsNone": "Make the flashcards",
-    "otherReread": "Reread a part",
     "otherRereadCount_one": "1 part read",
     "otherRereadCount_other": "{{count}} parts read"
   },

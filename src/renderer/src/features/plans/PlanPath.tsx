@@ -575,6 +575,9 @@ export function PlanPath({
   );
 }
 
+/** A part's state in words, the part page's own; the recap's agree with "Ripasso" in Italian (`plans.path.recapState`). */
+const partState = { done: "lesson.partRead", unwritten: "lesson.partUnwritten", writing: "lesson.partWriting" } as const;
+
 const partIcons = {
   done: "check",
   now: "arrow-right",
@@ -621,7 +624,9 @@ function TopicParts({
           // The state the row draws with its mark, said in words; "adesso" is in its text already.
           const state =
             mark === "done" || mark === "unwritten" || mark === "writing"
-              ? t(`plans.path.${recap ? "recapState" : "partState"}.${mark}`)
+              ? recap
+                ? t(`plans.path.recapState.${mark}`)
+                : t(partState[mark])
               : null;
           return (
             <li key={part.id}>
@@ -629,7 +634,7 @@ function TopicParts({
                 {mark === "writing" ? <Logo working decorative size={16} /> : <Icon name={partIcons[mark]} size={16} />}
                 <span>
                   {recap ? (
-                    t("plans.path.recapRow")
+                    t("lesson.recapTitle")
                   ) : (
                     <MathText text={`${t("plans.path.partNumber", { n: part.position })} · ${part.title}`} />
                   )}
@@ -637,14 +642,14 @@ function TopicParts({
                 {/* The link's name: "Parte 1 · Intorni, letta, 5 min". */}
                 <span className="visually-hidden">{state ? `, ${state}, ` : ", "}</span>
                 <span className="px-xpath-meta">
-                  {t(mark === "now" ? "plans.path.partNow" : "plans.path.partMinutes", { count: part.minutes })}
+                  {t(mark === "now" ? "plans.path.partNow" : "lesson.minutesShort", { count: part.minutes })}
                 </span>
               </Link>
             </li>
           );
         })}
       </ul>
-      {unwritten ? <p className="px-xpath-parts-note">{t("plans.path.partsNote")}</p> : null}
+      {unwritten ? <p className="px-xpath-parts-note">{t("lesson.partsNote")}</p> : null}
     </div>
   );
 }

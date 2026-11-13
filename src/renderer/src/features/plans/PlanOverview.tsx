@@ -585,8 +585,8 @@ function ChooseOther({
             key: "practice",
             icon: <Icon name={activityIcons.practice} size={16} />,
             label: choice(
-              t("examPage.otherPractice", { topic }),
-              practiceCount ? t("examPage.otherPracticeCount", { count: practiceCount }) : null,
+              t("lesson.otherPractice", { topic }),
+              practiceCount ? t("lesson.otherPracticeCount", { count: practiceCount }) : null,
             ),
           },
         ]),
@@ -597,13 +597,13 @@ function ChooseOther({
             key: "cards",
             icon: <Icon name={activityIcons.cards} size={16} />,
             label: choice(
-              t("examPage.otherCards", { topic }),
+              t("lesson.otherCards", { topic }),
               dueCards > 0
-                ? t("examPage.otherCardsDue", { count: dueCards })
+                ? t("lesson.otherCardsDue", { count: dueCards })
                 : cardsTotal
                   ? t("examPage.otherCardsCount", { count: cardsTotal })
                   : cardsTotal === 0
-                    ? t("examPage.otherCardsNone")
+                    ? t("lesson.otherCardsNone")
                     : null,
             ),
           },
@@ -613,12 +613,12 @@ function ChooseOther({
           {
             key: "reread",
             icon: <Icon name="rotate-ccw" size={16} />,
-            label: choice(t("examPage.otherReread"), t("examPage.otherRereadCount", { count: read.length })),
+            label: choice(t("lesson.otherReread"), t("examPage.otherRereadCount", { count: read.length })),
             children: read.map((entry) => ({
               key: `part:${entry.position}`,
               label:
                 entry.kind === "recap" ? (
-                  t("plans.path.recapRow")
+                  t("lesson.recapTitle")
                 ) : (
                   <MathText text={`${t("plans.path.partNumber", { n: entry.position })} · ${entry.title}`} />
                 ),
@@ -629,7 +629,7 @@ function ChooseOther({
   ];
   return (
     <MenuButton
-      label={t("examPage.chooseOther")}
+      label={t("lesson.chooseOther")}
       align="start"
       size="sm"
       className="px-exam-other"
@@ -644,7 +644,7 @@ function ChooseOther({
         },
       }}
     >
-      {t("examPage.chooseOther")}
+      {t("lesson.chooseOther")}
     </MenuButton>
   );
 }
