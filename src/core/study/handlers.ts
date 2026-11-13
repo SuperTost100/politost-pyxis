@@ -47,6 +47,7 @@ import {
 } from "./openLesson";
 import { writeAgentLesson } from "./agentLesson";
 import { openPart, registerPartJobs, topicParts, type PartInput } from "./partJobs";
+import { rewritePartSection } from "./parts";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { markPartDone } from "./partProgress";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
@@ -265,11 +266,23 @@ export function studyHandlers(
         section: number;
         note?: string;
         wording?: Wording;
+        position?: number;
       },
       signal?: AbortSignal,
     ) {
       return tracked("lesson-section", input, "jobs.lessonSection", (start) => {
         start();
+        const position = input.position;
+        if (position !== undefined)
+          return rewritePartSection(db, {
+            planId: input.planId,
+            topicId: input.topicId,
+            position,
+            section: input.section,
+            note: input.note,
+            run: run ?? runTurn,
+            signal,
+          });
         return rewriteLessonSection(db, input.planId, input.topicId, run ?? runTurn, {
           section: input.section,
           note: input.note,

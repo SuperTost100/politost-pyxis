@@ -7,8 +7,14 @@ import type { Runner } from "../jobs/runner";
 import type { FigureRunner } from "../math/figures";
 import { aboutPlan } from "./jobAbout";
 import { loadLessonById } from "./lesson";
-import { bookMarkdown, requireTopic } from "./openLesson";
+import { bookMarkdown, requireTopic, type Wording } from "./openLesson";
 import {
+  choosePartLevel,
+  itemWording,
+  keyWording,
+  partOfText,
+  partOffLevel,
+  type PartRewrite,
   RECAP_FROM,
   RECAP_MINUTES,
   estimateMinutes,
@@ -34,6 +40,10 @@ export type PartJobParams = {
   position: number;
   /** The engine when the job was made; missing when none was set up, so the job fails as `engine-missing`. */
   selection?: GenerateInput["selection"];
+  /** A written part written again: at the level the student chose, or at its own level. */
+  rewrite?: PartRewrite;
+  /** The level the part is written at; without it, the outline's. */
+  wording?: Wording;
 };
 
 type JobRow = { id: string; state: string; error: string | null };
@@ -125,6 +135,8 @@ export function registerPartJobs(
             topicId: params.topicId,
             position: params.position,
             selection: params.selection ?? selectionFor(db, "lesson"),
+            ...(params.rewrite ? { rewrite: params.rewrite } : {}),
+            ...(params.wording ? { wording: params.wording } : {}),
             run,
             signal: ctx.signal,
             ...(options.python === undefined ? {} : { python: options.python }),
@@ -180,6 +192,123 @@ export function ensureAhead(db: Database.Database, runner: Runner, input: PartSt
   const next = outline?.parts.find((entry) => entry.position === input.position + 1);
   if (!opened?.itemId || !next || next.itemId) return;
   startPart(db, runner, { ...input, position: next.position }, "ahead");
+}
+
+// Level and rewrites on a written part. The student's choice writes the part again in a job of its own; the part ahead
+// that was written at another level than the one chosen is written again as the part ahead, under the same rule.
+
+type RewriteJob = JobRow & { rewrite: PartRewrite | null; wording: Wording | null };
+
+/** The newest job for one part, with what it rewrites. */
+function rewriteJob(db: Database.Database, topicId: string, position: number): RewriteJob | null {
+  const row = db
+    .prepare(
+      `SELECT id, state, error, json_extract(params_json, '$.rewrite') AS rewrite, json_extract(params_json, '$.wording') AS wording
+       FROM jobs WHERE kind = '${PART_JOB}' AND dismissed = 0
+         AND json_extract(params_json, '$.topicId') = ? AND json_extract(params_json, '$.position') = ?
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(topicId, position) as RewriteJob | undefined;
+  return row ?? null;
+}
+
+export type RewriteStart = PartStart & { rewrite: PartRewrite; wording: Wording };
+
+/**
+ * Writes a written part again, in one transaction. `choice`: the student asked for it, so the job starts, and the same
+ * rewrite stopped before is resumed or retried; nothing starts while a job for the part is queued or running. `ahead`:
+ * the part after the one the student opened is at another level than the one chosen, so it is written again only when
+ * no part job of the topic is queued or running, and a rewrite of it that failed is left for the student.
+ */
+function startRewrite(db: Database.Database, runner: Runner, input: RewriteStart, reason: "choice" | "ahead"): void {
+  db.transaction(() => {
+    const part = liveOutline(db, input.topicId)?.parts.find((entry) => entry.position === input.position);
+    if (!part?.itemId) throw new Error("part-missing");
+    const job = rewriteJob(db, input.topicId, input.position);
+    if (job && LIVE.has(job.state)) return;
+    const same = job?.rewrite === input.rewrite && job.wording === input.wording;
+    if (reason === "ahead") {
+      if (job?.rewrite && (job.state === "failed" || job.state === "cancelled")) return;
+      if (db.prepare(BUSY_SQL).get(input.topicId)) return;
+    }
+    if (same && job?.state === "interrupted") runner.resume(job.id);
+    else if (same && (job?.state === "failed" || job?.state === "cancelled")) runner.retry(job.id);
+    else {
+      const params: PartJobParams = {
+        planId: input.planId,
+        topicId: input.topicId,
+        position: input.position,
+        selection: currentSelection(db),
+        rewrite: input.rewrite,
+        wording: input.wording,
+      };
+      runner.start(PART_JOB, params);
+    }
+  })();
+}
+
+/**
+ * The student's choice on part `position` (`study.part` with `wording` or `regenerate`). On a written part, a level
+ * the part's text is not at points the part at the text written at that level before, or writes it again; `regenerate`
+ * writes it again at the chosen level, or at the level of its text. On a part not written yet a level is kept on the
+ * outline, and the part is written at it.
+ */
+export function choosePart(
+  db: Database.Database,
+  runner: Runner,
+  input: PartStart & { wording?: Wording; regenerate?: boolean },
+): void {
+  const outline = liveOutline(db, input.topicId);
+  const part = outline?.parts.find((entry) => entry.position === input.position);
+  if (!outline || !part) throw new Error("part-missing");
+  if (!part.itemId) {
+    if (input.wording) db.prepare("UPDATE lesson_outlines SET wording = ? WHERE id = ?").run(input.wording, outline.id);
+    return;
+  }
+  const at = { planId: input.planId, topicId: input.topicId, position: input.position };
+  if (input.regenerate) {
+    const wording = input.wording ?? itemWording(db, part.itemId) ?? "balanced";
+    startRewrite(db, runner, { ...at, rewrite: input.wording ? "level" : "again", wording }, "choice");
+    return;
+  }
+  if (input.wording && choosePartLevel(db, { ...at, wording: input.wording }) === "write")
+    startRewrite(db, runner, { ...at, rewrite: "level", wording: input.wording }, "choice");
+}
+
+/**
+ * The student opened the written part `position`, and the part after it is written but not done, at another level
+ * than the one chosen on the outline: it is written again at that level as the part ahead, or pointed at its text at
+ * that level when one was written before.
+ */
+export function ensureAheadLevel(db: Database.Database, runner: Runner, input: PartStart): void {
+  const outline = liveOutline(db, input.topicId);
+  const opened = outline?.parts.find((entry) => entry.position === input.position);
+  const next = outline?.parts.find((entry) => entry.position === input.position + 1);
+  if (!outline?.wording || !opened?.itemId || !next?.itemId || next.doneAt !== null || !partOffLevel(db, outline, next)) return;
+  if (db.prepare(BUSY_SQL).get(input.topicId)) return;
+  const wording = outline.wording as Wording;
+  const at = { planId: input.planId, topicId: input.topicId, position: next.position };
+  if (choosePartLevel(db, { ...at, wording }) === "write") startRewrite(db, runner, { ...at, rewrite: "level", wording }, "ahead");
+}
+
+/** A written part being written again, or whose rewrite failed: what the page shows over its text. */
+export type PartRewriteView = {
+  state: "writing" | "failed";
+  rewrite: PartRewrite;
+  /** The level the new text is written at. */
+  wording: Wording;
+  /** The job's error as the runner stored it; null while writing, and for a rewrite stopped by a quit. */
+  error: string | null;
+  jobId: string;
+};
+
+function rewriteView(db: Database.Database, topicId: string, position: number): PartRewriteView | null {
+  const job = rewriteJob(db, topicId, position);
+  if (!job?.rewrite || !job.wording) return null;
+  // A rewrite stopped by a quit shows as failed, and Riprova resumes it; one the student cancelled shows nothing.
+  const state = LIVE.has(job.state) ? "writing" : job.state === "failed" || job.state === "interrupted" ? "failed" : null;
+  if (!state) return null;
+  return { state, rewrite: job.rewrite, wording: job.wording, error: state === "failed" ? job.error : null, jobId: job.id };
 }
 
 export type PartView = {
@@ -270,6 +399,10 @@ export type PartInput = {
   write?: boolean;
   /** A saved lesson item of the topic: a part opens as that part, any other lesson in the existing reader. */
   itemId?: string;
+  /** The level the student chose on the part (`choosePart`). */
+  wording?: Wording;
+  /** Write the written part again (`choosePart`). */
+  regenerate?: boolean;
 };
 
 /** A lesson as the reader shows it, without its answers, sources and citations, which the handler adds. */
@@ -277,6 +410,8 @@ type PartLesson = {
   markdown: string;
   passageIds: string[];
   itemId?: string;
+  /** The level the part's text is at. */
+  wording?: Wording;
   figures?: Record<string, string>;
   general?: boolean;
   fallback?: boolean;
@@ -296,6 +431,8 @@ export type PartResult =
       summary: string | null;
       next: PartView | null;
       replaces: { itemId: string } | null;
+      /** The part written again, or a rewrite of it that failed; null otherwise. */
+      rewrite: PartRewriteView | null;
     };
 
 /**
@@ -318,9 +455,10 @@ export function openPart(
   if (input.itemId) {
     if (!loadLessonById(db, { planId: input.planId, topicId: input.topicId, itemId: input.itemId }))
       throw new Error("item-missing");
-    const owner = liveOutline(db, input.topicId)?.parts.find((part) => part.itemId === input.itemId);
-    if (!owner) return { mode: "legacy" };
-    position ??= owner.position;
+    // A part's text at another level, opened by its item (a finished step), opens as its part too.
+    const owner = partOfText(db, input.topicId, input.itemId)?.position;
+    if (owner === undefined) return { mode: "legacy" };
+    position ??= owner;
   }
   let outline = liveOutline(db, input.topicId);
   if (!outline && hasOldLesson(db, input.planId, input.topicId)) return { mode: "legacy" };
@@ -328,10 +466,15 @@ export function openPart(
   const at = { planId: input.planId, topicId: input.topicId, position };
   if (outline ? !outline.parts.some((part) => part.position === position) : position !== 1)
     throw new Error("part-missing");
+  if ((input.wording || input.regenerate) && runner) {
+    choosePart(db, runner, { ...at, wording: input.wording, regenerate: input.regenerate });
+    outline = liveOutline(db, input.topicId);
+  }
   if (input.write && runner) ensurePart(db, runner, at);
   let part = outline?.parts.find((entry) => entry.position === position);
   if (part?.itemId && runner) {
     ensureAhead(db, runner, at);
+    ensureAheadLevel(db, runner, at);
     outline = liveOutline(db, input.topicId);
     part = outline?.parts.find((entry) => entry.position === position);
   }
@@ -348,6 +491,7 @@ export function openPart(
     summary: part?.summary ?? null,
     next: after && view ? (view.parts.find((entry) => entry.position === after.position) ?? null) : null,
     replaces: null,
+    rewrite: part?.itemId ? rewriteView(db, input.topicId, position) : null,
   };
   if (saved)
     return {
@@ -358,6 +502,7 @@ export function openPart(
         markdown: saved.markdown,
         passageIds: saved.passageIds,
         itemId: saved.itemId,
+        ...(keyWording(saved.key) ? { wording: keyWording(saved.key) } : {}),
         ...(Object.keys(saved.figures).length ? { figures: saved.figures } : {}),
         ...(saved.grounding === "general" ? { general: true } : {}),
       },

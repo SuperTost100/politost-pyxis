@@ -3,13 +3,13 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
-import { parseLooseJson, parseSmartText, smartSections } from "../../shared/smart-text";
+import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSections } from "../../shared/smart-text";
 import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, promptProvenance, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { figureRunner, type FigureRunner } from "../math/figures";
 import { interestsLine } from "../profile/context";
-import { cacheKey, saveLesson } from "./lesson";
+import { cacheKey, loadLessonById, saveLesson } from "./lesson";
 import {
   CONTEXT_CHARS,
   lessonSystem,
@@ -19,6 +19,7 @@ import {
   requireTopic,
   withFigures,
   wordings,
+  type LessonResult,
   type Wording,
 } from "./openLesson";
 
@@ -829,6 +830,11 @@ export type WritePartInput = {
   topicId: string;
   position: number;
   wording?: Wording;
+  /**
+   * Write the part again although it is written: `level` at the level the student chose, which the outline keeps for
+   * the parts written after it, `again` at the level of its text ("Riscrivi questa parte").
+   */
+  rewrite?: PartRewrite;
   selection?: GenerateInput["selection"];
   run?: GenerateInput["run"];
   signal?: AbortSignal;
@@ -850,20 +856,12 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const outline = liveOutline(db, input.topicId);
   const part = outline?.parts.find((entry) => entry.position === input.position);
   if (!outline || !part) throw new Error("part-missing");
-  if (part.itemId) return outline;
-  const stored = wordings.find((wording) => wording === outline.wording);
-  const context = modelContext(db, input.planId, input.topicId, input.wording ?? stored);
+  if (part.itemId && !input.rewrite) return outline;
+  // The text this write replaces: none for a part not written yet.
+  const before = part.itemId;
+  const { context, passages, grounded, key } = partContext(db, input, outline, part, input.wording);
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
-  // Passages that left the topic since it was planned are not taught.
-  const own = new Set(part.passageIds);
-  const passages = part.kind === "recap" ? [] : outlinePassages(db, input.topicId).filter((passage) => own.has(passage.id));
-  const grounded =
-    part.kind === "recap" ? outline.parts.some((entry) => entry.passageIds.length > 0) : passages.length > 0;
-  const headings = new Map(
-    outline.parts.flatMap((entry) =>
-      entry.itemId && entry.position !== part.position ? [[entry.position, itemHeadings(db, entry.itemId)] as const] : [],
-    ),
-  );
+  const headings = otherHeadings(db, outline, part);
   const request = partRequest({ topic, outline, part, headings, passages });
   const python = await figureRunner(input.python);
   const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)]
@@ -899,24 +897,20 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const summary = shaped.summary ?? (part.about || null);
   const minutes = partMinutes(shaped.words);
   db.transaction(() => {
-    // The outline may have been retired, or the part written by another job, while this one waited for the engine.
+    // The outline may have been retired, or the part written (or written again) by another job, while this one
+    // waited for the engine.
     const current = db
       .prepare(
         `SELECT p.item_id FROM lesson_parts p JOIN lesson_outlines o ON o.id = p.outline_id
          WHERE p.id = ? AND o.retired_at IS NULL`,
       )
       .get(part.id) as { item_id: string | null } | undefined;
-    if (!current || current.item_id) return;
+    if (!current || current.item_id !== before) return;
     const itemId = saveLesson(db, {
       planId: input.planId,
       topicId: input.topicId,
       kind: "lesson",
-      key: cacheKey({
-        kind: "lesson",
-        scopeId: part.id,
-        passageIds,
-        promptVersion: [PART_VERSION, context.wording, context.education, context.school, context.course, context.language].join("|"),
-      }),
+      key,
       markdown,
       passageIds,
       engine,
@@ -924,14 +918,269 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
       grounding: grounded ? "sources" : "general",
       figures,
     });
-    db.prepare("UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = ? WHERE id = ?").run(
-      itemId,
-      summary,
-      minutes,
-      part.id,
-    );
+    pointPart(db, part.id, itemId, summary, minutes);
+    if (input.rewrite === "level") setOutlineWording(db, outline.id, context.wording);
   })();
   return liveOutline(db, input.topicId) ?? outline;
+}
+
+// Level and rewrites on a part. A part's text at each level is its own lesson item, because the level is in the cache
+// key; the part points at the one the student reads. The other texts stay, with their answers, and are still the
+// part's: their template is `lesson.part` and their cache key's scope is the part's id, which is how a topic's finished
+// items, the delete count, plan files and mastery tell them from a lesson of their own. A rewrite changes no part's
+// `done_at`: a part done stays done. A part not done gets the minutes of its new text; a done one keeps the minutes it
+// was counted with.
+
+/** How a written part is written again: at a level the student chose, or at the level it has. */
+export type PartRewrite = "level" | "again";
+
+/** Everything a part's call and its cache key are made of, at `wording` or else at the outline's level. */
+function partContext(
+  db: Database.Database,
+  input: { planId: string; topicId: string },
+  outline: Outline,
+  part: OutlinePart,
+  wording: Wording | undefined,
+) {
+  const stored = wordings.find((entry) => entry === outline.wording);
+  const context = modelContext(db, input.planId, input.topicId, wording ?? stored);
+  // Passages that left the topic since it was planned are not taught.
+  const own = new Set(part.passageIds);
+  const passages = part.kind === "recap" ? [] : outlinePassages(db, input.topicId).filter((passage) => own.has(passage.id));
+  const grounded =
+    part.kind === "recap" ? outline.parts.some((entry) => entry.passageIds.length > 0) : passages.length > 0;
+  const key = cacheKey({
+    kind: "lesson",
+    scopeId: part.id,
+    passageIds: passages.map((passage) => passage.id),
+    promptVersion: [PART_VERSION, context.wording, context.education, context.school, context.course, context.language].join("|"),
+  });
+  return { context, passages, grounded, key };
+}
+
+/** The ## headings of the other written parts of the outline, by position. */
+function otherHeadings(db: Database.Database, outline: Outline, part: OutlinePart): Map<number, string[]> {
+  return new Map(
+    outline.parts.flatMap((entry) =>
+      entry.itemId && entry.position !== part.position ? [[entry.position, itemHeadings(db, entry.itemId)] as const] : [],
+    ),
+  );
+}
+
+/**
+ * Points a part at its text, with the text's summary, which also goes into the item so a level read again finds it.
+ * Minutes change only on a part not done, so today's minutes do not move under a part already counted.
+ */
+function pointPart(db: Database.Database, partId: string, itemId: string, summary: string | null, minutes: number) {
+  db.prepare("UPDATE items SET body_json = json_set(body_json, '$.summary', ?) WHERE id = ?").run(summary, itemId);
+  db.prepare(
+    `UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = CASE WHEN done_at IS NULL THEN ? ELSE minutes END
+     WHERE id = ?`,
+  ).run(itemId, summary, minutes, partId);
+}
+
+function setOutlineWording(db: Database.Database, outlineId: string, wording: Wording) {
+  db.prepare("UPDATE lesson_outlines SET wording = ? WHERE id = ?").run(wording, outlineId);
+}
+
+/** The level a part's text was written at, from its cache key; undefined for a key that names none. */
+export function keyWording(key: string | null | undefined): Wording | undefined {
+  if (!key) return undefined;
+  try {
+    const version = (JSON.parse(key) as { promptVersion?: unknown }).promptVersion;
+    const level = typeof version === "string" ? version.split("|")[1] : undefined;
+    return wordings.find((entry) => entry === level);
+  } catch {
+    return undefined;
+  }
+}
+
+/** The level of a saved item's text, read from its cache key. */
+export function itemWording(db: Database.Database, itemId: string): Wording | undefined {
+  return keyWording(
+    db.prepare("SELECT json_extract(body_json, '$.cacheKey') FROM items WHERE id = ?").pluck().get(itemId) as
+      | string
+      | null
+      | undefined,
+  );
+}
+
+/**
+ * The student chose `wording` on a written part of the live outline. The outline keeps the level, so the parts written
+ * after it use it too. `kept`: the part's text is at that level already. `reused`: a text of the part at that level was
+ * written before, and the part points at it again, with no call. `write`: the part must be written again at that level,
+ * which the caller starts as a job; the outline takes the level once that text is saved.
+ */
+export function choosePartLevel(
+  db: Database.Database,
+  input: { planId: string; topicId: string; position: number; wording: Wording },
+): "kept" | "reused" | "write" {
+  requireTopic(db, input.planId, input.topicId);
+  const outline = liveOutline(db, input.topicId);
+  const part = outline?.parts.find((entry) => entry.position === input.position);
+  if (!outline || !part?.itemId) throw new Error("part-missing");
+  const { key } = partContext(db, input, outline, part, input.wording);
+  return db.transaction(() => {
+    if (itemWording(db, part.itemId!) === input.wording) {
+      setOutlineWording(db, outline.id, input.wording);
+      return "kept" as const;
+    }
+    const saved = db
+      .prepare(
+        `SELECT id, json_extract(body_json, '$.markdown') AS markdown, json_extract(body_json, '$.summary') AS summary
+         FROM items WHERE plan_id = ? AND kind = 'lesson' AND prompt_template = 'lesson.part'
+           AND engine_provider IS NOT NULL AND json_extract(body_json, '$.cacheKey') = ?`,
+      )
+      .get(input.planId, key) as { id: string; markdown: string; summary: string | null } | undefined;
+    if (!saved) return "write" as const;
+    pointPart(db, part.id, saved.id, saved.summary ?? (part.about || null), partMinutes(partWords(saved.markdown)));
+    setOutlineWording(db, outline.id, input.wording);
+    return "reused" as const;
+  })();
+}
+
+/** Whether the part's text is at another level than the one the student chose on the outline. */
+export function partOffLevel(db: Database.Database, outline: Outline, part: OutlinePart): boolean {
+  const chosen = wordings.find((entry) => entry === outline.wording);
+  return Boolean(chosen && part.itemId && itemWording(db, part.itemId) !== chosen);
+}
+
+/**
+ * The part a lesson item is a text of: the one it is, or the one an earlier text of it was written for, found by its
+ * cache key's scope. Null for a lesson that is not a part, or a part of no live outline.
+ */
+export function partOfText(db: Database.Database, topicId: string, itemId: string): OutlinePart | null {
+  const outline = liveOutline(db, topicId);
+  if (!outline) return null;
+  const scope = db
+    .prepare(
+      `SELECT CASE WHEN json_valid(json_extract(body_json, '$.cacheKey'))
+         THEN json_extract(json_extract(body_json, '$.cacheKey'), '$.scopeId') END
+       FROM items WHERE id = ? AND prompt_template = 'lesson.part'`,
+    )
+    .pluck()
+    .get(itemId) as string | null | undefined;
+  return outline.parts.find((part) => part.itemId === itemId || (scope != null && part.id === scope)) ?? null;
+}
+
+export type PartSectionInput = {
+  planId: string;
+  topicId: string;
+  position: number;
+  section: number;
+  note?: string;
+  selection?: GenerateInput["selection"];
+  run?: GenerateInput["run"];
+  signal?: AbortSignal;
+  python?: FigureRunner | null;
+};
+
+/**
+ * Rewrites one ## section of a written part and keeps the part's shape: the whole text with the new section must pass
+ * `partShape` as a written part does (sections, the question at the end, the length, headings of its own), with one
+ * more ask when it does not. The new takeaway becomes the part's summary; a second reply without one keeps the summary
+ * it had, and a second reply that lost the part's question fails, so a part never loses what finishes it. Saved in the
+ * part's own item, with the rest of its text, its figures and its answers as they were; a failure changes nothing.
+ */
+export async function rewritePartSection(db: Database.Database, input: PartSectionInput): Promise<LessonResult> {
+  requireTopic(db, input.planId, input.topicId);
+  const outline = liveOutline(db, input.topicId);
+  const part = outline?.parts.find((entry) => entry.position === input.position);
+  if (!outline || !part) throw new Error("part-missing");
+  const saved = part.itemId ? loadLessonById(db, { planId: input.planId, topicId: input.topicId, itemId: part.itemId }) : null;
+  if (!saved?.provider || !saved.key) throw new Error("lesson-missing");
+  const sections = smartSections(saved.markdown);
+  const section = sections[input.section];
+  if (!section) throw new Error("section-missing");
+  const { context, passages, grounded } = partContext(db, input, outline, part, keyWording(saved.key));
+  const lines = saved.markdown.split("\n");
+  const closes = input.section === sections.length - 1;
+  const asked = partQuestions(parseSmartText(saved.markdown), part.kind).length > 0;
+  const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
+  const headings = otherHeadings(db, outline, part);
+  const teaching = outline.parts.filter((entry) => entry.kind === "part").length;
+  const note = input.note?.replace(/\s+/g, " ").trim().slice(0, 500);
+  const question =
+    part.kind === "recap"
+      ? `End the section with the part's one pyxis-recap of ${RECAP_QUESTIONS} questions across the parts.`
+      : closes && asked
+        ? "This section ends the part: end it with exactly one pyxis-check on this part's idea."
+        : "Write no pyxis-check and no pyxis-recap in it.";
+  const head = [
+    `Topic: ${topic}`,
+    part.kind === "recap" ? "This is the recap part of the lesson." : `Part ${part.position} of ${teaching}: ${part.title}.`,
+    `This part's sections: ${sections.map((entry) => entry.title).join(" | ")}`,
+    `Rewrite only the section "${section.title}" so it teaches better. Return only the new section, starting with its ## heading, about as long as it is now. ${question} Then add one pyxis-takeaway block, {"text": "..."}, on what the student learns from the whole part with the new section, in at most two sentences.`,
+    note ? `The student asked: ${JSON.stringify(note)}` : "",
+    `The whole part as it is now:\n\n${saved.markdown}`,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const label = "\n\nMaterial of this part:\n\n";
+  const request =
+    passages.length > 0
+      ? `${head}${label}${fittedMaterial(passages, Math.max(0, CONTEXT_CHARS - head.length - label.length - PROBLEMS_CHARS))}`
+      : head;
+  const python = await figureRunner(input.python);
+  const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)].filter(Boolean).join("\n");
+  const selection = input.selection ?? selectionFor(db, "lesson");
+  let problems: string[] = [];
+  let shaped: Extract<PartShape, { ok: true }> | null = null;
+  let engine: { provider: string; model: string } | null = null;
+  for (let ask = 0; ask < 2 && !shaped; ask++) {
+    const result = await generate({
+      selection,
+      run: input.run,
+      signal: input.signal,
+      system,
+      prompt: problems.length > 0 ? partRetry(request, problems) : request,
+    });
+    input.signal?.throwIfAborted();
+    let text = lessonText(result.text);
+    if (text && !/^##\s/.test(text)) text = `${lines[section.start]}\n\n${text}`;
+    const checked = text
+      ? partShape(replaceSection(saved.markdown, input.section, text), {
+          kind: part.kind,
+          headings: [...headings.values()].flat(),
+          last: ask === 1,
+        })
+      : { ok: false as const, problems: ["The reply was empty."] };
+    if (checked.ok && (checked.question || !asked)) {
+      shaped = checked;
+      engine = { provider: result.provider, model: result.model };
+    } else problems = checked.ok ? ["The part no longer ends with its question. Keep it."] : checked.problems;
+  }
+  if (!shaped || !engine) throw new Error("lesson-part-invalid");
+  // Figures the rest of the part already has keep their images; a new one in the rewritten section is drawn.
+  const { markdown, figures } = await withFigures(shaped.markdown, python, { known: saved.figures, signal: input.signal });
+  input.signal?.throwIfAborted();
+  const summary = shaped.summary ?? part.summary;
+  db.transaction(() => {
+    // The part may have been written again meanwhile: the section was of the text it had then.
+    const still = db.prepare("SELECT 1 FROM lesson_parts WHERE id = ? AND item_id = ?").get(part.id, saved.itemId);
+    if (!still) throw new Error("lesson-missing");
+    saveLesson(db, {
+      planId: input.planId,
+      topicId: input.topicId,
+      kind: "lesson",
+      key: saved.key!,
+      markdown,
+      passageIds: saved.passageIds,
+      engine,
+      prompt: promptProvenance("lesson.part"),
+      grounding: grounded ? "sources" : "general",
+      figures,
+    });
+    pointPart(db, part.id, saved.itemId, summary, partMinutes(shaped.words));
+  })();
+  return {
+    markdown,
+    passageIds: saved.passageIds,
+    itemId: saved.itemId,
+    wording: context.wording,
+    ...(Object.keys(figures).length ? { figures } : {}),
+    ...(grounded ? {} : { general: true }),
+  };
 }
 
 /**
