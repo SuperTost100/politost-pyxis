@@ -286,6 +286,146 @@ test("The kind is changed from the file's menu by its dots, a right-click or the
   }
 });
 
+/** Where the focus is: the accessible name of the focused element, or "body" when nothing in the page holds it. */
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const active = document.activeElement;
+    return !active || active === document.body ? "body" : (active.getAttribute("aria-label") ?? active.textContent ?? "").trim();
+  });
+
+test("When a change takes the last file out of a filtered or searched list, the focus goes to the filter that explains why, never to the body", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await start();
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    // Two photos are left, on two subjects, so the Foto filter shows two covers.
+    await page.evaluate(async () => {
+      for (const sourceId of ["f-photo", "u-photo"]) await window.pyxis.invoke("sources.setKind", { sourceId, kind: "handout" });
+    });
+    await page.reload();
+    const filter = page.getByRole("combobox", { name: "Tipo" });
+    await filter.click();
+    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Foto" }).click();
+
+    /** Changes a file's kind from the keyboard alone: its menu, "Tipo", the kind below "Foto" in the list. */
+    const makeHandout = async (title: string) => {
+      await page.getByRole("button", { name: title, exact: true }).focus();
+      await page.keyboard.press("Shift+F10");
+      for (const item of ["Dettagli della fonte", "Rinomina", "Tipo"]) {
+        await page.keyboard.press("ArrowDown");
+        await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeFocused();
+      }
+      await page.keyboard.press("ArrowRight");
+      await expect(page.getByRole("menuitemradio", { name: "Libro" })).toBeFocused();
+      for (const kind of ["Slide", "Tema d'esame", "Appunti", "Esercizi", "Foto", "Dispensa"]) {
+        await page.keyboard.press("ArrowDown");
+        await expect(page.getByRole("menuitemradio", { name: kind, exact: true })).toBeFocused();
+      }
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("menuitem")).toHaveCount(0);
+    };
+
+    // The first leaves the filter and takes its subject's card along, since the card holds no other photo. The focus
+    // goes to the page's "Aggiungi file", as it does when the last subject is deleted.
+    await expect(page.getByRole("button", { name: "IMG_2041", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeVisible();
+    await makeHandout("IMG_2041");
+    await expect(page.getByRole("button", { name: "IMG_2041", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Azioni sulla materia Analisi Matematica 1" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Aggiungi file" })).toBeFocused();
+
+    // The only one left leaves too, so the list gives way to the message, and the focus goes to the type filter, whose
+    // change brings the files back.
+    await makeHandout("Fotogrammi di Quarto potere");
+    await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
+    await expect(filter).toBeFocused();
+    expect(await focused(page)).not.toBe("body");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("The focus stays in the page when the file that held it is renamed out of a search, removed, or moved off a shelf", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await start();
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const search = page.getByRole("textbox", { name: "Cerca una fonte per titolo" });
+    /** Opens a file's menu from the keyboard and chooses `item`, the last of `path` being the one that is clicked. */
+    const choose = async (title: string, ...path: string[]) => {
+      await page.getByRole("button", { name: title, exact: true }).focus();
+      await page.keyboard.press("Shift+F10");
+      await page.getByRole("menuitem", { name: "Dettagli della fonte", exact: true }).waitFor();
+      for (const [index, name] of path.entries()) {
+        const item = page.getByRole("menuitem", { name, exact: true });
+        if (index < path.length - 1) await item.hover();
+        else await item.click();
+      }
+    };
+
+    // Moved off its shelf while a search shows it: the file is still drawn, on the other subject's shelf.
+    await search.fill("Fotogrammi di Quarto");
+    await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeVisible();
+    await choose("Fotogrammi di Quarto potere", "Sposta in", "Fisica 2");
+    await expect(shelf(page, "Fisica fisica 2")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeFocused();
+
+    // Removed while it is the last match: the message takes the list's place and the search field has the focus.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await choose("Fotogrammi di Quarto potere", "Rimuovi");
+    await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
+    expect(await focused(page)).not.toBe("body");
+    await expect(search).toBeFocused();
+
+    // Renamed so that it no longer matches: the panel keeps the focus while it is open, and leaves it on the page's heading.
+    await search.fill("IMG_2041");
+    await choose("IMG_2041", "Rinomina");
+    const field = page.getByRole("textbox", { name: "Nuovo nome della fonte" });
+    await field.fill("Lavagna");
+    await field.press("Enter");
+    await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(await focused(page)).not.toBe("body");
+
+    // The last file of a subject's shelf removed, with no filter: the focus goes to the subject's dots.
+    await search.fill("");
+    page.once("dialog", (dialog) => void dialog.accept());
+    await choose("Sociologia dei media", "Rimuovi");
+    await expect(shelf(page, "Sociologia dei media")).toContainText(/nessun file/);
+    await expect(shelf(page, "Sociologia dei media").getByRole("button", { name: "Azioni sulla materia Sociologia dei media" })).toBeFocused();
+
+    // A file removed from the middle of a shelf: the focus goes to the next cover.
+    await page.getByRole("button", { name: "Azioni sulla materia Sociologia dei media" }).waitFor();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await choose("Rondolino Tomasi - Manuale del film", "Rimuovi");
+    await expect(page.getByRole("button", { name: "Rondolino Tomasi - Manuale del film", exact: true })).toHaveCount(0);
+    expect(await focused(page)).not.toBe("body");
+
+    // A row of "Da sistemare" removed: the focus goes to the next row.
+    page.once("dialog", (dialog) => void dialog.accept());
+    await choose("IMG_2077", "Rimuovi");
+    await expect(page.getByRole("button", { name: "IMG_2077", exact: true })).toHaveCount(0);
+    expect(await focused(page)).not.toBe("body");
+
+    // The Library's last file removed, with no subject left: the page shows its empty state, and the focus is on "Aggiungi file".
+    await page.evaluate(async (keep) => {
+      for (const source of await window.pyxis.invoke("sources.list", {}))
+        if (source.id !== keep) await window.pyxis.invoke("sources.remove", { sourceId: source.id, confirmed: true });
+      for (const subject of await window.pyxis.invoke("subjects.list", {})) await window.pyxis.invoke("subjects.remove", { id: subject.id, onlyEmpty: true });
+    }, "u-ex");
+    await page.reload();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await choose("Esercizi misti", "Rimuovi");
+    await expect(page.getByText("Nessuna fonte ancora")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Aggiungi file" })).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("A linked file keeps the kind the student chose when its folder is read again", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-library-covers-linked-"));

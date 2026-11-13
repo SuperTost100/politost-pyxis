@@ -159,6 +159,48 @@ export function LibraryShelf({
     }
   });
 
+  // The file whose cover or row last held the focus, with the files drawn beside it. A file that leaves the list (removed,
+  // or taken out of the type filter by a new kind) takes its cover along, and with it the focus.
+  const held = useRef<{ id: string; beside: string[]; subjectId: string | null } | null>(null);
+  useEffect(() => {
+    const noteFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      // The menu of a cover is in a portal, and its items hold the focus while it is open: the cover is still the file.
+      if (target.closest(".px-item-menu")) return;
+      // Anywhere else the focus left the shelf (the file's panel, a dialog), and a file that goes away takes nothing with it.
+      const item = root.current?.contains(target) ? target.closest<HTMLElement>("[data-source-id]") : null;
+      held.current = item
+        ? {
+            id: item.dataset.sourceId ?? "",
+            beside: [item.nextElementSibling, item.previousElementSibling].flatMap((sibling) =>
+              sibling instanceof HTMLElement && sibling.dataset.sourceId && !sibling.hasAttribute("data-leaving")
+                ? [sibling.dataset.sourceId]
+                : [],
+            ),
+            subjectId: item.closest<HTMLElement>("[data-subject-id]")?.dataset.subjectId ?? null,
+          }
+        : null;
+    };
+    document.addEventListener("focusin", noteFocus);
+    return () => document.removeEventListener("focusin", noteFocus);
+  }, []);
+  // The focus goes to the next cover or row, else the one before, else the subject's dots, else the page's "Aggiungi file".
+  useEffect(() => {
+    const was = held.current;
+    if (!was || root.current?.querySelector(`[data-source-id="${CSS.escape(was.id)}"]`)) return;
+    held.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const find = (selector: string) => root.current?.querySelector<HTMLElement>(selector);
+    (
+      was.beside.map((id) => find(`[data-source-id="${CSS.escape(id)}"] [data-source-open]`)).find(Boolean) ??
+      (was.subjectId ? find(`[data-subject-id="${CSS.escape(was.subjectId)}"] .px-shelf-subject-dots`) : null) ??
+      addButton.current?.querySelector("button") ??
+      addButton.current
+    )?.focus();
+  });
+
   const unsorted = sources
     .filter((source) => (!source.subjectId || isUnsorted(source)) && !moved.has(source.id))
     .sort(byShelfOrder);
