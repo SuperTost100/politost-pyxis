@@ -1,7 +1,7 @@
 import { Button as AntButton, Dropdown, type MenuProps } from "antd";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { menuTrigger, type MenuPoint } from "../lib/itemMenu";
+import { menuTrigger, movedBy, type MenuPoint } from "../lib/itemMenu";
 import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 import "./ItemMenu.css";
@@ -236,8 +236,7 @@ export function useMenuLifetime(
     const onScroll = (event: Event) => {
       const scroller = event.target;
       if (scroller !== document && !(scroller instanceof Node && scroller.contains(element))) return;
-      const now = element.getBoundingClientRect();
-      if (Math.abs(now.left - start.left) > 1 || Math.abs(now.top - start.top) > 1) latest.current.close();
+      if (movedBy(start, element.getBoundingClientRect())) latest.current.close();
     };
     // `scroll` does not bubble, so one listener in the capture phase hears every scroller.
     document.addEventListener("scroll", onScroll, true);

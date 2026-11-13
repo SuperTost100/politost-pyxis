@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isMenuKey, keepsSystemMenu, menuTrigger, pointBelow } from "./itemMenu";
+import { isMenuKey, keepsSystemMenu, menuTrigger, movedBy, pointBelow } from "./itemMenu";
 
 const plain = { closest: () => null };
 const field = { closest: (selector: string) => (selector.includes("textarea") ? {} : null) };
@@ -199,5 +199,36 @@ describe("item menu behaviour", () => {
     expect(isMenuKey({ ...base, key: "F10", shiftKey: true })).toBe(true);
     expect(isMenuKey({ ...base, key: "F10" })).toBe(false);
     expect(pointBelow({ left: 10, bottom: 20, right: 14 })).toEqual({ x: 14, y: 20 });
+  });
+});
+
+describe("whether a scroll moved an item", () => {
+  const box = (left: number, top: number, width = 34, height = 34) => ({ left, top, right: left + width, bottom: top + height });
+
+  it("counts an item that the page scrolled, however far, in either direction", () => {
+    expect(movedBy(box(1221, 12), box(1221, 62))).toBe(true);
+    expect(movedBy(box(1221, 12), box(1221, 5))).toBe(true);
+    expect(movedBy(box(100, 40), box(60, 40))).toBe(true);
+  });
+
+  it("leaves an item that did not move, or moved by a pixel", () => {
+    expect(movedBy(box(1221, 12), box(1221, 12))).toBe(false);
+    expect(movedBy(box(1221, 12), box(1221.5, 12.9))).toBe(false);
+  });
+
+  it("leaves a button that was pressed when the menu opened and is released now", () => {
+    // Pressed: scale(0.94) about its centre, so each edge sits 1.02px in from where it is at rest.
+    const pressed = box(1221.02, 12.02, 31.96, 31.96);
+    expect(movedBy(pressed, box(1220, 11))).toBe(false);
+    expect(movedBy(box(1220, 11), pressed)).toBe(false);
+  });
+
+  it("counts a pressed button that was also scrolled", () => {
+    expect(movedBy(box(1221.02, 12.02, 31.96, 31.96), box(1220, 41))).toBe(true);
+  });
+
+  it("leaves an item that grew or shrank in place, which the page did not scroll", () => {
+    expect(movedBy(box(40, 100, 300, 60), box(40, 100, 300, 120))).toBe(false);
+    expect(movedBy(box(40, 100, 300, 60), box(40, 100, 500, 60))).toBe(false);
   });
 });
