@@ -1842,7 +1842,29 @@
         "missed": "sotto l'obiettivo",
         "todo": "da fare"
       },
-      "stepsFor": "Passi di {{topic}}"
+      "stepsFor": "Passi di {{topic}}",
+      "partsRead_one": "{{count}} parte su {{total}} letta",
+      "partsRead_other": "{{count}} parti su {{total}} lette",
+      "partsLeft_one": "circa 1 minuto alla fine",
+      "partsLeft_other": "circa {{count}} minuti alla fine",
+      "lessonParts": "Lezione in {{count}} parti",
+      "lessonPartsRecap": "Lezione in {{count}} parti e un ripasso",
+      "partNumber": "Parte {{n}}",
+      "recapRow": "Ripasso del capitolo",
+      "partMinutes": "{{count}} min",
+      "partNow": "adesso · {{count}} min",
+      "partsNote": "Pyxis scrive le parti tratteggiate quando arrivi a quella prima.",
+      "partState": {
+        "done": "letta",
+        "unwritten": "non ancora scritta",
+        "writing": "in scrittura"
+      },
+      "recapState": {
+        "done": "fatto",
+        "unwritten": "non ancora scritto",
+        "writing": "in scrittura"
+      },
+      "lessonPartsFor": "Parti della lezione su {{topic}}"
     }
   },
   "progress": {
@@ -3481,7 +3503,36 @@
       "loadFailed": "Non riesco a leggere le attività da finire.",
       "showAll": "Mostra tutte le {{count}}",
       "showFewer": "Mostra meno"
-    }
+    },
+    "nowKicker": "Consigliato adesso",
+    "resumeKicker": "Riprendi da",
+    "partTitle": "Parte {{n}} · {{title}}",
+    "partLine_one": "Parte {{n}} di {{parts}} · {{topic}} · circa 1 minuto",
+    "partLine_other": "Parte {{n}} di {{parts}} · {{topic}} · circa {{count}} minuti",
+    "recapLine_one": "{{topic}} · circa 1 minuto",
+    "recapLine_other": "{{topic}} · circa {{count}} minuti",
+    "resumeLine_one": "{{topic}} · circa 1 minuto · {{when}} hai finito la parte {{n}}",
+    "resumeLine_other": "{{topic}} · circa {{count}} minuti · {{when}} hai finito la parte {{n}}",
+    "resumeWhen": {
+      "yesterday": "ieri",
+      "weekday": "{{day}}",
+      "date": "il {{date}}"
+    },
+    "continue": "Continua",
+    "resume": "Riprendi",
+    "chooseOther": "Scegli altro",
+    "otherPractice": "Esercizi · {{topic}}",
+    "otherPracticeCount_one": "1 esercizio",
+    "otherPracticeCount_other": "{{count}} esercizi",
+    "otherCards": "Flashcard · {{topic}}",
+    "otherCardsDue_one": "1 da ripassare",
+    "otherCardsDue_other": "{{count}} da ripassare",
+    "otherCardsCount_one": "1 flashcard",
+    "otherCardsCount_other": "{{count}} flashcard",
+    "otherCardsNone": "Crea le flashcard",
+    "otherReread": "Rileggi una parte",
+    "otherRereadCount_one": "1 parte letta",
+    "otherRereadCount_other": "{{count}} parti lette"
   },
   "smart": {
     "check": "Verifica rapida",

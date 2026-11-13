@@ -1842,7 +1842,29 @@
         "missed": "below your goal",
         "todo": "to do"
       },
-      "stepsFor": "Steps for {{topic}}"
+      "stepsFor": "Steps for {{topic}}",
+      "partsRead_one": "{{count}} of {{total}} parts read",
+      "partsRead_other": "{{count}} of {{total}} parts read",
+      "partsLeft_one": "about 1 minute to go",
+      "partsLeft_other": "about {{count}} minutes to go",
+      "lessonParts": "Lesson in {{count}} parts",
+      "lessonPartsRecap": "Lesson in {{count}} parts and a recap",
+      "partNumber": "Part {{n}}",
+      "recapRow": "Chapter recap",
+      "partMinutes": "{{count}} min",
+      "partNow": "now · {{count}} min",
+      "partsNote": "Pyxis writes the dashed parts once you reach the one before.",
+      "partState": {
+        "done": "read",
+        "unwritten": "not written yet",
+        "writing": "being written"
+      },
+      "recapState": {
+        "done": "done",
+        "unwritten": "not written yet",
+        "writing": "being written"
+      },
+      "lessonPartsFor": "Parts of the lesson on {{topic}}"
     }
   },
   "progress": {
@@ -3481,7 +3503,36 @@
       "loadFailed": "Pyxis couldn't read the unfinished activities.",
       "showAll": "Show all {{count}}",
       "showFewer": "Show fewer"
-    }
+    },
+    "nowKicker": "Suggested now",
+    "resumeKicker": "Pick up from",
+    "partTitle": "Part {{n}} · {{title}}",
+    "partLine_one": "Part {{n}} of {{parts}} · {{topic}} · about 1 minute",
+    "partLine_other": "Part {{n}} of {{parts}} · {{topic}} · about {{count}} minutes",
+    "recapLine_one": "{{topic}} · about 1 minute",
+    "recapLine_other": "{{topic}} · about {{count}} minutes",
+    "resumeLine_one": "{{topic}} · about 1 minute · you finished part {{n}} {{when}}",
+    "resumeLine_other": "{{topic}} · about {{count}} minutes · you finished part {{n}} {{when}}",
+    "resumeWhen": {
+      "yesterday": "yesterday",
+      "weekday": "on {{day}}",
+      "date": "on {{date}}"
+    },
+    "continue": "Continue",
+    "resume": "Resume",
+    "chooseOther": "Something else",
+    "otherPractice": "Exercises · {{topic}}",
+    "otherPracticeCount_one": "1 exercise",
+    "otherPracticeCount_other": "{{count}} exercises",
+    "otherCards": "Flashcards · {{topic}}",
+    "otherCardsDue_one": "1 to review",
+    "otherCardsDue_other": "{{count}} to review",
+    "otherCardsCount_one": "1 flashcard",
+    "otherCardsCount_other": "{{count}} flashcards",
+    "otherCardsNone": "Make the flashcards",
+    "otherReread": "Reread a part",
+    "otherRereadCount_one": "1 part read",
+    "otherRereadCount_other": "{{count}} parts read"
   },
   "smart": {
     "check": "Quick check",
