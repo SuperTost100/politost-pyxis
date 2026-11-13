@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { appendEvent } from "../events";
 import { recordStep } from "../plans/steps";
 import { finishPart, partQuestions } from "./partProgress";
-import { partOfItem } from "./parts";
+import { partOfText } from "./partText";
 import {
   finalRecap,
   stripPassageRefs,
@@ -166,7 +166,8 @@ export function answerSmartCheck(
       });
       saved[input.blockId] = pick;
     }
-    const part = item.kind === "lesson" ? partOfItem(db, item.id) : null;
+    // A part's earlier wording finishes the part too: it is still a text of that part.
+    const part = item.kind === "lesson" ? partOfText(db, item.id) : null;
     if (part) {
       const closing = partQuestions(segments, part.kind);
       const partDone = closing.includes(input.blockId) && closing.every((id) => saved[id] !== undefined);
