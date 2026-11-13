@@ -287,12 +287,22 @@ function rewriting(db: Database.Database, topicId: string, position: number | un
 }
 
 /**
+ * Whether the topic's lesson is in parts: it has a live outline, and that outline is not a rewrite of an old lesson
+ * with no part written yet. Until a part of such a rewrite is written, the old lesson is still the topic's lesson, so
+ * the rule for old lessons decides; an outline made for a topic never read is in parts at once.
+ */
+function inParts(outline: Outline | null): outline is Outline {
+  return !!outline && (!outline.replacesItemId || outline.parts.some((part) => part.itemId !== null));
+}
+
+/**
  * A saved lesson that is no part, opened by its item: the earlier version of a lesson now in parts, or of an
  * unfinished one about to be rewritten, which the reader shows as it was; a finished old lesson, which keeps its menu
  * and gets "Riscrivi in parti"; any other lesson (book text, a topic without old lessons) as it was before.
  */
 function legacyItem(db: Database.Database, planId: string, topicId: string): PartResult {
-  if (liveOutline(db, topicId)) return { mode: "legacy", old: "earlier" };
+  const outline = liveOutline(db, topicId);
+  if (inParts(outline)) return { mode: "legacy", old: "earlier" };
   const old = oldLesson(db, planId, topicId);
   if (!old) return { mode: "legacy" };
   return { mode: "legacy", old: old.finished ? "finished" : "earlier" };
@@ -306,12 +316,13 @@ function replacedItem(db: Database.Database, outline: Outline): { itemId: string
 
 /**
  * "Riscrivi in parti" on a finished lesson written before parts (`study.rewriteInParts`): starts part 1's job, whose
- * outline names the old lesson, or retries one that failed. The topic's lesson step stays, so its progress does not
- * move back; the parts start not done. A topic already in parts, or with no old lesson, has nothing to rewrite.
+ * outline names the old lesson, or retries one that failed, keeping an outline it saved. The topic's lesson step
+ * stays, so its progress does not move back; the parts start not done. A topic already in parts, or with no old
+ * lesson, has nothing to rewrite.
  */
 export function rewriteInParts(db: Database.Database, runner: Runner, input: { planId: string; topicId: string }): { ok: true } {
   requireTopic(db, input.planId, input.topicId);
-  if (liveOutline(db, input.topicId)) throw new Error("parts-exist");
+  if (inParts(liveOutline(db, input.topicId))) throw new Error("parts-exist");
   const old = oldLesson(db, input.planId, input.topicId);
   if (!old) throw new Error("lesson-missing");
   ensurePart(db, runner, { planId: input.planId, topicId: input.topicId, position: 1, replaces: old.itemId });
@@ -383,10 +394,10 @@ export function openPart(
   }
   let outline = liveOutline(db, input.topicId);
   let replaces = outline ? replacedItem(db, outline) : null;
-  if (!outline) {
+  if (!inParts(outline)) {
     const old = oldLesson(db, input.planId, input.topicId);
     if (old?.finished && !rewriting(db, input.topicId, input.position)) return { mode: "legacy", old: "finished" };
-    if (old) replaces = { itemId: old.itemId };
+    if (old) replaces ??= { itemId: old.itemId };
   }
   position ??= outline?.parts.find((part) => part.doneAt === null)?.position ?? 1;
   const at = { planId: input.planId, topicId: input.topicId, position };

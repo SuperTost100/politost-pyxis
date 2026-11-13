@@ -422,6 +422,30 @@ describe("a rewrite that does not finish leaves the old lesson as it was", () =>
     expect(openPart(db, runner, { planId: "p", topicId: "t", position: 1 })).toEqual({ mode: "legacy", old: "finished" });
   });
 
+  it("of a lesson finished after its rewrite saved a plan and failed: it opens as it was, and Riscrivi in parti retries", async () => {
+    const { db, runner, engine } = setUp();
+    saveOld(db, { id: "old" });
+    // A topic of one passage is one part: its plan is saved by code, then the write fails.
+    db.exec("DELETE FROM topic_passages WHERE passage_id IN ('ps2', 'ps3', 'ps4')");
+    engine.state.fail = new IpcError("cli-failed", "engines.errors.cli-failed", { provider: "claude" }, "exit 1");
+    openPart(db, runner, { planId: "p", topicId: "t", write: true });
+    await settle(db);
+    expect(liveOutline(db, "t")?.replacesItemId).toBe("old");
+    expect(openPart(db, runner, { planId: "p", topicId: "t", position: 1 })).toMatchObject({ mode: "parts", state: "failed" });
+    // The student finishes the old lesson shown in its place.
+    finishThroughRecap(db, "old");
+    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toEqual({ mode: "legacy", old: "finished" });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "finished" });
+    engine.state.fail = null;
+    rewriteInParts(db, runner, { planId: "p", topicId: "t" });
+    await settle(db);
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(1);
+    expect(liveOutline(db, "t")?.parts[0]?.itemId).not.toBeNull();
+    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toMatchObject({ mode: "parts", state: "written" });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
+    expect(() => rewriteInParts(db, runner, { planId: "p", topicId: "t" })).toThrow("parts-exist");
+  });
+
   it("of a finished lesson: the page that asked for parts keeps the failure, any other open shows the lesson as it was", async () => {
     const { db, runner, engine } = setUp();
     saveOld(db, { id: "old" });

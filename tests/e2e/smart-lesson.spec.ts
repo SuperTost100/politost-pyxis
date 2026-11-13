@@ -117,8 +117,9 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     }),
   );
   const replies = {
-    // The rewrite of the unfinished lesson in parts fails; the lesson written again at another level is the recorded one.
-    markdown: [{ fail: "Il motore non ha risposto." }, { markdown: lesson }],
+    // In turn: the plan's introduction, which the test replaces; the rewrite of the unfinished lesson in parts, which
+    // fails; the lesson written again at another level.
+    markdown: [{ markdown: lesson }, { fail: "Il motore non ha risposto." }, { markdown: lesson }],
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Che cosa cambia una forza ${i + 1}?`,

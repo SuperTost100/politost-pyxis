@@ -24,8 +24,10 @@ export function LessonPage() {
   const itemId = searchParams.get("item") ?? undefined;
   const query = usePartQuery(planId, topicId, position, itemId);
   // Opened without a part, core picks the first one not done. The address then names that part, so finishing it
-  // does not move the page on to the next one when the part is read again.
-  const opened = query.data?.mode === "parts" && !position && !itemId ? query.data.position : null;
+  // does not move the page on to the next one when the part is read again. Only a read of this address that is not
+  // being made again names it: what shows while it loads is the part the page came from, or an earlier read of the
+  // address, from before a finished lesson's rewrite stopped.
+  const opened = query.data?.mode === "parts" && !query.isFetching && !position && !itemId ? query.data.position : null;
   useEffect(() => {
     if (opened) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
   }, [opened, planId, topicId, navigate]);
