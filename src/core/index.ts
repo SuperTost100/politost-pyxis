@@ -230,6 +230,8 @@ if (!parent) {
         ? recordedPlanRun(
             planFixture,
             Number(process.env["PYXIS_E2E_PLAN_DELAY"] ?? 0),
+            // Every prompt of a study call, so a test can read what a lesson part was sent.
+            process.env["PYXIS_E2E_PLAN_PROMPTS"],
           )
         : undefined,
       dev && process.env["PYXIS_E2E_SIMULATION_REPLIES"]
