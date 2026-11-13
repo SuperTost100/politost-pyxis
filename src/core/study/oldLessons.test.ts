@@ -590,6 +590,25 @@ describe("a replacement that has no part written yet", () => {
     expect(lessonSteps(db)).toHaveLength(1);
   });
 
+  it("of a finished lesson: no level is shown or kept on the stored plan until part 1 is written", async () => {
+    const { db, runner, engine } = await pending(true);
+    const jobs = jobStates(db);
+    // The topic opens on the failure's screen with the old lesson in place: nothing of a part's level or rewrite.
+    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toMatchObject({ mode: "parts", state: "failed", lesson: null, rewrite: null });
+    // A level or a rewrite asked for the stored plan anyway is refused, and the plan keeps no level.
+    for (const choice of [{ wording: "technical" as const }, { regenerate: true }])
+      expect(() => openPart(db, runner, { planId: "p", topicId: "t", position: 1, ...choice })).toThrow("parts-not-shown");
+    expect(liveOutline(db, "t")?.wording).toBeNull();
+    expect(jobStates(db)).toBe(jobs);
+    // Once Riprova writes part 1 the plan is the topic's lesson, and a level chosen on it is the outline's.
+    engine.state.failText = null;
+    openPart(db, runner, { planId: "p", topicId: "t", position: 1, write: true });
+    await settle(db);
+    openPart(db, runner, { planId: "p", topicId: "t", position: 1, wording: "technical" });
+    await settle(db);
+    expect(liveOutline(db, "t")?.wording).toBe("technical");
+  });
+
   it("names the old lesson the earlier version as soon as its rewrite starts, before the plan and before part 1", async () => {
     const { db, runner, engine } = setUp();
     saveOld(db, { id: "old" });

@@ -24,6 +24,7 @@ import {
   partBounds,
   partLabel,
   planParts,
+  outlineShown,
   shownOutline,
   writePart,
   type Outline,
@@ -306,6 +307,9 @@ export function choosePart(
   const outline = liveOutline(db, input.topicId);
   const part = outline?.parts.find((entry) => entry.position === input.position);
   if (!outline || !part) throw new Error("part-missing");
+  // A replacement with no part written is not the topic's lesson yet (`outlineShown`): the old lesson stands in its
+  // place, so the plan takes no level and no rewrite until Riprova writes part 1.
+  if (!outlineShown(outline)) throw new Error("parts-not-shown");
   if (!part.itemId) {
     if (input.wording) db.prepare("UPDATE lesson_outlines SET wording = ? WHERE id = ?").run(input.wording, outline.id);
     return;
