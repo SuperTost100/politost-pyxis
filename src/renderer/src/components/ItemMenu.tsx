@@ -140,7 +140,7 @@ function MenuRegion({
 }: {
   label: string;
   open: boolean;
-  /** An arrow pressed on the button before the menu took the focus: the menu then takes it on its first or last item. */
+  /** An arrow pressed on the button or the item before the menu took the focus: the menu then takes it on its first or last item. */
   arrow?: MutableRefObject<"first" | "last" | null>;
   children: ReactNode;
 }) {
@@ -154,7 +154,8 @@ function MenuRegion({
       const target = edge ? (edge === "first" ? items[0] : items.at(-1)) : region?.querySelector<HTMLElement>(".ant-dropdown-menu");
       if (!target) return;
       target.focus({ preventScroll: true });
-      if (arrow) arrow.current = null;
+      // A popup not yet in the page takes no focus, and the arrow waits for the next try.
+      if (arrow && document.activeElement === target) arrow.current = null;
     };
     // At once, before the next key press when the popup is ready, and on the next frames while it is not (a menu opened
     // again right after it closed is hidden for a few frames), until the focus is in the menu.
@@ -162,7 +163,9 @@ function MenuRegion({
     let tries = 0;
     let frame = 0;
     const retry = () => {
-      if (ref.current?.contains(document.activeElement)) return;
+      // Done once the focus is in the menu, unless an arrow still waits for an item: the dropdown focuses the list itself
+      // when the popup appears, which can come before the arrow has moved the focus on.
+      if (ref.current?.contains(document.activeElement) && !arrow?.current) return;
       take();
       if (++tries < 12) frame = requestAnimationFrame(retry);
     };
@@ -317,7 +320,11 @@ export function useItemMenu({
   };
   // The item the menu belongs to, read when it opens: the menu closes when the page scrolls under it or the window resizes.
   const item = useRef<Element | null>(null);
-  const bind = menuTrigger(
+  // An arrow pressed on the item after the menu opened but before it took the focus, as a quick Shift+F10 and down arrow
+  // do on a slow computer. The menu takes the focus on its first or last item, as a menu button's does, and the page does
+  // not scroll, which would close the menu. Only a menu with a region takes the focus itself.
+  const arrow = useRef<"first" | "last" | null>(null);
+  const trigger = menuTrigger(
     (point, byKey, target) => {
       shown.current = true;
       origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -327,6 +334,19 @@ export function useItemMenu({
     !disabled,
     () => shown.current,
   );
+  const bind: typeof trigger = {
+    ...trigger,
+    onKeyDown(event) {
+      const early =
+        region &&
+        shown.current &&
+        (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+        !(event.target instanceof Element && event.target.closest(".px-item-menu"));
+      if (!early) return trigger.onKeyDown(event);
+      event.preventDefault();
+      arrow.current = event.key === "ArrowDown" ? "first" : "last";
+    },
+  };
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
@@ -344,7 +364,7 @@ export function useItemMenu({
           }}
           popupRender={(list) =>
             region ? (
-              <MenuRegion label={region} open>
+              <MenuRegion label={region} open arrow={arrow}>
                 {list}
               </MenuRegion>
             ) : (
