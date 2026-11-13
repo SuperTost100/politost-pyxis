@@ -973,24 +973,31 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
 
 /**
  * The written parts of a topic's live outline joined in reading order, for export: each under its title as a ##
- * heading, its own headings one level down, or a one-part topic's text as it is. Null when no part is written.
+ * heading, its own headings one level down, or a one-part topic's text as it is. The passages are the ones the saved
+ * parts were written from, which leave out material removed between planning and writing. Null when no part is written.
  */
 export function partsMarkdown(db: Database.Database, topicId: string): { markdown: string; passageIds: string[] } | null {
   const outline = liveOutline(db, topicId);
   const written = outline?.parts.filter((part) => part.itemId) ?? [];
   if (!outline || written.length === 0) return null;
   const read = db.prepare("SELECT json_extract(body_json, '$.markdown') AS markdown FROM items WHERE id = ?").pluck();
+  const cited = db
+    .prepare(
+      `SELECT ip.passage_id FROM item_passages ip JOIN passages p ON p.id = ip.passage_id
+       WHERE ip.item_id = ? ORDER BY p.created_at, p.id`,
+    )
+    .pluck();
   const single = outline.parts.length === 1;
-  const texts = written.flatMap((part) => {
+  const texts: string[] = [];
+  const passageIds = new Set<string>();
+  for (const part of written) {
     const markdown = read.get(part.itemId) as string | null | undefined;
-    if (!markdown) return [];
-    return [single ? markdown : `## ${part.title}\n\n${demoteHeadings(markdown)}`];
-  });
+    if (!markdown) continue;
+    texts.push(single ? markdown : `## ${part.title}\n\n${demoteHeadings(markdown)}`);
+    for (const id of cited.all(part.itemId) as string[]) passageIds.add(id);
+  }
   if (texts.length === 0) return null;
-  return {
-    markdown: texts.join("\n\n"),
-    passageIds: [...new Set(written.flatMap((part) => part.passageIds))],
-  };
+  return { markdown: texts.join("\n\n"), passageIds: [...passageIds] };
 }
 
 /** Every Markdown heading outside code one level down, so a part's sections sit under the part's title. */

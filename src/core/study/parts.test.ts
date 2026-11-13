@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { jsonSchema, type GenerateInput } from "../engine/generate";
 import { IpcError } from "../../shared/ipc";
+import { exportMarkdown } from "../share/markdown";
+import { removePlanSource } from "../plans/views";
 import { CONTEXT_CHARS, readLesson } from "./openLesson";
 import {
   ESTIMATE_MAX_MINUTES,
@@ -836,6 +838,24 @@ describe("writePart", () => {
       expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
       expect(call.prompt.match(/MARK-\w+/g)).toHaveLength(count);
     }
+  });
+
+  it("exports the sources of the written parts, not material removed before they were written", async () => {
+    const db = await planned();
+    db.exec(`
+      UPDATE passages SET section_path = 'Sezione ' || id;
+      INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s2', 'pdf', 'Appunti', 'ready', 1, 1);
+      UPDATE passages SET source_id = 's2' WHERE id IN ('ps003', 'ps004');
+      INSERT INTO plan_sources (plan_id, source_id) VALUES ('p', 's'), ('p', 's2');
+    `);
+    removePlanSource(db, "p", "s2");
+    await write(db, 1, partText("1")).done;
+    await write(db, 2, partText("2")).done;
+    expect(liveOutline(db, "t")!.parts[1]!.passageIds).toEqual(["ps003", "ps004"]);
+    const lesson = exportMarkdown(db, { planId: "p", kind: "lesson", topicId: "t" }).markdown;
+    expect(lesson).toContain("## Fonti\n\n- Sezione ps001\n- Sezione ps002\n");
+    expect(lesson).not.toContain("Sezione ps003");
+    expect(lesson).not.toContain("Sezione ps004");
   });
 
   it("writes the recap from the summaries of the written parts, with no material", async () => {
