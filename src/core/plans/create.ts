@@ -5,9 +5,9 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { reachableTarget } from "../../shared/plan-file";
 import { daysBetween, startOfDay } from "../../shared/local-day";
-import { pathNext, topicSuggestion, type Stage, type TopicStatus } from "./path";
+import { pathNext, topicSuggestion, type Stage, type Suggestion, type TopicStatus } from "./path";
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
-import { nextPart, outlineProgress } from "../study/partProgress";
+import { nextPart, outlineProgress, type NextPart } from "../study/partProgress";
 import { countDueCards } from "../study/cards";
 import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
@@ -484,7 +484,7 @@ export function planGuide(
   const { topics, steps, gaps, read, hasIntro } = state;
   // An archived plan recommends nothing; restoring it brings the suggestions back. Due cards have their own line on
   // the exam's page, so its next step is the one the exam list names.
-  const next = state.archived
+  const next: (Suggestion & { part?: NextPart }) | null = state.archived
     ? null
     : pathNext({
         topics,
@@ -495,8 +495,9 @@ export function planGuide(
       });
   // A lesson in parts names the part to read next; any other suggestion has no `part`.
   const part = next?.activity === "lesson" && next.topicId ? nextPart(db, next.topicId, now) : null;
+  if (next && part) next.part = part;
   return {
-    next: next && part ? { ...next, part } : next,
+    next,
     hasIntro,
     topics: topics.map((topic) => ({
       topicId: topic.id,
