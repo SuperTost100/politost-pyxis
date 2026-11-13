@@ -404,6 +404,23 @@ export function useItemMenu({
   };
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
   useOpenMenu(at !== null);
+  // An item that becomes disabled while its menu is open loses the menu, as a menu button's own dropdown does: it would
+  // go on offering actions the item no longer takes. The focus is not left in the closing menu and never moves onto a
+  // disabled button: it goes back to where it was before a key opened the menu when that can still take it, else to the
+  // first control left in the item's row, else it stays where it is. A keyboard user so stays inside the item.
+  useEffect(() => {
+    if (!disabled || !shown.current) return;
+    const active = document.activeElement;
+    const inMenu = !active || active === document.body || active.closest(".px-item-menu") || active.matches(":disabled");
+    const back = origin.current;
+    close(false);
+    if (!inMenu) return;
+    const usable = (element: Element | null | undefined): element is HTMLElement =>
+      element instanceof HTMLElement && element.isConnected && !element.matches(":disabled") && !element.closest("[inert]");
+    const row = item.current?.closest("li, section, [role=region]") ?? item.current;
+    const target = usable(back) ? back : row?.querySelector<HTMLElement>(FOCUSABLE);
+    target?.focus({ preventScroll: true });
+  }, [disabled]);
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
   const popup: ReactNode = at

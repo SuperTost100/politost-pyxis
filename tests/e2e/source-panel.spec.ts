@@ -223,6 +223,55 @@ test("with animations on, a second Escape closes the panel while the menu is sti
   }
 });
 
+test("a menu that is open when its file goes away closes, whichever way it was opened", async () => {
+  test.setTimeout(240_000);
+  const title = "Lavagna, lezione 10";
+  const ways: Array<[string, (page: Page) => Promise<void>]> = [
+    ["a click on the dots", (page) => panel(page).getByRole("button", { name: `Azioni su «${title}»` }).click()],
+    ["a right-click on the dots", (page) => panel(page).getByRole("button", { name: `Azioni su «${title}»` }).click({ button: "right" })],
+    ["Shift+F10 on the name", async (page) => {
+      await panel(page).getByRole("heading", { name: title }).focus();
+      await page.keyboard.press("Shift+F10");
+    }],
+  ];
+  // Each way starts from a fresh app, since each ends with the file removed.
+  for (const [how, open] of ways) {
+    const { app, page, userData } = await launch();
+    try {
+      await toLibrary(page);
+      const sheet = panel(page);
+      const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+      const id = await page.evaluate(
+        async (title) => ((await window.pyxis.invoke("sources.list", {})) as Array<{ id: string; title: string }>).find((row) => row.title === title)!.id,
+        title,
+      );
+      await page.getByRole("button", { name: title, exact: true }).click();
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet.getByRole("heading", { name: title }), how).toBeFocused();
+      await open(page);
+      await expect(menu, how).toBeVisible();
+      // The file is removed from outside the page, so there is no menu to offer for it: the open one goes too.
+      await page.evaluate((sourceId) => window.pyxis.invoke("sources.remove", { sourceId, confirmed: true }), id);
+      // A file added afterwards makes the page read the library again, as a finished import does.
+      await page.evaluate(
+        (how) =>
+          window.pyxis.invoke("sources.paste", {
+            title: `Arrivo ${how}`,
+            text: "La probabilità condizionata di A dato B è il rapporto tra P(A e B) e P(B).\n\n".repeat(20),
+          }),
+        how,
+      );
+      await expect(menu, how).toHaveCount(0);
+      // With no menu open, the next Escape is the panel's.
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(0);
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+    }
+  }
+});
+
 test("a citation in a chat opens the panel at the cited page with the passage marked, and a second one moves it", async () => {
   test.setTimeout(240_000);
   const { app, page, userData } = await launch();
