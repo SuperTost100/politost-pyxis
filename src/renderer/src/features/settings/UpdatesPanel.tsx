@@ -279,11 +279,6 @@ export function UpdatesPanel() {
               ? t(`updates.${state}`)
               : t("updates.checking")}
       </p>
-      {query.data ? (
-        <p className="small section-hint">
-          {t("updates.installed", { version: query.data.current })}
-        </p>
-      ) : null}
       {query.data?.checkedAt ? (
         <p className="small section-hint">
           {t("updates.checked", {

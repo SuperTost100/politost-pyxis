@@ -3147,7 +3147,6 @@
     "failed": "The release check could not connect. Try again in 15 minutes.",
     "checking": "Checking for a release…",
     "available": "Pyxis {{version}} is available.",
-    "installed": "Installed version: {{version}}",
     "checked": "Last checked: {{at}}",
     "check": "Check for updates",
     "download": "Open release page",

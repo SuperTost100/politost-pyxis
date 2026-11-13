@@ -2403,6 +2403,10 @@ async function openState(page: Page, name: string) {
     // The download state lives in main and outlasts a reload, so the plain route starts from no download.
     case "settings-updates":
       await page.evaluate(() => window.pyxis.cancelUpdate());
+      // The installed version is written once, under "Versione e licenze", as the About text writes it ("0.5.0 dev.10"),
+      // and the updates block repeats nothing of it.
+      await expect(page.locator(".px-about-version dd").first()).toHaveText(/^\d+\.\d+\.\d+( [a-z]+\.\d+)?$/);
+      await expect(page.getByText(/Versione installata|Installed version/)).toHaveCount(0);
       break;
     case "updates-available":
       await page.evaluate(() => window.pyxis.cancelUpdate());

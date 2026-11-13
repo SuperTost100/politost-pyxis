@@ -3147,7 +3147,6 @@
     "failed": "Non è stato possibile controllare le versioni. Riprova tra 15 minuti.",
     "checking": "Controllo delle versioni…",
     "available": "Pyxis {{version}} è disponibile.",
-    "installed": "Versione installata: {{version}}",
     "checked": "Ultimo controllo: {{at}}",
     "check": "Controlla aggiornamenti",
     "download": "Apri la pagina della versione",
