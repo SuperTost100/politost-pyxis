@@ -1,9 +1,10 @@
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useBlocker, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { CanvasLayout } from "../../app/layouts/TaskLayouts";
 import { useAppState } from "../../app/app-state";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { lastAskChat } from "../ask/attachments";
@@ -37,7 +38,17 @@ export function WhiteboardPage() {
   const past = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
   const board = useRef<HTMLCanvasElement>(null);
-  const blocker = useBlocker(() => dirty.current);
+  // Set when the student leaves without saving: a save still running then hands nothing on and moves nowhere.
+  const left = useRef(false);
+  useLeaveGuard({
+    dirty: () => dirty.current,
+    body: t("tools.leaveBody"),
+    onLeave: () => {
+      left.current = true;
+      sessionStorage.setItem("pyxis-board", JSON.stringify(baseline.current));
+      dirty.current = false;
+    },
+  });
 
   function paint(next: Stroke[]) {
     const canvas = board.current;
@@ -138,6 +149,7 @@ export function WhiteboardPage() {
     if (!url) return;
     setBusy(true);
     setError(false);
+    left.current = false;
     try {
       if (attach) {
         const staged = await invoke("tools.stagePng", { dataUrl: url });
@@ -149,6 +161,7 @@ export function WhiteboardPage() {
         });
         if (saved === "cancelled") return;
       }
+      if (left.current) return;
       baseline.current = strokes;
       dirty.current = false;
       // Only Attach hands the image to Ask, and Ask takes it together with the staged file.
@@ -305,37 +318,6 @@ export function WhiteboardPage() {
           </div>
         ) : null}
       </div>
-      <Modal
-        open={blocker.state === "blocked"}
-        title={t("tools.unsavedTitle")}
-        onCancel={() => blocker.state === "blocked" && blocker.reset()}
-        footer={[
-          <Button
-            key="stay"
-            onClick={() => blocker.state === "blocked" && blocker.reset()}
-          >
-            {t("tools.keepDrawing")}
-          </Button>,
-          <Button
-            key="discard"
-            danger
-            disabled={busy}
-            onClick={() => {
-              if (blocker.state !== "blocked") return;
-              sessionStorage.setItem(
-                "pyxis-board",
-                JSON.stringify(baseline.current),
-              );
-              dirty.current = false;
-              blocker.proceed();
-            }}
-          >
-            {t("tools.discardDrawing")}
-          </Button>,
-        ]}
-      >
-        <p>{t("tools.unsavedBody")}</p>
-      </Modal>
     </CanvasLayout>
   );
 }
