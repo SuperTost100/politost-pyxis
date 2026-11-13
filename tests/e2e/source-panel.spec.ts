@@ -274,7 +274,8 @@ test("Apri il file keeps its copy in Pyxis's own folder, and a removed source or
       removed: true,
     });
     await expect.poll(() => existsSync(photo)).toBe(false);
-    expect(left()).toEqual(["sp-book"]);
+    // Main removes the copy's folder, with the file in it, and then the source's folder, so the list is polled as well.
+    await expect.poll(left).toEqual(["sp-book"]);
     expect(existsSync(book)).toBe(true);
 
     // "Elimina tutto": nothing of an opened file stays behind.
