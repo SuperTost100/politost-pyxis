@@ -7,6 +7,7 @@ import { parseSmartText, smartQuestions } from "../../shared/smart-text";
 import { studyHandlers } from "./handlers";
 import { mistakesNotebook } from "./notebook";
 import { markPartDone } from "./partProgress";
+import { partOfText } from "./partText";
 import { answerSmartCheck } from "./smartText";
 import { checkBlock, partMarkdown, recapMarkdown, seedOutline, writeSeedPart } from "./test-parts";
 
@@ -173,6 +174,19 @@ describe("a part is done", () => {
     db.close();
   });
 
+  it("from an earlier wording of its text as from the current one", () => {
+    const { db, seeded } = workspace(true);
+    const [, p2, , recap] = seeded!.parts;
+    // Part 2 and the recap written again in simple wording: each part now points at its new item.
+    writeSeedPart(db, { planId: "p", topicId: "t1", partId: p2!.id, markdown: partMarkdown("Aperti, semplice"), wording: "simple" });
+    writeSeedPart(db, { planId: "p", topicId: "t1", partId: recap!.id, markdown: recapMarkdown("Ripasso semplice"), wording: "simple" });
+    expect(answer(db, p2!.itemId!)).toMatchObject({ partDone: true, finished: false });
+    expect(doneAt(db, p2!.id)).toBe(now);
+    expect(answer(db, recap!.itemId!, { at: now + 1 })).toMatchObject({ partDone: true, finished: true });
+    expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ itemId: seeded!.parts[0]!.itemId })]);
+    db.close();
+  });
+
   it("keeps a part done on an archived topic, with no step to add", () => {
     const { db, seeded } = workspace(true);
     db.prepare("UPDATE topics SET archived_at = 1 WHERE id = 't1'").run();
@@ -195,6 +209,27 @@ describe("a part is done", () => {
     expect(results[0]!.right).toEqual({ correct: true, pick: expect.any(Number), finished: false });
     expect(Object.keys(results[0]!.wrong)).toEqual(["correct", "pick", "finished"]);
     expect(results[0]!.steps).toEqual([{ itemId: "whole" }]);
+  });
+});
+
+describe("a part's texts", () => {
+  it("are the text a part points at and its earlier wordings, in a live or a retired outline, and nothing else", () => {
+    const { db, seeded } = workspace(true);
+    const p2 = seeded!.parts[1]!;
+    const part = { partId: p2.id, outlineId: seeded!.outlineId, position: 2, kind: "part" };
+    const simple = writeSeedPart(db, { planId: "p", topicId: "t1", partId: p2.id, markdown: partMarkdown("Semplice"), wording: "simple" });
+    expect(partOfText(db, simple)).toEqual(part);
+    expect(partOfText(db, p2.itemId!)).toEqual(part);
+    db.prepare("UPDATE lesson_outlines SET retired_at = 2 WHERE id = ?").run(seeded!.outlineId);
+    expect(partOfText(db, p2.itemId!)).toEqual(part);
+    // A lesson that is not a part, a part template whose scope names no part, and an unknown item.
+    expect(partOfText(db, "whole")).toBeNull();
+    db.prepare(
+      "INSERT INTO items (id, plan_id, topic_id, kind, body_json, prompt_template, created_at) VALUES ('stray', 'p', 't1', 'lesson', ?, 'lesson.part', 1)",
+    ).run(JSON.stringify({ cacheKey: JSON.stringify({ scopeId: "t1" }), markdown: "" }));
+    expect(partOfText(db, "stray")).toBeNull();
+    expect(partOfText(db, "missing")).toBeNull();
+    db.close();
   });
 });
 
