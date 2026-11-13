@@ -17,6 +17,8 @@ export function Button({
   children,
   disabled,
   expanded,
+  hasPopup,
+  controls,
   pressed,
   keyShortcuts,
   title,
@@ -35,6 +37,10 @@ export function Button({
   disabled?: boolean;
   /** For a button that opens a panel: whether the panel it opened is open now. */
   expanded?: boolean;
+  /** For a button that opens a menu or a popover: what it opens (`aria-haspopup`). */
+  hasPopup?: "menu" | "dialog";
+  /** The element the button opens, while it is open (`aria-controls`). */
+  controls?: string;
   /** For a button that toggles a state, such as "Segna per dopo": whether it is on. */
   pressed?: boolean;
   /** The key that presses it, for assistive technology (`aria-keyshortcuts`). */
@@ -54,6 +60,8 @@ export function Button({
     <AntButton
       aria-label={ariaLabel}
       aria-expanded={expanded}
+      aria-haspopup={hasPopup}
+      aria-controls={controls}
       aria-pressed={pressed}
       aria-keyshortcuts={keyShortcuts}
       title={title}

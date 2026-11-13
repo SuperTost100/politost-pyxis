@@ -225,6 +225,8 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.openSourceFile, sourceId),
   revealJobLog: (jobId: string) =>
     ipcRenderer.invoke(mainChannels.revealJobLog, jobId),
+  revealLinkedFolder: (folderId: string) =>
+    ipcRenderer.invoke(mainChannels.revealLinkedFolder, folderId),
   showOpenDialog: (options: OpenDialogOptions) =>
     ipcRenderer.invoke(mainChannels.openDialog, options),
   grantDroppedFiles: (files: File[]) => {

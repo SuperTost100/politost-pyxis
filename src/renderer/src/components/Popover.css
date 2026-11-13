@@ -1,0 +1,31 @@
+/* A popover grows out of its button (docs/design-system/motion.md): scale 0.94 to 1 in 180ms, a 120ms fade out.
+   Under reduced motion only the fade is left. */
+.px-popover {
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 1040;
+  width: 400px;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 8px 10px;
+  border-radius: var(--radius-card);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-overlay);
+  outline: none;
+  opacity: 0;
+  transform: scale(0.94);
+  transition:
+    opacity var(--duration-small) var(--ease-out),
+    transform var(--duration-small) var(--ease-out);
+}
+.px-popover.is-in {
+  opacity: 1;
+  transform: none;
+}
+.px-popover.is-closing {
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}

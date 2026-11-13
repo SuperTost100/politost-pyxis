@@ -104,7 +104,9 @@ async function rightClickInCorner(page: Page, item: Locator) {
 /**
  * Widens the window until the shelf's rightmost column of covers ends near its right edge, and returns the last cover of
  * that column. The shelf wraps its covers by its width, which the sidebar shares (it is wider on macOS), so at 960 px the
- * last column can end up to one cover's width before the shelf does.
+ * last column can end up to one cover's width before the shelf does. A Library shorter than the window cannot scroll
+ * that cover down to its bottom edge, so the window is then made shorter, down to just below the cover, the way it is
+ * widened.
  */
 async function coverInCorner(page: Page, covers: Locator): Promise<number> {
   const layout = () =>
@@ -131,7 +133,16 @@ async function coverInCorner(page: Page, covers: Locator): Promise<number> {
     await page.setViewportSize({ width, height: view.height });
     await expect.poll(async () => (await layout()).right).toBeGreaterThan(found.right);
   }
-  return (await layout()).index;
+  const { index } = await layout();
+  // The cover's foot plus the shelf card's own padding below it.
+  const bottom = await covers.nth(index).evaluate((node) => node.getBoundingClientRect().bottom);
+  const now = page.viewportSize()!;
+  const height = Math.ceil(bottom) + 48;
+  if (height < now.height) {
+    await page.setViewportSize({ width: now.width, height });
+    await expect.poll(() => page.evaluate(() => innerHeight)).toBe(height);
+  }
+  return index;
 }
 
 test("A right-click menu near the window's bottom-right corner opens inside the window and its last item acts", async () => {

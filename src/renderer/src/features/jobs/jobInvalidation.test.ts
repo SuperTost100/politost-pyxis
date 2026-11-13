@@ -85,6 +85,12 @@ describe("job update invalidation", () => {
     expect(keys(staleFamilies({ kind: "library-sort", state: "succeeded" })).filter((key) => key === "subjects")).toHaveLength(1);
   });
 
+  it("refreshes the linked folders when a reading ends and while a look at a folder runs", () => {
+    expect(keys(staleFamilies({ kind: "source-import", state: "running" }))).not.toContain("linked-folders");
+    expect(keys(staleFamilies({ kind: "source-import", state: "succeeded" }))).toContain("linked-folders");
+    expect(keys(staleFamilies({ kind: "linked-folder-read", state: "running" }))).toEqual(["jobs", "linked-folders"]);
+  });
+
   it("refreshes sources for imports and each download its own state", () => {
     expect(keys(staleFamilies({ kind: "source-import", state: "running" }))).toEqual([
       "jobs",

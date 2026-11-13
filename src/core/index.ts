@@ -66,6 +66,7 @@ type ParentEvent = {
     dev?: boolean;
     unpackaged?: boolean;
     removedProvider?: string;
+    folderId?: string;
     anthropic?: string;
     openai?: string;
     id?: string;
@@ -278,6 +279,19 @@ if (!parent) {
         );
       }
       port.postMessage({ type: "reminder-result", id: data.id, ...reply });
+    }
+    if (data?.type === "linked-folder-query" && data.id) {
+      // Main opens a linked folder only at the path core has for its id.
+      let path: string | null = null;
+      try {
+        if (database && typeof data.folderId === "string")
+          path = (database.prepare(`SELECT path FROM linked_folders WHERE id = ?`).pluck().get(data.folderId) as
+            | string
+            | undefined) ?? null;
+      } catch (err) {
+        console.error("pyxis-core: linked folder lookup failed", err instanceof Error ? err.message : "unknown");
+      }
+      port.postMessage({ type: "linked-folder-path", id: data.id, path });
     }
     if (data?.type === "file-grants" && data.grants) {
       addFileGrants(data.grants);

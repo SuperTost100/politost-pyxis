@@ -344,7 +344,7 @@ function Message({ reason, source }: { reason: "missing" | "removed" | "locked" 
   const { t } = useTranslation();
   const [unlocking, setUnlocking] = useState(false);
   const linked = source?.original === null && source.missing;
-  const titleKey = `sources.viewer.${reason}Title`;
+  const titleKey = reason === "removed" ? "sources.panel.gone" : `sources.viewer.${reason}Title`;
   const bodyKey = reason === "missing" && source && !linked ? "sources.viewer.missingStored" : `sources.viewer.${reason}Body`;
   return (
     <div className="source-message" role="status">

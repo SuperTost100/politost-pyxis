@@ -95,6 +95,8 @@ export interface PyxisBridge {
   openSourceFile(sourceId: string): Promise<boolean>;
   /** Shows a job's debug log in the file manager. False when the job has no log. */
   revealJobLog(jobId: string): Promise<boolean>;
+  /** Opens a linked folder, named by its id, in the file manager. False when no linked folder has that id or it is not there. */
+  revealLinkedFolder(folderId: string): Promise<boolean>;
   showOpenDialog(options: OpenDialogOptions): Promise<string[] | null>;
   /** Grants dropped files to core and returns their paths. Only real `File` objects from a drop name a path. */
   grantDroppedFiles(files: File[]): Promise<{ paths: string[]; skipped: number }>;
@@ -215,6 +217,7 @@ export const mainChannels = {
   openExternal: "shell:openExternal",
   revealJobLog: "shell:reveal-job-log",
   openSourceFile: "shell:open-source-file",
+  revealLinkedFolder: "shell:reveal-linked-folder",
   contextMenu: "menu:context",
   openDialog: "dialog:open",
   dropGrant: "dialog:grant-dropped",

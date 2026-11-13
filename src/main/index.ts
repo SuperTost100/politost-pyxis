@@ -536,6 +536,33 @@ function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | nul
   });
 }
 
+/**
+ * Asks core where a linked folder is, by its id. Null when core is not up or no linked folder has that id, so the
+ * window can never have a path of its own choosing opened.
+ */
+function askCoreForLinkedFolder(folderId: string): Promise<string | null> {
+  const child = coreChild;
+  if (!child || coreExited(child) || keysReadyFor !== child || holdCore) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const id = randomUUID();
+    const done = (path: string | null) => {
+      clearTimeout(timer);
+      child.off("message", listener);
+      resolve(path);
+    };
+    const listener = (data: { type?: string; id?: string; path?: unknown }) => {
+      if (data?.type === "linked-folder-path" && data.id === id) done(typeof data.path === "string" ? data.path : null);
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    child.on("message", listener);
+    try {
+      child.postMessage({ type: "linked-folder-query", id, folderId });
+    } catch {
+      done(null);
+    }
+  });
+}
+
 function setUpReminders(): void {
   reminders = new StudyReminders({
     stateFile: userFile("reminders.json"),
@@ -1206,6 +1233,14 @@ function registerIpc(): void {
     if (!existsSync(file)) return false;
     shell.showItemInFolder(file);
     return true;
+  });
+  // Only a linked folder's id names a folder: main asks core for its path, so the window never picks what opens.
+  ipcMain.handle(mainChannels.revealLinkedFolder, async (event, folderId: unknown) => {
+    requireMainSender(event, "reveal-untrusted-sender");
+    if (typeof folderId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(folderId)) return false;
+    const path = await askCoreForLinkedFolder(folderId);
+    if (!path) return false;
+    return (await shell.openPath(path)) === "";
   });
   ipcMain.handle(mainChannels.openExternal, async (event, url: string) => {
     requireMainSender(event, "external-untrusted-sender");
