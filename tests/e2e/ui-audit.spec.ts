@@ -2732,7 +2732,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "library-flagged-details":
-      await page.getByRole("button", { name: source }).click();
+      await openDetails(page, "Appunti di fisica");
       await expect(
         dialog.getByText(/look unrelated to|sembrano? non c'entrare con/),
       ).toBeVisible();
@@ -3567,9 +3567,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") })).toBeVisible();
       break;
     case "library-vision":
-      await page
-        .getByRole("button", { name: "Photo notes", exact: true })
-        .click();
+      await openDetails(page, "Photo notes");
       // The model that read the photo is named the way a student reads it, never by its id.
       await expect(dialog).toContainText("Vision Fixture Model");
       await expect(dialog).not.toContainText("vision-fixture-model");
