@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,10 +32,14 @@ const outline = {
   ],
 };
 
-type Started = { page: Page; userData: string; prompts: string; db: () => DatabaseSync; close: () => Promise<void> };
+type Started = { app: ElectronApplication; page: Page; userData: string; prompts: string; db: () => DatabaseSync; close: () => Promise<void> };
 
 /** The app with Analisi 2 seeded, the recorded engine answering with `markdown`, and its prompts logged. */
-async function start(markdown: unknown[], topics: Array<{ id: string; title: string; passages: typeof passages }>): Promise<Started> {
+async function start(
+  markdown: unknown[],
+  topics: Array<{ id: string; title: string; passages: typeof passages }>,
+  env: Record<string, string> = {},
+): Promise<Started> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-lesson-parts-"));
   const prompts = join(userData, "plan-prompts.log");
   const app = await launchPyxis({
@@ -45,6 +49,7 @@ async function start(markdown: unknown[], topics: Array<{ id: string; title: str
       // Every call takes this long, so the planning and writing states stay on screen while the test reads them.
       PYXIS_E2E_PLAN_DELAY: "1500",
       PYXIS_E2E_PLAN_PROMPTS: prompts,
+      ...env,
     },
   });
   const page = await app.firstWindow();
@@ -77,6 +82,7 @@ async function start(markdown: unknown[], topics: Array<{ id: string; title: str
   seeding.close();
   await page.reload();
   return {
+    app,
     page,
     userData,
     prompts,
@@ -499,6 +505,43 @@ test("a topic of one part has no column and no planning call, and a part without
     await expect(parts(page).getByRole("link", { name: /Convergenza puntuale.*letta/ })).toBeVisible();
     await expectNoAxeViolations(page);
   } finally {
+    await close();
+  }
+});
+
+test("leaving a lesson before core has chosen its part does not pull the student back to it", async () => {
+  test.setTimeout(120_000);
+  // The read that chooses the part takes 4 seconds, so the student leaves before it is back.
+  const { app, page, close } = await start(
+    [{ markdown: partText("Intorni") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    { PYXIS_E2E_READ_DELAY: "study.part=4000" },
+  );
+  try {
+    // The exam page's code has not loaded yet, and the test holds it back: going to the exam page stays under way, with
+    // the lesson still on screen, until the test lets it through. A slow computer has the same moment, shorter.
+    await app.evaluate(({ session }) => {
+      const held = globalThis as unknown as { releaseExamPage?: () => void };
+      const release = new Promise<void>((resolve) => {
+        held.releaseExamPage = resolve;
+      });
+      session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        if (/\/assets\/PlanFrames-[\w-]+\.js$/.test(details.url)) void release.then(() => callback({}));
+        else callback({});
+      });
+    });
+    await open(page, "t-funzioni");
+    await expect(page.getByText("Apertura…")).toBeVisible();
+    await page.getByRole("button", { name: /^Torna all'esame/ }).click();
+    // The read comes back while the way to the exam page is still loading: the lesson, still on screen, shows the part
+    // it chose. Its address must stay as it was, or the student is taken back into the lesson.
+    await expect(working(page, "Sto dividendo il capitolo in parti")).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL(/#\/plans\/p-an2\/lesson\/t-funzioni$/);
+    await app.evaluate(() => (globalThis as unknown as { releaseExamPage: () => void }).releaseExamPage());
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+  } finally {
+    await app.evaluate(({ session }) => session.defaultSession.webRequest.onBeforeRequest(null));
     await close();
   }
 });

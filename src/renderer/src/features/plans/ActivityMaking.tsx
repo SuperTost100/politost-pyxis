@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Logo } from "../../components/Logo";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { SETTLED, simulationSettled, type MadeActivity } from "./making";
 
 /**
@@ -25,6 +26,7 @@ export function ActivityMaking({
   const navigate = useNavigate();
   const client = useQueryClient();
   const card = useRef<HTMLElement>(null);
+  const stillHere = useStillHere();
   // The same reads the quiz and simulation pages make, so they open with what is already known.
   const quiz = useQuery({
     queryKey: ["quiz-session", made.kind === "quiz" ? made.attemptId : ""],
@@ -51,15 +53,17 @@ export function ActivityMaking({
           (quiz.data.questions.length > 0 || SETTLED.includes(quiz.data.state)),
         )
       : simulationSettled(made.jobId, build);
+  // It opens only while the exam page is the one the router shows: the read can come back after the student has left.
   useEffect(() => {
     if (!ready) return;
     onDone();
     void client.invalidateQueries({ queryKey: ["unfinished", planId] });
-    navigate(
-      made.kind === "quiz"
-        ? `/plans/${planId}/quiz/${made.topicId}?attempt=${encodeURIComponent(made.attemptId)}`
-        : `/plans/${planId}/simulation`,
-    );
+    if (stillHere())
+      navigate(
+        made.kind === "quiz"
+          ? `/plans/${planId}/quiz/${made.topicId}?attempt=${encodeURIComponent(made.attemptId)}`
+          : `/plans/${planId}/simulation`,
+      );
   }, [ready]);
   // The card's content changes in place, from the dialog that just shrank back into the page.
   useEffect(() => {

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
+import { useStillHere } from "../../lib/useStillHere";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { LegacyLessonPage } from "./LegacyLessonPage";
 import { PartLoading, PartPage, partKey, usePartQuery } from "./PartPage";
@@ -33,11 +34,13 @@ export function LessonPage() {
   );
   // Opened without a part, core picks the first one not done, and the address then names it (`addressPart`). Until a
   // fresh read has chosen, what is cached names a part that may be done by now, or the part from before a finished
-  // lesson's rewrite stopped, so the page waits for it.
+  // lesson's rewrite stopped, so the page waits for it. The read can come back after the student has left, while the
+  // next page is still being drawn or loaded: the address is then no longer this page's to name.
   const opened = addressPart(query.data, { position, itemId }, fresh);
+  const stillHere = useStillHere();
   useEffect(() => {
-    if (opened) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
-  }, [opened, planId, topicId, navigate]);
+    if (opened && stillHere()) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
+  }, [opened, planId, topicId, navigate, stillHere]);
   const choosing = !position && !itemId && !fresh && !query.isError;
   const key = partKey(planId, topicId, position, itemId);
   if (query.data?.mode === "parts" && !choosing && query.data.replaces && oldLessonView(query.data) === "fallback")
