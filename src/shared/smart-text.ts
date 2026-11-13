@@ -502,6 +502,18 @@ export function finalRecap(segments: SmartSegment[]) {
   return recaps.at(-1) ?? null;
 }
 
+/**
+ * The questions whose answers finish a part of a lesson in parts: the last quick check of a teaching part, and the
+ * closing recap's questions of the recap part. Empty for a part written without one, which "Fatto" finishes instead.
+ */
+export function partQuestions(segments: SmartSegment[], kind: "part" | "recap"): string[] {
+  if (kind === "recap") return finalRecap(segments)?.questions.map((question) => question.id) ?? [];
+  const checks = segments.flatMap((segment) =>
+    segment.type === "block" && segment.block.kind === "check" ? [segment.block.id] : [],
+  );
+  return checks.slice(-1);
+}
+
 const uuidRef =
   /\s?\[(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\s*[,;]\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})*\]/gi;
 

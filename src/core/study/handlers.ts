@@ -46,7 +46,10 @@ import {
   type Wording,
 } from "./openLesson";
 import { writeAgentLesson } from "./agentLesson";
+import { openPart, registerPartJobs, rewriteInParts, topicParts, type PartInput } from "./partJobs";
+import { rewritePartSection } from "./parts";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
+import { markPartDone } from "./partProgress";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
@@ -130,6 +133,7 @@ export function studyHandlers(
   if (runner) {
     registerQuizJobs(db, runner, run);
     registerExerciseJobs(db, runner, run);
+    registerPartJobs(db, runner, run);
     registerQuizGradingJobs(db, runner, run);
     registerSimulationJobs(db, runner, simulationRun);
     registerPastPaperJobs(db, runner, run);
@@ -248,6 +252,13 @@ export function studyHandlers(
         (lesson) => !lesson.fallback,
       ).then((lesson) => withReading(lesson));
     },
+    parts(input: { planId: string; topicId: string }) {
+      return topicParts(db, input);
+    },
+    part(input: PartInput) {
+      const result = openPart(db, runner, input, options);
+      return result.mode === "parts" && result.lesson ? { ...result, lesson: withReading(result.lesson) } : result;
+    },
     lessonSection(
       input: {
         planId: string;
@@ -255,11 +266,23 @@ export function studyHandlers(
         section: number;
         note?: string;
         wording?: Wording;
+        position?: number;
       },
       signal?: AbortSignal,
     ) {
       return tracked("lesson-section", input, "jobs.lessonSection", (start) => {
         start();
+        const position = input.position;
+        if (position !== undefined)
+          return rewritePartSection(db, {
+            planId: input.planId,
+            topicId: input.topicId,
+            position,
+            section: input.section,
+            note: input.note,
+            run: run ?? runTurn,
+            signal,
+          });
         return rewriteLessonSection(db, input.planId, input.topicId, run ?? runTurn, {
           section: input.section,
           note: input.note,
@@ -275,6 +298,13 @@ export function studyHandlers(
       pick: number;
     }) {
       return answerSmartCheck(db, input);
+    },
+    partDone(input: { planId: string; topicId: string; position: number }) {
+      return markPartDone(db, input);
+    },
+    rewriteInParts(input: { planId: string; topicId: string }) {
+      if (!runner) throw new Error("jobs-unavailable");
+      return rewriteInParts(db, runner, input);
     },
     markdown(input: {
       planId: string;

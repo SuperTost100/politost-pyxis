@@ -71,7 +71,8 @@
   background: var(--surface-sunken);
 }
 
-.px-reader-outline {
+.px-reader-outline,
+.px-reader-side {
   grid-column: 1;
   justify-self: end;
   position: sticky;
@@ -131,15 +132,33 @@
   color: var(--ink-subtle);
   font-size: 12.5px;
 }
+/* A lesson part's column and its sheet sit together in the middle of the page, as wide as the drawing has them. */
+.px-reader-main:has(> .px-reader-side) {
+  grid-template-columns: minmax(0, 1fr) 220px minmax(0, 800px) minmax(0, 1fr);
+}
+.px-reader-main > .px-reader-side {
+  grid-column: 2;
+  justify-self: stretch;
+  width: auto;
+}
+.px-reader-main:has(> .px-reader-side) > .px-reader-column {
+  grid-column: 3;
+}
+
 /* Without room for both columns, the outline goes and the sheet takes the page. */
 @media (max-width: 1099px) {
-  .px-reader-outline {
+  .px-reader-outline,
+  .px-reader-side {
     display: none;
   }
-  .px-reader-main {
+  .px-reader-main,
+  .px-reader-main:has(> .px-reader-side) {
     grid-template-columns: 0 minmax(0, 860px) 0;
     justify-content: center;
     column-gap: 0;
+  }
+  .px-reader-main:has(> .px-reader-side) > .px-reader-column {
+    grid-column: 2;
   }
 }
 @media (max-width: 720px) {
@@ -168,6 +187,18 @@
   font-size: calc(32px * var(--text-scale, 1));
   line-height: calc(40px * var(--text-scale, 1));
   letter-spacing: -0.015em;
+}
+
+/* A title drawn from Markdown, such as a part's with a formula, keeps the heading's face and size. */
+.px-reader-head h1 .px-markdown {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+/* The title takes the focus when a part opens from Continua: the page moves on, and no box is drawn around it. */
+.px-reader-head h1[tabindex="-1"]:focus {
+  outline: none;
 }
 
 .px-reader-note {
@@ -330,16 +361,16 @@
   }
 }
 
-.px-reader-part {
+.px-reader-section {
   display: grid;
   gap: var(--space-4);
 }
 
-.px-reader-part > p {
+.px-reader-section > p {
   margin: 0;
 }
 
-.px-reader-part .ant-radio-group {
+.px-reader-section .ant-radio-group {
   display: grid;
   gap: var(--space-2);
 }

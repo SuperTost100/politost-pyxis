@@ -86,6 +86,55 @@ html[data-platform="darwin"] .px-studybar {
   white-space: nowrap;
 }
 
+/* A title that opens a panel: the title and its line in one button, with a chevron that turns while it is open. */
+.px-studybar-title-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: -8px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+
+.px-studybar-title-menu:hover,
+.px-studybar-title-menu[aria-expanded="true"] {
+  background: var(--surface-raised);
+}
+
+.px-studybar-title-text {
+  display: grid;
+  min-width: 0;
+}
+
+.px-studybar-title-line {
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.px-studybar-title-menu > svg {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 3px;
+  transition: transform var(--duration-small) var(--ease-out);
+}
+
+.px-studybar-title-menu > svg.is-open {
+  transform: rotate(180deg);
+}
+
 .px-studybar-actions {
   flex: none;
   display: flex;

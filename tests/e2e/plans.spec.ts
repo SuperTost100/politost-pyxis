@@ -131,7 +131,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
     // A new plan suggests the introduction first.
     await page
       .locator(".px-exam-now")
-      .getByRole("button", { name: "Inizia", exact: true })
+      .getByRole("button", { name: "Continua", exact: true })
       .click();
     // The introduction is its own page, without the passage references the model was given.
     await expect(page).toHaveURL(new RegExp(`#/plans/${created.planId}/intro$`));

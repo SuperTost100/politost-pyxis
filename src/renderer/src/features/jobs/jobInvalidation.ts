@@ -23,6 +23,10 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   // shows there at once, and the finished map appears without a reload.
   if (job.kind === "map-build") keys.push("map-build");
   if (job.kind === "map-build" && finished.has(job.state)) keys.push("maps", "map", "maps-all");
+  // An open part page and the path's parts read a part's state from these, so the part shows once it is written. A
+  // written part changes the suggestion's Continua too.
+  if (job.kind === "lesson-part") keys.push("part", "parts");
+  if (job.kind === "lesson-part" && finished.has(job.state)) keys.push("recommend");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
   // Choosing the subjects of Library files can make new subjects, and a source job that ends (a folder read again

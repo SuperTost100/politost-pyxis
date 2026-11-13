@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import { ArrowRight, Check, CircleCheck } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
@@ -11,7 +11,7 @@ import { openSourceViewer } from "../../components/SourceViewer";
 import { JobsButton } from "../jobs/JobsButton";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
-import { StudyBar } from "./StudyBar";
+import { StudyBar, type StudyTitleMenu } from "./StudyBar";
 import { recommendQuery } from "../../lib/queries";
 import { renderedText, wordCount } from "../../lib/renderedText";
 
@@ -55,7 +55,9 @@ function PartTitle({ part }: { part: Part }) {
 /**
  * The reading page shared by lessons and the course introduction (pyxis-mockups app/study.html, "s-lesson"): the study
  * bar with the way back, the page's name and its actions, over one white sheet about 87 characters a line. With `outline`, the
- * sheet's sections are listed beside it, with what has been read ticked, the current one marked and the time left.
+ * sheet's sections are listed beside it, with what has been read ticked, the current one marked and the time left. A
+ * lesson part puts its parts there instead (`side`), and in a window too narrow for that column it opens them from the
+ * bar's title (`barMenu`).
  */
 export function ReaderLayout({
   eyebrow,
@@ -67,10 +69,17 @@ export function ReaderLayout({
   onBack,
   actions,
   outline = false,
+  side,
+  barMenu,
+  meta,
+  titleFocusable = false,
+  headProps,
+  sheetClassName,
   children,
 }: {
   eyebrow?: ReactNode;
-  title: string;
+  /** The sheet's heading: text, or a part's title drawn with its formulas. */
+  title: ReactNode;
   /** The back button's name. With `backText` it is read before that text. */
   backLabel: string;
   /** Shown beside the back arrow, as the exam's name; until it is known the arrow shows `backLabel`. */
@@ -81,6 +90,17 @@ export function ReaderLayout({
   onBack: () => void;
   actions?: ReactNode;
   outline?: boolean;
+  /** Drawn in the outline's column, which hides under 1,100 px, such as a lesson's parts. */
+  side?: ReactNode;
+  /** The bar's title opens a panel under it, such as the parts when their column is hidden. */
+  barMenu?: StudyTitleMenu;
+  /** A line under the heading, such as a part's minutes. */
+  meta?: ReactNode;
+  /** The heading can take the focus, as a part's does when Continua opens it. */
+  titleFocusable?: boolean;
+  /** On the sheet's head, such as the handlers that open a part's menu on a right-click. */
+  headProps?: HTMLAttributes<HTMLElement>;
+  sheetClassName?: string;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -161,7 +181,7 @@ export function ReaderLayout({
     };
   }, [parts]);
   const minutes = Math.ceil(parts.slice(current).reduce((sum, part) => sum + part.words, 0) / WORDS_PER_MINUTE);
-  const showOutline = outline && parts.length > 1;
+  const showOutline = !side && outline && parts.length > 1;
   return (
     <div className="px-reader">
       <StudyBar
@@ -170,6 +190,7 @@ export function ReaderLayout({
         back={backText ? { text: backText, label: backLabel, onClick: onBack } : { text: backLabel, onClick: onBack }}
         title={barTitle}
         subtitle={barSubtitle}
+        titleMenu={barMenu}
         actions={
           <>
             {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
@@ -178,7 +199,8 @@ export function ReaderLayout({
           </>
         }
       />
-      <main className={showOutline ? "px-reader-main has-outline" : "px-reader-main"}>
+      <main className={showOutline || side ? "px-reader-main has-outline" : "px-reader-main"}>
+        {side ? <div className="px-reader-side">{side}</div> : null}
         {showOutline ? (
           <nav className="px-reader-outline" aria-label={t("lesson.outline")}>
             <p className="px-reader-outline-label" aria-hidden>
@@ -215,12 +237,13 @@ export function ReaderLayout({
             ) : null}
           </nav>
         ) : null}
-        <article ref={sheet} className="px-reader-column passage">
-          <header className="px-reader-head">
+        <article ref={sheet} className={["px-reader-column passage", sheetClassName].filter(Boolean).join(" ")}>
+          <header {...headProps} className="px-reader-head">
             {eyebrow ? <p className="label ink-muted px-reader-kicker">{eyebrow}</p> : null}
-            <h1 ref={heading} className="title-1">
+            <h1 ref={heading} className="title-1" tabIndex={titleFocusable ? -1 : undefined}>
               {title}
             </h1>
+            {meta}
           </header>
           {children}
         </article>

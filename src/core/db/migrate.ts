@@ -370,6 +370,54 @@ CREATE INDEX sources_subject_sort ON sources(subject_sort) WHERE subject_sort IN
     version: 31,
     sql: `ALTER TABLE sources ADD COLUMN chosen_kind TEXT;`,
   },
+  // A topic's lesson in short parts. `lesson_outlines` is the plan of a topic's parts, at most one live per topic
+  // (`retired_at` NULL); `passage_key` is the SHA-256 of the topic's sorted passage ids when it was planned, and
+  // `origin` says whether the model, the fallback in code or no planning at all ('single') cut it. `lesson_parts` is one
+  // part in reading order, the recap last; its passages are JSON rather than a link table, because a plan of unwritten
+  // parts must never stop a source from being removed. A written part is an ordinary `lesson` item named by `item_id`.
+  // `write_failed_at` is when the part's last write failed or was cancelled, kept until a write succeeds or the student
+  // asks again, so a part does not go back to being written in the background once its failed job is dismissed.
+  // Only new tables: every lesson, event, card and plan that existed reads as before.
+  {
+    version: 32,
+    sql: `CREATE TABLE lesson_outlines (
+  id TEXT PRIMARY KEY,
+  plan_id TEXT NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+  passage_key TEXT NOT NULL,
+  origin TEXT NOT NULL CHECK (origin IN ('model', 'fallback', 'single')),
+  wording TEXT CHECK (wording IS NULL OR wording IN ('simple', 'balanced', 'technical')),
+  replaces_item_id TEXT REFERENCES items(id) ON DELETE SET NULL,
+  engine_provider TEXT,
+  model_id TEXT,
+  model_source TEXT CHECK (model_source IS NULL OR model_source IN ('reported', 'selected')),
+  prompt_template TEXT,
+  prompt_version TEXT,
+  grounding TEXT CHECK (grounding IS NULL OR grounding IN ('sources', 'mixed', 'general')),
+  created_at INTEGER NOT NULL,
+  retired_at INTEGER
+);
+CREATE INDEX lesson_outlines_plan ON lesson_outlines(plan_id);
+CREATE INDEX lesson_outlines_topic ON lesson_outlines(topic_id);
+CREATE UNIQUE INDEX lesson_outlines_live ON lesson_outlines(topic_id) WHERE retired_at IS NULL;
+CREATE INDEX lesson_outlines_replaces ON lesson_outlines(replaces_item_id) WHERE replaces_item_id IS NOT NULL;
+CREATE TABLE lesson_parts (
+  id TEXT PRIMARY KEY,
+  outline_id TEXT NOT NULL REFERENCES lesson_outlines(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 1),
+  kind TEXT NOT NULL CHECK (kind IN ('part', 'recap')),
+  title TEXT NOT NULL,
+  about TEXT NOT NULL DEFAULT '',
+  passage_ids_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(passage_ids_json)),
+  minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 30),
+  item_id TEXT REFERENCES items(id) ON DELETE SET NULL,
+  summary TEXT,
+  done_at INTEGER,
+  write_failed_at INTEGER CHECK (write_failed_at IS NULL OR typeof(write_failed_at) = 'integer'),
+  UNIQUE (outline_id, position)
+);
+CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NULL;`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

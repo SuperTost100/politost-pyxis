@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { PLAN_TITLE_MAX } from "../../shared/plan-file";
 import { examSessionsSchema } from "../../shared/exam-sessions";
+import { partTextSql } from "../study/partText";
 import { saveSessions } from "./sessions";
 
 export const planSettingsSchema = z.object({
@@ -50,13 +51,18 @@ export function setPlanArchived(
  * What deleting a plan takes with it, for the confirmation that lists it: its topics, the lessons Pyxis wrote, the
  * quizzes, diagnostics and reviews and the simulations the student handed in, and its flashcards. Everything the delete removes counts: an archived
  * plan, topics a rebuild set aside with their lessons and cards, and cards the student removed but could still restore.
+ * A lesson in parts counts once, as soon as one of its parts is written, however many parts it has, and every text of
+ * a part (one per level it was written at) is part of it (`partTextSql`).
  */
 export function planFootprint(db: Database.Database, planId: string) {
   const row = db
     .prepare(
       `SELECT
         (SELECT count(*) FROM topics WHERE plan_id = @plan) AS topics,
-        (SELECT count(*) FROM items WHERE plan_id = @plan AND kind = 'lesson') AS lessons,
+        (SELECT count(*) FROM items i WHERE i.plan_id = @plan AND i.kind = 'lesson'
+          AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "i")}))
+          + (SELECT count(*) FROM lesson_outlines o WHERE o.plan_id = @plan
+            AND EXISTS (SELECT 1 FROM lesson_parts lp WHERE lp.outline_id = o.id AND lp.item_id IS NOT NULL)) AS lessons,
         (SELECT count(*) FROM attempts a JOIN items i ON i.id = a.item_id
           WHERE a.plan_id = @plan AND a.submitted_at IS NOT NULL AND i.kind IN ('quiz', 'diagnostic', 'review')) AS quizzes,
         (SELECT count(*) FROM attempts a JOIN items i ON i.id = a.item_id

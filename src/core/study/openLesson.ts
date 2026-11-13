@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { generate } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { BOOK_VERSION, cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
+import { BOOK_VERSION, cacheKey, itemBody, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
 import {
@@ -21,7 +21,7 @@ export const wordings = ["simple", "balanced", "technical"] as const;
 export type Wording = (typeof wordings)[number];
 
 // Bound each model call while teaching every passage in reading order.
-const CONTEXT_CHARS = 24_000;
+export const CONTEXT_CHARS = 24_000;
 const PASSAGE_CHARS = 4_000;
 
 const WORDING_RULES: Record<Wording, string> = {
@@ -68,7 +68,7 @@ function lessonParts(all: Passage[]) {
 }
 
 /** Reference material for the model, under its section headings and without labels it could cite. */
-function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
+export function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
   let section: string | null = null;
   return rows
     .map((row) => {
@@ -82,7 +82,7 @@ function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
     .join("\n\n");
 }
 
-function bookMarkdown(passages: Array<Pick<Passage, "text" | "section_path">>) {
+export function bookMarkdown(passages: Array<Pick<Passage, "text" | "section_path">>) {
   return passages
     .map((row) => {
       const heading = row.section_path ? `## ${row.section_path}\n\n` : "";
@@ -201,14 +201,16 @@ export function withFigures(
   return drawFigures(markdown, { ...options, python: python ?? noSandbox });
 }
 
+/** The system text of a lesson call: `template` (a whole lesson, or one part of one) with the reader's level and wording. */
 export function lessonSystem(
   context: ReturnType<typeof modelContext>,
   grounded: boolean,
   figures: boolean,
+  template: "lesson.write" | "lesson.part" = "lesson.write",
 ) {
   const style = `Reader education level: ${context.education}. Wording: ${context.wording}. ${WORDING_RULES[context.wording]} Match the depth to the reader's education level.${readerContext(context)}`;
-  const template = systemPrompt("lesson.write", { contentLanguage: context.language });
-  const base = figures ? template : withoutFigures(template);
+  const text = systemPrompt(template, { contentLanguage: context.language });
+  const base = figures ? text : withoutFigures(text);
   const general = grounded
     ? ""
     : "\nNo material was supplied for this topic: teach it from your general knowledge.";
@@ -549,6 +551,8 @@ export async function rewriteLessonSection(
   const context = modelContext(db, planId, topicId, options.wording);
   const cached = loadLesson(db, { planId, kind: "lesson", key: context.key });
   if (!cached?.provider) throw new Error("lesson-missing");
+  // The lesson as stored now: a rewrite that saves first changes it, and this one must not undo that.
+  const body = itemBody(db, cached.itemId);
   const sections = smartSections(cached.markdown);
   const section = sections[options.section];
   if (!section) throw new Error("section-missing");
@@ -588,18 +592,21 @@ export async function rewriteLessonSection(
     python,
     { known: cached.figures, signal: options.signal },
   );
-  const itemId = saveLesson(db, {
-    planId,
-    topicId,
-    kind: "lesson",
-    key: context.key,
-    markdown,
-    passageIds: context.passageIds,
-    engine: { provider: result.provider, model: result.model },
-    prompt: { template: "lesson.write", version: MODEL_VERSION },
-    grounding: grounded ? "sources" : "general",
-    figures,
-  });
+  const itemId = db.transaction(() => {
+    if (itemBody(db, cached.itemId) !== body) throw new Error("lesson-changed");
+    return saveLesson(db, {
+      planId,
+      topicId,
+      kind: "lesson",
+      key: context.key,
+      markdown,
+      passageIds: context.passageIds,
+      engine: { provider: result.provider, model: result.model },
+      prompt: { template: "lesson.write", version: MODEL_VERSION },
+      grounding: grounded ? "sources" : "general",
+      figures,
+    });
+  })();
   return {
     markdown,
     passageIds: context.passageIds,

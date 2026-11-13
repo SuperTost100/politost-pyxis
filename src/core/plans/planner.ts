@@ -6,6 +6,8 @@ import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks, NO_
 import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
+import { partsDoneSince } from "../study/partProgress";
+import { partOfText } from "../study/partText";
 
 /**
  * The session planner and Oggi. See "Session planner" in docs/mastery.md: remaining work is an estimate in minutes from
@@ -83,11 +85,12 @@ export type WorkPiece = { kind: "start" | "topic" | "simulation"; topicId: strin
 /**
  * The work a plan has left, from the path's view of it, in the path's order: the introduction and diagnostic while
  * nothing was studied, then each topic below the target in the plan's order (its lesson if unread, and its graded
- * activities), then one simulation until one is done. A topic at zero mastery needs `stayActivities` (3) graded
+ * activities), then one simulation until one is done. An unread lesson in parts counts the minutes of its parts not
+ * done, any other unread lesson `stepMinutes.lesson`. A topic at zero mastery needs `stayActivities` (3) graded
  * activities; one part of the way there needs that share of them, rounded up.
  */
 export function remainingWork(input: {
-  topics: Array<Pick<TopicStatus, "id" | "mastery">>;
+  topics: Array<Pick<TopicStatus, "id" | "mastery" | "partMinutes">>;
   steps: Array<Pick<Step, "activity" | "topicId">>;
   hasIntro: boolean;
   target: number;
@@ -114,7 +117,7 @@ export function remainingWork(input: {
       kind: "topic",
       topicId: topic.id,
       minutes:
-        (read.has(topic.id) ? 0 : stepMinutes.lesson) +
+        (read.has(topic.id) ? 0 : (topic.partMinutes?.left ?? stepMinutes.lesson)) +
         Math.ceil(stayActivities * share - 1e-9) * stepMinutes.quiz,
     });
   }
@@ -229,14 +232,25 @@ function studiedPlan(db: Database.Database, row: PlanRow, now: number) {
   const state = pathState(db, row.id, now, { dueCards: false });
   if (!state) return null;
   const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
+  const partsToday = partsDoneSince(db, row.id, today);
   const remainingNow = remainingMinutes(state);
-  const doneMinutes = doneToday.reduce((sum, step) => sum + stepMinutes[step.activity], 0);
+  // A lesson in parts counts each part's minutes when it is done, so the step its last part records, which names a
+  // part's text, adds none. A step that names another lesson was a lesson read whole and keeps its minutes.
+  // shortcut: a lesson whose parts were all finished as book text names no item and counts 30 on top of its parts;
+  // store the outline on the step if lessons without an AI tool become common.
+  const minutesOf = (step: Step) =>
+    step.activity === "lesson" && step.itemId && partOfText(db, step.itemId) ? 0 : stepMinutes[step.activity];
+  const doneMinutes =
+    doneToday.reduce((sum, step) => sum + minutesOf(step), 0) +
+    partsToday.reduce((sum, part) => sum + part.minutes, 0);
   // The mastery the exam list shows, weighted by passages.
   const mastery = weightedPlanMastery(state.topics, topicPassageCounts(db, row.id));
   return {
     row,
     state,
     doneToday,
+    /** Steps or parts done today: Oggi measures the day only once something was studied. */
+    studiedToday: doneToday.length + partsToday.length > 0,
     doneMinutes,
     // The plan is laid out from the start of today, so studying today does not move today's share.
     remaining: remainingNow + doneMinutes,
@@ -424,10 +438,10 @@ function todayMinutes(plan: Studied, goals: Map<string, number> | null): number 
  * one step alone never makes the day's work.
  */
 function todayComplete(
-  plan: Pick<Studied, "doneToday" | "doneMinutes">,
+  plan: Pick<Studied, "studiedToday" | "doneMinutes">,
   minutes: number | null,
 ): boolean {
-  return minutes != null && plan.doneToday.length > 0 && plan.doneMinutes >= minutes - 2.5;
+  return minutes != null && plan.studiedToday && plan.doneMinutes >= minutes - 2.5;
 }
 
 /**
@@ -465,8 +479,8 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
       const days = plan.state.daysToExam;
       const minutes = todayMinutes(plan, goals);
       // An allocation under the 2.5 minute tolerance is too small to ask for and would tick off with no work done.
-      if (minutes != null && minutes < 2.5 && plan.doneToday.length === 0) return [];
-      if (!next && plan.doneToday.length === 0) return [];
+      if (minutes != null && minutes < 2.5 && !plan.studiedToday) return [];
+      if (!next && !plan.studiedToday) return [];
       const complete = todayComplete(plan, minutes);
       return [
         {
@@ -623,8 +637,13 @@ export function examRings(db: Database.Database, now = Date.now()) {
       planMasteryBreakdown(db, plan.row.id, now).some((topic) =>
         Object.values(topic.parts).some((part) => part.count > 0),
       );
+    // A lesson in parts starts with all its parts' minutes left.
     const fresh = remainingMinutes({
-      topics: state.topics.map((topic) => ({ id: topic.id, mastery: 0 })),
+      topics: state.topics.map((topic) => ({
+        id: topic.id,
+        mastery: 0,
+        ...(topic.partMinutes ? { partMinutes: { total: topic.partMinutes.total, left: topic.partMinutes.total } } : {}),
+      })),
       steps: [],
       hasIntro: state.hasIntro,
       target: state.target,
@@ -656,12 +675,12 @@ export function examRings(db: Database.Database, now = Date.now()) {
 
 /** Oggi's share for one exam, with the same rules as Oggi's item: see `examRings`. */
 export function todayShare(
-  plan: Pick<Studied, "doneToday" | "doneMinutes"> & { state: Pick<PlanState, "daysToExam"> },
+  plan: Pick<Studied, "studiedToday" | "doneMinutes"> & { state: Pick<PlanState, "daysToExam"> },
   minutes: number | null,
   hasNext: boolean,
 ): number | null {
   const days = plan.state.daysToExam;
-  const did = plan.doneToday.length > 0;
+  const did = plan.studiedToday;
   // Without minutes from the planner nothing measures the day: see `todayUnmeasured`.
   if (minutes == null || (days != null && days < 0)) return null;
   if (!did && (!hasNext || minutes < 2.5)) return null;

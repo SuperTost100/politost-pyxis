@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { recordedPlanRun } from "./recorded-plan";
 import { generateQuiz, quizConfig, type QuizSnapshot } from "../study/configuredQuiz";
 
@@ -80,5 +83,46 @@ describe("a call with no recorded reply", () => {
         responseSchema: { name: "folder-sort", schema: { properties: { files: {} } } },
       } as never),
     ).rejects.toThrow('no recorded reply for "files"');
+  });
+});
+
+describe("recorded Markdown replies", () => {
+  const text = (run: ReturnType<typeof recordedPlanRun>, prompt: string) =>
+    run({ system: "Write.", prompt } as never).then((reply) => reply.text);
+
+  it("answers a list in turn, fails or waits for a file where an entry says so, and logs every prompt", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "pyxis-recorded-"));
+    try {
+      const hold = join(folder, "hold");
+      const log = join(folder, "prompts");
+      const run = recordedPlanRun(
+        JSON.stringify({
+          markdown: [{ markdown: "Uno" }, { fail: "engine down" }, { markdown: "Tre", hold }],
+          lessonParts: { lessonParts: [] },
+        }),
+        0,
+        log,
+      );
+      expect(await text(run, "Part 1 of 3.")).toBe("Uno");
+      await expect(text(run, "Part 2 of 3.")).rejects.toThrow("engine down");
+      let third: string | undefined;
+      const waiting = text(run, "Part 3 of 3.").then((value) => (third = value));
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(third).toBeUndefined();
+      writeFileSync(hold, "");
+      await waiting;
+      expect(third).toBe("Tre");
+      expect(await text(run, "Part 1 again")).toBe("Uno");
+      await run({ system: "Split.", prompt: "{}", responseSchema: { name: "o", schema: { properties: { lessonParts: {} } } } } as never);
+      expect(readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line) as string)).toEqual([
+        "Part 1 of 3.",
+        "Part 2 of 3.",
+        "Part 3 of 3.",
+        "Part 1 again",
+        "{}",
+      ]);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

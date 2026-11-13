@@ -3,6 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
+import { partText } from "./part-texts";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -14,7 +16,7 @@ import { fromChiediToExams } from "./doors";
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
 
-// A recorded smart text with a closing recap; every topic's lesson uses it.
+// A smart lesson with a closing recap, as the student had it before lessons came in parts.
 const lesson = [
   "## Che cos'è una forza",
   "",
@@ -94,7 +96,8 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
     }),
   );
   const replies = {
-    markdown: { markdown: lesson },
+    // Each topic is small enough for a lesson of one part, which this recorded part is.
+    markdown: { markdown: partText("Forza") },
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Che cosa cambia una forza ${i + 1}?`,
@@ -162,7 +165,7 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
       location.hash = `/plans/${planId}`;
     }, planId);
     const next = page.locator(".px-exam-now");
-    await expect(next.getByText("Adesso")).toBeVisible();
+    await expect(next.getByText("Consigliato adesso", { exact: true })).toBeVisible();
     await expect(next.getByRole("heading", { name: "Introduzione" })).toBeVisible();
     await expect(page.getByText(/Si sblocca|Unlocks/)).toHaveCount(0);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
@@ -185,22 +188,20 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
     for (const name of ["Lezione", "Esercizi", "Quiz"])
       await expect(forFirst.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
     await forFirst.getByRole("button", { name: /^Lezione/ }).click();
-    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[0]!.id}$`));
+    // A topic never read opens its lesson in parts, here one part, which the address names.
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[0]!.id}\\?part=1$`));
     // Opening records nothing.
-    await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
-      timeout: 20000,
-    });
+    await expect(page.getByText("Forza: l'idea")).toBeVisible({ timeout: 20000 });
     expect((await read()).steps).toEqual([]);
-    const recap = page.getByRole("region", { name: "Ripasso finale" });
-    await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
-    await recap.getByRole("button", { name: /si dimezza/ }).click();
-    await expect(page.getByText("Lezione completata")).toBeVisible();
+    // Answering the lesson's final question, even wrongly, finishes it.
+    const check = page.getByRole("region", { name: "Verifica" });
+    await check.getByRole("button", { name: /Una cosa sbagliata/ }).click();
+    await expect(page.getByRole("button", { name: /^Continua: / })).toBeFocused();
     expect((await read()).steps).toMatchObject([{ activity: "lesson", topicId: topics[0]!.id }]);
 
     // After the first lesson Adesso suggests work on it.
-    await page.getByRole("button", { name: "Torna al percorso" }).click();
-    await expect(next.getByText("Adesso")).toBeVisible();
+    await page.getByRole("button", { name: "Per oggi basta" }).click();
+    await expect(next.getByText("Consigliato adesso", { exact: true })).toBeVisible();
     await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito: ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
     // The topic the path is on opens with its steps, and the suggested one says so.
@@ -222,14 +223,10 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
 
     // A lesson on a topic the path did not suggest still records a done step.
     await forThird.getByRole("button", { name: /^Lezione/ }).click();
-    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[2]!.id}$`));
-    await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
-      timeout: 20000,
-    });
-    await recap.scrollIntoViewIfNeeded();
-    await recap.getByRole("button", { name: /^(B\s*)?Newton$/ }).click();
-    await recap.getByRole("button", { name: /raddoppia/ }).click();
-    await expect(page.getByText("Lezione completata")).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/lesson/${topics[2]!.id}\\?part=1$`));
+    await expect(page.getByText("Forza: l'idea")).toBeVisible({ timeout: 20000 });
+    await check.getByRole("button", { name: /La cosa giusta/ }).click();
+    await expect(page.getByRole("button", { name: /^Continua: / })).toBeFocused();
     expect((await read()).steps.map((step) => [step.activity, step.topicId])).toEqual([
       ["lesson", topics[0]!.id],
       ["lesson", topics[2]!.id],
@@ -239,7 +236,7 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
       (planId) => window.pyxis.invoke("plans.recommend", { planId }),
       planId,
     )) as { next: { activity: string; topicId: string | null } };
-    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await page.getByRole("button", { name: /^Continua: / }).click();
     await expect(page).toHaveURL(
       new RegExp(`#/plans/${planId}/${guide.next.activity}${guide.next.topicId ? `/${guide.next.topicId}` : ""}`),
     );
@@ -346,8 +343,14 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     }>;
     const read = () => invoke<Omit<Read, "steps"> & { steps: Steps }>("plans.read", { planId });
     const topic = (await read()).topics[0]!;
+    // The student's lesson, written before lessons came in parts; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topic.id], { markdown: lesson, wording: "balanced" });
+    seeding.close();
 
-    // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic.
+    // A lesson read, a quiz handed in and a set of exercises finished, all on the first topic. The lesson is finished
+    // with "Fatto", so it opens as it was, in the reader that came before parts.
+    await invoke("plans.complete", { planId, activity: "lesson", topicId: topic.id });
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;
@@ -357,7 +360,6 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Una forza cambia lo stato di moto", { exact: false })).toBeVisible({
       timeout: 20000,
     });
-    await invoke("plans.complete", { planId, activity: "lesson", topicId: topic.id });
     const quiz = await invoke<{ attemptId: string }>("study.quizStart", {
       planId,
       topicId: topic.id,

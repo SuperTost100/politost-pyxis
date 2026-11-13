@@ -1824,6 +1824,55 @@ describe("progress with path steps that name what was done", () => {
   });
 });
 
+describe("a lesson in parts in a plan file", () => {
+  it("leaves the parts and the answers to their questions out, keeps the old lesson and the step, and imports", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = bookPlan(db);
+    const at = Date.now() - 3_600_000;
+    const passageId = db.prepare("SELECT passage_id FROM topic_passages WHERE topic_id = ?").pluck().get(topicId) as string;
+    const item = db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,prompt_template,grounding,created_at) VALUES(?,?,?,'lesson',?,'claude',?,'sources',?)",
+    );
+    item.run("old", planId, topicId, JSON.stringify({ markdown: "Il vettore." }), "lesson.write", at);
+    item.run("part1", planId, topicId, JSON.stringify({ markdown: "Il vettore, in breve." }), "lesson.part", at + 1);
+    db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES('old',?),('part1',?)").run(passageId, passageId);
+    db.prepare(
+      "INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES('o',?,?,'k','model',?)",
+    ).run(planId, topicId, at);
+    db.exec(`INSERT INTO lesson_parts(id,outline_id,position,kind,title,passage_ids_json,minutes,item_id) VALUES
+      ('a','o',1,'part','Il vettore','[]',5,'part1'),('b','o',2,'part','Il lavoro','[]',6,NULL)`);
+    const event = db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,topic_id,item_id,payload_json,created_at) VALUES(?,?,?,?,?,?,?)",
+    );
+    const check = (blockId: string) => JSON.stringify({ score: 1, evidenceKind: "check", blockId, pick: 0 });
+    event.run("e1", "answer_given", planId, topicId, "old", check("b1"), at + 2);
+    event.run("e2", "lesson_opened", planId, topicId, "part1", "{}", at + 3);
+    event.run("e3", "answer_given", planId, topicId, "part1", check("b2"), at + 4);
+    recordStep(db, planId, { activity: "lesson", topicId, itemId: "part1" }, at + 5);
+
+    for (const progress of [false, true]) {
+      const file = planFileSchema.parse(JSON.parse(JSON.stringify(exportPlan(db, planId, { progress }))));
+      expect(file.items?.map((row) => row.id)).toEqual(["old"]);
+      if (!progress) continue;
+      // The old lesson's answer keeps its item; the part's answer and opening go with the part. The step stays, without
+      // naming an item the file does not hold.
+      expect(file.progress!.map((row) => [row.kind, row.item ?? null])).toEqual([
+        ["answer_given", 0],
+        ["lesson_completed", null],
+      ]);
+      expect(file.progress![1]!.payload).toMatchObject({ activity: "lesson" });
+      expect(file.progress![1]!.payload).not.toHaveProperty("itemId");
+      const fresh = openDatabase(":memory:");
+      const copy = importPlan(fresh, file, at + 5000);
+      expect(fresh.prepare("SELECT COUNT(*) FROM items WHERE plan_id = ? AND kind = 'lesson'").pluck().get(copy)).toBe(1);
+      expect(fresh.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(0);
+      expect(readSteps(fresh, copy)).toMatchObject([{ activity: "lesson", itemId: null }]);
+      fresh.close();
+    }
+    db.close();
+  });
+});
+
 describe("plan file exam sessions", () => {
   const noon = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).getTime();
   const future = (days: number) => examInstant(days);

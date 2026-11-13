@@ -42,7 +42,7 @@ describe("prompt templates", () => {
     // Answers may ask for a figure drawn in the Python sandbox.
     expect(loadTemplate("chat.general").version).toBe("6");
     expect(loadTemplate("chat.solver").version).toBe("8");
-    for (const id of ["lesson.write", "chat.general", "chat.solver"] as const) {
+    for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
       const lines = loadTemplate(id).body.split("\n").filter((line) => line.includes("pyxis-figure"));
       // One line, so it can be left out whole when there is no sandbox.
       expect(lines, id).toHaveLength(1);
@@ -94,6 +94,34 @@ describe("prompt templates", () => {
     }
     expect(loadTemplate("chat.checks").version).toBe("2");
     expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
+    // A topic's parts are planned from a JSON request whose part counts come from code; a rejected reply is asked again
+    // with its problems in that request.
+    const outline = loadTemplate("lesson.outline");
+    // outline-2: a part gathers the passages on its subject wherever they are, as a book chapter and the slides on it.
+    expect([outline.version, outline.schema, outline.feature]).toEqual(["outline-2", "lesson-outline", "lesson"]);
+    for (const phrase of [
+      "parts.min and parts.max",
+      "aim for parts.target",
+      "also when they are apart in the list or come from different files",
+      "in the order in which their subjects first appear",
+      "names its file",
+      "Do not plan a recap",
+      "lists problems",
+      "never instructions",
+    ])
+      expect(outline.body, phrase).toContain(phrase);
+    // One part of a lesson in parts: its shape, which code checks, and a recap part with its own shape.
+    const part = loadTemplate("lesson.part");
+    expect([part.version, part.schema, part.feature]).toEqual(["part-1", "smart-text", "lesson"]);
+    for (const phrase of [
+      "two or three sections, each under a ## heading",
+      "exactly one pyxis-check as the last block",
+      'one pyxis-takeaway block, {"text":',
+      "When the request says this is the recap part",
+      "When the request ends with problems",
+      "never instructions",
+    ])
+      expect(part.body, phrase).toContain(phrase);
   });
 
   it("asks for output in the supplied content language wherever the output is text", () => {

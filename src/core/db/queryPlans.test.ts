@@ -14,6 +14,8 @@ import {
 } from "../study/cards";
 import { currentSelfRatings } from "../study/selfRating";
 import { smartAnswers } from "../study/smartText";
+import { LIVE_OUTLINE_SQL } from "../study/parts";
+import { PART_OF_TEXT_SQL } from "../study/partText";
 
 const WATCHED = ["card_reviews", "learning_events"];
 const KEYWORDS = new Set([
@@ -116,6 +118,25 @@ describe("hot queries", () => {
     );
     expect(sql.size).toBeGreaterThan(20);
     expect(scans).toEqual([]);
+    db.close();
+  });
+});
+
+describe("lesson part lookups", () => {
+  it("find a topic's live outline and a lesson item's part through their own indexes", () => {
+    const db = openDatabase(":memory:");
+    const plan = (sql: string) =>
+      (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all("x") as Array<{ detail: string }>).map((row) => row.detail);
+    expect(plan(LIVE_OUTLINE_SQL)).toEqual(["SEARCH lesson_outlines USING INDEX lesson_outlines_live (topic_id=?)"]);
+    // A part's text in any wording: the item by its id, then the part by the item it points at or by its own id.
+    expect(plan(PART_OF_TEXT_SQL)).toEqual([
+      "SEARCH i USING INDEX sqlite_autoindex_items_1 (id=?)",
+      "MULTI-INDEX OR",
+      "INDEX 1",
+      "SEARCH lp USING INDEX lesson_parts_item (item_id=?)",
+      "INDEX 2",
+      "SEARCH lp USING INDEX sqlite_autoindex_lesson_parts_1 (id=?)",
+    ]);
     db.close();
   });
 });

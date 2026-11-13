@@ -22,6 +22,7 @@ import { MAX_SOURCE_BYTES } from "../../shared/source-types";
 import { hasBlob, putBlob, readBlob, removeBlob } from "../blobs";
 import { sha256 } from "../sources/quality";
 import { latestReview } from "../study/cards";
+import { partTextSql } from "../study/partText";
 import { validateGraph, type ConceptGraph } from "../maps/graph";
 
 export type { PlanFile };
@@ -302,8 +303,14 @@ export function exportPlan(
           progress: (
             db
               .prepare(
+                // The answers to a lesson part's questions stay out with the part: without their item they would
+                // count as checks of no lesson, every one of them, in the importer's mastery. Every text of a part
+                // is a part's, also one written at a level the part no longer shows (`partTextSql`).
                 `SELECT kind, topic_id, item_id, payload_json, created_at FROM learning_events
-                 WHERE plan_id = ? ORDER BY created_at, rowid`,
+                 WHERE plan_id = ?
+                   AND (item_id IS NULL OR NOT EXISTS (SELECT 1 FROM items i JOIN lesson_parts lp ON ${partTextSql("lp", "i")}
+                     WHERE i.id = learning_events.item_id))
+                 ORDER BY created_at, rowid`,
               )
               .all(planId) as Array<{
               kind:
@@ -548,10 +555,13 @@ function exportedPayload(
  * The items a file may carry. A review session is only the live queue. What the student's mistakes produced travels
  * only with progress: a gap drill (its explanation is written from their wrong answers) and a finished review
  * (submitted attempt), which then travels as a quiz so attempts and adopted questions have something to point at.
+ * The parts of a lesson in parts stay out until the file format carries their outline: the importing app writes its own.
+ * Every text of a part stays out, also one written at a level the part no longer shows (`partTextSql`).
  * Parameters: the progress flag twice.
  */
 const portableItems = `kind != 'review_session'
   AND COALESCE(json_extract(body_json, '$.pastPaper'), 0) = 0
+  AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "items")})
   AND (? OR id NOT IN (SELECT item_id FROM gap_items))
   AND (kind != 'review' OR (? AND EXISTS (SELECT 1 FROM attempts a WHERE a.item_id = items.id AND a.submitted_at IS NOT NULL)))`;
 

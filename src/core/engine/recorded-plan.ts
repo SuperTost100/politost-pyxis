@@ -13,8 +13,8 @@ function recordedStems(questions: unknown[]): RegExp[] {
 }
 
 /**
- * Unpackaged integration fixture only; the caller must enforce the dev flag. With `promptLog`, every structured call
- * adds its prompt to that file as one line of JSON, so a test can read what the engine was sent.
+ * Unpackaged integration fixture only; the caller must enforce the dev flag. With `promptLog`, every call, structured
+ * or Markdown, adds its prompt to that file as one line of JSON, so a test can read what the engine was sent.
  */
 export function recordedPlanRun(
   fixture: string,
@@ -25,11 +25,23 @@ export function recordedPlanRun(
   // A reply given as a list answers the structured calls in turn, round and round, so a build in parts can answer each
   // part differently.
   let calls = 0;
+  let texts = 0;
   return async (input) => {
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
     });
+    if (promptLog) appendFileSync(promptLog, `${JSON.stringify(input.prompt)}\n`);
     if (!input.responseSchema) {
+      // A list of Markdown replies answers the calls in turn, round and round, with the same `fail`, `delayMs` and
+      // `hold` keys as a structured reply, so a lesson in parts can answer each part differently.
+      if (Array.isArray(replies.markdown)) {
+        const listed = replies.markdown as Array<{ markdown?: string; fail?: string; delayMs?: number; hold?: string }>;
+        const entry = listed[texts++ % listed.length] ?? {};
+        if (entry.delayMs) await delay(Math.min(Math.max(entry.delayMs, 0), 10000), undefined, { signal: input.signal });
+        while (entry.hold && !existsSync(entry.hold)) await delay(50, undefined, { signal: input.signal });
+        if (typeof entry.fail === "string") throw new Error(entry.fail);
+        return { text: entry.markdown ?? "Recorded lesson [P1].", model: "recorded-plan", provider: "fixture", inputTokens: 0 };
+      }
       const markdown = replies.markdown as
         | { markdown?: string; streamed?: string; hold?: string }
         | undefined;
@@ -46,7 +58,6 @@ export function recordedPlanRun(
         inputTokens: 0,
       };
     }
-    if (promptLog) appendFileSync(promptLog, `${JSON.stringify(input.prompt)}\n`);
     const schema = input.responseSchema?.schema as
       { properties?: Record<string, unknown> } | undefined;
     // A past paper's reply is the whole object, so it cannot be told apart by its first property. A subject's flashcards

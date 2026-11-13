@@ -57,6 +57,13 @@ export const recommendQuery = (planId: string) =>
     queryFn: () => invoke("plans.recommend", { planId }),
   });
 
+/** A topic's lesson parts, or null in `outline` before the topic is planned. Reads only. */
+export const partsQuery = (planId: string, topicId: string) =>
+  queryOptions({
+    queryKey: ["parts", planId, topicId],
+    queryFn: () => invoke("study.parts", { planId, topicId }),
+  });
+
 /** The day each topic should be done at the session planner's pace, or null when the planner has no days for it. */
 export const scheduleQuery = (planId: string) =>
   queryOptions({

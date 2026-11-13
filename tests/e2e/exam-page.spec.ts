@@ -124,9 +124,9 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     expect(listed).not.toMatch(/^Flashcards/);
     await openExam(page);
     const now = page.locator(".px-exam-now");
-    await expect(now.getByText("Now", { exact: true })).toBeVisible();
+    await expect(now.getByText("Suggested now", { exact: true })).toBeVisible();
     await expect(now.getByRole("heading")).toHaveText(listed);
-    await now.getByRole("button", { name: "Start", exact: true }).click();
+    await now.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page).not.toHaveURL(/#\/plans\/p-fis$/);
     // This exam has no exercises, so the diagnostic's intro shows no counts and nothing on it marks its preview as read.
     // The read is made here too, as the page makes it, so an error check cannot run before the read has answered.

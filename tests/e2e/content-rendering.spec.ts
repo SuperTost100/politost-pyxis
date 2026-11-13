@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -9,6 +10,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 
 const block = (kind: string, body: unknown) => ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
 
@@ -143,7 +145,12 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(solution).toContainText("Il modulo è eq. 1.5:");
     expect(await solution.innerText()).not.toContain("{{");
 
-    // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact.
+    // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact. The
+    // topic's lesson was finished before lessons came in parts, for another course, so the reader that came before parts
+    // writes the student's own; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topicId], { finished: true });
+    seeding.close();
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;

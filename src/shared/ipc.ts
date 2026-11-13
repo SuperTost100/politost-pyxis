@@ -489,6 +489,31 @@ const LessonOutput = z.object({
   citations: z.array(z.string()),
 });
 
+/** One part of a topic's lesson as the parts list shows it. */
+const PartView = z.object({
+  id: z.string(),
+  position: z.number().int().min(1),
+  kind: z.enum(["part", "recap"]),
+  title: z.string(),
+  about: z.string(),
+  /** An estimate until the part is written, then measured from its words. */
+  minutes: z.number().int().min(1),
+  /** `writing`: its job is queued or running. `failed`: its last write failed or was cancelled, until it is asked for again. */
+  state: z.enum(["unwritten", "writing", "written", "failed"]),
+  done: z.boolean(),
+});
+
+const OutlineView = z.object({
+  id: z.string(),
+  parts: z.array(PartView).max(9),
+  /** Teaching parts, the recap left out, as "2 parti su 8 lette" counts them. */
+  teaching: z.number().int().min(1),
+  /** Teaching parts done. */
+  done: z.number().int().min(0),
+  /** Minutes of the undone parts, the recap included. */
+  minutesLeft: z.number().int().min(0),
+});
+
 const linkedFolderSchema = z.object({
   id: z.string(),
   path: z.string(),
@@ -845,6 +870,80 @@ export const requests = {
     }),
     output: LessonOutput,
   },
+  /** A topic's lesson parts, or an estimate of them before it is planned. Reads only: starts nothing. */
+  "study.parts": {
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({
+      outline: OutlineView.nullable(),
+      estimate: z.object({ parts: z.number().int().min(1), minutes: z.number().int().min(1) }),
+    }),
+  },
+  /**
+   * One part of a topic's lesson. `legacy` sends the page to `study.lesson`: a lesson item that is not a part, a topic
+   * with a lesson written before parts, or the developer agent lesson. A written part starts the part after it.
+   */
+  "study.part": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      /** Without it, the first part not done, or part 1 when all are. */
+      position: z.number().int().min(1).optional(),
+      /** Start, resume or retry the part's job (on open and on Riprova). Without it the call only reads. */
+      write: z.boolean().optional(),
+      /** A saved lesson item of the topic, from a finished step. */
+      itemId: z.string().optional(),
+      /**
+       * The level the student chose on the part: kept on the outline for the parts written after it, and the written
+       * part shown at it, from a text written at that level before or written again in the part's job.
+       */
+      wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      /** Write the written part again ("Riscrivi questa parte"), at `wording` or at the level of its text. */
+      regenerate: z.boolean().optional(),
+    }),
+    output: z.discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("legacy"),
+        /**
+         * A lesson written before parts: `finished`, which keeps its menu and gets "Riscrivi in parti"; `earlier`, the
+         * version a lesson in parts rewrote (or is about to), shown as it was, read-only.
+         */
+        old: z.enum(["finished", "earlier"]).optional(),
+      }),
+      z.object({
+        mode: z.literal("parts"),
+        /** Null until the topic is planned. */
+        outline: OutlineView.nullable(),
+        position: z.number().int().min(1),
+        /** `book`: no engine is set up, and `lesson` is the part's passages as book text, not saved. */
+        state: z.enum(["planning", "writing", "written", "failed", "book"]),
+        /**
+         * The part job's error as the jobs list has it (`jobErrorKey` reads it). Null for a cancelled, interrupted or
+         * unstarted job, and for a failed job the student dismissed: the part still reads `failed`, with no message.
+         */
+        error: z.string().nullable(),
+        /** The written part, or its book text. */
+        lesson: LessonOutput.nullable(),
+        /** The part's two-line "what you learned". */
+        summary: z.string().nullable(),
+        next: PartView.nullable(),
+        /** The lesson written before parts that this lesson in parts rewrites, or is about to: "Leggi la versione di prima". */
+        replaces: z.object({ itemId: z.string() }).nullable(),
+        /**
+         * The written part being written again (`writing`), or the last time that failed (`failed`, with the job's
+         * error, null after a quit): `level` at a level the student chose, `again` at its own. Its text stays readable.
+         */
+        rewrite: z
+          .object({
+            state: z.enum(["writing", "failed"]),
+            rewrite: z.enum(["level", "again"]),
+            wording: z.enum(["simple", "balanced", "technical"]),
+            error: z.string().nullable(),
+            jobId: z.string(),
+          })
+          .nullable(),
+      }),
+    ]),
+  },
   "study.lessonSection": {
     input: z.object({
       planId: z.string(),
@@ -852,6 +951,8 @@ export const requests = {
       section: z.number().int().min(0),
       note: z.string().max(500).optional(),
       wording: z.enum(["simple", "balanced", "technical"]).optional(),
+      /** A section of this part of the topic's lesson in parts, in the text the part shows now. */
+      position: z.number().int().min(1).optional(),
     }),
     output: LessonOutput,
   },
@@ -866,6 +967,27 @@ export const requests = {
       correct: z.boolean(),
       pick: z.number().int(),
       /** True when this answer finished the closing recap and so the reading. */
+      finished: z.boolean(),
+      /** Only on a part of a lesson in parts: true when this answer finished the part. `finished` then means the topic's lesson. */
+      partDone: z.boolean().optional(),
+    }),
+  },
+  /** "Fatto" on a part with no question: a part shown as book text, or written without a check. */
+  // Old lessons in parts.
+  "study.rewriteInParts": {
+    /** "Riscrivi in parti" on a finished lesson written before parts: starts writing its part 1, the old lesson kept. */
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
+  "study.partDone": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      position: z.number().int().min(1),
+    }),
+    output: z.object({
+      partDone: z.literal(true),
+      /** True when this was the last part, so the topic's lesson is done. */
       finished: z.boolean(),
     }),
   },
@@ -2111,6 +2233,23 @@ export const requests = {
               "weakest",
             ]),
             count: z.number(),
+            /**
+             * On a lesson in parts: the first part not done, and `resumeFrom` the part done last when that was before
+             * today. Absent on any other suggestion.
+             */
+            part: z
+              .object({
+                position: z.number().int().min(1),
+                /** Teaching parts, the recap left out. */
+                count: z.number().int().min(1),
+                kind: z.enum(["part", "recap"]),
+                title: z.string(),
+                minutes: z.number().int().min(1),
+                written: z.boolean(),
+                resumeFrom: z.object({ position: z.number().int().min(1), at: z.number() }).nullable(),
+              })
+              .nullable()
+              .optional(),
           })
           .nullable(),
         hasIntro: z.boolean(),

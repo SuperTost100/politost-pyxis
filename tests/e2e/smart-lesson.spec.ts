@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -185,7 +186,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    await page.locator(".px-exam-now").getByRole("button", { name: "Inizia", exact: true }).click();
+    await page.locator(".px-exam-now").getByRole("button", { name: "Continua", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/intro$`));
     await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
     await expect(page.getByText("imparerai a descrivere il moto")).toBeVisible();
@@ -205,21 +206,28 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await saveShot(page, `smart-text/intro-answered-it-light.png`);
 
     const learn = { topicId: (await read()).topics[0]!.id };
+    // The student's own smart lesson, written before lessons came in parts and never finished. Opening it rewrites it in
+    // parts, which needs an AI tool: with none set up the rewrite stops before it plans anything, so the lesson stays
+    // in the reader that came before parts, as it was. Lessons in parts have their own spec.
+    const before = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(before, planId, [learn.topicId], { markdown: lesson, wording: "balanced" });
+    const engines = before.prepare("SELECT feature, selection_json, updated_at FROM feature_engines").all() as Array<{
+      feature: string;
+      selection_json: string;
+      updated_at: number;
+    }>;
+    expect(engines.length).toBeGreaterThan(0);
+    before.exec("DELETE FROM feature_engines");
+    before.close();
 
-    // Generating: an in-place status with Stop and skeleton lines, then the lesson.
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;
       },
       { planId, topicId: learn.topicId },
     );
-    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
-    await expect(status).toBeVisible();
-    // Stop sits beside the status line, outside the live region.
-    await expect(status.locator("xpath=..").getByRole("button", { name: "Interrompi" })).toBeVisible();
-    await saveShot(page, `smart-text/lesson-generating-it-light.png`);
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
-    await expect(status).toHaveCount(0);
+    await expect(page.getByText("Non sono riuscito a riscrivere la lezione in parti.", { exact: false })).toBeVisible();
     // Opening the lesson did not mark it done.
     expect(await done("lesson", learn.topicId)).toBe(false);
     await expect(page.getByText("Rispondi al ripasso finale per completare la lezione, oppure segnala che hai finito.")).toBeVisible();
@@ -280,12 +288,6 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       await language(page, lang, theme);
       await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
       await saveShot(page, `smart-text/lesson-top-${lang}-${theme}.png`);
-      await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
-      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una parte|Rewrite a part)$/ })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
-      await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);
-      await page.keyboard.press("Escape");
     }
     await language(page, "it", "light");
     // Export opens from the menu.
@@ -339,6 +341,34 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect(await done("lesson", learn.topicId)).toBe(true);
 
+    // The AI tool is set up again. Finished, the lesson opens in its reader as it was, with every action of its menu.
+    const restore = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    for (const row of engines)
+      restore
+        .prepare("INSERT INTO feature_engines(feature, selection_json, updated_at) VALUES(?,?,?)")
+        .run(row.feature, row.selection_json, row.updated_at);
+    restore.close();
+    await page.evaluate(
+      ({ planId, topicId }) => {
+        location.hash = `/plans/${planId}/lesson/${topicId}`;
+      },
+      { planId, topicId: learn.topicId },
+    );
+    await expect(page.getByText("Non sono riuscito a riscrivere la lezione in parti.", { exact: false })).toHaveCount(0);
+    await expect(recap.getByText("2 su 3 giuste")).toBeVisible({ timeout: 20000 });
+    for (const [lang, theme] of [["it", "light"], ["it", "dark"], ["en", "light"], ["en", "dark"]] as const) {
+      await language(page, lang, theme);
+      await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible();
+      await page.getByRole("button", { name: /^(Altre azioni|More actions)$/ }).click();
+      await expect(page.getByRole("menuitem", { name: /^(Riscrivi in parti|Rewrite in parts)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Riscrivi una sezione|Rewrite a section)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Mappa|Map)$/ })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^(Esporta|Export)$/ })).toBeVisible();
+      await saveShot(page, `smart-text/lesson-menu-${lang}-${theme}.png`);
+      await page.keyboard.press("Escape");
+    }
+    await language(page, "it", "light");
+
     // Another wording is another lesson: the same recap there starts unanswered, and its answer is saved for it.
     // The topic's own answers: the introduction's check answered above has no topic.
     const checkAnswers = () => {
@@ -359,7 +389,12 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.getByRole("button", { name: "Livello Bilanciato" }).click();
     await page.getByRole("menuitem", { name: "Semplice" }).click();
     await expect(page.getByRole("button", { name: "Livello Semplice" })).toBeVisible();
+    // Writing: an in-place status with Stop and skeleton lines, then the lesson.
+    const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });
     await expect(status).toBeVisible();
+    // Stop sits beside the status line, outside the live region.
+    await expect(status.locator("xpath=..").getByRole("button", { name: "Interrompi" })).toBeVisible();
+    await saveShot(page, `smart-text/lesson-generating-it-light.png`);
     await expect(status).toHaveCount(0, { timeout: 20000 });
     await expect(recap.getByText("2 su 3 giuste")).toHaveCount(0);
     await recap.getByRole("button", { name: /^[A-C] Newton$/ }).click();

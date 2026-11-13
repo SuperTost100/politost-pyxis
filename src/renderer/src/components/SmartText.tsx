@@ -1,13 +1,15 @@
 import { Button } from "antd";
 import { Lightbulb } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   figureKey,
   parseSmartText,
   type CheckQuestion,
   type SmartBlock,
+  type SmartSegment,
 } from "@shared/smart-text";
+import { arrowTarget, letterIndex, letterKeysHere, letterQuestion } from "./finalKeys";
 import { Figure } from "./Figure";
 import { InlineMarkdown } from "./InlineMarkdown";
 import { MarkdownView, type CitationResolver } from "./MarkdownView";
@@ -24,7 +26,24 @@ type Answers = {
   live: boolean;
   failed: string | null;
   pick: (questionId: string, pick: number) => void;
+  /** The final question's label in place of the quick check's, and whether its keys answer it. */
+  final: { id: string | null; label?: string; keys: boolean };
 };
+
+/**
+ * The block that finishes a lesson part, the last check or the closing recap, whichever comes last, and the ids of the
+ * questions it asks.
+ */
+function finalQuestions(segments: SmartSegment[]): { blockId: string; questions: string[] } | null {
+  for (let index = segments.length - 1; index >= 0; index--) {
+    const segment = segments[index]!;
+    if (segment.type !== "block") continue;
+    if (segment.block.kind === "check") return { blockId: segment.block.id, questions: [segment.block.id] };
+    if (segment.block.kind === "recap")
+      return { blockId: segment.block.id, questions: segment.block.questions.map((question) => question.id) };
+  }
+  return null;
+}
 
 /**
  * Smart text: lesson prose with its interactive blocks. Answers are saved through `onAnswer`; the first pick of a
@@ -39,6 +58,7 @@ export function SmartText({
   onCitationClick,
   citationResolver,
   figures = {},
+  final,
 }: {
   children: string;
   answers?: Record<string, number>;
@@ -49,6 +69,12 @@ export function SmartText({
   citationResolver?: CitationResolver;
   /** Images of the figure blocks, by `figureKey`. While `streaming`, a figure without one is still being drawn. */
   figures?: Record<string, string>;
+  /**
+   * A lesson part's final question: the last check is labelled `label`, and with `keys` the letters A to D answer the
+   * first question of that check or of the closing recap still open, and the arrows move between its options, while the
+   * focus is on the page, in the question or on the sheet's title (`letterKeysHere`). Old lessons pass nothing.
+   */
+  final?: { label: string; keys: boolean };
 }) {
   const { t } = useTranslation();
   const segments = useMemo(
@@ -57,10 +83,13 @@ export function SmartText({
   );
   const [local, setLocal] = useState<Record<string, number>>({});
   const [failed, setFailed] = useState<string | null>(null);
+  const finalOn = Boolean(final);
+  const closing = useMemo(() => (finalOn ? finalQuestions(segments) : null), [finalOn, segments]);
   const state: Answers = {
     picks: { ...local, ...answers },
     live: Boolean(onAnswer),
     failed,
+    final: { id: closing?.blockId ?? null, label: final?.label, keys: Boolean(final?.keys) },
     pick(questionId, pick) {
       if (!onAnswer || questionId in answers || questionId in local) return;
       setFailed(null);
@@ -74,6 +103,41 @@ export function SmartText({
       });
     },
   };
+  // The latest answers and pick, for the key listener that stays put between renders.
+  const latest = useRef(state);
+  latest.current = state;
+  const keys = Boolean(final?.keys && closing && onAnswer);
+  useEffect(() => {
+    if (!keys || !closing) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      const now = latest.current;
+      const active = document.activeElement;
+      // The question whose options have the focus, when it is one of the final block's; otherwise the first one open.
+      const holder = active?.closest<HTMLElement>("[data-question]");
+      const focused = holder?.closest(`[data-final="${closing.blockId}"]`) ? (holder.dataset.question ?? null) : null;
+      const open = letterQuestion(closing.questions, (id) => now.picks[id] !== undefined, focused);
+      if (!open) return;
+      const question = segments.flatMap((segment) =>
+        segment.type !== "block"
+          ? []
+          : segment.block.kind === "check"
+            ? [segment.block]
+            : segment.block.kind === "recap"
+              ? segment.block.questions
+              : [],
+      ).find((item) => item.id === open);
+      const index = question ? letterIndex(event.key, question.options.length) : null;
+      if (index === null) return;
+      const inQuestion = Boolean(active?.closest(`[data-final="${closing.blockId}"]`));
+      // The selection menu takes the keys while it shows, even with the focus on the page.
+      if (!letterKeysHere(active, inQuestion) || document.querySelector(".px-selection-menu")) return;
+      event.preventDefault();
+      now.pick(open, index);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [keys, closing, segments]);
   return (
     <div className="px-smart">
       {segments.map((segment, index) =>
@@ -110,13 +174,16 @@ export function SmartText({
 function Block({ block, answers }: { block: SmartBlock; answers: Answers }) {
   const { t } = useTranslation();
   switch (block.kind) {
-    case "check":
+    case "check": {
+      const final = answers.final.id === block.id;
+      const label = final && answers.final.label ? answers.final.label : t("smart.check");
       return (
-        <section className="px-sb is-check" aria-label={t("smart.check")}>
-          <p className="label px-sb-label">{t("smart.check")}</p>
-          <Question question={block} answers={answers} />
+        <section className="px-sb is-check" aria-label={label} data-final={final ? block.id : undefined}>
+          <p className="label px-sb-label">{label}</p>
+          <Question question={block} answers={answers} keys={final && answers.final.keys} />
         </section>
       );
+    }
     case "recap":
       return <Recap block={block} answers={answers} />;
     case "try":
@@ -145,25 +212,43 @@ function Question({
   question,
   answers,
   counter,
+  keys = false,
 }: {
   question: CheckQuestion;
   answers: Answers;
   counter?: string;
+  /** The final question of a lesson part: its letters answer it and the arrows move between its options. */
+  keys?: boolean;
 }) {
   const { t } = useTranslation();
   const picked = answers.picks[question.id];
   const answered = picked !== undefined;
   const right = picked === question.answer;
   return (
-    <div className="px-sb-question">
+    <div className="px-sb-question" data-question={question.id}>
       {counter ? <p className="meta ink-muted">{counter}</p> : null}
       <MarkdownView variant="body">{question.question}</MarkdownView>
-      <fieldset className="px-sb-options" disabled={!answers.live && !answered}>
+      <fieldset
+        className="px-sb-options"
+        disabled={!answers.live && !answered}
+        onKeyDown={
+          keys && !answered
+            ? (event) => {
+                const options = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".px-opt")];
+                const target = arrowTarget(event.key, options.indexOf(event.target as HTMLButtonElement), options.length);
+                if (target === null || !options.includes(event.target as HTMLButtonElement)) return;
+                event.preventDefault();
+                options[target]!.focus();
+              }
+            : undefined
+        }
+      >
         <legend className="visually-hidden">{t("smart.options")}</legend>
         {question.options.map((option, index) => (
           <QuizOption
             key={index}
             letter={String.fromCharCode(65 + index)}
+            letterKey={keys}
             math={option}
             state={
               !answered
@@ -214,7 +299,11 @@ function Recap({
   const done = block.questions.filter((q) => answers.picks[q.id] !== undefined);
   const right = done.filter((q) => answers.picks[q.id] === q.answer).length;
   return (
-    <section className="px-sb is-recap" aria-label={t("smart.recap")}>
+    <section
+      className="px-sb is-recap"
+      aria-label={t("smart.recap")}
+      data-final={answers.final.id === block.id ? block.id : undefined}
+    >
       <div className="px-sb-head">
         <p className="label px-sb-label">{t("smart.recap")}</p>
         <p className="meta ink-muted">
@@ -229,6 +318,7 @@ function Recap({
           question={question}
           answers={answers}
           counter={t("smart.question", { n: index + 1, count })}
+          keys={answers.final.id === block.id && answers.final.keys}
         />
       ))}
     </section>

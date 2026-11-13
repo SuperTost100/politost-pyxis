@@ -31,6 +31,8 @@ import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
+import type Database from "better-sqlite3";
+import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -118,6 +120,11 @@ const routes = [
   // "Da finire" with seven activities: one being written, one on a very long topic, a prepared simulation; and its menu.
   ["plan-unfinished", "/plans/audit-plan"],
   ["plan-unfinished-menu", "/plans/audit-plan"],
+  // An exam whose lesson on one topic is in parts: Consigliato adesso names the next part and the path lists the parts,
+  // Riprendi da on a later day, and Scegli altro open.
+  ["plan-now-part", "/plans/audit-exam-parts-plan"],
+  ["plan-resume", "/plans/audit-exam-parts-plan"],
+  ["plan-now-other", "/plans/audit-exam-parts-plan"],
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
@@ -175,6 +182,35 @@ const routes = [
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
+  // Old lessons in parts: a finished lesson written before parts with "Riscrivi in parti" in its menu and its
+  // confirmation; an unfinished one being rewritten, its earlier version read-only, and the rewrite that found no AI tool.
+  ["lesson-menu-parts", "/plans/audit-plan/lesson/audit-topic"],
+  ["lesson-rewrite-parts", "/plans/audit-plan/lesson/audit-topic"],
+  ["lesson-rewriting-old", "/plans/audit-plan/lesson/audit-topic?part=1"],
+  ["lesson-earlier", "/plans/audit-plan/lesson/audit-topic?item=audit-lesson"],
+  ["lesson-rewrite-failed", "/plans/audit-plan/lesson/audit-topic?part=1"],
+  // A topic's lesson in parts: part 3 of 8 with the parts column, its question answered and the foot active, "Scegli
+  // altro" open, part 4 being written and failed, the recap answered, a topic of one part, and the parts in the popover
+  // the bar's title opens under 1,100 px.
+  ["lesson-part", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-answered", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-other", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-writing", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
+  ["lesson-part-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
+  ["lesson-part-failed-dismissed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
+  ["lesson-part-recap", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=9"],
+  ["lesson-part-popover", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-one-part", "/plans/audit-parts-plan/lesson/audit-one-topic?part=1"],
+  // A topic opened for the first time while its parts are planned, and a part read as book text without an AI tool.
+  ["lesson-part-planning", "/plans/audit-parts-plan/lesson/audit-new-topic?part=1"],
+  ["lesson-part-book", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=5"],
+  // Level and rewrites on a part.
+  ["lesson-part-menu", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-level", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewrite", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-section", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewriting", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewrite-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["intro", "/plans/audit-plan/intro"],
   ["quiz-setup", "/plans/audit-plan/quiz/audit-topic"],
   ["quiz-page", "/plans/audit-plan/quiz/audit-topic"],
@@ -1057,6 +1093,219 @@ function withDb(work: (db: DatabaseSync) => void) {
   }
 }
 
+/** A part's text with two sections, formulas, one check whose right answer is "né aperto né chiuso". */
+const auditPartText = [
+  "Con l'interno $\\mathring{X}$ e la frontiera $\\partial X$ delle parti prima si dice quando un insieme è aperto o chiuso.",
+  "",
+  "## Aperti e chiusi",
+  "",
+  "Un insieme $X \\subseteq \\mathbb{R}^n$ è **aperto** quando ogni suo punto è interno, cioè $\\mathring{X} = X$, ed è **chiuso** quando contiene tutta la sua frontiera, cioè $\\partial X \\subseteq X$ [P1].",
+  "",
+  "$$X \\text{ chiuso} \\iff \\mathbb{R}^n \\setminus X \\text{ aperto}$$",
+  "",
+  "## Quando non è nessuno dei due",
+  "",
+  "Le due parole non sono contrarie: $\\mathbb{R}^n$ e $\\emptyset$ sono aperti e chiusi insieme, e una corona $\\{2 \\le \\|x\\| < 3\\}$ non è né aperta né chiusa.",
+  "",
+  "```pyxis-check",
+  JSON.stringify({
+    question: "Com'è $X = \\{x^2 + y^2 < 1\\} \\cup \\{(1, 0)\\}$?",
+    options: ["aperto, perché contiene il disco aperto", "chiuso, perché contiene il punto $(1, 0)$", "né aperto né chiuso"],
+    answer: 2,
+    explanation: "$(1, 0)$ sta sulla frontiera e appartiene a $X$, quindi $X$ non è aperto; il resto della circonferenza no, quindi non è chiuso.",
+  }),
+  "```",
+].join("\n");
+
+const auditRecapText = [
+  "## Il capitolo in otto punti",
+  "",
+  "- La distanza in $\\mathbb{R}^n$ e gli intorni.",
+  "- Interno, esterno e frontiera.",
+  "- Aperti e chiusi.",
+  "",
+  "```pyxis-recap",
+  JSON.stringify({
+    questions: [
+      { question: "Un insieme che contiene la sua frontiera è…", options: ["chiuso", "aperto"], answer: 0 },
+      { question: "$\\mathbb{R}^n$ è…", options: ["aperto e chiuso", "né aperto né chiuso"], answer: 0 },
+      { question: "Una palla aperta è…", options: ["aperta", "chiusa"], answer: 0 },
+    ],
+  }),
+  "```",
+].join("\n");
+
+const PART_STATES = new Set([
+  "lesson-part",
+  "lesson-part-answered",
+  "lesson-part-other",
+  "lesson-part-writing",
+  "lesson-part-failed",
+  "lesson-part-failed-dismissed",
+  "lesson-part-recap",
+  "lesson-part-popover",
+  "lesson-one-part",
+  "lesson-part-planning",
+  "lesson-part-book",
+  // Level and rewrites on a part.
+  "lesson-part-menu",
+  "lesson-part-level",
+  "lesson-part-rewrite",
+  "lesson-part-section",
+  "lesson-part-rewriting",
+  "lesson-part-rewrite-failed",
+]);
+
+/**
+ * Analisi Matematica 2, for the lesson part states: "Funzioni di più variabili" in eight parts and a recap, parts 1 to 3
+ * written and 1 and 2 read, "Formula di Taylor" in one part, and "Serie di funzioni" not planned yet. Part 4 has a
+ * running job for the writing state and a failed one for the failed state, part 5 a job that found no AI tool for the
+ * book state, and "Serie di funzioni" a running job for the planning state; the recap state has parts 1 to 8 read and the
+ * recap written. Each state starts from it again, and every other state starts without the exam.
+ */
+function prepareLessonParts(name: string) {
+  const wanted = PART_STATES.has(name);
+  if (!wanted && !auditLessonParts) return;
+  auditLessonParts = wanted;
+  withDb((db) => {
+    db.exec("DELETE FROM jobs WHERE id = 'audit-part-job'; DELETE FROM plans WHERE id = 'audit-parts-plan';");
+    if (!wanted) return;
+    const now = Date.now();
+    seedPlan(db, {
+      id: "audit-parts-plan",
+      subjectId: "audit-subject",
+      title: "Analisi Matematica 2",
+      language: "it",
+      sourceIds: ["audit-source"],
+      topics: [
+        { id: "audit-parts-topic", title: "Funzioni di più variabili" },
+        { id: "audit-one-topic", title: "Formula di Taylor" },
+        { id: "audit-new-topic", title: "Serie di funzioni" },
+      ],
+    });
+    db.exec(`INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-parts-topic','audit-passage'),('audit-one-topic','audit-passage'),('audit-new-topic','audit-passage');
+      INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES
+        ('audit-outline','audit-parts-plan','audit-parts-topic','key','model',1),
+        ('audit-one-outline','audit-parts-plan','audit-one-topic','key','single',1);`);
+    const titles = [
+      "Intorni e distanza in $\\mathbb{R}^n$",
+      "Interno, esterno, frontiera",
+      "Insiemi aperti e chiusi",
+      "Limitati, compatti, connessi",
+      "Limiti e continuità",
+      "Derivate parziali e gradiente",
+      "Differenziabilità e piano tangente",
+      "Derivate seconde e matrice hessiana",
+      "Ripasso del capitolo",
+    ];
+    const minutes = [5, 6, 6, 5, 7, 7, 8, 6, 4];
+    const recap = name === "lesson-part-recap";
+    const part = db.prepare(
+      "INSERT INTO lesson_parts(id,outline_id,position,kind,title,about,passage_ids_json,minutes,summary,done_at) VALUES(?,?,?,?,?,'','[\"audit-passage\"]',?,?,?)",
+    );
+    const item = db.prepare(
+      `INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,model_id,model_source,prompt_template,prompt_version,grounding,created_at)
+       VALUES(?,'audit-parts-plan',?,'lesson',?,'fixture','fixture-model','reported','lesson.part','part-1','sources',1)`,
+    );
+    const write = (partId: string, topicId: string, markdown: string) => {
+      const itemId = `${partId}-item`;
+      item.run(
+        itemId,
+        topicId,
+        JSON.stringify({
+          cacheKey: JSON.stringify({ kind: "lesson", scopeId: partId, promptVersion: "part-1|balanced", passageIds: ["audit-passage"] }),
+          markdown,
+          passageIds: ["audit-passage"],
+        }),
+      );
+      db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,'audit-passage')").run(itemId);
+      db.prepare("UPDATE lesson_parts SET item_id = ? WHERE id = ?").run(itemId, partId);
+    };
+    titles.forEach((title, index) => {
+      const position = index + 1;
+      const kind = position === titles.length ? "recap" : "part";
+      const done = position <= 2 || (recap && kind === "part") ? now - 86_400_000 : null;
+      part.run(
+        `audit-part-${position}`,
+        "audit-outline",
+        position,
+        kind,
+        title,
+        minutes[index]!,
+        // Only a written part has its summary.
+        kind === "recap"
+          ? recap
+            ? "Il capitolo in breve: intorni, frontiera, aperti e chiusi, poi limiti e derivate fino alla matrice hessiana."
+            : null
+          : position <= 3
+            ? "Un insieme è aperto se non contiene punti della sua frontiera e chiuso se la contiene tutta. I due casi non si escludono: $\\mathbb{R}^n$ e $\\emptyset$ sono entrambi."
+            : null,
+        done,
+      );
+      if (position <= 3) write(`audit-part-${position}`, "audit-parts-topic", auditPartText);
+    });
+    if (recap) write("audit-part-9", "audit-parts-topic", auditRecapText);
+    part.run("audit-one-part", "audit-one-outline", 1, "part", "Formula di Taylor", 6, "Il polinomio di Taylor approssima una funzione vicino a un punto.", null);
+    write("audit-one-part", "audit-one-topic", auditPartText);
+    const job = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-part-job','lesson-part',?,?,0,?,?,?)",
+    );
+    const params = (topicId: string, position: number) =>
+      JSON.stringify({ planId: "audit-parts-plan", topicId, position });
+    if (name === "lesson-part-writing") job.run(params("audit-parts-topic", 4), "running", null, now, now);
+    if (name === "lesson-part-failed") job.run(params("audit-parts-topic", 4), "failed", "lesson-part-invalid", now, now);
+    // A failed write whose job the student dismissed in Attività: the part keeps the mark and no job is left.
+    if (name === "lesson-part-failed-dismissed")
+      db.prepare("UPDATE lesson_parts SET write_failed_at = ? WHERE id = 'audit-part-4'").run(now);
+    if (name === "lesson-part-book")
+      job.run(params("audit-parts-topic", 5), "failed", "engines.errors.engine-missing", now, now);
+    if (name === "lesson-part-planning") job.run(params("audit-new-topic", 1), "running", null, now, now);
+    // Part 3 written again at the Semplice level: still running, or failed.
+    const rewrite = JSON.stringify({ planId: "audit-parts-plan", topicId: "audit-parts-topic", position: 3, rewrite: "level", wording: "simple" });
+    if (name === "lesson-part-rewriting") job.run(rewrite, "running", null, now, now);
+    if (name === "lesson-part-rewrite-failed") job.run(rewrite, "failed", "lesson-part-invalid", now, now);
+  });
+}
+
+// Old lessons in parts. The audit exam's lesson was written before parts, and no lesson step is recorded on its topic,
+// so it is unfinished: opening it would rewrite it in parts. The states of the reader that came before parts read it as
+// a finished lesson, with its step; the rewrite states keep it unfinished, with part 1's job running or failed.
+const FINISHED_OLD_LESSON_STATES = new Set([
+  "lesson",
+  "lesson-rewrite",
+  "lesson-menu",
+  "lesson-menu-parts",
+  "lesson-rewrite-parts",
+  "export-lesson",
+  "selection-lesson",
+  "reading-large-lesson",
+]);
+const OLD_LESSON_JOBS: Record<string, { state: string; error: string | null }> = {
+  "lesson-rewriting-old": { state: "running", error: null },
+  "lesson-rewrite-failed": { state: "failed", error: "engines.errors.engine-missing" },
+};
+
+function prepareOldLessons(name: string) {
+  withDb((db) => {
+    db.exec("DELETE FROM learning_events WHERE id = 'audit-old-lesson-done'; DELETE FROM jobs WHERE id = 'audit-old-job';");
+    if (FINISHED_OLD_LESSON_STATES.has(name))
+      db.prepare(
+        "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('audit-old-lesson-done','lesson_completed','audit-plan','audit-topic',?,?)",
+      ).run(JSON.stringify({ activity: "lesson", itemId: "audit-lesson" }), Date.now() - 60_000);
+    const job = OLD_LESSON_JOBS[name];
+    if (job)
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-old-job','lesson-part',?,?,0,?,?,?)",
+      ).run(
+        JSON.stringify({ planId: "audit-plan", topicId: "audit-topic", position: 1, replaces: "audit-lesson" }),
+        job.state,
+        job.error,
+        Date.now(),
+        Date.now(),
+      );
+  });
+}
+
 /** States that need stored data of their own are written before the page loads; the page then reads them like any user would. */
 /** A white one-page image-only PDF in the audit workspace's blob store, like the file an import keeps. */
 function auditScanBlob(): string {
@@ -1074,6 +1323,7 @@ function auditScanBlob(): string {
 let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
+let auditLessonParts = false;
 let auditUnfinished = false;
 
 /**
@@ -1310,6 +1560,67 @@ function prepareExamsArchived(name: string) {
       .prepare("UPDATE plans SET archived_at = ? WHERE id = 'audit-review-plan'")
       .run(name === "exams-archived" ? 1 : null),
   );
+}
+
+/**
+ * The exam page's exam in parts, only for its states: four topics, the diagnostic done, and the second topic's lesson
+ * in eight parts and a recap, the first two read (yesterday for Riprendi da, with the third) and the first three written.
+ * The lesson part states have an exam of their own (`prepareLessonParts`), whose parts were read yesterday.
+ */
+let auditExamParts = false;
+function prepareExamParts(name: string) {
+  const mine = name === "plan-now-part" || name === "plan-resume" || name === "plan-now-other";
+  if (!mine && !auditExamParts) return;
+  auditExamParts = mine;
+  withDb((db) => {
+    db.exec(`DELETE FROM lesson_parts WHERE outline_id = 'audit-exam-parts-outline';
+      DELETE FROM lesson_outlines WHERE id = 'audit-exam-parts-outline';
+      DELETE FROM items WHERE id LIKE 'audit-exam-parts-%';
+      DELETE FROM learning_events WHERE id LIKE 'audit-exam-parts-%';
+      DELETE FROM topics WHERE plan_id = 'audit-exam-parts-plan';
+      DELETE FROM plans WHERE id = 'audit-exam-parts-plan';`);
+    if (!mine) return;
+    seedPlan(db, {
+      id: "audit-exam-parts-plan",
+      title: "Analisi Matematica 2",
+      language: "it",
+      target: 0.75,
+      examAt: Date.now() + 81 * 86_400_000,
+      topics: [
+        { id: "audit-exam-parts-t1", title: "Successioni e serie di funzioni" },
+        { id: "audit-exam-parts-t2", title: "Funzioni di più variabili" },
+        { id: "audit-exam-parts-t3", title: "Formula di Taylor in più variabili" },
+        { id: "audit-exam-parts-t4", title: "Massimi e minimi liberi" },
+      ],
+    });
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,payload_json,created_at) VALUES('audit-exam-parts-diagnostic','lesson_completed','audit-exam-parts-plan',?,?)",
+    ).run(JSON.stringify({ activity: "diagnostic" }), Date.now() - 2 * 86_400_000);
+    const read = name === "plan-resume" ? new Date().setHours(0, 0, 0, 0) - 6 * 3_600_000 : Date.now() - 60_000;
+    const parts: SeedPart[] = [
+      ["Intorni e distanza in $\\mathbb{R}^n$", 5],
+      ["Interno, esterno, frontiera", 6],
+      ["Insiemi aperti e chiusi", 6],
+      ["Limitati, compatti, connessi", 5],
+      ["Limiti e continuità", 7],
+      ["Derivate parziali e gradiente", 7],
+      ["Differenziabilità e piano tangente", 8],
+      ["Derivate seconde e matrice hessiana", 6],
+    ].map(([title, minutes], index) => ({
+      title: title as string,
+      minutes: minutes as number,
+      markdown: index < 3 ? partMarkdown(title as string) : null,
+      doneAt: index < (name === "plan-resume" ? 3 : 2) ? read + index : null,
+    }));
+    parts.push({ kind: "recap", title: "Ripasso del capitolo", minutes: 4 });
+    // The app's database is node:sqlite here; the helper uses only prepare and run, which both drivers share.
+    seedOutline(db as unknown as Database.Database, {
+      id: "audit-exam-parts-outline",
+      planId: "audit-exam-parts-plan",
+      topicId: "audit-exam-parts-t2",
+      parts,
+    });
+  });
 }
 
 function prepareExamsEmpty(name: string) {
@@ -1695,12 +2006,15 @@ function prepareRadialMaps(name: string) {
 }
 
 function prepareState(name: string) {
+  prepareLessonParts(name);
+  prepareOldLessons(name);
   prepareRadialMaps(name);
   prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
   prepareExamsEmpty(name);
   prepareExamsArchived(name);
+  prepareExamParts(name);
   preparePanelSources(name);
   prepareSourcePanel(name);
   prepareLibraryEmpty(name);
@@ -2813,6 +3127,96 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("button", { name: /^(Chiudi|Close)$/ })).toHaveCount(0);
       break;
     }
+    case "lesson-part":
+    case "lesson-part-answered":
+    case "lesson-part-other": {
+      await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
+      if (name === "lesson-part") break;
+      const check = page.getByRole("region", { name: both("Verifica", "Check") });
+      await check.getByRole("button", { name: /né aperto né chiuso/ }).click();
+      await expect(check.getByText(both("Giusto\\.", "Right\\."))).toBeVisible();
+      const other = page.getByRole("button", { name: both("Scegli altro", "Something else") });
+      await other.scrollIntoViewIfNeeded();
+      if (name === "lesson-part-other") {
+        await atRest(other);
+        await other.click();
+        await expect(page.getByRole("menuitem", { name: /Rileggi una parte|Reread a part/ })).toBeVisible();
+      }
+      break;
+    }
+    case "lesson-part-writing":
+      await expect(page.getByRole("status").filter({ hasText: /Sto scrivendo la parte 4|Writing part 4/ })).toBeVisible();
+      break;
+    case "lesson-part-failed":
+    case "lesson-part-failed-dismissed": {
+      const failed = page.locator(".px-notice", { hasText: /Non sono riuscito a scrivere la parte 4\.|I couldn't write part 4\./ });
+      await expect(failed).toBeVisible();
+      // A write that failed is red; one with no error left (its job dismissed) only waits for Riprova, so amber.
+      await expect(failed).toHaveClass(name === "lesson-part-failed" ? /\bis-danger\b/ : /\bis-warning\b/);
+      break;
+    }
+    case "lesson-part-recap": {
+      const recap = page.getByRole("region", { name: both("Ripasso finale", "Recap") });
+      for (const answer of ["chiuso", "aperto e chiuso", "aperta"])
+        await recap.getByRole("button", { name: new RegExp(`^[AB] ${answer}`) }).click();
+      await expect(page.getByText(both("Fine del capitolo", "End of the chapter"))).toBeVisible();
+      await page.getByText(both("Fine del capitolo", "End of the chapter")).scrollIntoViewIfNeeded();
+      break;
+    }
+    case "lesson-part-popover": {
+      const title = page.locator(".px-studybar-title-menu");
+      if (await title.isVisible()) {
+        await title.click();
+        await expect(page.getByRole("dialog", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
+      } else await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
+      break;
+    }
+    case "lesson-part-planning":
+      await expect(page.getByRole("status").filter({ hasText: /Sto dividendo il capitolo in parti|Splitting the chapter into parts/ })).toBeVisible();
+      break;
+    case "lesson-part-book":
+      await expect(page.getByRole("heading", { level: 1, name: "Limiti e continuità" })).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Fatto", "Done") })).toBeVisible();
+      break;
+    // Level and rewrites on a part: the part's menu with its rewrites, the level menu with what it applies to, the two
+    // dialogs, and part 3 being written again at another level, then failing.
+    case "lesson-part-menu":
+    case "lesson-part-rewrite":
+    case "lesson-part-section": {
+      await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
+      await page.getByRole("button", { name: both("Altre azioni", "More actions") }).click();
+      const rewritePart = page.getByRole("menuitem", { name: both("Riscrivi questa parte", "Rewrite this part") });
+      await expect(rewritePart).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") })).toBeVisible();
+      if (name === "lesson-part-rewrite") {
+        await rewritePart.click();
+        await expect(page.getByRole("dialog", { name: both("Riscrivere questa parte\\?", "Rewrite this part\\?") })).toBeVisible();
+      }
+      if (name === "lesson-part-section") {
+        await page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") }).click();
+        const dialog = page.getByRole("dialog", { name: both("Quale sezione riscrivo\\?", "Which section should I rewrite\\?") });
+        await expect(dialog.getByRole("radio")).toHaveCount(2);
+      }
+      break;
+    }
+    case "lesson-part-level":
+      await page.getByRole("button", { name: /^(Livello|Level) / }).click();
+      await expect(page.getByRole("menuitem", { name: both("Semplice", "Simple") })).toBeVisible();
+      await expect(page.getByText(both("Vale per questa parte e per le prossime", "For this part and the ones after it"))).toBeVisible();
+      break;
+    case "lesson-part-rewriting":
+      await expect(page.getByRole("status").filter({ hasText: /Sto riscrivendo la parte 3|Rewriting part 3/ })).toBeVisible();
+      await expect(page.getByRole("region", { name: both("Verifica", "Check") })).toBeVisible();
+      break;
+    case "lesson-part-rewrite-failed":
+      await expect(
+        page.locator(".px-notice", { hasText: /Non sono riuscito a riscrivere la parte 3 al livello Semplice|I couldn't rewrite part 3 at the Simple level/ }),
+      ).toHaveClass(/\bis-danger\b/);
+      break;
+    case "lesson-one-part":
+      await expect(page.getByRole("heading", { level: 1, name: "Formula di Taylor" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toHaveCount(0);
+      break;
     case "lesson-menu":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -2820,6 +3224,34 @@ async function openState(page: Page, name: string) {
       await expect(
         page.getByRole("menuitem", { name: both("Mappa", "Map") }),
       ).toBeVisible();
+      break;
+    case "lesson-menu-parts":
+    case "lesson-rewrite-parts": {
+      await page.getByRole("button", { name: both("Altre azioni", "More actions") }).click();
+      const parts = page.getByRole("menuitem", { name: both("Riscrivi in parti", "Rewrite in parts") });
+      await expect(parts).toBeVisible();
+      if (name === "lesson-menu-parts") break;
+      await parts.click();
+      await expect(
+        page.getByRole("dialog", { name: both("Riscrivere la lezione in parti brevi\\?", "Rewrite the lesson in short parts\\?") }),
+      ).toBeVisible();
+      break;
+    }
+    case "lesson-rewriting-old":
+      await expect(
+        page.getByRole("status").filter({ hasText: /Sto riscrivendo la lezione in parti brevi|Rewriting the lesson in short parts/ }),
+      ).toBeVisible();
+      break;
+    case "lesson-earlier":
+      await expect(page.getByText(/Questa è la versione di prima della lezione|This is the earlier version of the lesson/)).toBeVisible();
+      await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
+      break;
+    case "lesson-rewrite-failed":
+      // The rewrite stopped for want of an AI tool, a step the student takes: amber, not red.
+      await expect(
+        page.locator(".px-notice", { hasText: /Non sono riuscito a riscrivere la lezione in parti|I couldn't rewrite the lesson in parts/ }),
+      ).toHaveClass(/\bis-warning\b/);
+      await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
       break;
     case "quiz-setup":
       await page
@@ -3570,6 +4002,14 @@ async function openState(page: Page, name: string) {
       await page.locator(".px-unf-more").click();
       await expect(page.locator(".px-unf-open")).toHaveCount(7);
       break;
+    case "plan-now-part":
+    case "plan-resume":
+      await expect(page.getByRole("list", { name: both("Parti della lezione su Funzioni di più variabili", "Parts of the lesson on Funzioni di più variabili") })).toBeVisible();
+      break;
+    case "plan-now-other":
+      await page.locator(".px-exam-now").getByRole("button", { name: both("Scegli altro", "Something else") }).click();
+      await expect(page.getByRole("menuitem", { name: /^(Rileggi una parte|Reread a part)/ })).toBeVisible();
+      break;
     case "plan-unfinished-menu":
       await page.locator(".px-unf-dots").first().click();
       await expect(page.getByRole("menuitem", { name: both("Elimina…", "Delete…") })).toBeVisible();
@@ -4028,8 +4468,9 @@ async function focusRingChecks(page: Page, name: string) {
 async function keyboardCheck(page: Page, name: string) {
   const dialogOpen = (await page.getByRole("dialog").count()) > 0;
   const surface = dialogOpen ? page.getByRole("dialog").last() : page;
+  // A dialog can hold only links, as the parts popover of a lesson part does.
   const controls = surface.locator(
-    'button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible',
+    `button:visible:not([disabled]),input:visible:not([disabled]),textarea:visible:not([disabled]),select:visible:not([disabled]),[tabindex="0"]:visible${dialogOpen ? ",a[href]:visible" : ""}`,
   );
   const first = controls.first();
   const readNext = () =>
@@ -4428,13 +4869,15 @@ test("M14 every application route in both languages, themes and supported widths
                 (name === "library-row-menu" ||
                   name === "library-kind-menu" ||
                   name === "plan-unfinished-menu" ||
+                  name === "plan-now-other" ||
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||
                   name === "map-menu" ||
                   name === "map-export" ||
                   name === "map-switcher" ||
-                  name === "maps-tile-menu") &&
+                  name === "maps-tile-menu" ||
+                  name === "lesson-part-other") &&
                 !(await page.getByRole("menuitem").first().isVisible())
               )
                 await openState(page, name);
@@ -4443,6 +4886,9 @@ test("M14 every application route in both languages, themes and supported widths
                 name === "map-rename" &&
                 !(await page.getByRole("textbox", { name: both("Nome della mappa", "Map name") }).isVisible())
               )
+                await openState(page, name);
+              // The parts popover closes when the keyboard check's focus leaves it; it opens again for the visual and axe checks.
+              if (name === "lesson-part-popover" && !(await page.locator(".px-parts-popover").isVisible()))
                 await openState(page, name);
               // Moving focus can clear a text selection, and the menu goes with it.
               if (name.startsWith("selection-")) await openState(page, name);
