@@ -480,7 +480,7 @@ type Plan = {
  */
 function saveOutline(
   db: Database.Database,
-  input: { planId: string; topicId: string; signal?: AbortSignal },
+  input: { planId: string; topicId: string; replaces?: string; signal?: AbortSignal },
   passages: readonly OutlinePassage[],
   plan: Plan,
   language: string,
@@ -499,16 +499,23 @@ function saveOutline(
   db.transaction(() => {
     if (db.prepare(LIVE_OUTLINE_SQL).get(input.topicId)) return;
     const id = uuidv7(now);
+    // The old lesson this outline rewrites, while its row is still there: a lesson removed meanwhile is no longer there to read.
+    const replaces = input.replaces
+      ? ((db.prepare("SELECT id FROM items WHERE id = ? AND topic_id = ?").pluck().get(input.replaces, input.topicId) as
+          | string
+          | undefined) ?? null)
+      : null;
     db.prepare(
-      `INSERT INTO lesson_outlines (id, plan_id, topic_id, passage_key, origin, engine_provider, model_id, model_source,
-         prompt_template, prompt_version, grounding, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO lesson_outlines (id, plan_id, topic_id, passage_key, origin, replaces_item_id, engine_provider, model_id,
+         model_source, prompt_template, prompt_version, grounding, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.planId,
       input.topicId,
       passageKey(passages.map((passage) => passage.id)),
       plan.origin,
+      replaces,
       plan.engine?.provider ?? null,
       plan.engine?.model ?? null,
       plan.engine ? "reported" : null,
@@ -531,6 +538,8 @@ function saveOutline(
 export type PlanPartsInput = {
   planId: string;
   topicId: string;
+  /** The lesson written before parts that this outline rewrites; saved as the outline's `replaces_item_id`. */
+  replaces?: string;
   selection?: GenerateInput["selection"];
   run?: GenerateInput["run"];
   signal?: AbortSignal;

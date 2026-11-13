@@ -46,7 +46,7 @@ import {
   type Wording,
 } from "./openLesson";
 import { writeAgentLesson } from "./agentLesson";
-import { openPart, registerPartJobs, topicParts, type PartInput } from "./partJobs";
+import { openPart, registerPartJobs, rewriteInParts, topicParts, type PartInput } from "./partJobs";
 import { rewritePartSection } from "./parts";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
 import { markPartDone } from "./partProgress";
@@ -301,6 +301,10 @@ export function studyHandlers(
     },
     partDone(input: { planId: string; topicId: string; position: number }) {
       return markPartDone(db, input);
+    },
+    rewriteInParts(input: { planId: string; topicId: string }) {
+      if (!runner) throw new Error("jobs-unavailable");
+      return rewriteInParts(db, runner, input);
     },
     markdown(input: {
       planId: string;

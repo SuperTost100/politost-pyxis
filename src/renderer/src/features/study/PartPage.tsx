@@ -25,7 +25,7 @@ import { stepPath } from "../plans/reopen";
 import { ExportButton } from "../share/ExportButton";
 import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
-import { focusFollowsAnswer, startsOnOpen, workingCopy, type PartData } from "./partPage";
+import { focusFollowsAnswer, oldLessonView, startsOnOpen, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
@@ -159,12 +159,19 @@ export function PartPage({
     if (data.state === "written" || data.state === "book" || data.state === "failed") focusTitleNow();
   }, [data.position, data.state, query.isPlaceholderData]);
 
+  // Old lessons in parts: a lesson written before parts being rewritten, until its first part is written.
+  const rewritingOld = oldLessonView(data) === "rewriting";
+
   // The block that closes as the part it waited for arrives, and the text that fades in under it.
-  const [arriving, setArriving] = useState<{ position: number; state: "planning" | "writing" } | null>(null);
-  const seen = useRef<{ position: number; state: PartData["state"] } | null>(null);
+  const [arriving, setArriving] = useState<{
+    position: number;
+    state: "planning" | "writing";
+    rewriting: boolean;
+  } | null>(null);
+  const seen = useRef<{ position: number; state: PartData["state"]; rewriting: boolean } | null>(null);
   useEffect(() => {
     const before = seen.current;
-    seen.current = { position: data.position, state: data.state };
+    seen.current = { position: data.position, state: data.state, rewriting: rewritingOld };
     if (
       before?.position === data.position &&
       (before.state === "writing" || before.state === "planning") &&
@@ -173,10 +180,10 @@ export function PartPage({
       // The focus was on the block's way back, which goes with it, or nowhere: the title of the part takes it.
       const active = document.activeElement;
       const inBlock = !active || active === document.body || Boolean(workRef.current?.contains(active));
-      if (!reducedMotion()) setArriving({ position: before.position, state: before.state });
+      if (!reducedMotion()) setArriving({ position: before.position, state: before.state, rewriting: before.rewriting });
       if (inBlock) focusTitleNow();
     } else if (before && before.position !== data.position) setArriving(null);
-  }, [data.position, data.state]);
+  }, [data.position, data.state, rewritingOld]);
   useEffect(() => {
     if (!arriving) return;
     // Ends the closing when no transition runs, as in a hidden window.
@@ -370,20 +377,35 @@ export function PartPage({
   const footHeading = !many ? t("lesson.lessonEnd") : recap ? t("lesson.chapterEnd") : t("lesson.partEnd", { n: data.position });
 
   const working = data.state === "planning" || data.state === "writing" || retry.isPending;
+  // While an old lesson is rewritten, the block says so and keeps the way to the version the student had.
+  const rewritingCopy: ReturnType<typeof workingCopy> = { title: ["lesson.rewritingOld"], line: ["lesson.rewritingOldLine"] };
+  const readEarlier = data.replaces
+    ? () => navigate(`/plans/${planId}/lesson/${topicId}?item=${encodeURIComponent(data.replaces!.itemId)}`)
+    : undefined;
   const block = working ? (
     <WorkingBlock
-      copy={workingCopy({
-        state: data.state === "planning" || !outline ? "planning" : "writing",
-        position: data.position,
-        kind: part?.kind ?? null,
-        many,
-      })}
+      copy={
+        rewritingOld
+          ? rewritingCopy
+          : workingCopy({
+              state: data.state === "planning" || !outline ? "planning" : "writing",
+              position: data.position,
+              kind: part?.kind ?? null,
+              many,
+            })
+      }
       onBack={() => navigate(`/plans/${planId}`)}
+      onEarlier={rewritingOld ? readEarlier : undefined}
     />
   ) : arriving?.position === data.position ? (
     <WorkingBlock
-      copy={workingCopy({ state: arriving.state, position: data.position, kind: part?.kind ?? null, many })}
+      copy={
+        arriving.rewriting
+          ? rewritingCopy
+          : workingCopy({ state: arriving.state, position: data.position, kind: part?.kind ?? null, many })
+      }
       onBack={() => navigate(`/plans/${planId}`)}
+      onEarlier={arriving.rewriting ? readEarlier : undefined}
       still
     />
   ) : rewriting || rewriteArrived ? (
@@ -576,10 +598,13 @@ export function PartPage({
 function WorkingBlock({
   copy,
   onBack,
+  onEarlier,
   still = false,
 }: {
   copy: ReturnType<typeof workingCopy>;
   onBack: () => void;
+  /** Old lessons in parts: opens the version the rewrite replaces, in place of the note on where the part will be. */
+  onEarlier?: () => void;
   still?: boolean;
 }) {
   const { t } = useTranslation();
@@ -600,7 +625,13 @@ function WorkingBlock({
         <Button variant="secondary" size="sm" onClick={onBack} disabled={still}>
           {t("lesson.backToPath")}
         </Button>
-        <span className="px-part-working-ready">{t("lesson.writingReady")}</span>
+        {onEarlier ? (
+          <Button variant="ghost" size="sm" onClick={onEarlier} disabled={still}>
+            {t("lesson.readEarlier")}
+          </Button>
+        ) : (
+          <span className="px-part-working-ready">{t("lesson.writingReady")}</span>
+        )}
       </div>
     </section>
   );

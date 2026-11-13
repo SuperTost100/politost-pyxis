@@ -2,7 +2,16 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import i18next from "i18next";
 import { describe, expect, it } from "vitest";
-import { nowPartText, partPath, partsHeading, partsLine, resumeWhen, type NextPart, type Outline } from "./partsText";
+import {
+  keepsLessonStep,
+  nowPartText,
+  partPath,
+  partsHeading,
+  partsLine,
+  resumeWhen,
+  type NextPart,
+  type Outline,
+} from "./partsText";
 
 async function translator(language: "en" | "it") {
   const instance = i18next.createInstance();
@@ -140,5 +149,34 @@ describe("the open topic's parts on the path", () => {
     const two = outline([]);
     expect(partsHeading(it, { ...two, parts: two.parts.slice(0, 2), teaching: 2 })).toBe("Lezione in 2 parti");
     expect(partsHeading(await translator("en"), outline([]))).toBe("Lesson in 8 parts and a recap");
+  });
+});
+
+describe("a lesson finished before it was rewritten in parts", () => {
+  const outline = (done: boolean[]): Outline => ({
+    id: "o",
+    teaching: done.length,
+    done: done.filter(Boolean).length,
+    minutesLeft: 5 * done.filter((value) => !value).length,
+    parts: done.map((value, index) => ({
+      id: `p${index + 1}`,
+      position: index + 1,
+      kind: "part" as const,
+      title: `Parte ${index + 1}`,
+      about: "",
+      minutes: 5,
+      state: "written" as const,
+      done: value,
+    })),
+  });
+
+  it("keeps its done lesson step beside the parts until they are all read again", () => {
+    expect(keepsLessonStep(outline([false, false]), true)).toBe(true);
+    expect(keepsLessonStep(outline([true, false]), true)).toBe(true);
+    expect(keepsLessonStep(outline([true, true]), true)).toBe(false);
+  });
+
+  it("leaves the parts in the step's place for a lesson not finished yet", () => {
+    expect(keepsLessonStep(outline([true, false]), false)).toBe(false);
   });
 });

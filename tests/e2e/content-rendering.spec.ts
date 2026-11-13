@@ -114,10 +114,6 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       .toBe("succeeded");
     const { topics } = await invoke<{ topics: Array<{ id: string; subtopics: string[] }> }>("plans.read", { planId });
     const topicId = topics[0]!.id;
-    // The lesson this spec reads is on the reader that came before parts; lessons in parts have their own spec.
-    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    seedLessonBeforeParts(seeding, planId, [topicId]);
-    seeding.close();
     expect(topics[0]!.subtopics).toEqual(["Misurare", "Grandezze e punto $P$"]);
 
     // 1. The expanded path row names its subtopics cleanly and draws their math.
@@ -149,7 +145,12 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     await expect(solution).toContainText("Il modulo è eq. 1.5:");
     expect(await solution.innerText()).not.toContain("{{");
 
-    // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact.
+    // 3. The lesson: no placeholder, no reference link, and LaTeX the model wrote with single backslashes is intact. The
+    // topic's lesson was finished before lessons came in parts, for another course, so the reader that came before parts
+    // writes the student's own; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topicId], { finished: true });
+    seeding.close();
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;

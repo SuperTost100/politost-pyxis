@@ -901,7 +901,14 @@ export const requests = {
       regenerate: z.boolean().optional(),
     }),
     output: z.discriminatedUnion("mode", [
-      z.object({ mode: z.literal("legacy") }),
+      z.object({
+        mode: z.literal("legacy"),
+        /**
+         * A lesson written before parts: `finished`, which keeps its menu and gets "Riscrivi in parti"; `earlier`, the
+         * version a lesson in parts rewrote (or is about to), shown as it was, read-only.
+         */
+        old: z.enum(["finished", "earlier"]).optional(),
+      }),
       z.object({
         mode: z.literal("parts"),
         /** Null until the topic is planned. */
@@ -919,7 +926,7 @@ export const requests = {
         /** The part's two-line "what you learned". */
         summary: z.string().nullable(),
         next: PartView.nullable(),
-        /** The old lesson a rewrite in parts replaces. Always null until old lessons are rewritten in parts. */
+        /** The lesson written before parts that this lesson in parts rewrites, or is about to: "Leggi la versione di prima". */
         replaces: z.object({ itemId: z.string() }).nullable(),
         /**
          * The written part being written again (`writing`), or the last time that failed (`failed`, with the job's
@@ -966,6 +973,12 @@ export const requests = {
     }),
   },
   /** "Fatto" on a part with no question: a part shown as book text, or written without a check. */
+  // Old lessons in parts.
+  "study.rewriteInParts": {
+    /** "Riscrivi in parti" on a finished lesson written before parts: starts writing its part 1, the old lesson kept. */
+    input: z.object({ planId: z.string(), topicId: z.string() }),
+    output: z.object({ ok: z.literal(true) }),
+  },
   "study.partDone": {
     input: z.object({
       planId: z.string(),
