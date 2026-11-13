@@ -52,17 +52,19 @@ describe("job update invalidation", () => {
     ]);
   });
 
-  it("tells an open part page and the path's parts about a part's job from every update", () => {
+  it("tells an open part page and the path's parts about a part's job from every update, and the suggestion when it ends", () => {
     expect(keys(staleFamilies({ kind: "lesson-part", state: "running" }))).toEqual(["jobs", "part", "parts"]);
-    expect(keys(staleFamilies({ kind: "lesson-part", state: "failed" }))).toEqual([
-      "jobs",
-      "part",
-      "parts",
-      "jobs-finished",
-      "plans",
-      "plan",
-      "series:later",
-    ]);
+    for (const state of ["succeeded", "failed"] as const)
+      expect(keys(staleFamilies({ kind: "lesson-part", state }))).toEqual([
+        "jobs",
+        "part",
+        "parts",
+        "recommend",
+        "jobs-finished",
+        "plans",
+        "plan",
+        "series:later",
+      ]);
   });
 
   it("refreshes the attempt outcome when a gap-insight job ends, since it adds the misconception and severity to a gap", () => {

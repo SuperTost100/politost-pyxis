@@ -31,6 +31,8 @@ import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
+import type Database from "better-sqlite3";
+import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -118,6 +120,11 @@ const routes = [
   // "Da finire" with seven activities: one being written, one on a very long topic, a prepared simulation; and its menu.
   ["plan-unfinished", "/plans/audit-plan"],
   ["plan-unfinished-menu", "/plans/audit-plan"],
+  // An exam whose lesson on one topic is in parts: Consigliato adesso names the next part and the path lists the parts,
+  // Riprendi da on a later day, and Scegli altro open.
+  ["plan-now-part", "/plans/audit-exam-parts-plan"],
+  ["plan-resume", "/plans/audit-exam-parts-plan"],
+  ["plan-now-other", "/plans/audit-exam-parts-plan"],
   ["library-import", "/exams/library"],
   // Overlay states below are reached by role-based interaction (Ant Design 6 drawers and modals are role="dialog").
   ["library-row-menu", "/exams/library"],
@@ -1137,8 +1144,8 @@ const PART_STATES = new Set([
  */
 function prepareLessonParts(name: string) {
   const wanted = PART_STATES.has(name);
-  if (!wanted && !auditParts) return;
-  auditParts = wanted;
+  if (!wanted && !auditLessonParts) return;
+  auditLessonParts = wanted;
   withDb((db) => {
     db.exec("DELETE FROM jobs WHERE id = 'audit-part-job'; DELETE FROM plans WHERE id = 'audit-parts-plan';");
     if (!wanted) return;
@@ -1252,7 +1259,7 @@ function auditScanBlob(): string {
 let auditRating = false;
 let auditPlanner = false;
 let auditDone = false;
-let auditParts = false;
+let auditLessonParts = false;
 let auditUnfinished = false;
 
 /**
@@ -1489,6 +1496,67 @@ function prepareExamsArchived(name: string) {
       .prepare("UPDATE plans SET archived_at = ? WHERE id = 'audit-review-plan'")
       .run(name === "exams-archived" ? 1 : null),
   );
+}
+
+/**
+ * The exam page's exam in parts, only for its states: four topics, the diagnostic done, and the second topic's lesson
+ * in eight parts and a recap, the first two read (yesterday for Riprendi da, with the third) and the first three written.
+ * The lesson part states have an exam of their own (`prepareLessonParts`), whose parts were read yesterday.
+ */
+let auditExamParts = false;
+function prepareExamParts(name: string) {
+  const mine = name === "plan-now-part" || name === "plan-resume" || name === "plan-now-other";
+  if (!mine && !auditExamParts) return;
+  auditExamParts = mine;
+  withDb((db) => {
+    db.exec(`DELETE FROM lesson_parts WHERE outline_id = 'audit-exam-parts-outline';
+      DELETE FROM lesson_outlines WHERE id = 'audit-exam-parts-outline';
+      DELETE FROM items WHERE id LIKE 'audit-exam-parts-%';
+      DELETE FROM learning_events WHERE id LIKE 'audit-exam-parts-%';
+      DELETE FROM topics WHERE plan_id = 'audit-exam-parts-plan';
+      DELETE FROM plans WHERE id = 'audit-exam-parts-plan';`);
+    if (!mine) return;
+    seedPlan(db, {
+      id: "audit-exam-parts-plan",
+      title: "Analisi Matematica 2",
+      language: "it",
+      target: 0.75,
+      examAt: Date.now() + 81 * 86_400_000,
+      topics: [
+        { id: "audit-exam-parts-t1", title: "Successioni e serie di funzioni" },
+        { id: "audit-exam-parts-t2", title: "Funzioni di più variabili" },
+        { id: "audit-exam-parts-t3", title: "Formula di Taylor in più variabili" },
+        { id: "audit-exam-parts-t4", title: "Massimi e minimi liberi" },
+      ],
+    });
+    db.prepare(
+      "INSERT INTO learning_events(id,kind,plan_id,payload_json,created_at) VALUES('audit-exam-parts-diagnostic','lesson_completed','audit-exam-parts-plan',?,?)",
+    ).run(JSON.stringify({ activity: "diagnostic" }), Date.now() - 2 * 86_400_000);
+    const read = name === "plan-resume" ? new Date().setHours(0, 0, 0, 0) - 6 * 3_600_000 : Date.now() - 60_000;
+    const parts: SeedPart[] = [
+      ["Intorni e distanza in $\\mathbb{R}^n$", 5],
+      ["Interno, esterno, frontiera", 6],
+      ["Insiemi aperti e chiusi", 6],
+      ["Limitati, compatti, connessi", 5],
+      ["Limiti e continuità", 7],
+      ["Derivate parziali e gradiente", 7],
+      ["Differenziabilità e piano tangente", 8],
+      ["Derivate seconde e matrice hessiana", 6],
+    ].map(([title, minutes], index) => ({
+      title: title as string,
+      minutes: minutes as number,
+      markdown: index < 3 ? partMarkdown(title as string) : null,
+      doneAt: index < (name === "plan-resume" ? 3 : 2) ? read + index : null,
+    }));
+    parts.push({ kind: "recap", title: "Ripasso del capitolo", minutes: 4 });
+    // The app's database is node:sqlite here; the helper uses only prepare and run, which both drivers share.
+    seedOutline(db as unknown as Database.Database, {
+      id: "audit-exam-parts-outline",
+      planId: "audit-exam-parts-plan",
+      topicId: "audit-exam-parts-t2",
+      parts,
+    });
+  });
 }
 
 function prepareExamsEmpty(name: string) {
@@ -1881,6 +1949,7 @@ function prepareState(name: string) {
   prepareEngines(name);
   prepareExamsEmpty(name);
   prepareExamsArchived(name);
+  prepareExamParts(name);
   preparePanelSources(name);
   prepareSourcePanel(name);
   prepareLibraryEmpty(name);
@@ -3787,6 +3856,14 @@ async function openState(page: Page, name: string) {
       await page.locator(".px-unf-more").click();
       await expect(page.locator(".px-unf-open")).toHaveCount(7);
       break;
+    case "plan-now-part":
+    case "plan-resume":
+      await expect(page.getByRole("list", { name: both("Parti della lezione su Funzioni di più variabili", "Parts of the lesson on Funzioni di più variabili") })).toBeVisible();
+      break;
+    case "plan-now-other":
+      await page.locator(".px-exam-now").getByRole("button", { name: both("Scegli altro", "Something else") }).click();
+      await expect(page.getByRole("menuitem", { name: /^(Rileggi una parte|Reread a part)/ })).toBeVisible();
+      break;
     case "plan-unfinished-menu":
       await page.locator(".px-unf-dots").first().click();
       await expect(page.getByRole("menuitem", { name: both("Elimina…", "Delete…") })).toBeVisible();
@@ -4646,6 +4723,7 @@ test("M14 every application route in both languages, themes and supported widths
                 (name === "library-row-menu" ||
                   name === "library-kind-menu" ||
                   name === "plan-unfinished-menu" ||
+                  name === "plan-now-other" ||
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||

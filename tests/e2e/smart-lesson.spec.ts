@@ -186,7 +186,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await page.evaluate((planId) => {
       location.hash = `/plans/${planId}`;
     }, planId);
-    await page.locator(".px-exam-now").getByRole("button", { name: "Inizia", exact: true }).click();
+    await page.locator(".px-exam-now").getByRole("button", { name: "Continua", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/intro$`));
     await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
     await expect(page.getByText("imparerai a descrivere il moto")).toBeVisible();

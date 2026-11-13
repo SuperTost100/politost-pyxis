@@ -9,69 +9,12 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled, atRest } from "./settled";
+import { partText, recapText } from "./part-texts";
 import { saveShot } from "./shots";
 
 // A topic's lesson in parts, with the recorded engine: the plan of the parts, part 1, the part written ahead, a part
 // that is not ready yet, a write that fails and Riprova, the recap, a topic of one part, a part without an AI tool, and
 // the keys and the narrow window's list.
-
-const fence = (kind: string, body: unknown) => ["```" + kind, JSON.stringify(body), "```"].join("\n");
-
-/** Prose for one section of a part: enough words that each part has the length a part must have. */
-function prose(name: string): string {
-  return Array.from(
-    { length: 7 },
-    (_, i) => `${name} torna in molti esercizi del corso, e questa frase numero ${i + 1} lo spiega con calma e con un esempio.`,
-  ).join(" ");
-}
-
-/** A teaching part as the model writes it: an opening, two sections, one check whose right answer is B, the takeaway. */
-function partText(name: string): string {
-  return [
-    `Qui si parla di ${name.toLowerCase()}.`,
-    "",
-    `## ${name}: l'idea`,
-    "",
-    prose(name),
-    "",
-    prose(name),
-    "",
-    `## ${name}: un esempio`,
-    "",
-    prose(name),
-    "",
-    prose(name),
-    "",
-    fence("pyxis-check", {
-      question: `Che cosa dice la parte su ${name.toLowerCase()}?`,
-      options: ["Una cosa sbagliata", "La cosa giusta", "Un'altra cosa"],
-      answer: 1,
-      explanation: "Lo dice la parte che hai letto.",
-    }),
-    "",
-    fence("pyxis-takeaway", { text: `Riassunto di ${name.toLowerCase()}: la cosa giusta. Serve nella parte dopo.` }),
-  ].join("\n");
-}
-
-/** The recap part: one section with a point per part, the closing recap of three questions, the takeaway. */
-const recapText = [
-  "## Il capitolo in breve",
-  "",
-  "- Intorni e distanza.",
-  "- Interno e frontiera.",
-  "- Aperti e chiusi.",
-  "- Compatti e connessi.",
-  "",
-  fence("pyxis-recap", {
-    questions: [1, 2, 3].map((n) => ({
-      question: `Domanda di ripasso ${n}?`,
-      options: ["Giusta", "Sbagliata"],
-      answer: 0,
-    })),
-  }),
-  "",
-  fence("pyxis-takeaway", { text: "Il capitolo in breve: intorni, frontiera, aperti, compatti." }),
-].join("\n");
 
 /** Eight passages of about 3,000 characters: a topic of about 24,000, which Pyxis plans in 3 to 5 parts. */
 const passages = Array.from({ length: 8 }, (_, i) => ({
