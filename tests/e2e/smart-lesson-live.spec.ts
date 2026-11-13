@@ -10,6 +10,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -145,6 +146,12 @@ test("a quick check can be answered while the lesson is still being written, and
         topics: Array<{ id: string }>;
       }
     ).topics[0]!.id;
+    // A topic never read opens in parts, which a job writes and nothing streams. The reader that came before parts
+    // still streams a lesson as it writes one: here the topic has a finished lesson from before parts, written for
+    // another course, so opening it writes the student's own lesson in that reader.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topicId], { finished: true });
+    seeding.close();
     const answerEvents = () => {
       const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
         timeout: 10000,
