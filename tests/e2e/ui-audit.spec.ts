@@ -25,7 +25,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
-import { saveShot } from "./shots";
+import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
@@ -4342,7 +4342,8 @@ test("M14 every application route in both languages, themes and supported widths
               const violations = await axeViolations(page);
               await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
-              await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });
+              // Without PYXIS_SHOTS (every CI run) nothing keeps it, and the full-page capture has already ended the animations.
+              if (SHOTS) await saveShot(page, `m14/${key}.viewport.png`, { fullPage: false, animations: "disabled" });
               const errors = pageErrors.slice(before);
               const untranslated = (await page.locator("body").innerText())
                 .match(untranslatedKey)

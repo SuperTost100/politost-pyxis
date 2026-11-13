@@ -8,24 +8,45 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { seedSource } from "./seed";
 import { atRest } from "./settled";
+import { drawSlowly } from "./slow-window";
 import { saveShot } from "./shots";
 
 type Box = { left: number; top: number; right: number; bottom: number };
-/** `row` is the file's row in "Da sistemare": `leaving` once its exit has started, `active` while it still works. */
-type Frame = { t: number; art: Box | null; row: Box | null; rowState: "active" | "leaving" | null; card: Box | null; shelf: Box | null };
+/**
+ * `row` is the file's row in "Da sistemare": `leaving` once its exit has started, `active` while it still works.
+ * `rowMotion` counts the animations running on the row.
+ */
+type Frame = {
+  t: number;
+  art: Box | null;
+  row: Box | null;
+  rowState: "active" | "leaving" | null;
+  rowMotion: number;
+  card: Box | null;
+  shelf: Box | null;
+};
+
+/** The recording ends once the page has been still for this many frames after the move. */
+const STILL_FRAMES = 5;
 
 /**
- * Chooses a subject for a file in "Da sistemare" and records, on every animation frame, the box of the file's cover
- * picture on its shelf, the box of its row and the box of the shelf. The boxes are in the window's coordinates, so a
- * cover that flew in from the wrong place shows as a frame outside its shelf.
+ * Chooses a subject for a file in "Da sistemare" and records the box of the file's cover picture on its shelf, the box
+ * of its row and the box of the shelf. The boxes are in the window's coordinates, so a cover that flew in from the
+ * wrong place shows as a frame outside its shelf.
+ *
+ * A frame is recorded at the moment of the choice, on every animation frame after it, and at every change of what is
+ * on the page (the row starts to leave, the row is gone, the cover is there), so the start, the first sight of the
+ * cover and the end are recorded however few frames a slow window draws. The number of frames between them is a
+ * property of the machine, not of the app, and no check here depends on it.
  *
  * The recording starts inside the page, from the picker's own `change` event, so a slow test runner that takes long to
- * find and change the picker still records the whole move. It ends when the cover is on its shelf, the row is gone and
- * no finite animation is running any more, however long the file takes to get there.
+ * find and change the picker still records the whole move. It ends when the cover is on its shelf, the row is gone, no
+ * finite animation is running and the cover has kept its box for STILL_FRAMES frames in a row, however long the file takes
+ * to get there. If that never happens it fails with the frames it did record.
  */
 async function sortAndRecord(page: Page, title: string, subjectId: string, subjectName: string): Promise<Frame[]> {
   await page.evaluate(
-    ({ id, subject }) => {
+    ({ id, subject, stillFrames }) => {
       const box = (element: Element | null): Box | null => {
         if (!element) return null;
         const { left, top, right, bottom } = element.getBoundingClientRect();
@@ -42,38 +63,71 @@ async function sortAndRecord(page: Page, title: string, subjectId: string, subje
         () => {
           const start = performance.now();
           let covered = false;
-          const tick = () => {
+          let still = 0;
+          let finished = false;
+          const sample = (): Frame => {
             const row = document.querySelector(`.px-unsorted-row[data-source-id="${id}"]`);
             const art = document.querySelector(`.px-shelf .px-cover[data-source-id="${id}"] .px-cover-art`);
-            frames.push({
+            const frame: Frame = {
               t: performance.now() - start,
               art: box(art),
               row: box(row),
               rowState: row ? (row.hasAttribute("data-leaving") ? "leaving" : "active") : null,
+              rowMotion: row?.getAnimations().length ?? 0,
               card: box(document.querySelector(".px-unsorted-card")),
               shelf: box(document.querySelector(`[data-subject-id="${subject}"] .px-shelf`)),
-            });
+            };
+            frames.push(frame);
             if (art) covered = true;
+            return frame;
+          };
+          sample();
+          // The page's own changes arrive before the frame that draws them, so the first sight of the cover is
+          // recorded as it is when it appears, not as it is a frame later.
+          const watcher = new MutationObserver(() => {
+            if (finished) return;
+            const last = frames.at(-1)!;
+            const row = document.querySelector(`.px-unsorted-row[data-source-id="${id}"]`);
+            const art = document.querySelector(`.px-shelf .px-cover[data-source-id="${id}"] .px-cover-art`);
+            const rowState = row ? (row.hasAttribute("data-leaving") ? "leaving" : "active") : null;
+            if (Boolean(art) !== Boolean(last.art) || rowState !== last.rowState) sample();
+          });
+          watcher.observe(document.body, { childList: true, subtree: true, attributes: true });
+          const tick = () => {
+            const before = frames.at(-1)!;
+            const frame = sample();
             // Looping animations (a spinner) never end, so they are not waited for.
             const running = document
               .getAnimations()
               .some((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity);
-            if (covered && !row && !running) global.framesDone = true;
-            else requestAnimationFrame(tick);
+            const unmoved = JSON.stringify(frame.art) === JSON.stringify(before.art);
+            still = covered && !frame.row && !running && unmoved ? still + 1 : 0;
+            if (still >= stillFrames) {
+              finished = true;
+              watcher.disconnect();
+              global.framesDone = true;
+            } else requestAnimationFrame(tick);
           };
           requestAnimationFrame(tick);
         },
         { once: true },
       );
     },
-    { id: title, subject: subjectId },
+    { id: title, subject: subjectId, stillFrames: STILL_FRAMES },
   );
   await page
     .getByRole("region", { name: "Da sistemare" })
     .getByRole("combobox", { name: `Materia di ${title}` })
     .selectOption({ label: subjectName });
-  await expect.poll(() => page.evaluate(() => (window as unknown as { framesDone: boolean }).framesDone), { timeout: 60_000 }).toBe(true);
-  return page.evaluate(() => (window as unknown as { frames: Frame[] }).frames);
+  const recorded = () => page.evaluate(() => (window as unknown as { frames: Frame[] }).frames);
+  try {
+    await expect.poll(() => page.evaluate(() => (window as unknown as { framesDone: boolean }).framesDone), { timeout: 60_000 }).toBe(true);
+  } catch (error) {
+    throw new Error(`${title} was not on its shelf with its row gone and the page still after 60 s:\n${describeFrames(await recorded())}`, {
+      cause: error,
+    });
+  }
+  return recorded();
 }
 
 const describeFrames = (frames: Frame[]) =>
@@ -81,7 +135,7 @@ const describeFrames = (frames: Frame[]) =>
     .map(
       (f) =>
         `${f.t.toFixed(0)}ms art=${f.art ? `${f.art.left.toFixed(0)},${f.art.top.toFixed(0)} ${(f.art.right - f.art.left).toFixed(0)}w` : "-"} ` +
-        `row=${f.row ? `${f.row.left.toFixed(0)},${f.row.top.toFixed(0)} ${(f.row.bottom - f.row.top).toFixed(0)}h` : "-"}`,
+        `row=${f.row ? `${f.row.left.toFixed(0)},${f.row.top.toFixed(0)} ${(f.row.bottom - f.row.top).toFixed(0)}h ${f.rowState} ${f.rowMotion}a` : "-"}`,
     )
     .join("\n");
 
@@ -131,7 +185,7 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
 
   // The cover is on its shelf for every frame it exists, from the first, so it did not fly in from elsewhere.
   const onShelf = frames.filter((frame) => frame.art);
-  expect(onShelf.length, where).toBeGreaterThan(3);
+  expect(onShelf.length, `no frame saw the cover:\n${where}`).toBeGreaterThan(0);
   const slack = 2;
   for (const frame of onShelf) {
     const { art, shelf } = frame;
@@ -141,8 +195,8 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
     expect(art!.top, where).toBeGreaterThanOrEqual(shelf!.top - slack);
     expect(art!.bottom, where).toBeLessThanOrEqual(shelf!.bottom + slack);
   }
-  // It grows: the first frame is smaller than the last, around the same centre on the shelf (the shelf itself moves up
-  // while the row above it closes, so the centre is measured from the shelf's corner).
+  // It grows: the first sight of it is smaller than the last, around the same centre on the shelf (the shelf itself
+  // moves up while the row above it closes, so the centre is measured from the shelf's corner).
   const centre = ({ art, shelf }: Frame) => [(art!.left + art!.right) / 2 - shelf!.left, (art!.top + art!.bottom) / 2 - shelf!.top];
   const first = onShelf[0]!;
   const last = onShelf.at(-1)!;
@@ -152,8 +206,9 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
 
   // The row stays where it was in its list and closes: same left and right edge, top never above its start, height
   // shrinking to nothing. It is measured from the list's corner, since focus can scroll the page to the new cover.
+  // The first frame is taken at the choice itself, so the row is in it whatever the window draws after.
   const rowFrames = frames.filter((frame) => frame.row && frame.card);
-  expect(rowFrames.length, where).toBeGreaterThan(3);
+  expect(rowFrames.length, `no frame saw the row:\n${where}`).toBeGreaterThan(0);
   const startTop = originalRow.y - originalCard.y;
   for (const { row: box, card } of rowFrames) {
     expect(box!.left - card!.left, where).toBeCloseTo(originalRow.x - originalCard.x, 0);
@@ -162,11 +217,13 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
     expect(box!.bottom - card!.top, where).toBeLessThanOrEqual(startTop + originalRow.height + slack);
   }
   const heights = rowFrames.map(({ row: box }) => box!.bottom - box!.top);
-  expect(Math.min(...heights), where).toBeLessThan(originalRow.height / 2);
   // Never taller than the frame before, to within the rounding of a box's edges.
   heights.forEach((height, at) => {
     if (at > 0) expect(height, where).toBeLessThanOrEqual(heights[at - 1]! + 0.5);
   });
+  // It closes with a motion of its own, and was not removed in one step: a slow window can draw too few frames to see
+  // it half closed, but the row has an animation from the moment it starts to leave.
+  expect(Math.max(...rowFrames.map((frame) => frame.rowMotion)), `the row had no animation:\n${where}`).toBeGreaterThan(0);
   // Focus went on with the file, to the next row's choice or the new cover, and was not left on the row that closed.
   const focus = await page.evaluate(() => ({
     onPage: document.activeElement !== document.body,
@@ -176,11 +233,15 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
   if (index === 0) await saveShot(page, "library-sort-motion/landed.png");
 }
 
-/** Starts the app with a profile, the two subjects and the seeded files, and opens the Library in Italian. */
-async function openLibrary(prefix: string, env: Record<string, string> = {}) {
+/**
+ * Starts the app with a profile, the two subjects and the seeded files, and opens the Library in Italian. With `fps` the
+ * window draws that many frames a second at most, as a hidden window on a busy Mac runner does.
+ */
+async function openLibrary(prefix: string, env: Record<string, string> = {}, fps?: number) {
   const userData = mkdtempSync(join(tmpdir(), prefix));
   const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
+  if (fps) await drawSlowly(page, fps);
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
   const subjects: Array<{ id: string; name: string }> = [];
@@ -214,6 +275,17 @@ test("The same holds on a processor four times slower, where finding and changin
   }
 });
 
+test("The same holds in a window that draws five frames a second, where the move is seen in a few frames", async () => {
+  test.setTimeout(240_000);
+  const { app, page, subjects, userData } = await openLibrary("pyxis-sort-frames-", {}, 5);
+  try {
+    for (const index of [0, configs.length - 1]) await checkSort(page, subjects, index, configs[index]!);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("A sorted file does not come back to Da sistemare while the list of files is still on its way", async () => {
   test.setTimeout(120_000);
   // The list of files is held back for 1.5 seconds, which is longer than the row takes to close (420 ms).
@@ -238,32 +310,47 @@ test("A sorted file does not come back to Da sistemare while the list of files i
   }
 });
 
-test("With reduced motion the file is on its shelf and its row gone at once", async () => {
-  test.setTimeout(120_000);
-  const userData = mkdtempSync(join(tmpdir(), "pyxis-sort-still-"));
-  const app = await launchPyxis({ userData });
-  try {
-    const page = await app.firstWindow();
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.getByRole("button", { name: "Salta" }).click();
-    await fromChiediToExams(page);
-    const subjects: Array<{ id: string; name: string }> = [];
-    for (const name of ["Analisi 1", "Fisica 2"])
-      subjects.push(await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name));
-    seedLibrary(userData, subjects);
-    await page.setViewportSize({ width: 1280, height: 832 });
-    await toLibrary(page);
-    await expect(page.locator('.px-unsorted-row[data-source-id="Alfa"]')).toBeVisible();
-    const frames = await sortAndRecord(page, "Alfa", subjects[0]!.id, subjects[0]!.name);
-    const where = describeFrames(frames);
-    const onShelf = frames.filter((frame) => frame.art);
-    expect(onShelf.length, where).toBeGreaterThan(3);
-    const first = onShelf[0]!.art!;
-    const last = onShelf.at(-1)!.art!;
-    expect([first.left, first.top, first.right, first.bottom], where).toEqual([last.left, last.top, last.right, last.bottom]);
-    expect(frames.filter((frame) => frame.row && frame.art).length, where).toBe(0);
-  } finally {
-    await app.close();
-    removeTestFolder(userData);
-  }
-});
+// The window draws as often as it likes, and at five frames a second: the cover and the row are checked in whatever
+// frames it draws.
+for (const fps of [undefined, 5]) {
+  test(`With reduced motion the file is on its shelf and its row gone at once${fps ? ` in a window that draws ${fps} frames a second` : ""}`, async () => {
+    test.setTimeout(120_000);
+    const userData = mkdtempSync(join(tmpdir(), "pyxis-sort-still-"));
+    const app = await launchPyxis({ userData });
+    try {
+      const page = await app.firstWindow();
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      if (fps) await drawSlowly(page, fps);
+      await page.getByRole("button", { name: "Salta" }).click();
+      await fromChiediToExams(page);
+      const subjects: Array<{ id: string; name: string }> = [];
+      for (const name of ["Analisi 1", "Fisica 2"])
+        subjects.push(await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name));
+      seedLibrary(userData, subjects);
+      await page.setViewportSize({ width: 1280, height: 832 });
+      await toLibrary(page);
+      await expect(page.locator('.px-unsorted-row[data-source-id="Alfa"]')).toBeVisible();
+      const frames = await sortAndRecord(page, "Alfa", subjects[0]!.id, subjects[0]!.name);
+      const where = describeFrames(frames);
+      // From the first frame in which the cover exists, it is at its final place and size and stays there. How many
+      // frames the window drew is not checked, but at least one has to have seen the cover.
+      const onShelf = frames.filter((frame) => frame.art);
+      expect(onShelf.length, `no frame saw the cover:\n${where}`).toBeGreaterThan(0);
+      const final = onShelf.at(-1)!.art!;
+      for (const { art } of onShelf) expect([art!.left, art!.top, art!.right, art!.bottom], where).toEqual([final.left, final.top, final.right, final.bottom]);
+      // The row is gone in the frame in which the cover first exists, and it never closes by degrees: every frame that
+      // saw it saw it whole and working.
+      expect(frames.filter((frame) => frame.row && frame.art).length, where).toBe(0);
+      const rows = frames.filter((frame) => frame.row);
+      expect(rows.length, `no frame saw the row:\n${where}`).toBeGreaterThan(0);
+      const height = (frame: Frame) => frame.row!.bottom - frame.row!.top;
+      for (const frame of rows) {
+        expect(frame.rowState, where).toBe("active");
+        expect(height(frame), where).toBe(height(rows[0]!));
+      }
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+    }
+  });
+}
