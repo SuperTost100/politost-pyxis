@@ -10,8 +10,9 @@ import { readSteps, recordStep } from "../plans/steps";
 import { topicContent } from "../plans/views";
 import { BOOK_VERSION, cacheKey } from "./lesson";
 import { oldLesson } from "./oldLessons";
-import { PART_JOB, openPart, registerPartJobs, rewriteInParts } from "./partJobs";
-import { finishPart } from "./partProgress";
+import { planGuide } from "../plans/create";
+import { PART_JOB, openPart, registerPartJobs, rewriteInParts, topicParts } from "./partJobs";
+import { finishPart, nextPart, outlineProgress } from "./partProgress";
 import { liveOutline } from "./parts";
 import { partOfText } from "./partText";
 import { answerSmartCheck, smartAnswers } from "./smartText";
@@ -55,12 +56,21 @@ function recapText(): string {
 
 /** A recorded engine: one part per passage, a sound text for each part, a failure while `fail` is set, a wait on `hold`. */
 function engine() {
-  const state = { calls: 0, fail: null as Error | null, hold: null as Promise<void> | null };
+  const state = {
+    calls: 0,
+    fail: null as Error | null,
+    hold: null as Promise<void> | null,
+    /** Only the calls that write a part's text: the plan of the parts is saved, then part 1 fails or waits. */
+    failText: null as Error | null,
+    holdText: null as Promise<void> | null,
+  };
   const run: GenerateInput["run"] = async (input) => {
     state.calls++;
     if (state.hold) await state.hold;
+    if (!input.responseSchema && state.holdText) await state.holdText;
     input.signal?.throwIfAborted();
     if (state.fail) throw state.fail;
+    if (!input.responseSchema && state.failText) throw state.failText;
     if (input.responseSchema) {
       const reply = {
         lessonParts: [1, 2, 3, 4].map((n) => ({ title: `Idea ${n}`, about: `Dopo la parte ${n} sai farlo.`, passages: [`P${n}`] })),
@@ -467,7 +477,7 @@ describe("a rewrite that does not finish leaves the old lesson as it was", () =>
     expect(openPart(db, runner, { planId: "p", topicId: "t", position: 1 })).toEqual({ mode: "legacy", old: "finished" });
   });
 
-  it("of a lesson finished after its rewrite saved a plan and failed: it opens as it was, and Riscrivi in parti retries", async () => {
+  it("of a lesson finished after its rewrite saved a plan and failed: the old lesson under the failure, read-only by its item, and Riscrivi in parti retries", async () => {
     const { db, runner, engine } = setUp();
     saveOld(db, { id: "old" });
     // A topic of one passage is one part: its plan is saved by code, then the write fails.
@@ -477,10 +487,15 @@ describe("a rewrite that does not finish leaves the old lesson as it was", () =>
     await settle(db);
     expect(liveOutline(db, "t")?.replacesItemId).toBe("old");
     expect(openPart(db, runner, { planId: "p", topicId: "t", position: 1 })).toMatchObject({ mode: "parts", state: "failed" });
-    // The student finishes the old lesson shown in its place.
+    // The student finishes the old lesson shown in its place. While the replacement is stored, the topic opens on that
+    // failure, where nothing rewrites the old lesson, and its item opens as the earlier version.
     finishThroughRecap(db, "old");
-    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toEqual({ mode: "legacy", old: "finished" });
-    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "finished" });
+    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toMatchObject({
+      mode: "parts",
+      state: "failed",
+      replaces: { itemId: "old" },
+    });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
     engine.state.fail = null;
     rewriteInParts(db, runner, { planId: "p", topicId: "t" });
     await settle(db);
@@ -509,5 +524,94 @@ describe("a rewrite that does not finish leaves the old lesson as it was", () =>
     await settle(db);
     expect(liveOutline(db, "t")?.replacesItemId).toBe("old");
     expect(lessonSteps(db)).toHaveLength(1);
+  });
+});
+
+describe("a replacement that has no part written yet", () => {
+  /** An old lesson whose rewrite saved its plan of four parts and then failed to write part 1. */
+  async function pending(finished: boolean) {
+    const set = setUp();
+    // The diagnostic is done, so the suggestion is a topic's step.
+    recordStep(set.db, "p", { activity: "diagnostic" });
+    saveOld(set.db, { id: "old" });
+    if (finished) finishThroughRecap(set.db, "old");
+    else answer(set.db, "old", 0);
+    set.engine.state.failText = new IpcError("cli-failed", "engines.errors.cli-failed", { provider: "claude" }, "exit 1");
+    if (finished) rewriteInParts(set.db, set.runner, { planId: "p", topicId: "t" });
+    else openPart(set.db, set.runner, { planId: "p", topicId: "t", write: true });
+    await settle(set.db);
+    expect(liveOutline(set.db, "t")).toMatchObject({ replacesItemId: "old" });
+    expect(liveOutline(set.db, "t")!.parts.filter((part) => part.itemId)).toEqual([]);
+    return set;
+  }
+
+  /** What the exam page, the Percorso, the minutes and the rings read of the topic's lesson. */
+  function reads(db: Db) {
+    const guide = planGuide(db, "p");
+    return {
+      parts: topicParts(db, { planId: "p", topicId: "t" }).outline?.teaching ?? null,
+      next: nextPart(db, "t")?.position ?? null,
+      progress: outlineProgress(db, "p").has("t"),
+      suggested: guide?.next ? { activity: guide.next.activity, topicId: guide.next.topicId, part: guide.next.part?.position ?? null } : null,
+    };
+  }
+
+  it("of an unfinished lesson: every read shows the lesson as one lesson until Riprova writes part 1", async () => {
+    const { db, runner, engine } = await pending(false);
+    expect(reads(db)).toEqual({ parts: null, next: null, progress: false, suggested: { activity: "lesson", topicId: "t", part: null } });
+    // The reader shows the old lesson under the failure, and by its item as the earlier version.
+    expect(openPart(db, runner, { planId: "p", topicId: "t" })).toMatchObject({ mode: "parts", state: "failed", replaces: { itemId: "old" } });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
+    // Riprova continues from the stored plan, and every read moves to the parts.
+    engine.state.failText = null;
+    openPart(db, runner, { planId: "p", topicId: "t", position: 1, write: true });
+    await settle(db);
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(1);
+    expect(reads(db)).toEqual({ parts: 4, next: 1, progress: true, suggested: { activity: "lesson", topicId: "t", part: 1 } });
+  });
+
+  it("of a finished lesson: the topic stays finished, and the old lesson can't be rewritten in one piece meanwhile", async () => {
+    const { db, runner, engine } = await pending(true);
+    const before = reads(db);
+    expect(before).toMatchObject({ parts: null, next: null, progress: false });
+    expect(before.suggested).not.toMatchObject({ activity: "lesson", topicId: "t" });
+    // Every open of the topic shows the old lesson on the failure's screen, which has no rewrite in one piece; its
+    // item is the earlier version.
+    for (const position of [undefined, 1])
+      expect(openPart(db, runner, { planId: "p", topicId: "t", ...(position ? { position } : {}) })).toMatchObject({
+        mode: "parts",
+        state: "failed",
+      });
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
+    engine.state.failText = null;
+    openPart(db, runner, { planId: "p", topicId: "t", position: 1, write: true });
+    await settle(db);
+    expect(reads(db)).toMatchObject({ parts: 4, next: 1, progress: true, suggested: before.suggested });
+    expect(lessonSteps(db)).toHaveLength(1);
+  });
+
+  it("names the old lesson the earlier version as soon as its rewrite starts, before the plan and before part 1", async () => {
+    const { db, runner, engine } = setUp();
+    saveOld(db, { id: "old" });
+    finishThroughRecap(db, "old");
+    let releasePlan = () => {};
+    engine.state.hold = new Promise<void>((resolve) => (releasePlan = resolve));
+    let releaseText = () => {};
+    engine.state.holdText = new Promise<void>((resolve) => (releaseText = resolve));
+    rewriteInParts(db, runner, { planId: "p", topicId: "t" });
+    // The plan of the parts is being made.
+    expect(liveOutline(db, "t")).toBeNull();
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
+    engine.state.hold = null;
+    releasePlan();
+    for (let i = 0; i < 400 && !liveOutline(db, "t"); i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    // The plan is saved and part 1 is being written.
+    expect(liveOutline(db, "t")?.parts.some((part) => part.itemId)).toBe(false);
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
+    expect(reads(db)).toMatchObject({ parts: null, next: null, progress: false });
+    engine.state.holdText = null;
+    releaseText();
+    await settle(db);
+    expect(openPart(db, runner, { planId: "p", topicId: "t", itemId: "old" })).toEqual({ mode: "legacy", old: "earlier" });
   });
 });

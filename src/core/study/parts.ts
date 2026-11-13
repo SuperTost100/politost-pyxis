@@ -410,6 +410,29 @@ export const LIVE_OUTLINE_SQL = `SELECT id, plan_id AS planId, topic_id AS topic
   replaces_item_id AS replacesItemId, passage_key AS passageKey, created_at AS createdAt
   FROM lesson_outlines WHERE topic_id = ? AND retired_at IS NULL`;
 
+/**
+ * The one rule for whether a topic's live outline is the lesson the student has: an outline made for a topic never read
+ * is at once; one that replaces a lesson written before parts (`replaces_item_id`) is only once one of its parts is
+ * written. Until then the old lesson stays the topic's lesson everywhere: the reader shows it, the suggestion, the
+ * Percorso, the minutes and the rings count it as one lesson, and the stored outline only waits for Riprova to go on.
+ * `alias` names `lesson_outlines` in the caller's query.
+ */
+export function shownOutlineSql(alias: string): string {
+  return `(${alias}.replaces_item_id IS NULL OR EXISTS (SELECT 1 FROM lesson_parts shown
+    WHERE shown.outline_id = ${alias}.id AND shown.item_id IS NOT NULL))`;
+}
+
+/** `shownOutlineSql` on an outline already read. */
+export function outlineShown(outline: Outline | null): outline is Outline {
+  return !!outline && (!outline.replacesItemId || outline.parts.some((part) => part.itemId !== null));
+}
+
+/** The topic's live outline when it is the lesson the student has (`outlineShown`), else null. */
+export function shownOutline(db: Database.Database, topicId: string): Outline | null {
+  const outline = liveOutline(db, topicId);
+  return outlineShown(outline) ? outline : null;
+}
+
 /** The live outline of a topic with its parts, or null when the topic has none yet. */
 export function liveOutline(db: Database.Database, topicId: string): Outline | null {
   const row = db.prepare(LIVE_OUTLINE_SQL).get(topicId) as Omit<Outline, "parts"> | undefined;

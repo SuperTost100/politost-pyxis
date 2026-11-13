@@ -3,7 +3,7 @@ import type { MenuProps } from "antd";
 import { Clock, Download, Network } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
 import { Button } from "../../components/Button";
 import { ErrorState } from "../../components/ErrorState";
@@ -146,18 +146,24 @@ export function PartPage({
   const answered = questions.length > 0 && questions.every((id) => lesson?.answers[id] !== undefined);
   const active = Boolean(part?.done) || answered;
 
-  // Where the focus goes once the next part is read: its title, after Continua; its title, when the part the student
-  // waited for is written while the focus was in the working block.
-  const focusTitle = useRef(false);
   const focusTitleNow = () =>
     requestAnimationFrame(() =>
       document.querySelector<HTMLElement>(".px-reader-head h1")?.focus({ preventScroll: false }),
     );
+  // A part the page shows from its own read opens at its title, which takes the focus, however the student came to it:
+  // Continua, the parts column or its popover, Rileggi una parte, a link. Back and Forward (and a reload) keep where
+  // the student was in that part, which the browser restores on every page of the app. A part being planned or written
+  // gives the focus to its working block instead. Never a smooth scroll: the page changes in place.
+  const navigation = useNavigationType();
+  const presented = useRef<number | null>(null);
   useEffect(() => {
-    if (!focusTitle.current || query.isPlaceholderData) return;
-    focusTitle.current = false;
-    if (data.state === "written" || data.state === "book" || data.state === "failed") focusTitleNow();
-  }, [data.position, data.state, query.isPlaceholderData]);
+    if (query.isPlaceholderData || presented.current === data.position) return;
+    presented.current = data.position;
+    if (navigation === "POP") return;
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (data.state !== "planning" && data.state !== "writing")
+      document.querySelector<HTMLElement>(".px-reader-head h1")?.focus({ preventScroll: true });
+  }, [data.position, data.state, query.isPlaceholderData, navigation]);
 
   // Old lessons in parts: a lesson written before parts being rewritten, until its first part is written.
   const rewritingOld = oldLessonView(data) === "rewriting";
@@ -276,7 +282,6 @@ export function PartPage({
   );
   const goOn = () => {
     if (data.next) {
-      focusTitle.current = true;
       navigate(href(data.next.position));
       return;
     }

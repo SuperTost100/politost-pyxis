@@ -117,9 +117,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     }),
   );
   const replies = {
-    // In turn: the plan's introduction, which the test replaces; the rewrite of the unfinished lesson in parts, which
-    // fails; the lesson written again at another level.
-    markdown: [{ markdown: lesson }, { fail: "Il motore non ha risposto." }, { markdown: lesson }],
+    markdown: { markdown: lesson },
     questions: {
       questions: Array.from({ length: 10 }, (_, i) => ({
         stem: `Che cosa cambia una forza ${i + 1}?`,
@@ -209,10 +207,17 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
 
     const learn = { topicId: (await read()).topics[0]!.id };
     // The student's own smart lesson, written before lessons came in parts and never finished. Opening it rewrites it in
-    // parts, and the recorded engine fails that, so it stays in the reader that came before parts, as it was; lessons
-    // in parts have their own spec.
+    // parts, which needs an AI tool: with none set up the rewrite stops before it plans anything, so the lesson stays
+    // in the reader that came before parts, as it was. Lessons in parts have their own spec.
     const before = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seedLessonBeforeParts(before, planId, [learn.topicId], { markdown: lesson, wording: "balanced" });
+    const engines = before.prepare("SELECT feature, selection_json, updated_at FROM feature_engines").all() as Array<{
+      feature: string;
+      selection_json: string;
+      updated_at: number;
+    }>;
+    expect(engines.length).toBeGreaterThan(0);
+    before.exec("DELETE FROM feature_engines");
     before.close();
 
     await page.evaluate(
@@ -221,7 +226,6 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
       },
       { planId, topicId: learn.topicId },
     );
-    await expect(page.getByRole("status").filter({ hasText: "Sto riscrivendo la lezione in parti brevi" })).toBeVisible();
     await expect(page.getByText("Una forza è ciò che cambia", { exact: false })).toBeVisible({ timeout: 20000 });
     await expect(page.getByText("Non sono riuscito a riscrivere la lezione in parti.", { exact: false })).toBeVisible();
     // Opening the lesson did not mark it done.
@@ -337,7 +341,13 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await expect(page.getByText("Lezione completata")).toBeVisible();
     expect(await done("lesson", learn.topicId)).toBe(true);
 
-    // Finished, the lesson opens in its reader as it was, with every action of its menu.
+    // The AI tool is set up again. Finished, the lesson opens in its reader as it was, with every action of its menu.
+    const restore = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    for (const row of engines)
+      restore
+        .prepare("INSERT INTO feature_engines(feature, selection_json, updated_at) VALUES(?,?,?)")
+        .run(row.feature, row.selection_json, row.updated_at);
+    restore.close();
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;

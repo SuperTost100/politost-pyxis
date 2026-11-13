@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { recordStep } from "../plans/steps";
 import { startOfDay } from "../../shared/local-day";
 import { parseSmartText, partQuestions } from "../../shared/smart-text";
-import { LIVE_OUTLINE_SQL, type OutlinePart } from "./parts";
+import { LIVE_OUTLINE_SQL, shownOutlineSql, type OutlinePart } from "./parts";
 import { partTextSql } from "./partText";
 
 // Progress through a topic's lesson in parts: when a part is done, when that finishes the topic's lesson, and what the
@@ -79,7 +79,7 @@ export type OutlineProgress = {
   minutesLeft: number;
 };
 
-/** The live outline of each topic of the plan that has one. */
+/** The live outline of each topic of the plan whose outline is the lesson the student has (`shownOutlineSql`). */
 export function outlineProgress(db: Database.Database, planId: string): Map<string, OutlineProgress> {
   const rows = db
     .prepare(
@@ -87,7 +87,7 @@ export function outlineProgress(db: Database.Database, planId: string): Map<stri
          COALESCE(SUM(p.minutes), 0) AS minutes,
          COALESCE(SUM(CASE WHEN p.done_at IS NULL THEN p.minutes ELSE 0 END), 0) AS minutesLeft
        FROM lesson_outlines o LEFT JOIN lesson_parts p ON p.outline_id = o.id
-       WHERE o.plan_id = ? AND o.retired_at IS NULL
+       WHERE o.plan_id = ? AND o.retired_at IS NULL AND ${shownOutlineSql("o")}
        GROUP BY o.id`,
     )
     .all(planId) as Array<OutlineProgress & { topicId: string }>;
@@ -123,9 +123,14 @@ export type NextPart = {
   resumeFrom: { position: number; at: number } | null;
 };
 
-/** The first part of the topic's live outline not done yet, or null when the topic has no outline or none is left. */
+/**
+ * The first part of the topic's live outline not done yet, or null when the topic has no outline the student has
+ * (`shownOutlineSql`) or none is left.
+ */
 export function nextPart(db: Database.Database, topicId: string, now = Date.now()): NextPart | null {
-  const outline = db.prepare(LIVE_OUTLINE_SQL).get(topicId) as { id: string } | undefined;
+  const outline = db
+    .prepare(`SELECT o.id FROM lesson_outlines o WHERE o.topic_id = ? AND o.retired_at IS NULL AND ${shownOutlineSql("o")}`)
+    .get(topicId) as { id: string } | undefined;
   if (!outline) return null;
   const parts = db
     .prepare(

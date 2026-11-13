@@ -215,9 +215,9 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     }
 
     // The chat search: its rows answer a right-click, and the menu key on the field opens the active row's menu.
-    await page.getByRole("button", { name: "Tutte le chat" }).click();
+    await page.getByRole("button", { name: "Cerca", exact: true }).click();
     const finder = page.getByRole("dialog", { name: "Cerca" });
-    await expect(finder.getByRole("option")).toHaveCount(2);
+    await expect(finder.getByRole("group", { name: "Chat" }).getByRole("option")).toHaveCount(2);
     await answerNextMenu(app, null);
     await finder.getByRole("option", { name: /Analisi/ }).click({ button: "right" });
     await expect.poll(() => lastMenuLabels(app)).toEqual(chatDots);
