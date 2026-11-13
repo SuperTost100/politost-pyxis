@@ -230,7 +230,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     const citation = page.locator(".px-msg .px-cite").first();
     await expect(citation).toBeVisible();
     await citation.click();
-    const viewer = page.getByRole("dialog", { name: /^Legge di Gauss/ });
+    const viewer = page.getByRole("complementary", { name: "Legge di Gauss" });
     await expect(viewer.getByText("Questa fonte non è più nella libreria.")).toBeVisible();
     await expect(viewer.getByText("Il flusso del campo elettrico attraverso una superficie chiusa")).toBeVisible();
     await page.keyboard.press("Escape");
