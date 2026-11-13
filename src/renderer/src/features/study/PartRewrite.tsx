@@ -11,7 +11,7 @@ import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
-import type { PartData } from "./partPage";
+import { sectionFailedKey, type PartData } from "./partPage";
 import { ReaderProgress } from "./Reader";
 
 // The level of a part and its rewrites, as an old lesson has them: "Livello" in the bar, and "Riscrivi questa parte" and
@@ -143,6 +143,10 @@ export function usePartRewrites({
       // The part's summary and minutes change with its text, so the part is read again.
       await query.refetch();
       void client.invalidateQueries({ queryKey: ["parts", planId, topicId] });
+    },
+    // Another rewrite saved the part meanwhile: the page reads the text it has now, which a new try starts from.
+    onError: (error) => {
+      if (sectionFailedKey(error, "part") === "lesson.rewritePartSectionChanged") void query.refetch();
     },
   });
 
@@ -301,9 +305,7 @@ export function usePartRewrites({
             onChange={(event) => setNote(event.target.value)}
           />
           {rewriteSection.isError ? (
-            <Notice tone="danger">
-              {t(noun === "lesson" ? "lesson.rewriteSectionFailed" : "lesson.rewritePartSectionFailed")}
-            </Notice>
+            <Notice tone="danger">{t(sectionFailedKey(rewriteSection.error, noun === "lesson" ? "lesson" : "part"))}</Notice>
           ) : null}
         </div>
       </Modal>

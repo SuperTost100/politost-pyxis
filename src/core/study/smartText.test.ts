@@ -489,6 +489,27 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("keeps an answer given while a section is rewritten, and the rewrite still saves", async () => {
+    const { db, planId, topicId, run } = setup();
+    const lesson = await writeLesson(db, planId, topicId, run);
+    const [first] = [...smartQuestions(parseSmartText(lesson.markdown)).keys()];
+    const gates: Array<() => void> = [];
+    const held: typeof run = async () => {
+      await new Promise<void>((resolve) => gates.push(resolve));
+      return { text: "## Velocità\n\nLa velocità riscritta, con un esempio.", provider: "claude", model: "m", inputTokens: 1 };
+    };
+    const rewrite = rewriteLessonSection(db, planId, topicId, held, { section: 0 });
+    await vi.waitFor(() => expect(gates).toHaveLength(1));
+    // The student answers the lesson's check, in another section, while the call runs: an answer is an event of its
+    // own and never changes the saved lesson the rewrite compares against.
+    answerSmartCheck(db, { planId, itemId: lesson.itemId!, blockId: first!, pick: 1 });
+    gates[0]!();
+    const rewritten = await rewrite;
+    expect(rewritten.markdown).toContain("La velocità riscritta, con un esempio.");
+    expect(smartAnswers(db, lesson.itemId!)).toEqual({ [first!]: 1 });
+    db.close();
+  });
+
   it("keeps showing a lesson from the earlier prompt until it is rewritten", async () => {
     const { db, planId, topicId, run } = setup();
     const passageIds = (

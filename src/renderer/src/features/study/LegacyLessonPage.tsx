@@ -41,6 +41,7 @@ import {
   useOpenNext,
 } from "./Reader";
 import { showsLiveText } from "./lessonLive";
+import { sectionFailedKey } from "./partPage";
 import { usePlan } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 
@@ -154,6 +155,10 @@ export function LegacyLessonPage({
       client.setQueryData(key, next);
       setSectionOpen(false);
       setNote("");
+    },
+    // Another rewrite saved the lesson meanwhile: the page reads the text it has now, which a new try starts from.
+    onError: (error) => {
+      if (sectionFailedKey(error, "lesson") === "lesson.rewriteSectionChanged") void lesson.refetch();
     },
   });
   // "Riscrivi in parti" on a finished lesson: the rewrite starts, and the page opens part 1, which shows it at work.
@@ -571,7 +576,7 @@ export function LegacyLessonPage({
             onChange={(event) => setNote(event.target.value)}
           />
           {rewriteSection.isError ? (
-            <Notice tone="danger">{t("lesson.rewriteSectionFailed")}</Notice>
+            <Notice tone="danger">{t(sectionFailedKey(rewriteSection.error, "lesson"))}</Notice>
           ) : null}
         </div>
       </Modal>

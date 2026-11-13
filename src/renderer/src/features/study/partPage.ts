@@ -1,4 +1,5 @@
 import type { RequestOutput } from "../../../../shared/ipc";
+import { errorDetails } from "../../lib/errorDetails";
 
 // The rules of the part page that do not need the page: how a part is marked in the parts list, what the working block
 // says, and whether the focus may move to Continua. Kept here so a unit test checks them.
@@ -124,4 +125,15 @@ export function pageMove(
   }
   if (change === "rewriteStarted") return { scroll: "block", focus: "block" };
   return input.focusInBlock ? { scroll: "title", focus: "title" } : { scroll: null, focus: null };
+}
+
+/**
+ * What a section rewrite that failed tells the student: when another rewrite of the lesson or the part was saved while
+ * it ran (`lesson-changed`), that the text changed meanwhile and this section did not, so they try again on the new
+ * text; any other failure, that nothing changed.
+ */
+export function sectionFailedKey(error: unknown, noun: "lesson" | "part"): string {
+  const changed = errorDetails(error) === "lesson-changed";
+  if (noun === "lesson") return changed ? "lesson.rewriteSectionChanged" : "lesson.rewriteSectionFailed";
+  return changed ? "lesson.rewritePartSectionChanged" : "lesson.rewritePartSectionFailed";
 }

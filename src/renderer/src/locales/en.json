@@ -1350,6 +1350,7 @@
     "rewriteSectionHint": "The rest of the lesson stays as it is.",
     "rewriteSectionNote": "What should change? (optional)",
     "rewriteSectionFailed": "This section could not be rewritten. The lesson is unchanged. Try again.",
+    "rewriteSectionChanged": "The lesson was rewritten in the meantime, so this section wasn't changed. Try again on the new version.",
     "rewritingSection": "Rewriting “{{title}}”…",
     "markDone": "Mark as done",
     "done": "Done",
@@ -1427,6 +1428,7 @@
     "rewritePartNote": "The current version is replaced only if the new one succeeds, and what you've already finished stays finished.",
     "rewritePartSectionHint": "The rest of the part stays as it is.",
     "rewritePartSectionFailed": "This section could not be rewritten. The part is unchanged. Try again.",
+    "rewritePartSectionChanged": "The part was rewritten in the meantime, so this section wasn't changed. Try again on the new version.",
     "rewriteWhat": {
       "part": "part {{n}}",
       "lesson": "the lesson",

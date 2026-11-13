@@ -1350,6 +1350,7 @@
     "rewriteSectionHint": "Il resto della lezione resta com'è.",
     "rewriteSectionNote": "Cosa cambiare? (facoltativo)",
     "rewriteSectionFailed": "Non è stato possibile riscrivere questa sezione. La lezione non è cambiata. Riprova.",
+    "rewriteSectionChanged": "Nel frattempo la lezione è stata riscritta, quindi questa sezione non è cambiata. Riprova sulla versione nuova.",
     "rewritingSection": "Sto riscrivendo «{{title}}»…",
     "markDone": "Segna come fatto",
     "done": "Fatto",
@@ -1427,6 +1428,7 @@
     "rewritePartNote": "La versione attuale viene sostituita solo se la nuova riesce, e quello che hai già finito resta finito.",
     "rewritePartSectionHint": "Il resto della parte resta com'è.",
     "rewritePartSectionFailed": "Non è stato possibile riscrivere questa sezione. La parte non è cambiata. Riprova.",
+    "rewritePartSectionChanged": "Nel frattempo la parte è stata riscritta, quindi questa sezione non è cambiata. Riprova sulla versione nuova.",
     "rewriteWhat": {
       "part": "la parte {{n}}",
       "lesson": "la lezione",

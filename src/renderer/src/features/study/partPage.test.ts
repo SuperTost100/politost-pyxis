@@ -4,6 +4,7 @@ import {
   focusFollowsAnswer,
   freshRead,
   pageMove,
+  sectionFailedKey,
   partMark,
   partStateWord,
   startsOnOpen,
@@ -183,5 +184,16 @@ describe("where the page moves", () => {
       // The student moved on meanwhile: nothing moves under them.
       expect(pageMove(change, at())).toEqual({ scroll: null, focus: null });
     }
+  });
+});
+
+describe("a section rewrite that failed", () => {
+  it("says the text changed meanwhile when another rewrite was saved first, and that nothing changed otherwise", () => {
+    const changed = { code: "internal", messageKey: "errors.internal", params: {}, detail: "lesson-changed" };
+    const other = { code: "internal", messageKey: "errors.internal", params: {}, detail: "lesson-invalid" };
+    expect(sectionFailedKey(changed, "lesson")).toBe("lesson.rewriteSectionChanged");
+    expect(sectionFailedKey(changed, "part")).toBe("lesson.rewritePartSectionChanged");
+    expect(sectionFailedKey(other, "lesson")).toBe("lesson.rewriteSectionFailed");
+    expect(sectionFailedKey(other, "part")).toBe("lesson.rewritePartSectionFailed");
   });
 });
