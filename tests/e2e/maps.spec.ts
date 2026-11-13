@@ -401,13 +401,12 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         .locator(".px-map-canvas")
         .evaluate((el) => getComputedStyle(el).backgroundColor);
       const rgb = color.match(/\d+/g)!.slice(0, 3).map(Number);
-      // Match a blank canvas pixel: catches old dark-only repaint exports.
-      expect([
-        ...png.data.slice(
-          (png.width * 20 * ratio + png.width - 20 * ratio) * 4,
-          (png.width * 20 * ratio + png.width - 20 * ratio) * 4 + 3,
-        ),
-      ]).toEqual(rgb);
+      // Match a blank canvas pixel: catches old dark-only repaint exports. The pixel is 20 CSS pixels from the top and
+      // from the right edge, in whole pixels: a ratio such as 4/3 makes 20 * ratio a fraction, and the byte offset
+      // would then start inside another pixel.
+      const margin = Math.round(20 * ratio);
+      const offset = (margin * png.width + (png.width - margin)) * 4;
+      expect([...png.data.slice(offset, offset + 3)]).toEqual(rgb);
     }
     expect(errors).toEqual([]);
     if (process.env.PYXIS_LIVE_MAP)

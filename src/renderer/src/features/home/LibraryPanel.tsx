@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select } from "antd";
+import { Button, Input, Modal, Progress, Select, type GetRef } from "antd";
 import { FileText, CheckCircle2 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
@@ -599,6 +599,27 @@ export function LibraryPanel({
       kindOf.has(hit.sourceId) &&
       (filterType === "all" || kindOf.get(hit.sourceId) === filterType),
   );
+  const filtering = filterType !== "all" || (scope === "titles" && searchText.trim().length > 0);
+  // What takes the shelves' place when the list goes empty: a message when the type filter or the title search leaves no
+  // file, and the empty state when the last file is removed.
+  const nothingMatches = list.isSuccess && sources.length > 0 && matching.length === 0 && filtering && contentQuery === "";
+  const libraryEmpty = list.isSuccess && sources.length === 0;
+  const typeFilter = useRef<GetRef<typeof Select>>(null);
+  // A change that takes the last file out of the list (its kind, its title, its removal) removes the cover that held
+  // the focus along with the shelves. The focus goes to the control that filters, because changing it is what brings
+  // the file back: the type when it is set, else the search field. With no file at all it goes to "Aggiungi file". A
+  // focus that stayed on something else, such as the details panel, is left where it is.
+  const hadFiles = useRef(false);
+  useEffect(() => {
+    // An empty Library that was empty when the page opened has lost nothing.
+    const emptied = libraryEmpty && hadFiles.current;
+    hadFiles.current = sources.length > 0;
+    if (!nothingMatches && !emptied) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (emptied) addButton.current?.querySelector("button")?.focus();
+    else (filterType !== "all" ? typeFilter.current : document.getElementById("source-search"))?.focus();
+  }, [nothingMatches, libraryEmpty, filterType, sources.length]);
   function openHit(hit: (typeof hits)[number]) {
     openSourceViewer({ passageId: hit.id, sourceId: hit.sourceId });
     setSearchPicked(true);
@@ -1039,7 +1060,6 @@ export function LibraryPanel({
       }
     },
   };
-  const filtering = filterType !== "all" || (scope === "titles" && searchText.trim().length > 0);
   return (
     <div className="px-library">
       {addModal}
@@ -1112,6 +1132,7 @@ export function LibraryPanel({
           }
           filters={
             <Select
+              ref={typeFilter}
               value={filterType}
               aria-label={t("sources.typeColumn")}
               onChange={setFilterType}
