@@ -153,6 +153,27 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await expect(list(page)).toBeHidden();
     await expect(control(page)).toBeFocused();
 
+    // With animations on, the menu still fades out when the second Escape comes: a menu that is leaving is closed, so
+    // that Escape is the list's, and two in a row close the menu and then the list.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await openList(page);
+    await dots(page, folders.fisica).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "Rileggi adesso" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await expect(list(page)).toBeHidden();
+    await openList(page);
+    await dots(page, folders.fisica).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "Rileggi adesso" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(list(page)).toBeVisible();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await animationsSettled(page);
+    await page.keyboard.press("Escape");
+    await expect(list(page)).toBeHidden();
+
     // Rileggi adesso reads a file added since, in this folder only.
     writeFileSync(join(folders.fisica, "Potenziale.txt"), "Il potenziale elettrico è il lavoro per unità di carica.");
     await openList(page);

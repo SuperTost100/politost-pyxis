@@ -1,11 +1,10 @@
-import { Button, Dropdown, type MenuProps } from "antd";
+import type { MenuProps } from "antd";
 import {
   AlertCircle,
   BookMarked,
   CheckCircle2,
   ChevronRight,
   FileText,
-  MoreHorizontal,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,7 +13,7 @@ import { i18n } from "../locales/i18n";
 import "./SourceRow.css";
 import { formatBytes } from "@shared/format-bytes";
 import { Logo } from "./Logo";
-import { useItemMenu } from "./ItemMenu";
+import { MenuButton, useItemMenu } from "./ItemMenu";
 
 export const sizeText = (bytes: number) => formatBytes(bytes, i18n.language);
 
@@ -137,25 +136,12 @@ export function SourceRow(props: {
         ) : null}
       </span>
       )}
-      <Dropdown
-        trigger={["click"]}
-        autoFocus
-        disabled={props.actions.disabled}
-        popupRender={(menu) => (
-          <div role="region" aria-label={t("sources.actionsColumn")}>
-            {menu}
-          </div>
-        )}
+      <MenuButton
         menu={menu}
-      >
-        <Button
-          type="text"
-          shape="circle"
-          disabled={props.actions.disabled}
-          aria-label={t("sources.actionsFor", { title: source.title })}
-          icon={<MoreHorizontal size={18} strokeWidth={1.75} />}
-        />
-      </Dropdown>
+        label={t("sources.actionsFor", { title: source.title })}
+        region={t("sources.actionsColumn")}
+        disabled={props.actions.disabled}
+      />
       {rowMenu.popup}
     </li>
   );

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CANVAS_MIN_ZOOM,
   COLUMN_GAP,
+  fitViewport,
   NODE_WIDTH,
   SIBLING_GAP,
   initialCollapsed,
@@ -173,6 +175,43 @@ describe("startViewport", () => {
     expect(view.x).toBeGreaterThan(0);
     expect(view.x).toBeLessThan(200);
     expect(view.y + 32 * MIN_READ_ZOOM).toBeCloseTo(300);
+  });
+});
+
+describe("fitViewport", () => {
+  const box = (x: number, y: number) => ({ x, y, width: 240, height: 64 });
+  const size = { width: 1000, height: 600 };
+  const inside = (view: { x: number; y: number; zoom: number }, boxes: ReturnType<typeof box>[]) =>
+    boxes.every(
+      (b) =>
+        b.x * view.zoom + view.x >= 0 &&
+        (b.x + b.width) * view.zoom + view.x <= size.width &&
+        b.y * view.zoom + view.y >= 0 &&
+        (b.y + b.height) * view.zoom + view.y <= size.height,
+    );
+
+  it("shows a map that startViewport cuts at MIN_READ_ZOOM, whole", () => {
+    const boxes = [box(-1500, -900), box(1260, 900), box(-120, -32)];
+    expect(startViewport(boxes, boxes[2]!, size, true).zoom).toBe(MIN_READ_ZOOM);
+    const view = fitViewport(boxes, size);
+    expect(view.zoom).toBeLessThan(MIN_READ_ZOOM);
+    expect(view.zoom).toBeGreaterThan(CANVAS_MIN_ZOOM);
+    expect(inside(view, boxes)).toBe(true);
+  });
+
+  it("centres the map, and does not zoom in past 1", () => {
+    const boxes = [box(0, 0), box(380, 100)];
+    const view = fitViewport(boxes, size);
+    expect(view.zoom).toBe(1);
+    expect(view.x + 310).toBeCloseTo(500);
+    expect(view.y + 82).toBeCloseTo(300);
+  });
+
+  it("stops at the canvas's smallest zoom and centres a map that is bigger than that", () => {
+    const boxes = [box(-20000, 0), box(20000, 0)];
+    const view = fitViewport(boxes, size);
+    expect(view.zoom).toBe(CANVAS_MIN_ZOOM);
+    expect(view.x + 120 * CANVAS_MIN_ZOOM).toBeCloseTo(500);
   });
 });
 
