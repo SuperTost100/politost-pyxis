@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import { ArrowRight, Check, CircleCheck } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router";
@@ -13,11 +13,44 @@ import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar } from "./StudyBar";
 import { recommendQuery } from "../../lib/queries";
+import { renderedText, wordCount } from "../../lib/renderedText";
 
 /** About how many words a student reads a minute, for the time left in a lesson. */
 const WORDS_PER_MINUTE = 200;
 
-type Part = { id: string; title: string; words: number };
+/** `title` is the heading as text (a formula as its TeX), `formula` says the heading holds one, drawn in the outline too. */
+type Part = { id: string; title: string; formula: boolean; words: number };
+
+/**
+ * What the outline shows of a heading: its text, and each formula as the page drew it. The nodes are copies of ones
+ * React and KaTeX already made for the lesson, so nothing is parsed from a string. Other markup (emphasis, code) is
+ * left out so an entry stays one plain line, and so are ids, which must stay unique on the page.
+ */
+function headingNodes(from: Node, into: Node[] = []): Node[] {
+  for (const child of from.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) into.push(child.cloneNode());
+    else if (child instanceof Element) {
+      if (child.classList.contains("katex")) {
+        const copy = child.cloneNode(true) as Element;
+        copy.removeAttribute("id");
+        for (const inner of copy.querySelectorAll("[id]")) inner.removeAttribute("id");
+        into.push(copy);
+      } else headingNodes(child, into);
+    }
+  }
+  return into;
+}
+
+/** An outline entry's heading. With a formula it is copied from the lesson's heading again whenever the heading's text changes. */
+function PartTitle({ part }: { part: Part }) {
+  const box = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const head = document.getElementById(part.id);
+    if (part.formula) box.current?.replaceChildren(...(head ? headingNodes(head) : []));
+  }, [part.id, part.title, part.formula]);
+  // Different keys, so React never reuses the box it fills by hand for plain text.
+  return part.formula ? <span key="formula" ref={box} /> : <span key="plain">{part.title}</span>;
+}
 
 /**
  * The reading page shared by lessons and the course introduction (pyxis-mockups app/study.html, "s-lesson"): the study
@@ -81,7 +114,13 @@ export function ReaderLayout({
         const following = heads[index + 1];
         if (following) range.setEndBefore(following);
         else range.setEndAfter(node.lastChild ?? head);
-        return { id: head.id, title: head.textContent ?? "", words: range.toString().split(/\s+/).filter(Boolean).length };
+        // A formula is one word in the count, and once in the title, though KaTeX draws it three times.
+        return {
+          id: head.id,
+          title: renderedText(head),
+          formula: head.querySelector(".katex") !== null,
+          words: wordCount(range.cloneContents()),
+        };
       });
       setParts((previous) => (JSON.stringify(previous) === JSON.stringify(next) ? previous : next));
     };
@@ -166,7 +205,7 @@ export function ReaderLayout({
                     ) : (
                       <span className="px-reader-outline-dot" aria-hidden />
                     )}
-                    <span>{part.title}</span>
+                    <PartTitle part={part} />
                   </button>
                 </li>
               ))}

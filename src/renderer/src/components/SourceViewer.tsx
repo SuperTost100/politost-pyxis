@@ -9,7 +9,7 @@ import { useSources } from "../lib/queries";
 import { Button } from "./Button";
 import { Icon } from "./Icon";
 import { IconButton } from "./IconButton";
-import { MenuButton, useItemMenu } from "./ItemMenu";
+import { MenuButton, menuTakesEscape, useItemMenu } from "./ItemMenu";
 import { LoadError } from "./LoadError";
 import { Logo } from "./Logo";
 import { PdfPasswordDialog } from "./PdfPassword";
@@ -655,7 +655,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
       aria-labelledby={titleId}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
-        if ((event.target as HTMLElement).closest(".px-item-menu, .ant-modal")) return;
+        if (menuTakesEscape(event.nativeEvent) || (event.target as HTMLElement).closest(".px-item-menu, .ant-modal")) return;
         event.preventDefault();
         close();
       }}

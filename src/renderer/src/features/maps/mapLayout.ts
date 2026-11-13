@@ -24,6 +24,8 @@ const LARGE_MAP = 25;
  * out by hand as far as the canvas's own minimum.
  */
 export const MIN_READ_ZOOM = 0.85;
+/** The smallest zoom the canvas allows, by the mouse wheel, the pinch or the fit button. */
+export const CANVAS_MIN_ZOOM = 0.15;
 
 /** Ids of nodes that have at least one child. */
 export function parentIds(nodes: Item[]): Set<string> {
@@ -121,6 +123,29 @@ export function startViewport(
     zoom: z,
     x: VIEW_PAD - root.x * z,
     y: size.height / 2 - (root.y + root.height / 2) * z,
+  };
+}
+
+/**
+ * The view of the "Adatta la mappa" button: the whole map, centred, never zoomed in past 1. Unlike the opening view
+ * (`startViewport`) it has no readable minimum, since the student asked to see everything and zooms in where they want
+ * to read. It goes down to the canvas's own smallest zoom, and a map too big even for that is centred at that zoom, so
+ * the button always changes the view while part of the map is outside it.
+ */
+export function fitViewport(
+  boxes: Box[],
+  size: { width: number; height: number },
+): { x: number; y: number; zoom: number } {
+  const left = Math.min(...boxes.map((box) => box.x));
+  const right = Math.max(...boxes.map((box) => box.x + box.width));
+  const top = Math.min(...boxes.map((box) => box.y));
+  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
+  const room = { width: size.width - 2 * VIEW_PAD, height: size.height - 2 * VIEW_PAD };
+  const zoom = Math.max(CANVAS_MIN_ZOOM, Math.min(1, room.width / (right - left), room.height / (bottom - top)));
+  return {
+    zoom,
+    x: size.width / 2 - ((left + right) / 2) * zoom,
+    y: size.height / 2 - ((top + bottom) / 2) * zoom,
   };
 }
 
