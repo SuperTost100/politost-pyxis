@@ -292,6 +292,60 @@ describe("suggestStep", () => {
   it("has nothing to suggest on a plan without topics once the intro is read", () => {
     expect(suggestStep({ ...base, topics: [], steps: [step("intro")] })).toBeNull();
   });
+
+  describe("a lesson started in parts", () => {
+    // a was read and has had its three activities; b and c are unread, and c has two parts done.
+    const steps = [step("intro"), step("diagnostic"), step("lesson", "a")];
+    const read = topic("a", 0.4, { graded: 3 });
+    const started = topic("c", 0.1, { partsDone: 2, partMinutes: { total: 30, left: 18 } });
+
+    it("comes before the next unread topic in the plan's order", () => {
+      expect(suggestStep({ ...base, topics: [read, topic("b"), started], steps })).toMatchObject({
+        activity: "lesson",
+        topicId: "c",
+        reason: "next",
+      });
+      // With no part done, or no outline at all, the plan's order decides, as it did before parts.
+      const unstarted = topic("c", 0.1, { partsDone: 0, partMinutes: { total: 30, left: 30 } });
+      expect(suggestStep({ ...base, topics: [read, topic("b"), unstarted], steps })?.topicId).toBe("b");
+      expect(suggestStep({ ...base, topics: [read, topic("b"), topic("c", 0.1)], steps })?.topicId).toBe("b");
+    });
+
+    it("never displaces an earlier rule: due cards, gaps, the start, a simulation, the stay, a quiz after practice or a review", () => {
+      const topics = (...extra: TopicStatus[]) => [read, topic("b"), started, ...extra];
+      expect(suggestStep({ ...base, topics: topics(topic("d", 0, { dueCards: 2 })), steps })).toMatchObject({
+        activity: "cards",
+        topicId: "d",
+      });
+      expect(suggestStep({ ...base, topics: topics(topic("d", 0, { severeGaps: 1 })), steps })).toMatchObject({
+        activity: "gaps",
+        topicId: "d",
+      });
+      // Parts read with no evidence yet are not study, as a lesson read halfway was not: the start comes first.
+      const fresh = topic("c", 0, { partsDone: 1, partMinutes: { total: 30, left: 24 } });
+      expect(suggestStep({ ...base, topics: [topic("a"), topic("b"), fresh], steps: [] })?.activity).toBe("intro");
+      expect(suggestStep({ ...base, daysToExam: 2, topics: topics(), steps })).toMatchObject({
+        activity: "simulation",
+        reason: "examSoon",
+      });
+      expect(
+        suggestStep({ ...base, topics: [topic("a", 0.4, { graded: 1 }), topic("b"), started], steps }),
+      ).toMatchObject({ activity: "practice", topicId: "a", reason: "consolidate" });
+      expect(
+        suggestStep({ ...base, topics: [topic("a", 0.4, { graded: 3 }), topic("b"), started], steps: [...steps, step("practice", "a")] }),
+      ).toMatchObject({ activity: "lesson", topicId: "c" });
+      expect(
+        suggestStep({
+          ...base,
+          topics: [topic("a", 0.3, { graded: 3 }), topic("b"), started],
+          steps: [...steps, step("lesson", "b"), step("practice", "b")],
+        }),
+      ).toMatchObject({ activity: "quiz", topicId: "b", reason: "check" });
+      expect(
+        suggestStep({ ...base, topics: [topic("a", 0.4, { graded: 3, daysIdle: 9 }), topic("b"), started], steps }),
+      ).toMatchObject({ activity: "quiz", topicId: "a", reason: "review" });
+    });
+  });
 });
 
 describe("topicSuggestion", () => {

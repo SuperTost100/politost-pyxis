@@ -2126,6 +2126,23 @@ export const requests = {
               "weakest",
             ]),
             count: z.number(),
+            /**
+             * On a lesson in parts: the first part not done, and `resumeFrom` the part done last when that was before
+             * today. Absent on any other suggestion.
+             */
+            part: z
+              .object({
+                position: z.number().int().min(1),
+                /** Teaching parts, the recap left out. */
+                count: z.number().int().min(1),
+                kind: z.enum(["part", "recap"]),
+                title: z.string(),
+                minutes: z.number().int().min(1),
+                written: z.boolean(),
+                resumeFrom: z.object({ position: z.number().int().min(1), at: z.number() }).nullable(),
+              })
+              .nullable()
+              .optional(),
           })
           .nullable(),
         hasIntro: z.boolean(),
