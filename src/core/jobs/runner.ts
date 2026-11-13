@@ -53,6 +53,12 @@ export type JobSpec = {
    * waited for a slot or before it started, or dismissed while interrupted. A step's own cleanup only covers the first.
    */
   onCancelled?: (params: unknown) => void;
+  /**
+   * Runs right after a step of this job failed and the job was marked failed, with the job's latest params. It does not
+   * run when the job was cancelled (see `onCancelled`) or when the database closed under a running step, which the
+   * next start marks interrupted.
+   */
+  onFailed?: (params: unknown) => void;
 };
 
 export type Limits = Record<JobClass, number>;
@@ -386,6 +392,7 @@ export function createRunner(
           db.prepare(
             `UPDATE jobs SET state = 'failed', error = ?, updated_at = ? WHERE id = ?`,
           ).run(message, Date.now(), jobId);
+          spec.onFailed?.(readParams(jobId));
           return;
         }
       }

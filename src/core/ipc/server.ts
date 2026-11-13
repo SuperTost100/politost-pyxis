@@ -319,6 +319,8 @@ const routes = {
   "engines.localCancel": ["engines", "localCancel", "bare"],
   "engines.localCheck": ["engines", "localCheck", "bare"],
   "engines.localEnable": ["engines", "localEnable"],
+  "study.parts": ["study", "parts"],
+  "study.part": ["study", "part"],
   "study.lessonSection": ["study", "lessonSection", "signal"],
   "study.lessonAnswer": ["study", "lessonAnswer"],
   "study.partDone": ["study", "partDone"],

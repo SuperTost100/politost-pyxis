@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Grade } from "../study/grade";
 import { readLesson } from "../study/openLesson";
+import { partsMarkdown } from "../study/parts";
 import { planLanguage } from "../engine/prompts";
 import { smartLabels, smartTextToMarkdown } from "../../shared/smart-text";
 import { safeFileName } from "../../shared/file-name";
@@ -193,7 +194,8 @@ export function exportMarkdown(
       .prepare(`SELECT title FROM topics WHERE id = ? AND plan_id = ?`)
       .get(input.topicId, input.planId) as { title: string } | undefined;
     if (!topic) throw new Error("topic-missing");
-    const lesson = readLesson(db, input.planId, input.topicId, input.wording);
+    // A topic in parts exports the parts written so far, in order; any other topic its lesson or its book text.
+    const lesson = partsMarkdown(db, input.topicId) ?? readLesson(db, input.planId, input.topicId, input.wording);
     const labels =
       planLanguage(db, input.planId) === "Italian" ? smartLabels.it : smartLabels.en;
     return {

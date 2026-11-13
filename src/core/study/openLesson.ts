@@ -68,7 +68,7 @@ function lessonParts(all: Passage[]) {
 }
 
 /** Reference material for the model, under its section headings and without labels it could cite. */
-function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
+export function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
   let section: string | null = null;
   return rows
     .map((row) => {
@@ -82,7 +82,7 @@ function materialText(rows: Array<Pick<Passage, "text" | "section_path">>) {
     .join("\n\n");
 }
 
-function bookMarkdown(passages: Array<Pick<Passage, "text" | "section_path">>) {
+export function bookMarkdown(passages: Array<Pick<Passage, "text" | "section_path">>) {
   return passages
     .map((row) => {
       const heading = row.section_path ? `## ${row.section_path}\n\n` : "";
@@ -201,14 +201,16 @@ export function withFigures(
   return drawFigures(markdown, { ...options, python: python ?? noSandbox });
 }
 
+/** The system text of a lesson call: `template` (a whole lesson, or one part of one) with the reader's level and wording. */
 export function lessonSystem(
   context: ReturnType<typeof modelContext>,
   grounded: boolean,
   figures: boolean,
+  template: "lesson.write" | "lesson.part" = "lesson.write",
 ) {
   const style = `Reader education level: ${context.education}. Wording: ${context.wording}. ${WORDING_RULES[context.wording]} Match the depth to the reader's education level.${readerContext(context)}`;
-  const template = systemPrompt("lesson.write", { contentLanguage: context.language });
-  const base = figures ? template : withoutFigures(template);
+  const text = systemPrompt(template, { contentLanguage: context.language });
+  const base = figures ? text : withoutFigures(text);
   const general = grounded
     ? ""
     : "\nNo material was supplied for this topic: teach it from your general knowledge.";
