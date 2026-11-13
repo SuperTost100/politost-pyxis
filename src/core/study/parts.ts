@@ -3,13 +3,27 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { uuidv7 } from "../../shared/ids";
 import { IpcError } from "../../shared/ipc";
+import { parseLooseJson, parseSmartText, smartSections } from "../../shared/smart-text";
 import { generate, type GenerateInput } from "../engine/generate";
-import { planLanguage, promptProvenance, systemPrompt } from "../engine/prompts";
+import { planLanguage, promptProvenance, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { CONTEXT_CHARS, requireTopic } from "./openLesson";
+import { figureRunner, type FigureRunner } from "../math/figures";
+import { interestsLine } from "../profile/context";
+import { cacheKey, saveLesson } from "./lesson";
+import {
+  CONTEXT_CHARS,
+  lessonSystem,
+  lessonText,
+  materialText,
+  modelContext,
+  requireTopic,
+  withFigures,
+  wordings,
+  type Wording,
+} from "./openLesson";
 
-// A topic's lesson in short parts: how many parts, the plan of them (the outline) and its checks. Writing a part and the
-// job that does it come later; this module only plans and reads.
+// A topic's lesson in short parts: how many parts, the plan of them (the outline) and its checks, then writing one part
+// and checking its shape. The job that writes a part, and the rule that keeps it to one part ahead, are in partJobs.ts.
 
 /** A topic with at most this many characters of material is one part, made with no planning call. */
 export const ONE_PART_CHARS = 7_000;
@@ -510,4 +524,452 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     problems = checked.problems;
   }
   return fallback();
+}
+
+// Writing one part. Each call gets the whole outline, the headings and summary of every part already written and only
+// this part's passages, so no two calls teach from the same material and each knows what the others cover. The reply's
+// shape is checked by code (`partShape`) before anything is saved.
+
+/** Teaching sections a part must have, and the recap's one. */
+export const PART_SECTIONS = { min: 2, max: 3 } as const;
+/** Words of a teaching part. The prompt asks for at most 1,200; the check leaves some room above that. */
+export const PART_WORDS = { min: 250, max: 1_400 } as const;
+/** What a second reply may still be: sections and words a page can show, though off the shape asked for. */
+export const LENIENT_SECTIONS = { min: 1, max: 4 } as const;
+export const LENIENT_WORDS = 2_000;
+/** Longest takeaway, which becomes the part's two-line summary. */
+export const SUMMARY_CHARS = 300;
+/** Questions of the recap part's closing pyxis-recap. */
+export const RECAP_QUESTIONS = 3;
+/** A written part's minutes: its words at this pace, plus one for the question, kept in bounds. */
+export const WORDS_PER_MINUTE = 200;
+export const PART_MIN_MINUTES = 2;
+export const PART_MAX_MINUTES = 12;
+/** Room kept in the request for the problems of a second ask, so both asks stay within `CONTEXT_CHARS`. */
+const PROBLEMS_CHARS = 1_000;
+/** A heading as the request lists it for a written part. */
+const HEADING_CHARS = 120;
+
+/** The plan's word for a part with its number, such as "Parte 3", for job titles. */
+export function partLabel(language: string, position: number): string {
+  return partName(language, position);
+}
+
+/** A heading as two headings are compared: case, accents, punctuation and spaces ignored. */
+export function foldHeading(heading: string): string {
+  return heading
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/** Words of a text as the reader counts them: runs of characters between spaces that hold a letter or a digit. */
+function wordsOf(text: string): number {
+  return text.split(/\s+/).filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+}
+
+/** The words a part shows before any answer: its prose, and the visible text of each block. */
+export function partWords(markdown: string): number {
+  return parseSmartText(markdown).reduce((sum, segment) => {
+    if (segment.type === "markdown") return sum + wordsOf(segment.text);
+    if (segment.type !== "block") return sum;
+    const { block } = segment;
+    const shown =
+      block.kind === "check"
+        ? [block.question, ...block.options]
+        : block.kind === "recap"
+          ? block.questions.flatMap((question) => [question.question, ...question.options])
+          : block.kind === "try"
+            ? [block.prompt]
+            : block.kind === "reveal"
+              ? [block.front]
+              : block.kind === "example"
+                ? [block.title ?? "", block.body]
+                : [block.caption];
+    return sum + shown.reduce((words, text) => words + wordsOf(text), 0);
+  }, 0);
+}
+
+/** A written part's minutes from its words. */
+export function partMinutes(words: number): number {
+  return clamp(Math.ceil(words / WORDS_PER_MINUTE) + 1, PART_MIN_MINUTES, PART_MAX_MINUTES);
+}
+
+export type PartShapeContext = {
+  kind: OutlinePart["kind"];
+  /** The ## headings of the other written parts of the outline. */
+  headings: readonly string[];
+  /** The second reply: accept what a page can show instead of asking again. */
+  last: boolean;
+};
+
+export type PartShape =
+  | {
+      ok: true;
+      markdown: string;
+      /** The takeaway, or null when the reply had none. */
+      summary: string | null;
+      words: number;
+      /** Whether the part ends with its question: a pyxis-check, or the recap's pyxis-recap. */
+      question: boolean;
+    }
+  | { ok: false; problems: string[] };
+
+const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`]*)\s*$/;
+
+/** The fenced blocks of a text by line range (`to` is the closing line), as `parseSmartText` finds them. */
+function fencedBlocks(lines: readonly string[]): Array<{ info: string; from: number; to: number; body: string }> {
+  const blocks: Array<{ info: string; from: number; to: number; body: string }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const open = FENCE.exec(lines[i]!);
+    if (!open) continue;
+    const fence = open[1]!;
+    let close = i + 1;
+    while (close < lines.length) {
+      const line = lines[close]!.trim();
+      if (/^[`~]+$/.test(line) && line[0] === fence[0] && line.length >= fence.length) break;
+      close++;
+    }
+    const to = Math.min(close, lines.length - 1);
+    blocks.push({ info: open[2]!.toLowerCase(), from: i, to, body: lines.slice(i + 1, close).join("\n") });
+    i = to;
+  }
+  return blocks;
+}
+
+/** A takeaway block's text: `{"text": ...}`, or a body that is only a string. */
+function takeawayText(body: string): string | null {
+  const raw = parseLooseJson(body);
+  const text =
+    typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { text?: unknown }).text : undefined;
+  return typeof text === "string" && text.trim() ? text.replace(/\s+/g, " ").trim() : null;
+}
+
+/** A summary cut to `SUMMARY_CHARS` at a word, for a second reply whose takeaway is too long. */
+function cutSummary(text: string): string {
+  if (text.length <= SUMMARY_CHARS) return text;
+  const cut = text.slice(0, SUMMARY_CHARS - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > SUMMARY_CHARS / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * Checks a part's reply before it is saved, and repairs what it can. Always repaired: the whole reply in one fence, a
+ * leading # title (removed), recap blocks in a teaching part and checks in the recap part (removed), every question
+ * block but the last one that parses (removed), and the pyxis-takeaway, which leaves the text and becomes the summary.
+ * Rejected, with one line per broken rule for the second ask: the wrong number of ## sections (2 or 3, the recap 1), a
+ * part that does not end with its question (a pyxis-check, or a pyxis-recap of 3 questions), a teaching part under 250
+ * or any part over 1,400 words, a heading another written part already has (case, accents and punctuation ignored), and
+ * a missing takeaway or one over 300 characters. The second reply (`last`) is accepted when it has 1 to 4 sections and
+ * at most 2,000 words, with or without its question; its takeaway is cut to 300 characters.
+ */
+export function partShape(reply: string, context: PartShapeContext): PartShape {
+  const lines = lessonText(reply).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = fencedBlocks(lines);
+  const asked = context.kind === "recap" ? "pyxis-recap" : "pyxis-check";
+  const other = context.kind === "recap" ? "pyxis-check" : "pyxis-recap";
+  const drop = new Set<number>();
+  const remove = (from: number, to: number) => {
+    for (let line = from; line <= to; line++) drop.add(line);
+    // The blank lines after a removed block go with it, so no gap is left.
+    for (let line = to + 1; line < lines.length && !lines[line]!.trim(); line++) drop.add(line);
+  };
+  let summary: string | null = null;
+  for (const block of blocks) {
+    if (block.info === "pyxis-takeaway") {
+      summary = takeawayText(block.body) ?? summary;
+      remove(block.from, block.to);
+    } else if (block.info === other) remove(block.from, block.to);
+  }
+  const questions = blocks.filter(
+    (block) =>
+      block.info === asked &&
+      parseSmartText(lines.slice(block.from, block.to + 1).join("\n")).some((segment) => segment.type === "block"),
+  );
+  for (const block of blocks)
+    if (block.info === asked && block !== questions.at(-1)) remove(block.from, block.to);
+  const first = lines.findIndex((line, index) => !drop.has(index) && line.trim() !== "");
+  if (first >= 0 && /^ {0,3}#(?!#)\s/.test(lines[first]!)) remove(first, first);
+  const markdown = lines
+    .filter((_, index) => !drop.has(index))
+    .join("\n")
+    .trim();
+
+  const segments = parseSmartText(markdown);
+  const last = segments.at(-1);
+  const ends =
+    last?.type === "block" &&
+    (context.kind === "recap"
+      ? last.block.kind === "recap" && last.block.questions.length === RECAP_QUESTIONS
+      : last.block.kind === "check");
+  const question = segments.some(
+    (segment) => segment.type === "block" && segment.block.kind === (context.kind === "recap" ? "recap" : "check"),
+  );
+  const sections = smartSections(markdown);
+  const words = partWords(markdown);
+
+  if (context.last) {
+    if (!markdown || sections.length < LENIENT_SECTIONS.min || sections.length > LENIENT_SECTIONS.max || words > LENIENT_WORDS)
+      return { ok: false, problems: [`The reply has ${sections.length} sections and ${words} words.`] };
+    return { ok: true, markdown, summary: summary === null ? null : cutSummary(summary), words, question };
+  }
+
+  const problems: string[] = [];
+  const wanted = context.kind === "recap" ? { min: 1, max: 1 } : PART_SECTIONS;
+  if (sections.length < wanted.min || sections.length > wanted.max)
+    problems.push(
+      `The part has ${sections.length} ## sections. Write ${
+        wanted.min === wanted.max ? `exactly ${wanted.min}` : `${wanted.min} or ${wanted.max}`
+      }.`,
+    );
+  if (!ends)
+    problems.push(
+      context.kind === "recap"
+        ? `The recap part does not end with one pyxis-recap of ${RECAP_QUESTIONS} questions. End it with that block, then the pyxis-takeaway.`
+        : "The part does not end with one pyxis-check. End it with exactly one pyxis-check, then the pyxis-takeaway.",
+    );
+  if (words > PART_WORDS.max || (context.kind === "part" && words < PART_WORDS.min))
+    problems.push(`The part has ${words} words. Write between ${PART_WORDS.min} and 1,200.`);
+  const taken = new Set(context.headings.map(foldHeading));
+  for (const section of sections)
+    if (taken.has(foldHeading(section.title)))
+      problems.push(
+        `The section "${section.title}" has the heading of a section of another part. Teach this part's own step, under a heading of its own.`,
+      );
+  if (summary === null) problems.push('The pyxis-takeaway block is missing. End the part with {"text": "..."} in it.');
+  else if (summary.length > SUMMARY_CHARS)
+    problems.push(`The pyxis-takeaway has ${summary.length} characters. Keep it within ${SUMMARY_CHARS}, in two sentences.`);
+  return problems.length > 0 ? { ok: false, problems } : { ok: true, markdown, summary, words, question };
+}
+
+/** The ## headings of a saved lesson item, in order. */
+function itemHeadings(db: Database.Database, itemId: string): string[] {
+  const markdown = db
+    .prepare("SELECT json_extract(body_json, '$.markdown') FROM items WHERE id = ?")
+    .pluck()
+    .get(itemId) as string | null | undefined;
+  return markdown ? smartSections(markdown).map((section) => section.title) : [];
+}
+
+/** Material cut so that it fits in `budget` characters: every passage kept, each cut to an equal share when too long. */
+function fittedMaterial(passages: readonly OutlinePassage[], budget: number): string {
+  const rows = passages.map((passage) => ({ text: passage.text, section_path: passage.section }));
+  const text = materialText(rows);
+  if (text.length <= budget) return text;
+  // Headings and the blank lines between passages count too, so the share is what is left after them.
+  const frame = materialText(rows.map((row) => ({ ...row, text: "" }))).length;
+  const share = Math.max(0, Math.floor((budget - frame) / Math.max(1, rows.length)));
+  return materialText(rows.map((row) => ({ ...row, text: row.text.slice(0, share) })));
+}
+
+export type PartRequestInput = {
+  topic: string;
+  outline: Outline;
+  part: OutlinePart;
+  /** The headings of each written part, by position. */
+  headings: ReadonlyMap<number, readonly string[]>;
+  /** This part's passages, in reading order; the recap has none. */
+  passages: readonly OutlinePassage[];
+};
+
+/**
+ * The request for one part, as Markdown: the topic and the part's place, the whole outline, what the other written
+ * parts teach (their headings and summary) and only this part's material. The whole request stays within
+ * `CONTEXT_CHARS`, with room for the problems of a second ask: the material gets what the rest leaves.
+ */
+export function partRequest(input: PartRequestInput): string {
+  const { outline, part } = input;
+  const teaching = outline.parts.filter((entry) => entry.kind === "part").length;
+  const place =
+    part.kind === "recap"
+      ? `This is the recap part, after the ${teaching} parts: recap the whole topic from what the parts teach.`
+      : `Part ${part.position} of ${teaching}.`;
+  const plan = outline.parts
+    .map((entry) => {
+      const marks = [
+        entry.position === part.position ? "this part" : "",
+        entry.itemId && entry.position !== part.position ? "written" : "",
+        entry.kind === "recap" ? "recap" : "",
+      ].filter(Boolean);
+      const about = entry.about ? `: ${entry.about}` : "";
+      return `${entry.position}. ${entry.title}${about}${marks.length ? ` (${marks.join(", ")})` : ""}`;
+    })
+    .join("\n");
+  const written = outline.parts
+    .filter((entry) => entry.itemId && entry.position !== part.position)
+    .map((entry) => {
+      const headings = (input.headings.get(entry.position) ?? []).map(
+        (heading) => `"${Array.from(heading).slice(0, HEADING_CHARS).join("")}"`,
+      );
+      const when = entry.position < part.position ? "before this part" : "after this part";
+      const lines = [`Part ${entry.position}, ${entry.title} (${when}). Sections: ${headings.join(", ") || "none"}.`];
+      if (entry.summary) lines.push(`What it taught: ${entry.summary}`);
+      return lines.join("\n");
+    });
+  const head = [
+    `Topic: ${input.topic}`,
+    place,
+    `The lesson's parts:\n${plan}`,
+    written.length ? `Parts already written:\n\n${written.join("\n\n")}` : "No part is written yet.",
+  ].join("\n\n");
+  if (part.kind === "recap" || input.passages.length === 0) return head;
+  const label = "\n\nMaterial of this part:\n\n";
+  return `${head}${label}${fittedMaterial(input.passages, CONTEXT_CHARS - head.length - label.length - PROBLEMS_CHARS)}`;
+}
+
+/** The second ask: the same request with the problems of the first reply. */
+export function partRetry(request: string, problems: readonly string[]): string {
+  const list = problems.map((problem) => `- ${problem}`).join("\n");
+  return `${request}\n\nProblems with your previous reply:\n${Array.from(list).slice(0, PROBLEMS_CHARS - 40).join("")}`;
+}
+
+export type WritePartInput = {
+  planId: string;
+  topicId: string;
+  position: number;
+  wording?: Wording;
+  selection?: GenerateInput["selection"];
+  run?: GenerateInput["run"];
+  signal?: AbortSignal;
+  /** Runs figure code, as for `writeLesson`; null turns figures off. */
+  python?: FigureRunner | null;
+};
+
+const PART_VERSION = templateVersion("lesson.part");
+
+/**
+ * Writes the part at `position` of the topic's live outline and returns the outline with it, or returns the outline as
+ * it is when that part is already written. One call, and one more with the problems when `partShape` rejects the
+ * reply; a second reply it cannot accept fails with `lesson-part-invalid`. The part is saved as a lesson item (template
+ * `lesson.part`, the part's id in its cache key) together with the part's item, summary and measured minutes, in one
+ * transaction once figures are drawn, so an engine error, a cancel or a quit before that leaves nothing of it.
+ */
+export async function writePart(db: Database.Database, input: WritePartInput): Promise<Outline> {
+  requireTopic(db, input.planId, input.topicId);
+  const outline = liveOutline(db, input.topicId);
+  const part = outline?.parts.find((entry) => entry.position === input.position);
+  if (!outline || !part) throw new Error("part-missing");
+  if (part.itemId) return outline;
+  const stored = wordings.find((wording) => wording === outline.wording);
+  const context = modelContext(db, input.planId, input.topicId, input.wording ?? stored);
+  const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
+  // Passages that left the topic since it was planned are not taught.
+  const own = new Set(part.passageIds);
+  const passages = part.kind === "recap" ? [] : outlinePassages(db, input.topicId).filter((passage) => own.has(passage.id));
+  const grounded =
+    part.kind === "recap" ? outline.parts.some((entry) => entry.passageIds.length > 0) : passages.length > 0;
+  const headings = new Map(
+    outline.parts.flatMap((entry) =>
+      entry.itemId && entry.position !== part.position ? [[entry.position, itemHeadings(db, entry.itemId)] as const] : [],
+    ),
+  );
+  const request = partRequest({ topic, outline, part, headings, passages });
+  const python = await figureRunner(input.python);
+  const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)]
+    .filter(Boolean)
+    .join("\n");
+  const selection = input.selection ?? selectionFor(db, "lesson");
+  let problems: string[] = [];
+  let shaped: Extract<PartShape, { ok: true }> | null = null;
+  let engine: { provider: string; model: string } | null = null;
+  for (let ask = 0; ask < 2 && !shaped; ask++) {
+    const result = await generate({
+      selection,
+      run: input.run,
+      signal: input.signal,
+      system,
+      prompt: problems.length > 0 ? partRetry(request, problems) : request,
+    });
+    input.signal?.throwIfAborted();
+    const checked = partShape(result.text, {
+      kind: part.kind,
+      headings: [...headings.values()].flat(),
+      last: ask === 1,
+    });
+    if (checked.ok) {
+      shaped = checked;
+      engine = { provider: result.provider, model: result.model };
+    } else problems = checked.problems;
+  }
+  if (!shaped || !engine) throw new Error("lesson-part-invalid");
+  const { markdown, figures } = await withFigures(shaped.markdown, python, { signal: input.signal });
+  input.signal?.throwIfAborted();
+  const passageIds = passages.map((passage) => passage.id);
+  const summary = shaped.summary ?? (part.about || null);
+  const minutes = partMinutes(shaped.words);
+  db.transaction(() => {
+    // The outline may have been retired, or the part written by another job, while this one waited for the engine.
+    const current = db
+      .prepare(
+        `SELECT p.item_id FROM lesson_parts p JOIN lesson_outlines o ON o.id = p.outline_id
+         WHERE p.id = ? AND o.retired_at IS NULL`,
+      )
+      .get(part.id) as { item_id: string | null } | undefined;
+    if (!current || current.item_id) return;
+    const itemId = saveLesson(db, {
+      planId: input.planId,
+      topicId: input.topicId,
+      kind: "lesson",
+      key: cacheKey({
+        kind: "lesson",
+        scopeId: part.id,
+        passageIds,
+        promptVersion: [PART_VERSION, context.wording, context.education, context.school, context.course, context.language].join("|"),
+      }),
+      markdown,
+      passageIds,
+      engine,
+      prompt: promptProvenance("lesson.part"),
+      grounding: grounded ? "sources" : "general",
+      figures,
+    });
+    db.prepare("UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = ? WHERE id = ?").run(
+      itemId,
+      summary,
+      minutes,
+      part.id,
+    );
+  })();
+  return liveOutline(db, input.topicId) ?? outline;
+}
+
+/**
+ * The written parts of a topic's live outline joined in reading order, for export: each under its title as a ##
+ * heading, its own headings one level down, or a one-part topic's text as it is. Null when no part is written.
+ */
+export function partsMarkdown(db: Database.Database, topicId: string): { markdown: string; passageIds: string[] } | null {
+  const outline = liveOutline(db, topicId);
+  const written = outline?.parts.filter((part) => part.itemId) ?? [];
+  if (!outline || written.length === 0) return null;
+  const read = db.prepare("SELECT json_extract(body_json, '$.markdown') AS markdown FROM items WHERE id = ?").pluck();
+  const single = outline.parts.length === 1;
+  const texts = written.flatMap((part) => {
+    const markdown = read.get(part.itemId) as string | null | undefined;
+    if (!markdown) return [];
+    return [single ? markdown : `## ${part.title}\n\n${demoteHeadings(markdown)}`];
+  });
+  if (texts.length === 0) return null;
+  return {
+    markdown: texts.join("\n\n"),
+    passageIds: [...new Set(written.flatMap((part) => part.passageIds))],
+  };
+}
+
+/** Every Markdown heading outside code one level down, so a part's sections sit under the part's title. */
+function demoteHeadings(markdown: string): string {
+  let fence: string | null = null;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+      if (marker) {
+        if (!fence) fence = marker;
+        else if (line.trim()[0] === fence[0] && line.trim().length >= fence.length && /^[`~]+$/.test(line.trim()))
+          fence = null;
+        return line;
+      }
+      return !fence && /^#{1,5}\s/.test(line) ? `#${line}` : line;
+    })
+    .join("\n");
 }

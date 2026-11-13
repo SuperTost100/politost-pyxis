@@ -13,6 +13,7 @@ import chatSolver from "../../../resources/prompts/chat.solver.md?raw";
 import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import lessonAgent from "../../../resources/prompts/lesson.agent.md?raw";
 import lessonOutline from "../../../resources/prompts/lesson.outline.md?raw";
+import lessonPart from "../../../resources/prompts/lesson.part.md?raw";
 import mapEdit from "../../../resources/prompts/map.edit.md?raw";
 import mapGenerate from "../../../resources/prompts/map.generate.md?raw";
 import paperRead from "../../../resources/prompts/paper.read.md?raw";
@@ -55,6 +56,7 @@ export const TEMPLATE_SOURCES = {
   "lesson.write": lessonWrite,
   "lesson.agent": lessonAgent,
   "lesson.outline": lessonOutline,
+  "lesson.part": lessonPart,
   "map.edit": mapEdit,
   "map.generate": mapGenerate,
   "paper.read": paperRead,
