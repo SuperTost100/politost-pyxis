@@ -5,6 +5,7 @@ import { IpcError } from "../../shared/ipc";
 import { CONTEXT_CHARS, readLesson } from "./openLesson";
 import {
   ESTIMATE_MAX_MINUTES,
+  MATERIAL_HEADING_CHARS,
   ESTIMATE_MIN_MINUTES,
   MAX_PARTS,
   OUTLINE_PROMPT_CHARS,
@@ -801,6 +802,39 @@ describe("writePart", () => {
     for (const call of engine.calls) {
       expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
       expect(call.prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps001", "MARK-ps002"]);
+    }
+  });
+
+  it("cuts headings longer than the bound to a label and keeps text of every passage", async () => {
+    // Two passages under headings of 14,000 characters: one part, planned with no call.
+    const db = workspace([3_000, 3_000], [`A ${"y".repeat(13_998)}`, `B ${"z".repeat(13_998)}`]);
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, { planId: "p", topicId: "t" });
+    const { engine, done } = write(db, 1, "Niente.", partText("1"));
+    await done;
+    for (const call of engine.calls) {
+      expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      expect(call.prompt.match(/MARK-\w+/g)).toEqual(["MARK-ps001", "MARK-ps002"]);
+      const headings = call.prompt.match(/^### .*$/gm)!;
+      expect(headings).toHaveLength(2);
+      for (const heading of headings) expect(heading.length).toBeLessThanOrEqual(4 + MATERIAL_HEADING_CHARS);
+    }
+  });
+
+  it("keeps text of every passage of a part with many long headings, within the bound", async () => {
+    // Sixty short passages under headings of 1,000 characters: one part (6,000 characters of text), planned with no call.
+    const count = 60;
+    const db = workspace(
+      Array(count).fill(100),
+      Array.from({ length: count }, (_, i) => `Sezione ${i + 1} ${"y".repeat(1_000)}`),
+    );
+    db.exec("UPDATE passages SET text = 'MARK-' || id || ' ' || text");
+    await planParts(db, { planId: "p", topicId: "t" });
+    const { engine, done } = write(db, 1, "Niente.", partText("1"));
+    await done;
+    for (const call of engine.calls) {
+      expect(call.prompt.length).toBeLessThanOrEqual(CONTEXT_CHARS);
+      expect(call.prompt.match(/MARK-\w+/g)).toHaveLength(count);
     }
   });
 

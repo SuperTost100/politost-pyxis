@@ -547,8 +547,13 @@ export const PART_MIN_MINUTES = 2;
 export const PART_MAX_MINUTES = 12;
 /** Room kept in the request for the problems of a second ask, so both asks stay within `CONTEXT_CHARS`. */
 const PROBLEMS_CHARS = 1_000;
+/** Longest source heading in a part's material: a heading is a label, and a longer one is cut. */
+export const MATERIAL_HEADING_CHARS = 200;
 /** A heading as the request lists it for a written part. */
 const HEADING_CHARS = 120;
+/** The topic's title and a part's line on what it teaches, as the request lists them. */
+const TOPIC_CHARS = 200;
+const ABOUT_CHARS = 200;
 
 /** The plan's word for a part with its number, such as "Parte 3", for job titles. */
 export function partLabel(language: string, position: number): string {
@@ -752,15 +757,34 @@ function itemHeadings(db: Database.Database, itemId: string): string[] {
   return markdown ? smartSections(markdown).map((section) => section.title) : [];
 }
 
-/** Material cut so that it fits in `budget` characters: every passage kept, each cut to an equal share when too long. */
+/** Text cut to at most `chars` characters, with an ellipsis when it was longer. */
+function cutText(text: string, chars: number): string {
+  const all = Array.from(text);
+  return all.length <= chars ? text : `${all.slice(0, Math.max(0, chars - 1)).join("").trimEnd()}…`;
+}
+
+/**
+ * Material cut so that it fits in `budget` characters. Headings are labels: each is cut to `MATERIAL_HEADING_CHARS`.
+ * When the material is still too long, every passage gets an equal share of the budget: its heading at most a quarter
+ * of it (none when the share is too small to name it), and its own text the rest, so every passage keeps some text.
+ */
 function fittedMaterial(passages: readonly OutlinePassage[], budget: number): string {
-  const rows = passages.map((passage) => ({ text: passage.text, section_path: passage.section }));
-  const text = materialText(rows);
-  if (text.length <= budget) return text;
-  // Headings and the blank lines between passages count too, so the share is what is left after them.
-  const frame = materialText(rows.map((row) => ({ ...row, text: "" }))).length;
-  const share = Math.max(0, Math.floor((budget - frame) / Math.max(1, rows.length)));
-  return materialText(rows.map((row) => ({ ...row, text: row.text.slice(0, share) })));
+  const rows = passages.map((passage) => ({
+    text: passage.text,
+    section_path: passage.section && cutText(passage.section, MATERIAL_HEADING_CHARS),
+  }));
+  const whole = materialText(rows);
+  if (whole.length <= budget) return whole;
+  const share = Math.floor(Math.max(0, budget) / Math.max(1, rows.length));
+  const label = share >= 80 ? Math.min(MATERIAL_HEADING_CHARS, Math.floor(share / 4)) : 0;
+  return materialText(
+    rows.map((row) => {
+      const section_path = row.section_path && label > 0 ? cutText(row.section_path, label) : null;
+      // "### " and the blank line after a heading, and the blank line before the next passage.
+      const frame = (section_path ? section_path.length + 6 : 0) + 2;
+      return { section_path, text: row.text.slice(0, Math.max(0, share - frame)) };
+    }),
+  );
 }
 
 export type PartRequestInput = {
@@ -792,30 +816,40 @@ export function partRequest(input: PartRequestInput): string {
         entry.itemId && entry.position !== part.position ? "written" : "",
         entry.kind === "recap" ? "recap" : "",
       ].filter(Boolean);
-      const about = entry.about ? `: ${entry.about}` : "";
-      return `${entry.position}. ${entry.title}${about}${marks.length ? ` (${marks.join(", ")})` : ""}`;
+      const about = entry.about ? `: ${cutText(entry.about, ABOUT_CHARS)}` : "";
+      return `${entry.position}. ${cutText(entry.title, TITLE_CHARS)}${about}${marks.length ? ` (${marks.join(", ")})` : ""}`;
     })
     .join("\n");
   const written = outline.parts
     .filter((entry) => entry.itemId && entry.position !== part.position)
     .map((entry) => {
       const headings = (input.headings.get(entry.position) ?? []).map(
-        (heading) => `"${Array.from(heading).slice(0, HEADING_CHARS).join("")}"`,
+        (heading) => `"${cutText(heading, HEADING_CHARS)}"`,
       );
       const when = entry.position < part.position ? "before this part" : "after this part";
-      const lines = [`Part ${entry.position}, ${entry.title} (${when}). Sections: ${headings.join(", ") || "none"}.`];
-      if (entry.summary) lines.push(`What it taught: ${entry.summary}`);
+      const lines = [
+        `Part ${entry.position}, ${cutText(entry.title, TITLE_CHARS)} (${when}). Sections: ${headings.slice(0, LENIENT_SECTIONS.max).join(", ") || "none"}.`,
+      ];
+      if (entry.summary) lines.push(`What it taught: ${cutText(entry.summary, SUMMARY_CHARS)}`);
       return lines.join("\n");
     });
   const head = [
-    `Topic: ${input.topic}`,
+    `Topic: ${cutText(input.topic, TOPIC_CHARS)}`,
     place,
     `The lesson's parts:\n${plan}`,
     written.length ? `Parts already written:\n\n${written.join("\n\n")}` : "No part is written yet.",
   ].join("\n\n");
   if (part.kind === "recap" || input.passages.length === 0) return head;
   const label = "\n\nMaterial of this part:\n\n";
-  return `${head}${label}${fittedMaterial(input.passages, CONTEXT_CHARS - head.length - label.length - PROBLEMS_CHARS)}`;
+  const bound = CONTEXT_CHARS - PROBLEMS_CHARS;
+  let budget = bound - head.length - label.length;
+  let request = `${head}${label}${fittedMaterial(input.passages, budget)}`;
+  // The size is measured, not trusted: a request still over the bound is fitted again with less room for material.
+  for (let round = 0; request.length > bound && round < 3; round++) {
+    budget -= request.length - bound;
+    request = `${head}${label}${fittedMaterial(input.passages, budget)}`;
+  }
+  return request;
 }
 
 /** The second ask: the same request with the problems of the first reply. */
@@ -874,12 +908,15 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   let shaped: Extract<PartShape, { ok: true }> | null = null;
   let engine: { provider: string; model: string } | null = null;
   for (let ask = 0; ask < 2 && !shaped; ask++) {
+    const prompt = problems.length > 0 ? partRetry(request, problems) : request;
+    // Every bound above keeps a request within this; a request over it is a bug, and no call is made.
+    if (prompt.length > CONTEXT_CHARS) throw new Error("lesson-part-too-long");
     const result = await generate({
       selection,
       run: input.run,
       signal: input.signal,
       system,
-      prompt: problems.length > 0 ? partRetry(request, problems) : request,
+      prompt,
     });
     input.signal?.throwIfAborted();
     const checked = partShape(result.text, {
