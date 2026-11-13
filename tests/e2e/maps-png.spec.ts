@@ -59,11 +59,21 @@ async function mapAtRest(page: Page) {
   await atRest(page.locator(".px-map-canvas"));
 }
 
-/** Reads what the page draws, in the canvas's own CSS pixels. */
+/**
+ * Reads what the page draws, in the canvas's own CSS pixels. Only the part of the canvas inside the window counts: the
+ * export saves what the student sees, and at 200% the foot of the canvas can lie below the window's edge, as it does in
+ * the shorter window of a Mac runner.
+ */
 function readProbes(page: Page): Promise<Probes> {
   return page.evaluate(() => {
     const canvas = document.querySelector<HTMLElement>(".px-map-canvas")!;
-    const at = canvas.getBoundingClientRect();
+    const box = canvas.getBoundingClientRect();
+    const at = DOMRect.fromRect({
+      x: Math.max(0, box.left),
+      y: Math.max(0, box.top),
+      width: Math.min(innerWidth, box.right) - Math.max(0, box.left),
+      height: Math.min(innerHeight, box.bottom) - Math.max(0, box.top),
+    });
     const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number) as [number, number, number];
     const inside = (box: DOMRect, x: number, y: number, margin: number) =>
       x > box.left - margin && x < box.right + margin && y > box.top - margin && y < box.bottom + margin;
@@ -227,8 +237,8 @@ function appZoom(factor: number) {
     await app.evaluate(({ BrowserWindow }, factor) => {
       BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(factor);
     }, factor);
-    // The window stays 1280 x 800, so at 200% the page is 640 x 400 CSS pixels and scrolls. Its scroll bars would be drawn
-    // over the canvas, which this test is not about, so they are hidden.
+    // The window keeps its size, so at 200% the page is about 640 x 400 CSS pixels and scrolls. Its scroll bars would be
+    // drawn over the canvas, which this test is not about, so they are hidden.
     await page.addStyleTag({ content: "* { scrollbar-width: none !important; } *::-webkit-scrollbar { display: none !important; }" });
     // The page's pixel ratio carries the zoom, so the checks below read the zoomed ratio.
     await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBeCloseTo(before * factor, 2);
@@ -236,12 +246,14 @@ function appZoom(factor: number) {
   };
 }
 
+/**
+ * Zooms the map with the mouse wheel. A plain wheel, because the map takes Ctrl with the wheel on a Mac as a trackpad
+ * pinch and zooms ten times as far, which would take every Mac run to the map's smallest zoom.
+ */
 async function zoom(page: Page, delta: number) {
   const box = (await page.locator(".px-map-canvas").boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.keyboard.down("Control");
   await page.mouse.wheel(0, delta);
-  await page.keyboard.up("Control");
   await mapAtRest(page);
 }
 
@@ -275,7 +287,8 @@ async function start() {
   } finally {
     db.close();
   }
-  await page.setViewportSize({ width: 1280, height: 800 });
+  // The page keeps the window's own size. A viewport set by the test would lay the page out for a size the window may not
+  // have (a Mac runner's window is shorter than 800 pixels), while the export takes the window's pixels.
   return { app, page, root, saved };
 }
 
@@ -291,11 +304,11 @@ async function exportView(page: Page, saved: string) {
 }
 
 /**
- * A screenshot of the canvas as it is now with the page's own controls (and the toast that says the file is saved) hidden,
- * which is what the picture should be. Playwright's own screenshot is in CSS pixels whatever the window's zoom. Chromium's
- * screenshot clip is in the window's pixels (a CSS pixel times the zoom) and its scale is the screen's pixels per window
- * pixel, so this asks for the canvas's box in the window's pixels, grown to whole ones the way the export grows it, at
- * the size the canvas has on screen.
+ * A screenshot of the part of the canvas inside the window as it is now, with the page's own controls (and the toast that
+ * says the file is saved) hidden, which is what the picture should be. Playwright's own screenshot is in CSS pixels
+ * whatever the window's zoom. Chromium's screenshot clip is in the window's pixels (a CSS pixel times the zoom) and its
+ * scale is the screen's pixels per window pixel, so this asks for the canvas's box in the window's pixels, grown to whole
+ * ones the way the export grows it, at the size the canvas has on screen.
  */
 async function plainCanvas(page: Page) {
   await page.addStyleTag({
@@ -308,13 +321,13 @@ async function plainCanvas(page: Page) {
     const zoom = visualViewport.zoom ?? 1;
     const clip = await page.evaluate((zoom) => {
       const box = document.querySelector(".px-map-canvas")!.getBoundingClientRect();
-      const left = Math.floor(box.x * zoom + 1e-6);
-      const top = Math.floor(box.y * zoom + 1e-6);
+      const left = Math.floor(Math.max(0, box.left) * zoom + 1e-6);
+      const top = Math.floor(Math.max(0, box.top) * zoom + 1e-6);
       return {
         x: left,
         y: top,
-        width: Math.ceil((box.x + box.width) * zoom - 1e-6) - left,
-        height: Math.ceil((box.y + box.height) * zoom - 1e-6) - top,
+        width: Math.ceil(Math.min(innerWidth, box.right) * zoom - 1e-6) - left,
+        height: Math.ceil(Math.min(innerHeight, box.bottom) * zoom - 1e-6) - top,
         scale: Math.round((devicePixelRatio / zoom) * 1000) / 1000,
       };
     }, zoom);
@@ -338,7 +351,7 @@ async function checkPicture(page: Page, saved: string, name: string) {
   const reference = await plainCanvas(page);
   keep(name, picture, reference);
   const result = await compare(page, picture, reference, probes);
-  // The canvas's size times the screen's pixel ratio: sharp on a display with more pixels than CSS pixels.
+  // The visible canvas's size times the screen's pixel ratio: sharp on a display with more pixels than CSS pixels.
   // (A canvas on a fraction of a pixel is saved with its outer pixels, so the size is off by less than two: one on each side.)
   const [width, height] = result.picture as [number, number];
   expect(Math.abs(width - probes.canvas.width * probes.canvas.ratio)).toBeLessThanOrEqual(2);

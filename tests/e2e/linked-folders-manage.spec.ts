@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -133,6 +133,18 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await dots(page, folders.fisica).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("menuitem", { name: "Rileggi adesso" })).toBeVisible();
+    // Where the Escape lands, for a run that fails here.
+    const focused = await page.evaluate(
+      () => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.className ?? "nothing",
+    );
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem")).toHaveCount(0);
+    await expect(list(page), `Escape pressed with the focus on ${focused}`).toBeVisible();
+    await expect(dots(page, folders.fisica)).toBeFocused();
+    // A slow computer can take the Escape before the menu has taken the focus from the dots: it is the menu's all the same.
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "Rileggi adesso" })).toBeVisible();
+    await dots(page, folders.fisica).focus();
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menuitem")).toHaveCount(0);
     await expect(list(page)).toBeVisible();
@@ -162,7 +174,8 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await dots(page, folders.analisi).click();
     await page.getByRole("menuitem", { name: /^Mostra (nel Finder|in Esplora file|nel gestore dei file)$/ }).click();
     expect(await page.evaluate(() => window.pyxis.revealLinkedFolder("not-a-folder"))).toBe(false);
-    expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened)).toEqual([folders.analisi]);
+    // Pyxis keeps a folder by its real path, so a temporary folder behind a link (macOS's /var is /private/var) opens there.
+    expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened)).toEqual([realpathSync(folders.analisi)]);
 
     // A folder renamed on disk: the list says so, and Trova la cartella… points it at where it went.
     const moved = join(folders.base, "Analisi 1");

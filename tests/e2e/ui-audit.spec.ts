@@ -4425,6 +4425,24 @@ test("M14 every application route in both languages, themes and supported widths
                     ),
                   ),
               );
+              // What is still moving as axe measures, named in a failure: a colour checked halfway through a fade fails
+              // on a slow runner only.
+              const moving = await page.evaluate(() =>
+                document
+                  .getAnimations()
+                  .filter((animation) => animation.playState === "running")
+                  .map((animation) => {
+                    const target = (animation.effect as KeyframeEffect | null)?.target;
+                    const name =
+                      animation instanceof CSSTransition
+                        ? animation.transitionProperty
+                        : animation instanceof CSSAnimation
+                          ? animation.animationName
+                          : "script";
+                    const own = target ? [...target.classList].filter((name) => name.startsWith("px-")) : [];
+                    return `${name} on ${target ? [target.tagName.toLowerCase(), ...own].join(".") : "?"}`;
+                  }),
+              );
               const violations = await axeViolations(page);
               await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
@@ -4500,6 +4518,18 @@ test("M14 every application route in both languages, themes and supported widths
               if (violations.length || errors.length || overflow)
                 failures.push(
                   `${key}: ${violations.map((v) => v.id).join(",")} ${errors.join(";")} ${overflow ? "horizontal overflow" : ""}`,
+                );
+              // The record file stays on the runner, so a failure says which elements axe flagged and why, and what moved.
+              if (violations.length)
+                console.log(
+                  `M14 ${key} details: ${violations
+                    .map(
+                      (v) =>
+                        `${v.id}: ${v.nodes
+                          .map((n) => `${n.target.join(" ")} (${(n.failureSummary ?? "").replace(/\s+/g, " ").trim()})`)
+                          .join(" | ")}`,
+                    )
+                    .join("; ")}; moving: ${moving.join(", ") || "nothing"}`,
                 );
             } catch (error) {
               failures.push(`${key}: ${String(error).slice(0, 900)}`);
