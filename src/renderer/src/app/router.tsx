@@ -6,6 +6,7 @@ import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { reportError } from "../lib/errorReports";
 import { rememberDoorPath } from "./doors";
+import { trackHistory } from "./history";
 import { Shell } from "./layouts/Shell";
 
 /**
@@ -125,6 +126,10 @@ export const router = createHashRouter([
   // A failing page in the shell keeps the shell around its message.
   children: route.children?.map((child) => ({ ...child, errorElement: <RouteError /> })),
 })));
+
+// The trail of the window's history (history.ts), before the app's own subscription, so a page drawn after a navigation
+// reads the trail that navigation made.
+trackHistory(router);
 
 // The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
 // such as a lesson or a quiz, are not where a door was left.
