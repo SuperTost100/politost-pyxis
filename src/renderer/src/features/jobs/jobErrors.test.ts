@@ -69,6 +69,16 @@ describe("job error text", () => {
     }
   });
 
+  it("says that a lesson part could not be written in a shape the reader shows", () => {
+    expect(jobErrorKey("lesson-part-invalid")).toBe("jobs.lessonPartInvalid");
+    for (const lang of ["en", "it"]) {
+      const messages = JSON.parse(
+        readFileSync(resolve(import.meta.dirname, `../../locales/${lang}.json`), "utf8"),
+      ) as { jobs: Record<string, unknown> };
+      expect(typeof messages.jobs.lessonPartInvalid, lang).toBe("string");
+    }
+  });
+
   it("keeps the messages it already had", () => {
     expect(jobErrorKey("demo-step-failed")).toBe("jobs.demoFailed");
     expect(jobErrorKey("model failed: engine-missing")).toBe("engines.errors.engine-missing");

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
@@ -9,6 +10,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 
 const block = (kind: string, body: unknown) => ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
 
@@ -112,6 +114,10 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
       .toBe("succeeded");
     const { topics } = await invoke<{ topics: Array<{ id: string; subtopics: string[] }> }>("plans.read", { planId });
     const topicId = topics[0]!.id;
+    // The lesson this spec reads is on the reader that came before parts; lessons in parts have their own spec.
+    const seeding = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedLessonBeforeParts(seeding, planId, [topicId]);
+    seeding.close();
     expect(topics[0]!.subtopics).toEqual(["Misurare", "Grandezze e punto $P$"]);
 
     // 1. The expanded path row names its subtopics cleanly and draws their math.

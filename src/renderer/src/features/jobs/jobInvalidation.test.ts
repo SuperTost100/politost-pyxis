@@ -39,17 +39,6 @@ describe("job update invalidation", () => {
   it("tells an open map page about its build from every update, and about its maps when the build ends", () => {
     // The page polls its build only while it runs, so a build resumed or retried elsewhere reaches it through this.
     expect(keys(staleFamilies({ kind: "map-build", state: "running" }))).toEqual(["jobs", "map-build"]);
-    // A part of a lesson being written shows on the path's part rows; once written it changes the suggestion too.
-    expect(keys(staleFamilies({ kind: "lesson-part", state: "running" }))).toEqual(["jobs", "parts"]);
-    expect(keys(staleFamilies({ kind: "lesson-part", state: "succeeded" }))).toEqual([
-      "jobs",
-      "parts",
-      "recommend",
-      "jobs-finished",
-      "plans",
-      "plan",
-      "series:later",
-    ]);
     expect(keys(staleFamilies({ kind: "map-build", state: "succeeded" }))).toEqual([
       "jobs",
       "map-build",
@@ -61,6 +50,21 @@ describe("job update invalidation", () => {
       "plan",
       "series:later",
     ]);
+  });
+
+  it("tells an open part page and the path's parts about a part's job from every update, and the suggestion when it ends", () => {
+    expect(keys(staleFamilies({ kind: "lesson-part", state: "running" }))).toEqual(["jobs", "part", "parts"]);
+    for (const state of ["succeeded", "failed"] as const)
+      expect(keys(staleFamilies({ kind: "lesson-part", state }))).toEqual([
+        "jobs",
+        "part",
+        "parts",
+        "recommend",
+        "jobs-finished",
+        "plans",
+        "plan",
+        "series:later",
+      ]);
   });
 
   it("refreshes the attempt outcome when a gap-insight job ends, since it adds the misconception and severity to a gap", () => {

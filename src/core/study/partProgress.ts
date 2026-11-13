@@ -1,24 +1,14 @@
 import type Database from "better-sqlite3";
 import { recordStep } from "../plans/steps";
 import { startOfDay } from "../../shared/local-day";
-import { finalRecap, parseSmartText, type SmartSegment } from "../../shared/smart-text";
+import { parseSmartText, partQuestions } from "../../shared/smart-text";
 import { LIVE_OUTLINE_SQL, type OutlinePart } from "./parts";
 
 // Progress through a topic's lesson in parts: when a part is done, when that finishes the topic's lesson, and what the
 // planner, the path and mastery read from the parts. A topic without a live outline gets nothing from here, so it keeps
 // counting as one lesson.
 
-/**
- * The questions whose answers finish a part: the last quick check of a teaching part, and the closing recap's
- * questions of the recap part. Empty for a part written without one, which "Fatto" finishes instead.
- */
-export function partQuestions(segments: SmartSegment[], kind: OutlinePart["kind"]): string[] {
-  if (kind === "recap") return finalRecap(segments)?.questions.map((question) => question.id) ?? [];
-  const checks = segments.flatMap((segment) =>
-    segment.type === "block" && segment.block.kind === "check" ? [segment.block.id] : [],
-  );
-  return checks.slice(-1);
-}
+export { partQuestions };
 
 /**
  * Marks a part done at `now` unless it already is, inside the caller's transaction. When it is the last part of its
