@@ -1,15 +1,16 @@
 import { Fragment, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon, type IconName } from "../../components/Icon";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
+import { MathText } from "../../components/math/MathText";
 import { Logo } from "../../components/Logo";
 import { Notice } from "../../components/Notice";
 import { useGradeScale } from "../../lib/useGradeScale";
-import { plannerQuery } from "../../lib/queries";
+import { partsQuery, plannerQuery } from "../../lib/queries";
 import {
   needsWeeklyHours,
   reopensFinished,
@@ -17,6 +18,7 @@ import {
   type StepChip,
   type TopicRow,
 } from "./pathRows";
+import { partPath, partsHeading, partsLine, type Outline } from "./partsText";
 import { reopenPath, stepPath } from "./reopen";
 import type { useGapDrill } from "./useGapDrill";
 import "./PlanPath.css";
@@ -112,6 +114,13 @@ export function PlanPath({
     chosen === undefined
       ? (rows.find((row) => row.current)?.id ?? null)
       : chosen;
+  // The open topic's lesson in parts. A topic's parts are read as the pointer or the focus reaches its row, so they are
+  // usually there when it opens.
+  const client = useQueryClient();
+  const parts = useQuery({ ...partsQuery(planId, openTopic ?? ""), enabled: openTopic != null });
+  const prefetchParts = (topicId: string) => void client.prefetchQuery(partsQuery(planId, topicId));
+  // Two parts or more are listed; a one-part topic keeps its one lesson step.
+  const openOutline = parts.data?.outline && parts.data.outline.parts.length > 1 ? parts.data.outline : null;
   const steps = plan.steps;
   const last = (activity: Activity) =>
     steps.filter((step) => step.activity === activity).at(-1);
@@ -138,11 +147,13 @@ export function PlanPath({
       ? t("plans.path.late")
       : t("examPage.by", { date: day(date) });
   }
-  function sub(row: TopicRow) {
+  function sub(row: TopicRow, outline: Outline | null) {
     if (row.atGoal)
       return row.gaps > 0
         ? t("examPage.toReview", { count: row.gaps })
         : t("plans.path.atGoal");
+    const reading = outline ? partsLine(t, outline) : null;
+    if (reading) return reading;
     if (row.current)
       return t("examPage.stepsDone", {
         done: row.steps.filter((chip) => chip.state === "done").length,
@@ -348,6 +359,7 @@ export function PlanPath({
               ? "is-now"
               : "is-later";
           const measured = row.mastery > 0 || row.done > 0;
+          const outline = open ? openOutline : null;
           return (
             <li
               key={row.id}
@@ -364,9 +376,11 @@ export function PlanPath({
                 aria-expanded={open}
                 aria-controls={open ? `${ids}-${row.id}` : undefined}
                 onClick={() => setChosen(open ? null : row.id)}
+                onPointerEnter={() => prefetchParts(row.id)}
+                onFocus={() => prefetchParts(row.id)}
               >
                 <span className="px-xpath-title">{row.title}</span>
-                <span className="px-xpath-sub">{sub(row)}</span>
+                <span className="px-xpath-sub">{sub(row, outline)}</span>
               </button>
               <span className="px-xpath-score">
                 {measured ? (
@@ -393,11 +407,23 @@ export function PlanPath({
               ) : null}
               {open ? (
                 <div id={`${ids}-${row.id}`} className="px-xpath-detail">
+                  {outline ? (
+                    <TopicParts
+                      planId={planId}
+                      topicId={row.id}
+                      topic={row.title}
+                      outline={outline}
+                      suggested={
+                        next?.activity === "lesson" && next.topicId === row.id ? (next.part?.position ?? null) : null
+                      }
+                    />
+                  ) : null}
                   <ul
                     className="px-xpath-substeps"
                     aria-label={t("plans.path.stepsFor", { topic: row.title })}
                   >
-                    {row.steps.map((chip) => (
+                    {/* A lesson in parts lists its parts above, in the lesson step's place. */}
+                    {row.steps.filter((chip) => !(outline && chip.activity === "lesson")).map((chip) => (
                       <li key={chip.activity}>
                         <button
                           type="button"
@@ -546,5 +572,79 @@ export function PlanPath({
         ) : null}
       </ol>
     </section>
+  );
+}
+
+const partIcons = {
+  done: "check",
+  now: "arrow-right",
+  todo: "circle",
+  unwritten: "circle-dashed",
+} as const satisfies Record<string, IconName>;
+
+/**
+ * An open topic's lesson in parts, in the lesson step's place: "Lezione in 8 parti e un ripasso", a row per part that
+ * opens it (ticked once read, the suggested one with "adesso", dashed until written, the working mark while it is
+ * written), and the note on the dashed ones.
+ */
+function TopicParts({
+  planId,
+  topicId,
+  topic,
+  outline,
+  suggested,
+}: {
+  planId: string;
+  topicId: string;
+  topic: string;
+  outline: Outline;
+  /** The part the exam page suggests, when its suggestion is this lesson. */
+  suggested: number | null;
+}) {
+  const { t } = useTranslation();
+  const unwritten = outline.parts.some((part) => !part.done && (part.state === "unwritten" || part.state === "failed"));
+  return (
+    <div className="px-xpath-parts">
+      <p className="px-xpath-parts-head">{partsHeading(t, outline)}</p>
+      <ul className="px-xpath-substeps" aria-label={t("plans.path.lessonPartsFor", { topic })}>
+        {outline.parts.map((part) => {
+          const mark = part.done
+            ? "done"
+            : part.position === suggested
+              ? "now"
+              : part.state === "writing"
+                ? "writing"
+                : part.state === "written"
+                  ? "todo"
+                  : "unwritten";
+          const recap = part.kind === "recap";
+          // The state the row draws with its mark, said in words; "adesso" is in its text already.
+          const state =
+            mark === "done" || mark === "unwritten" || mark === "writing"
+              ? t(`plans.path.${recap ? "recapState" : "partState"}.${mark}`)
+              : null;
+          return (
+            <li key={part.id}>
+              <Link className={`px-xpath-substep is-${mark}`} to={partPath(planId, topicId, part.position)}>
+                {mark === "writing" ? <Logo working decorative size={16} /> : <Icon name={partIcons[mark]} size={16} />}
+                <span>
+                  {recap ? (
+                    t("plans.path.recapRow")
+                  ) : (
+                    <MathText text={`${t("plans.path.partNumber", { n: part.position })} · ${part.title}`} />
+                  )}
+                </span>
+                {/* The link's name: "Parte 1 · Intorni, letta, 5 min". */}
+                <span className="visually-hidden">{state ? `, ${state}, ` : ", "}</span>
+                <span className="px-xpath-meta">
+                  {t(mark === "now" ? "plans.path.partNow" : "plans.path.partMinutes", { count: part.minutes })}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+      {unwritten ? <p className="px-xpath-parts-note">{t("plans.path.partsNote")}</p> : null}
+    </div>
   );
 }
