@@ -10,6 +10,7 @@ import {
   MATERIAL_HEADING_CHARS,
   ESTIMATE_MIN_MINUTES,
   MAX_PARTS,
+  OUTLINE_LABEL_CHARS,
   OUTLINE_PROMPT_CHARS,
   checkOutline,
   estimateMinutes,
@@ -31,12 +32,18 @@ import {
   type PlannedPart,
 } from "./parts";
 
-/** Passages of `sizes` characters each, under the given headings (null for none). */
-function passages(sizes: number[], sections: Array<string | null> = []): OutlinePassage[] {
+/** Passages of `sizes` characters each, under the given headings (null for none), all from one file unless `files` says. */
+function passages(
+  sizes: number[],
+  sections: Array<string | null> = [],
+  files: Array<[string, string]> = [],
+): OutlinePassage[] {
   return sizes.map((size, index) => ({
     id: `ps${String(index + 1).padStart(3, "0")}`,
     text: "x".repeat(size),
     section: sections[index] ?? null,
+    fileId: files[index]?.[0] ?? "book",
+    file: files[index]?.[1] ?? "Dispense",
   }));
 }
 
@@ -147,6 +154,19 @@ describe("checkOutline", () => {
     ]);
   });
 
+  it("lets a part gather passages on its subject that are apart, as a book chapter and the slides on it", () => {
+    // P1 and P3 are the book's and the slides' pages on neighbourhoods, P2 and P4 on open sets.
+    const four = ["book-intorni", "book-aperti", "slides-intorni", "slides-aperti"];
+    const checked = checkOutline(reply(["Aperti", ["P4", "P2"]], ["Intorni", ["P3", "P1"]]), four, { min: 2, max: 3 });
+    expect(checked).toEqual({
+      ok: true,
+      parts: [
+        { title: "Intorni", about: "Dopo Intorni sai farlo.", passageIds: ["book-intorni", "slides-intorni"] },
+        { title: "Aperti", about: "Dopo Aperti sai farlo.", passageIds: ["book-aperti", "slides-aperti"] },
+      ],
+    });
+  });
+
   it("drops a part left with no passage, and counts what is left", () => {
     const kept = checkOutline(reply(["Intorni", ["P1", "P2", "P3"]], ["Vuota", ["P2", "P77"]], ["Aperti", ["P4", "P5", "P6"]]), ids, bounds);
     expect(kept.ok && kept.parts.map((part) => part.title)).toEqual(["Intorni", "Aperti"]);
@@ -196,11 +216,18 @@ describe("checkOutline", () => {
     const labels = Array.from({ length: 12 }, (_, index) => `P${index + 1}`);
     const twelve = labels.map((_, index) => `id${index}`);
     let accepted = 0;
+    let interleaved = 0;
     for (let round = 0; round < 500; round++) {
       const count = 1 + Math.floor(random() * 9);
+      // Half the replies deal the labels round the parts, as a reply that groups a book and its slides by subject does;
+      // the others pick labels at random, with overlaps, gaps and unknown labels.
+      const dealt = round % 2 === 0;
       const parts = Array.from({ length: count }, (_, index): [string, string[]] => [
         random() < 0.05 ? "" : `Idea ${random() < 0.05 ? 0 : index}`,
-        labels.filter(() => random() < 0.25).concat(random() < 0.2 ? ["P40"] : []),
+        (dealt
+          ? labels.filter((_, at) => at % count === index && random() < 0.95)
+          : labels.filter(() => random() < 0.25)
+        ).concat(random() < 0.2 ? ["P40"] : []),
       ]);
       const checked = checkOutline(reply(...parts), twelve, { min: 3, max: 5 });
       if (!checked.ok) {
@@ -216,9 +243,11 @@ describe("checkOutline", () => {
       for (const part of checked.parts) {
         const order = part.passageIds.map((id) => twelve.indexOf(id));
         expect(order).toEqual([...order].sort((a, b) => a - b));
+        if (order.some((at, index) => index > 0 && at !== order[index - 1]! + 1)) interleaved += 1;
       }
     }
     expect(accepted).toBeGreaterThan(20);
+    expect(interleaved).toBeGreaterThan(20);
   });
 });
 
@@ -303,7 +332,7 @@ describe("outlineRequest", () => {
     expect(request.topic).toBe("Funzioni di più variabili");
     expect(request.parts).toEqual({ target: 2, min: 2, max: 3 });
     expect(request.passages.map(({ excerpt: _, ...entry }) => entry)).toEqual([
-      { label: "P1", section: "2.1 Intorni", chars: 3_000 },
+      { label: "P1", file: "Dispense", section: "2.1 Intorni", chars: 3_000 },
       { label: "P2", chars: 2_000 },
       { label: "P3", chars: 4_000 },
       { label: "P4", section: "2.2 Aperti", chars: 1_000 },
@@ -312,14 +341,43 @@ describe("outlineRequest", () => {
     expect(request.passages[3]!.excerpt).toBe("x".repeat(1_000));
   });
 
+  it("names the file where it changes, and the heading again in the new file", () => {
+    const files: Array<[string, string]> = [
+      ["book", "Analisi 2"],
+      ["book", "Analisi 2"],
+      ["slides", "Slide del corso"],
+      ["slides", "Slide del corso"],
+      ["notes", "Slide del corso"],
+    ];
+    const five = passages([3_000, 3_000, 2_000, 2_000, 1_000], ["2.1 Intorni", null, "2.1 Intorni", null, null], files);
+    const request = outlineRequest("Funzioni di più variabili", five, { target: 2, min: 2, max: 3 })!;
+    expect(request.passages.map(({ excerpt: _, ...entry }) => entry)).toEqual([
+      { label: "P1", file: "Analisi 2", section: "2.1 Intorni", chars: 3_000 },
+      { label: "P2", chars: 3_000 },
+      { label: "P3", file: "Slide del corso", section: "2.1 Intorni", chars: 2_000 },
+      { label: "P4", chars: 2_000 },
+      // Another file with the same name is still another file.
+      { label: "P5", file: "Slide del corso", chars: 1_000 },
+    ]);
+    const long = passages([3_000, 3_000], ["2.1 Intorni", null], [["book", "x".repeat(500)], ["book", "x".repeat(500)]]);
+    const cut = outlineRequest("Limiti", long, { target: 2, min: 2, max: 2 })!;
+    expect(cut.passages[0]!.file).toBe(`${"x".repeat(OUTLINE_LABEL_CHARS - 1)}…`);
+  });
+
   it("cuts the excerpts so the list stays within the call bound, also with characters JSON escapes", () => {
     const many = Array.from({ length: 300 }, (_, index) => ({
       id: `p${index}`,
       text: `"Limite" \\ di f(x,y)\n${"è ".repeat(2_000)}`,
       section: index % 10 === 0 ? `2.${index / 10} Sezione` : null,
+      fileId: index < 150 ? "book" : "slides",
+      file: index < 150 ? "Analisi Matematica 2, Bramanti Pagani Salsa" : "Slide del corso",
     }));
     const request = outlineRequest("Limiti", many, { target: 8, min: 7, max: 8 })!;
-    expect(JSON.stringify(request.passages).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    expect(JSON.stringify(request).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    const problems = Array.from({ length: 9 }, (_, index) => `Two parts have the title "${"Idea ".repeat(16)}${index}". Give each part its own title.`);
+    const again = outlineRequest("Limiti", many, { target: 8, min: 7, max: 8 }, problems)!;
+    expect(again.problems).toEqual(problems);
+    expect(JSON.stringify(again).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
     expect(request.passages).toHaveLength(300);
     expect(request.passages[0]!.excerpt.length).toBeGreaterThan(5);
   });
@@ -422,7 +480,7 @@ describe("planParts", () => {
       model_id: "test-model",
       model_source: "reported",
       prompt_template: "lesson.outline",
-      prompt_version: "outline-1",
+      prompt_version: "outline-2",
       grounding: "sources",
     });
     // Planning again returns the saved outline without a call.
@@ -454,9 +512,40 @@ describe("planParts", () => {
     expect(engine.calls).toHaveLength(2);
     const [first, second] = engine.requests();
     expect(first!.problems).toBeUndefined();
-    expect(second).toEqual({ ...first, problems: ["The reply had 1 parts with passages from the list. Use between 3 and 5."] });
+    expect(second!.problems).toEqual(["The reply had 1 parts with passages from the list. Use between 3 and 5."]);
+    // The same request but for the problems: the excerpts may only be shorter, to leave room for them.
+    const bare = (request: OutlineRequest) => request.passages.map(({ excerpt: _, ...entry }) => entry);
+    expect([second!.topic, second!.parts, bare(second!)]).toEqual([first!.topic, first!.parts, bare(first!)]);
+    second!.passages.forEach((entry, index) => expect(first!.passages[index]!.excerpt.startsWith(entry.excerpt)).toBe(true));
+    // Each request goes out within the bound, as it is sent.
+    for (const call of engine.calls) expect(call.prompt.length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
     expect(outline.origin).toBe("model");
     expect(outline.parts.map((part) => part.title)).toEqual(["Uno", "Due", "Tre", "Ripasso del capitolo"]);
+  });
+
+  it("plans a topic whose headings and title are long with the model, within the bound", async () => {
+    // 60 passages, each under its own heading of 1,000 characters: the headings alone would be 60,000 characters.
+    const headings = Array.from({ length: 60 }, (_, index) => `${index + 1}.1 ${"Teorema di Weierstrass ".repeat(44)}`);
+    const db = workspace(Array(60).fill(500), headings);
+    db.prepare("UPDATE topics SET title = ?").run(`Funzioni ${"di più variabili ".repeat(2_000)}`);
+    const parts = Array.from({ length: 5 }, (_, index): [string, string[]] => [
+      `Idea ${index + 1}`,
+      Array.from({ length: 12 }, (_, at) => `P${index * 12 + at + 1}`),
+    ]);
+    const first = reply(["Tutto", ["P1"]]);
+    const engine = recorded(first, reply(...parts));
+    const outline = await planParts(db, { planId: "p", topicId: "t", run: engine.run });
+    expect(outline.origin).toBe("model");
+    expect(engine.calls).toHaveLength(2);
+    for (const call of engine.calls) expect(call.prompt.length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    const [request] = engine.requests();
+    expect(Array.from(request!.topic)).toHaveLength(OUTLINE_LABEL_CHARS);
+    expect(request!.topic.endsWith("…")).toBe(true);
+    expect(request!.passages).toHaveLength(60);
+    for (const entry of request!.passages) {
+      expect(Array.from(entry.section!)).toHaveLength(OUTLINE_LABEL_CHARS);
+      expect(entry.section!.endsWith("…")).toBe(true);
+    }
   });
 
   it("cuts the topic in code after a second rejected reply", async () => {
@@ -521,6 +610,20 @@ describe("planParts", () => {
     expect(rows(db)).toEqual({ outlines: 0, parts: 0 });
   });
 
+  it("saves nothing on a cancel, also for a topic that needs no call or cannot be sent", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    for (const sizes of [[3_000], Array(800).fill(60)]) {
+      const db = workspace(sizes);
+      const engine = recorded(new Error("no call expected"));
+      await expect(planParts(db, { planId: "p", topicId: "t", run: engine.run, signal: controller.signal })).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      expect(engine.calls).toHaveLength(0);
+      expect(rows(db)).toEqual({ outlines: 0, parts: 0 });
+    }
+  });
+
   it("refuses a topic of another plan", async () => {
     const db = workspace([1_000]);
     db.exec("INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('q', 'Altro', 'ready', 1, 1)");
@@ -545,6 +648,18 @@ describe("reading parts", () => {
     expect(liveOutline(db, "t")).toBeNull();
     const again = await planParts(db, { planId: "p", topicId: "t" });
     expect(again.id).not.toBe(outline.id);
+  });
+
+  it("reads each passage's file", () => {
+    const db = workspace([10, 10]);
+    db.exec(`
+      INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('slides', 'pdf', 'Slide del corso', 'ready', 1, 1);
+      UPDATE passages SET source_id = 'slides' WHERE id = 'ps002';
+    `);
+    expect(outlinePassages(db, "t").map((passage) => [passage.fileId, passage.file])).toEqual([
+      ["s", "Dispense"],
+      ["slides", "Slide del corso"],
+    ]);
   });
 
   it("reads a smartbook paragraph's title as its heading, and a page or slide as none", () => {

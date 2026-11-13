@@ -963,6 +963,13 @@ describe("lesson outlines and parts (migration 32)", () => {
     expect(() => part("g", "o1", 3, { minutes: 31 })).toThrow(/CHECK/);
     expect(() => part("h", "o1", 3, { passages: "[ps1" })).toThrow(/CHECK/);
     part("r", "o1", 3, { kind: "recap", title: "Ripasso del capitolo", passages: "[]", minutes: 4 });
+    // A part remembers that its last write failed or was cancelled until a write succeeds: a time, empty by default.
+    expect(db.prepare("SELECT write_failed_at FROM lesson_parts WHERE id = 'b'").pluck().get()).toBeNull();
+    db.prepare("UPDATE lesson_parts SET write_failed_at = 1800000000000 WHERE id = 'b'").run();
+    expect(db.prepare("SELECT write_failed_at FROM lesson_parts WHERE id = 'b'").pluck().get()).toBe(1800000000000);
+    expect(() => db.prepare("UPDATE lesson_parts SET write_failed_at = 'ieri' WHERE id = 'b'").run()).toThrow(/CHECK/);
+    expect(() => db.prepare("UPDATE lesson_parts SET write_failed_at = 1.5 WHERE id = 'b'").run()).toThrow(/CHECK/);
+    db.prepare("UPDATE lesson_parts SET write_failed_at = NULL WHERE id = 'b'").run();
     expect(() =>
       db.prepare("UPDATE lesson_outlines SET origin = 'guessed' WHERE id = 'o3'").run(),
     ).toThrow(/CHECK/);
