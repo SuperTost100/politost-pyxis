@@ -96,6 +96,20 @@ export function failReadsOnce(spec: string): void {
 
 export function broadcast(name: string, value: unknown): void {
   port?.postMessage({ kind: "bcast", name, value } satisfies PortMessage);
+  const state = name === "job.updated" ? (value as { state?: unknown } | null)?.state : undefined;
+  if (name === "sources.changed" || state === "succeeded" || state === "failed") libraryChanged?.();
+}
+
+/** Requests that can take a file out of the Library. A replacement, a link read again or a book update ends a job. */
+const LIBRARY_WRITES = new Set(["sources.remove", "sources.unlinkFolder", "chats.delete"]);
+let libraryChanged: (() => void) | null = null;
+
+/**
+ * Called when a Library file may have been removed or replaced: a request that removes one succeeded, a job ended, or a
+ * look at the linked folders changed something. Main then checks the copies "Apri il file" made (`main/open-copies.ts`).
+ */
+export function onLibraryChange(listener: () => void): void {
+  libraryChanged = listener;
 }
 
 export function attachRendererPort(next: CorePort): void {
@@ -147,6 +161,7 @@ async function onRendererMessage(from: CorePort, data: unknown): Promise<void> {
       ok: true,
       value,
     } satisfies PortMessage);
+    if (LIBRARY_WRITES.has(message.name)) libraryChanged?.();
   } catch (err) {
     from.postMessage({
       kind: "res",

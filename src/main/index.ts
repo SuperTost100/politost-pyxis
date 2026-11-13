@@ -70,7 +70,7 @@ import {
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { copyFile, mkdtemp } from "node:fs/promises";
+import { openCopies } from "./open-copies";
 import { inside } from "../core/path-inside";
 import { Worker } from "node:worker_threads";
 import { registerBlobProtocol } from "./blob-protocol";
@@ -477,22 +477,26 @@ function showReminder(summary: ReminderSummary): void {
  * Asks core which file a Library source's original is, by the source's id. Null when core is not up or the source has
  * no file it can open, so the window can never have a path of its own choosing opened.
  */
-function askCoreForSourceFile(sourceId: string): Promise<{ path: string; name: string; stored: boolean } | null> {
+function askCoreForSourceFile(sourceId: string): Promise<SourceFile | null> {
   const child = coreChild;
   if (!child || coreExited(child) || keysReadyFor !== child || holdCore) return Promise.resolve(null);
   return new Promise((resolve) => {
     const id = randomUUID();
-    const done = (file: { path: string; name: string; stored: boolean } | null) => {
+    const done = (file: SourceFile | null) => {
       clearTimeout(timer);
       child.off("message", listener);
       resolve(file);
     };
-    const listener = (data: { type?: string; id?: string; file?: { path?: unknown; name?: unknown; stored?: unknown } | null }) => {
+    const listener = (data: {
+      type?: string;
+      id?: string;
+      file?: { path?: unknown; name?: unknown; stored?: unknown; sha?: unknown } | null;
+    }) => {
       if (data?.type !== "source-file-path" || data.id !== id) return;
       const file = data.file;
       done(
         file && typeof file.path === "string" && typeof file.name === "string"
-          ? { path: file.path, name: file.name, stored: file.stored === true }
+          ? { path: file.path, name: file.name, stored: file.stored === true, sha: typeof file.sha === "string" ? file.sha : null }
           : null,
       );
     };
@@ -504,6 +508,54 @@ function askCoreForSourceFile(sourceId: string): Promise<{ path: string; name: s
       done(null);
     }
   });
+}
+
+type SourceFile = { path: string; name: string; stored: boolean; sha: string | null };
+
+/** The copies of stored files "Apri il file" handed to the system's apps (`open-copies.ts`). Set once userData is known. */
+let sourceCopies: ReturnType<typeof openCopies> | null = null;
+let checkingCopies: Promise<void> | null = null;
+let copiesChangedAgain = false;
+
+/**
+ * Removes the copies of files core no longer has in the Library: removed, replaced, or gone with an unlinked folder.
+ * Core says when that may have happened (`library-changed`); a check asked for while one runs runs again after it.
+ */
+function checkSourceCopies(): void {
+  const copies = sourceCopies;
+  if (!copies || copies.list().length === 0) return;
+  if (checkingCopies) {
+    copiesChangedAgain = true;
+    return;
+  }
+  checkingCopies = copies
+    .prune(async (copy) => {
+      const file = await askCoreForSourceFile(copy.sourceId);
+      return file !== null && file.stored && file.sha === copy.sha;
+    })
+    .then(
+      (left) => {
+        if (left) console.warn(`pyxis: ${left} opened copies are still held, removed at quit or the next start`);
+      },
+      (error: unknown) => console.warn("pyxis: opened copies not checked", error instanceof Error ? error.message : "unknown"),
+    )
+    .finally(() => {
+      checkingCopies = null;
+      if (copiesChangedAgain) {
+        copiesChangedAgain = false;
+        checkSourceCopies();
+      }
+    });
+}
+
+/** Removes every opened copy: the workspace is wiped or replaced, or the app quits or starts. Held ones stay for later. */
+function removeSourceCopies(): void {
+  try {
+    const left = sourceCopies?.removeAll() ?? 0;
+    if (left) console.warn(`pyxis: ${left} opened copies are still held, removed at the next start`);
+  } catch (error) {
+    console.warn("pyxis: opened copies not removed", error instanceof Error ? error.message : "unknown");
+  }
 }
 
 /** Tests only: the files "Apri il file" would have handed to the system, read through app.evaluate. */
@@ -879,6 +931,7 @@ function startCore(strict = false): Promise<void> {
       if (consentHold?.held) consentHold.waiting.push(() => coreConsent.report(child, enabled));
       else coreConsent.report(child, enabled);
     } else if (data?.type === "js-error") crashReports.capture("core", errorFields(data));
+    else if (data?.type === "library-changed" && child === coreChild) checkSourceCopies();
   });
   keysReadyFor = null;
   rendererPortFor = null;
@@ -1057,7 +1110,8 @@ function pauseCore(): Promise<void> {
 function pauseCoreToReplace(): Promise<void> {
   const child = coreChild;
   coreConsent.suspend();
-  return pauseCore().catch((error: unknown) => {
+  // The files opened from the Library leave with the workspace they came from, before a wipe or a restore touches it.
+  return pauseCore().then(removeSourceCopies, (error: unknown) => {
     // Core did not stop, so nothing was replaced and it is still the core of the open workspace.
     if (child && coreChild === child && !coreExited(child)) coreConsent.reinstate(child);
     throw error;
@@ -1210,14 +1264,14 @@ function registerIpc(): void {
     if (typeof sourceId !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(sourceId) || !workspacePath) return false;
     const file = await askCoreForSourceFile(sourceId);
     if (!file) return false;
-    let path = file.path;
+    let path: string | null = file.path;
     if (file.stored) {
-      // The stored copy is named by its hash. The system app gets a copy under the file's own name, with its extension,
-      // in a folder of its own, so it knows the type and the student sees the name they know.
-      if (!inside(join(workspacePath, "blobs"), path)) return false;
-      const folder = await mkdtemp(join(app.getPath("temp"), "pyxis-open-"));
-      path = join(folder, file.name);
-      await copyFile(file.path, path);
+      // The stored copy is named by its hash, with no extension. The system app gets a copy under the file's own name,
+      // so it knows the type and the student sees the name they know. The copy lives in userData and is removed with
+      // the file (`open-copies.ts`). A linked file opens in place.
+      if (!inside(join(workspacePath, "blobs"), path) || !file.sha || !sourceCopies) return false;
+      path = await sourceCopies.make(sourceId, file.sha, file.path, file.name);
+      if (!path) return false;
     }
     if (e2eSeam() && process.env["PYXIS_E2E"] === "1") {
       openedSourceFiles.push({ sourceId, name: file.name, stored: file.stored, path });
@@ -1869,6 +1923,9 @@ app.whenReady().then(() => {
   )
     app.setActivationPolicy("prohibited");
   mkdirSync(app.getPath("userData"), { recursive: true });
+  // Copies opened in an earlier run that an app still held then, or that a crash left.
+  sourceCopies = openCopies(userFile("open-copies"));
+  removeSourceCopies();
   try {
     for (;;) {
       try {
@@ -1972,6 +2029,8 @@ app.on("before-quit", (event) => {
 
 // `quit` is the last event before the process ends: the quit was not cancelled and the windows are closed.
 app.on("quit", () => {
+  // Where an app still has a copy open (Windows refuses to delete it), the next start removes it.
+  removeSourceCopies();
   if (!installerAfterQuit) return;
   const path = installerAfterQuit;
   installerAfterQuit = null;

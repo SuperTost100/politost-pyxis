@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdtempSync, renameSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
@@ -27,7 +27,11 @@ async function launch() {
 
 const panel = (page: Page) => page.locator("aside.source-panel");
 const openedFiles = (app: ElectronApplication) =>
-  app.evaluate(() => (globalThis as unknown as { pyxisE2eOpenedFiles: () => Array<{ sourceId: string; name: string; stored: boolean }> }).pyxisE2eOpenedFiles());
+  app.evaluate(() =>
+    (
+      globalThis as unknown as { pyxisE2eOpenedFiles: () => Array<{ sourceId: string; name: string; stored: boolean; path: string }> }
+    ).pyxisE2eOpenedFiles(),
+  );
 
 test("the Library opens each file in the source panel, at its first page, and pages by mouse, keyboard and number", async () => {
   test.setTimeout(240_000);
@@ -237,3 +241,48 @@ test("a picture larger than one read draws, and a linked file moved while its pa
   }
 });
 
+test("Apri il file keeps its copy in Pyxis's own folder, and a removed source or a wipe leaves none of it", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await launch();
+  const copies = join(userData, "open-copies");
+  const left = () => (existsSync(copies) ? readdirSync(copies) : []);
+  try {
+    await toLibrary(page);
+    const sheet = panel(page);
+    const openThrough = async (title: string, sourceId: string) => {
+      await page.getByRole("button", { name: title, exact: true }).click();
+      await sheet.getByRole("button", { name: "Apri il file" }).click();
+      await expect.poll(async () => (await openedFiles(app)).filter((file) => file.sourceId === sourceId)).toHaveLength(1);
+      const opened = (await openedFiles(app)).find((file) => file.sourceId === sourceId)!;
+      return opened.path;
+    };
+    const book = await openThrough("Fisica I · Mazzoldi, Nigro, Voci", "sp-book");
+    const photo = await openThrough("Lavagna, lezione 10", "sp-photo");
+    // Each copy has the file's name, in the app's own folder, and nowhere in the system's temporary folder.
+    for (const [path, name] of [
+      [book, "Fisica I · Mazzoldi, Nigro, Voci.pdf"],
+      [photo, "Lavagna, lezione 10.png"],
+    ] as const) {
+      expect(relative(copies, path).startsWith("..")).toBe(false);
+      expect(path.endsWith(name)).toBe(true);
+      expect(existsSync(path)).toBe(true);
+    }
+    expect(left().sort()).toEqual(["sp-book", "sp-photo"]);
+
+    // Removed from the Library: its copy goes, the other stays.
+    expect(await page.evaluate(() => window.pyxis.invoke("sources.remove", { sourceId: "sp-photo", confirmed: true }))).toMatchObject({
+      removed: true,
+    });
+    await expect.poll(() => existsSync(photo)).toBe(false);
+    expect(left()).toEqual(["sp-book"]);
+    expect(existsSync(book)).toBe(true);
+
+    // "Elimina tutto": nothing of an opened file stays behind.
+    expect(await page.evaluate(() => window.pyxis.wipeWorkspace({ backups: false }))).toBe("wiped");
+    expect(existsSync(book)).toBe(false);
+    expect(left()).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

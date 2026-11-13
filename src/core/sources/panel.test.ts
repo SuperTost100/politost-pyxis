@@ -79,7 +79,7 @@ it("opens a stored PDF at the cited page and reads only the bytes asked for", as
   expect((await readOriginal(t.db, t.workspace, { sourceId: "big", start: 0, length: ORIGINAL_CHUNK_MAX * 4 })).bytes.length).toBe(
     ORIGINAL_CHUNK_MAX,
   );
-  expect(fileToOpen(t.db, t.workspace, "book")).toMatchObject({ name: "Fisica I · Mazzoldi.pdf", stored: true });
+  expect(fileToOpen(t.db, t.workspace, "book")).toMatchObject({ name: "Fisica I · Mazzoldi.pdf", stored: true, sha });
 });
 
 it("reads a linked file in place, and says when it is missing", async () => {
@@ -96,7 +96,7 @@ it("reads a linked file in place, and says when it is missing", async () => {
     missing: false,
   });
   expect((await readOriginal(t.db, t.workspace, { sourceId: "notes", start: 0, length: 10 })).bytes.length).toBe(10);
-  expect(fileToOpen(t.db, t.workspace, "notes")).toEqual({ path: join(t.folder, "Appunti.pdf"), name: "Appunti.pdf", stored: false });
+  expect(fileToOpen(t.db, t.workspace, "notes")).toEqual({ path: join(t.folder, "Appunti.pdf"), name: "Appunti.pdf", stored: false, sha: null });
 
   // Gone from the folder: nothing to read or open, and the panel says so.
   rmSync(join(t.folder, "Appunti.pdf"));

@@ -229,13 +229,13 @@ export async function readOriginal(
 
 /**
  * The file "Apri il file" hands to the system: the stored copy (main gives it the file's name first) or the linked file,
- * for a source still in the Library. Null for anything else.
+ * for a source still in the Library. Null for anything else. `sha` names the stored copy, which main's copy records.
  */
 export function fileToOpen(
   db: Database.Database,
   workspace: string,
   sourceId: string,
-): { path: string; name: string; stored: boolean } | null {
+): { path: string; name: string; stored: boolean; sha: string | null } | null {
   const at = locate(db, { sourceId });
   if (!at || at.row.status === "removed") return null;
   const original = originalPath(db, workspace, at);
@@ -243,7 +243,8 @@ export function fileToOpen(
   const stored = isStored(workspace, at, original.path);
   const ext = stored ? storedExt(workspace, at.sha!) : extname(original.path);
   const base = at.row.title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ").trim().slice(0, 120) || "Pyxis";
-  return { path: original.path, name: ext && !base.toLowerCase().endsWith(ext.toLowerCase()) ? `${base}${ext}` : base, stored };
+  const name = ext && !base.toLowerCase().endsWith(ext.toLowerCase()) ? `${base}${ext}` : base;
+  return { path: original.path, name, stored, sha: stored ? at.sha : null };
 }
 
 function storedExt(workspace: string, sha: string): string {

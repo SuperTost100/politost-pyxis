@@ -29,6 +29,7 @@ import {
   broadcast,
   failReadsOnce,
   holdReads,
+  onLibraryChange,
 } from "./ipc/server";
 import { demoJob } from "./jobs/demo";
 import { createRunner } from "./jobs/runner";
@@ -242,6 +243,7 @@ if (!parent) {
     );
     runner.register("demo", demoJob);
     bindRunner(runner, dev, db);
+    onLibraryChange(() => port.postMessage({ type: "library-changed" }));
     // Nothing here looks for engines: main sends the keys right after this, and the one provider scan runs then.
     console.log("pyxis-core ready");
     // Healthy-ready handshake: main waits for this before sending keys/ports.
