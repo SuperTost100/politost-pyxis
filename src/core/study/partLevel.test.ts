@@ -7,6 +7,7 @@ import { planFootprint } from "../plans/settings";
 import { topicContent } from "../plans/views";
 import { parseSmartText, smartQuestions, smartSections } from "../../shared/smart-text";
 import { CONTEXT_CHARS } from "./openLesson";
+import { oldLesson } from "./oldLessons";
 import { itemWording, liveOutline, rewritePartSection } from "./parts";
 import { PART_JOB, openPart, registerPartJobs, type PartResult } from "./partJobs";
 import { partsDoneSince } from "./partProgress";
@@ -373,7 +374,7 @@ describe("a section rewritten in a part", () => {
 });
 
 describe("a part written at two levels is one part", () => {
-  it("in the topic's finished items, the delete count and plan files", async () => {
+  it("in the topic's finished items, the delete count, plan files and the rule for lessons written before parts", async () => {
     const { db, runner } = setUp();
     await readToPartTwo(db, runner);
     const earlier = part(db, 1).itemId!;
@@ -390,5 +391,7 @@ describe("a part written at two levels is one part", () => {
     const file = exportPlan(db, "p", { progress: true });
     expect.soft(file.items ?? []).toEqual([]);
     expect.soft((file.progress ?? []).filter((row) => row.kind === "answer_given")).toEqual([]);
+    // The earlier text has an engine and an answer, as a lesson written before parts has, and is still no such lesson.
+    expect.soft(oldLesson(db, "p", "t")).toBeNull();
   });
 });

@@ -12,7 +12,8 @@ import { BOOK_VERSION, cacheKey } from "./lesson";
 import { oldLesson } from "./oldLessons";
 import { PART_JOB, openPart, registerPartJobs, rewriteInParts } from "./partJobs";
 import { finishPart } from "./partProgress";
-import { liveOutline, partOfItem } from "./parts";
+import { liveOutline } from "./parts";
+import { partOfText } from "./partText";
 import { answerSmartCheck, smartAnswers } from "./smartText";
 import { checkBlock, recapMarkdown } from "./test-parts";
 
@@ -351,7 +352,7 @@ describe("a rewrite keeps everything the student made", () => {
     expect(lessonSteps(db).map((step) => step.itemId)).toEqual(["old"]);
     // The part item's answers are its own: a part item is no old lesson.
     const first = liveOutline(db, "t")!.parts[0]!.itemId!;
-    expect(partOfItem(db, first)).not.toBeNull();
+    expect(partOfText(db, first)).not.toBeNull();
     expect(oldLesson(db, "p", "t")?.itemId).toBe("old");
   });
 

@@ -21,7 +21,6 @@ import {
   outlineRequest,
   partBounds,
   partMinutes,
-  partOfItem,
   partShape,
   partsMarkdown,
   planParts,
@@ -31,6 +30,7 @@ import {
   type OutlineRequest,
   type PlannedPart,
 } from "./parts";
+import { partOfText } from "./partText";
 
 /** Passages of `sizes` characters each, under the given headings (null for none), all from one file unless `files` says. */
 function passages(
@@ -641,8 +641,8 @@ describe("reading parts", () => {
         ('old', 'p', 't', 'lesson', '{}', 1);
       UPDATE lesson_parts SET item_id = 'written';
     `);
-    expect(partOfItem(db, "written")).toEqual({ partId: outline.parts[0]!.id, outlineId: outline.id, position: 1, kind: "part" });
-    expect(partOfItem(db, "old")).toBeNull();
+    expect(partOfText(db, "written")).toEqual({ partId: outline.parts[0]!.id, outlineId: outline.id, position: 1, kind: "part" });
+    expect(partOfText(db, "old")).toBeNull();
     // A retired outline is not the live one, and the topic can be planned again.
     db.prepare("UPDATE lesson_outlines SET retired_at = 5").run();
     expect(liveOutline(db, "t")).toBeNull();

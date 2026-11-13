@@ -8,12 +8,12 @@ import type { FigureRunner } from "../math/figures";
 import { aboutPlan } from "./jobAbout";
 import { loadLessonById } from "./lesson";
 import { oldLesson } from "./oldLessons";
+import { partOfText } from "./partText";
 import { bookMarkdown, requireTopic, type Wording } from "./openLesson";
 import {
   choosePartLevel,
   itemWording,
   keyWording,
-  partOfText,
   partOffLevel,
   type PartRewrite,
   RECAP_FROM,
@@ -548,9 +548,9 @@ export function openPart(
     if (!loadLessonById(db, { planId: input.planId, topicId: input.topicId, itemId: input.itemId }))
       throw new Error("item-missing");
     // A part's text at another level, opened by its item (a finished step), opens as its part too.
-    const owner = partOfText(db, input.topicId, input.itemId)?.position;
-    if (owner === undefined) return legacyItem(db, input.planId, input.topicId);
-    position ??= owner;
+    const text = partOfText(db, input.itemId);
+    if (!text || text.outlineId !== liveOutline(db, input.topicId)?.id) return legacyItem(db, input.planId, input.topicId);
+    position ??= text.position;
   }
   let outline = liveOutline(db, input.topicId);
   let replaces = outline ? replacedItem(db, outline) : null;

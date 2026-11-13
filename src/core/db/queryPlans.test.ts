@@ -14,7 +14,7 @@ import {
 } from "../study/cards";
 import { currentSelfRatings } from "../study/selfRating";
 import { smartAnswers } from "../study/smartText";
-import { LIVE_OUTLINE_SQL, PART_OF_ITEM_SQL } from "../study/parts";
+import { LIVE_OUTLINE_SQL } from "../study/parts";
 import { PART_OF_TEXT_SQL } from "../study/partText";
 
 const WATCHED = ["card_reviews", "learning_events"];
@@ -128,7 +128,6 @@ describe("lesson part lookups", () => {
     const plan = (sql: string) =>
       (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all("x") as Array<{ detail: string }>).map((row) => row.detail);
     expect(plan(LIVE_OUTLINE_SQL)).toEqual(["SEARCH lesson_outlines USING INDEX lesson_outlines_live (topic_id=?)"]);
-    expect(plan(PART_OF_ITEM_SQL)).toEqual(["SEARCH lesson_parts USING INDEX lesson_parts_item (item_id=?)"]);
     // A part's text in any wording: the item by its id, then the part by the item it points at or by its own id.
     expect(plan(PART_OF_TEXT_SQL)).toEqual([
       "SEARCH i USING INDEX sqlite_autoindex_items_1 (id=?)",

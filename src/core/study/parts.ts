@@ -410,10 +410,6 @@ export const LIVE_OUTLINE_SQL = `SELECT id, plan_id AS planId, topic_id AS topic
   replaces_item_id AS replacesItemId, passage_key AS passageKey, created_at AS createdAt
   FROM lesson_outlines WHERE topic_id = ? AND retired_at IS NULL`;
 
-/** The part a lesson item is, found through `lesson_parts_item`. */
-export const PART_OF_ITEM_SQL = `SELECT id AS partId, outline_id AS outlineId, position, kind
-  FROM lesson_parts WHERE item_id = ?`;
-
 /** The live outline of a topic with its parts, or null when the topic has none yet. */
 export function liveOutline(db: Database.Database, topicId: string): Outline | null {
   const row = db.prepare(LIVE_OUTLINE_SQL).get(topicId) as Omit<Outline, "parts"> | undefined;
@@ -452,18 +448,6 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
       writeFailedAt: part.write_failed_at,
     })),
   };
-}
-
-/** Which part a lesson item is, or null for a lesson that is not a part. */
-export function partOfItem(
-  db: Database.Database,
-  itemId: string,
-): { partId: string; outlineId: string; position: number; kind: "part" | "recap" } | null {
-  return (
-    (db.prepare(PART_OF_ITEM_SQL).get(itemId) as
-      | { partId: string; outlineId: string; position: number; kind: "part" | "recap" }
-      | undefined) ?? null
-  );
 }
 
 type Plan = {
@@ -1162,24 +1146,6 @@ export function choosePartLevel(
 export function partOffLevel(db: Database.Database, outline: Outline, part: OutlinePart): boolean {
   const chosen = wordings.find((entry) => entry === outline.wording);
   return Boolean(chosen && part.itemId && itemWording(db, part.itemId) !== chosen);
-}
-
-/**
- * The part a lesson item is a text of: the one it is, or the one an earlier text of it was written for, found by its
- * cache key's scope. Null for a lesson that is not a part, or a part of no live outline.
- */
-export function partOfText(db: Database.Database, topicId: string, itemId: string): OutlinePart | null {
-  const outline = liveOutline(db, topicId);
-  if (!outline) return null;
-  const scope = db
-    .prepare(
-      `SELECT CASE WHEN json_valid(json_extract(body_json, '$.cacheKey'))
-         THEN json_extract(json_extract(body_json, '$.cacheKey'), '$.scopeId') END
-       FROM items WHERE id = ? AND prompt_template = 'lesson.part'`,
-    )
-    .pluck()
-    .get(itemId) as string | null | undefined;
-  return outline.parts.find((part) => part.itemId === itemId || (scope != null && part.id === scope)) ?? null;
 }
 
 export type PartSectionInput = {
