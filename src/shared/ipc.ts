@@ -867,6 +867,21 @@ export const requests = {
       pick: z.number().int(),
       /** True when this answer finished the closing recap and so the reading. */
       finished: z.boolean(),
+      /** Only on a part of a lesson in parts: true when this answer finished the part. `finished` then means the topic's lesson. */
+      partDone: z.boolean().optional(),
+    }),
+  },
+  /** "Fatto" on a part with no question: a part shown as book text, or written without a check. */
+  "study.partDone": {
+    input: z.object({
+      planId: z.string(),
+      topicId: z.string(),
+      position: z.number().int().min(1),
+    }),
+    output: z.object({
+      partDone: z.literal(true),
+      /** True when this was the last part, so the topic's lesson is done. */
+      finished: z.boolean(),
     }),
   },
   "study.markdown": {

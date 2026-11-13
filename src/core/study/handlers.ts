@@ -47,6 +47,7 @@ import {
 } from "./openLesson";
 import { writeAgentLesson } from "./agentLesson";
 import { answerSmartCheck, smartAnswers, smartCitations, smartSources } from "./smartText";
+import { markPartDone } from "./partProgress";
 import { currentSelfRatings, rateExercise, type SelfRating } from "./selfRating";
 import type { Rating } from "./schedule";
 import { runTurn } from "../engine/funnel";
@@ -275,6 +276,9 @@ export function studyHandlers(
       pick: number;
     }) {
       return answerSmartCheck(db, input);
+    },
+    partDone(input: { planId: string; topicId: string; position: number }) {
+      return markPartDone(db, input);
     },
     markdown(input: {
       planId: string;
