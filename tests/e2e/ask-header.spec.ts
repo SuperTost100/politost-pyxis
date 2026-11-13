@@ -156,27 +156,24 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
     await expect(list.getByRole("link", { name: /^Moto rettilineo/ })).toHaveText("Moto rettilineoFisica");
     await expect(list.getByRole("link", { name: /^Domanda libera/ })).toHaveText("Domanda libera");
 
-    // All chats lists every chat under Today and Earlier, and the search narrows it by message text.
-    await page.getByRole("button", { name: "Tutte le chat" }).click();
-    const finder = page.getByRole("dialog", { name: "Cerca" });
-    await expect(finder.locator(".px-finder-label")).toHaveText(["Oggi", "Prima"]);
-    await expect(finder.getByRole("option")).toHaveCount(7);
-    await finder.getByRole("combobox", { name: "Cerca" }).fill("circolare");
-    await expect(finder.getByRole("option")).toHaveCount(1);
-    await expect(finder.getByRole("option", { name: /^Moto circolare/ })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(finder).toBeHidden();
-
-    // Searching everything shows six chats, then a row that lists them all, as "Tutte le chat" does where the
-    // sidebar is folded.
+    // Seven chats all fit in the sidebar, so it has no "Tutte le chat" link. Searching everything shows six chats, then a
+    // row that lists them all, which groups them under Today and Earlier, and the search narrows them by message text.
+    await expect(page.getByRole("button", { name: "Tutte le chat" })).toHaveCount(0);
     await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    const finder = page.getByRole("dialog", { name: "Cerca" });
     const chatGroup = finder.getByRole("group", { name: "Chat" });
     await expect(chatGroup.getByRole("option")).toHaveCount(7);
     await chatGroup.getByRole("option", { name: "Tutte le chat" }).click();
     await expect(finder).toBeVisible();
     await expect(finder.getByRole("combobox", { name: "Cerca" })).toHaveAttribute("placeholder", "Cerca nelle chat");
+    await expect(finder.locator(".px-finder-label")).toHaveText(["Oggi", "Prima"]);
     await expect(finder.getByRole("option")).toHaveCount(7);
     await expect(finder.getByRole("option", { name: "Tutte le chat" })).toHaveCount(0);
+    await finder.getByRole("combobox", { name: "Cerca" }).fill("circolare");
+    await expect(finder.getByRole("option")).toHaveCount(1);
+    await expect(finder.getByRole("option", { name: /^Moto circolare/ })).toBeVisible();
+    await finder.getByRole("combobox", { name: "Cerca" }).fill("");
+    await expect(finder.getByRole("option")).toHaveCount(7);
     // Deleting from the search closes it first, so the confirmation can be reached.
     await answerNextMenu(app, "Elimina");
     await finder.getByRole("option", { name: /^Vettori/ }).click({ button: "right" });

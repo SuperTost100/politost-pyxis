@@ -27,7 +27,7 @@ import { useAppState } from "../app-state";
 import { doorTarget, isMapPath } from "../doors";
 import "./Sidebar.css";
 
-/** How many recent chats the sidebar lists; "All chats" opens the rest in the search. */
+/** How many recent chats the sidebar lists; "All chats" shows only when there are more, and opens them all in the search. */
 const RECENT = 20;
 const FOLD_KEY = "pyxis.side";
 // Below this page width the sidebar folds by itself so the page keeps room: the smallest window is 960px, where Settings
@@ -274,7 +274,7 @@ export function Sidebar({
           {chats.isSuccess && chats.data.length === 0 ? (
             <p className="px-side-empty">{t("ask.chatsEmpty")}</p>
           ) : null}
-          {chats.isSuccess && chats.data.length > 0 ? (
+          {chats.isSuccess && chats.data.length > RECENT ? (
             <button type="button" className="px-side-all" onClick={() => onSearch("chats")}>
               {t("side.allChats")}
             </button>
