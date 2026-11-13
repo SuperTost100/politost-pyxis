@@ -137,3 +137,61 @@ describe("masteryDetail", () => {
     expect(masteryDetail([{ ...old[0]!, at: T0 }], T0).a!.decay).toBe(0);
   });
 });
+
+describe("quick checks of a lesson in parts", () => {
+  // One right answer of weight 0.5 is 0.5 / 3.5; two are 1 / 4.
+  const one = 0.5 / 3.5;
+  const two = 1 / 4;
+  const check = (
+    itemId: string,
+    unit: string,
+    slot: number,
+    at: number,
+    blockId = `${itemId}-q`,
+  ): MasteryEvent => ({
+    topicId: "a",
+    kind: "check",
+    score: 1,
+    at: T0 + at,
+    lessonCheck: { itemId, blockId, current: true, unit, slot },
+  });
+
+  it("counts the check of every part of one outline", () => {
+    expect(masteryFor([check("p1", "o", 1, 1), check("p2", "o", 2, 2)], T0 + 9).a).toBeCloseTo(two);
+  });
+
+  it("counts a part read at two levels once, from the text answered last", () => {
+    // Part 2 was answered in its balanced text, then in its simple one: part 1 and the simple text count.
+    const events = [check("p1", "o", 1, 1), check("p2", "o", 2, 2), check("p2-simple", "o", 2, 3)];
+    expect(masteryFor(events, T0 + 9).a).toBeCloseTo(two);
+    const kept = masteryDetail(events, T0 + 9).a!.parts.check;
+    expect(kept.count).toBe(2);
+    // Before the simple text was answered, the balanced one counted.
+    expect(masteryDetail(events, T0 + 2).a!.parts.check.count).toBe(2);
+  });
+
+  it("counts an old lesson answered after the outline was made in place of the parts, as another wording does", () => {
+    const events = [check("p1", "o", 1, 1), check("p2", "o", 2, 2), check("old", "old", 0, 3)];
+    expect(masteryFor(events, T0 + 9).a).toBeCloseTo(one);
+    // Until then the parts count.
+    expect(masteryFor(events, T0 + 2).a).toBeCloseTo(two);
+  });
+
+  it("keeps an old lesson's checks until the outline that replaced it gets an answer of its own", () => {
+    const old = [check("old", "old", 0, 1, "q1"), check("old", "old", 0, 2, "q2")];
+    expect(masteryFor(old, T0 + 9).a).toBeCloseTo(two);
+    expect(masteryFor([...old, check("p1", "o", 1, 3)], T0 + 9).a).toBeCloseTo(one);
+  });
+
+  it("counts a lesson that is not a part as it did before parts", () => {
+    // A lesson's unit is its item and its slot 0, so the latest lesson of the topic counts, once per question.
+    const events = [
+      check("balanced", "balanced", 0, 1, "q1"),
+      check("balanced", "balanced", 0, 2, "q2"),
+      check("simple", "simple", 0, 3, "q1"),
+      check("simple", "simple", 0, 4, "q1"),
+    ];
+    expect(masteryFor(events, T0 + 9).a).toBeCloseTo(one);
+    expect(masteryFor(events, T0 + 2).a).toBeCloseTo(two);
+  });
+});

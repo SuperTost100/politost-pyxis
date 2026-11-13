@@ -323,6 +323,7 @@ const routes = {
   "study.part": ["study", "part"],
   "study.lessonSection": ["study", "lessonSection", "signal"],
   "study.lessonAnswer": ["study", "lessonAnswer"],
+  "study.partDone": ["study", "partDone"],
   "study.markdown": ["study", "markdown"],
   "study.anki": ["study", "anki"],
   "study.ankiPreview": ["study", "ankiPreview"],

@@ -11,6 +11,7 @@ import {
 } from "../study/gapRows";
 import { retrievability, type ScheduleState } from "../study/schedule";
 import { questionPlaces } from "../study/smartText";
+import { partSlots } from "../study/partProgress";
 import { reachableTarget } from "../../shared/plan-file";
 import { addDays, startOfWeek } from "../../shared/local-day";
 import {
@@ -207,6 +208,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
   }>;
   const blocked = flaggedIds(db, "exercise");
   const places = questionPlaces(db, planId);
+  const slots = partSlots(db, planId);
   const items = questionItems(db, planId);
   const attemptSources = attemptQuestionSources(db, planId, items);
   const questionKinds = new Map<string, string>();
@@ -302,6 +304,7 @@ function readSeries(db: Database.Database, planId: string): SeriesEvent[] {
                 itemId: row.item_id,
                 blockId: payload.blockId ?? "",
                 current: places.get(row.item_id)!.has(payload.blockId ?? ""),
+                ...(slots.get(row.item_id) ?? { unit: row.item_id, slot: 0 }),
               },
             }
           : {}),
