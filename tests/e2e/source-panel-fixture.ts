@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { PNG } from "pngjs";
@@ -212,4 +212,82 @@ export function seedSourcePanel(db: DatabaseSync, userData: string): { bookBytes
     INSERT INTO message_passages(message_id,passage_id,label) VALUES('sp-a','sp-book-cited','P1'),('sp-a','sp-docx-cited','P2');
   `);
   return { bookBytes: book.length };
+}
+
+/** Bigger than one `sources.readOriginal` call returns (2 MiB), so pdf.js asks for its stream in one longer range. */
+export const FIGURE_BYTES = 1024 * 800 * 3;
+
+/** One A4 page with a photo-sized picture on it, stored without compression, and a line of text under it. */
+export function figurePdf(): Buffer {
+  const pixels = Buffer.alloc(FIGURE_BYTES);
+  for (let i = 0; i < pixels.length; i += 3) {
+    const x = (i / 3) % 1024;
+    const y = Math.floor(i / 3 / 1024);
+    pixels[i] = (x * 7 + y) % 256;
+    pixels[i + 1] = (y * 5) % 256;
+    pixels[i + 2] = (x ^ y) % 256;
+  }
+  const content = "q 480 0 0 375 57 380 cm /Im1 Do Q\nBT /F1 12 Tf 72 340 Td (Una figura che pesa piu di due mega.) Tj ET";
+  const head = Buffer.from("%PDF-1.4\n", "latin1");
+  const objects: Buffer[] = [
+    Buffer.from("<< /Type /Catalog /Pages 2 0 R >>", "latin1"),
+    Buffer.from("<< /Type /Pages /Count 1 /Kids [3 0 R] >>", "latin1"),
+    Buffer.from(
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> >>",
+      "latin1",
+    ),
+    Buffer.from(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`, "latin1"),
+    Buffer.from("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>", "latin1"),
+    Buffer.concat([
+      Buffer.from(`<< /Type /XObject /Subtype /Image /Width 1024 /Height 800 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ${FIGURE_BYTES} >>\nstream\n`, "latin1"),
+      pixels,
+      Buffer.from("\nendstream", "latin1"),
+    ]),
+  ];
+  const parts = [head];
+  let at = head.length;
+  const offsets: number[] = [];
+  objects.forEach((body, index) => {
+    offsets.push(at);
+    const chunk = Buffer.concat([Buffer.from(`${index + 1} 0 obj\n`, "latin1"), body, Buffer.from("\nendobj\n", "latin1")]);
+    parts.push(chunk);
+    at += chunk.length;
+  });
+  const xref = [`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`, ...offsets.map((n) => `${String(n).padStart(10, "0")} 00000 n \n`)].join("");
+  parts.push(Buffer.from(`${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`, "latin1"));
+  return Buffer.concat(parts);
+}
+
+/**
+ * Two more files, for what can go wrong while the panel is open: a stored PDF whose page has a picture larger than one
+ * read, and a 40-page PDF in the linked folder that is there now (`linkedPath`), which a spec moves away. Seeded after
+ * `seedSourcePanel`, whose linked folder it uses.
+ */
+export function seedPanelReads(db: DatabaseSync, userData: string): { linkedPath: string } {
+  const workspace = join(userData, "workspace");
+  seedSource(db, {
+    id: "sp-figure",
+    title: "Figura grande",
+    kind: "pdf",
+    subjectId: "sub-fis",
+    document: { id: "sp-figure-doc", tree: { kind: "pdf" } },
+    passages: [{ id: "sp-figure-p1", text: "Una figura che pesa piu di due mega.", locator: { page: 1 }, section: "p. 1" }],
+  });
+  const sha = putBlob(workspace, figurePdf(), "application/pdf", "pdf");
+  db.prepare("UPDATE sources SET blob_sha = ?, mime = 'application/pdf' WHERE id = 'sp-figure'").run(sha);
+  const linkedPath = join(userData, "Università", "Fisica I", "Esercizi svolti.pdf");
+  writeFileSync(linkedPath, textbook(40));
+  seedSource(db, {
+    id: "sp-linked",
+    title: "Esercizi svolti",
+    kind: "pdf",
+    subjectId: "sub-fis",
+    document: { id: "sp-linked-doc", tree: { kind: "pdf" } },
+    passages: [{ id: "sp-linked-p1", text: "Questa e la pagina 1 del testo di fisica.", locator: { page: 1 }, section: "p. 1" }],
+  });
+  const stat = statSync(linkedPath);
+  db.prepare(
+    "INSERT INTO linked_files (folder_id, rel_path, subfolder, source_id, size, mtime_ms, missing_at) VALUES ('sp-folder', 'Fisica I/Esercizi svolti.pdf', 'Fisica I', 'sp-linked', ?, ?, NULL)",
+  ).run(stat.size, Math.trunc(stat.mtimeMs));
+  return { linkedPath };
 }

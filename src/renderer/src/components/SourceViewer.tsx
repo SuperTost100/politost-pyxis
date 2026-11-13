@@ -14,7 +14,7 @@ import { LoadError } from "./LoadError";
 import { Logo } from "./Logo";
 import { PdfPasswordDialog } from "./PdfPassword";
 import { SelectionMenu } from "./SelectionMenu";
-import { clampPage, pageKey, planPanel, type PanelPlan, type PanelSource } from "./sourcePanel";
+import { clampPage, messageText, pageKey, planPanel, type PanelPlan, type PanelReason, type PanelSource } from "./sourcePanel";
 import type { PdfOutcome } from "./PdfSourcePage";
 import "./SourceViewer.css";
 
@@ -145,6 +145,8 @@ function SourceBody({ location, source, onClose }: { location: SourceLocation; s
   const [page, setPage] = useState(plan.start);
   const [count, setCount] = useState<number | null>(plan.count);
   const [pdfProblem, setPdfProblem] = useState<"locked" | "missing" | "failed" | null>(null);
+  // Riprova after a page failed draws the file again from its start.
+  const [attempt, setAttempt] = useState(0);
   const [marked, setMarked] = useState<boolean | null>(null);
   const [scan, setScan] = useState(false);
   const [said, setSaid] = useState("");
@@ -235,10 +237,20 @@ function SourceBody({ location, source, onClose }: { location: SourceLocation; s
             {t("sources.viewer.stillReading")}
           </p>
         ) : null}
-        {body.show === "pdf" ? (
+        {body.show === "pdf" && pdfProblem === "failed" ? (
+          <LoadError
+            onRetry={() => {
+              setPdfProblem(null);
+              setAttempt((n) => n + 1);
+            }}
+          >
+            {t("sources.pdfFailed")}
+          </LoadError>
+        ) : body.show === "pdf" ? (
           <>
             <Suspense fallback={<PagePlaceholder />}>
               <PdfSourcePage
+                key={attempt}
                 where={where}
                 page={page}
                 excerpt={source.passage?.text ?? null}
@@ -248,7 +260,6 @@ function SourceBody({ location, source, onClose }: { location: SourceLocation; s
                 onMarked={setMarked}
               />
             </Suspense>
-            {pdfProblem === "failed" ? <p className="source-view-note is-problem">{t("sources.pdfFailed")}</p> : null}
             {source.passage && page === source.passage.page && marked ? (
               <p className="visually-hidden">{t("sources.viewer.citedHere", { text: source.passage.text })}</p>
             ) : null}
@@ -340,17 +351,15 @@ function CitedPassage({ text, section }: { text: string; section: string | null 
 }
 
 /** Why the file can't be shown now, and the way out when there is one. */
-function Message({ reason, source }: { reason: "missing" | "removed" | "locked" | "reading" | "failed"; source?: PanelSource }) {
+function Message({ reason, source = null }: { reason: PanelReason; source?: PanelSource | null }) {
   const { t } = useTranslation();
   const [unlocking, setUnlocking] = useState(false);
-  const linked = source?.original === null && source.missing;
-  const titleKey = reason === "removed" ? "sources.panel.gone" : `sources.viewer.${reason}Title`;
-  const bodyKey = reason === "missing" && source && !linked ? "sources.viewer.missingStored" : `sources.viewer.${reason}Body`;
+  const text = messageText(reason, source);
   return (
     <div className="source-message" role="status">
       {reason === "reading" ? <Logo working decorative size={44} /> : <Icon name={reason === "locked" ? "lock" : "circle-alert"} size={22} />}
-      <h3 className="source-message-title">{t(titleKey)}</h3>
-      <p className="source-message-body">{t(bodyKey)}</p>
+      <h3 className="source-message-title">{t(text.title)}</h3>
+      <p className="source-message-body">{t(text.body)}</p>
       {reason === "locked" && source?.errorJobId ? (
         <>
           <Button variant="secondary" size="sm" onClick={() => setUnlocking(true)}>

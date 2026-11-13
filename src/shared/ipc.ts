@@ -3285,6 +3285,7 @@ export const requests = {
         original: z.enum(["stored", "linked"]).nullable(),
         mime: z.string().nullable(),
         size: z.number().nullable(),
+        linked: z.boolean(),
         missing: z.boolean(),
         changed: z.boolean(),
         originUrl: z.string().nullable(),

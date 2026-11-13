@@ -927,6 +927,10 @@ export function sourceHandlers(
       try {
         return await readOriginal(db, workspace, input);
       } catch (err) {
+        // A file gone between the check and the read is missing too. The panel shows its missing state on this code.
+        const code = (err as NodeJS.ErrnoException | null)?.code;
+        if ((err instanceof Error && err.message === "source-file-missing") || code === "ENOENT")
+          throw new IpcError("source-file-missing", "sources.fileMissing", {}, "source-file-missing");
         sourceError(err);
       }
     },

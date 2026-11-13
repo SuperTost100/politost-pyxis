@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask, TextLayer } from "pdfjs-dist";
 import { invoke } from "../lib/ipc";
 import { Logo } from "./Logo";
-import { citedRuns, keepPages } from "./sourcePanel";
+import { citedRuns, keepPages, keepPicture, loadingSlot, pdfFailure, readRange } from "./sourcePanel";
 
 /** pdf.js asks for the file in chunks of this size, and only for the chunks the page it draws needs. */
 const CHUNK = 64 * 1024;
@@ -54,6 +54,8 @@ export default function PdfSourcePage({
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
   const read = useRef(0);
+  // A read failed and the document was destroyed: what the page was drawing fails too, and says nothing more.
+  const broken = useRef(false);
   // The pages kept drawn, most recent first, and their pictures at the width they were drawn.
   const kept = useRef<number[]>([]);
   const pictures = useRef(new Map<string, ImageBitmap>());
@@ -71,34 +73,45 @@ export default function PdfSourcePage({
   }, []);
 
   useEffect(() => {
-    let disposed = false;
-    let task: PDFDocumentLoadingTask | undefined;
+    const slot = loadingSlot();
     const ask = { sourceId, passageId };
     read.current = 0;
+    broken.current = false;
     setPdf(null);
+    const count = (bytes: number) => {
+      read.current += bytes;
+      box.current?.setAttribute("data-bytes-read", String(read.current));
+    };
+    // pdf.js can't hear that a range failed, so a failed read is reported here, once, and the loading task is destroyed
+    // with what it loaded. The page then shows the missing or failed state instead of waiting for bytes that won't come.
+    const fail = (err: unknown) => {
+      if (!slot.fail()) return;
+      broken.current = true;
+      report.current.onOutcome(pdfFailure(err));
+    };
+    const readOriginal = (start: number, length: number) =>
+      invoke("sources.readOriginal", { ...ask, start, length }).then((chunk) => {
+        count(chunk.bytes.length);
+        return chunk;
+      });
     void (async () => {
       const pdfjs = await loadPdfjs();
-      const first = await invoke("sources.readOriginal", { ...ask, start: 0, length: CHUNK });
-      read.current += first.bytes.length;
-      if (disposed) return;
+      const first = await readOriginal(0, CHUNK);
+      if (slot.closed) return;
       const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs?url");
+      if (slot.closed) return;
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
       class CoreRange extends pdfjs.PDFDataRangeTransport {
         override requestDataRange(begin: number, end: number) {
-          void invoke("sources.readOriginal", { ...ask, start: begin, length: end - begin }).then(
-            (chunk) => {
-              read.current += chunk.bytes.length;
-              box.current?.setAttribute("data-bytes-read", String(read.current));
-              if (!disposed) this.onDataRange(begin, chunk.bytes);
-            },
-            () => undefined,
-          );
+          void readRange(readOriginal, begin, end).then((bytes) => {
+            if (!slot.closed) this.onDataRange(begin, bytes);
+          }, fail);
         }
       }
       const range = new CoreRange(first.size, first.bytes);
       // Scanned figures (fax, JBIG2, JPEG 2000) decode in modules pdf.js loads from `wasmUrl`. The window's CSP allows
       // no WebAssembly, so it loads their JavaScript builds, which the build copies to pdfjs/ (electron.vite.config.ts).
-      task = pdfjs.getDocument({
+      const task = pdfjs.getDocument({
         range,
         rangeChunkSize: CHUNK,
         disableAutoFetch: true,
@@ -107,29 +120,19 @@ export default function PdfSourcePage({
         useWasm: false,
         wasmUrl: new URL("pdfjs/", window.location.href).href,
       });
+      // A panel that moved on or closed while pdf.js loaded destroys the task here, or when it closes.
+      if (!slot.hold(task)) return;
       const doc = await task.promise;
-      if (disposed) return;
+      if (slot.closed) return;
       setPdf(doc);
       report.current.onOutcome({ count: doc.numPages });
-    })().catch((err: unknown) => {
-      if (disposed) return;
-      const name = err instanceof Error ? err.name : "";
-      const message = err instanceof Error ? err.message : String(err);
-      report.current.onOutcome(
-        name === "PasswordException"
-          ? { error: "locked" }
-          : /source-file-missing|fileMissing/.test(message + JSON.stringify(err))
-            ? { error: "missing" }
-            : { error: "failed", detail: message },
-      );
-    });
+    })().catch(fail);
     const shown = pictures.current;
     return () => {
-      disposed = true;
+      slot.dispose();
       for (const picture of shown.values()) picture.close();
       shown.clear();
       kept.current = [];
-      void task?.destroy();
     };
   }, [sourceId, passageId]);
 
@@ -158,7 +161,8 @@ export default function PdfSourcePage({
         render = current.render({ canvas: scratch, viewport, transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0] });
         await render.promise;
         if (disposed) return;
-        pictures.current.set(key, await createImageBitmap(scratch));
+        // One picture a page: a resize passes through many widths, and only the last one is kept.
+        keepPicture(pictures.current, page, key, await createImageBitmap(scratch));
       }
       const content = await current.getTextContent();
       if (disposed) return;
@@ -207,7 +211,8 @@ export default function PdfSourcePage({
         void pdf.getPage(gone).then((old) => old.cleanup());
       }
     })().catch((err: unknown) => {
-      if (disposed || (err instanceof Error && err.name === "RenderingCancelledException")) return;
+      // A failed read already said why, and destroyed the document this page was drawn from.
+      if (disposed || broken.current || (err instanceof Error && err.name === "RenderingCancelledException")) return;
       clearTimeout(slow);
       setWorking(false);
       report.current.onOutcome({ error: "failed", detail: err instanceof Error ? err.message : String(err) });

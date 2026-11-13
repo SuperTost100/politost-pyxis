@@ -564,7 +564,7 @@
     "previousPage": "Previous",
     "nextPage": "Next",
     "pageNumber": "Page {{page}} of {{count}}",
-    "pdfFailed": "The page could not open. Close the source and try again.",
+    "pdfFailed": "The page could not open.",
     "viewer": {
       "actions": "Actions on “{{title}}”",
       "backToDetails": "Source details",
@@ -607,7 +607,8 @@
       "ownAppSlides": "This is the text I read from the slides. Open the file to see the slides themselves.",
       "missingTitle": "I can't find this file any more",
       "missingBody": "It was moved, renamed or deleted from its folder. Put it back and I'll find it by myself.",
-      "missingStored": "The copy kept in Pyxis is gone. Replace the file from its menu in the Library.",
+      "missingStoredTitle": "The copy kept in Pyxis is gone",
+      "missingStored": "Replace the file from its menu, above or in the Library, and I'll read it again.",
       "removedBody": "Citations keep the passage's text, which is below.",
       "lockedTitle": "This PDF has a password",
       "lockedBody": "Type it in and I'll read the file. I won't save it.",

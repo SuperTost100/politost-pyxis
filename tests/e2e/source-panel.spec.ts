@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { animationsSettled } from "./settled";
-import { BOOK_PAGES, CITED_PAGE, LONG_TITLE, seedSourcePanel } from "./source-panel-fixture";
+import { BOOK_PAGES, CITED_PAGE, FIGURE_BYTES, LONG_TITLE, seedPanelReads, seedSourcePanel } from "./source-panel-fixture";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-panel-"));
@@ -20,8 +20,9 @@ async function launch() {
   await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
   const { bookBytes } = seedSourcePanel(db, userData);
+  const { linkedPath } = seedPanelReads(db, userData);
   db.close();
-  return { app, page, userData, bookBytes };
+  return { app, page, userData, bookBytes, linkedPath };
 }
 
 const panel = (page: Page) => page.locator("aside.source-panel");
@@ -202,3 +203,37 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
     removeTestFolder(userData);
   }
 });
+
+test("a picture larger than one read draws, and a linked file moved while its page is open says so", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData, linkedPath } = await launch();
+  try {
+    await toLibrary(page);
+    const sheet = panel(page);
+    // The picture's stream is longer than core returns in one call: the page draws once all of it has come.
+    await page.getByRole("button", { name: "Figura grande", exact: true }).click();
+    const figure = sheet.getByRole("group", { name: "Pagina 1 di 1" });
+    await expect(figure).toHaveAttribute("aria-busy", "false");
+    await expect(sheet.locator(".source-pdf-text")).toContainText("Una figura che pesa piu di due mega.");
+    expect(Number(await sheet.locator(".source-pdf").getAttribute("data-bytes-read"))).toBeGreaterThan(FIGURE_BYTES);
+    await expect(sheet.locator(".source-page-working")).toHaveCount(0);
+
+    // A linked file, open at its first page, then moved out of its folder (a move inside it is followed).
+    await page.getByRole("button", { name: "Esercizi svolti", exact: true }).click();
+    await expect(sheet.getByRole("group", { name: "Pagina 1 di 40" })).toHaveAttribute("aria-busy", "false");
+    renameSync(linkedPath, join(userData, "Esercizi svolti.pdf"));
+    // Page 20 lies in the middle of the file, in bytes not read yet (the last pages sit next to the cross-reference
+    // table pdf.js reads first). The read fails, and the panel says where the file went instead of waiting.
+    const field = sheet.getByRole("textbox", { name: "Vai alla pagina" });
+    await field.fill("20");
+    await field.press("Enter");
+    await expect(sheet.getByRole("heading", { name: "Non trovo più questo file" })).toBeVisible();
+    await expect(sheet.getByText(/Rimettilo dov'era/)).toBeVisible();
+    await expect(sheet.locator(".source-page-working")).toHaveCount(0);
+    await expect(sheet.locator(".source-pdf")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+

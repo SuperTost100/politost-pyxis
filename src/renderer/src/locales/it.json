@@ -564,7 +564,7 @@
     "previousPage": "Precedente",
     "nextPage": "Successiva",
     "pageNumber": "Pagina {{page}} di {{count}}",
-    "pdfFailed": "Non riesco ad aprire la pagina. Chiudi la fonte e riprova.",
+    "pdfFailed": "Non riesco ad aprire la pagina.",
     "viewer": {
       "actions": "Azioni su «{{title}}»",
       "backToDetails": "Dettagli della fonte",
@@ -607,7 +607,8 @@
       "ownAppSlides": "Qui vedi il testo che ho letto dalle slide. Le slide vere le trovi aprendo il file.",
       "missingTitle": "Non trovo più questo file",
       "missingBody": "È stato spostato, rinominato o cancellato dalla sua cartella. Rimettilo dov'era e lo ritrovo da solo.",
-      "missingStored": "La copia salvata in Pyxis non c'è più. Sostituisci il file dal suo menu nella Libreria.",
+      "missingStoredTitle": "La copia salvata in Pyxis non c'è più",
+      "missingStored": "Sostituisci il file dal suo menu, qui sopra o nella Libreria, e lo leggo di nuovo.",
       "removedBody": "Le citazioni tengono il testo del brano, che trovi qui sotto.",
       "lockedTitle": "Questo PDF ha una password",
       "lockedBody": "Scrivila e lo leggo. Non la salvo.",

@@ -83,6 +83,16 @@ export function planPanel(source: PanelSource, opened: { chapter?: number } = {}
   };
 }
 
+/**
+ * The words of a message: a linked file that moved sends the student to its folder, a stored copy that is gone to
+ * "Sostituisci il file", and a removed source says it left the Library.
+ */
+export function messageText(reason: PanelReason, source: PanelSource | null): { title: string; body: string } {
+  if (reason === "removed") return { title: "sources.panel.gone", body: "sources.viewer.removedBody" };
+  if (reason === "missing" && source && !source.linked) return { title: "sources.viewer.missingStoredTitle", body: "sources.viewer.missingStored" };
+  return { title: `sources.viewer.${reason}Title`, body: `sources.viewer.${reason}Body` };
+}
+
 /** The page a request lands on: whole, within 1 and the count when the count is known. */
 export function clampPage(page: number, count: number | null): number {
   const whole = Number.isFinite(page) ? Math.round(page) : 1;
@@ -138,4 +148,78 @@ export function citedRuns(runs: string[], passage: string): number[] {
     offset += part.length + 1;
   });
   return hits;
+}
+
+/**
+ * The bytes from `begin` to `end` of an original, read through core. One call returns at most 2 MiB
+ * (`ORIGINAL_CHUNK_MAX`), and pdf.js may ask for more at once for a large picture or font, so the range is read in
+ * pieces. A read that returns nothing is the file's end. A failed read rejects with core's error.
+ */
+export async function readRange(
+  read: (start: number, length: number) => Promise<{ bytes: Uint8Array }>,
+  begin: number,
+  end: number,
+): Promise<Uint8Array> {
+  const pieces: Uint8Array[] = [];
+  let at = begin;
+  while (at < end) {
+    const { bytes } = await read(at, end - at);
+    if (bytes.length === 0) break;
+    pieces.push(bytes);
+    at += bytes.length;
+  }
+  if (pieces.length === 1) return pieces[0]!;
+  const whole = new Uint8Array(at - begin);
+  let offset = 0;
+  for (const piece of pieces) {
+    whole.set(piece, offset);
+    offset += piece.length;
+  }
+  return whole;
+}
+
+/** What a PDF that can't be drawn tells the panel: core's `source-file-missing` code is the missing file. */
+export function pdfFailure(err: unknown): { error: "locked" | "missing" | "failed"; detail?: string } {
+  if (err instanceof Error && err.name === "PasswordException") return { error: "locked" };
+  const code = typeof err === "object" && err !== null && "code" in err ? (err as { code: unknown }).code : undefined;
+  if (code === "source-file-missing") return { error: "missing" };
+  return { error: "failed", detail: typeof code === "string" ? code : err instanceof Error ? err.message : String(err) };
+}
+
+/** Stores a page's picture at the width it was drawn, letting go of the same page's pictures at other widths. */
+export function keepPicture<P extends { close(): void }>(pictures: Map<string, P>, page: number, key: string, picture: P): void {
+  for (const [name, old] of pictures)
+    if (name !== key && name.startsWith(`${page}@`)) {
+      old.close();
+      pictures.delete(name);
+    }
+  pictures.set(key, picture);
+}
+
+/**
+ * Owns a pdf.js loading task, so it is destroyed on every path: when the panel moves on or closes (also before the task
+ * exists, or while it loads) and when a read fails. `fail` answers true only the first time, so one failure is reported.
+ */
+export function loadingSlot() {
+  let task: { destroy(): Promise<void> } | null = null;
+  let closed = false;
+  const close = () => {
+    if (closed) return false;
+    closed = true;
+    void task?.destroy();
+    return true;
+  };
+  return {
+    get closed() {
+      return closed;
+    },
+    /** Takes the task just started. False when the slot was closed first: the task is destroyed at once. */
+    hold(next: { destroy(): Promise<void> }): boolean {
+      task = next;
+      if (closed) void next.destroy();
+      return !closed;
+    },
+    dispose: close,
+    fail: close,
+  };
 }

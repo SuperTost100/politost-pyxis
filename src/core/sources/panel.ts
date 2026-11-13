@@ -45,6 +45,8 @@ type Row = {
 
 type Located = {
   row: Row;
+  /** The cited version's type of file: a replacement can change it, and each version's tree records its own. */
+  kind: string;
   /** The stored original of the cited version, or of the current one. */
   sha: string | null;
   /** The passage's document is the source's latest. A source opened without a passage always is. */
@@ -63,18 +65,20 @@ function locate(db: Database.Database, input: { sourceId?: string; passageId?: s
     )
     .get(input.passageId ?? null, input.passageId ?? null, input.sourceId ?? null) as Row | undefined;
   if (!row) return null;
-  const tree = row.tree_json ? (JSON.parse(row.tree_json) as { blobSha?: unknown }) : {};
+  const tree = row.tree_json ? (JSON.parse(row.tree_json) as { blobSha?: unknown; kind?: unknown }) : {};
   const current = row.version == null || row.version === row.latest;
-  // An older version keeps its own original in its tree; the source's column holds the current one's.
+  // An older version keeps its own original and kind in its tree; the source's columns hold the current one's.
   const sha = typeof tree.blobSha === "string" ? tree.blobSha : current ? row.blob_sha : null;
-  return { row, sha, current };
+  const kind = typeof tree.kind === "string" ? tree.kind : row.kind;
+  return { row, kind, sha, current };
 }
 
 /** Where the bytes of the original are now: the stored copy, the linked file read in place, or nowhere. */
 function originalPath(db: Database.Database, workspace: string, at: Located): { path: string; mime: string } | null {
   if (at.sha && blobSize(workspace, at.sha) !== null) {
     const blob = readBlob(workspace, at.sha);
-    return { path: blob.file, mime: at.row.mime ?? blob.mime };
+    // The source's column describes its current file. An older version's copy has its type in the blob's own record.
+    return { path: blob.file, mime: (at.current ? at.row.mime : null) ?? blob.mime };
   }
   if (!linkedFile(db, at.row.id)) return null;
   try {
@@ -135,16 +139,18 @@ export function panelSource(db: Database.Database, workspace: string, input: { s
   return {
     sourceId: row.id,
     title: row.title,
-    kind: row.kind,
+    kind: at.kind,
     status: row.status,
     state,
     /** The job a locked PDF stopped, which takes the password. */
     errorJobId: state === "locked" ? (failure?.id ?? null) : null,
     /** `stored` for the copy Pyxis keeps, `linked` for the student's file read in place, null when neither is readable. */
     original: original ? (isStored(workspace, at, original.path) ? ("stored" as const) : ("linked" as const)) : null,
-    mime: original?.mime ?? row.mime,
+    mime: original?.mime ?? (at.current ? row.mime : null),
     size,
-    /** A linked file Pyxis cannot find where it was: moved, renamed or deleted. */
+    /** The file lives in a linked folder and is read in place; otherwise Pyxis keeps a copy of it. */
+    linked: linked !== null,
+    /** The original can't be read: a linked file moved, renamed or deleted, or a stored copy that is gone. */
     missing: linked?.missing === true || (!original && (Boolean(at.sha) || linked !== null)),
     /** The citation comes from an older version than the file now holds, so its page may have moved or gone. */
     changed: !at.current,
