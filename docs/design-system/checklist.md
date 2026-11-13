@@ -9,6 +9,7 @@ Paste it into the pull request and tick each line against the screenshots. A lin
 - [ ] The main thing on the screen is the largest, and each element appears once.
 - [ ] Groups are made with space first; no card inside a card, no box around everything.
 - [ ] Each choice uses its control from the control table.
+- [ ] Every dialog is `Dialog` or a `useConfirm` question, and leaving with unsaved work asks through `useLeaveGuard`.
 - [ ] The examples show real study content (Fisica I, «Moto nel piano»), never placeholder text.
 
 ### Type, colour and shape
