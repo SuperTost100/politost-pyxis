@@ -1,0 +1,177 @@
+/* The Library's linked folders: the control in the head and the list that grows from it. */
+.px-folders-anchor {
+  display: inline-flex;
+  min-width: 0;
+}
+/* The folders could not be read: the reason and Riprova, in the place of the control. */
+.px-folders-failed {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.4;
+  color: var(--danger);
+}
+.px-folders-slot {
+  display: inline-block;
+  width: 1px;
+  height: 34px;
+}
+.px-btn.px-folders-control {
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.px-btn.px-folders-control > span:not(.px-folders-warn) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.px-folders-control > svg {
+  flex: none;
+}
+.px-folders-chevron {
+  color: var(--ink-subtle);
+  transition: transform var(--duration-micro) var(--ease-out);
+}
+.px-folders-control[aria-expanded="true"] .px-folders-chevron {
+  transform: rotate(180deg);
+}
+.px-folders-warn {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.px-folders-title {
+  margin: 0;
+  padding: 8px 10px 6px;
+  font-family: var(--font-display);
+  font-size: calc(19px * var(--text-scale, 1));
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.px-folders-list {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-folders-row {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  min-height: 56px;
+  padding: 7px 4px 7px 10px;
+  border-radius: var(--radius-field);
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-folders-row:hover,
+.px-folders-row:focus-within {
+  background: var(--surface-raised);
+}
+.px-folders-icon {
+  display: inline-flex;
+  justify-self: center;
+  color: var(--ink-muted);
+}
+.px-folders-row.is-missing .px-folders-icon {
+  color: var(--danger);
+}
+.px-folders-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.px-folders-name b {
+  overflow: hidden;
+  font-size: calc(14px * var(--text-scale, 1));
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A long parent gives way first, so the folder's own name stays readable. */
+.px-folders-parent {
+  display: inline-block;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.px-folders-name small {
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.35;
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.px-folders-row.is-missing .px-folders-name small,
+.px-folders-error {
+  color: var(--danger);
+}
+/* The dots show on the row the pointer or the focus is on, and while their menu is open. */
+.px-folders-row .px-folders-dots {
+  opacity: 0;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+.px-folders-row:hover .px-folders-dots,
+.px-folders-row:focus-within .px-folders-dots,
+.px-folders-dots[aria-expanded="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .px-folders-row .px-folders-dots {
+    opacity: 1;
+  }
+}
+.px-folders-extra {
+  display: grid;
+  grid-column: 2 / 4;
+  justify-items: start;
+  gap: 6px;
+  padding: 2px 0;
+}
+.px-folders-error {
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 1.4;
+}
+.px-folders-fixes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.px-folders-foot {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin-top: 6px;
+  padding: 12px 10px 2px;
+  border-top: 1px solid var(--border);
+}
+.px-folders-foot p {
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.45;
+  color: var(--ink-muted);
+}
+.px-folders-foot .px-btn {
+  gap: 6px;
+  margin-left: -8px;
+}
+
+.px-folders-confirm p {
+  margin: 0;
+}
+.px-folders-confirm ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink-muted);
+}

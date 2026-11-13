@@ -553,6 +553,38 @@ export function sourceHandlers(
     linkedFolders() {
       return linked.list();
     },
+    /** Reads one linked folder again now. Errors: `linked-folder-missing`. */
+    rereadFolder(input: { folderId: string }) {
+      try {
+        linked.reread(input.folderId);
+        return { ok: true as const };
+      } catch (err) {
+        linkError(err);
+      }
+    },
+    /**
+     * Unlinks a folder: its files leave the Library, kept for the citations, and nothing on disk changes (see
+     * `linked.ts`). Errors: `linked-folder-missing`.
+     */
+    unlinkFolder(input: { folderId: string }) {
+      try {
+        return linked.unlink(input.folderId);
+      } catch (err) {
+        linkError(err);
+      }
+    },
+    /**
+     * Points a linked folder that moved at the place the student found it, when its files are there. The path passed
+     * the folder grant at the IPC boundary. Errors: `folder-missing`, `folder-inside-data`, `folder-overlap`,
+     * `linked-folder-missing`.
+     */
+    async relocateFolder(input: { folderId: string; path: string }) {
+      try {
+        return await linked.relocate(input.folderId, checkLinkPath(input.path, protectedPaths));
+      } catch (err) {
+        linkError(err);
+      }
+    },
     async scanFolder(input: { path: string }, signal?: AbortSignal) {
       signal?.throwIfAborted();
       const files: string[] = [];
@@ -827,7 +859,7 @@ export function sourceHandlers(
     viewerDocument(input: { sourceId?: string; passageId?: string }) {
       const row = db
         .prepare(
-          `SELECT s.id, s.title, s.kind, s.blob_sha, d.tree_json, d.version,
+          `SELECT s.id, s.title, s.kind, s.blob_sha, s.status, d.tree_json, d.version,
         (SELECT MAX(version) FROM source_documents WHERE source_id = s.id) AS latest
         FROM sources s LEFT JOIN source_documents d ON d.id = COALESCE(
           (SELECT document_id FROM passages WHERE id = ?),
@@ -844,6 +876,7 @@ export function sourceHandlers(
             title: string;
             kind: string;
             blob_sha: string | null;
+            status: string;
             tree_json: string | null;
             version: number;
             latest: number;
@@ -857,6 +890,8 @@ export function sourceHandlers(
         sourceId: row.id,
         title: row.title,
         kind: tree.kind ?? row.kind,
+        // Removed from the Library, or its folder unlinked: the citation keeps its text, and the viewer says so.
+        removed: row.status === "removed",
         blobSha:
           tree.blobSha ?? (row.version === row.latest ? row.blob_sha : null),
         excerpt: input.passageId

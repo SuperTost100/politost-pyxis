@@ -28,6 +28,8 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   // Choosing the subjects of Library files can make new subjects, and a source job that ends (a folder read again
   // included) adds or drops the files that decide whether a subject is in use.
   if (job.kind === "library-sort" || (sourceKinds.has(job.kind) && finished.has(job.state))) keys.push("subjects");
+  // The Library's linked folders count their files read, and show a look at a folder while it runs.
+  if ((sourceKinds.has(job.kind) && finished.has(job.state)) || job.kind === "linked-folder-read") keys.push("linked-folders");
   // A job that ends joins or leaves the jobs list's "finished today" group.
   if (finished.has(job.state)) keys.push("jobs-finished", "plans", "plan");
   if (finished.has(job.state) && cardKinds.has(job.kind)) keys.push("card-sections");

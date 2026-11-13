@@ -169,11 +169,15 @@ test("Setup links the study folder in place, finds its subjects, and the Library
     // Reading the folder wrote nothing in it.
     expect(snapshot(root)).toEqual(before);
 
-    // The Library says which folder Pyxis reads, and shows each file on its subject's shelf.
+    // The Library's head says one folder is linked, and its list names it; each file is on its subject's shelf.
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    await expect(page.getByText("Pyxis legge Documenti › Università e non modifica niente.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "1 cartella collegata", exact: true }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Cartelle collegate" }).getByText("Documenti › Università", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
     const shelf = (subject: string) => page.getByRole("region", { name: new RegExp(`^${subject} (\\d+ file|nessun file)$`) });
     const cover = (subject: string, titleText: string) => shelf(subject).locator(".px-cover", { hasText: titleText });
     await expect(cover("Fisica", "Mazzoldi cap 2")).toBeVisible();

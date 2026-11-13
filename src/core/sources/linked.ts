@@ -10,6 +10,7 @@ import type { Runner } from "../jobs/runner";
 import { addSubject, renameSubject } from "../plans/subjects";
 import { inside } from "../path-inside";
 import { kindFor, mimeFor } from "./documents";
+import { removeSource } from "./manage";
 import { walkImportable, type WalkCut, type WalkedFile } from "./folder";
 import { imageMime } from "./heic";
 import { hasUnfinishedJob } from "./jobs";
@@ -68,7 +69,26 @@ export type LinkedFolderView = {
   detection: "ai" | "names";
   cut: FolderCut;
   subjects: LinkedSubjectView[];
+  /** The files Pyxis reads there now: present, not removed by the student, read or waiting for their first reading. */
+  files: number;
+  /** Of those, the ones read: their reading ended with a source Pyxis can use. */
+  read: number;
+  /** The ones whose reading ended without one (failed, stopped, or waiting for the student), which Attività can retry. */
+  failed: number;
+  /** When the last look at the folder ended, or null before the first one. */
+  checkedAt: number | null;
+  /** `missing`: the folder is not on disk. `reading`: a look runs, or some of its files wait or are being read. */
+  state: "ready" | "reading" | "missing";
 };
+
+/** What unlinking a folder did: its files that left the Library, and the copies imported earlier that stay there. */
+export type UnlinkResult = { removed: number; kept: number };
+
+/**
+ * Whether a folder found again is the same folder: how many of the files read from it are at the same place under the
+ * new path with the same size, out of how many. `same` when more than half are.
+ */
+export type RelocateResult = { same: boolean; matched: number; total: number };
 
 type FolderRow = {
   id: string;
@@ -77,6 +97,7 @@ type FolderRow = {
   detection: "ai" | "names" | null;
   cut_json: string | null;
   confirmed_at: number | null;
+  synced_at: number | null;
 };
 type SubfolderRow = {
   name: string;
@@ -316,7 +337,7 @@ export function linkedFolders(deps: LinkedDeps) {
     });
   const folderRow = (id: string) =>
     db
-      .prepare(`SELECT id, path, mode, detection, cut_json, confirmed_at FROM linked_folders WHERE id = ?`)
+      .prepare(`SELECT id, path, mode, detection, cut_json, confirmed_at, synced_at FROM linked_folders WHERE id = ?`)
       .get(id) as FolderRow | undefined;
   const subfolderRows = (id: string) =>
     db
@@ -331,6 +352,44 @@ export function linkedFolders(deps: LinkedDeps) {
     const subjectName = db.prepare(`SELECT name FROM subjects WHERE id = ?`).pluck();
     // A cut saved before linked folders were read in full also named the file and entry caps: only these two remain.
     const cut = folder.cut_json ? (JSON.parse(folder.cut_json) as Partial<FolderCut>) : noCut;
+    const counts = db
+      .prepare(
+        `SELECT COUNT(*) AS files, COALESCE(SUM(l.pending > 0), 0) AS waiting FROM linked_files l
+         LEFT JOIN sources s ON s.id = l.source_id
+         WHERE l.folder_id = ? AND l.missing_at IS NULL AND (l.pending = 1 OR (s.id IS NOT NULL AND s.status != 'removed'))`,
+      )
+      .get(id) as { files: number; waiting: number };
+    // Readings that wait or run for the folder's files. Few jobs are ever queued or running, so this starts from them.
+    const busy = db
+      .prepare(
+        `SELECT COUNT(DISTINCT f.rel_path) FROM jobs j
+         JOIN linked_files f ON f.source_id = json_extract(j.params_json, '$.sourceId')
+         WHERE j.state IN ('queued', 'running')
+           AND j.kind IN ('source-import', 'source-import-vision', 'source-ocr', 'source-index')
+           AND f.folder_id = ? AND f.pending = 0 AND f.missing_at IS NULL`,
+      )
+      .pluck()
+      .get(id) as number;
+    // Readings that ended without a usable source and are not being tried again: the states the Library marks as a problem.
+    const failed = db
+      .prepare(
+        `SELECT COUNT(*) FROM linked_files l JOIN sources s ON s.id = l.source_id
+         WHERE l.folder_id = ? AND l.pending = 0 AND l.missing_at IS NULL
+           AND s.status IN ('failed', 'needs-ocr', 'interrupted', 'cancelled')
+           AND NOT EXISTS (
+             SELECT 1 FROM jobs j WHERE j.state IN ('queued', 'running')
+               AND j.kind IN ('source-import', 'source-import-vision', 'source-ocr', 'source-index')
+               AND json_extract(j.params_json, '$.sourceId') = s.id)`,
+      )
+      .pluck()
+      .get(id) as number;
+    let present = false;
+    try {
+      present = statSync(folder.path).isDirectory();
+    } catch {
+      // Unplugged, renamed or deleted: the list says so.
+    }
+    const unread = Math.min(counts.files, counts.waiting + busy);
     return {
       id: folder.id,
       path: folder.path,
@@ -350,6 +409,11 @@ export function linkedFolders(deps: LinkedDeps) {
           skipped: row.skipped === 1,
         }))
         .sort((a, b) => Number(a.skipped) - Number(b.skipped) || a.folder.localeCompare(b.folder)),
+      files: counts.files,
+      read: Math.max(0, counts.files - unread - failed),
+      failed,
+      checkedAt: folder.synced_at,
+      state: !present ? "missing" : running.has(id) || unread > 0 ? "reading" : "ready",
     };
   }
 
@@ -583,6 +647,19 @@ export function linkedFolders(deps: LinkedDeps) {
    * file relative to the folder.
    */
   async function look(folderId: string, scope: string[] | null): Promise<void> {
+    const stop = new AbortController();
+    stops.set(folderId, stop);
+    try {
+      await lookOnce(folderId, scope, stop.signal);
+    } catch (err) {
+      // Unlinked while it walked: it ends quietly, having written nothing since.
+      if (!stop.signal.aborted) throw err;
+    } finally {
+      if (stops.get(folderId) === stop) stops.delete(folderId);
+    }
+  }
+
+  async function lookOnce(folderId: string, scope: string[] | null, signal: AbortSignal): Promise<void> {
     const folder = folderRow(folderId);
     if (!folder) return;
     const now = Date.now();
@@ -661,11 +738,12 @@ export function linkedFolders(deps: LinkedDeps) {
       const onFiles = async (files: WalkedFile[]) => {
         if (photosReadable === undefined && files.some((file) => isImageExt(extname(file.rel))))
           photosReadable = await deps.ocrReady();
+        signal.throwIfAborted();
         db.transaction(() => files.forEach(see))();
         shown.found(listed.size);
       };
       const walk = (within?: string) =>
-        walkImportable(folder.path, { within, exclude: excludes(), maxDepth: MAX_LINKED_DEPTH, onFiles });
+        walkImportable(folder.path, { within, exclude: excludes(), maxDepth: MAX_LINKED_DEPTH, onFiles, signal });
       if (scope === null) cut = await walk();
       else
         for (const place of scope) {
@@ -673,6 +751,7 @@ export function linkedFolders(deps: LinkedDeps) {
           cut = { depth: cut.depth || part.depth, unreadable: cut.unreadable || part.unreadable };
         }
       shown.found(listed.size, true);
+      signal.throwIfAborted();
 
       // The rows the look covered: the whole folder, or what lies at or under each place it read.
       const columns = `folder_id, rel_path, subfolder, source_id, size, mtime_ms, content_hash, missing_at, pending`;
@@ -730,7 +809,9 @@ export function linkedFolders(deps: LinkedDeps) {
         const hashes = await deps.hash(
           batch.map((file) => file.path),
           Math.max(...batch.map((file) => maxSourceBytes(extname(file.path).toLowerCase()))),
+          signal,
         );
+        signal.throwIfAborted();
         batch.forEach((file, index) => {
           const sha = hashes[index];
           const match = sha ? gone.find((row) => row.size === file.size && row.content_hash === sha) : undefined;
@@ -782,7 +863,9 @@ export function linkedFolders(deps: LinkedDeps) {
         const hashes = await deps.hash(
           batch.map((item) => item.path),
           Math.max(...batch.map((item) => maxSourceBytes(extname(item.path).toLowerCase()))),
+          signal,
         );
+        signal.throwIfAborted();
         db.transaction(() => {
           batch.forEach((item, index) => {
             const sha = hashes[index];
@@ -819,7 +902,7 @@ export function linkedFolders(deps: LinkedDeps) {
     }
     // Loose files at the top of the folder are sorted into subjects once they are recorded. A look at a few places
     // asks only when it found a loose file.
-    if (scope === null || fresh.some((file) => file.subfolder === "")) await sortLoose(folderId);
+    if (scope === null || fresh.some((file) => file.subfolder === "")) await sortLoose(folderId, { signal });
   }
 
   /**
@@ -910,6 +993,8 @@ export function linkedFolders(deps: LinkedDeps) {
   // the places they name together, or the whole folder when one of them asks for it.
   const running = new Map<string, Promise<void>>();
   const queued = new Map<string, Set<string> | null>();
+  /** The look running at each folder, so unlinking the folder can stop it. */
+  const stops = new Map<string, AbortController>();
   function sync(folderId: string, paths: readonly string[] | null = null): Promise<void> {
     // Nothing to read. A look that ended without waiting would delete its entry before it was set.
     if (paths?.length === 0) return running.get(folderId) ?? Promise.resolve();
@@ -1133,6 +1218,126 @@ export function linkedFolders(deps: LinkedDeps) {
     /** Looks at every folder again, as after the OCR data arrives. */
     async syncAll(): Promise<void> {
       for (const id of folderIds()) await sync(id).catch(() => undefined);
+    },
+    /**
+     * Reads one folder again now, as the watch would after a change, and watches it again if its watch had stopped.
+     * The look runs in the background; the list and Attività show it. Errors: `linked-folder-missing`.
+     */
+    reread(folderId: string): void {
+      if (!folderRow(folderId)) throw new Error("linked-folder-missing");
+      startWatch(folderId);
+      syncInBackground(folderId);
+    },
+    /**
+     * Unlinks a folder, in one transaction: Pyxis stops reading it and its files leave the Library, as a source the
+     * student removes does (`removeSource`): each is marked removed and leaves every exam's material, search and
+     * retrieval, and its passages stay so the flashcards, maps, lessons and answers that cite them keep their text. A
+     * Library copy the folder took over (`adopt`) whose stored original is still its current file stays in the Library
+     * as a file the student added. The folder's subfolder and file rows go, so linking it again reads it as new; its
+     * subjects stay, even empty, for the student to keep or delete. After the commit the look at the folder stops, its
+     * watch closes, and every reading of its files is dropped from Attività, so nothing offers to resume it. Nothing on
+     * disk is touched. Errors: `linked-folder-missing`.
+     */
+    unlink(folderId: string): UnlinkResult {
+      const result = db.transaction(() => {
+        if (!folderRow(folderId)) throw new Error("linked-folder-missing");
+        const rows = db
+          .prepare(
+            `SELECT s.id, s.blob_sha AS sha FROM linked_files l JOIN sources s ON s.id = l.source_id
+             WHERE l.folder_id = ? AND s.status != 'removed'`,
+          )
+          .all(folderId) as Array<{ id: string; sha: string | null }>;
+        const removed: string[] = [];
+        const kept: string[] = [];
+        for (const row of rows) {
+          // The copy still reads from its own stored file: it was the student's before the folder took it over.
+          if (row.sha && deps.storedSize(row.sha) !== null) kept.push(row.id);
+          else {
+            removeSource(db, row.id, true);
+            removed.push(row.id);
+          }
+        }
+        db.prepare(`DELETE FROM linked_folders WHERE id = ?`).run(folderId);
+        return { removed, kept };
+      })();
+      queued.delete(folderId);
+      stops.get(folderId)?.abort();
+      walking.delete(folderId);
+      sortGaveUp.delete(folderId);
+      watched.get(folderId)?.close();
+      watched.delete(folderId);
+      // Every reading of a file that left, and the folder's own readings of a copy that stays (a change it saw), which
+      // would read a file Pyxis no longer reads. The copy's other work, such as its index, goes on.
+      const jobs = db
+        .prepare(
+          `SELECT id FROM jobs WHERE kind IN ('source-import', 'source-import-vision', 'source-index', 'source-ocr')
+           AND json_extract(params_json, '$.sourceId') = ? AND (? OR json_extract(params_json, '$.linked') = 1)
+           AND state IN ('queued', 'running', 'interrupted', 'cancelled', 'failed') AND dismissed = 0`,
+        )
+        .pluck();
+      for (const sourceId of result.removed) for (const id of jobs.all(sourceId, 1) as string[]) runner.discard(id);
+      for (const sourceId of result.kept) for (const id of jobs.all(sourceId, 0) as string[]) runner.discard(id);
+      for (const id of db
+        .prepare(
+          `SELECT id FROM jobs WHERE kind = 'linked-folder-sort' AND json_extract(params_json, '$.folderId') = ?
+           AND state IN ('queued', 'running', 'interrupted', 'cancelled', 'failed') AND dismissed = 0`,
+        )
+        .pluck()
+        .all(folderId) as string[])
+        runner.discard(id);
+      deps.onChange?.();
+      return { removed: result.removed.length, kept: result.kept.length };
+    },
+    /**
+     * Points a folder that is no longer where it was at the place the student found it, already checked by
+     * `checkLinkPath`, when it is the same folder: more than half of the files read from it are at the same place under
+     * the new path with the same size (names and sizes are what Pyxis keeps of every file; a hash is kept only for some,
+     * and checking it would read every file). A file counts only when the folder's own walk would read it there: a
+     * regular file reached through real folders, not a link, so a folder whose matching files are links is not the
+     * same one. The folder then keeps its id, subjects and sources, and a look finds its files again. Otherwise nothing
+     * changes, and the result says how many matched. A folder with no files read yet has nothing to compare and is
+     * always the same. Errors: `linked-folder-missing`, `folder-overlap`.
+     */
+    async relocate(folderId: string, path: string): Promise<RelocateResult> {
+      const folder = folderRow(folderId);
+      if (!folder) throw new Error("linked-folder-missing");
+      const others = (db.prepare(`SELECT path FROM linked_folders WHERE id != ?`).pluck().all(folderId) as string[]);
+      if (others.some((other) => inside(other, path) || inside(path, other))) throw new Error("folder-overlap");
+      const files = db
+        .prepare(`SELECT rel_path AS rel, size FROM linked_files WHERE folder_id = ? AND source_id IS NOT NULL`)
+        .all(folderId) as Array<{ rel: string; size: number }>;
+      let matched = 0;
+      for (const file of files) {
+        // The walk's own rule, asked about this one place: it checks every folder on the way and the file with `lstat`.
+        let there: WalkedFile | undefined;
+        try {
+          await walkImportable(path, {
+            within: file.rel,
+            exclude: excludes(),
+            maxDepth: MAX_LINKED_DEPTH,
+            onFiles: (found) => {
+              there = found[0];
+            },
+          });
+        } catch {
+          // Not there: it does not count.
+        }
+        if (there?.size === file.size) matched += 1;
+      }
+      // The folder was unlinked or pointed elsewhere while the files were checked.
+      if (folderRow(folderId)?.path !== folder.path) throw new Error("linked-folder-missing");
+      const same = matched * 2 > files.length || files.length === 0;
+      if (!same) return { same, matched, total: files.length };
+      if (path !== folder.path) {
+        queued.delete(folderId);
+        stops.get(folderId)?.abort();
+        watched.get(folderId)?.close();
+        watched.delete(folderId);
+        db.prepare(`UPDATE linked_folders SET path = ? WHERE id = ?`).run(path, folderId);
+      }
+      startWatch(folderId);
+      syncInBackground(folderId);
+      return { same, matched, total: files.length };
     },
     /** Waits until no look is running. Tests use it before they wait for the queue to empty. */
     async idle(): Promise<void> {

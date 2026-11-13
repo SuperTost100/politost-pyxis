@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Button, Input, Modal, Progress, Select } from "antd";
-import { FileText, CheckCircle2, Folder, FolderPlus } from "lucide-react";
+import { FileText, CheckCircle2 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
@@ -18,7 +18,6 @@ import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
 import { FILE_KINDS } from "@shared/file-kind";
 import { useEffect, useRef, useState } from "react";
-import { Trans } from "react-i18next";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
@@ -36,7 +35,6 @@ import {
   useFreeBooks,
 } from "../../components/FreeBooks";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
-import type { RequestOutput } from "@shared/ipc";
 import {
   MAX_DROPPED_FILES,
   MAX_FOLDER_DEPTH,
@@ -49,6 +47,7 @@ import { LibraryShelf, type LibrarySource, type ShelfHandlers } from "./LibraryS
 import { Button as PxButton } from "../../components/Button";
 import { SkeletonRows } from "../../components/Skeleton";
 import { Logo } from "../../components/Logo";
+import { LinkedFolders } from "./LinkedFolders";
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -159,12 +158,6 @@ export function LibraryPanel({
   } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const subjects = useSubjects();
-  // The linked folders the Library's first line names, on the Library page only.
-  const linkedFolders = useQuery({
-    queryKey: ["linked-folders"],
-    enabled: sortsSubjects,
-    queryFn: () => invoke("sources.linkedFolders", {}),
-  });
   /**
    * Starts choosing the subjects of what an add brought in, on the Library page only. The files are in before this
    * runs, so a refused request is reported and nothing more: they stay `waiting` and "Da sistemare" tells the student
@@ -1058,15 +1051,19 @@ export function LibraryPanel({
       <div className="px-library-head">
         <div className="px-library-head-text">
           <h1 className="title-1">{t("nav.library")}</h1>
-          <FolderLine
-            folders={linkedFolders.data}
-            onLink={() => navigate("/onboarding?again=1&step=material&from=library")}
-          />
         </div>
-        <div ref={addButton} className="px-library-add-button">
-          <PxButton icon="file-plus" onClick={() => setAddOpen(true)}>
-            {t("sources.shelf.addFiles")}
-          </PxButton>
+        <div className="px-library-head-acts">
+          {sortsSubjects ? (
+            <LinkedFolders
+              sources={list.data}
+              onLink={() => navigate("/onboarding?again=1&step=material&from=library")}
+            />
+          ) : null}
+          <div ref={addButton} className="px-library-add-button">
+            <PxButton icon="file-plus" onClick={() => setAddOpen(true)}>
+              {t("sources.shelf.addFiles")}
+            </PxButton>
+          </div>
         </div>
       </div>
       {loadFailed ? (
@@ -1227,40 +1224,5 @@ export function LibraryPanel({
         }}
       />
     </div>
-  );
-}
-
-/** The folder a linked folder is, as the student knows it: its parent and its own name ("Documenti › Università"). */
-const folderLabel = (path: string) => path.split(/[\\/]/).filter(Boolean).slice(-2).join(" › ");
-
-/**
- * The Library's first line: which folders Pyxis reads, and that it only reads them, with the way to link another. With
- * no linked folder it is the way to link one.
- */
-function FolderLine({
-  folders,
-  onLink,
-}: {
-  folders: RequestOutput<"sources.linkedFolders"> | undefined;
-  onLink: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  if (!folders) return <p className="px-library-folders" aria-hidden>{"\u00a0"}</p>;
-  const names = new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(folders.map((folder) => folderLabel(folder.path)));
-  return (
-    <p className="px-library-folders">
-      {folders.length ? (
-        <span className="px-library-folders-text">
-          <Folder size={16} strokeWidth={1.75} aria-hidden />
-          <span>
-            <Trans i18nKey="sources.shelf.reads" values={{ folders: names }} components={{ b: <b /> }} />
-          </span>
-        </span>
-      ) : null}
-      <button type="button" className="px-library-link-folder" onClick={onLink}>
-        <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
-        {t(folders.length ? "sources.shelf.linkAnother" : "sources.shelf.linkFolder")}
-      </button>
-    </p>
   );
 }

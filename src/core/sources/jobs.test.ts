@@ -86,6 +86,10 @@ it("SRC-12 replacement preserves the original document format and blob for citat
   expect(handlers.viewerDocument({ passageId: oldId })?.blobSha).toBeTruthy();
   expect(handlers.viewerDocument({ sourceId: original.sourceId })?.kind).toBe("text");
   expect(db.prepare(`SELECT COUNT(*) AS n FROM source_documents WHERE source_id = ?`).get(original.sourceId)).toEqual({ n: 2 });
+  // Removed from the Library, its citation still opens its text, and says the source left.
+  expect(handlers.viewerDocument({ passageId: oldId })?.removed).toBe(false);
+  handlers.remove({ sourceId: original.sourceId, confirmed: true });
+  expect(handlers.viewerDocument({ passageId: oldId })).toMatchObject({ removed: true, sourceId: original.sourceId });
   db.close();
 });
 
