@@ -161,10 +161,9 @@ html[data-platform="darwin"] {
   -webkit-app-region: drag;
 }
 /* Attività, in the top-right corner of every page, over the strip that drags the window. --corner-room is the width a
-   page leaves it at the right: its 16px from the edge and its 46px while nothing runs, whose clock sits in the middle,
-   and 2px more.
-   shortcut: a count beside the clock (jobs running or to fix) widens it past that room while it shows; measure the button
-   if pages should clear it then too. */
+   page leaves it at the right: its 16px from the edge, its own width and 2px more. This is the room for the button
+   while nothing runs, 46px with a clock in the middle; Shell.tsx sets it to the measured width when a count (jobs
+   running or to fix) widens the button. */
 :root {
   --corner-room: 64px;
 }

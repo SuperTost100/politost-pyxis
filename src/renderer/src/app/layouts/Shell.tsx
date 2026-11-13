@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { useChatActions } from "../../features/ask/chatActions";
@@ -102,6 +102,23 @@ export function Shell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [inSetup, simulation]);
 
+  // Attività grows past its 46px when jobs run or wait, and pages keep clear of it by `--corner-room` (global.css), so
+  // the room is what the button measures now: the chat's subject chip and every page's right edge stop at its left edge.
+  const corner = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tools = corner.current;
+    if (!tools) return;
+    const root = document.documentElement;
+    const place = () => root.style.setProperty("--corner-room", `${Math.max(64, Math.ceil(tools.offsetWidth) + 18)}px`);
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(tools);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--corner-room");
+    };
+  }, [inSetup]);
+
   // The page column's width rules for the page being opened; the strip with an exam in progress follows them too.
   const container =
     target.pathname.startsWith("/settings")
@@ -156,7 +173,7 @@ export function Shell() {
         <div className="px-drag" aria-hidden />
         {inSetup ? null : (
           // Attività, in the top-right corner of every page, with its list opening under it.
-          <div className="px-corner-tools">
+          <div className="px-corner-tools" ref={corner}>
             <JobsButton keep />
           </div>
         )}
