@@ -8,7 +8,7 @@ import { topicContent } from "../plans/views";
 import { parseSmartText, smartQuestions, smartSections } from "../../shared/smart-text";
 import { CONTEXT_CHARS } from "./openLesson";
 import { oldLesson } from "./oldLessons";
-import { itemWording, liveOutline, rewritePartSection } from "./parts";
+import { itemWording, liveOutline, partShape, rewritePartSection } from "./parts";
 import { PART_JOB, openPart, registerPartJobs, type PartResult } from "./partJobs";
 import { partsDoneSince } from "./partProgress";
 import { answerSmartCheck, smartAnswers } from "./smartText";
@@ -57,11 +57,13 @@ function recapText(tag: string): string {
 /**
  * A recorded engine. The outline call gives one passage per part; a part call answers with a sound part tagged
  * `<part>-<level>-<n>` (the n-th text of that part), or `reply` when a test sets one; `fail` makes a part's call throw.
+ * `hold("<part>:<level>")` keeps the next call for that part at that level waiting until it is released.
  */
 function engine() {
   const calls: Array<{ part: string; wording: string; prompt: string }> = [];
   const fails = new Map<string, Error>();
   const replies: string[] = [];
+  const holds = new Map<string, Array<Promise<void>>>();
   const run: GenerateInput["run"] = async (input) => {
     if (input.responseSchema) {
       const reply = {
@@ -72,6 +74,7 @@ function engine() {
     const part = /^Part (\d+) of/m.exec(input.prompt)?.[1] ?? "recap";
     const wording = /Wording: (\w+)/.exec(input.system ?? "")?.[1] ?? "?";
     calls.push({ part, wording, prompt: input.prompt });
+    await holds.get(`${part}:${wording}`)?.shift();
     const fail = fails.get(part);
     if (fail) throw fail;
     const next = replies.shift();
@@ -84,6 +87,20 @@ function engine() {
     run,
     fail: (part: string, error: Error | null) => (error ? fails.set(part, error) : fails.delete(part)),
     reply: (...texts: string[]) => replies.push(...texts),
+    hold(key: string) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      holds.set(key, [...(holds.get(key) ?? []), gate]);
+      return release;
+    },
+    /** Waits until a call for `<part>:<level>` has come in `count` times. */
+    async called(key: string, count = 1) {
+      for (let i = 0; i < 400; i++) {
+        if (calls.filter((call) => `${call.part}:${call.wording}` === key).length >= count) return;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      throw new Error(`no call for ${key}`);
+    },
   };
 }
 
@@ -393,5 +410,197 @@ describe("a part written at two levels is one part", () => {
     expect.soft((file.progress ?? []).filter((row) => row.kind === "answer_given")).toEqual([]);
     // The earlier text has an engine and an answer, as a lesson written before parts has, and is still no such lesson.
     expect.soft(oldLesson(db, "p", "t")).toBeNull();
+  });
+});
+
+// After the review of #427.
+
+/** Waits until a job of the runner is no longer queued or running. */
+async function finished(db: Db, jobId: string) {
+  for (let i = 0; i < 400; i++) {
+    const state = db.prepare("SELECT state FROM jobs WHERE id = ?").pluck().get(jobId) as string;
+    if (state !== "queued" && state !== "running") return state;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`job ${jobId} did not finish`);
+}
+
+const newestJob = (db: Db, position: number) =>
+  db
+    .prepare(
+      `SELECT id, params_json FROM jobs WHERE kind = '${PART_JOB}' AND json_extract(params_json, '$.position') = ?
+       ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .get(position) as { id: string; params_json: string };
+
+describe("a level chosen while the part ahead is written again", () => {
+  /**
+   * Part 2 at "simple" makes part 3 the part ahead at the earlier level; its rewrite at "simple" is held while the
+   * student picks "technical" on part 2, and the two saves land in `order`.
+   */
+  async function race(order: "ahead first" | "choice first") {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    read(db, runner, 2, { wording: "simple" });
+    await settle(db);
+    const releaseAhead = engine.hold("3:simple");
+    read(db, runner, 2);
+    await engine.called("3:simple", 1);
+    const ahead = newestJob(db, 3);
+    // The ahead job carries its mark in its stored parameters, so a retry or a resume keeps it.
+    expect(JSON.parse(ahead.params_json)).toMatchObject({ rewrite: "level", wording: "simple", ahead: true });
+    const releaseChoice = engine.hold("2:technical");
+    read(db, runner, 2, { wording: "technical" });
+    await engine.called("2:technical", 1);
+    const choice = newestJob(db, 2);
+    const [first, second] = order === "ahead first" ? [[releaseAhead, ahead.id], [releaseChoice, choice.id]] as const : [[releaseChoice, choice.id], [releaseAhead, ahead.id]] as const;
+    first[0]();
+    expect(await finished(db, first[1])).toBe("succeeded");
+    second[0]();
+    expect(await finished(db, second[1])).toBe("succeeded");
+    // The student's choice stands, whichever save came last.
+    expect(liveOutline(db, "t")!.wording).toBe("technical");
+    expect(shown(db, 2)).toBe("2-technical-3");
+    // Part 3 was written at a level the outline no longer has: it is written again at the chosen one when reached.
+    expect(shown(db, 3)).toBe("3-simple-2");
+    read(db, runner, 2);
+    await settle(db);
+    expect(shown(db, 3)).toBe("3-technical-3");
+  }
+
+  it("keeps the student's level when the part ahead saves first", async () => {
+    await race("ahead first");
+  });
+
+  it("keeps the student's level when the part ahead saves last", async () => {
+    await race("choice first");
+  });
+
+  it("writes again a part reached at a level the outline no longer has, and not a part before the level was chosen", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    read(db, runner, 2, { wording: "simple" });
+    await settle(db);
+    // Part 3 is written ahead at "simple"; then the outline moves to "technical" from part 2.
+    read(db, runner, 2);
+    await settle(db);
+    expect(shown(db, 3)).toBe("3-simple-2");
+    const releaseChoice = engine.hold("2:technical");
+    read(db, runner, 2, { wording: "technical" });
+    await engine.called("2:technical");
+    // Opening part 3 while part 2 is still written starts nothing: the outline keeps "simple" until part 2's new text is
+    // saved, and part 3 is at "simple".
+    read(db, runner, 3);
+    expect(newestJob(db, 3).params_json).not.toContain("technical");
+    releaseChoice();
+    await settle(db);
+    // Reached now, straight from the path: written again at "technical".
+    const reached = read(db, runner, 3);
+    expect(reached.rewrite).toMatchObject({ state: "writing", wording: "technical" });
+    await settle(db);
+    expect(shown(db, 3)).toBe("3-technical-3");
+    // Part 1, done at the earlier level, keeps its text when opened.
+    read(db, runner, 1);
+    await settle(db);
+    expect(shown(db, 1)).toBe("1-balanced-1");
+  });
+});
+
+describe("a part's question stays its last block", () => {
+  const trailing = (tag: string) =>
+    `## Passo ${tag} primo\n\n${words(tag, 150)}\n\n## Passo ${tag} secondo\n\n${words(tag, 150)}\n\n${check(tag)}\n\nE ancora una frase dopo la domanda.\n\n${takeaway(tag)}`;
+
+  it("is refused on the second reply when the question is not the last block, and accepted with no question", () => {
+    const context = { kind: "part" as const, headings: [], last: true };
+    expect(partShape(trailing("a"), context).ok).toBe(false);
+    const none = partShape(`## Uno\n\n${words("b", 150)}\n\n## Due\n\n${words("b", 150)}\n\n${takeaway("b")}`, context);
+    expect(none).toMatchObject({ ok: true, question: false });
+  });
+
+  it("fails a part whose two replies put the question before prose", async () => {
+    const { db, runner, engine } = setUp();
+    read(db, runner, 1, { write: true });
+    await settle(db);
+    engine.reply(trailing("x"), trailing("y"));
+    read(db, runner, 2, { write: true });
+    await settle(db);
+    expect(part(db, 2).itemId).toBeNull();
+    expect(read(db, runner, 2).error).toContain("lesson-part-invalid");
+  });
+
+  it("refuses a section rewrite whose two replies leave the question before prose", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    const before = read(db, runner, 2).lesson!.markdown;
+    const section = `## Passo nuovo secondo\n\n${words("nuovo", 150)}\n\n${check("nuova")}\n\nUna frase dopo la domanda.\n\n${takeaway("nuova")}`;
+    engine.reply(section, section);
+    await expect(
+      rewritePartSection(db, { planId: "p", topicId: "t", position: 2, section: 1, run: engine.run, python: null }),
+    ).rejects.toThrow("lesson-part-invalid");
+    expect(read(db, runner, 2).lesson!.markdown).toBe(before);
+  });
+});
+
+describe("two writers of one part's text", () => {
+  const sectionReply = (tag: string) =>
+    `## Passo ${tag} secondo\n\n${words(tag, 150)}\n\n${check(tag)}\n\n${takeaway(tag)}`;
+
+  it("refuses the second of two overlapping section rewrites, which would undo the first", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    const releaseFirst = engine.hold("2:balanced");
+    const releaseSecond = engine.hold("2:balanced");
+    const rewrite = (section: number) =>
+      rewritePartSection(db, { planId: "p", topicId: "t", position: 2, section, run: engine.run, python: null });
+    const first = rewrite(1);
+    const second = rewrite(0);
+    // Part 2's first write, then the two section rewrites.
+    await engine.called("2:balanced", 3);
+    engine.reply(sectionReply("prima"));
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ itemId: part(db, 2).itemId });
+    engine.reply(`## Passo seconda primo\n\n${words("seconda", 150)}\n\n${takeaway("seconda")}`);
+    releaseSecond();
+    await expect(second).rejects.toThrow("lesson-changed");
+    const markdown = read(db, runner, 2).lesson!.markdown;
+    expect(markdown).toContain("## Passo prima secondo");
+    expect(markdown).not.toContain("Passo seconda primo");
+  });
+
+  it("does not let Riscrivi questa parte undo a section rewritten while it was written", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    const release = engine.hold("2:balanced");
+    read(db, runner, 2, { regenerate: true });
+    await engine.called("2:balanced", 2);
+    engine.reply(sectionReply("sezione"));
+    await rewritePartSection(db, { planId: "p", topicId: "t", position: 2, section: 1, run: engine.run, python: null });
+    release();
+    await settle(db);
+    const after = read(db, runner, 2);
+    expect(after.lesson!.markdown).toContain("## Passo sezione secondo");
+    expect(after.rewrite).toMatchObject({ state: "failed" });
+    expect(after.rewrite?.error).toContain("lesson-changed");
+  });
+});
+
+describe("the level the text already has", () => {
+  it("keeps it for the parts to come when the outline is at another level, with no call", async () => {
+    const { db, runner, engine } = setUp();
+    await readToPartTwo(db, runner);
+    // "Semplice" chosen on part 3, then back on part 2, still "bilanciato", the student picks "bilanciato".
+    read(db, runner, 3, { wording: "simple" });
+    await settle(db);
+    expect(liveOutline(db, "t")!.wording).toBe("simple");
+    const calls = engine.calls.length;
+    const kept = read(db, runner, 2, { wording: "balanced" });
+    expect(kept.rewrite).toBeNull();
+    expect(liveOutline(db, "t")!.wording).toBe("balanced");
+    expect(shown(db, 2)).toBe("2-balanced-1");
+    // Part 3, not done and now at a level the outline no longer has, follows it as the part ahead: back to its text at
+    // "bilanciato", written before, with no call either.
+    await settle(db);
+    expect(engine.calls.slice(calls)).toEqual([]);
+    expect(shown(db, 3)).toBe("3-balanced-1");
   });
 });

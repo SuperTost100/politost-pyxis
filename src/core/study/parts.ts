@@ -9,7 +9,7 @@ import { planLanguage, promptProvenance, systemPrompt, templateVersion } from ".
 import { selectionFor } from "../engine/selection";
 import { figureRunner, type FigureRunner } from "../math/figures";
 import { interestsLine } from "../profile/context";
-import { cacheKey, loadLessonById, saveLesson } from "./lesson";
+import { cacheKey, itemBody, loadLessonById, saveLesson } from "./lesson";
 import {
   CONTEXT_CHARS,
   lessonSystem,
@@ -732,7 +732,9 @@ function cutSummary(text: string): string {
  * part that does not end with its question (a pyxis-check, or a pyxis-recap of 3 questions), a teaching part under 250
  * or any part over 1,400 words, a heading another written part already has (case, accents and punctuation ignored), and
  * a missing takeaway or one over 300 characters. The second reply (`last`) is accepted when it has 1 to 4 sections and
- * at most 2,000 words, with or without its question; its takeaway is cut to 300 characters.
+ * at most 2,000 words, with no question or with its question as the last block (a recap of any number of questions);
+ * its takeaway is cut to 300 characters. A question followed by more text is refused on either reply, since the
+ * question is what finishes the part.
  */
 export function partShape(reply: string, context: PartShapeContext): PartShape {
   const lines = lessonText(reply).replace(/\r\n?/g, "\n").split("\n");
@@ -776,12 +778,15 @@ export function partShape(reply: string, context: PartShapeContext): PartShape {
   const question = segments.some(
     (segment) => segment.type === "block" && segment.block.kind === (context.kind === "recap" ? "recap" : "check"),
   );
+  // The question, when there is one, is the last block, whatever else the second reply may get away with.
+  const closes = last?.type === "block" && last.block.kind === (context.kind === "recap" ? "recap" : "check");
   const sections = smartSections(markdown);
   const words = partWords(markdown);
 
   if (context.last) {
     if (!markdown || sections.length < LENIENT_SECTIONS.min || sections.length > LENIENT_SECTIONS.max || words > LENIENT_WORDS)
       return { ok: false, problems: [`The reply has ${sections.length} sections and ${words} words.`] };
+    if (question && !closes) return { ok: false, problems: ["The reply has text after its question."] };
     return { ok: true, markdown, summary: summary === null ? null : cutSummary(summary), words, question };
   }
 
@@ -933,6 +938,11 @@ export type WritePartInput = {
    * the parts written after it, `again` at the level of its text ("Riscrivi questa parte").
    */
   rewrite?: PartRewrite;
+  /**
+   * The part ahead of the one the student reads, written at the outline's level of the moment: it never sets the
+   * outline's level, which the student may change while it is written.
+   */
+  ahead?: boolean;
   selection?: GenerateInput["selection"];
   run?: GenerateInput["run"];
   signal?: AbortSignal;
@@ -958,6 +968,11 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   // The text this write replaces: none for a part not written yet.
   const before = part.itemId;
   const { context, passages, grounded, key } = partContext(db, input, outline, part, input.wording);
+  // The item this write saves into, as it is now: "Riscrivi questa parte" saves into the item the part shows, which a
+  // section rewrite may change while this call runs.
+  const target = db
+    .prepare("SELECT id, body_json AS body FROM items WHERE plan_id = ? AND kind = 'lesson' AND json_extract(body_json, '$.cacheKey') = ?")
+    .get(input.planId, key) as { id: string; body: string } | undefined;
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
   const headings = otherHeadings(db, outline, part);
   const request = partRequest({ topic, outline, part, headings, passages });
@@ -1007,6 +1022,7 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
       )
       .get(part.id) as { item_id: string | null } | undefined;
     if (!current || current.item_id !== before) return;
+    if (target && itemBody(db, target.id) !== target.body) throw new Error("lesson-changed");
     const itemId = saveLesson(db, {
       planId: input.planId,
       topicId: input.topicId,
@@ -1020,7 +1036,7 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
       figures,
     });
     pointPart(db, part.id, itemId, summary, minutes);
-    if (input.rewrite === "level") setOutlineWording(db, outline.id, context.wording);
+    if (input.rewrite === "level" && !input.ahead) setOutlineWording(db, outline.id, context.wording);
   })();
   return liveOutline(db, input.topicId) ?? outline;
 }
@@ -1174,6 +1190,8 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
   if (!outline || !part) throw new Error("part-missing");
   const saved = part.itemId ? loadLessonById(db, { planId: input.planId, topicId: input.topicId, itemId: part.itemId }) : null;
   if (!saved?.provider || !saved.key) throw new Error("lesson-missing");
+  // The text as stored when the rewrite starts: another rewrite of the part saving first changes it.
+  const body = itemBody(db, saved.itemId);
   const sections = smartSections(saved.markdown);
   const section = sections[input.section];
   if (!section) throw new Error("section-missing");
@@ -1272,6 +1290,8 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
     // The part may have been written again meanwhile: the section was of the text it had then.
     const still = db.prepare("SELECT 1 FROM lesson_parts WHERE id = ? AND item_id = ?").get(part.id, saved.itemId);
     if (!still) throw new Error("lesson-missing");
+    // Saved over a text another rewrite changed meanwhile, this one would undo that change: the student tries again.
+    if (itemBody(db, saved.itemId) !== body) throw new Error("lesson-changed");
     saveLesson(db, {
       planId: input.planId,
       topicId: input.topicId,

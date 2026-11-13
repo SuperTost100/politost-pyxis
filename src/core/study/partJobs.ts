@@ -45,6 +45,11 @@ export type PartJobParams = {
   rewrite?: PartRewrite;
   /** The level the part is written at; without it, the outline's. */
   wording?: Wording;
+  /**
+   * A rewrite of a part the student did not choose: the part ahead, or a part reached, at the outline's level. Stored
+   * with the job, so a retry or a resume keeps it, and it never sets the outline's level (`writePart`).
+   */
+  ahead?: true;
   /** Old lessons in parts: the lesson written before parts that the outline this job makes rewrites. */
   replaces?: string;
 };
@@ -162,6 +167,7 @@ export function registerPartJobs(
             selection: params.selection ?? selectionFor(db, "lesson"),
             ...(params.rewrite ? { rewrite: params.rewrite } : {}),
             ...(params.wording ? { wording: params.wording } : {}),
+            ...(params.ahead ? { ahead: true } : {}),
             run,
             signal: ctx.signal,
             ...(options.python === undefined ? {} : { python: options.python }),
@@ -255,19 +261,19 @@ export type RewriteStart = PartStart & { rewrite: PartRewrite; wording: Wording 
  * Writes a written part again, in one transaction. `choice`: the student asked for it, so the job starts, and the same
  * rewrite stopped before is resumed or retried; nothing starts while a job for the part is queued or running. `ahead`:
  * the part after the one the student opened is at another level than the one chosen, so it is written again only when
- * no part job of the topic is queued or running, and a rewrite of it that failed is left for the student.
+ * no part job of the topic is queued or running, and a rewrite of it that failed is left for the student. `reached`:
+ * the student opened such a part, which is written again whatever else runs, unless a rewrite of it failed. The jobs
+ * of `ahead` and `reached` are marked `ahead`, so they never set the outline's level.
  */
-function startRewrite(db: Database.Database, runner: Runner, input: RewriteStart, reason: "choice" | "ahead"): void {
+function startRewrite(db: Database.Database, runner: Runner, input: RewriteStart, reason: "choice" | "ahead" | "reached"): void {
   db.transaction(() => {
     const part = liveOutline(db, input.topicId)?.parts.find((entry) => entry.position === input.position);
     if (!part?.itemId) throw new Error("part-missing");
     const job = rewriteJob(db, input.topicId, input.position);
     if (job && LIVE.has(job.state)) return;
     const same = job?.rewrite === input.rewrite && job.wording === input.wording;
-    if (reason === "ahead") {
-      if (job?.rewrite && (job.state === "failed" || job.state === "cancelled")) return;
-      if (db.prepare(BUSY_SQL).get(input.topicId)) return;
-    }
+    if (reason !== "choice" && job?.rewrite && (job.state === "failed" || job.state === "cancelled")) return;
+    if (reason === "ahead" && db.prepare(BUSY_SQL).get(input.topicId)) return;
     if (same && job?.state === "interrupted") runner.resume(job.id);
     else if (same && (job?.state === "failed" || job?.state === "cancelled")) runner.retry(job.id);
     else {
@@ -278,6 +284,7 @@ function startRewrite(db: Database.Database, runner: Runner, input: RewriteStart
         selection: currentSelection(db),
         rewrite: input.rewrite,
         wording: input.wording,
+        ...(reason === "choice" ? {} : { ahead: true as const }),
       };
       runner.start(PART_JOB, params);
     }
@@ -326,6 +333,22 @@ export function ensureAheadLevel(db: Database.Database, runner: Runner, input: P
   const wording = outline.wording as Wording;
   const at = { planId: input.planId, topicId: input.topicId, position: next.position };
   if (choosePartLevel(db, { ...at, wording }) === "write") startRewrite(db, runner, { ...at, rewrite: "level", wording }, "ahead");
+}
+
+/**
+ * The student opened a written part that is not done, at another level than the one chosen on the outline, right
+ * after a part written at the chosen level: it was written ahead before the level changed, or while it changed, so it
+ * is written again at the chosen level now that it is reached, or pointed at its text at that level written before.
+ * A part before the one the level was chosen on keeps its text: the part before it is not at the chosen level.
+ */
+export function ensureLevelReached(db: Database.Database, runner: Runner, input: PartStart): void {
+  const outline = liveOutline(db, input.topicId);
+  const opened = outline?.parts.find((entry) => entry.position === input.position);
+  const before = outline?.parts.find((entry) => entry.position === input.position - 1);
+  if (!outline?.wording || !opened?.itemId || opened.doneAt !== null || !partOffLevel(db, outline, opened)) return;
+  if (!before?.itemId || partOffLevel(db, outline, before)) return;
+  const wording = outline.wording as Wording;
+  if (choosePartLevel(db, { ...input, wording }) === "write") startRewrite(db, runner, { ...input, rewrite: "level", wording }, "reached");
 }
 
 /** A written part being written again, or whose rewrite failed: what the page shows over its text. */
@@ -573,6 +596,7 @@ export function openPart(
   if (part?.itemId && runner) {
     ensureAhead(db, runner, at);
     ensureAheadLevel(db, runner, at);
+    ensureLevelReached(db, runner, at);
     outline = liveOutline(db, input.topicId);
     part = outline?.parts.find((entry) => entry.position === position);
   }

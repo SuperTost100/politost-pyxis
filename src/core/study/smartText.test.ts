@@ -467,6 +467,28 @@ describe("smart lessons", () => {
     db.close();
   });
 
+  it("refuses the second of two overlapping section rewrites, which would undo the first", async () => {
+    const { db, planId, topicId, run } = setup();
+    await writeLesson(db, planId, topicId, run);
+    const gates: Array<() => void> = [];
+    const texts = ["## Velocità\n\nPrima riscrittura.", "## Accelerazione\n\nSeconda riscrittura."];
+    const held: typeof run = async () => {
+      await new Promise<void>((resolve) => gates.push(resolve));
+      return { text: texts.shift()!, provider: "claude", model: "m", inputTokens: 1 };
+    };
+    const first = rewriteLessonSection(db, planId, topicId, held, { section: 0 });
+    const second = rewriteLessonSection(db, planId, topicId, held, { section: 1 });
+    await vi.waitFor(() => expect(gates).toHaveLength(2));
+    gates[0]!();
+    await first;
+    gates[1]!();
+    await expect(second).rejects.toThrow("lesson-changed");
+    const markdown = (await writeLesson(db, planId, topicId, run)).markdown;
+    expect(markdown).toContain("Prima riscrittura.");
+    expect(markdown).not.toContain("Seconda riscrittura.");
+    db.close();
+  });
+
   it("keeps showing a lesson from the earlier prompt until it is rewritten", async () => {
     const { db, planId, topicId, run } = setup();
     const passageIds = (

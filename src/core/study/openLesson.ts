@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { generate } from "../engine/generate";
 import { planLanguage, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { BOOK_VERSION, cacheKey, loadLesson, loadLessonById, saveLesson } from "./lesson";
+import { BOOK_VERSION, cacheKey, itemBody, loadLesson, loadLessonById, saveLesson } from "./lesson";
 import { IpcError } from "../../shared/ipc";
 import { replaceSection, smartSections } from "../../shared/smart-text";
 import {
@@ -551,6 +551,8 @@ export async function rewriteLessonSection(
   const context = modelContext(db, planId, topicId, options.wording);
   const cached = loadLesson(db, { planId, kind: "lesson", key: context.key });
   if (!cached?.provider) throw new Error("lesson-missing");
+  // The lesson as stored now: a rewrite that saves first changes it, and this one must not undo that.
+  const body = itemBody(db, cached.itemId);
   const sections = smartSections(cached.markdown);
   const section = sections[options.section];
   if (!section) throw new Error("section-missing");
@@ -590,18 +592,21 @@ export async function rewriteLessonSection(
     python,
     { known: cached.figures, signal: options.signal },
   );
-  const itemId = saveLesson(db, {
-    planId,
-    topicId,
-    kind: "lesson",
-    key: context.key,
-    markdown,
-    passageIds: context.passageIds,
-    engine: { provider: result.provider, model: result.model },
-    prompt: { template: "lesson.write", version: MODEL_VERSION },
-    grounding: grounded ? "sources" : "general",
-    figures,
-  });
+  const itemId = db.transaction(() => {
+    if (itemBody(db, cached.itemId) !== body) throw new Error("lesson-changed");
+    return saveLesson(db, {
+      planId,
+      topicId,
+      kind: "lesson",
+      key: context.key,
+      markdown,
+      passageIds: context.passageIds,
+      engine: { provider: result.provider, model: result.model },
+      prompt: { template: "lesson.write", version: MODEL_VERSION },
+      grounding: grounded ? "sources" : "general",
+      figures,
+    });
+  })();
   return {
     markdown,
     passageIds: context.passageIds,

@@ -126,6 +126,14 @@ export function saveLesson(
   })();
 }
 
+/**
+ * A saved item's `body_json` exactly as stored, which every save of a lesson rewrites: a rewrite that compares it with
+ * the body it started from knows whether another save came in between. Undefined for an item that is gone.
+ */
+export function itemBody(db: Database.Database, itemId: string): string | undefined {
+  return db.prepare("SELECT body_json FROM items WHERE id = ?").pluck().get(itemId) as string | undefined;
+}
+
 export function loadLesson(
   db: Database.Database,
   input: { planId: string; kind: string; key: string },
