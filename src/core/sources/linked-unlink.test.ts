@@ -362,6 +362,10 @@ describe("a linked folder in the list", () => {
     for (const rel of ["Fisica/appunti.txt", "Fisica/lezione 1.txt", "GAL/matrici.txt"])
       copyFileSync(join(real, rel), join(plain, rel));
     expect(await app.linked.relocate(folder.id, plain)).toEqual({ same: true, matched: 3, total: 3 });
+    // Pointing the folder at `plain` starts a look there. It holds `plain` open while it walks, and Windows refuses to
+    // delete a folder that is open, so the test waits for it before its folders are removed.
+    await app.settled();
+    expect(app.linked.view(folder.id)).toMatchObject({ path: plain, state: "ready", files: 3 });
   });
 
   it("refuses to find a folder at a place inside another linked folder", async () => {
