@@ -186,6 +186,9 @@ const routes = [
   ["lesson-part-recap", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=9"],
   ["lesson-part-popover", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-one-part", "/plans/audit-parts-plan/lesson/audit-one-topic?part=1"],
+  // A topic opened for the first time while its parts are planned, and a part read as book text without an AI tool.
+  ["lesson-part-planning", "/plans/audit-parts-plan/lesson/audit-new-topic?part=1"],
+  ["lesson-part-book", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=5"],
   ["intro", "/plans/audit-plan/intro"],
   ["quiz-setup", "/plans/audit-plan/quiz/audit-topic"],
   ["quiz-page", "/plans/audit-plan/quiz/audit-topic"],
@@ -1119,13 +1122,16 @@ const PART_STATES = new Set([
   "lesson-part-recap",
   "lesson-part-popover",
   "lesson-one-part",
+  "lesson-part-planning",
+  "lesson-part-book",
 ]);
 
 /**
  * Analisi Matematica 2, for the lesson part states: "Funzioni di più variabili" in eight parts and a recap, parts 1 to 3
- * written and 1 and 2 read, and "Formula di Taylor" in one part. Part 4 has a running job for the writing state and a
- * failed one for the failed state; the recap state has parts 1 to 8 read and the recap written. Each state starts from
- * it again, and every other state starts without the exam.
+ * written and 1 and 2 read, "Formula di Taylor" in one part, and "Serie di funzioni" not planned yet. Part 4 has a
+ * running job for the writing state and a failed one for the failed state, part 5 a job that found no AI tool for the
+ * book state, and "Serie di funzioni" a running job for the planning state; the recap state has parts 1 to 8 read and the
+ * recap written. Each state starts from it again, and every other state starts without the exam.
  */
 function prepareLessonParts(name: string) {
   const wanted = PART_STATES.has(name);
@@ -1144,9 +1150,10 @@ function prepareLessonParts(name: string) {
       topics: [
         { id: "audit-parts-topic", title: "Funzioni di più variabili" },
         { id: "audit-one-topic", title: "Formula di Taylor" },
+        { id: "audit-new-topic", title: "Serie di funzioni" },
       ],
     });
-    db.exec(`INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-parts-topic','audit-passage'),('audit-one-topic','audit-passage');
+    db.exec(`INSERT INTO topic_passages(topic_id,passage_id) VALUES('audit-parts-topic','audit-passage'),('audit-one-topic','audit-passage'),('audit-new-topic','audit-passage');
       INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES
         ('audit-outline','audit-parts-plan','audit-parts-topic','key','model',1),
         ('audit-one-outline','audit-parts-plan','audit-one-topic','key','single',1);`);
@@ -1195,9 +1202,14 @@ function prepareLessonParts(name: string) {
         kind,
         title,
         minutes[index]!,
+        // Only a written part has its summary.
         kind === "recap"
-          ? "Il capitolo in breve: intorni, frontiera, aperti e chiusi, poi limiti e derivate fino alla matrice hessiana."
-          : "Un insieme è aperto se non contiene punti della sua frontiera e chiuso se la contiene tutta. I due casi non si escludono: $\\mathbb{R}^n$ e $\\emptyset$ sono entrambi.",
+          ? recap
+            ? "Il capitolo in breve: intorni, frontiera, aperti e chiusi, poi limiti e derivate fino alla matrice hessiana."
+            : null
+          : position <= 3
+            ? "Un insieme è aperto se non contiene punti della sua frontiera e chiuso se la contiene tutta. I due casi non si escludono: $\\mathbb{R}^n$ e $\\emptyset$ sono entrambi."
+            : null,
         done,
       );
       if (position <= 3) write(`audit-part-${position}`, "audit-parts-topic", auditPartText);
@@ -1205,16 +1217,16 @@ function prepareLessonParts(name: string) {
     if (recap) write("audit-part-9", "audit-parts-topic", auditRecapText);
     part.run("audit-one-part", "audit-one-outline", 1, "part", "Formula di Taylor", 6, "Il polinomio di Taylor approssima una funzione vicino a un punto.", null);
     write("audit-one-part", "audit-one-topic", auditPartText);
-    if (name === "lesson-part-writing" || name === "lesson-part-failed")
-      db.prepare(
-        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-part-job','lesson-part',?,?,0,?,?,?)",
-      ).run(
-        JSON.stringify({ planId: "audit-parts-plan", topicId: "audit-parts-topic", position: 4 }),
-        name === "lesson-part-writing" ? "running" : "failed",
-        name === "lesson-part-writing" ? null : "lesson-part-invalid",
-        now,
-        now,
-      );
+    const job = db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-part-job','lesson-part',?,?,0,?,?,?)",
+    );
+    const params = (topicId: string, position: number) =>
+      JSON.stringify({ planId: "audit-parts-plan", topicId, position });
+    if (name === "lesson-part-writing") job.run(params("audit-parts-topic", 4), "running", null, now, now);
+    if (name === "lesson-part-failed") job.run(params("audit-parts-topic", 4), "failed", "lesson-part-invalid", now, now);
+    if (name === "lesson-part-book")
+      job.run(params("audit-parts-topic", 5), "failed", "engines.errors.engine-missing", now, now);
+    if (name === "lesson-part-planning") job.run(params("audit-new-topic", 1), "running", null, now, now);
   });
 }
 
@@ -3003,6 +3015,13 @@ async function openState(page: Page, name: string) {
       } else await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
       break;
     }
+    case "lesson-part-planning":
+      await expect(page.getByRole("status").filter({ hasText: /Sto dividendo il capitolo in parti|Splitting the chapter into parts/ })).toBeVisible();
+      break;
+    case "lesson-part-book":
+      await expect(page.getByRole("heading", { level: 1, name: "Limiti e continuità" })).toBeVisible();
+      await expect(page.getByRole("button", { name: both("Fatto", "Done") })).toBeVisible();
+      break;
     case "lesson-one-part":
       await expect(page.getByRole("heading", { level: 1, name: "Formula di Taylor" })).toBeVisible();
       await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toHaveCount(0);
