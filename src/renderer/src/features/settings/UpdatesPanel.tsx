@@ -97,7 +97,7 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
   }
 
   const problemNotice = problem ? (
-    <Notice tone="warning">{t(`updates.install.${problem}`)}</Notice>
+    <Notice tone={problem === "finishFailed" ? "danger" : "warning"}>{t(`updates.install.${problem}`)}</Notice>
   ) : null;
 
   if (view.state === "downloading") {

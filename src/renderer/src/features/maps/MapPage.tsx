@@ -1563,7 +1563,7 @@ export function MapPage() {
         // How the last build ended, as a notice with its way back: Riprova or Riprendi, and Chiudi, as in Attività.
         <div className="px-map-notice px-map-recover">
           <Notice
-            tone="info"
+            tone={job.state === "failed" ? "danger" : job.state === "cancelled" ? "info" : "warning"}
             action={{
               label: t(job.state === "failed" ? "maps.retry" : "jobs.resume"),
               disabled,

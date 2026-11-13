@@ -373,7 +373,7 @@ export function LessonPage() {
       ) : lesson.isError || data?.fallback ? (
         <div className="px-reader-note">
           <Notice
-            tone={cancelled ? "info" : "warning"}
+            tone={cancelled ? "info" : data?.fallback ? "warning" : "danger"}
             action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
             secondary={
               // A refused sign-in names its engine and opens its sign-in; any other engine failure opens the engines page.

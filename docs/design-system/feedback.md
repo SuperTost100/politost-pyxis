@@ -32,4 +32,14 @@ An error sits next to what failed, says what happened and how to fix it, and kee
 
 ## Notices and toasts
 
-A notice tells the student something about a screen, at the top of what it is about, in `--primary-soft` with an icon and at most one action (`Notice`). A toast is only for an action whose result is not on screen, such as a backup.
+A notice tells the student something about a screen, at the top of what it is about, with an icon and at most one action (`Notice`). Its tone follows what the message means, never how much room it needs:
+
+| Tone      | Ground                 | Means                                                                                          |
+| --------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `info`    | `--primary-soft`, teal | Something to know, nothing wrong: a build the student stopped, an update, an archived exam     |
+| `warning` | `--star-soft`, amber   | Something needs a choice or a step first, or a result is partial: no AI tool yet, a folder cut |
+| `danger`  | `--danger-soft`, red   | Something failed or was refused, and the student can retry or fix it: a build that did not end |
+
+The same event has the same tone everywhere: a failed build is red on a map, on flashcards and on a quiz, and one the student stopped is teal. A failure is never amber or teal, and a message that only asks for a step is never red.
+
+A toast is only for an action whose result is not on screen, such as a backup.

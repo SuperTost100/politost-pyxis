@@ -75,7 +75,7 @@ export function IntroPage() {
       {intro.isPending ? <ReaderLoading label={t("lesson.loading")} /> : null}
       {intro.isError ? (
         <Notice
-          tone="warning"
+          tone="danger"
           action={{ label: t("lesson.retry"), onClick: () => void intro.refetch() }}
         >
           {t("lesson.introFailed")}

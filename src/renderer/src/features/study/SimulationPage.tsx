@@ -314,7 +314,7 @@ export function SimulationPage() {
   const topicCount = plan.data?.topics.length ?? 0;
   const noticeBox = notice ? (
     <Notice
-      tone="danger"
+      tone={noEngine ? "warning" : "danger"}
       action={
         noEngine
           ? {
@@ -447,7 +447,7 @@ export function SimulationPage() {
         <Notice tone="warning">{generated}</Notice>
       )}
       {open.isError && (
-        <Notice tone="warning">{t("simulation.actionFailed")}</Notice>
+        <Notice tone="danger">{t("simulation.actionFailed")}</Notice>
       )}
       {!run ? (
         <ActivityIntro
@@ -754,7 +754,7 @@ export function SimulationPage() {
                   </Notice>
                 ) : null}
                 {generated ? <Notice tone="warning">{generated}</Notice> : null}
-                {open.isError ? <Notice tone="warning">{t("simulation.actionFailed")}</Notice> : null}
+                {open.isError ? <Notice tone="danger">{t("simulation.actionFailed")}</Notice> : null}
               </>
             ) : undefined
           }

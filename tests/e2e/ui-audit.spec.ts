@@ -3449,6 +3449,8 @@ async function openState(page: Page, name: string) {
     case "map-build-stopped": {
       await expect(page.locator(".react-flow__node")).toHaveCount(3);
       const line = page.locator(".px-map-notice .px-notice");
+      // A failure is red and one that stopped by itself is amber (feedback.md, notices).
+      await expect(line).toHaveClass(name === "map-build-failed" ? /\bis-danger\b/ : /\bis-warning\b/);
       await expect(line).toContainText(
         name === "map-build-failed"
           ? /^(L’ultima costruzione della mappa non è riuscita|The last build of this map did not finish)/
