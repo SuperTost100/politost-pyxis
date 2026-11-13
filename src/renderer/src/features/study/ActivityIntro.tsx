@@ -74,7 +74,7 @@ export function ActivityIntro({
               onClick={() => setOpen((value) => !value)}
             >
               {t("quiz.options")}
-              <Icon name="chevron-right" size={16} className="px-intro-chevron" />
+              <span className="px-chevron" aria-hidden />
             </button>
           ) : null}
           {open ? (

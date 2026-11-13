@@ -378,7 +378,7 @@ function Question({ item, number, planId }: { item: ResultItem; number: number; 
             <InlineMarkdown>{stemText(item.stem)}</InlineMarkdown>
           </span>
           <Status item={item} />
-          <Icon name="chevron-down" size={16} className="px-res-chevron" />
+          <span className="px-chevron px-res-chevron" aria-hidden />
         </button>
         {open ? <Answer id={body} item={item} planId={planId} /> : null}
       </li>

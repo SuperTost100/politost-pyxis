@@ -98,6 +98,3 @@
   background: none;
   cursor: pointer;
 }
-.px-unf-more[aria-expanded="true"] svg {
-  rotate: 180deg;
-}

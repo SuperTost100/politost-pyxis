@@ -27,12 +27,6 @@
 .ask-used-line .px-icon {
   flex: none;
 }
-.ask-used-chevron {
-  transition: transform var(--duration-micro) var(--ease-out);
-}
-.ask-used-line[aria-expanded="true"] .ask-used-chevron {
-  transform: rotate(90deg);
-}
 .ask-used-fold:not([hidden]) {
   animation: ask-used-open var(--duration-small) var(--ease-out);
 }

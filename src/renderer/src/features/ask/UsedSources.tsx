@@ -52,7 +52,7 @@ export function UsedSources({
       >
         <Icon name="check" size={15} />
         <span>{t(line.key, line.values)}</span>
-        <Icon name="chevron-right" size={15} className="ask-used-chevron" />
+        <span className="px-chevron" aria-hidden />
       </button>
       {/* The list opens out of the line, sliding down from it. */}
       <div className="ask-used-fold" id={list} hidden={!open}>

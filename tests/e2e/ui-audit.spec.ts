@@ -4526,6 +4526,18 @@ test("M14 every application route in both languages, themes and supported widths
               });
               if (apart && Math.abs(apart.apart - apart.gap) > 1)
                 errors.push(`Adesso and Percorso are ${apart.apart}px apart, the grid's gap is ${apart.gap}px`);
+              // Every disclosure draws the app's chevron (global.css), never the browser's triangle.
+              const triangles = await page.evaluate(() =>
+                [...document.querySelectorAll<HTMLElement>("details > summary")]
+                  .filter(
+                    (summary) =>
+                      summary.checkVisibility() &&
+                      (getComputedStyle(summary).listStyleType !== "none" ||
+                        getComputedStyle(summary, "::before").content === "none"),
+                  )
+                  .map((summary) => summary.textContent?.trim().slice(0, 40)),
+              );
+              if (triangles.length) errors.push(`Disclosures without the chevron: ${triangles.join(", ")}`);
               records.push({
                 name,
                 route,

@@ -1,5 +1,5 @@
 import { Button } from "antd";
-import { ChevronDown, Lightbulb } from "lucide-react";
+import { Lightbulb } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -319,7 +319,7 @@ function Reveal({ block }: { block: Extract<SmartBlock, { kind: "reveal" }> }) {
         </span>
         <span className="px-sb-toggle small">
           {open ? t("smart.hide") : t("smart.show")}
-          <ChevronDown size={16} strokeWidth={1.75} aria-hidden />
+          <span className="px-chevron" aria-hidden />
         </span>
       </button>
       {open ? (

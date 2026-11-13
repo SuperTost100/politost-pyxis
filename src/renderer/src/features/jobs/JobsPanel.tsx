@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { App } from "antd";
-import { ChevronDown, Info, Lock, LogIn, Pause, CircleAlert, Search } from "lucide-react";
+import { Info, Lock, LogIn, Pause, CircleAlert, Search } from "lucide-react";
 import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -225,12 +225,7 @@ function ProblemCard({
             {open
               ? t("jobs.hideJobs")
               : t("jobs.showJobs", { count: jobs.length })}
-            <ChevronDown
-              size={16}
-              strokeWidth={1.75}
-              aria-hidden
-              className={open ? "px-jobs-caret is-open" : "px-jobs-caret"}
-            />
+            <span className="px-chevron px-jobs-caret" aria-hidden />
           </button>
         ) : null}
       </div>
@@ -394,7 +389,7 @@ function BatchRow({ batch, act, finished = false }: { batch: JobBatch; act: Act;
               {new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }).format(latest)}
             </time>
           ) : null}
-          <ChevronDown size={16} strokeWidth={1.75} aria-hidden className="px-jobs-caret" />
+          <span className="px-chevron px-jobs-caret" aria-hidden />
         </button>
         {finished ? (
           <IconButton

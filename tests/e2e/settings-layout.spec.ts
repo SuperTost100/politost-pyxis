@@ -68,7 +68,14 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await page.evaluate(() => {
       window.location.hash = "#/settings/about";
     });
-    await page.locator(".px-about-notices > summary").click();
+    // A disclosure's chevron points right while it is closed and turns down when it opens (global.css), where the
+    // browser's own triangle used to be.
+    const licences = page.locator(".px-about-notices > summary");
+    const turn = () => licences.evaluate((summary) => getComputedStyle(summary, "::before").rotate);
+    expect(await licences.evaluate((summary) => getComputedStyle(summary).listStyleType)).toBe("none");
+    expect(await turn()).toBe("-45deg");
+    await licences.click();
+    await expect.poll(turn).toBe("45deg");
     const version = page.locator("#settings-version");
     await expect.poll(async () => (await version.boundingBox())!.height).toBeGreaterThan(1200);
     await page.evaluate(() => {

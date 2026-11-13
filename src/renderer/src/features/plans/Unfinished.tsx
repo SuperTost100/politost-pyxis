@@ -241,7 +241,7 @@ export function UnfinishedSection({ planId }: { planId: string }) {
             {all
               ? t("examPage.unfinished.showFewer")
               : t("examPage.unfinished.showAll", { count: entries.length })}
-            <Icon name="chevron-down" size={14} />
+            <span className="px-chevron" aria-hidden />
           </button>
         ) : null}
       </section>

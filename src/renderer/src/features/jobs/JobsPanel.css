@@ -217,14 +217,7 @@
 }
 
 .px-jobs-caret {
-  flex: none;
   color: var(--ink-subtle);
-  transition: transform var(--duration-small) var(--ease-out);
-}
-
-.px-jobs-caret.is-open,
-.px-jobs-batch.is-open .px-jobs-caret {
-  transform: rotate(180deg);
 }
 
 .px-jobs-affected {
@@ -490,8 +483,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .px-jobs-more,
-  .px-jobs-caret {
+  .px-jobs-more {
     transition: none;
   }
 }

@@ -195,29 +195,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The engine for each function, closed until opened: a summary that reads as a heading, with a caret that turns. */
+/* The engine for each function, closed until opened: a summary that reads as a heading. */
 .engines-section {
   margin-top: var(--space-6);
 }
 .engines-section > summary {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  list-style: none;
-  cursor: pointer;
-}
-.engines-section > summary::-webkit-details-marker {
-  display: none;
 }
 .engines-section > summary > h2 {
   margin: 0;
-}
-.engines-section-caret {
-  color: var(--ink-subtle);
-  transition: transform var(--duration-micro) var(--ease-out);
-}
-.engines-section[open] .engines-section-caret {
-  transform: rotate(90deg);
 }
 .engines-section > .engines-heading {
   margin-top: var(--space-3);

@@ -1,5 +1,4 @@
 import { Switch } from "antd";
-import { ChevronRight } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { ControlList, SwitchRow } from "./Controls";
@@ -60,8 +59,7 @@ export function CrashReportsSwitch({
         below={
           <details className="px-ctl-why">
             <summary>
-              <ChevronRight size={14} strokeWidth={2} aria-hidden />
-              {t("settings.crashMore")}
+                  {t("settings.crashMore")}
             </summary>
             <div className="px-ctl-why-body">
               <p>{t("settings.crashWhy")}</p>
