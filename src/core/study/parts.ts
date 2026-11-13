@@ -22,8 +22,13 @@ export const MAX_PARTS = 8;
 export const PART_SLACK = 1;
 /** From this many teaching parts on, a recap part follows them. */
 export const RECAP_FROM = 3;
-/** The passage list of the planning call stays within the bound every lesson call has. */
+/** The planning request, as it is sent, stays within the bound every lesson call has. */
 export const OUTLINE_PROMPT_CHARS = CONTEXT_CHARS;
+/**
+ * Longest topic title, file title or heading in the planning request. They are labels, and a long one must not crowd
+ * the passages out of the request or make planning skip the model.
+ */
+export const OUTLINE_LABEL_CHARS = 200;
 /** An unwritten part's minutes: its material read at this many characters a minute, plus a fixed share, kept in bounds. */
 export const ESTIMATE_CHARS_PER_MINUTE = 1_500;
 export const ESTIMATE_EXTRA_MINUTES = 3;
@@ -299,17 +304,25 @@ export type OutlineRequest = {
   problems?: string[];
 };
 
+/** A label cut to `OUTLINE_LABEL_CHARS` characters, the last of them an ellipsis when it was longer. */
+function labelText(text: string): string {
+  const chars = Array.from(text);
+  return chars.length <= OUTLINE_LABEL_CHARS ? text : `${chars.slice(0, OUTLINE_LABEL_CHARS - 1).join("")}…`;
+}
+
 /**
- * The planning call's input. Each passage is listed by its label, its file's title when the file changes, its heading
- * when it starts a new one (a new file starts its headings afresh), its length and its first characters, cut to an
- * equal share so the whole list stays within `OUTLINE_PROMPT_CHARS`. The file and the heading are what let the model
- * gather the passages of two files on the same subject. Null when even the labels, files, headings and lengths do not
- * fit: the topic is then cut by the fallback without a call.
+ * The planning call's input, `problems` included on the second ask. Each passage is listed by its label, its file's
+ * title when the file changes, its heading when it starts a new one (a new file starts its headings afresh), its length
+ * and its first characters. The file and the heading are what let the model gather the passages of two files on the
+ * same subject. Titles and headings are cut to `OUTLINE_LABEL_CHARS`, and the excerpts to an equal share, so the whole
+ * request as it is sent stays within `OUTLINE_PROMPT_CHARS`. Null when it does not fit even with no excerpts: the
+ * topic is then cut by the fallback without a call.
  */
 export function outlineRequest(
   topic: string,
   passages: readonly OutlinePassage[],
   bounds: PartBounds,
+  problems: readonly string[] = [],
 ): OutlineRequest | null {
   let heading: string | null = null;
   const bare = passages.map((passage, index) => {
@@ -319,19 +332,25 @@ export function outlineRequest(
     heading = passage.section ?? heading;
     return {
       label: `P${index + 1}`,
-      ...(newFile && passage.file ? { file: passage.file } : {}),
-      ...(section ? { section } : {}),
+      ...(newFile && passage.file ? { file: labelText(passage.file) } : {}),
+      ...(section ? { section: labelText(section) } : {}),
       chars: passage.text.length,
       excerpt: "",
     };
   });
-  const size = (list: unknown) => JSON.stringify(list).length;
+  const request = (list: OutlineRequest["passages"]): OutlineRequest => ({
+    topic: labelText(topic),
+    parts: bounds,
+    passages: list,
+    ...(problems.length > 0 ? { problems: [...problems] } : {}),
+  });
+  const size = (list: OutlineRequest["passages"]) => JSON.stringify(request(list)).length;
   if (size(bare) > OUTLINE_PROMPT_CHARS) return null;
   let share = Math.floor((OUTLINE_PROMPT_CHARS - size(bare)) / Math.max(1, passages.length));
   for (;;) {
     const list = bare.map((entry, index) => ({ ...entry, excerpt: excerpt(passages[index]!.text, share) }));
-    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the list fits.
-    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return { topic, parts: bounds, passages: list };
+    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the request fits.
+    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return request(list);
     share = Math.floor(share * 0.9);
   }
 }
@@ -506,8 +525,9 @@ export type PlanPartsInput = {
  * Makes a topic's outline when it has no live one, and returns the live outline. A topic of one part is saved with no
  * call (`origin = 'single'`, the topic's title). Otherwise the model plans the parts from the passage list; a reply
  * `checkOutline` rejects is asked again once with its problems, and a second rejection, a reply the schema repair could
- * not fix, or a passage list too long to send is cut by `fallbackOutline` (`origin = 'fallback'`). An engine error or a
- * cancel saves nothing and is thrown, so the next open tries again.
+ * not fix, or a request over `OUTLINE_PROMPT_CHARS` even with no excerpts, on either ask, is cut by `fallbackOutline`
+ * (`origin = 'fallback'`). No call goes out above that bound. An engine error or a cancel saves nothing and is thrown,
+ * so the next open tries again.
  */
 export async function planParts(db: Database.Database, input: PlanPartsInput): Promise<Outline> {
   requireTopic(db, input.planId, input.topicId);
@@ -523,12 +543,14 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     return saveOutline(db, input, passages, { origin: "single", parts: [{ title: topic.title, about: "", passageIds }] }, language);
   const fallback = () =>
     saveOutline(db, input, passages, { origin: "fallback", parts: fallbackOutline(passages, bounds.target, language) }, language);
-  const request = outlineRequest(topic.title, passages, bounds);
-  if (!request) return fallback();
-  const selection = input.selection ?? selectionFor(db, "lesson");
+  let selection = input.selection;
   const system = systemPrompt("lesson.outline", { contentLanguage: language });
   let problems: string[] = [];
   for (let ask = 0; ask < 2; ask++) {
+    // Built for each ask, so the second, with its problems, is measured against the bound as it is sent too.
+    const request = outlineRequest(topic.title, passages, bounds, problems);
+    if (!request) return fallback();
+    selection ??= selectionFor(db, "lesson");
     let result: Awaited<ReturnType<typeof generate>>;
     try {
       result = await generate({
@@ -538,7 +560,7 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
         schema: outlineReply,
         system,
         // The problems travel inside the JSON, which the recorded engine and the structured providers read as it is.
-        prompt: JSON.stringify(problems.length > 0 ? { ...request, problems } : request),
+        prompt: JSON.stringify(request),
       });
     } catch (error) {
       if (error instanceof IpcError && error.code === "invalid-output") return fallback();

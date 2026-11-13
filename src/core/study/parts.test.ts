@@ -6,6 +6,7 @@ import {
   ESTIMATE_MAX_MINUTES,
   ESTIMATE_MIN_MINUTES,
   MAX_PARTS,
+  OUTLINE_LABEL_CHARS,
   OUTLINE_PROMPT_CHARS,
   checkOutline,
   estimateMinutes,
@@ -350,6 +351,9 @@ describe("outlineRequest", () => {
       // Another file with the same name is still another file.
       { label: "P5", file: "Slide del corso", chars: 1_000 },
     ]);
+    const long = passages([3_000, 3_000], ["2.1 Intorni", null], [["book", "x".repeat(500)], ["book", "x".repeat(500)]]);
+    const cut = outlineRequest("Limiti", long, { target: 2, min: 2, max: 2 })!;
+    expect(cut.passages[0]!.file).toBe(`${"x".repeat(OUTLINE_LABEL_CHARS - 1)}…`);
   });
 
   it("cuts the excerpts so the list stays within the call bound, also with characters JSON escapes", () => {
@@ -361,7 +365,11 @@ describe("outlineRequest", () => {
       file: index < 150 ? "Analisi Matematica 2, Bramanti Pagani Salsa" : "Slide del corso",
     }));
     const request = outlineRequest("Limiti", many, { target: 8, min: 7, max: 8 })!;
-    expect(JSON.stringify(request.passages).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    expect(JSON.stringify(request).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    const problems = Array.from({ length: 9 }, (_, index) => `Two parts have the title "${"Idea ".repeat(16)}${index}". Give each part its own title.`);
+    const again = outlineRequest("Limiti", many, { target: 8, min: 7, max: 8 }, problems)!;
+    expect(again.problems).toEqual(problems);
+    expect(JSON.stringify(again).length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
     expect(request.passages).toHaveLength(300);
     expect(request.passages[0]!.excerpt.length).toBeGreaterThan(5);
   });
@@ -496,9 +504,40 @@ describe("planParts", () => {
     expect(engine.calls).toHaveLength(2);
     const [first, second] = engine.requests();
     expect(first!.problems).toBeUndefined();
-    expect(second).toEqual({ ...first, problems: ["The reply had 1 parts with passages from the list. Use between 3 and 5."] });
+    expect(second!.problems).toEqual(["The reply had 1 parts with passages from the list. Use between 3 and 5."]);
+    // The same request but for the problems: the excerpts may only be shorter, to leave room for them.
+    const bare = (request: OutlineRequest) => request.passages.map(({ excerpt: _, ...entry }) => entry);
+    expect([second!.topic, second!.parts, bare(second!)]).toEqual([first!.topic, first!.parts, bare(first!)]);
+    second!.passages.forEach((entry, index) => expect(first!.passages[index]!.excerpt.startsWith(entry.excerpt)).toBe(true));
+    // Each request goes out within the bound, as it is sent.
+    for (const call of engine.calls) expect(call.prompt.length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
     expect(outline.origin).toBe("model");
     expect(outline.parts.map((part) => part.title)).toEqual(["Uno", "Due", "Tre", "Ripasso del capitolo"]);
+  });
+
+  it("plans a topic whose headings and title are long with the model, within the bound", async () => {
+    // 60 passages, each under its own heading of 1,000 characters: the headings alone would be 60,000 characters.
+    const headings = Array.from({ length: 60 }, (_, index) => `${index + 1}.1 ${"Teorema di Weierstrass ".repeat(44)}`);
+    const db = workspace(Array(60).fill(500), headings);
+    db.prepare("UPDATE topics SET title = ?").run(`Funzioni ${"di più variabili ".repeat(2_000)}`);
+    const parts = Array.from({ length: 5 }, (_, index): [string, string[]] => [
+      `Idea ${index + 1}`,
+      Array.from({ length: 12 }, (_, at) => `P${index * 12 + at + 1}`),
+    ]);
+    const first = reply(["Tutto", ["P1"]]);
+    const engine = recorded(first, reply(...parts));
+    const outline = await planParts(db, { planId: "p", topicId: "t", run: engine.run });
+    expect(outline.origin).toBe("model");
+    expect(engine.calls).toHaveLength(2);
+    for (const call of engine.calls) expect(call.prompt.length).toBeLessThanOrEqual(OUTLINE_PROMPT_CHARS);
+    const [request] = engine.requests();
+    expect(Array.from(request!.topic)).toHaveLength(OUTLINE_LABEL_CHARS);
+    expect(request!.topic.endsWith("…")).toBe(true);
+    expect(request!.passages).toHaveLength(60);
+    for (const entry of request!.passages) {
+      expect(Array.from(entry.section!)).toHaveLength(OUTLINE_LABEL_CHARS);
+      expect(entry.section!.endsWith("…")).toBe(true);
+    }
   });
 
   it("cuts the topic in code after a second rejected reply", async () => {
