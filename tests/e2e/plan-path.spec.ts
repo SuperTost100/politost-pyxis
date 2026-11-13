@@ -162,7 +162,7 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
       location.hash = `/plans/${planId}`;
     }, planId);
     const next = page.locator(".px-exam-now");
-    await expect(next.getByText("Adesso")).toBeVisible();
+    await expect(next.getByText("Consigliato adesso", { exact: true })).toBeVisible();
     await expect(next.getByRole("heading", { name: "Introduzione" })).toBeVisible();
     await expect(page.getByText(/Si sblocca|Unlocks/)).toHaveCount(0);
     await expect(page.locator(".px-node.is-locked, .lucide-lock")).toHaveCount(0);
@@ -200,7 +200,7 @@ test("plan path: nothing locked, every activity is on the path, any topic's less
 
     // After the first lesson Adesso suggests work on it.
     await page.getByRole("button", { name: "Torna al percorso" }).click();
-    await expect(next.getByText("Adesso")).toBeVisible();
+    await expect(next.getByText("Consigliato adesso", { exact: true })).toBeVisible();
     await expect(next.getByRole("heading")).toHaveText(`Esercizio assistito: ${topics[0]!.title}`);
     await expect(next.getByText("Fissa quello che hai appena letto.")).toBeVisible();
     // The topic the path is on opens with its steps, and the suggested one says so.
