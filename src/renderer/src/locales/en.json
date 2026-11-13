@@ -3303,6 +3303,7 @@
     "rebuildKept_other": "{{count}} topics kept",
     "rebuildNoArchive": "Nothing is removed. Your progress, flashcards and gaps stay attached to their topics.",
     "rebuildLoading": "Comparing the topics with your sources",
+    "rebuildWorking": "I'm reading your sources again to compare the topics",
     "removeSource": "Remove from exam",
     "noSources": "This exam does not use any sources yet.",
     "removeSourceHelp": "Remove {{title}} from this exam? Your existing lessons and progress stay, and the source stays in the library.",

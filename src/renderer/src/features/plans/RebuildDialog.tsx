@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
+import { Working } from "../../components/Working";
 
 /**
  * PLAN-13: one durable job builds the new topic tree and matches it to the plan.
@@ -153,14 +154,25 @@ export function RebuildDialog({
         <p className="small">{t("planOverview.rebuildIntro")}</p>
       ) : running || stopped ? (
         <div className="px-rebuild-diff">
-          <StepLines
-            label={t("plans.rebuild")}
-            steps={job.steps.map((step) => ({
-              id: step.name,
-              label: t(step.label),
-              state: step.state === "succeeded" ? "done" : step.state,
-            }))}
-          />
+          {running ? (
+            // The result will appear in this body, so Pyxis works here, saying which step it is on.
+            <Working
+              slot
+              line={t(
+                job.steps.find((step) => step.state === "running")?.label ?? "planOverview.rebuildWorking",
+              )}
+            />
+          ) : null}
+          {job.steps.length > 0 ? (
+            <StepLines
+              label={t("plans.rebuild")}
+              steps={job.steps.map((step) => ({
+                id: step.name,
+                label: t(step.label),
+                state: step.state === "succeeded" ? "done" : step.state,
+              }))}
+            />
+          ) : null}
           {stopped ? (
             <Notice tone={job.state === "failed" ? "danger" : "warning"}>
               {t(`planOverview.rebuild_${job.state}`)}

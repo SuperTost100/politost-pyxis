@@ -2608,6 +2608,14 @@ async function openState(page: Page, name: string) {
               /Il nuovo materiale lo chiama|The new material calls it/,
             ),
         ).toBeVisible();
+      // While it works the dialog shows Pyxis at work in its body, with a line on what it is doing (feedback.md).
+      if (name === "rebuild-running") {
+        const working = dialog.last().getByRole("status");
+        await expect(working).toContainText(
+          /Sto rileggendo le fonti per confrontare gli argomenti|I'm reading your sources again to compare the topics/,
+        );
+        await expect(working.locator(".px-logo-working")).toBeVisible();
+      }
       break;
     case "guided-period":
     case "guided-modules":

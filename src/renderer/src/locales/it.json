@@ -3303,6 +3303,7 @@
     "rebuildKept_other": "{{count}} argomenti mantenuti",
     "rebuildNoArchive": "Non viene rimosso nulla. Progressi, flashcard e lacune restano legati ai loro argomenti.",
     "rebuildLoading": "Confronto gli argomenti con le tue fonti",
+    "rebuildWorking": "Sto rileggendo le fonti per confrontare gli argomenti",
     "removeSource": "Rimuovi dall'esame",
     "noSources": "Questo esame non usa ancora fonti.",
     "removeSourceHelp": "Rimuovere {{title}} da questo esame? Lezioni e progressi esistenti vengono conservati e la fonte resta nella libreria.",
