@@ -8,6 +8,12 @@ import "./Popover.css";
  * popover opened, which the page draws in the document's body.
  */
 const OPENED_FROM_INSIDE = ".px-item-menu, .ant-modal-root, .ant-dropdown";
+/**
+ * Where an Escape belongs to something opened from inside rather than to the popover: that menu or dialog, or a button
+ * whose menu is open. The menu closes on any Escape while it is open, and on a slow computer the key can come before the
+ * menu has taken the focus from its button.
+ */
+const ESCAPE_NOT_MINE = `${OPENED_FROM_INSIDE}, [aria-haspopup][aria-expanded="true"]`;
 
 /**
  * A panel that belongs to the button that opened it (`anchor`): 8px under it, lined up with its right edge and kept inside
@@ -125,7 +131,7 @@ export function Popover({
       }
       onKeyDown={(event) => {
         // A menu opened from a row inside closes on its own Escape first; this one is for the popover.
-        if (event.key !== "Escape" || (event.target instanceof Element && event.target.closest(OPENED_FROM_INSIDE)))
+        if (event.key !== "Escape" || (event.target instanceof Element && event.target.closest(ESCAPE_NOT_MINE)))
           return;
         event.stopPropagation();
         latest.current(true);

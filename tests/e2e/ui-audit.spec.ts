@@ -2738,13 +2738,24 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "selection-source":
-      await page.evaluate(() =>
+      await page.evaluate(() => {
+        // Marks the text of an opening already shown, so the wait below can tell it from the text of this opening.
+        for (const old of document.querySelectorAll(".source-viewer-paragraph p")) old.setAttribute("data-audit-old", "");
         window.dispatchEvent(
           new CustomEvent("pyxis:source-viewer", {
             detail: { passageId: "audit-passage" },
           }),
-        ),
-      );
+        );
+      });
+      // The panel takes each opening with its title focused and the page drawn anew, then scrolls the cited passage into
+      // view. Opened again while it is open (the reopen after the keyboard walk), the text shown until then is replaced,
+      // and a selection made in it is lost with it; the scroll's event comes a frame later and hides the toolbar of a
+      // selection made before it. A slow runner selects in between, so the text must be in place and at rest first.
+      // The title keeps the focus from one opening to the next, so the focus alone does not say the new text is there:
+      // the text of the opening before must be gone, and the text of this one in place.
+      await expect(page.locator(".source-panel .source-viewer-title")).toBeFocused();
+      await expect(page.locator(".source-viewer-paragraph p[data-audit-old]")).toHaveCount(0);
+      await atRest(page.locator(".source-viewer-paragraph p:not([data-audit-old])").first());
       await selectText(page, ".source-viewer-paragraph p");
       break;
     case "selection-lesson":
@@ -4429,6 +4440,24 @@ test("M14 every application route in both languages, themes and supported widths
                     ),
                   ),
               );
+              // What is still moving as axe measures, named in a failure: a colour checked halfway through a fade fails
+              // on a slow runner only.
+              const moving = await page.evaluate(() =>
+                document
+                  .getAnimations()
+                  .filter((animation) => animation.playState === "running")
+                  .map((animation) => {
+                    const target = (animation.effect as KeyframeEffect | null)?.target;
+                    const name =
+                      animation instanceof CSSTransition
+                        ? animation.transitionProperty
+                        : animation instanceof CSSAnimation
+                          ? animation.animationName
+                          : "script";
+                    const own = target ? [...target.classList].filter((name) => name.startsWith("px-")) : [];
+                    return `${name} on ${target ? [target.tagName.toLowerCase(), ...own].join(".") : "?"}`;
+                  }),
+              );
               const violations = await axeViolations(page);
               await saveShot(page, `m14/${key}.png`, { fullPage: true, animations: "disabled" });
               // Fixed headers and modal backdrops are viewport-bound; keep a real viewport capture alongside the full-page image.
@@ -4505,6 +4534,18 @@ test("M14 every application route in both languages, themes and supported widths
               if (violations.length || errors.length || overflow)
                 failures.push(
                   `${key}: ${violations.map((v) => v.id).join(",")} ${errors.join(";")} ${overflow ? "horizontal overflow" : ""}`,
+                );
+              // The record file stays on the runner, so a failure says which elements axe flagged and why, and what moved.
+              if (violations.length)
+                console.log(
+                  `M14 ${key} details: ${violations
+                    .map(
+                      (v) =>
+                        `${v.id}: ${v.nodes
+                          .map((n) => `${n.target.join(" ")} (${(n.failureSummary ?? "").replace(/\s+/g, " ").trim()})`)
+                          .join(" | ")}`,
+                    )
+                    .join("; ")}; moving: ${moving.join(", ") || "nothing"}`,
                 );
             } catch (error) {
               failures.push(`${key}: ${String(error).slice(0, 900)}`);

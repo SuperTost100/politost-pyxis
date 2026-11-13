@@ -140,7 +140,7 @@ function MenuRegion({
 }: {
   label: string;
   open: boolean;
-  /** An arrow pressed on the button before the menu took the focus: the menu then takes it on its first or last item. */
+  /** An arrow pressed on the button or the item before the menu took the focus: the menu then takes it on its first or last item. */
   arrow?: MutableRefObject<"first" | "last" | null>;
   children: ReactNode;
 }) {
@@ -154,19 +154,24 @@ function MenuRegion({
       const target = edge ? (edge === "first" ? items[0] : items.at(-1)) : region?.querySelector<HTMLElement>(".ant-dropdown-menu");
       if (!target) return;
       target.focus({ preventScroll: true });
-      if (arrow) arrow.current = null;
+      // A popup not yet in the page takes no focus, and the arrow waits for the next try.
+      if (arrow && document.activeElement === target) arrow.current = null;
     };
     // At once, before the next key press when the popup is ready, and on the next frames while it is not (a menu opened
-    // again right after it closed is hidden for a few frames), until the focus is in the menu.
-    take();
+    // again right after it closed is hidden for a few frames), until the focus is in the menu. Done once it is, unless an
+    // arrow still waits for an item: the dropdown focuses the list itself when the popup appears, which can come before
+    // the arrow has moved the focus on. A try left waiting after that would take the focus back from an Escape that has
+    // closed the menu meanwhile.
+    const done = () => Boolean(ref.current?.contains(document.activeElement)) && !arrow?.current;
     let tries = 0;
     let frame = 0;
     const retry = () => {
-      if (ref.current?.contains(document.activeElement)) return;
+      if (done()) return;
       take();
-      if (++tries < 12) frame = requestAnimationFrame(retry);
+      if (!done() && ++tries < 12) frame = requestAnimationFrame(retry);
     };
-    frame = requestAnimationFrame(retry);
+    take();
+    if (!done()) frame = requestAnimationFrame(retry);
     return () => {
       cancelAnimationFrame(frame);
       if (arrow) arrow.current = null;
@@ -179,9 +184,13 @@ function MenuRegion({
   );
 }
 
-/** The items of a menu's first level that can be chosen, a submenu's row among them. */
-const ROOT_ITEMS =
-  ".ant-dropdown-menu-root > [role=menuitem]:not([aria-disabled=true]), .ant-dropdown-menu-root > li > [role=menuitem]:not([aria-disabled=true])";
+/** The items of a menu's first level that can be chosen, a submenu's row and a choice of one (the chat's subject) among them. */
+const ROOT_ITEMS = ["menuitem", "menuitemradio", "menuitemcheckbox"]
+  .flatMap((role) => [
+    `.ant-dropdown-menu-root > [role=${role}]:not([aria-disabled=true])`,
+    `.ant-dropdown-menu-root > li > [role=${role}]:not([aria-disabled=true])`,
+  ])
+  .join(", ");
 
 const FOCUSABLE = 'a[href], button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -317,7 +326,11 @@ export function useItemMenu({
   };
   // The item the menu belongs to, read when it opens: the menu closes when the page scrolls under it or the window resizes.
   const item = useRef<Element | null>(null);
-  const bind = menuTrigger(
+  // An arrow pressed on the item after the menu opened but before it took the focus, as a quick Shift+F10 and down arrow
+  // do on a slow computer. The menu takes the focus on its first or last item, as a menu button's does, and the page does
+  // not scroll, which would close the menu. Only a menu with a region takes the focus itself.
+  const arrow = useRef<"first" | "last" | null>(null);
+  const trigger = menuTrigger(
     (point, byKey, target) => {
       shown.current = true;
       origin.current = byKey && document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -327,6 +340,19 @@ export function useItemMenu({
     !disabled,
     () => shown.current,
   );
+  const bind: typeof trigger = {
+    ...trigger,
+    onKeyDown(event) {
+      const early =
+        region &&
+        shown.current &&
+        (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+        !(event.target instanceof Element && event.target.closest(".px-item-menu"));
+      if (!early) return trigger.onKeyDown(event);
+      event.preventDefault();
+      arrow.current = event.key === "ArrowDown" ? "first" : "last";
+    },
+  };
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
   // The anchor is fixed to the window, but a transformed ancestor (the flashcard stage's `perspective`) becomes the
   // containing block of a fixed element and moves it, so the menu is drawn in the document's body, where none can be.
@@ -344,7 +370,7 @@ export function useItemMenu({
           }}
           popupRender={(list) =>
             region ? (
-              <MenuRegion label={region} open>
+              <MenuRegion label={region} open arrow={arrow}>
                 {list}
               </MenuRegion>
             ) : (
