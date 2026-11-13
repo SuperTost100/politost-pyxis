@@ -182,6 +182,13 @@ const routes = [
   ["lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-rewrite", "/plans/audit-plan/lesson/audit-topic"],
   ["lesson-menu", "/plans/audit-plan/lesson/audit-topic"],
+  // Old lessons in parts: a finished lesson written before parts with "Riscrivi in parti" in its menu and its
+  // confirmation; an unfinished one being rewritten, its earlier version read-only, and the rewrite that found no AI tool.
+  ["lesson-menu-parts", "/plans/audit-plan/lesson/audit-topic"],
+  ["lesson-rewrite-parts", "/plans/audit-plan/lesson/audit-topic"],
+  ["lesson-rewriting-old", "/plans/audit-plan/lesson/audit-topic?part=1"],
+  ["lesson-earlier", "/plans/audit-plan/lesson/audit-topic?item=audit-lesson"],
+  ["lesson-rewrite-failed", "/plans/audit-plan/lesson/audit-topic?part=1"],
   // A topic's lesson in parts: part 3 of 8 with the parts column, its question answered and the foot active, "Scegli
   // altro" open, part 4 being written and failed, the recap answered, a topic of one part, and the parts in the popover
   // the bar's title opens under 1,100 px.
@@ -1242,6 +1249,45 @@ function prepareLessonParts(name: string) {
   });
 }
 
+// Old lessons in parts. The audit exam's lesson was written before parts, and no lesson step is recorded on its topic,
+// so it is unfinished: opening it would rewrite it in parts. The states of the reader that came before parts read it as
+// a finished lesson, with its step; the rewrite states keep it unfinished, with part 1's job running or failed.
+const FINISHED_OLD_LESSON_STATES = new Set([
+  "lesson",
+  "lesson-rewrite",
+  "lesson-menu",
+  "lesson-menu-parts",
+  "lesson-rewrite-parts",
+  "export-lesson",
+  "selection-lesson",
+  "reading-large-lesson",
+]);
+const OLD_LESSON_JOBS: Record<string, { state: string; error: string | null }> = {
+  "lesson-rewriting-old": { state: "running", error: null },
+  "lesson-rewrite-failed": { state: "failed", error: "engines.errors.engine-missing" },
+};
+
+function prepareOldLessons(name: string) {
+  withDb((db) => {
+    db.exec("DELETE FROM learning_events WHERE id = 'audit-old-lesson-done'; DELETE FROM jobs WHERE id = 'audit-old-job';");
+    if (FINISHED_OLD_LESSON_STATES.has(name))
+      db.prepare(
+        "INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('audit-old-lesson-done','lesson_completed','audit-plan','audit-topic',?,?)",
+      ).run(JSON.stringify({ activity: "lesson", itemId: "audit-lesson" }), Date.now() - 60_000);
+    const job = OLD_LESSON_JOBS[name];
+    if (job)
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-old-job','lesson-part',?,?,0,?,?,?)",
+      ).run(
+        JSON.stringify({ planId: "audit-plan", topicId: "audit-topic", position: 1, replaces: "audit-lesson" }),
+        job.state,
+        job.error,
+        Date.now(),
+        Date.now(),
+      );
+  });
+}
+
 /** States that need stored data of their own are written before the page loads; the page then reads them like any user would. */
 /** A white one-page image-only PDF in the audit workspace's blob store, like the file an import keeps. */
 function auditScanBlob(): string {
@@ -1943,6 +1989,7 @@ function prepareRadialMaps(name: string) {
 
 function prepareState(name: string) {
   prepareLessonParts(name);
+  prepareOldLessons(name);
   prepareRadialMaps(name);
   prepareNewCards(name);
   prepareAnswerSheet(name);
@@ -3108,6 +3155,31 @@ async function openState(page: Page, name: string) {
       await expect(
         page.getByRole("menuitem", { name: both("Mappa", "Map") }),
       ).toBeVisible();
+      break;
+    case "lesson-menu-parts":
+    case "lesson-rewrite-parts": {
+      await page.getByRole("button", { name: both("Altre azioni", "More actions") }).click();
+      const parts = page.getByRole("menuitem", { name: both("Riscrivi in parti", "Rewrite in parts") });
+      await expect(parts).toBeVisible();
+      if (name === "lesson-menu-parts") break;
+      await parts.click();
+      await expect(
+        page.getByRole("dialog", { name: both("Riscrivere la lezione in parti brevi\\?", "Rewrite the lesson in short parts\\?") }),
+      ).toBeVisible();
+      break;
+    }
+    case "lesson-rewriting-old":
+      await expect(
+        page.getByRole("status").filter({ hasText: /Sto riscrivendo la lezione in parti brevi|Rewriting the lesson in short parts/ }),
+      ).toBeVisible();
+      break;
+    case "lesson-earlier":
+      await expect(page.getByText(/Questa è la versione di prima della lezione|This is the earlier version of the lesson/)).toBeVisible();
+      await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
+      break;
+    case "lesson-rewrite-failed":
+      await expect(page.getByText(/Non sono riuscito a riscrivere la lezione in parti|I couldn't rewrite the lesson in parts/)).toBeVisible();
+      await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
       break;
     case "quiz-setup":
       await page

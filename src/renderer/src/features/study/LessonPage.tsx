@@ -1,14 +1,19 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useEngineError } from "../../lib/engineError";
+import { invoke } from "../../lib/ipc";
+import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { LegacyLessonPage } from "./LegacyLessonPage";
 import { PartLoading, PartPage, partKey, usePartQuery } from "./PartPage";
-import { addressPart, freshRead } from "./partPage";
+import { addressPart, freshRead, oldLessonView, type PartData } from "./partPage";
 
 /**
- * A topic's lesson: in parts (`PartPage`) for a topic planned in parts or never read, and in the reader that came
- * before parts (`LegacyLessonPage`) for a lesson written before them, as `study.part` decides. `?part=3` opens that
- * part, `?item=` a saved lesson from a finished step. A read that fails leaves the page to the earlier reader, which
- * shows its own error.
+ * A topic's lesson: in parts (`PartPage`) for a topic planned in parts, never read, or with an unfinished lesson written
+ * before parts, which is rewritten in parts; in the reader that came before parts (`LegacyLessonPage`) for a finished
+ * lesson written before them, as `study.part` decides. `?part=3` opens that part, `?item=` a saved lesson from a
+ * finished step. A read that fails leaves the page to the earlier reader, which shows its own error.
  */
 export function LessonPage() {
   const { planId = "", topicId = "" } = useParams();
@@ -27,22 +32,64 @@ export function LessonPage() {
     came.current.at,
   );
   // Opened without a part, core picks the first one not done, and the address then names it (`addressPart`). Until a
-  // fresh read has chosen, what is cached names a part that may be done by now, so the page waits for it.
+  // fresh read has chosen, what is cached names a part that may be done by now, or the part from before a finished
+  // lesson's rewrite stopped, so the page waits for it.
   const opened = addressPart(query.data, { position, itemId }, fresh);
   useEffect(() => {
     if (opened) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
   }, [opened, planId, topicId, navigate]);
   const choosing = !position && !itemId && !fresh && !query.isError;
+  const key = partKey(planId, topicId, position, itemId);
+  if (query.data?.mode === "parts" && !choosing && query.data.replaces && oldLessonView(query.data) === "fallback")
+    return <RewriteFallback planId={planId} topicId={topicId} data={query.data} queryKey={key} />;
   if (query.data?.mode === "parts" && !choosing)
-    return (
-      <PartPage
-        planId={planId}
-        topicId={topicId}
-        data={query.data}
-        query={query}
-        queryKey={partKey(planId, topicId, position, itemId)}
-      />
-    );
-  if ((query.data?.mode === "legacy" && !choosing) || query.isError) return <LegacyLessonPage />;
+    return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} />;
+  if ((query.data?.mode === "legacy" && !choosing) || query.isError)
+    return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} />;
   return <PartLoading planId={planId} topicId={topicId} />;
+}
+
+/**
+ * A rewrite in parts that did not finish before any part was written: the old lesson as it was, in its own reader and
+ * still the student's to answer and finish, under a notice that says what happened, with Riprova and the engine's own
+ * fix when an engine failed.
+ */
+function RewriteFallback({
+  planId,
+  topicId,
+  data,
+  queryKey,
+}: {
+  planId: string;
+  topicId: string;
+  data: PartData;
+  queryKey: readonly unknown[];
+}) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const client = useQueryClient();
+  const describeEngineError = useEngineError();
+  const retry = useMutation({
+    mutationFn: () => invoke("study.part", { planId, topicId, position: data.position, write: true }),
+    onSuccess: (next) => {
+      client.setQueryData(queryKey, next);
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+  const error = data.error ?? "";
+  const key = error ? jobErrorKey(error) : null;
+  const engine = key && key.startsWith("engines.errors.") ? describeEngineError(key, jobErrorEngine(error)) : undefined;
+  return (
+    <LegacyLessonPage
+      itemId={data.replaces!.itemId}
+      notice={{
+        text: engine ? `${t("lesson.rewriteFailed")} ${engine.text}` : t("lesson.rewriteFailed"),
+        action: { label: t("lesson.partRetry"), onClick: () => retry.mutate(), disabled: retry.isPending },
+        secondary:
+          engine?.action ??
+          (key?.startsWith("engines.errors.") ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") } : undefined),
+        details: error || undefined,
+      }}
+    />
+  );
 }

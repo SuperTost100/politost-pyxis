@@ -409,6 +409,29 @@ export const LIVE_OUTLINE_SQL = `SELECT id, plan_id AS planId, topic_id AS topic
   replaces_item_id AS replacesItemId, passage_key AS passageKey, created_at AS createdAt
   FROM lesson_outlines WHERE topic_id = ? AND retired_at IS NULL`;
 
+/**
+ * The one rule for whether a topic's live outline is the lesson the student has: an outline made for a topic never read
+ * is at once; one that replaces a lesson written before parts (`replaces_item_id`) is only once one of its parts is
+ * written. Until then the old lesson stays the topic's lesson everywhere: the reader shows it, the suggestion, the
+ * Percorso, the minutes and the rings count it as one lesson, and the stored outline only waits for Riprova to go on.
+ * `alias` names `lesson_outlines` in the caller's query.
+ */
+export function shownOutlineSql(alias: string): string {
+  return `(${alias}.replaces_item_id IS NULL OR EXISTS (SELECT 1 FROM lesson_parts shown
+    WHERE shown.outline_id = ${alias}.id AND shown.item_id IS NOT NULL))`;
+}
+
+/** `shownOutlineSql` on an outline already read. */
+export function outlineShown(outline: Outline | null): outline is Outline {
+  return !!outline && (!outline.replacesItemId || outline.parts.some((part) => part.itemId !== null));
+}
+
+/** The topic's live outline when it is the lesson the student has (`outlineShown`), else null. */
+export function shownOutline(db: Database.Database, topicId: string): Outline | null {
+  const outline = liveOutline(db, topicId);
+  return outlineShown(outline) ? outline : null;
+}
+
 /** The part a lesson item is, found through `lesson_parts_item`. */
 export const PART_OF_ITEM_SQL = `SELECT id AS partId, outline_id AS outlineId, position, kind
   FROM lesson_parts WHERE item_id = ?`;
@@ -479,7 +502,7 @@ type Plan = {
  */
 function saveOutline(
   db: Database.Database,
-  input: { planId: string; topicId: string; signal?: AbortSignal },
+  input: { planId: string; topicId: string; replaces?: string; signal?: AbortSignal },
   passages: readonly OutlinePassage[],
   plan: Plan,
   language: string,
@@ -498,16 +521,23 @@ function saveOutline(
   db.transaction(() => {
     if (db.prepare(LIVE_OUTLINE_SQL).get(input.topicId)) return;
     const id = uuidv7(now);
+    // The old lesson this outline rewrites, while its row is still there: a lesson removed meanwhile is no longer there to read.
+    const replaces = input.replaces
+      ? ((db.prepare("SELECT id FROM items WHERE id = ? AND topic_id = ?").pluck().get(input.replaces, input.topicId) as
+          | string
+          | undefined) ?? null)
+      : null;
     db.prepare(
-      `INSERT INTO lesson_outlines (id, plan_id, topic_id, passage_key, origin, engine_provider, model_id, model_source,
-         prompt_template, prompt_version, grounding, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO lesson_outlines (id, plan_id, topic_id, passage_key, origin, replaces_item_id, engine_provider, model_id,
+         model_source, prompt_template, prompt_version, grounding, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       input.planId,
       input.topicId,
       passageKey(passages.map((passage) => passage.id)),
       plan.origin,
+      replaces,
       plan.engine?.provider ?? null,
       plan.engine?.model ?? null,
       plan.engine ? "reported" : null,
@@ -530,6 +560,8 @@ function saveOutline(
 export type PlanPartsInput = {
   planId: string;
   topicId: string;
+  /** The lesson written before parts that this outline rewrites; saved as the outline's `replaces_item_id`. */
+  replaces?: string;
   selection?: GenerateInput["selection"];
   run?: GenerateInput["run"];
   signal?: AbortSignal;

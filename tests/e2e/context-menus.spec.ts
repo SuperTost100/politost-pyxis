@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
+import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu, lastMenuAt, lastMenuLabels } from "./native-menu";
@@ -356,21 +357,20 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
       document: { id: "d-cin" },
       passages: [{ id: "pc-1", text: "Il montaggio lega le inquadrature.", section: "Montaggio" }],
     });
-    seedPlan(db, { id: "p-les", title: "Fisica 1", topics: [{ id: "t-les", title: "Forze" }] });
+    seedPlan(db, { id: "p-les", title: "Fisica 1", language: "it", topics: [{ id: "t-les", title: "Forze" }] });
     db.exec(`
       INSERT INTO chats(id,title,created_at,updated_at) VALUES('c1','Weierstrass',1,2);
       INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-q','c1','user','Che cosa dice il teorema?',1);
       INSERT INTO messages(id,chat_id,role,body,engine_provider,model_id,model_source,created_at)
         VALUES('m-a','c1','assistant','Dice che una funzione continua è limitata.','claude','claude-sonnet-5','reported',2);
     `);
-    db.prepare(
-      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('i-les','p-les','t-les','lesson',?,'fixture','sources',1)",
-    ).run(
-      JSON.stringify({
-        cacheKey: JSON.stringify({ kind: "lesson", scopeId: "t-les", promptVersion: "model-1", passageIds: [] }),
-        markdown: "## La dinamica\n\nLa seconda legge di Newton è $F=ma$.",
-      }),
-    );
+    // A finished lesson written before parts opens in the reader that came before them; an unfinished one would be
+    // rewritten in parts.
+    seedLessonBeforeParts(db, "p-les", ["t-les"], {
+      markdown: "## La dinamica\n\nLa seconda legge di Newton è $F=ma$.",
+      wording: "balanced",
+      finished: true,
+    });
     const node = (id: string, label: string, parent: string | null, sources?: string[]) => ({
       id,
       label,
@@ -428,14 +428,15 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     await page.getByRole("menuitem", { name: stronger }).click();
     await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text")).toHaveText(reply, { timeout: 30_000 });
 
-    // A lesson: regenerate, rewrite a section, the map and export; the last one opens the export dialog.
+    // A finished lesson: rewrite in parts, regenerate, rewrite a section, the map and export; the last one opens the
+    // export dialog.
     await page.evaluate(() => {
       location.hash = "/plans/p-les/lesson/t-les";
     });
     await expect(page.getByText("La seconda legge di Newton", { exact: false })).toBeVisible();
     const lessonDots = page.getByRole("button", { name: "Altre azioni" });
     const lessonItems = await opensEveryWay(page, lessonDots, "Altre azioni");
-    expect(lessonItems).toEqual(["Riscrivi", "Riscrivi una sezione", "Mappa", "Esporta"]);
+    expect(lessonItems).toEqual(["Riscrivi in parti", "Riscrivi", "Riscrivi una sezione", "Mappa", "Esporta"]);
     await oneMenuAtATime(page, lessonDots, "Altre azioni");
     await lessonDots.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Esporta" }).click();
