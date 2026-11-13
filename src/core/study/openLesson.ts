@@ -21,7 +21,7 @@ export const wordings = ["simple", "balanced", "technical"] as const;
 export type Wording = (typeof wordings)[number];
 
 // Bound each model call while teaching every passage in reading order.
-const CONTEXT_CHARS = 24_000;
+export const CONTEXT_CHARS = 24_000;
 const PASSAGE_CHARS = 4_000;
 
 const WORDING_RULES: Record<Wording, string> = {

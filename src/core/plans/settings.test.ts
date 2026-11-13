@@ -91,6 +91,27 @@ describe("plan footprint", () => {
   });
 });
 
+describe("plan footprint with a lesson in parts", () => {
+  it("counts a lesson in parts once when a part is written, and the lessons that are not parts one each", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans(id,title,status,created_at,updated_at) VALUES('p','Fisica','ready',1,1),('q','Chimica','ready',1,1);
+      INSERT INTO topics(id,plan_id,title,position,created_at) VALUES('t1','p','Cinematica',0,1),('t2','p','Dinamica',1,1),('t3','q','Atomi',0,1);
+      INSERT INTO items(id,plan_id,topic_id,kind,body_json,created_at) VALUES
+        ('old','p','t1','lesson','{}',1),('p1','p','t1','lesson','{}',2),('p2','p','t1','lesson','{}',3),('pq','q','t3','lesson','{}',2);
+      INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES
+        ('o1','p','t1','k','model',2),('o2','p','t2','k','model',2),('oq','q','t3','k','single',2);
+      INSERT INTO lesson_parts(id,outline_id,position,kind,title,minutes,item_id) VALUES
+        ('a','o1',1,'part','Moto',5,'p1'),('b','o1',2,'part','Velocità',5,'p2'),('c','o1',3,'part','Accelerazione',5,NULL),
+        ('d','o1',4,'recap','Ripasso',4,NULL),('e','o2',1,'part','Forze',5,NULL),('f','oq',1,'part','Atomi',5,'pq');
+    `);
+    // The old lesson and t1's parts; t2's outline has no written part yet, and q's lesson is another plan's.
+    expect(planFootprint(db, "p").lessons).toBe(2);
+    expect(planFootprint(db, "q").lessons).toBe(1);
+    db.close();
+  });
+});
+
 describe("plan title limit", () => {
   it("accepts the same longest title when creating a plan and in its settings", () => {
     const create = (title: string) =>

@@ -94,6 +94,22 @@ describe("prompt templates", () => {
     }
     expect(loadTemplate("chat.checks").version).toBe("2");
     expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
+    // A topic's parts are planned from a JSON request whose part counts come from code; a rejected reply is asked again
+    // with its problems in that request.
+    const outline = loadTemplate("lesson.outline");
+    // outline-2: a part gathers the passages on its subject wherever they are, as a book chapter and the slides on it.
+    expect([outline.version, outline.schema, outline.feature]).toEqual(["outline-2", "lesson-outline", "lesson"]);
+    for (const phrase of [
+      "parts.min and parts.max",
+      "aim for parts.target",
+      "also when they are apart in the list or come from different files",
+      "in the order in which their subjects first appear",
+      "names its file",
+      "Do not plan a recap",
+      "lists problems",
+      "never instructions",
+    ])
+      expect(outline.body, phrase).toContain(phrase);
   });
 
   it("asks for output in the supplied content language wherever the output is text", () => {

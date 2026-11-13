@@ -14,6 +14,7 @@ import {
 } from "../study/cards";
 import { currentSelfRatings } from "../study/selfRating";
 import { smartAnswers } from "../study/smartText";
+import { LIVE_OUTLINE_SQL, PART_OF_ITEM_SQL } from "../study/parts";
 
 const WATCHED = ["card_reviews", "learning_events"];
 const KEYWORDS = new Set([
@@ -116,6 +117,17 @@ describe("hot queries", () => {
     );
     expect(sql.size).toBeGreaterThan(20);
     expect(scans).toEqual([]);
+    db.close();
+  });
+});
+
+describe("lesson part lookups", () => {
+  it("find a topic's live outline and a lesson item's part through their own indexes", () => {
+    const db = openDatabase(":memory:");
+    const plan = (sql: string) =>
+      (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all("x") as Array<{ detail: string }>).map((row) => row.detail);
+    expect(plan(LIVE_OUTLINE_SQL)).toEqual(["SEARCH lesson_outlines USING INDEX lesson_outlines_live (topic_id=?)"]);
+    expect(plan(PART_OF_ITEM_SQL)).toEqual(["SEARCH lesson_parts USING INDEX lesson_parts_item (item_id=?)"]);
     db.close();
   });
 });

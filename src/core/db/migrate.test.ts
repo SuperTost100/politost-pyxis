@@ -34,8 +34,14 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migrations 29 to 31 add, so a test can rewind the version past them. */
+/** Removes what migration 32 adds, so a test can rewind the version past it. */
+function undoLessonParts(db: Database.Database) {
+  db.exec("DROP TABLE lesson_parts; DROP TABLE lesson_outlines;");
+}
+
+/** Removes what migrations 29 to 32 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
+  undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
 }
 
@@ -182,10 +188,12 @@ describe("migrate", () => {
       "linked_folders",
       "linked_subfolders",
       "linked_files",
+      "lesson_outlines",
+      "lesson_parts",
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(31);
+    expect(db.pragma("user_version", { simple: true })).toBe(32);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -200,7 +208,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(32);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -217,7 +225,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(
       again
         .prepare(
@@ -247,7 +255,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(
       again.prepare("SELECT figures_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ figures_json: null });
@@ -275,7 +283,7 @@ describe("migrate", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(
       again.prepare("SELECT error, passages_json FROM messages WHERE id = 'old'").get(),
     ).toEqual({ error: null, passages_json: null });
@@ -325,7 +333,7 @@ describe("linked folders", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     // Migration 29 adds an empty `subject_sort` and 31 an empty `chosen_kind`; nothing else of the source changes.
     expect(again.prepare("SELECT * FROM sources").all()).toEqual(
       (before as Array<Record<string, unknown>>).map((row) => ({ ...row, subject_sort: null, chosen_kind: null })),
@@ -360,7 +368,7 @@ describe("linked folders read in full", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(again.prepare("SELECT pending, sorted_at FROM linked_files").get()).toEqual({ pending: 0, sorted_at: null });
     expect(() => again.prepare("UPDATE linked_files SET pending = 3").run()).toThrow();
     // The queue finds waiting files of a folder through its own index.
@@ -381,7 +389,7 @@ describe("the linked-file hash lookup", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     // The two queries the import and the folder scan run: a hash among present files, alone and next to a source's own hash.
     for (const sql of [
       "SELECT source_id FROM linked_files WHERE content_hash = 'abc' AND missing_at IS NULL",
@@ -415,7 +423,7 @@ describe("maps by subject", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(
       again.prepare("SELECT id, subject_id, plan_id, topic_id, grounding, prompt_version, created_at FROM maps ORDER BY id").all(),
     ).toEqual([
@@ -465,7 +473,7 @@ describe("past paper role", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(again.prepare("SELECT role, paper_json FROM plan_sources").get()).toEqual({
       role: "material",
       paper_json: null,
@@ -687,7 +695,7 @@ describe("the subject Pyxis chooses for a Library file", () => {
     db.close();
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(again.prepare("SELECT subject_sort FROM sources").get()).toEqual({ subject_sort: null });
     again.prepare("UPDATE sources SET subject_sort = 'waiting'").run();
     expect(() => again.prepare("UPDATE sources SET subject_sort = 'guessed'").run()).toThrow();
@@ -750,7 +758,7 @@ describe("the kind a student chose for a file", () => {
 
     const again = openDatabase(file);
     opened.push(again);
-    expect(again.pragma("user_version", { simple: true })).toBe(31);
+    expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
     expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
     const after = again.prepare("SELECT * FROM sources ORDER BY rowid").all() as Array<Record<string, unknown>>;
     expect(after).toEqual(before.map((row) => ({ ...row, chosen_kind: null })));
@@ -799,4 +807,192 @@ describe("`sources.chosen_kind` on a new workspace and on every upgrade", () => 
       expect(after.map((row) => Object.fromEntries(Object.keys(before[0]!).map((key) => [key, row[key]])))).toEqual(before);
       expect(after.map((row) => row.chosen_kind)).toEqual([null, null]);
     });
+});
+
+/**
+ * A plan as the lesson reader leaves it before parts exist: a lesson with figures and citations, a book-text lesson,
+ * quick check and recap answers, the lesson step, an opened lesson, a flashcard with a review and a quiz attempt.
+ * Uses only columns every version has.
+ */
+function seedLessonWork(db: Database.Database) {
+  db.exec(`
+    INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Analisi 2', 'ready', 1, 1);
+    INSERT INTO topics (id, plan_id, title, position, created_at) VALUES
+      ('t1', 'p', 'Funzioni di più variabili', 0, 1), ('t2', 'p', 'Integrali doppi', 1, 1);
+    INSERT INTO sources (id, kind, title, status, created_at, updated_at) VALUES ('s', 'pdf', 'Dispense', 'ready', 1, 1);
+    INSERT INTO passages (rowid, id, source_id, text, section_path, created_at) VALUES
+      (1, 'ps1', 's', 'Per parlare di limiti in più variabili serve una distanza.', '2.1 Intorni', 1),
+      (2, 'ps2', 's', 'Un insieme è aperto se ogni punto ha un intorno contenuto.', '2.2 Aperti e chiusi', 2);
+    INSERT INTO topic_passages (topic_id, passage_id) VALUES ('t1', 'ps1'), ('t1', 'ps2');
+    INSERT INTO items (id, plan_id, topic_id, kind, body_json, engine_provider, model_id, model_source,
+        prompt_template, prompt_version, grounding, created_at) VALUES
+      ('lesson', 'p', 't1', 'lesson',
+        '{"cacheKey":"{\\"kind\\":\\"lesson\\"}","markdown":"## Intorni\\n\\nTesto.","passageIds":["ps1","ps2"],"figures":{"f1":"data:image/png;base64,AA=="}}',
+        'claude', 'm', 'reported', 'lesson.write', 'smart-4', 'sources', 10),
+      ('book', 'p', 't2', 'lesson', '{"cacheKey":"book","markdown":"Testo del libro.","passageIds":[]}',
+        NULL, NULL, NULL, NULL, NULL, 'sources', 11),
+      ('quiz', 'p', 't1', 'quiz', '{"questions":[{"id":"q1","stem":"?"}]}', NULL, NULL, NULL, NULL, NULL, 'sources', 12);
+    INSERT INTO item_passages (item_id, passage_id) VALUES ('lesson', 'ps1'), ('lesson', 'ps2');
+    INSERT INTO attempts (id, plan_id, item_id, started_at, submitted_at) VALUES ('a', 'p', 'quiz', 20, 21);
+    INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES ('c', 'p', 't1', 'Intorno?', 'Una palla', 30);
+    INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES ('r', 'c', 'good', '{"dueAt":5}', 31);
+    INSERT INTO learning_events (id, kind, plan_id, topic_id, item_id, payload_json, created_at) VALUES
+      ('e1', 'lesson_opened', 'p', 't1', 'lesson', '{}', 40),
+      ('e2', 'answer_given', 'p', 't1', 'lesson', '{"score":1,"evidenceKind":"check","blockId":"b1","pick":0}', 41),
+      ('e3', 'answer_given', 'p', 't1', 'lesson', '{"score":0,"evidenceKind":"check","blockId":"recap-1","pick":2}', 42),
+      ('e4', 'lesson_completed', 'p', 't1', NULL, '{"activity":"lesson","itemId":"lesson"}', 43),
+      ('e5', 'card_rated', 'p', 't1', NULL, '{"score":1,"cardId":"c"}', 44);
+  `);
+}
+
+/** Every row of the tables the lesson reader, the path and progress read, in a stable order. */
+const lessonSnapshot = (db: Database.Database) =>
+  Object.fromEntries(
+    ["plans", "topics", "passages", "topic_passages", "items", "item_passages", "attempts", "cards", "card_reviews", "learning_events"].map(
+      (table) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() as Array<Record<string, unknown>>],
+    ),
+  );
+
+/** The schema objects one table owns, by name and SQL. */
+const objectsOf = (db: Database.Database, tables: string[]) =>
+  db
+    .prepare(
+      `SELECT type, name, sql FROM sqlite_master WHERE tbl_name IN (${tables.map(() => "?").join(",")}) ORDER BY type, name`,
+    )
+    .all(...tables) as Array<{ type: string; name: string; sql: string | null }>;
+
+const PART_OBJECTS = [
+  { type: "index", name: "lesson_outlines_live" },
+  { type: "index", name: "lesson_outlines_plan" },
+  { type: "index", name: "lesson_outlines_replaces" },
+  { type: "index", name: "lesson_outlines_topic" },
+  { type: "index", name: "lesson_parts_item" },
+  { type: "index", name: "sqlite_autoindex_lesson_outlines_1" },
+  { type: "index", name: "sqlite_autoindex_lesson_parts_1" },
+  { type: "index", name: "sqlite_autoindex_lesson_parts_2" },
+  { type: "table", name: "lesson_outlines" },
+  { type: "table", name: "lesson_parts" },
+];
+
+describe("lesson outlines and parts (migration 32)", () => {
+  it("creates both tables and their indexes once on a new workspace, and a second run changes nothing", () => {
+    const db = tempDb();
+    expect(db.pragma("user_version", { simple: true })).toBe(32);
+    const objects = objectsOf(db, ["lesson_outlines", "lesson_parts"]);
+    expect(objects.map(({ type, name }) => ({ type, name }))).toEqual(PART_OBJECTS);
+    migrate(db);
+    expect(objectsOf(db, ["lesson_outlines", "lesson_parts"])).toEqual(objects);
+    expect(db.pragma("user_version", { simple: true })).toBe(32);
+  });
+
+  // Each version is built by running the real steps up to it: 1 is the first release, 23 is 0.4.x, 26 0.5.0-dev.7,
+  // 29 dev.8, 30 dev.9 and 31 the version dev.10 ships with.
+  for (const version of [1, 15, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31])
+    it(`upgrades a workspace at version ${version} with every lesson, answer, step and flashcard as it was`, () => {
+      const { db, file } = workspaceAt(version);
+      expect(db.prepare("SELECT COUNT(*) FROM sqlite_master WHERE name LIKE 'lesson_%'").pluck().get()).toBe(0);
+      seedLessonWork(db);
+      db.close();
+      // The same workspace taken to 31 without this step is what every row must still read as.
+      const reference = workspaceAt(version);
+      seedLessonWork(reference.db);
+      migrate(reference.db, 31);
+      const before = lessonSnapshot(reference.db);
+      reference.db.close();
+
+      const again = openDatabase(file);
+      opened.push(again);
+      expect(again.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+      expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+      expect(again.pragma("foreign_key_check")).toEqual([]);
+      expect(lessonSnapshot(again)).toEqual(before);
+      expect(again.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(0);
+      expect(again.prepare("SELECT COUNT(*) FROM lesson_parts").pluck().get()).toBe(0);
+      const objects = objectsOf(again, ["lesson_outlines", "lesson_parts"]);
+      expect(objects.map(({ type, name }) => ({ type, name }))).toEqual(PART_OBJECTS);
+
+      // Opening it again runs no step: same version, same schema, same rows.
+      again.close();
+      opened.pop();
+      const third = openDatabase(file);
+      opened.push(third);
+      migrate(third);
+      expect(third.pragma("user_version", { simple: true })).toBe(SCHEMA_VERSION);
+      expect(objectsOf(third, ["lesson_outlines", "lesson_parts"])).toEqual(objects);
+      expect(lessonSnapshot(third)).toEqual(before);
+    });
+
+  it("keeps one live outline per topic, parts in positions, and lets a source go whatever an unwritten part lists", () => {
+    const db = tempDb();
+    seedLessonWork(db);
+    const outline = (id: string, topic: string, retired: number | null) =>
+      db
+        .prepare(
+          "INSERT INTO lesson_outlines (id, plan_id, topic_id, passage_key, origin, created_at, retired_at) VALUES (?, 'p', ?, 'k', 'model', 1, ?)",
+        )
+        .run(id, topic, retired);
+    const part = (id: string, outlineId: string, position: number, extra: Partial<Record<string, unknown>> = {}) =>
+      db
+        .prepare(
+          `INSERT INTO lesson_parts (id, outline_id, position, kind, title, passage_ids_json, minutes, item_id)
+           VALUES (@id, @outline, @position, @kind, @title, @passages, @minutes, @item)`,
+        )
+        .run({
+          id,
+          outline: outlineId,
+          position,
+          kind: "part",
+          title: "Intorni",
+          passages: '["ps1"]',
+          minutes: 6,
+          item: null,
+          ...extra,
+        });
+    outline("o1", "t1", null);
+    // A second live outline on the same topic is refused; a retired one beside it is fine.
+    expect(() => outline("o2", "t1", null)).toThrow(/UNIQUE/);
+    outline("old", "t1", 5);
+    outline("o3", "t2", null);
+    db.prepare("UPDATE lesson_outlines SET replaces_item_id = 'book' WHERE id = 'o3'").run();
+    part("a", "o1", 1, { item: "lesson" });
+    part("b", "o1", 2);
+    expect(() => part("c", "o1", 2)).toThrow(/UNIQUE/);
+    expect(() => part("d", "o1", 0)).toThrow(/CHECK/);
+    expect(() => part("e", "o1", 3, { kind: "summary" })).toThrow(/CHECK/);
+    expect(() => part("f", "o1", 3, { minutes: 0 })).toThrow(/CHECK/);
+    expect(() => part("g", "o1", 3, { minutes: 31 })).toThrow(/CHECK/);
+    expect(() => part("h", "o1", 3, { passages: "[ps1" })).toThrow(/CHECK/);
+    part("r", "o1", 3, { kind: "recap", title: "Ripasso del capitolo", passages: "[]", minutes: 4 });
+    // A part remembers that its last write failed or was cancelled until a write succeeds: a time, empty by default.
+    expect(db.prepare("SELECT write_failed_at FROM lesson_parts WHERE id = 'b'").pluck().get()).toBeNull();
+    db.prepare("UPDATE lesson_parts SET write_failed_at = 1800000000000 WHERE id = 'b'").run();
+    expect(db.prepare("SELECT write_failed_at FROM lesson_parts WHERE id = 'b'").pluck().get()).toBe(1800000000000);
+    expect(() => db.prepare("UPDATE lesson_parts SET write_failed_at = 'ieri' WHERE id = 'b'").run()).toThrow(/CHECK/);
+    expect(() => db.prepare("UPDATE lesson_parts SET write_failed_at = 1.5 WHERE id = 'b'").run()).toThrow(/CHECK/);
+    db.prepare("UPDATE lesson_parts SET write_failed_at = NULL WHERE id = 'b'").run();
+    expect(() =>
+      db.prepare("UPDATE lesson_outlines SET origin = 'guessed' WHERE id = 'o3'").run(),
+    ).toThrow(/CHECK/);
+
+    // Deleting a written part's item leaves the part, unwritten.
+    db.prepare("DELETE FROM learning_events WHERE item_id = 'lesson'").run();
+    db.prepare("DELETE FROM item_passages WHERE item_id = 'lesson'").run();
+    db.prepare("DELETE FROM items WHERE id = 'lesson'").run();
+    expect(db.prepare("SELECT item_id FROM lesson_parts WHERE id = 'a'").pluck().get()).toBeNull();
+    // Deleting the old lesson an outline replaced keeps the outline.
+    db.prepare("DELETE FROM items WHERE id = 'book'").run();
+    expect(db.prepare("SELECT replaces_item_id FROM lesson_outlines WHERE id = 'o3'").pluck().get()).toBeNull();
+    // The parts list passages as JSON, so removing the passages and their source is not blocked by them.
+    db.prepare("DELETE FROM topic_passages").run();
+    db.prepare("DELETE FROM passages").run();
+    db.prepare("DELETE FROM sources").run();
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_parts").pluck().get()).toBe(3);
+    // A topic takes its outlines and their parts with it, and a plan takes the rest.
+    db.prepare("DELETE FROM topics WHERE id = 't1'").run();
+    expect(db.prepare("SELECT id FROM lesson_outlines").pluck().all()).toEqual(["o3"]);
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_parts").pluck().get()).toBe(0);
+    db.prepare("DELETE FROM plans WHERE id = 'p'").run();
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(0);
+    expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
 });
