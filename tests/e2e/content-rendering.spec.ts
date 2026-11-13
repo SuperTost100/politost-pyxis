@@ -277,7 +277,7 @@ test("book text and model LaTeX reach the student clean: path row, lesson, sourc
     // The menu follows what is on top. A source opened over the flashcard dialog (from a citation in it) has a working
     // menu, while the lesson text behind the dialog has none.
     await page.keyboard.press("Escape");
-    await expect(page.locator(".ant-drawer-open")).toHaveCount(0);
+    await expect(page.locator("aside.source-panel")).toHaveCount(0);
     await page.evaluate(
       ({ planId, topicId }) => {
         location.hash = `/plans/${planId}/lesson/${topicId}`;

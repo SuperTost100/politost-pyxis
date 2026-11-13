@@ -36,6 +36,7 @@ import { PASTE_MIN } from "./paste";
 import { listImportable, MAX_FOLDER_FILES } from "./folder";
 import { checkLinkPath, linkedFolders } from "./linked";
 import { linkedFile } from "./linked-file";
+import { panelPage, panelSource, readOriginal } from "./panel";
 import { markForSorting, moveSource, registerLibrarySort, sortingNow, sortView, startLibrarySort } from "./library-subjects";
 import { watchFolder } from "./linked-watch";
 import type { LinkMode } from "../../shared/linked-folders";
@@ -915,6 +916,23 @@ export function sourceHandlers(
           ? row.locator.paragraph === input.paragraph
           : false,
       }));
+    },
+    panel(input: { sourceId?: string; passageId?: string }) {
+      return panelSource(db, workspace, input);
+    },
+    panelPage(input: { sourceId?: string; passageId?: string; unit: "page" | "slide"; n: number }) {
+      return panelPage(db, input);
+    },
+    async readOriginal(input: { sourceId?: string; passageId?: string; start: number; length: number }) {
+      try {
+        return await readOriginal(db, workspace, input);
+      } catch (err) {
+        // A file gone between the check and the read is missing too. The panel shows its missing state on this code.
+        const code = (err as NodeJS.ErrnoException | null)?.code;
+        if ((err instanceof Error && err.message === "source-file-missing") || code === "ENOENT")
+          throw new IpcError("source-file-missing", "sources.fileMissing", {}, "source-file-missing");
+        sourceError(err);
+      }
     },
   };
 }

@@ -63,6 +63,8 @@ import {
   Undo2,
   Redo2,
   Download,
+  ExternalLink,
+  Lock,
   Pencil,
   Archive,
   ArrowRight,
@@ -141,6 +143,8 @@ export type IconName =
   | "undo-2"
   | "redo-2"
   | "download"
+  | "external-link"
+  | "lock"
   | "pencil"
   | "archive"
   | "arrow-right"
@@ -216,6 +220,8 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   "undo-2": Undo2,
   "redo-2": Redo2,
   download: Download,
+  "external-link": ExternalLink,
+  lock: Lock,
   pencil: Pencil,
   archive: Archive,
   "arrow-right": ArrowRight,
