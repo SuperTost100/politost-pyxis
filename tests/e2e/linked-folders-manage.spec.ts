@@ -174,8 +174,11 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await dots(page, folders.analisi).click();
     await page.getByRole("menuitem", { name: /^Mostra (nel Finder|in Esplora file|nel gestore dei file)$/ }).click();
     expect(await page.evaluate(() => window.pyxis.revealLinkedFolder("not-a-folder"))).toBe(false);
-    // Pyxis keeps a folder by its real path, so a temporary folder behind a link (macOS's /var is /private/var) opens there.
-    expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened)).toEqual([realpathSync(folders.analisi)]);
+    // Pyxis keeps a folder by its real path, as the system resolves it (`realpathSync.native`): a temporary folder behind a
+    // link (macOS's /var is /private/var) or under a short name (Windows's RUNNER~1) opens at its full real path.
+    expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened)).toEqual([
+      realpathSync.native(folders.analisi),
+    ]);
 
     // A folder renamed on disk: the list says so, and Trova la cartella… points it at where it went.
     const moved = join(folders.base, "Analisi 1");

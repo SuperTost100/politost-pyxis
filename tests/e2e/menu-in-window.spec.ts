@@ -134,8 +134,12 @@ async function coverInCorner(page: Page, covers: Locator): Promise<number> {
     await expect.poll(async () => (await layout()).right).toBeGreaterThan(found.right);
   }
   const { index } = await layout();
-  // The cover's foot plus the shelf card's own padding below it.
-  const bottom = await covers.nth(index).evaluate((node) => node.getBoundingClientRect().bottom);
+  // The reload before this restores the scroll position the flashcards left, and on a slow runner that lands once the
+  // covers are drawn: the cover is measured once it is at rest, on the page rather than in the window, so where the page
+  // is scrolled does not count. Its foot plus the shelf card's own padding below it.
+  const cover = covers.nth(index);
+  await atRest(cover);
+  const bottom = await cover.evaluate((node) => node.getBoundingClientRect().bottom + scrollY);
   const now = page.viewportSize()!;
   const height = Math.ceil(bottom) + 48;
   if (height < now.height) {

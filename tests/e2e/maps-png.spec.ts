@@ -61,18 +61,22 @@ async function mapAtRest(page: Page) {
 
 /**
  * Reads what the page draws, in the canvas's own CSS pixels. Only the part of the canvas inside the window counts: the
- * export saves what the student sees, and at 200% the foot of the canvas can lie below the window's edge, as it does in
- * the shorter window of a Mac runner.
+ * export saves what the student sees, and the canvas can run past the window's edge: below it at 200% in the shorter
+ * window of a Mac runner, past its right side in the narrower one of a Windows runner. Each link is looked for at nine
+ * points along it, so a small window still leaves enough of them in the open.
  */
 function readProbes(page: Page): Promise<Probes> {
   return page.evaluate(() => {
     const canvas = document.querySelector<HTMLElement>(".px-map-canvas")!;
     const box = canvas.getBoundingClientRect();
+    // The window's own size in CSS pixels, unrounded: at 200% a window 689 pixels tall shows 344.5 of them, and
+    // `innerHeight` says 344.
+    const view = visualViewport!;
     const at = DOMRect.fromRect({
       x: Math.max(0, box.left),
       y: Math.max(0, box.top),
-      width: Math.min(innerWidth, box.right) - Math.max(0, box.left),
-      height: Math.min(innerHeight, box.bottom) - Math.max(0, box.top),
+      width: Math.min(view.width, box.right) - Math.max(0, box.left),
+      height: Math.min(view.height, box.bottom) - Math.max(0, box.top),
     });
     const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number) as [number, number, number];
     const inside = (box: DOMRect, x: number, y: number, margin: number) =>
@@ -85,7 +89,7 @@ function readProbes(page: Page): Promise<Probes> {
     for (const path of paths) {
       const length = path.getTotalLength();
       const matrix = path.getScreenCTM()!;
-      for (const share of [0.2, 0.4, 0.6, 0.8]) {
+      for (const share of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) {
         const local = path.getPointAtLength(length * share);
         const x = matrix.a * local.x + matrix.c * local.y + matrix.e;
         const y = matrix.b * local.x + matrix.d * local.y + matrix.f;
@@ -326,8 +330,8 @@ async function plainCanvas(page: Page) {
       return {
         x: left,
         y: top,
-        width: Math.ceil(Math.min(innerWidth, box.right) * zoom - 1e-6) - left,
-        height: Math.ceil(Math.min(innerHeight, box.bottom) * zoom - 1e-6) - top,
+        width: Math.ceil(Math.min(window.visualViewport!.width, box.right) * zoom - 1e-6) - left,
+        height: Math.ceil(Math.min(window.visualViewport!.height, box.bottom) * zoom - 1e-6) - top,
         scale: Math.round((devicePixelRatio / zoom) * 1000) / 1000,
       };
     }, zoom);

@@ -19,6 +19,7 @@ import { expectNoAxeViolations } from "./axe";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { atRest } from "./settled";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -351,11 +352,16 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         },
         { language, theme },
       );
+      // The window itself takes the size, not an emulated viewport: the export takes the window's pixels, and a viewport
+      // wider or taller than the window (a Windows runner's screen is 1024 pixels wide) lays out a canvas it cannot show.
+      await app.evaluate(({ BrowserWindow }, [width, height]) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, height);
+      }, [width, width === 960 ? 640 : 800] as const);
       await page.reload();
-      await page.setViewportSize({ width, height: width === 960 ? 640 : 800 });
       await expect(page.locator(".react-flow__node")).toHaveCount(
         initial.nodes.length,
       );
+      await atRest(page.locator(".px-map-canvas"));
       await saveShot(page, `m10-map-${language}-${theme}-${width}.png`);
       await expectNoAxeViolations(page);
       rmSync(output, { force: true });
@@ -379,11 +385,18 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         copyFileSync(output, join(SHOTS, `m10-export-${language}-${theme}-${width}.png`));
       }
       const png = readPng()!;
-      const bounds = await page.locator(".px-map-canvas").boundingBox();
-      // The canvas's size times the window's pixel ratio; a canvas on a half pixel is saved with its outer pixels.
+      // The size of the canvas's part inside the window, which is what the student sees and the picture holds, times the
+      // window's pixel ratio; a canvas on a half pixel is saved with its outer pixels.
+      const bounds = await page.locator(".px-map-canvas").evaluate((canvas) => {
+        const box = canvas.getBoundingClientRect();
+        return {
+          width: Math.min(visualViewport!.width, box.right) - Math.max(0, box.left),
+          height: Math.min(visualViewport!.height, box.bottom) - Math.max(0, box.top),
+        };
+      });
       const ratio = await page.evaluate(() => devicePixelRatio);
-      expect(Math.abs(png.width - bounds!.width * ratio)).toBeLessThan(2 * ratio);
-      expect(Math.abs(png.height - bounds!.height * ratio)).toBeLessThan(2 * ratio);
+      expect(Math.abs(png.width - bounds.width * ratio)).toBeLessThan(2 * ratio);
+      expect(Math.abs(png.height - bounds.height * ratio)).toBeLessThan(2 * ratio);
       const color = await page
         .locator(".px-map-canvas")
         .evaluate((el) => getComputedStyle(el).backgroundColor);

@@ -171,9 +171,12 @@ test("a citation in a chat opens the panel at the cited page with the passage ma
     ).toBe("rgba(0, 0, 0, 0)");
     // The cited passage is there as text for a screen reader.
     await expect(sheet.getByText(/Brano citato in questa pagina: Il percorso inverso/)).toBeAttached();
-    // The page behind stays usable beside the panel: the second citation moves the panel, it does not stack.
+    // The page behind stays usable: the second citation moves the panel, it does not stack. Below 1180 pixels the panel
+    // lies over the page's right side (a Windows runner's window is 1024 wide) and can cover the citation, which the
+    // keyboard still reaches, so the citation is opened from the keyboard.
     const second = reply.locator(".px-cite").nth(1);
-    await second.click();
+    await second.focus();
+    await page.keyboard.press("Enter");
     await expect(sheet).toHaveCount(1);
     await expect(sheet.getByRole("heading", { name: "Appunti, lezioni 1-9" })).toBeVisible();
     await expect(sheet.locator(".source-viewer-paragraph.is-current")).toContainText("Un integrale doppio");
@@ -222,8 +225,10 @@ test("a picture larger than one read draws, and a linked file moved while its pa
     expect(Number(await sheet.locator(".source-pdf").getAttribute("data-bytes-read"))).toBeGreaterThan(FIGURE_BYTES);
     await expect(sheet.locator(".source-page-working")).toHaveCount(0);
 
-    // A linked file, open at its first page, then moved out of its folder (a move inside it is followed).
-    await page.getByRole("button", { name: "Esercizi svolti", exact: true }).click();
+    // A linked file, open at its first page, then moved out of its folder (a move inside it is followed). Its cover can
+    // lie under the open panel in a narrow window, so it is opened from the keyboard.
+    await page.getByRole("button", { name: "Esercizi svolti", exact: true }).focus();
+    await page.keyboard.press("Enter");
     await expect(sheet.getByRole("group", { name: "Pagina 1 di 40" })).toHaveAttribute("aria-busy", "false");
     renameSync(linkedPath, join(userData, "Esercizi svolti.pdf"));
     // Page 20 lies in the middle of the file, in bytes not read yet (the last pages sit next to the cross-reference
