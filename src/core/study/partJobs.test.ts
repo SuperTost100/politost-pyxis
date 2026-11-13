@@ -252,6 +252,64 @@ describe("one part ahead", () => {
     expect(written(db)).toEqual([1, 2]);
   });
 
+  /** Part 1 written, then part 2 stopped by `stop`, its job dismissed from Attività, and part 1 read again. */
+  async function dismissedAhead(stop: (setup: ReturnType<typeof setUp>) => Promise<void>) {
+    const setup = setUp(6);
+    const { db, runner } = setup;
+    ensurePart(db, runner, at(1));
+    await settle(db);
+    await stop(setup);
+    const mark = liveOutline(db, "t")!.parts[1]!.writeFailedAt;
+    expect(mark).toEqual(expect.any(Number));
+    const [job] = runner.list().filter((view) => view.ref === "t:2");
+    runner.dismiss(job!.id);
+    expect(jobs(db)).toEqual(["1:succeeded"]);
+    for (let read = 0; read < 3; read++) {
+      expect(openPart(db, runner, at(1))).toMatchObject({ state: "written", next: { position: 2, state: "failed" } });
+      ensureAhead(db, runner, at(1));
+    }
+    expect(jobs(db)).toEqual(["1:succeeded"]);
+    expect(topicParts(db, { planId: "p", topicId: "t" }).outline!.parts[1]).toMatchObject({ state: "failed" });
+    expect(openPart(db, runner, at(2))).toMatchObject({ state: "failed", error: null, lesson: null });
+    expect(jobs(db)).toEqual(["1:succeeded"]);
+    return setup;
+  }
+
+  /** The student asks for the part again: it is written, and its mark is cleared from the ask on. */
+  async function askAgain({ db, runner, engine }: ReturnType<typeof setUp>) {
+    engine.fail("2", null);
+    expect(openPart(db, runner, { ...at(2), write: true })).toMatchObject({ state: "writing" });
+    expect(jobs(db)).toEqual(["1:succeeded", "2:queued"]);
+    expect(liveOutline(db, "t")!.parts[1]!.writeFailedAt).toBeNull();
+    await settle(db);
+    expect(written(db)).toEqual([1, 2]);
+    expect(liveOutline(db, "t")!.parts[1]!.writeFailedAt).toBeNull();
+  }
+
+  it("keeps a failed part ahead waiting for the student after its job is dismissed", async () => {
+    const setup = await dismissedAhead(async ({ db, runner, engine }) => {
+      engine.fail("2", new IpcError("quota", "engines.errors.quota", { provider: "claude" }, "limit"));
+      ensureAhead(db, runner, at(1));
+      await settle(db);
+      expect(jobs(db)).toEqual(["1:succeeded", "2:failed"]);
+    });
+    await askAgain(setup);
+  });
+
+  it("keeps a cancelled part ahead waiting for the student after its job is dismissed", async () => {
+    const setup = await dismissedAhead(async ({ db, runner, engine }) => {
+      const release = engine.hold("2");
+      ensureAhead(db, runner, at(1));
+      await settle(db, () => engine.parts().includes("2"));
+      const [job] = runner.list().filter((view) => view.ref === "t:2");
+      runner.cancel(job!.id);
+      release();
+      await settle(db);
+      expect(jobs(db)).toEqual(["1:succeeded", "2:cancelled"]);
+    });
+    await askAgain(setup);
+  });
+
   it("starts nothing after the last part, nor ahead of a topic of one part", async () => {
     const one = setUp(1, 3_000);
     openPart(one.db, one.runner, { ...at(1), write: true });
@@ -373,9 +431,12 @@ describe("a part that is not finished leaves nothing half-saved", () => {
 
     const second = setUp(6, undefined, path);
     expect(jobs(second.db)).toEqual(["1:succeeded", "2:interrupted"]);
+    // A quit is an interruption to resume, not a failure: the part carries no mark, and the part before resumes it.
+    expect(liveOutline(second.db, "t")!.parts[1]!.writeFailedAt).toBeNull();
     expect(counts(second.db)).toEqual(before);
     expect(written(second.db)).toEqual([1]);
-    openPart(second.db, second.runner, { ...at(2), write: true });
+    openPart(second.db, second.runner, at(1));
+    expect(jobs(second.db)).toEqual(["1:succeeded", "2:queued"]);
     await settle(second.db);
     expect(jobs(second.db)).toEqual(["1:succeeded", "2:succeeded"]);
     expect(written(second.db)).toEqual([1, 2]);

@@ -1030,7 +1030,7 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
       grounding: grounded ? "sources" : "general",
       figures,
     });
-    db.prepare("UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = ? WHERE id = ?").run(
+    db.prepare("UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = ?, write_failed_at = NULL WHERE id = ?").run(
       itemId,
       summary,
       minutes,
