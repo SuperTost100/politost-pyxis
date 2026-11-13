@@ -60,7 +60,8 @@ export function MenuCommands() {
       window.pyxis.onOpenPath((path) => {
         const pathname = router.state.location.pathname;
         if (!menuCommandAllowed("exams", readMenuContext(pathname))) return;
-        if (path !== pathname) void router.navigate(path);
+        // A reminder comes from outside the app: its page goes back to its parent, not to the page under it (history.ts).
+        if (path !== pathname) void router.navigate(path, { state: { via: "outside" } });
       }),
     [],
   );

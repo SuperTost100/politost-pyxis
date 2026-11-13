@@ -10,6 +10,7 @@ import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { cardOffer } from "./reviewOffer";
 import { StudyLayout } from "./StudyBar";
 import { usePlan, useRecommend } from "../../lib/queries";
+import { usePlace } from "../../app/usePlace";
 
 const COUNTS = [5, 10, 20];
 
@@ -48,6 +49,7 @@ export function ReviewPage() {
   const from = useSearchParams()[0].get("from") ?? undefined;
   const saved = useReviewSession(planId);
   const plan = usePlan(planId);
+  const back = usePlace({ parent: plan.data ? { name: { text: plan.data.title } } : undefined });
   const guide = useRecommend(planId);
   const start = useMutation({
     mutationFn: () => invoke("study.review", { planId, count, fromAttemptId: from }),
@@ -118,11 +120,7 @@ export function ReviewPage() {
       ];
   return (
     <StudyLayout
-      back={{
-        text: plan.data?.title ?? t("lesson.back"),
-        label: plan.data ? t("lesson.back") : undefined,
-        onClick: () => navigate(`/plans/${planId}`),
-      }}
+      back={back}
       title={t("cards.reviewTitle")}
       subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
     >
@@ -153,7 +151,7 @@ export function ReviewPage() {
         starting={start.isPending}
         disabled={active?.next === "waiting"}
         onStart={() => (active ? go(active) : start.mutate())}
-        onBack={() => navigate(`/plans/${planId}`)}
+        onBack={() => back?.go()}
       >
         {start.isError ? <Notice tone="danger">{t("cards.reviewFailed")}</Notice> : null}
         {empty ? <Notice tone="info">{t("cards.reviewEmpty")}</Notice> : null}

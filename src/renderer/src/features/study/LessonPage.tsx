@@ -2,8 +2,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { usePlace, type BackTarget } from "../../app/usePlace";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
+import { usePlan } from "../../lib/queries";
 import { useStillHere } from "../../lib/useStillHere";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { LegacyLessonPage } from "./LegacyLessonPage";
@@ -38,18 +40,25 @@ export function LessonPage() {
   // next page is still being drawn or loaded: the address is then no longer this page's to name.
   const opened = addressPart(query.data, { position, itemId }, fresh);
   const stillHere = useStillHere();
+  // Every state of the lesson has the same way back, and the page goes by its topic elsewhere.
+  const plan = usePlan(planId);
+  const topic = plan.data?.topics.find((item) => item.id === topicId)?.title;
+  const back = usePlace({
+    name: topic ? { text: topic } : null,
+    parent: plan.data ? { name: { text: plan.data.title } } : undefined,
+  });
   useEffect(() => {
     if (opened && stillHere()) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
   }, [opened, planId, topicId, navigate, stillHere]);
   const choosing = !position && !itemId && !fresh && !query.isError;
   const key = partKey(planId, topicId, position, itemId);
   if (query.data?.mode === "parts" && !choosing && query.data.replaces && oldLessonView(query.data) === "fallback")
-    return <RewriteFallback planId={planId} topicId={topicId} data={query.data} queryKey={key} />;
+    return <RewriteFallback planId={planId} topicId={topicId} data={query.data} queryKey={key} back={back} />;
   if (query.data?.mode === "parts" && !choosing)
-    return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} />;
+    return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} back={back} />;
   if ((query.data?.mode === "legacy" && !choosing) || query.isError)
-    return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} />;
-  return <PartLoading planId={planId} topicId={topicId} />;
+    return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} back={back} />;
+  return <PartLoading planId={planId} topicId={topicId} back={back} />;
 }
 
 /**
@@ -62,11 +71,13 @@ function RewriteFallback({
   topicId,
   data,
   queryKey,
+  back,
 }: {
   planId: string;
   topicId: string;
   data: PartData;
   queryKey: readonly unknown[];
+  back: BackTarget | null;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -84,6 +95,7 @@ function RewriteFallback({
   const engine = key && key.startsWith("engines.errors.") ? describeEngineError(key, jobErrorEngine(error)) : undefined;
   return (
     <LegacyLessonPage
+      back={back}
       itemId={data.replaces!.itemId}
       notice={{
         text: engine ? `${t("lesson.oldRewriteFailed")} ${engine.text}` : t("lesson.oldRewriteFailed"),

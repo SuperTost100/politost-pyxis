@@ -12,6 +12,7 @@ import { JobsButton } from "../jobs/JobsButton";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar, type StudyTitleMenu } from "./StudyBar";
+import type { BackTarget } from "../../app/usePlace";
 import { recommendQuery } from "../../lib/queries";
 import { renderedText, wordCount } from "../../lib/renderedText";
 
@@ -62,11 +63,9 @@ function PartTitle({ part }: { part: Part }) {
 export function ReaderLayout({
   eyebrow,
   title,
-  backLabel,
-  backText,
+  back,
   barTitle,
   barSubtitle,
-  onBack,
   actions,
   outline = false,
   side,
@@ -80,14 +79,11 @@ export function ReaderLayout({
   eyebrow?: ReactNode;
   /** The sheet's heading: text, or a part's title drawn with its formulas. */
   title: ReactNode;
-  /** The back button's name. With `backText` it is read before that text. */
-  backLabel: string;
-  /** Shown beside the back arrow, as the exam's name; until it is known the arrow shows `backLabel`. */
-  backText?: string;
+  /** The page's way back (`usePlace`). */
+  back: BackTarget | null;
   /** The page's name in the bar, over `barSubtitle`. */
   barTitle: string;
   barSubtitle?: string;
-  onBack: () => void;
   actions?: ReactNode;
   outline?: boolean;
   /** Drawn in the outline's column, which hides under 1,100 px, such as a lesson's parts. */
@@ -187,7 +183,7 @@ export function ReaderLayout({
       <StudyBar
         className={`px-reader-bar${scrolled ? " is-scrolled" : ""}`}
         heading={false}
-        back={backText ? { text: backText, label: backLabel, onClick: onBack } : { text: backLabel, onClick: onBack }}
+        back={back}
         title={barTitle}
         subtitle={barSubtitle}
         titleMenu={barMenu}

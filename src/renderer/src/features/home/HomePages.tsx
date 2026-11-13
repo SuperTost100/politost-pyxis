@@ -5,7 +5,8 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
-import { BackLink } from "../../components/BackLink";
+import { BackControl } from "../../components/BackControl";
+import { usePlace } from "../../app/usePlace";
 import { Notice } from "../../components/Notice";
 import { ToolbarMenu } from "../../components/ListToolbar";
 import type { PlanFile } from "@shared/plan-file";
@@ -108,25 +109,16 @@ function ExamsListPage() {
 }
 
 /**
- * A page that was a tab of Esami: its title, and the way back when it is not a sidebar section: to the exams, or to the
- * page that opened it (`back` names it).
+ * A page that was a tab of Esami: its way back, to the page that opened it or to its parent, and its title. With
+ * `?exam=<id>` the parent is that exam, named by its title.
  */
-function SubPage({
-  title,
-  back,
-  children,
-}: {
-  title: string;
-  back?: boolean | { to: string; text: string };
-  children: ReactNode;
-}) {
-  const { t } = useTranslation();
-  const to = typeof back === "object" ? back : { to: "/exams", text: t("doors.exams") };
+function SubPage({ title, children }: { title: string; children: ReactNode }) {
+  const exam = useSearchParams()[0].get("exam") ?? undefined;
+  const plan = usePlan(exam);
+  const back = usePlace({ parent: plan.data ? { name: { text: plan.data.title } } : undefined });
   return (
     <div>
-      {back ? (
-        <BackLink to={to.to}>{to.text}</BackLink>
-      ) : null}
+      <BackControl target={back} variant="page" />
       <h1 className="title-1 px-subpage-title">{title}</h1>
       {children}
     </div>
@@ -140,14 +132,10 @@ function LibraryHome() {
 
 function CardsHome() {
   const { t } = useTranslation();
-  // Opened from an exam's page (`?exam=<id>`): filtered to that exam, and the way back returns to it.
+  // Opened from an exam's page (`?exam=<id>`): filtered to that exam.
   const exam = useSearchParams()[0].get("exam") ?? undefined;
-  const plan = usePlan(exam);
   return (
-    <SubPage
-      title={t("exams.allCards")}
-      back={exam ? { to: `/plans/${exam}`, text: plan.data?.title ?? t("lesson.back") } : true}
-    >
+    <SubPage title={t("exams.allCards")}>
       <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
         <CardBrowser planId={exam} />
       </Suspense>
@@ -158,7 +146,7 @@ function CardsHome() {
 function MistakesHome() {
   const { t } = useTranslation();
   return (
-    <SubPage title={t("mistakes.title")} back>
+    <SubPage title={t("mistakes.title")}>
       <Suspense fallback={<SkeletonRows label={t("components.loading")} />}>
         <MistakesNotebook />
       </Suspense>

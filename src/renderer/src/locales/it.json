@@ -14,8 +14,13 @@
     "library": "Libreria",
     "close": "Chiudi",
     "back": "Indietro",
-    "exams": "Esami",
     "toExams": "Torna a Esami"
+  },
+  "places": {
+    "backTo": "Torna a {{place}}",
+    "exam": "Esame",
+    "chat": "Chat",
+    "practice": "Esercizi"
   },
   "stepper": {
     "label": "Avanzamento",
@@ -1340,7 +1345,6 @@
     "flag": "Segnala",
     "flagged": "Segnalato",
     "generalNote": "Scritta con conoscenza generale, non dalle tue fonti.",
-    "back": "Torna all'esame",
     "level": "Livello",
     "more": "Altre azioni",
     "stop": "Interrompi",
@@ -1769,7 +1773,6 @@
     "answeredOn": "Le tue risposte del {{date}}",
     "answersNotShared": "Le risposte di questo tentativo non erano incluse nell'esame condiviso.",
     "verdictLow": "Ora sai cosa ripassare.",
-    "leave": "Esci, riprendi dopo",
     "sheet": {
       "title": "Domande",
       "given_one": "{{count}} di {{total}} data",
@@ -3440,7 +3443,6 @@
     "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli."
   },
   "examPage": {
-    "back": "Esame",
     "noDate": "Data da scegliere",
     "when": "{{label}} {{date}}",
     "whenToday": "{{label}} oggi",

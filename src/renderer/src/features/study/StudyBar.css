@@ -25,34 +25,6 @@ html[data-platform="darwin"] .px-studybar {
   -webkit-app-region: no-drag;
 }
 
-.px-studybar-back {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--ink-muted);
-  font: 500 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
-  cursor: pointer;
-  transition: background-color var(--duration-micro) var(--ease-out), color var(--duration-micro) var(--ease-out);
-}
-
-.px-studybar-back:hover {
-  background: var(--surface-raised);
-  color: var(--ink);
-}
-
-.px-studybar-back-text {
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .px-studybar-sep {
   flex: none;
   width: 1px;
@@ -180,12 +152,6 @@ html[data-platform="darwin"] .px-studybar {
   left: 0;
   height: 2px;
   background: var(--primary);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .px-studybar-back {
-    transition: none;
-  }
 }
 
 /* A wide study screen lays out its own columns right under the bar, as the quiz does. */
