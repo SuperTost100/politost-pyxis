@@ -3072,8 +3072,12 @@ async function openState(page: Page, name: string) {
       await auditApp!.evaluate((_, path) => {
         process.env.PYXIS_E2E_FILE = path;
       }, photo);
+      // Attaching lives in the composer's plus menu.
       await page
-        .getByRole("button", {
+        .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
+        .click();
+      await page
+        .getByRole("menuitem", {
           name: both("Allega file o immagine", "Attach file or image"),
         })
         .click();
