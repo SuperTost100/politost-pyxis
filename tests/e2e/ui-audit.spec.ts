@@ -454,7 +454,7 @@ Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
         passageIds: ["audit-passage"],
       }),
       markdown:
-        "## La dinamica\n\nLa seconda legge di Newton è $F=ma$ [P1].\n\n## Un esempio\n\nCon una massa di $2\\,kg$ e un’accelerazione di $3\\,m/s^2$,\n\n$$F=2\\cdot3=6\\,N.$$",
+        "## La dinamica\n\nLa seconda legge di Newton è $F=ma$ [P1].\n\n## Un esempio in $\\mathbb{R}^n$\n\nCon una massa di $2\\,kg$ e un’accelerazione di $3\\,m/s^2$,\n\n$$F=2\\cdot3=6\\,N.$$",
     }),
     1,
   );

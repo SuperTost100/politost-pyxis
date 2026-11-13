@@ -360,7 +360,20 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(continueButton(page)).toHaveText(/^Continua: (?!Lezione)/);
     await saveShot(page, "lesson-parts/recap-done-it-light.png");
 
-    // The part's menu opens from the dots and from a right-click on its head.
+    // The part's menu opens from the dots, by click, right-click and Shift+F10 as any lone three dots, and from a
+    // right-click on its head.
+    const dots = page.getByRole("button", { name: "Altre azioni" });
+    for (const open of [() => dots.click(), () => dots.click({ button: "right" }), async () => {
+      await dots.focus();
+      await page.keyboard.press("Shift+F10");
+    }]) {
+      await open();
+      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
+      await expect(dots).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(dots).toBeFocused();
+    }
     await page.getByRole("heading", { level: 1 }).click({ button: "right" });
     await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
     await page.keyboard.press("Escape");

@@ -1,13 +1,13 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Dropdown, Modal, type MenuProps } from "antd";
-import { Ellipsis, MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
+import { Button, Modal, type MenuProps } from "antd";
+import { MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
-import { MenuItemArea } from "../../components/ItemMenu";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
 import { ExportButton } from "../share/ExportButton";
@@ -846,18 +846,7 @@ export function CardsPage() {
               data-turn={phase ?? undefined}
             >
               <div className="px-card-top">
-                <Dropdown
-                  trigger={["click"]}
-                  disabled={ratingPending || editing}
-                  menu={cardMenu}
-                >
-                  <Button
-                    type="text"
-                    shape="circle"
-                    aria-label={t("cards.more")}
-                    icon={<Ellipsis size={18} strokeWidth={1.75} aria-hidden />}
-                  />
-                </Dropdown>
+                <MenuButton menu={cardMenu} label={t("cards.more")} disabled={ratingPending || editing} />
               </div>
               {editing ? (
                 <div className="px-card-edit">

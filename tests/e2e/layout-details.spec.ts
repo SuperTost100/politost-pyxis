@@ -9,6 +9,7 @@ import { seedPlan, seedSource } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { animationsSettled } from "./settled";
 
 const sizes = [
   { width: 1280, height: 800 },
@@ -212,6 +213,9 @@ test("LAYOUT-02 the source panel has its close beside the name and the way back 
           await expect(title).toHaveAttribute("title", /ingegneria_edile_e_dei_sistemi_territoriali_2026$/);
           await expect(viewer.getByRole("heading", { name: /ingegneria_edile_e_dei_sistemi_territoriali_2026$/ })).toBeVisible();
           await saveShot(page, `layout-details/viewer-long-${key}.png`);
+          // The panel fades in over 120 ms, and axe measures colours through its opacity: halfway in, the subtle line
+          // and the way back read as too faint.
+          await animationsSettled(page, viewer);
           await expectNoAxeViolations(page);
           await viewer.getByRole("button", { name: /^(Chiudi|Close)$/ }).click();
           await expect(viewer).toHaveCount(0);
@@ -221,6 +225,7 @@ test("LAYOUT-02 the source panel has its close beside the name and the way back 
             ),
           );
           await expect(viewer.getByText(/La forza è il prodotto/)).toBeVisible();
+          await animationsSettled(page, viewer);
           await expectNoAxeViolations(page);
           await close.click();
           await expect(viewer).toHaveCount(0);

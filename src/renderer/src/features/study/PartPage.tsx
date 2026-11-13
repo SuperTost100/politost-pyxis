@@ -396,7 +396,7 @@ export function PartPage({
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
       onBack={() => navigate(`/plans/${planId}`)}
-      actions={<MenuButton menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
+      actions={<MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
       sheetClassName="px-part-sheet"
     >
       {headMenu.popup}

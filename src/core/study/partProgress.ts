@@ -3,6 +3,7 @@ import { recordStep } from "../plans/steps";
 import { startOfDay } from "../../shared/local-day";
 import { parseSmartText, partQuestions } from "../../shared/smart-text";
 import { LIVE_OUTLINE_SQL, type OutlinePart } from "./parts";
+import { partTextSql } from "./partText";
 
 // Progress through a topic's lesson in parts: when a part is done, when that finishes the topic's lesson, and what the
 // planner, the path and mastery read from the parts. A topic without a live outline gets nothing from here, so it keeps
@@ -76,14 +77,13 @@ export type OutlineProgress = {
   /** Minutes of every part, and of the parts not done. */
   minutes: number;
   minutesLeft: number;
-  createdAt: number;
 };
 
 /** The live outline of each topic of the plan that has one. */
 export function outlineProgress(db: Database.Database, planId: string): Map<string, OutlineProgress> {
   const rows = db
     .prepare(
-      `SELECT o.topic_id AS topicId, o.created_at AS createdAt, COUNT(p.done_at) AS done,
+      `SELECT o.topic_id AS topicId, COUNT(p.done_at) AS done,
          COALESCE(SUM(p.minutes), 0) AS minutes,
          COALESCE(SUM(CASE WHEN p.done_at IS NULL THEN p.minutes ELSE 0 END), 0) AS minutesLeft
        FROM lesson_outlines o LEFT JOIN lesson_parts p ON p.outline_id = o.id
@@ -158,22 +158,16 @@ export function nextPart(db: Database.Database, topicId: string, now = Date.now(
 }
 
 /**
- * The outline and position of every lesson item of the plan that is a part, for mastery's lesson unit. A part written
- * again at another level is a new item that the part now points at; the earlier one is still found by its cache key,
- * whose scope is the part's id, so both texts of one part share a slot.
+ * The outline and position of every lesson item of the plan that is a part's text, in any wording (`partTextSql`), for
+ * mastery's lesson unit: the texts of one part share a slot.
  */
 export function partSlots(db: Database.Database, planId: string): Map<string, { unit: string; slot: number }> {
   const rows = db
     .prepare(
-      `SELECT p.item_id AS itemId, p.outline_id AS unit, p.position AS slot
-       FROM lesson_parts p JOIN lesson_outlines o ON o.id = p.outline_id
-       WHERE o.plan_id = ? AND p.item_id IS NOT NULL
-       UNION
-       SELECT i.id, p.outline_id, p.position
-       FROM items i JOIN lesson_parts p ON p.id = CASE WHEN json_valid(json_extract(i.body_json, '$.cacheKey'))
-         THEN json_extract(json_extract(i.body_json, '$.cacheKey'), '$.scopeId') END
-       WHERE i.plan_id = ? AND i.kind = 'lesson' AND i.prompt_template = 'lesson.part'`,
+      `SELECT i.id AS itemId, p.outline_id AS unit, p.position AS slot
+       FROM items i JOIN lesson_parts p ON ${partTextSql("p", "i")}
+       WHERE i.plan_id = ? AND i.kind = 'lesson'`,
     )
-    .all(planId, planId) as Array<{ itemId: string; unit: string; slot: number }>;
+    .all(planId) as Array<{ itemId: string; unit: string; slot: number }>;
   return new Map(rows.map((row) => [row.itemId, { unit: row.unit, slot: row.slot }]));
 }

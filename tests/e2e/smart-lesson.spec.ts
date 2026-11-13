@@ -17,7 +17,7 @@ const block = (kind: string, body: unknown) =>
 
 // A recorded smart lesson: prose, one block of every kind and the closing recap.
 const lesson = [
-  "## Che cos'è una forza",
+  "## Che cos'è una forza in $\\mathbb{R}^3$",
   "",
   "Una **forza** è ciò che cambia lo stato di moto di un corpo [P1]. Se spingi un carrello fermo, inizia a muoversi; se lo spingi mentre si muove, cambia velocità.",
   "",
@@ -243,7 +243,30 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     // Beside the sheet, the outline lists the lesson's sections with the time left, and follows the reading.
     const outline = page.getByRole("navigation", { name: "In questa lezione" });
     const parts = outline.getByRole("button");
-    await expect(parts).toHaveText(["Che cos'è una forza", "La seconda legge"]);
+    await expect(parts).toHaveCount(2);
+    await expect(parts.nth(1)).toHaveText("La seconda legge");
+    // A section whose heading holds a formula shows it drawn, as the heading does, and a screen reader hears it once:
+    // the entry's name is the heading's words and the formula's MathML, with no TeX source and no second copy.
+    const formulaHeading = page.getByRole("heading", { level: 2, name: /^Che cos'è una forza in/ });
+    await expect(formulaHeading.locator(".katex")).toHaveCount(1);
+    await expect(parts.first().locator(".katex")).toHaveCount(1);
+    await expect(parts.first().locator(".katex-html")).toHaveText(
+      (await formulaHeading.locator(".katex-html").textContent()) ?? "",
+    );
+    // Both are read as the heading's words followed by the formula's MathML ("R 3"), once.
+    await expect(formulaHeading).toMatchAriaSnapshot(`
+      - heading "Che cos'è una forza in" [level=2]:
+        - text: Che cos'è una forza in
+        - math: R 3
+    `);
+    await expect(parts.first()).toMatchAriaSnapshot(`
+      - button "Che cos'è una forza in":
+        - text: Che cos'è una forza in
+        - math: R 3
+    `);
+    await expect(parts.first()).not.toHaveAccessibleName(/\\|\$|mathbb/);
+    // Copies of the heading's nodes must not repeat an id the page needs once.
+    expect(await page.locator("nav [id]").count()).toBe(0);
     await expect(parts.first()).toHaveAttribute("aria-current", "location");
     await expect(outline.getByText(/^Circa \d+ minut[oi] alla fine$/)).toBeVisible();
     await page.getByRole("heading", { level: 2, name: "La seconda legge" }).evaluate((head) =>
