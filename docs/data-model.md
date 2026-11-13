@@ -38,6 +38,7 @@ Migrations after the initial schema, applied in one transaction by `src/core/db/
 | 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library       |
 | 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash          |
 | 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                |
+| 32             | `lesson_outlines` and `lesson_parts`, a topic's lesson planned as short parts           |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -77,7 +78,9 @@ Migration 30 indexes `sources.blob_sha` where it is set, so the lookup that an i
 
 Migration 31 adds `sources.chosen_kind`, empty for every source. It holds a kind only after the student picks one from the file's "Tipo" menu: `book`, `slides`, `exam`, `notes`, `exercises`, `photo` or `handout` (`FILE_KINDS` in `src/shared/file-kind.ts`). The kind the rules compute is never stored: `sources.list` works it out each time from the file's type, title, linked folder and pages, as [File kinds](file-kinds.md) explains. A rename, a new reading of a linked file and a Library copy that a linked file takes over all keep the same source row, so they keep the choice. The column has no CHECK, so a later kind needs no rebuilt table, and core reads a value it does not know as no choice.
 
-Current version is 31. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
+Migration 32 adds two tables for a topic's lesson in short parts and changes no row, so every lesson, answer, step, flashcard and plan reads as before. `lesson_outlines` is the plan of a topic's parts. A topic has at most one live outline (`retired_at` NULL, enforced by the partial unique index `lesson_outlines_live`). `passage_key` is the SHA-256 of the topic's sorted passage IDs when it was planned, so a rebuild that changed the material can be noticed. `origin` is `model` when the AI tool cut the topic, `fallback` when code cut it after the tool's reply failed its checks, and `single` for a topic made one part with no planning call. `wording` is a level the student chose on a part (NULL means the profile's), and `replaces_item_id` names the old lesson an outline rewrote. Only a `model` outline carries engine and prompt provenance. `lesson_parts` holds one row per part in reading order, the recap last with `kind = 'recap'`: its title, `about` (one line on what it teaches), its passages as a JSON list, `minutes` (an estimate until it is written), `item_id` (the written text, an ordinary `lesson` item), `summary` and `done_at`. The passages are JSON rather than a link table because `passages` references are `ON DELETE RESTRICT`, and a plan of unwritten parts must never stop a source from being removed. `lesson_parts_item` serves the lookup "is this item a part?". A topic's finished items, the delete confirmation's lesson count (one per lesson in parts) and plan files leave part items out. How the parts are planned is in `src/core/study/parts.ts`: a topic of up to 7,000 characters is one part, a larger one gets one part per 6,000 characters, between 2 and 8, and a recap from 3 parts on.
+
+Current version is 32. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -119,6 +122,8 @@ Current version is 31. A restored backup is migrated on a staging copy before it
 | jobs              | A long task: extraction, plan build, download.                                                               |
 | job_steps         | One named step of a job. A retry skips steps that already stored output.                                     |
 | engine_usage      | The tokens of one model call, with the chat message or job it was for.                                       |
+| lesson_outlines   | The plan of a topic's lesson in short parts. One live outline per topic.                                     |
+| lesson_parts      | One part of an outline, in reading order, with the `lesson` item that holds its text once written.           |
 | linked_folders    | A folder of the student's that Pyxis reads in place.                                                         |
 | linked_subfolders | A subfolder of a linked folder and the subject it maps to, or skipped.                                       |
 | linked_files      | A file read from a linked folder, with its size, time and hash, and the source holding its text.             |
