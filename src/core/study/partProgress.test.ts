@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { planGuide } from "../plans/create";
+import { onEvidenceChanged } from "../plans/evidenceCache";
 import { planMastery } from "../plans/progress";
 import { readSteps } from "../plans/steps";
 import { parseSmartText, smartQuestions } from "../../shared/smart-text";
@@ -229,6 +230,25 @@ describe("a part's texts", () => {
     ).run(JSON.stringify({ cacheKey: JSON.stringify({ scopeId: "t1" }), markdown: "" }));
     expect(partOfText(db, "stray")).toBeNull();
     expect(partOfText(db, "missing")).toBeNull();
+    db.close();
+  });
+});
+
+describe("telling the exam page", () => {
+  it("reports a part done by its question or by Fatto, and nothing when the part was already done", () => {
+    const { db, seeded } = workspace(true);
+    let changes = 0;
+    onEvidenceChanged(db, () => (changes += 1));
+    const after = (write: () => unknown) => {
+      changes = 0;
+      write();
+      return changes;
+    };
+    expect(after(() => answer(db, seeded!.parts[0]!.itemId!))).toBeGreaterThan(0);
+    // "Fatto" on a part that is not the last writes no event: only the part's done time changes.
+    expect(after(() => markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now))).toBeGreaterThan(0);
+    expect(after(() => answer(db, seeded!.parts[0]!.itemId!, { at: now + 1 }))).toBe(0);
+    expect(after(() => markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now + 1))).toBe(0);
     db.close();
   });
 });
