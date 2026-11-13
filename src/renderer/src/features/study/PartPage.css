@@ -124,6 +124,23 @@
   grid-template-rows: 0fr;
 }
 
+/* A rewrite moves the page to its block, which stops below the bar as a heading reached from the outline does. */
+.px-part-work {
+  scroll-margin-top: 72px;
+}
+
+/* Over a written part, the block keeps some air above the text it is about to replace, inside the row that closes. */
+.px-part-work.is-rewrite .px-part-working {
+  margin-bottom: 16px;
+}
+
+/* The level menu's line on what a level applies to wraps instead of widening the menu. */
+.px-part-level-hint {
+  display: block;
+  max-width: 220px;
+  white-space: normal;
+}
+
 .px-part-text.is-arriving {
   animation: px-part-fade var(--duration-small) var(--ease-out);
 }

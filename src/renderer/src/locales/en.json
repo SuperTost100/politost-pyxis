@@ -1406,7 +1406,29 @@
     "partRetry": "Try again",
     "partUnwritten": "not written yet",
     "partWriting": "being written",
-    "partRead": "read"
+    "partRead": "read",
+    "partLevelHint": "For this part and the ones after it",
+    "rewriteThisPart": "Rewrite this part",
+    "rewriteConfirm": {
+      "part": "Rewrite this part?",
+      "lesson": "Rewrite this lesson?",
+      "recap": "Rewrite the chapter recap?"
+    },
+    "rewritePartNote": "The current version is replaced only if the new one succeeds, and what you've already finished stays finished.",
+    "rewritePartSectionHint": "The rest of the part stays as it is.",
+    "rewritePartSectionFailed": "This section could not be rewritten. The part is unchanged. Try again.",
+    "rewriteWhat": {
+      "part": "part {{n}}",
+      "lesson": "the lesson",
+      "recap": "the chapter recap"
+    },
+    "rewritingTitle": "Rewriting {{what}}",
+    "rewritingLevelLine": "At the {{level}} level. Until the new version is ready, the current one stays below.",
+    "rewritingAgainLine": "Until the new version is ready, the current one stays below.",
+    "rewriteFailed": "I couldn't rewrite {{what}}. The current version hasn't changed.",
+    "rewriteFailedLevel": "I couldn't rewrite {{what}} at the {{level}} level. The current version hasn't changed.",
+    "keepVersion": "Keep this version",
+    "rewriteNeedsEngine": "Needs a working AI engine"
   },
   "sessions": {
     "heading": "Session {{n}}",

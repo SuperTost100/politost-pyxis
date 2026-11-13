@@ -1406,7 +1406,29 @@
     "partRetry": "Riprova",
     "partUnwritten": "non ancora scritta",
     "partWriting": "in scrittura",
-    "partRead": "letta"
+    "partRead": "letta",
+    "partLevelHint": "Vale per questa parte e per le prossime",
+    "rewriteThisPart": "Riscrivi questa parte",
+    "rewriteConfirm": {
+      "part": "Riscrivere questa parte?",
+      "lesson": "Riscrivere questa lezione?",
+      "recap": "Riscrivere il ripasso del capitolo?"
+    },
+    "rewritePartNote": "La versione attuale viene sostituita solo se la nuova riesce, e quello che hai già finito resta finito.",
+    "rewritePartSectionHint": "Il resto della parte resta com'è.",
+    "rewritePartSectionFailed": "Non è stato possibile riscrivere questa sezione. La parte non è cambiata. Riprova.",
+    "rewriteWhat": {
+      "part": "la parte {{n}}",
+      "lesson": "la lezione",
+      "recap": "il ripasso del capitolo"
+    },
+    "rewritingTitle": "Sto riscrivendo {{what}}",
+    "rewritingLevelLine": "Al livello {{level}}. Finché la nuova versione non è pronta, quella di adesso resta qui sotto.",
+    "rewritingAgainLine": "Finché la nuova versione non è pronta, quella di adesso resta qui sotto.",
+    "rewriteFailed": "Non sono riuscito a riscrivere {{what}}. La versione di adesso non è cambiata.",
+    "rewriteFailedLevel": "Non sono riuscito a riscrivere {{what}} al livello {{level}}. La versione di adesso non è cambiata.",
+    "keepVersion": "Tieni questa versione",
+    "rewriteNeedsEngine": "Serve un motore AI funzionante"
   },
   "sessions": {
     "heading": "Prova {{n}}",

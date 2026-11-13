@@ -196,6 +196,13 @@ const routes = [
   // A topic opened for the first time while its parts are planned, and a part read as book text without an AI tool.
   ["lesson-part-planning", "/plans/audit-parts-plan/lesson/audit-new-topic?part=1"],
   ["lesson-part-book", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=5"],
+  // Level and rewrites on a part.
+  ["lesson-part-menu", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-level", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewrite", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-section", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewriting", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  ["lesson-part-rewrite-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["intro", "/plans/audit-plan/intro"],
   ["quiz-setup", "/plans/audit-plan/quiz/audit-topic"],
   ["quiz-page", "/plans/audit-plan/quiz/audit-topic"],
@@ -1131,6 +1138,13 @@ const PART_STATES = new Set([
   "lesson-one-part",
   "lesson-part-planning",
   "lesson-part-book",
+  // Level and rewrites on a part.
+  "lesson-part-menu",
+  "lesson-part-level",
+  "lesson-part-rewrite",
+  "lesson-part-section",
+  "lesson-part-rewriting",
+  "lesson-part-rewrite-failed",
 ]);
 
 /**
@@ -1234,6 +1248,10 @@ function prepareLessonParts(name: string) {
     if (name === "lesson-part-book")
       job.run(params("audit-parts-topic", 5), "failed", "engines.errors.engine-missing", now, now);
     if (name === "lesson-part-planning") job.run(params("audit-new-topic", 1), "running", null, now, now);
+    // Part 3 written again at the Semplice level: still running, or failed.
+    const rewrite = JSON.stringify({ planId: "audit-parts-plan", topicId: "audit-parts-topic", position: 3, rewrite: "level", wording: "simple" });
+    if (name === "lesson-part-rewriting") job.run(rewrite, "running", null, now, now);
+    if (name === "lesson-part-rewrite-failed") job.run(rewrite, "failed", "lesson-part-invalid", now, now);
   });
 }
 
@@ -3090,6 +3108,39 @@ async function openState(page: Page, name: string) {
     case "lesson-part-book":
       await expect(page.getByRole("heading", { level: 1, name: "Limiti e continuità" })).toBeVisible();
       await expect(page.getByRole("button", { name: both("Fatto", "Done") })).toBeVisible();
+      break;
+    // Level and rewrites on a part: the part's menu with its rewrites, the level menu with what it applies to, the two
+    // dialogs, and part 3 being written again at another level, then failing.
+    case "lesson-part-menu":
+    case "lesson-part-rewrite":
+    case "lesson-part-section": {
+      await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
+      await page.getByRole("button", { name: both("Altre azioni", "More actions") }).click();
+      const rewritePart = page.getByRole("menuitem", { name: both("Riscrivi questa parte", "Rewrite this part") });
+      await expect(rewritePart).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") })).toBeVisible();
+      if (name === "lesson-part-rewrite") {
+        await rewritePart.click();
+        await expect(page.getByRole("dialog", { name: both("Riscrivere questa parte\\?", "Rewrite this part\\?") })).toBeVisible();
+      }
+      if (name === "lesson-part-section") {
+        await page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") }).click();
+        const dialog = page.getByRole("dialog", { name: both("Quale sezione riscrivo\\?", "Which section should I rewrite\\?") });
+        await expect(dialog.getByRole("radio")).toHaveCount(2);
+      }
+      break;
+    }
+    case "lesson-part-level":
+      await page.getByRole("button", { name: /^(Livello|Level) / }).click();
+      await expect(page.getByRole("menuitem", { name: both("Semplice", "Simple") })).toBeVisible();
+      await expect(page.getByText(both("Vale per questa parte e per le prossime", "For this part and the ones after it"))).toBeVisible();
+      break;
+    case "lesson-part-rewriting":
+      await expect(page.getByRole("status").filter({ hasText: /Sto riscrivendo la parte 3|Rewriting part 3/ })).toBeVisible();
+      await expect(page.getByRole("region", { name: both("Verifica", "Check") })).toBeVisible();
+      break;
+    case "lesson-part-rewrite-failed":
+      await expect(page.getByText(/Non sono riuscito a riscrivere la parte 3 al livello Semplice|I couldn't rewrite part 3 at the Simple level/)).toBeVisible();
       break;
     case "lesson-one-part":
       await expect(page.getByRole("heading", { level: 1, name: "Formula di Taylor" })).toBeVisible();

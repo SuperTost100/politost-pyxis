@@ -27,6 +27,7 @@ import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
 import { focusFollowsAnswer, startsOnOpen, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
+import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
 import "./PartPage.css";
 
@@ -54,7 +55,10 @@ export function usePartQuery(planId: string, topicId: string, position: number |
       previousQuery?.queryKey[1] === planId && previousQuery.queryKey[2] === topicId ? previous : undefined,
     refetchInterval: (query) => {
       const data = query.state.data;
-      return data?.mode === "parts" && (data.state === "planning" || data.state === "writing") ? 1000 : false;
+      return data?.mode === "parts" &&
+        (data.state === "planning" || data.state === "writing" || data.rewrite?.state === "writing")
+        ? 1000
+        : false;
     },
     queryFn: async () => {
       const input = {
@@ -296,13 +300,34 @@ export function PartPage({
     }
   };
 
+  // The part's level and rewrites: "Livello" in the bar, the rewrites in the part's menu, and their states over the text.
+  const rewrites = usePartRewrites({ planId, topicId, data, query, queryKey, written });
+  const rewriting = written && rewrites.writing;
+  const rewriteArrived = useRewriteArrival(data, rewriting, reducedMotion(), () => {
+    // The focus was on the block's way back, which goes with it, or nowhere: the title of the part takes it.
+    const active = document.activeElement;
+    if (!active || active === document.body || workRef.current?.contains(active)) focusTitleNow();
+  });
+
+  // A rewrite starts from the bar or the part's menu, wherever the student is in the part: the page moves to the block
+  // that shows it, over the text that is about to change.
+  const wasRewriting = useRef(rewriting);
+  useEffect(() => {
+    if (rewriting && !wasRewriting.current)
+      workRef.current?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+    wasRewriting.current = rewriting;
+  }, [rewriting]);
+
   // The part's menu: the dots in the bar, and a right-click or the menu keys on the part's head.
   const menu: MenuProps = {
     items: [
+      ...rewrites.menuItems,
+      { type: "divider" },
       { key: "map", icon: <Network size={16} aria-hidden />, label: t("map.title") },
       { key: "export", icon: <Download size={16} aria-hidden />, label: t("export.title"), disabled: !written },
     ],
     onClick: ({ key }) => {
+      if (rewrites.onMenu(key)) return;
       if (key === "map") navigate(`/plans/${planId}/map/${topicId}`);
       if (key === "export") setExportOpen(true);
     },
@@ -361,6 +386,8 @@ export function PartPage({
       onBack={() => navigate(`/plans/${planId}`)}
       still
     />
+  ) : rewriting || rewriteArrived ? (
+    <WorkingBlock copy={rewrites.copy} onBack={() => navigate(`/plans/${planId}`)} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";
@@ -396,10 +423,16 @@ export function PartPage({
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
       onBack={() => navigate(`/plans/${planId}`)}
-      actions={<MenuButton menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
+      actions={
+        <>
+          {rewrites.levelMenu}
+          <MenuButton menu={menu} label={t("lesson.more")} region={t("lesson.more")} />
+        </>
+      }
       sheetClassName="px-part-sheet"
     >
       {headMenu.popup}
+      {rewrites.dialogs}
       {outline && many ? (
         <Popover
           open={listOpen}
@@ -420,7 +453,17 @@ export function PartPage({
       ) : null}
       <div key={data.position} className={turned.current ? "px-part-body is-turned" : "px-part-body"}>
         {block ? (
-          <div ref={workRef} className={working ? "px-part-work" : "px-part-work is-closing"} aria-hidden={working ? undefined : true}>
+          <div
+            ref={workRef}
+            className={[
+              "px-part-work",
+              working || rewriting ? "" : "is-closing",
+              !working && (rewriting || rewriteArrived) ? "is-rewrite" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            aria-hidden={working || rewriting ? undefined : true}
+          >
             <div>{block}</div>
           </div>
         ) : null}
@@ -447,6 +490,8 @@ export function PartPage({
             </Notice>
           </div>
         ) : null}
+        {rewrites.failure}
+        {rewrites.sectionProgress}
         {written && lesson?.general ? (
           <div className="px-reader-note">
             <Tag tone="general">{t("components.tags.general")}</Tag>
@@ -454,7 +499,7 @@ export function PartPage({
           </div>
         ) : null}
         {(written || data.state === "book") && lesson ? (
-          <div className={arriving?.position === data.position ? "px-part-text is-arriving" : "px-part-text"}>
+          <div className={arriving?.position === data.position || rewriteArrived ? "px-part-text is-arriving" : "px-part-text"}>
             <SelectionMenu
               planId={planId}
               topicId={topicId}
@@ -464,7 +509,7 @@ export function PartPage({
               <SmartText
                 figures={lesson.figures}
                 answers={lesson.answers}
-                onAnswer={written && lesson.itemId ? answer : undefined}
+                onAnswer={written && lesson.itemId && !rewriting ? answer : undefined}
                 final={written ? { label: t("lesson.finalCheck"), keys: true } : undefined}
                 onCitationClick={(number) => {
                   const passageId = lesson.passageIds[number - 1];
