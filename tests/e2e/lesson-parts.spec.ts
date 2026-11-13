@@ -158,25 +158,6 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(page.getByText("Riassunto di intorni: la cosa giusta.")).toBeVisible();
     await expectNoAxeViolations(page);
     await saveShot(page, "lesson-parts/part-1-it-light.png");
-    // The part's dots are a lone button, so they open its menu by click, right-click and Shift+F10, and one Escape
-    // closes it with the focus back on them.
-    const dots = page.getByRole("button", { name: "Altre azioni" });
-    for (const openMenu of [
-      () => dots.click(),
-      () => dots.click({ button: "right" }),
-      async () => {
-        await dots.focus();
-        await page.keyboard.press("Shift+F10");
-      },
-    ]) {
-      await openMenu();
-      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
-      await expect(dots).toHaveAttribute("aria-expanded", "true");
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("menu")).toHaveCount(0);
-      await expect(dots).toBeFocused();
-    }
-
     // Part 2's job, started ahead, fails on its shape while part 1 is read.
     await expect
       .poll(async () => {
@@ -197,9 +178,15 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     // The answer was saved for the part: a reload shows it answered.
     await saveShot(page, "lesson-parts/part-1-answered-it-light.png");
 
-    // Invio opens part 2, whose write failed: Riprova, then the part, with the focus on its title.
-    await page.keyboard.press("Enter");
+    // Leaving the lesson and opening it again from a link without a part opens the first part not read, part 2, and the
+    // address names it: never the part just finished, which an earlier read of the same address had chosen.
+    await page.getByRole("button", { name: "Per oggi basta" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+    await open(page, "t-funzioni");
+    await expect(page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" })).toBeVisible();
     await expect(page).toHaveURL(/\?part=2$/);
+
+    // Part 2's write failed: Riprova, then the part, with the focus on its title.
     const failed = page.getByText("Non sono riuscito a scrivere la parte 2.");
     await expect(failed).toBeVisible();
     await expectNoAxeViolations(page);
@@ -275,8 +262,33 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Per oggi basta" })).toBeFocused();
 
+    // A part picked in the column, from far down this one, opens at its title, which takes the focus. Back returns to
+    // where the student was in the part before, as on every page.
+    const toBottom = () => page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
+    await toBottom();
+    await atRest(parts(page));
+    const left = await page.evaluate(() => window.scrollY);
+    expect(left).toBeGreaterThan(500);
+    await parts(page).getByRole("link", { name: /Intorni e distanza/ }).click();
+    const firstTitle = page.getByRole("heading", { level: 1, name: /Intorni e distanza/ });
+    await expect(firstTitle).toBeFocused();
+    await expect(firstTitle).toBeInViewport();
+    await page.goBack();
+    await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(left);
+
     // The narrow window: the column goes, and the bar's title opens the same list in a popover.
+    // Part 4, written ahead, is ready to open from the popover.
+    await expect
+      .poll(async () => {
+        const read = (await page.evaluate(() =>
+          window.pyxis.invoke("study.parts", { planId: "p-an2", topicId: "t-funzioni" }),
+        )) as { outline: { parts: Array<{ state: string }> } | null };
+        return read.outline?.parts[3]?.state;
+      }, { timeout: 20_000 })
+      .toBe("written");
     await page.setViewportSize({ width: 960, height: 640 });
+    await toBottom();
     const titleMenu = page.locator(".px-studybar-title-menu");
     await atRest(titleMenu);
     await expect(parts(page)).toHaveCount(0);
@@ -290,6 +302,10 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await popover.getByRole("link", { name: /Compatti|Limitati/ }).click();
     await expect(popover).toHaveCount(0);
     await expect(page).toHaveURL(/\?part=4$/);
+    // Picked from far down part 3, part 4 opens at its title, which takes the focus.
+    const fourthTitle = page.getByRole("heading", { level: 1, name: "Limitati, compatti, connessi" });
+    await expect(fourthTitle).toBeFocused();
+    await expect(fourthTitle).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
 
     // Part 4, written ahead, opens at once; the C key answers it.
@@ -306,7 +322,19 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(page.getByRole("heading", { level: 1, name: "Ripasso del capitolo" })).toBeFocused();
     await expect(page.locator(".px-studybar-title")).toContainText("Ripasso del capitolo");
     await expect(page.getByText("tre domande alla fine", { exact: false })).toBeVisible();
-    for (let n = 0; n < 3; n++) await page.keyboard.press("a");
+    // A letter pressed in the second question's options answers that question, and the first stays open.
+    const recapQuestions = page.getByRole("region", { name: "Ripasso finale" }).locator(".px-sb-question");
+    const second = recapQuestions.nth(1);
+    const secondOptions = await second.locator(".px-opt-text").allInnerTexts();
+    await second.locator(".px-opt").first().focus();
+    await page.keyboard.press(String.fromCharCode(97 + secondOptions.findIndex((option) => option.trim() === "Giusta")));
+    await expect(second.locator(".px-sb-feedback")).toBeVisible();
+    await expect(recapQuestions.nth(0).locator(".px-sb-feedback")).toHaveCount(0);
+    // From the title, a letter answers the first question still open, then the next one.
+    await page.getByRole("heading", { level: 1 }).focus();
+    await page.keyboard.press("a");
+    await expect(recapQuestions.nth(0).locator(".px-sb-feedback")).toBeVisible();
+    await page.keyboard.press("a");
     await expect(page.getByText("Fine del capitolo")).toBeVisible();
     await expect(continueButton(page)).toBeFocused();
     await expect
@@ -321,7 +349,30 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(continueButton(page)).toHaveText(/^Continua: (?!Lezione)/);
     await saveShot(page, "lesson-parts/recap-done-it-light.png");
 
-    // The part's menu opens from the dots and from a right-click on its head.
+    // The part's dots are a lone button, so they open its menu by click, right-click and Shift+F10, and one Escape
+    // closes it with the focus back on them, also on a page scrolled to its foot, where the focus moving to the dots in
+    // the sticky bar scrolls the page a little.
+    await page.getByText("Fine del capitolo").scrollIntoViewIfNeeded();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    const dots = page.getByRole("button", { name: "Altre azioni" });
+    for (const openMenu of [
+      () => dots.click(),
+      () => dots.click({ button: "right" }),
+      async () => {
+        await dots.focus();
+        await page.keyboard.press("Shift+F10");
+      },
+    ]) {
+      await openMenu();
+      await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
+      await expect(dots).toHaveAttribute("aria-expanded", "true");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu")).toHaveCount(0);
+      await expect(dots).toBeFocused();
+    }
+
+    // The part's menu opens from a right-click on its head too.
     await page.getByRole("heading", { level: 1 }).click({ button: "right" });
     await expect(page.getByRole("menuitem", { name: "Mappa" })).toBeVisible();
     await page.keyboard.press("Escape");

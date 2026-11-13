@@ -34,3 +34,16 @@ export function arrowTarget(key: string, current: number, options: number): numb
   if (key === "ArrowUp") return (current - 1 + options) % options;
   return null;
 }
+
+/**
+ * The question a letter answers: the one whose options have the focus (`focused`), and nothing when that one is
+ * answered already, since an answer cannot change; from anywhere else on the page, the first question still open.
+ */
+export function letterQuestion(
+  questions: readonly string[],
+  answered: (id: string) => boolean,
+  focused: string | null,
+): string | null {
+  if (focused !== null && questions.includes(focused)) return answered(focused) ? null : focused;
+  return questions.find((id) => !answered(id)) ?? null;
+}

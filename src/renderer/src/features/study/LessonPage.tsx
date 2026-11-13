@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useEngineError } from "../../lib/engineError";
@@ -7,7 +7,7 @@ import { invoke } from "../../lib/ipc";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { LegacyLessonPage } from "./LegacyLessonPage";
 import { PartLoading, PartPage, partKey, usePartQuery } from "./PartPage";
-import { oldLessonView, type PartData } from "./partPage";
+import { addressPart, freshRead, oldLessonView, type PartData } from "./partPage";
 
 /**
  * A topic's lesson: in parts (`PartPage`) for a topic planned in parts, never read, or with an unfinished lesson written
@@ -23,20 +23,28 @@ export function LessonPage() {
   const position = Number.isInteger(asked) && asked >= 1 ? asked : undefined;
   const itemId = searchParams.get("item") ?? undefined;
   const query = usePartQuery(planId, topicId, position, itemId);
-  // Opened without a part, core picks the first one not done. The address then names that part, so finishing it
-  // does not move the page on to the next one when the part is read again. Only a read of this address that is not
-  // being made again names it: what shows while it loads is the part the page came from, or an earlier read of the
-  // address, from before a finished lesson's rewrite stopped.
-  const opened = query.data?.mode === "parts" && !query.isFetching && !position && !itemId ? query.data.position : null;
+  // When the page came to this address: only a read made since then decides for it.
+  const address = `${planId}/${topicId}/${position ?? ""}/${itemId ?? ""}`;
+  const came = useRef({ address, at: Date.now() });
+  if (came.current.address !== address) came.current = { address, at: Date.now() };
+  const fresh = freshRead(
+    { fetching: query.isFetching, placeholder: query.isPlaceholderData, updatedAt: query.dataUpdatedAt },
+    came.current.at,
+  );
+  // Opened without a part, core picks the first one not done, and the address then names it (`addressPart`). Until a
+  // fresh read has chosen, what is cached names a part that may be done by now, or the part from before a finished
+  // lesson's rewrite stopped, so the page waits for it.
+  const opened = addressPart(query.data, { position, itemId }, fresh);
   useEffect(() => {
     if (opened) navigate(`/plans/${planId}/lesson/${topicId}?part=${opened}`, { replace: true });
   }, [opened, planId, topicId, navigate]);
+  const choosing = !position && !itemId && !fresh && !query.isError;
   const key = partKey(planId, topicId, position, itemId);
-  if (query.data?.mode === "parts" && query.data.replaces && oldLessonView(query.data) === "fallback")
+  if (query.data?.mode === "parts" && !choosing && query.data.replaces && oldLessonView(query.data) === "fallback")
     return <RewriteFallback planId={planId} topicId={topicId} data={query.data} queryKey={key} />;
-  if (query.data?.mode === "parts")
+  if (query.data?.mode === "parts" && !choosing)
     return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} />;
-  if (query.data?.mode === "legacy" || query.isError)
+  if ((query.data?.mode === "legacy" && !choosing) || query.isError)
     return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} />;
   return <PartLoading planId={planId} topicId={topicId} />;
 }

@@ -254,6 +254,16 @@ test("an unfinished old lesson is rewritten in parts when it is opened, once, an
     await expect(page.getByText("Intorni: l'idea")).toBeVisible();
     await expect(rewriting).toHaveCount(0);
     expect(planningCalls(prompts)).toBe(1);
+    // Part 1 finished, the lesson left and opened again from a link without a part: the first part not read, part 2,
+    // and the address names it, as for a topic never read.
+    await page.getByRole("region", { name: "Verifica" }).getByRole("button", { name: /La cosa giusta/ }).click();
+    await expect(page.getByText("Giusto.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Per oggi basta" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+    await openLesson(page);
+    await expect(page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" })).toBeVisible();
+    await expect(page).toHaveURL(/\?part=2$/);
+    await expect(page.getByText("Frontiera: l'idea")).toBeVisible({ timeout: 20_000 });
     // The old lesson opens from what the topic made, as it was.
     await openExam(page);
     await made.click();
