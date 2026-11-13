@@ -66,10 +66,10 @@ describe("the exam page's suggested part", () => {
       line: "Parte 3 di 8 · Funzioni di più variabili · circa 6 minuti",
     });
     const en = await translator("en");
-    expect(nowPartText(en, { part: part({ minutes: 1 }), topic: "Functions", now: NOW, language: "en" }).line).toBe(
+    expect(nowPartText(en, { part: part({ minutes: 1 }), topic: "Functions", now: NOW, language: "en" })?.line).toBe(
       "Part 3 of 8 · Functions · about 1 minute",
     );
-    expect(nowPartText(it, { part: part({ minutes: 1 }), topic: "Funzioni", now: NOW, language: "it" }).line).toBe(
+    expect(nowPartText(it, { part: part({ minutes: 1 }), topic: "Funzioni", now: NOW, language: "it" })?.line).toBe(
       "Parte 3 di 8 · Funzioni · circa 1 minuto",
     );
   });
@@ -82,7 +82,7 @@ describe("the exam page's suggested part", () => {
       line: "Funzioni di più variabili · circa 5 minuti · ieri hai finito la parte 3",
     });
     const en = await translator("en");
-    expect(nowPartText(en, { part: resumed, topic: "Functions", now: NOW, language: "en" }).line).toBe(
+    expect(nowPartText(en, { part: resumed, topic: "Functions", now: NOW, language: "en" })?.line).toBe(
       "Functions · about 5 minutes · you finished part 3 yesterday",
     );
   });
