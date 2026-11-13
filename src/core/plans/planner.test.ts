@@ -3,7 +3,9 @@ import { openDatabase } from "../db/connection";
 import { appendEvent } from "../events";
 import { rateCard, setNewCardsPerDay } from "../study/cards";
 import { recordStep } from "./steps";
-import { planGuide } from "./create";
+import { planGuide, pathState } from "./create";
+import { markPartDone } from "../study/partProgress";
+import { seedOutline } from "../study/test-parts";
 import { dayKey, startOfWeek } from "../../shared/local-day";
 import {
   dueEverywhere,
@@ -82,6 +84,23 @@ describe("remaining work", () => {
         target: 0.75,
       }),
     ).toBe(40);
+  });
+
+  it("counts an unread lesson in parts by the minutes of its parts not done, and any other unread lesson as 30", () => {
+    const topics = [
+      { id: "a", mastery: 0, partMinutes: { total: 22, left: 15 } },
+      { id: "b", mastery: 0 },
+    ];
+    const steps = [{ activity: "diagnostic" as const, topicId: null }];
+    expect(remainingWork({ topics, steps, hasIntro: false, target: 0.75 })).toEqual([
+      { kind: "topic", topicId: "a", minutes: 15 + 60 },
+      { kind: "topic", topicId: "b", minutes: 30 + 60 },
+      { kind: "simulation", topicId: null, minutes: 60 },
+    ]);
+    // Once its lesson is read, a topic in parts has only its activities left, like any other.
+    expect(
+      remainingWork({ topics, steps: [...steps, { activity: "lesson", topicId: "a" }], hasIntro: false, target: 0.75 })[0],
+    ).toEqual({ kind: "topic", topicId: "a", minutes: 60 });
   });
 
   it("has nothing left when every topic is at the target and a simulation is done", () => {
@@ -657,6 +676,99 @@ describe("exam rings", () => {
     expect(listed).toEqual({ activity: "quiz", topicId: "a-t0", topicTitle: "Topic 0 of a" });
     expect(page).toMatchObject({ activity: listed?.activity, topicId: listed?.topicId });
     expect(ringOf(db, "a").dueCards).toBe(1);
+  });
+
+  describe("a lesson in parts", () => {
+    /** Parts of 6, 5 and 7 minutes and a recap of 4 on a-t0, none written: "Fatto" finishes each. */
+    const withParts = (db: Db, createdAt = day(-3)) =>
+      seedOutline(db, {
+        planId: "a",
+        topicId: "a-t0",
+        createdAt,
+        parts: [{ minutes: 6 }, { minutes: 5 }, { minutes: 7 }, { kind: "recap", minutes: 4 }],
+      });
+    const done = (db: Db, position: number, at: number) => markPartDone(db, { planId: "a", topicId: "a-t0", position }, at);
+
+    it("counts the minutes of the parts done since the start of the local day, and no lesson minutes on top", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      withParts(db);
+      // 6 hours a week: the goal is 51 minutes a day.
+      savePlannerHours(db, { hours: 6 }, now);
+      done(db, 1, day(-1, 23));
+      done(db, 2, day(0, 0));
+      // Only the part done after midnight counts, and one short part does not fill the day.
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 5, target: 51 });
+      expect(ringOf(db, "a").today).toBeCloseTo(5 / ((6 * 60) / 7));
+      done(db, 3, day(0, 9));
+      // The recap is the last part: it records the lesson step, which adds nothing to the parts' 5 + 7 + 4.
+      expect(done(db, 4, day(0, 9))).toEqual({ partDone: true, finished: true });
+      expect(ringOf(db, "a")).toMatchObject({ todayMinutes: { done: 16, target: 51 } });
+      expect(ringOf(db, "a").today).toBeLessThan(1);
+      expect(todayPlan(db, now).items[0]).toMatchObject({
+        complete: false,
+        minutesLeft: 35,
+        done: [{ activity: "lesson", topicId: "a-t0", topicTitle: "Topic 0 of a" }],
+      });
+      db.close();
+    });
+
+    it("measures the day once a part alone was done, and fills it once the parts reach the goal", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      withParts(db);
+      // 1.5 hours a week is about 13 minutes a day: 6 and 5 minutes are 11, within the 2.5 minutes Oggi allows.
+      savePlannerHours(db, { hours: 1.5 }, now);
+      done(db, 1, day(0, 8));
+      expect(ringOf(db, "a").today).toBeCloseTo(6 / ((1.5 * 60) / 7));
+      done(db, 2, day(0, 9));
+      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 11, target: 13 } });
+      expect(todayPlan(db, now).items[0]).toMatchObject({ complete: true, done: [] });
+      db.close();
+    });
+
+    it("keeps a lesson's 30 minutes when it was read whole before its topic got parts", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      savePlannerHours(db, { hours: 6 }, now);
+      recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 8));
+      withParts(db, day(0, 9));
+      done(db, 1, day(0, 9));
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 36, target: 51 });
+      db.close();
+    });
+
+    it("moves the path ring by each part's minutes, from all the parts' minutes with nothing studied", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      withParts(db);
+      // 15 diagnostic + (22 parts + 3 * 20) + (30 lesson + 3 * 20) + 60 simulation = 247.
+      expect(ringOf(db, "a").path).toBe(0);
+      done(db, 1, day(0, 9));
+      expect(ringOf(db, "a").path).toBeCloseTo(6 / 247);
+      for (const position of [2, 3, 4]) done(db, position, day(0, 9));
+      // The lesson read ends the start too: 15 + 22 of 247.
+      expect(ringOf(db, "a").path).toBeCloseTo(37 / 247);
+      db.close();
+    });
+
+    it("leaves a topic without parts as it was, whether another topic has parts or not", () => {
+      const results = [false, true].map((outline) => {
+        const db = openDatabase(":memory:");
+        addPlan(db, "a", { examIn: 64 });
+        if (outline) withParts(db);
+        savePlannerHours(db, { hours: 6 }, now);
+        recordStep(db, "a", { activity: "lesson", topicId: "a-t1" }, day(0, 9));
+        const ring = ringOf(db, "a");
+        const item = todayPlan(db, now).items[0];
+        const piece = remainingWork(pathState(db, "a", now)!).find((work) => work.topicId === "a-t1");
+        db.close();
+        return { today: ring.today, todayMinutes: ring.todayMinutes, item, piece };
+      });
+      expect(results[1]).toEqual(results[0]);
+      expect(results[0]!.todayMinutes).toEqual({ done: 30, target: 51 });
+      expect(results[0]!.piece).toEqual({ kind: "topic", topicId: "a-t1", minutes: 60 });
+    });
   });
 
   it("leaves out an exam still building", () => {

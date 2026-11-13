@@ -1,6 +1,8 @@
 import type Database from "better-sqlite3";
 import { appendEvent } from "../events";
 import { recordStep } from "../plans/steps";
+import { finishPart, partQuestions } from "./partProgress";
+import { partOfItem } from "./parts";
 import {
   finalRecap,
   stripPassageRefs,
@@ -120,12 +122,16 @@ function completeReading(
  * Records one answer to a quick check or recap question. It counts as light mastery evidence for the lesson's topic,
  * and the first answer stays: answering again returns the saved result. Answering the last finishing question
  * completes the reading.
+ *
+ * A part of a lesson in parts is finished by its own questions instead (see `partQuestions`), right or wrong, and the
+ * answer then says `partDone`; `finished` is true when that part finishes the topic's lesson. Only a part's answer
+ * carries `partDone`, so any other lesson answers exactly as before.
  */
 export function answerSmartCheck(
   db: Database.Database,
   input: { planId: string; itemId: string; blockId: string; pick: number },
   now = Date.now(),
-): { correct: boolean; pick: number; finished: boolean } {
+): { correct: boolean; pick: number; finished: boolean; partDone?: boolean } {
   const item = db
     .prepare(
       `SELECT id, plan_id, topic_id, kind, body_json FROM items WHERE id = ? AND plan_id = ? AND kind IN ('lesson', 'intro')`,
@@ -159,6 +165,13 @@ export function answerSmartCheck(
         at: now,
       });
       saved[input.blockId] = pick;
+    }
+    const part = item.kind === "lesson" ? partOfItem(db, item.id) : null;
+    if (part) {
+      const closing = partQuestions(segments, part.kind);
+      const partDone = closing.includes(input.blockId) && closing.every((id) => saved[id] !== undefined);
+      const finished = partDone && finishPart(db, part, now);
+      return { correct, pick, finished, partDone };
     }
     const finishing = finishingQuestions(segments, item.kind);
     const finished =

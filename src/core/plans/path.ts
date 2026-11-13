@@ -94,6 +94,13 @@ export type TopicStatus = {
   daysIdle: number;
   /** Graded activities on the topic since its lesson was read (see `gradedActivities`); 0 while it is unread. */
   graded: number;
+  /** A topic whose lesson is in parts: the parts done. Absent while the topic has no outline. */
+  partsDone?: number;
+  /**
+   * A topic whose lesson is in parts: the minutes of all its parts and of the parts not done, which the planner counts
+   * in place of a lesson's fixed minutes. Absent while the topic has no outline.
+   */
+  partMinutes?: { total: number; left: number };
 };
 
 const middle = 0.5;
@@ -127,8 +134,8 @@ export function topicSuggestion(topic: TopicStatus, read: boolean): Activity {
  * Due cards and severe gaps come first; a new plan then starts with the introduction and the diagnostic; a simulation
  * once every topic reaches the target or the exam is close. Then the path stays on the topic of the latest lesson,
  * alternating exercises and quizzes, until that topic reaches `stayMastery` or has `stayActivities` graded activities.
- * After that: a quiz on exercises just done, a review quiz on a topic left idle for `reviewAfterDays`, the next unread
- * topic in the plan's order, and finally exercises on the weakest topic.
+ * After that: a quiz on exercises just done, a review quiz on a topic left idle for `reviewAfterDays`, the lesson of
+ * a topic with parts done, the next unread topic in the plan's order, and finally exercises on the weakest topic.
  */
 export function suggestStep(input: {
   topics: TopicStatus[];
@@ -229,7 +236,10 @@ export function suggestStep(input: {
           : most,
       undefined,
     );
-  const unread = topics.find((topic) => !read.has(topic.id));
+  // A lesson the student started in parts comes before the next one, so its parts are read through.
+  const unread =
+    topics.find((topic) => !read.has(topic.id) && (topic.partsDone ?? 0) > 0) ??
+    topics.find((topic) => !read.has(topic.id));
   // Exercises are not graded: a "Got it" or "Missed it" is only light evidence (weight 0.5), and many students rate
   // nothing, so practice moves mastery little or not at all. A quiz measures what they taught; without it the weakest
   // topic would get exercises again and again. The topic whose stay just ended moves on instead, when there is a

@@ -32,28 +32,40 @@ export type MasteryEvent = {
   at: number;
 };
 
-export type LessonCheck = { itemId: string; blockId: string; current: boolean };
+/**
+ * `unit` is the lesson the check counts toward: the outline of a lesson in parts, or the item of a lesson that is not a
+ * part. `slot` is the part's position in its outline, 0 for a lesson that is not a part.
+ */
+export type LessonCheck = { itemId: string; blockId: string; current: boolean; unit: string; slot: number };
 
 const MS_PER_DAY = 86_400_000;
 const DEFAULT_HALF_LIFE_DAYS = MASTERY_HALF_LIFE_DAYS;
 
 /**
- * Quick checks count from one lesson per topic: the one, in any wording, answered most recently by `now`. Its answers
- * count once per question, the first one as the lesson shows it, and only for questions still in its current text, so
- * rewriting the lesson or reading it in another wording cannot add evidence. Returns the checks that count.
+ * Quick checks count from one lesson per topic: the one, in any wording, answered most recently by `now`. A lesson is
+ * a unit: a lesson in parts (its outline) or a lesson that is not a part. Inside a lesson in parts each part counts
+ * from the text of it answered most recently, so a part read at two levels counts once. Answers count once per
+ * question, the first one as the lesson shows it, and only for questions still in its current text, so rewriting the
+ * lesson or reading it in another wording cannot add evidence. Returns the checks that count.
  */
 function currentChecks<T extends { topicId: string; at: number; lessonCheck?: LessonCheck }>(
   rows: T[],
   now: number,
 ): Set<T> {
   const answered = rows.filter((row) => row.lessonCheck && row.at <= now).sort((a, b) => a.at - b.at);
-  const latest = new Map<string, string>();
-  for (const row of answered) latest.set(row.topicId, row.lessonCheck!.itemId);
+  const latestUnit = new Map<string, string>();
+  const latestItem = new Map<string, string>();
+  const slotKey = (check: LessonCheck) => `${check.unit}\u0000${check.slot}`;
+  for (const row of answered) {
+    latestUnit.set(row.topicId, row.lessonCheck!.unit);
+    latestItem.set(slotKey(row.lessonCheck!), row.lessonCheck!.itemId);
+  }
   const kept = new Set<T>();
   const seen = new Set<string>();
   for (const row of answered) {
     const check = row.lessonCheck!;
-    if (!check.current || latest.get(row.topicId) !== check.itemId) continue;
+    if (!check.current || latestUnit.get(row.topicId) !== check.unit || latestItem.get(slotKey(check)) !== check.itemId)
+      continue;
     const key = `${check.itemId}\u0000${check.blockId}`;
     if (seen.has(key)) continue;
     seen.add(key);

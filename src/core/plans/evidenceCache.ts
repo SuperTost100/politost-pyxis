@@ -42,6 +42,12 @@ const SOURCES: Array<{ table: string; columns?: string; plan: string }> = [
   },
   // A flag can hide evidence in any plan.
   { table: "flags", plan: "NULL" },
+  // Which lesson a quick check counts toward depends on whether its item is a part.
+  {
+    table: "lesson_parts",
+    columns: "item_id",
+    plan: "(SELECT plan_id FROM lesson_outlines WHERE id = #.outline_id)",
+  },
 ];
 
 function watch(db: Database.Database): Watch | undefined {
