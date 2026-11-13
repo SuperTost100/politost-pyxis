@@ -85,6 +85,14 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           const gemini = page.locator(".engines-list .engines-row", { hasText: "Gemini" });
           await expect(gemini.locator(".px-engine-name")).toHaveText("Gemini");
           await expect(gemini.locator(".px-engine-model")).toHaveText("Antigravity");
+          // Also a tool that has a model: the program stays in its row, once, beside the model.
+          for (const [name, program] of [["Claude", "Claude Code"], ["Cursor", "Cursor Agent"], ["Gemini", "Antigravity"]] as const) {
+            const toolRow = page
+              .locator(".engines-list .engines-row")
+              .filter({ has: page.locator(".px-engine-name", { hasText: new RegExp(`^${name}`) }) });
+            await expect(toolRow.locator(".px-engine-model"), `${language}, ${name}`).toContainText(program);
+            expect((await toolRow.innerText()).split(program).length - 1, `${language}, ${name}: the program shows once`).toBe(1);
+          }
           // Every function starts automatic. Nothing is pinned on a fresh profile.
           await expect(
             page.getByRole("button", {
@@ -102,6 +110,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             exact: true,
           });
           await expect(drawer).toBeVisible();
+          // The drawer's head names the program once, quietly, beside the tool's name.
+          await expect(drawer.locator(".engines-drawer-program")).toHaveText("Claude Code");
           await expect(
             drawer.getByRole("combobox", {
               name: language === "en" ? "Model" : "Modello",
@@ -566,6 +576,9 @@ esac`,
     // The row names the models the plan gives the engine, never their ids.
     await expect(row).toContainText("Claude Opus 5.5", { timeout: 30000 });
     await expect(row).not.toContainText("claude-opus-5-5");
+    // A tool with models in its row still names its program, once.
+    await expect(row.locator(".px-engine-model")).toContainText("Cursor Agent");
+    expect((await row.innerText()).split("Cursor Agent").length - 1).toBe(1);
 
     await page.getByRole("button", { name: "Test Cursor" }).click();
     await expect(
