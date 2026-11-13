@@ -98,6 +98,11 @@ describe("the exam page's suggested part", () => {
     expect(resumeWhen(en, at(6), NOW, "en")).toBe("on November 6");
   });
 
+  it("leaves a topic of one part to the lesson's own title, since its page has no Parte 1 di 1", async () => {
+    const it = await translator("it");
+    expect(nowPartText(it, { part: part({ position: 1, count: 1 }), topic: "Taylor", now: NOW, language: "it" })).toBeNull();
+  });
+
   it("names the recap without a number", async () => {
     const it = await translator("it");
     const recap = part({ position: 9, kind: "recap", title: "Ripasso", minutes: 4 });

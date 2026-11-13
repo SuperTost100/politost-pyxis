@@ -34,13 +34,15 @@ export function resumeWhen(t: T, at: number, now: number, language: string): str
 
 /**
  * The suggested part's title and the line under it on the exam page. Under "Riprendi da" the title carries the part's
- * number, since the line no longer does; the recap is named as such and has no number.
+ * number, since the line no longer does; the recap is named as such and has no number. A topic of one part has none of
+ * this, as its page has no "Parte 1 di 1": null, and the card names the lesson as it does for a topic without parts.
  */
 export function nowPartText(
   t: T,
   input: { part: NextPart; topic: string; now: number; language: string },
-): { title: string; line: string } {
+): { title: string; line: string } | null {
   const { part, topic } = input;
+  if (part.count < 2 && part.kind === "part") return null;
   const recap = part.kind === "recap";
   const resume = part.resumeFrom;
   const title = recap
