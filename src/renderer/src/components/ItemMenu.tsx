@@ -158,18 +158,20 @@ function MenuRegion({
       if (arrow && document.activeElement === target) arrow.current = null;
     };
     // At once, before the next key press when the popup is ready, and on the next frames while it is not (a menu opened
-    // again right after it closed is hidden for a few frames), until the focus is in the menu.
-    take();
+    // again right after it closed is hidden for a few frames), until the focus is in the menu. Done once it is, unless an
+    // arrow still waits for an item: the dropdown focuses the list itself when the popup appears, which can come before
+    // the arrow has moved the focus on. A try left waiting after that would take the focus back from an Escape that has
+    // closed the menu meanwhile.
+    const done = () => Boolean(ref.current?.contains(document.activeElement)) && !arrow?.current;
     let tries = 0;
     let frame = 0;
     const retry = () => {
-      // Done once the focus is in the menu, unless an arrow still waits for an item: the dropdown focuses the list itself
-      // when the popup appears, which can come before the arrow has moved the focus on.
-      if (ref.current?.contains(document.activeElement) && !arrow?.current) return;
+      if (done()) return;
       take();
-      if (++tries < 12) frame = requestAnimationFrame(retry);
+      if (!done() && ++tries < 12) frame = requestAnimationFrame(retry);
     };
-    frame = requestAnimationFrame(retry);
+    take();
+    if (!done()) frame = requestAnimationFrame(retry);
     return () => {
       cancelAnimationFrame(frame);
       if (arrow) arrow.current = null;
@@ -182,9 +184,13 @@ function MenuRegion({
   );
 }
 
-/** The items of a menu's first level that can be chosen, a submenu's row among them. */
-const ROOT_ITEMS =
-  ".ant-dropdown-menu-root > [role=menuitem]:not([aria-disabled=true]), .ant-dropdown-menu-root > li > [role=menuitem]:not([aria-disabled=true])";
+/** The items of a menu's first level that can be chosen, a submenu's row and a choice of one (the chat's subject) among them. */
+const ROOT_ITEMS = ["menuitem", "menuitemradio", "menuitemcheckbox"]
+  .flatMap((role) => [
+    `.ant-dropdown-menu-root > [role=${role}]:not([aria-disabled=true])`,
+    `.ant-dropdown-menu-root > li > [role=${role}]:not([aria-disabled=true])`,
+  ])
+  .join(", ");
 
 const FOCUSABLE = 'a[href], button:not([disabled]), select:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
