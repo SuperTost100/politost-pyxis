@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { appendEvent } from "../events";
+import { partTextSql } from "../study/partText";
 import {
   activities,
   activityOf,
@@ -190,6 +191,7 @@ export function recordStep(
           db
             .prepare(
               `SELECT id FROM items WHERE plan_id = ? AND kind = ? AND (? IS NULL OR topic_id = ?)
+                 AND NOT EXISTS (SELECT 1 FROM lesson_parts lp WHERE ${partTextSql("lp", "items")})
                ORDER BY created_at DESC, rowid DESC LIMIT 1`,
             )
             .get(planId, step.activity, topicId, topicId) as { id: string } | undefined

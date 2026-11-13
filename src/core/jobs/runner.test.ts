@@ -72,6 +72,45 @@ describe("job runner", () => {
     expect(seen).toEqual([{ sourceId: "s" }]);
   });
 
+  it("tells a job kind its job failed, with its latest params, and not when it was cancelled or the database closed", async () => {
+    const database = db();
+    const failed: unknown[] = [];
+    const runner = createRunner(database, () => {});
+    const release: Array<() => void> = [];
+    runner.register("fails", {
+      jobClass: "local",
+      onFailed: (params) => failed.push(params),
+      steps: [
+        {
+          name: "run",
+          label: "run",
+          run: async (ctx) => {
+            const { mode } = ctx.params as { mode: string };
+            ctx.setParams({ mode, seen: true });
+            if (mode === "hold") await new Promise<void>((resolve) => release.push(resolve));
+            if (mode === "cancel") await new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve()));
+            throw new Error("broken");
+          },
+        },
+      ],
+    });
+    const broken = runner.start("fails", { mode: "fail" });
+    await until(database, broken, ["failed"]);
+    expect(failed).toEqual([{ mode: "fail", seen: true }]);
+    const stopped = runner.start("fails", { mode: "cancel" });
+    await until(database, stopped, ["running"]);
+    runner.cancel(stopped);
+    await until(database, stopped, ["cancelled"]);
+    const held = runner.start("fails", { mode: "hold" });
+    await until(database, held, ["running"]);
+    while (release.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    database.close();
+    opened.splice(opened.indexOf(database), 1);
+    release.shift()!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(failed).toHaveLength(1);
+  });
+
   it("starts interactive work next to busy background slots, limited among interactive jobs only", async () => {
     const database = db();
     const runner = createRunner(database, () => {}, { "model-cli": 1, "model-api": 1, local: 1, demo: 1 });

@@ -37,8 +37,13 @@ export const MAX_PARTS = 8;
 export const PART_SLACK = 1;
 /** From this many teaching parts on, a recap part follows them. */
 export const RECAP_FROM = 3;
-/** The passage list of the planning call stays within the bound every lesson call has. */
+/** The planning request, as it is sent, stays within the bound every lesson call has. */
 export const OUTLINE_PROMPT_CHARS = CONTEXT_CHARS;
+/**
+ * Longest topic title, file title or heading in the planning request. They are labels, and a long one must not crowd
+ * the passages out of the request or make planning skip the model.
+ */
+export const OUTLINE_LABEL_CHARS = 200;
 /** An unwritten part's minutes: its material read at this many characters a minute, plus a fixed share, kept in bounds. */
 export const ESTIMATE_CHARS_PER_MINUTE = 1_500;
 export const ESTIMATE_EXTRA_MINUTES = 3;
@@ -105,11 +110,18 @@ const foldTitle = (title: string) => title.normalize("NFC").toLocaleLowerCase().
 
 /**
  * Repairs what it can in a reply and rejects the rest, with one line per broken rule for the second ask. `passageIds`
- * are the topic's passages in reading order, labelled P1, P2 and so on in the call. Repairs: an unknown label is
- * dropped; a passage in two parts stays in the first part that lists it; a part's passages are sorted into reading
- * order and the parts by their first passage; a part left with no passage is dropped; a passage in no part joins the
- * part of the nearest earlier passage, or the first part. Rejections: fewer than `min` or more than `max` parts after
- * the repairs, and an empty or repeated title. What it accepts gives every passage to exactly one part.
+ * are the topic's passages in reading order, labelled P1, P2 and so on in the call.
+ *
+ * A part may gather passages that are apart. A topic often holds several files on the same subjects (a book chapter,
+ * then the course slides on that chapter), and parts cut only from runs of neighbouring passages would teach the
+ * slides' subjects again after the book's. So what an accepted outline holds is: every passage in exactly one part,
+ * each part's passages in reading order, and the parts ordered by their first passage, where their subject first
+ * appears.
+ *
+ * Repairs: an unknown label is dropped; a passage in two parts stays in the first part that lists it; a part's passages
+ * are sorted into reading order and the parts by their first passage; a part left with no passage is dropped; a passage
+ * in no part joins the part of the nearest earlier passage, or the first part. Rejections: fewer than `min` or more than
+ * `max` parts after the repairs, and an empty or repeated title.
  */
 export function checkOutline(
   reply: OutlineReply,
@@ -168,8 +180,17 @@ export function checkOutline(
   };
 }
 
-/** A passage as planning reads it: `section` is its heading, or null when it has none worth naming. */
-export type OutlinePassage = { id: string; text: string; section: string | null };
+/**
+ * A passage as planning reads it: `section` is its heading, or null when it has none worth naming, and `fileId` and
+ * `file` are the source it comes from and that source's title.
+ */
+export type OutlinePassage = {
+  id: string;
+  text: string;
+  section: string | null;
+  fileId: string | null;
+  file: string | null;
+};
 
 /** The plan's word for a part, as in "Parte 3": Italian for Italian material, English for any other language. */
 function partName(language: string, position: number): string {
@@ -187,8 +208,10 @@ function headingTitle(section: string): string {
 }
 
 /**
- * Cuts a topic into at most `count` parts without a model. It walks the passages in reading order and closes a part
- * once it holds its share of what is left, never splitting a passage and never leaving a part empty. Within
+ * Cuts a topic into at most `count` parts without a model. Unlike a model's outline, each part is a run of neighbouring
+ * passages, because code cannot tell which passages of two files treat the same subject. It walks the passages in
+ * reading order and closes a part once it holds its share of what is left, never splitting a passage and never leaving
+ * a part empty. Within
  * `SECTION_SLACK` of that share it cuts where the section changes instead. Each part is titled with the heading of its
  * first passage, or "Parte N" ("Part N") when it has none, and a repeated title gets its number, as in "Intorni (2)".
  * A topic with no passages is one part.
@@ -260,13 +283,26 @@ function passageSection(sectionPath: string | null, locatorJson: string | null):
 export function outlinePassages(db: Database.Database, topicId: string): OutlinePassage[] {
   const rows = db
     .prepare(
-      `SELECT p.id, p.text, p.section_path, p.locator_json
-       FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id
+      `SELECT p.id, p.text, p.section_path, p.locator_json, p.source_id, s.title
+       FROM topic_passages tp JOIN passages p ON p.id = tp.passage_id LEFT JOIN sources s ON s.id = p.source_id
        WHERE tp.topic_id = ?
        ORDER BY p.created_at, p.id`,
     )
-    .all(topicId) as Array<{ id: string; text: string; section_path: string | null; locator_json: string | null }>;
-  return rows.map((row) => ({ id: row.id, text: row.text, section: passageSection(row.section_path, row.locator_json) }));
+    .all(topicId) as Array<{
+    id: string;
+    text: string;
+    section_path: string | null;
+    locator_json: string | null;
+    source_id: string | null;
+    title: string | null;
+  }>;
+  return rows.map((row) => ({
+    id: row.id,
+    text: row.text,
+    section: passageSection(row.section_path, row.locator_json),
+    fileId: row.source_id,
+    file: row.title,
+  }));
 }
 
 /** The first `count` characters of a passage, with its runs of white space as one space. */
@@ -279,33 +315,57 @@ function excerpt(text: string, count: number): string {
 export type OutlineRequest = {
   topic: string;
   parts: PartBounds;
-  passages: Array<{ label: string; section?: string; chars: number; excerpt: string }>;
+  passages: Array<{ label: string; file?: string; section?: string; chars: number; excerpt: string }>;
   problems?: string[];
 };
 
+/** A label cut to `OUTLINE_LABEL_CHARS` characters, the last of them an ellipsis when it was longer. */
+function labelText(text: string): string {
+  const chars = Array.from(text);
+  return chars.length <= OUTLINE_LABEL_CHARS ? text : `${chars.slice(0, OUTLINE_LABEL_CHARS - 1).join("")}…`;
+}
+
 /**
- * The planning call's input. Each passage is listed by its label, its heading when it starts a new one, its length and
- * its first characters, cut to an equal share so the whole list stays within `OUTLINE_PROMPT_CHARS`. Null when even the
- * labels and lengths alone do not fit: the topic is then cut by the fallback without a call.
+ * The planning call's input, `problems` included on the second ask. Each passage is listed by its label, its file's
+ * title when the file changes, its heading when it starts a new one (a new file starts its headings afresh), its length
+ * and its first characters. The file and the heading are what let the model gather the passages of two files on the
+ * same subject. Titles and headings are cut to `OUTLINE_LABEL_CHARS`, and the excerpts to an equal share, so the whole
+ * request as it is sent stays within `OUTLINE_PROMPT_CHARS`. Null when it does not fit even with no excerpts: the
+ * topic is then cut by the fallback without a call.
  */
 export function outlineRequest(
   topic: string,
   passages: readonly OutlinePassage[],
   bounds: PartBounds,
+  problems: readonly string[] = [],
 ): OutlineRequest | null {
   let heading: string | null = null;
   const bare = passages.map((passage, index) => {
+    const newFile = index === 0 || passage.fileId !== passages[index - 1]!.fileId;
+    if (newFile) heading = null;
     const section = passage.section !== null && passage.section !== heading ? passage.section : undefined;
     heading = passage.section ?? heading;
-    return { label: `P${index + 1}`, ...(section ? { section } : {}), chars: passage.text.length, excerpt: "" };
+    return {
+      label: `P${index + 1}`,
+      ...(newFile && passage.file ? { file: labelText(passage.file) } : {}),
+      ...(section ? { section: labelText(section) } : {}),
+      chars: passage.text.length,
+      excerpt: "",
+    };
   });
-  const size = (list: unknown) => JSON.stringify(list).length;
+  const request = (list: OutlineRequest["passages"]): OutlineRequest => ({
+    topic: labelText(topic),
+    parts: bounds,
+    passages: list,
+    ...(problems.length > 0 ? { problems: [...problems] } : {}),
+  });
+  const size = (list: OutlineRequest["passages"]) => JSON.stringify(request(list)).length;
   if (size(bare) > OUTLINE_PROMPT_CHARS) return null;
   let share = Math.floor((OUTLINE_PROMPT_CHARS - size(bare)) / Math.max(1, passages.length));
   for (;;) {
     const list = bare.map((entry, index) => ({ ...entry, excerpt: excerpt(passages[index]!.text, share) }));
-    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the list fits.
-    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return { topic, parts: bounds, passages: list };
+    // JSON escapes can make an excerpt longer than its characters, so the share shrinks until the request fits.
+    if (size(list) <= OUTLINE_PROMPT_CHARS || share === 0) return request(list);
     share = Math.floor(share * 0.9);
   }
 }
@@ -321,6 +381,8 @@ export type OutlinePart = {
   itemId: string | null;
   summary: string | null;
   doneAt: number | null;
+  /** When the part's last write failed or was cancelled; null once a write succeeds. */
+  writeFailedAt: number | null;
 };
 
 export type Outline = {
@@ -358,7 +420,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
   if (!row) return null;
   const parts = db
     .prepare(
-      `SELECT id, position, kind, title, about, passage_ids_json, minutes, item_id, summary, done_at
+      `SELECT id, position, kind, title, about, passage_ids_json, minutes, item_id, summary, done_at, write_failed_at
        FROM lesson_parts WHERE outline_id = ? ORDER BY position`,
     )
     .all(row.id) as Array<{
@@ -372,6 +434,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
     item_id: string | null;
     summary: string | null;
     done_at: number | null;
+    write_failed_at: number | null;
   }>;
   return {
     ...row,
@@ -386,6 +449,7 @@ export function liveOutline(db: Database.Database, topicId: string): Outline | n
       itemId: part.item_id,
       summary: part.summary,
       doneAt: part.done_at,
+      writeFailedAt: part.write_failed_at,
     })),
   };
 }
@@ -409,17 +473,19 @@ type Plan = {
 };
 
 /**
- * Saves an outline unless the topic got a live one meanwhile, and returns the topic's live outline. Teaching parts
+ * Saves an outline unless the topic got a live one meanwhile, and returns the topic's live outline. A cancelled call
+ * saves nothing and throws the abort, whichever way the outline was made. Teaching parts
  * get their estimated minutes; from `RECAP_FROM` teaching parts on, the recap follows them. Only a model's cut carries
  * engine and prompt provenance: the fallback and a one-part topic are cut by code.
  */
 function saveOutline(
   db: Database.Database,
-  input: { planId: string; topicId: string },
+  input: { planId: string; topicId: string; signal?: AbortSignal },
   passages: readonly OutlinePassage[],
   plan: Plan,
   language: string,
 ): Outline {
+  input.signal?.throwIfAborted();
   const chars = new Map(passages.map((passage) => [passage.id, passage.text.length]));
   const rows: Array<PlannedPart & Pick<OutlinePart, "kind" | "minutes">> = plan.parts.map((part) => ({
     ...part,
@@ -474,8 +540,9 @@ export type PlanPartsInput = {
  * Makes a topic's outline when it has no live one, and returns the live outline. A topic of one part is saved with no
  * call (`origin = 'single'`, the topic's title). Otherwise the model plans the parts from the passage list; a reply
  * `checkOutline` rejects is asked again once with its problems, and a second rejection, a reply the schema repair could
- * not fix, or a passage list too long to send is cut by `fallbackOutline` (`origin = 'fallback'`). An engine error or a
- * cancel saves nothing and is thrown, so the next open tries again.
+ * not fix, or a request over `OUTLINE_PROMPT_CHARS` even with no excerpts, on either ask, is cut by `fallbackOutline`
+ * (`origin = 'fallback'`). No call goes out above that bound. An engine error or a cancel saves nothing and is thrown,
+ * so the next open tries again.
  */
 export async function planParts(db: Database.Database, input: PlanPartsInput): Promise<Outline> {
   requireTopic(db, input.planId, input.topicId);
@@ -491,12 +558,14 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
     return saveOutline(db, input, passages, { origin: "single", parts: [{ title: topic.title, about: "", passageIds }] }, language);
   const fallback = () =>
     saveOutline(db, input, passages, { origin: "fallback", parts: fallbackOutline(passages, bounds.target, language) }, language);
-  const request = outlineRequest(topic.title, passages, bounds);
-  if (!request) return fallback();
-  const selection = input.selection ?? selectionFor(db, "lesson");
+  let selection = input.selection;
   const system = systemPrompt("lesson.outline", { contentLanguage: language });
   let problems: string[] = [];
   for (let ask = 0; ask < 2; ask++) {
+    // Built for each ask, so the second, with its problems, is measured against the bound as it is sent too.
+    const request = outlineRequest(topic.title, passages, bounds, problems);
+    if (!request) return fallback();
+    selection ??= selectionFor(db, "lesson");
     let result: Awaited<ReturnType<typeof generate>>;
     try {
       result = await generate({
@@ -506,7 +575,7 @@ export async function planParts(db: Database.Database, input: PlanPartsInput): P
         schema: outlineReply,
         system,
         // The problems travel inside the JSON, which the recorded engine and the structured providers read as it is.
-        prompt: JSON.stringify(problems.length > 0 ? { ...request, problems } : request),
+        prompt: JSON.stringify(request),
       });
     } catch (error) {
       if (error instanceof IpcError && error.code === "invalid-output") return fallback();
@@ -548,8 +617,13 @@ export const PART_MIN_MINUTES = 2;
 export const PART_MAX_MINUTES = 12;
 /** Room kept in the request for the problems of a second ask, so both asks stay within `CONTEXT_CHARS`. */
 const PROBLEMS_CHARS = 1_000;
+/** Longest source heading in a part's material: a label, cut like the labels of the planning request. */
+export const MATERIAL_HEADING_CHARS = OUTLINE_LABEL_CHARS;
 /** A heading as the request lists it for a written part. */
 const HEADING_CHARS = 120;
+/** The topic's title and a part's line on what it teaches, as the request lists them. */
+const TOPIC_CHARS = 200;
+const ABOUT_CHARS = 200;
 
 /** The plan's word for a part with its number, such as "Parte 3", for job titles. */
 export function partLabel(language: string, position: number): string {
@@ -753,15 +827,34 @@ function itemHeadings(db: Database.Database, itemId: string): string[] {
   return markdown ? smartSections(markdown).map((section) => section.title) : [];
 }
 
-/** Material cut so that it fits in `budget` characters: every passage kept, each cut to an equal share when too long. */
+/** Text cut to at most `chars` characters, with an ellipsis when it was longer. */
+function cutText(text: string, chars: number): string {
+  const all = Array.from(text);
+  return all.length <= chars ? text : `${all.slice(0, Math.max(0, chars - 1)).join("").trimEnd()}…`;
+}
+
+/**
+ * Material cut so that it fits in `budget` characters. Headings are labels: each is cut to `MATERIAL_HEADING_CHARS`.
+ * When the material is still too long, every passage gets an equal share of the budget: its heading at most a quarter
+ * of it (none when the share is too small to name it), and its own text the rest, so every passage keeps some text.
+ */
 function fittedMaterial(passages: readonly OutlinePassage[], budget: number): string {
-  const rows = passages.map((passage) => ({ text: passage.text, section_path: passage.section }));
-  const text = materialText(rows);
-  if (text.length <= budget) return text;
-  // Headings and the blank lines between passages count too, so the share is what is left after them.
-  const frame = materialText(rows.map((row) => ({ ...row, text: "" }))).length;
-  const share = Math.max(0, Math.floor((budget - frame) / Math.max(1, rows.length)));
-  return materialText(rows.map((row) => ({ ...row, text: row.text.slice(0, share) })));
+  const rows = passages.map((passage) => ({
+    text: passage.text,
+    section_path: passage.section && cutText(passage.section, MATERIAL_HEADING_CHARS),
+  }));
+  const whole = materialText(rows);
+  if (whole.length <= budget) return whole;
+  const share = Math.floor(Math.max(0, budget) / Math.max(1, rows.length));
+  const label = share >= 80 ? Math.min(MATERIAL_HEADING_CHARS, Math.floor(share / 4)) : 0;
+  return materialText(
+    rows.map((row) => {
+      const section_path = row.section_path && label > 0 ? cutText(row.section_path, label) : null;
+      // "### " and the blank line after a heading, and the blank line before the next passage.
+      const frame = (section_path ? section_path.length + 6 : 0) + 2;
+      return { section_path, text: row.text.slice(0, Math.max(0, share - frame)) };
+    }),
+  );
 }
 
 export type PartRequestInput = {
@@ -793,30 +886,40 @@ export function partRequest(input: PartRequestInput): string {
         entry.itemId && entry.position !== part.position ? "written" : "",
         entry.kind === "recap" ? "recap" : "",
       ].filter(Boolean);
-      const about = entry.about ? `: ${entry.about}` : "";
-      return `${entry.position}. ${entry.title}${about}${marks.length ? ` (${marks.join(", ")})` : ""}`;
+      const about = entry.about ? `: ${cutText(entry.about, ABOUT_CHARS)}` : "";
+      return `${entry.position}. ${cutText(entry.title, TITLE_CHARS)}${about}${marks.length ? ` (${marks.join(", ")})` : ""}`;
     })
     .join("\n");
   const written = outline.parts
     .filter((entry) => entry.itemId && entry.position !== part.position)
     .map((entry) => {
       const headings = (input.headings.get(entry.position) ?? []).map(
-        (heading) => `"${Array.from(heading).slice(0, HEADING_CHARS).join("")}"`,
+        (heading) => `"${cutText(heading, HEADING_CHARS)}"`,
       );
       const when = entry.position < part.position ? "before this part" : "after this part";
-      const lines = [`Part ${entry.position}, ${entry.title} (${when}). Sections: ${headings.join(", ") || "none"}.`];
-      if (entry.summary) lines.push(`What it taught: ${entry.summary}`);
+      const lines = [
+        `Part ${entry.position}, ${cutText(entry.title, TITLE_CHARS)} (${when}). Sections: ${headings.slice(0, LENIENT_SECTIONS.max).join(", ") || "none"}.`,
+      ];
+      if (entry.summary) lines.push(`What it taught: ${cutText(entry.summary, SUMMARY_CHARS)}`);
       return lines.join("\n");
     });
   const head = [
-    `Topic: ${input.topic}`,
+    `Topic: ${cutText(input.topic, TOPIC_CHARS)}`,
     place,
     `The lesson's parts:\n${plan}`,
     written.length ? `Parts already written:\n\n${written.join("\n\n")}` : "No part is written yet.",
   ].join("\n\n");
   if (part.kind === "recap" || input.passages.length === 0) return head;
   const label = "\n\nMaterial of this part:\n\n";
-  return `${head}${label}${fittedMaterial(input.passages, CONTEXT_CHARS - head.length - label.length - PROBLEMS_CHARS)}`;
+  const bound = CONTEXT_CHARS - PROBLEMS_CHARS;
+  let budget = bound - head.length - label.length;
+  let request = `${head}${label}${fittedMaterial(input.passages, budget)}`;
+  // The size is measured, not trusted: a request still over the bound is fitted again with less room for material.
+  for (let round = 0; request.length > bound && round < 3; round++) {
+    budget -= request.length - bound;
+    request = `${head}${label}${fittedMaterial(input.passages, budget)}`;
+  }
+  return request;
 }
 
 /** The second ask: the same request with the problems of the first reply. */
@@ -872,12 +975,15 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   let shaped: Extract<PartShape, { ok: true }> | null = null;
   let engine: { provider: string; model: string } | null = null;
   for (let ask = 0; ask < 2 && !shaped; ask++) {
+    const prompt = problems.length > 0 ? partRetry(request, problems) : request;
+    // Every bound above keeps a request within this; a request over it is a bug, and no call is made.
+    if (prompt.length > CONTEXT_CHARS) throw new Error("lesson-part-too-long");
     const result = await generate({
       selection,
       run: input.run,
       signal: input.signal,
       system,
-      prompt: problems.length > 0 ? partRetry(request, problems) : request,
+      prompt,
     });
     input.signal?.throwIfAborted();
     const checked = partShape(result.text, {
@@ -969,12 +1075,14 @@ function otherHeadings(db: Database.Database, outline: Outline, part: OutlinePar
 
 /**
  * Points a part at its text, with the text's summary, which also goes into the item so a level read again finds it.
- * Minutes change only on a part not done, so today's minutes do not move under a part already counted.
+ * Minutes change only on a part not done, so today's minutes do not move under a part already counted. A part with a
+ * text loses the mark of a failed or cancelled write.
  */
 function pointPart(db: Database.Database, partId: string, itemId: string, summary: string | null, minutes: number) {
   db.prepare("UPDATE items SET body_json = json_set(body_json, '$.summary', ?) WHERE id = ?").run(summary, itemId);
   db.prepare(
-    `UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = CASE WHEN done_at IS NULL THEN ? ELSE minutes END
+    `UPDATE lesson_parts SET item_id = ?, summary = ?, minutes = CASE WHEN done_at IS NULL THEN ? ELSE minutes END,
+       write_failed_at = NULL
      WHERE id = ?`,
   ).run(itemId, summary, minutes, partId);
 }
@@ -1185,24 +1293,31 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
 
 /**
  * The written parts of a topic's live outline joined in reading order, for export: each under its title as a ##
- * heading, its own headings one level down, or a one-part topic's text as it is. Null when no part is written.
+ * heading, its own headings one level down, or a one-part topic's text as it is. The passages are the ones the saved
+ * parts were written from, which leave out material removed between planning and writing. Null when no part is written.
  */
 export function partsMarkdown(db: Database.Database, topicId: string): { markdown: string; passageIds: string[] } | null {
   const outline = liveOutline(db, topicId);
   const written = outline?.parts.filter((part) => part.itemId) ?? [];
   if (!outline || written.length === 0) return null;
   const read = db.prepare("SELECT json_extract(body_json, '$.markdown') AS markdown FROM items WHERE id = ?").pluck();
+  const cited = db
+    .prepare(
+      `SELECT ip.passage_id FROM item_passages ip JOIN passages p ON p.id = ip.passage_id
+       WHERE ip.item_id = ? ORDER BY p.created_at, p.id`,
+    )
+    .pluck();
   const single = outline.parts.length === 1;
-  const texts = written.flatMap((part) => {
+  const texts: string[] = [];
+  const passageIds = new Set<string>();
+  for (const part of written) {
     const markdown = read.get(part.itemId) as string | null | undefined;
-    if (!markdown) return [];
-    return [single ? markdown : `## ${part.title}\n\n${demoteHeadings(markdown)}`];
-  });
+    if (!markdown) continue;
+    texts.push(single ? markdown : `## ${part.title}\n\n${demoteHeadings(markdown)}`);
+    for (const id of cited.all(part.itemId) as string[]) passageIds.add(id);
+  }
   if (texts.length === 0) return null;
-  return {
-    markdown: texts.join("\n\n"),
-    passageIds: [...new Set(written.flatMap((part) => part.passageIds))],
-  };
+  return { markdown: texts.join("\n\n"), passageIds: [...passageIds] };
 }
 
 /** Every Markdown heading outside code one level down, so a part's sections sit under the part's title. */

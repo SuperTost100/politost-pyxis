@@ -142,6 +142,136 @@ test("the Library opens each file in the source panel, at its first page, and pa
   }
 });
 
+test("one Escape closes the panel's menu and leaves the panel open, whichever way the menu was opened", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await launch();
+  try {
+    await toLibrary(page);
+    const cover = page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true });
+    await cover.click();
+    const sheet = panel(page);
+    const title = sheet.getByRole("heading", { name: "Fisica I · Mazzoldi, Nigro, Voci" });
+    await expect(title).toBeFocused();
+    const dots = sheet.getByRole("button", { name: "Azioni su «Fisica I · Mazzoldi, Nigro, Voci»" });
+    const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+    const opened: Array<[string, () => Promise<void>]> = [
+      ["a click on the dots", () => dots.click()],
+      ["a right-click on the dots", () => dots.click({ button: "right" })],
+      ["a right-click on the name", () => title.click({ button: "right" })],
+      ["Shift+F10 on the name", async () => {
+        await title.focus();
+        await page.keyboard.press("Shift+F10");
+      }],
+      ["Shift+F10 on the dots", async () => {
+        await dots.focus();
+        await page.keyboard.press("Shift+F10");
+      }],
+    ];
+    for (const [how, open] of opened) {
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(menu, how).toHaveCount(0);
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet, how).not.toHaveClass(/is-leaving/);
+    }
+    // With the menu gone, the next Escape closes the panel.
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("with animations on, a second Escape closes the panel while the menu is still fading out", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await launch();
+  try {
+    await toLibrary(page);
+    await page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true }).click();
+    const sheet = panel(page);
+    await expect(sheet).toHaveCount(1);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const dots = sheet.getByRole("button", { name: "Azioni su «Fisica I · Mazzoldi, Nigro, Voci»" });
+    const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+    for (const [how, open] of [
+      ["a click", () => dots.click()],
+      ["a right-click", () => dots.click({ button: "right" })],
+    ] as const) {
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      // One Escape closes the menu only.
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet, how).not.toHaveClass(/is-leaving/);
+      await animationsSettled(page);
+      await open();
+      await expect(menu, how).toBeVisible();
+      // Two in a row, with no wait between them: the first closes the menu, the second the panel.
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(0);
+      await page.getByRole("button", { name: "Fisica I · Mazzoldi, Nigro, Voci", exact: true }).click();
+      await expect(sheet).toHaveCount(1);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a menu that is open when its file goes away closes, whichever way it was opened", async () => {
+  test.setTimeout(240_000);
+  const title = "Lavagna, lezione 10";
+  const ways: Array<[string, (page: Page) => Promise<void>]> = [
+    ["a click on the dots", (page) => panel(page).getByRole("button", { name: `Azioni su «${title}»` }).click()],
+    ["a right-click on the dots", (page) => panel(page).getByRole("button", { name: `Azioni su «${title}»` }).click({ button: "right" })],
+    ["Shift+F10 on the name", async (page) => {
+      await panel(page).getByRole("heading", { name: title }).focus();
+      await page.keyboard.press("Shift+F10");
+    }],
+  ];
+  // Each way starts from a fresh app, since each ends with the file removed.
+  for (const [how, open] of ways) {
+    const { app, page, userData } = await launch();
+    try {
+      await toLibrary(page);
+      const sheet = panel(page);
+      const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: "Dettagli della fonte" }) });
+      const id = await page.evaluate(
+        async (title) => ((await window.pyxis.invoke("sources.list", {})) as Array<{ id: string; title: string }>).find((row) => row.title === title)!.id,
+        title,
+      );
+      await page.getByRole("button", { name: title, exact: true }).click();
+      await expect(sheet, how).toHaveCount(1);
+      await expect(sheet.getByRole("heading", { name: title }), how).toBeFocused();
+      await open(page);
+      await expect(menu, how).toBeVisible();
+      // The file is removed from outside the page, so there is no menu to offer for it: the open one goes too.
+      await page.evaluate((sourceId) => window.pyxis.invoke("sources.remove", { sourceId, confirmed: true }), id);
+      // A file added afterwards makes the page read the library again, as a finished import does.
+      await page.evaluate(
+        (how) =>
+          window.pyxis.invoke("sources.paste", {
+            title: `Arrivo ${how}`,
+            text: "La probabilità condizionata di A dato B è il rapporto tra P(A e B) e P(B).\n\n".repeat(20),
+          }),
+        how,
+      );
+      await expect(menu, how).toHaveCount(0);
+      // With no menu open, the next Escape is the panel's.
+      await page.keyboard.press("Escape");
+      await expect(sheet, how).toHaveCount(0);
+    } finally {
+      await app.close();
+      removeTestFolder(userData);
+    }
+  }
+});
+
 test("a citation in a chat opens the panel at the cited page with the passage marked, and a second one moves it", async () => {
   test.setTimeout(240_000);
   const { app, page, userData } = await launch();

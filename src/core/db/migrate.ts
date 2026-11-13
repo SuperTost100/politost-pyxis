@@ -375,6 +375,8 @@ CREATE INDEX sources_subject_sort ON sources(subject_sort) WHERE subject_sort IN
   // `origin` says whether the model, the fallback in code or no planning at all ('single') cut it. `lesson_parts` is one
   // part in reading order, the recap last; its passages are JSON rather than a link table, because a plan of unwritten
   // parts must never stop a source from being removed. A written part is an ordinary `lesson` item named by `item_id`.
+  // `write_failed_at` is when the part's last write failed or was cancelled, kept until a write succeeds or the student
+  // asks again, so a part does not go back to being written in the background once its failed job is dismissed.
   // Only new tables: every lesson, event, card and plan that existed reads as before.
   {
     version: 32,
@@ -411,6 +413,7 @@ CREATE TABLE lesson_parts (
   item_id TEXT REFERENCES items(id) ON DELETE SET NULL,
   summary TEXT,
   done_at INTEGER,
+  write_failed_at INTEGER CHECK (write_failed_at IS NULL OR typeof(write_failed_at) = 'integer'),
   UNIQUE (outline_id, position)
 );
 CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NULL;`,
