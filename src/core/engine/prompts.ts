@@ -12,6 +12,7 @@ import chatSocratic from "../../../resources/prompts/chat.socratic.md?raw";
 import chatSolver from "../../../resources/prompts/chat.solver.md?raw";
 import lessonWrite from "../../../resources/prompts/lesson.write.md?raw";
 import lessonAgent from "../../../resources/prompts/lesson.agent.md?raw";
+import lessonOutline from "../../../resources/prompts/lesson.outline.md?raw";
 import mapEdit from "../../../resources/prompts/map.edit.md?raw";
 import mapGenerate from "../../../resources/prompts/map.generate.md?raw";
 import paperRead from "../../../resources/prompts/paper.read.md?raw";
@@ -53,6 +54,7 @@ export const TEMPLATE_SOURCES = {
   "chat.solver": chatSolver,
   "lesson.write": lessonWrite,
   "lesson.agent": lessonAgent,
+  "lesson.outline": lessonOutline,
   "map.edit": mapEdit,
   "map.generate": mapGenerate,
   "paper.read": paperRead,

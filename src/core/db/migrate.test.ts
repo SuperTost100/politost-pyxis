@@ -859,7 +859,7 @@ const objectsOf = (db: Database.Database, tables: string[]) =>
     .prepare(
       `SELECT type, name, sql FROM sqlite_master WHERE tbl_name IN (${tables.map(() => "?").join(",")}) ORDER BY type, name`,
     )
-    .all(...tables);
+    .all(...tables) as Array<{ type: string; name: string; sql: string | null }>;
 
 const PART_OBJECTS = [
   { type: "index", name: "lesson_outlines_live" },

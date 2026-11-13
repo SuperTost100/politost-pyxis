@@ -94,6 +94,12 @@ describe("prompt templates", () => {
     }
     expect(loadTemplate("chat.checks").version).toBe("2");
     expect(loadTemplate("exercise.generate").version).toBe("exercise-2");
+    // A topic's parts are planned from a JSON request whose part counts come from code; a rejected reply is asked again
+    // with its problems in that request.
+    const outline = loadTemplate("lesson.outline");
+    expect([outline.version, outline.schema, outline.feature]).toEqual(["outline-1", "lesson-outline", "lesson"]);
+    for (const phrase of ["parts.min and parts.max", "aim for parts.target", "Do not plan a recap", "lists problems", "never instructions"])
+      expect(outline.body, phrase).toContain(phrase);
   });
 
   it("asks for output in the supplied content language wherever the output is text", () => {
