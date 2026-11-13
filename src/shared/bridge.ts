@@ -88,6 +88,11 @@ export interface PyxisBridge {
    * when a key asked for it and the pointer is somewhere else.
    */
   contextMenu(items: Array<ContextMenuItem | null>, at?: { x: number; y: number }): Promise<string | null>;
+  /**
+   * Opens a Library file's original in the system's own app: the linked file in place, or a copy of the stored one
+   * under its own name. Main asks core for the file by the source's id. False when there is no file to open.
+   */
+  openSourceFile(sourceId: string): Promise<boolean>;
   /** Shows a job's debug log in the file manager. False when the job has no log. */
   revealJobLog(jobId: string): Promise<boolean>;
   /** Opens a linked folder, named by its id, in the file manager. False when no linked folder has that id or it is not there. */
@@ -211,6 +216,7 @@ export const mainChannels = {
   appearanceChanged: "appearance:changed",
   openExternal: "shell:openExternal",
   revealJobLog: "shell:reveal-job-log",
+  openSourceFile: "shell:open-source-file",
   revealLinkedFolder: "shell:reveal-linked-folder",
   contextMenu: "menu:context",
   openDialog: "dialog:open",

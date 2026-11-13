@@ -135,15 +135,16 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
             const box = (await row.locator(selector).boundingBox())!;
             await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
           };
+          const panel = page.locator("aside.source-panel");
           await click(".px-source-row-meta");
-          await expect(page.getByRole("dialog")).toBeVisible();
+          await expect(panel).toBeVisible();
           await page.keyboard.press("Escape");
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(panel).toHaveCount(0);
           // The status area at the right opens it too.
           await click(".px-source-row-status");
-          await expect(page.getByRole("dialog")).toBeVisible();
+          await expect(panel).toBeVisible();
           await page.keyboard.press("Escape");
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(panel).toHaveCount(0);
         }
   } finally {
     await app.close();
@@ -151,7 +152,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
   }
 });
 
-test("LAYOUT-02 the source viewer has one way back and one close, side by side", async () => {
+test("LAYOUT-02 the source panel has its close beside the name and the way back under it", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-details-"));
   const app = await launchPyxis({ userData });
@@ -180,22 +181,26 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
               new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-1", back: () => undefined } }),
             ),
           );
-          const viewer = page.getByRole("dialog");
+          const viewer = page.locator("aside.source-panel");
           await expect(viewer.getByText(/La forza è il prodotto/)).toBeVisible();
           const back = viewer.getByRole("button", { name: /^(Dettagli della fonte|Source details)$/ });
           const close = viewer.getByRole("button", { name: /^(Chiudi|Close)$/ });
+          const name = viewer.locator(".source-viewer-title");
           await expect(back).toHaveCount(1);
           await expect(close).toHaveCount(1);
-          const [backBox, closeBox] = [await back.boundingBox(), await close.boundingBox()];
-          // Same row: their vertical centres are within a few pixels, the close at the right of the way back.
+          const [backBox, closeBox, nameBox] = [await back.boundingBox(), await close.boundingBox(), await name.boundingBox()];
+          // The close on the name's row, at its right; the way back under the name, lined up with it.
           const centre = (box: NonNullable<typeof backBox>) => box.y + box.height / 2;
-          expect(Math.abs(centre(backBox!) - centre(closeBox!))).toBeLessThan(8);
-          expect(closeBox!.x).toBeGreaterThan(backBox!.x + backBox!.width);
+          expect(Math.abs(centre(nameBox!) - centre(closeBox!))).toBeLessThan(8);
+          expect(closeBox!.x).toBeGreaterThan(nameBox!.x + nameBox!.width);
+          expect(backBox!.y).toBeGreaterThan(nameBox!.y + nameBox!.height);
+          expect(Math.abs(backBox!.x - nameBox!.x)).toBeLessThan(2);
           await saveShot(page, `layout-details/viewer-${key}.png`);
           await close.click();
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(viewer).toHaveCount(0);
 
-          // Opened without a way back, a long unbroken title wraps inside its own column and leaves the close button clear.
+          // Opened without a way back, a long unbroken title stays on one line, cut with an ellipsis before the close
+          // button, and keeps its whole name for the pointer and screen readers.
           await page.evaluate(() =>
             window.dispatchEvent(new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-long" } })),
           );
@@ -203,12 +208,13 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
           const title = viewer.locator(".source-viewer-title");
           const [titleBox, closeOnly] = [await title.boundingBox(), await viewer.locator(".source-viewer-close").boundingBox()];
           expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(closeOnly!.x);
-          const overflow = await title.evaluate((element) => element.scrollWidth > element.clientWidth);
-          expect(overflow).toBe(false);
+          expect(await title.evaluate((element) => getComputedStyle(element).textOverflow)).toBe("ellipsis");
+          await expect(title).toHaveAttribute("title", /ingegneria_edile_e_dei_sistemi_territoriali_2026$/);
+          await expect(viewer.getByRole("heading", { name: /ingegneria_edile_e_dei_sistemi_territoriali_2026$/ })).toBeVisible();
           await saveShot(page, `layout-details/viewer-long-${key}.png`);
           await expectNoAxeViolations(page);
           await viewer.getByRole("button", { name: /^(Chiudi|Close)$/ }).click();
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(viewer).toHaveCount(0);
           await page.evaluate(() =>
             window.dispatchEvent(
               new CustomEvent("pyxis:source-viewer", { detail: { passageId: "pa-1", back: () => undefined } }),
@@ -217,7 +223,7 @@ test("LAYOUT-02 the source viewer has one way back and one close, side by side",
           await expect(viewer.getByText(/La forza è il prodotto/)).toBeVisible();
           await expectNoAxeViolations(page);
           await close.click();
-          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(viewer).toHaveCount(0);
         }
   } finally {
     await app.close();

@@ -359,8 +359,15 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     }
     await language(page, "it", "light");
     await page.locator(".px-reader-sources summary").click();
-    await page.locator(".px-reader-sources").getByRole("button", { name: /cap\. 1/ }).click();
+    const place = page.locator(".px-reader-sources").getByRole("button", { name: /cap\. 1/ });
+    await place.click();
     await expect(page.getByText("La forza cambia lo stato di moto.")).toBeVisible();
+    // It opens in the source panel, at the passage the lesson used, marked; Escape goes back to the lesson's source.
+    const sourcePanel = page.locator("aside.source-panel");
+    await expect(sourcePanel.locator(".source-viewer-paragraph.is-current")).toContainText("La forza cambia lo stato di moto.");
+    await page.keyboard.press("Escape");
+    await expect(sourcePanel).toHaveCount(0);
+    await expect(place).toBeFocused();
 
     // Shared with its progress: the copy's lesson opens from the path with every check still answered.
     await page.keyboard.press("Escape");

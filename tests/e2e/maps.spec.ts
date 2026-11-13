@@ -261,6 +261,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await sourceButton.click();
     const panel = page.getByRole("complementary", { name: /Analisi/ });
     await expect(panel.locator(".source-viewer-paragraph.is-current")).toBeVisible();
+    await saveShot(page, "m10-map-source.png");
     await expect(sourceButton).toHaveAttribute("aria-expanded", "true");
     expect(page.url()).toBe(mapUrl);
     await expect(page.locator(".react-flow__node")).toHaveCount(initial.nodes.length);
