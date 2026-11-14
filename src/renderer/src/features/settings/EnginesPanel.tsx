@@ -1054,7 +1054,7 @@ export function EnginesPanel() {
       </Drawer>
       <Dialog
         open={adding}
-        width="md"
+        width="lg"
         title={t("engines.add")}
         // Each engine in the first tab has its own button, so the dialog only closes there; the key's tab saves from the
         // footer.

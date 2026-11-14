@@ -87,7 +87,7 @@ All three use `--radius-field`.
 
 ## Dialogs
 
-Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with buttons is asked through `useConfirm`, so a confirmation, a form and a notice look and behave the same. The browser's own boxes (`window.confirm`) and Ant Design's `modal.confirm` and `modal.warning` are gone; Ant Design's `Modal` forms are on their way out.
+Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with buttons is asked through `useConfirm`, so a confirmation, a form and a notice look and behave the same. The browser's own boxes (`window.confirm`), Ant Design's `Modal` and its `modal.confirm` and `modal.warning` are gone, and so are the native `<dialog>`s that Crea un'attività and Nuova flashcard drew for themselves.
 
 | Rule           | What it does                                                                                                                                                                                                                                                    |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -104,6 +104,40 @@ Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with butt
 | Layer          | A native modal `<dialog>`, in the top layer above the source panel, popovers and menus. Menus opened inside it are drawn inside it                                                                                                                              |
 
 One question at a time: asked while another is open, `useConfirm` answers "cancel" at once and nothing opens.
+
+A select, a date picker or a menu opened inside a dialog is drawn inside it (`getPopupContainer`), because anything Ant Design puts in the document's body would sit under the native dialog. The dialog does not clip it, so a long list can reach past the card. An Escape that a field or list uses (a select closing its list, a rename field cancelling) belongs to that one and does not close the dialog. A source opened from a citation inside a dialog is drawn inside that dialog and closes with it.
+
+### The dialogs
+
+A dialog that starts its work from rows or tabs in its body (a list of books, the tabs of Aggiungi fonti) has no confirming button, and its way out is "Chiudi". A dialog that only informs has the X. Crea un'attività and Nuova flashcard change height while they are open, so they stay 64px from the top of the window instead of re-centring.
+
+| Dialog                                                      | Width                  | Buttons                                                                     | X   |
+| ----------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------------- | --- |
+| Nuova mappa                                                 | md                     | Annulla, Crea la mappa                                                      | no  |
+| Aggiungi un ramo, Rinomina il nodo, Collega i nodi (a map)  | md                     | Annulla and the action                                                      | no  |
+| Esporta                                                     | md                     | Annulla, Salva file                                                         | no  |
+| Aggiungi fonti (Library, exam, past papers, new exam)       | md                     | Chiudi                                                                      | no  |
+| Aggiungi le fonti di un esame                               | lg                     | Annulla, Collega le fonti selezionate                                       | no  |
+| The Library picker of a new exam                            | md                     | Annulla, Aggiungi N                                                         | no  |
+| Sposta in una materia nuova                                 | md                     | Annulla, Sposta                                                             | no  |
+| Gestisci materie                                            | md                     | Chiudi                                                                      | no  |
+| Importa un esame (the file's review)                        | lg                     | Annulla, Importa                                                            | no  |
+| Libri PoliTost gratuiti                                     | md                     | Chiudi                                                                      | no  |
+| Apri un PDF protetto                                        | md                     | Annulla, Apri il PDF                                                        | no  |
+| Crea flashcard (from a text, a reply or a map)              | lg                     | Annulla, Crea di nuovo on the left, Salva N flashcard                       | no  |
+| Nuova flashcard                                             | md, lg while reviewing | Annulla, Salva e scrivine un'altra, Salva; Crea di nuovo on the left        | no  |
+| Modifica la flashcard                                       | md                     | Annulla, Salva                                                              | no  |
+| Importa o esporta Anki                                      | md                     | Annulla, the action; Fatto after the result                                 | no  |
+| Crea un'attività                                            | md                     | Annulla, Crea l'attività                                                    | no  |
+| Ricostruisci gli argomenti                                  | lg                     | Annulla or Continua a lavorare, Scarta on the left, the action of its state | no  |
+| An activity's preview (exam page, titled with its kind)     | lg                     | none                                                                        | yes |
+| Quale sezione riscrivo? and Riscrivere la lezione in parti? | md                     | Annulla, Riscrivi                                                           | no  |
+| Aggiungi strumento AI                                       | lg                     | Chiudi, or Annulla and Salva e prova on the key's tab                       | no  |
+| Installazione e accesso di uno strumento AI                 | md                     | Chiudi                                                                      | no  |
+| Cosa esce da questo computer                                | md                     | Non ora, Ho capito                                                          | no  |
+| Scorciatoie da tastiera                                     | md                     | none                                                                        | yes |
+
+An Ant Design `Drawer` (the AI tool's details, the source details), a `Popconfirm` and the search palette are not dialogs and keep their own look.
 
 ### Naming a destructive action
 

@@ -1027,11 +1027,12 @@ async function openAddSources(page: Page, tab?: RegExp) {
   return dialog;
 }
 
-async function openExport(page: Page) {
-  await page
-    .getByRole("button", { name: both("Esporta", "Export") })
-    .first()
-    .click();
+/** Esporta is an item of the page's menu, which `menu` names (its button's label), or a button of its own. */
+async function openExport(page: Page, menu?: RegExp) {
+  if (menu) {
+    await page.getByRole("button", { name: menu }).click();
+    await page.getByRole("menuitem", { name: both("Esporta", "Export") }).click();
+  } else await page.getByRole("button", { name: both("Esporta", "Export") }).first().click();
   await expect(
     page
       .getByRole("dialog")
@@ -4390,8 +4391,10 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "export-cards":
+      await openExport(page, /^(Altro sulle flashcard|More on the flashcards)$/);
+      break;
     case "export-simulation":
-      await openExport(page);
+      await openExport(page, /^(Altro sulla simulazione|More on the simulation)$/);
       break;
     case "cards-browser":
       await expect(

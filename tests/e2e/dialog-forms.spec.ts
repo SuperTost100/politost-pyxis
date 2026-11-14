@@ -76,3 +76,59 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
     removeTestFolder(userData);
   }
 });
+
+test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Annulla, a click outside that stays, and Importa", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-dialog-import-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const file = {
+      name: "Fisica prestata.pyxis",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          version: 2,
+          id: "plan-fisica-prestata",
+          createdAt: 1_760_000_000_000,
+          title: "Fisica prestata",
+          topics: [{ id: "t", title: "Moti", position: 0 }],
+          nodes: [],
+          cards: [{ front: "$v$", back: "Velocità", topic: 0 }],
+        }),
+      ),
+    };
+    const input = page.locator('input[type="file"]').first();
+    await input.setInputFiles(file);
+    const dialog = page.getByRole("dialog", { name: "Importa un esame" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Fisica prestata" })).toBeVisible();
+    // The buttons are the dialog's own, and it has no X beside Annulla.
+    await expect(dialog.getByRole("button", { name: "Annulla" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Importa", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Chiudi" })).toHaveCount(0);
+    await animationsSettled(page);
+
+    // A click outside would throw the choices away, so it leaves the dialog open; Annulla closes it.
+    await page.mouse.click(4, 4);
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(await page.evaluate(() => window.pyxis.invoke("plans.list", {}))).toHaveLength(0);
+
+    await input.setInputFiles(file);
+    await expect(dialog).toBeVisible();
+    await animationsSettled(page);
+    await dialog.getByRole("button", { name: "Importa", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const titles = await page.evaluate(async () =>
+      (await window.pyxis.invoke("plans.list", {})).map((plan: { title: string }) => plan.title),
+    );
+    expect(titles).toEqual(["Fisica prestata"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
