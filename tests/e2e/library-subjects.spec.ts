@@ -667,6 +667,17 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // A menu ends the way a desktop menu does. Scrolling the page closes it, by the dots or by a right-click. A layout
     // shift (a group appearing above the shelves) does not: a right-click menu stays at the pointer, and the one opened
     // by the dots follows them. Resizing the window closes a right-click menu, and the dots' menu follows them.
+    /**
+     * Puts the page at `top` px, with no glide, and waits until it has stayed there. A step that wheels up needs a page
+     * that can scroll up, so each one sets its own position instead of taking what the step before left: the wheel and
+     * the scrolls into view of the steps above add up differently on each computer, and the wheel-up of the dots step took
+     * the Intel Mac's page to its top before the right-click step began.
+     */
+    const placePage = async (top: number) => {
+      await page.evaluate((top) => document.scrollingElement!.scrollTo({ top, behavior: "instant" }), top);
+      await atRest(page.locator(".px-shelves").first());
+      await expect.poll(() => page.evaluate(() => Math.round(document.scrollingElement!.scrollTop)), `the page at ${top} px`).toBe(top);
+    };
     for (const way of ["dots", "right-click"] as const) {
       /** Opens the menu of "Serie" by its dots or by a right-click at its centre. */
       const open = async () => {
@@ -684,6 +695,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
         await expect(fileMenu).toBeVisible();
         await animationsSettled(page);
       };
+      // 300 px keeps "Serie", which is 546 px down the page, in the window, and leaves the page 477 px to scroll.
+      await placePage(300);
       await open();
       // A wheel over the shelves, away from the menu, on a page that is not at its top: only then can it scroll.
       const wheelAt = { x: 480, y: 450 };
