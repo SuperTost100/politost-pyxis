@@ -330,7 +330,7 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
       .click();
     await expect(page.locator(".px-update-notice")).toHaveCount(0);
     // An open dialog.
-    await page.getByRole("button", { name: "Altro", exact: true }).click();
+    await page.getByRole("button", { name: "Altro su Esami", exact: true }).click();
     await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
     const manage = page.getByRole("dialog");
     await expect(manage).toBeVisible();

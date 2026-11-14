@@ -5,14 +5,13 @@ import { useTranslation } from "react-i18next";
 import "./ListToolbar.css";
 
 /**
- * The toolbar above every list on the Exams page and the plan's Sources tab, always in one order: the search
- * field, the filters, a secondary menu and the one primary action. No field has a visible label; each control
- * carries its own accessible name. A caller leaves out the filters while its list is empty.
+ * The toolbar above a list, always in one order: the search field, the filters and the one primary action. No field
+ * has a visible label; each control carries its own accessible name. A caller leaves out the filters while its list is
+ * empty. The page's own menu is not here: it is the dots in the page's head (`MenuButton`).
  */
 export function ListToolbar(props: {
   search?: ReactNode;
   filters?: ReactNode;
-  menu?: ReactNode;
   primary?: ReactNode;
 }) {
   return (
@@ -20,12 +19,7 @@ export function ListToolbar(props: {
       {props.search}
       <div className="px-list-toolbar-rest">
         {props.filters}
-        {props.menu || props.primary ? (
-          <div className="px-list-toolbar-actions">
-            {props.menu}
-            {props.primary}
-          </div>
-        ) : null}
+        {props.primary ? <div className="px-list-toolbar-actions">{props.primary}</div> : null}
       </div>
     </div>
   );
@@ -74,10 +68,12 @@ export function ToolbarSearch(props: {
 }
 
 /**
- * A secondary menu: a round button with its label and a chevron that turns while the menu is open. The menu
- * opens outside the page's landmarks, so a named region keeps it in one.
+ * A labelled choice, not a page menu: a round button that names what is chosen or offered, with a chevron that turns
+ * while the menu is open ("Scegli altro" at the foot of a lesson part). A page's own actions are the dots in its head
+ * (`MenuButton`), which also answer a right-click on the head. The menu opens outside the page's landmarks, so a named
+ * region keeps it in one.
  */
-export function ToolbarMenu(props: {
+export function ChoiceMenu(props: {
   label: string;
   items: NonNullable<MenuProps["items"]>;
   onSelect: (key: string) => void;

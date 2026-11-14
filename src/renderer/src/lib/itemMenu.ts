@@ -70,7 +70,7 @@ type MenuKeyEvent = {
   defaultPrevented: boolean;
   preventDefault(): void;
 };
-type MenuPointerEvent = { currentTarget?: EventTarget | null; button?: number; pointerType?: string; ctrlKey?: boolean };
+type MenuPointerEvent = { target?: EventTarget | null; button?: number; pointerType?: string; ctrlKey?: boolean };
 
 /** The box of the element an event is on, for a menu that hangs below it. */
 function boxOf(target: unknown): { left: number; bottom: number; right: number } | null {
@@ -79,14 +79,21 @@ function boxOf(target: unknown): { left: number; bottom: number; right: number }
 }
 
 /**
- * The item a pointer was last pressed on in a way that can ask for a context menu (any press but a plain primary click
- * of a mouse: the secondary button, Ctrl+click on a Mac, a long press of a finger or a pen), until a `contextmenu`
+ * The element a pointer was last pressed on in a way that can ask for a context menu (any press but a plain primary
+ * click of a mouse: the secondary button, Ctrl+click on a Mac, a long press of a finger or a pen), until a `contextmenu`
  * arrives. A right-click always presses the pointer on the item before its `contextmenu`, on every platform. A
  * `contextmenu` that comes with no such press was asked for by a key (the context-menu key, Shift+F10, or the system on
- * its own) and is sent to the focused element, so it opens the menu as the keyboard does. Kept outside the handlers
- * because each render makes new ones, and there is one pointer.
+ * its own) and is sent to the focused element, so it opens the menu as the keyboard does. It is the element pressed, not
+ * the item whose handler heard the press, so an item inside another (the dots in a page's head, each with the menu)
+ * finds its own press there after the item around it has heard the same one. Kept outside the handlers because each
+ * render makes new ones, and there is one pointer.
  */
 let pressedOn: EventTarget | null = null;
+
+/** Whether `item` is the element pressed or holds it. */
+function holds(item: EventTarget | null, pressed: EventTarget | null): boolean {
+  return item !== null && pressed !== null && (item === pressed || Boolean((item as { contains?(node: unknown): boolean }).contains?.(pressed)));
+}
 
 /**
  * The handlers an item takes so its menu answers a right-click and the menu keys. `open` receives the point, whether
@@ -109,13 +116,13 @@ export function menuTrigger(
   return {
     onPointerDown(event: MenuPointerEvent) {
       const plainClick = event.button === 0 && event.pointerType === "mouse" && !event.ctrlKey;
-      pressedOn = plainClick ? null : (event.currentTarget ?? null);
+      pressedOn = plainClick ? null : (event.target ?? null);
     },
     onContextMenu(event: MenuMouseEvent) {
       if (!enabled || event.defaultPrevented || keepsSystemMenu(event.target as Targetable)) return;
       event.preventDefault();
       const item = event.currentTarget ?? null;
-      const byPointer = pressedOn !== null && pressedOn === item;
+      const byPointer = holds(item, pressedOn);
       pressedOn = null;
       const box = byPointer ? null : boxOf(event.target);
       if (box) openByKey(box, item);

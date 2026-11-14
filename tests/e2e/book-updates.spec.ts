@@ -200,7 +200,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     ).toBeVisible({ timeout: 30000 });
 
     // The books list says the same, with Update in place of Add.
-    await page.getByRole("button", { name: "Altro", exact: true }).click();
+    await page.getByRole("button", { name: "Altro sulla Libreria", exact: true }).click();
     await page
       .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
       .click();
@@ -264,7 +264,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await expect(
       page.getByText("Nuova versione disponibile: 1.1.0"),
     ).toHaveCount(0);
-    await page.getByRole("button", { name: "Altro", exact: true }).click();
+    await page.getByRole("button", { name: "Altro sulla Libreria", exact: true }).click();
     await page
       .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
       .click();

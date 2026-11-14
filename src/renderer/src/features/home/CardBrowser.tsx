@@ -12,7 +12,7 @@ import {
   Skeleton,
 } from "antd";
 import { Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
@@ -24,7 +24,6 @@ import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
 import {
   ListToolbar,
-  ToolbarMenu,
   ToolbarSearch,
 } from "../../components/ListToolbar";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
@@ -65,8 +64,19 @@ function dateText(at: number) {
   }).format(date);
 }
 
-/** `planId`: the exam the browser opens filtered to, such as when that exam's page opened it. */
-export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } = {}) {
+/**
+ * `planId`: the exam the browser opens filtered to, such as when that exam's page opened it. `back` and `title` make
+ * its head, which holds the page's menu: the dots, and a right-click on the head.
+ */
+export function CardBrowser({
+  planId: initialPlanId = "",
+  back,
+  title,
+}: {
+  planId?: string;
+  back?: ReactNode;
+  title: string;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -146,17 +156,14 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
       ].map((key) => client.invalidateQueries({ queryKey: [key] })),
     );
 
-  /** Import and export sit in the toolbar's More menu, and import alone in the empty state when the student has exams but no cards yet. */
-  const ankiMenu = (
-    <ToolbarMenu
-      label={t("listToolbar.more")}
-      items={[
-        { key: "import", label: t("cardImport.open") },
-        { key: "export", label: t("cardExport.open") },
-      ]}
-      onSelect={(key) => setAnki(key === "export" ? "export" : "import")}
-    />
-  );
+  /** Import and export sit in the page's menu, and import alone in the empty state when the student has exams but no cards yet. */
+  const ankiMenu: MenuProps = {
+    items: [
+      { key: "import", label: t("cardImport.open") },
+      { key: "export", label: t("cardExport.open") },
+    ],
+    onClick: ({ key }) => setAnki(key === "export" ? "export" : "import"),
+  };
   const ankiModal = (
     <AnkiModal
       mode={anki ?? "import"}
@@ -276,22 +283,34 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
       setDone("");
     };
 
+  // Where the list failed to load or holds nothing, the head has no menu: there is nothing to import into or export.
+  const plainHead = (
+    <>
+      {back}
+      <h1 className="title-1 px-subpage-title">{title}</h1>
+    </>
+  );
+
   if (list.isError && !data)
     return (
-      <Notice
-        tone="danger"
-        action={{
-          label: t("cardBrowser.retry"),
-          onClick: () => void list.refetch(),
-        }}
-      >
-        {t("cardBrowser.loadFailed")}
-      </Notice>
+      <>
+        {plainHead}
+        <Notice
+          tone="danger"
+          action={{
+            label: t("cardBrowser.retry"),
+            onClick: () => void list.refetch(),
+          }}
+        >
+          {t("cardBrowser.loadFailed")}
+        </Notice>
+      </>
     );
 
   if (data && data.total === 0 && !filtered && data.plans.length === 0)
     return (
       <>
+        {plainHead}
         {ankiModal}
         <EmptyState
           title={t("cardBrowser.emptyTitle")}
@@ -494,6 +513,13 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
 
   return (
     <div className="px-cardbrowser">
+      <div className="px-cardbrowser-head">
+        {back}
+        <MenuItemArea as="header" className="px-subpage-head" menu={ankiMenu} region={t("cardBrowser.more")}>
+          <h1 className="title-1">{title}</h1>
+          <MenuButton rightClick menu={ankiMenu} label={t("cardBrowser.more")} />
+        </MenuItemArea>
+      </div>
       {modalContext}
       {ankiModal}
       <ListToolbar
@@ -550,7 +576,6 @@ export function CardBrowser({ planId: initialPlanId = "" }: { planId?: string } 
             />
           </>
         }
-        menu={ankiMenu}
       />
 
       <div className="px-cardbrowser-summary">
