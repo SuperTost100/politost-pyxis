@@ -234,7 +234,7 @@ function studiedPlan(db: Database.Database, row: PlanRow, now: number) {
   const doneToday = state.steps.filter((step) => step.at >= today && step.activity !== "cards");
   const partsToday = partsDoneSince(db, row.id, today);
   const remainingNow = remainingMinutes(state);
-  // A lesson in parts counts each part's minutes when it is done, so the step its last part records, which names a
+  // A lesson in parts counts each part's minutes when it is done, so the step the last missing part records, which names a
   // part's text, adds none. A step that names another lesson was a lesson read whole and keeps its minutes.
   // shortcut: a lesson whose parts were all finished as book text names no item and counts 30 on top of its parts;
   // store the outline on the step if lessons without an AI tool become common.

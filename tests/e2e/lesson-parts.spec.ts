@@ -545,3 +545,59 @@ test("leaving a lesson before core has chosen its part does not pull the student
     await close();
   }
 });
+
+test("while the next part is read, the part before it stays on screen but cannot be answered, and nothing it saves lands on the next part", async () => {
+  test.setTimeout(180_000);
+  // Part 2 asks the same question as part 1, so both texts give it the same id.
+  const second = partText("Intorni").replaceAll("## Intorni:", "## Frontiera:");
+  const { page, db, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: second }, { markdown: partText("Aperti") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    // The read of a part takes 3 seconds and saving an answer 6: an answer sent from part 1's page while part 2 is read
+    // would still be on its way after the read is back.
+    { PYXIS_E2E_READ_DELAY: "study.part=3000,study.lessonAnswer=6000" },
+  );
+  const written = (position: number) => {
+    const read = db();
+    try {
+      return (read.prepare("SELECT item_id AS itemId FROM lesson_parts WHERE position = ?").get(position) as { itemId: string | null } | undefined)
+        ?.itemId;
+    } finally {
+      read.close();
+    }
+  };
+  const doneAt = (position: number) => {
+    const read = db();
+    try {
+      return (read.prepare("SELECT done_at AS doneAt FROM lesson_parts WHERE position = ?").get(position) as { doneAt: number | null }).doneAt;
+    } finally {
+      read.close();
+    }
+  };
+  const right = (p: Page) => p.getByRole("region", { name: "Verifica" }).getByRole("button", { name: /La cosa giusta/ });
+  try {
+    await open(page, "t-funzioni", 1);
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 30_000 });
+    await expect(right(page)).toBeEnabled();
+    await expect.poll(() => written(2), { timeout: 30_000 }).toBeTruthy();
+
+    // Part 2 is not read yet: its address is in the bar and part 1 is still what the sheet shows, with its question
+    // closed, so it cannot be answered from here.
+    await parts(page).getByRole("link", { name: /Interno, esterno, frontiera/ }).click();
+    await expect(page).toHaveURL(/\?part=2$/);
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible();
+    await expect(right(page)).toBeDisabled();
+
+    // Part 2 arrives with its own question, still open, however long the answer to part 1 takes.
+    await expect(page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" })).toBeVisible({ timeout: 20_000 });
+    await expect(right(page)).toBeEnabled();
+    await expect(page.getByText("Giusto.", { exact: true })).toHaveCount(0);
+    expect(doneAt(2)).toBeNull();
+    expect(doneAt(1)).toBeNull();
+    await right(page).click();
+    await expect(page.getByText("Giusto.", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect.poll(() => doneAt(2), { timeout: 20_000 }).not.toBeNull();
+  } finally {
+    await close();
+  }
+});

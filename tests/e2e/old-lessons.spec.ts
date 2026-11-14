@@ -473,3 +473,41 @@ test("a finished old lesson opens as it was, and Riscrivi in parti asks first, c
     rmSync(holdDir, { recursive: true, force: true });
   }
 });
+
+test("the old reader shows the lesson the address names, also when the address moves to another one of the topic", async () => {
+  test.setTimeout(240_000);
+  const shorter = "Una versione più breve della lezione sugli intorni, scritta a un altro livello.";
+  const { page, close } = await start({ lessonParts: outline, markdown: [] }, (seeding) => {
+    seedLessonBeforeParts(seeding, "p-an2", ["t-funzioni"], { markdown: oldText, wording: "balanced", finished: true });
+    // A second lesson of the topic written before parts, at another level, that no step names.
+    seeding
+      .prepare(
+        `INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,prompt_template,prompt_version,grounding,created_at)
+         VALUES('before-parts-shorter','p-an2','t-funzioni','lesson',?,'fixture','lesson.write','1','sources',0)`,
+      )
+      .run(JSON.stringify({ cacheKey: "shorter", markdown: `## Intorni, in breve\n\n${shorter}`, passageIds: [] }));
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const go = (item: string) =>
+    page.evaluate((hash) => {
+      location.hash = hash;
+    }, `/plans/p-an2/lesson/t-funzioni?item=${item}`);
+  const first = page.getByText("Un intorno di un punto è una palla aperta", { exact: false });
+  const second = page.getByText(shorter, { exact: false });
+  try {
+    // The step's lesson, then its other version through the address: same page, same instance, other text.
+    await go("before-parts-t-funzioni");
+    await expect(first).toBeVisible({ timeout: 20_000 });
+    await go("before-parts-shorter");
+    await expect(second).toBeVisible({ timeout: 20_000 });
+    await expect(first).toHaveCount(0);
+    // And back again, with Indietro.
+    await page.goBack();
+    await expect(first).toBeVisible({ timeout: 20_000 });
+    await expect(second).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await close();
+  }
+});

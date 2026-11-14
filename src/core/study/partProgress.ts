@@ -12,22 +12,23 @@ import { partTextSql } from "./partText";
 export { partQuestions };
 
 /**
- * Marks a part done at `now` unless it already is, inside the caller's transaction. When it is the last part of its
- * topic's live outline (the recap where there is one), the topic's lesson is done: its step is recorded with the first
- * written part's item, which the path reopens. `recordStep` adds no second lesson step, so a part done again, or the
- * parts of a lesson rewritten after its step, add none. Returns whether this part finishes the lesson.
+ * Marks a part done at `now` unless it already is, inside the caller's transaction. The topic's lesson is done when
+ * every part of its live outline is done, in whatever order they were read (a part not written yet, or whose write
+ * failed, is not done): that is checked on the outline as it stands after this update, and then the lesson's step is
+ * recorded with the first written part's item, which the path reopens. `recordStep` adds no second lesson step, so a
+ * part done again, or the parts of a lesson rewritten after its step, add none. Returns whether every part is done.
  */
-export function finishPart(db: Database.Database, part: { partId: string; outlineId: string; position: number }, now: number): boolean {
+export function finishPart(db: Database.Database, part: { partId: string; outlineId: string }, now: number): boolean {
   db.prepare("UPDATE lesson_parts SET done_at = ? WHERE id = ? AND done_at IS NULL").run(now, part.partId);
   const outline = db
     .prepare(
       `SELECT o.plan_id AS planId, o.topic_id AS topicId, o.retired_at AS retiredAt,
-         (SELECT MAX(position) FROM lesson_parts WHERE outline_id = o.id) AS last,
+         (SELECT COUNT(*) FROM lesson_parts WHERE outline_id = o.id AND done_at IS NULL) AS open,
          (SELECT item_id FROM lesson_parts WHERE outline_id = o.id AND item_id IS NOT NULL ORDER BY position LIMIT 1) AS itemId
        FROM lesson_outlines o WHERE o.id = ?`,
     )
-    .get(part.outlineId) as { planId: string; topicId: string; retiredAt: number | null; last: number; itemId: string | null };
-  const finished = part.position === outline.last;
+    .get(part.outlineId) as { planId: string; topicId: string; retiredAt: number | null; open: number; itemId: string | null };
+  const finished = outline.open === 0;
   if (finished && outline.retiredAt == null) {
     try {
       recordStep(db, outline.planId, { activity: "lesson", topicId: outline.topicId, itemId: outline.itemId }, now);
@@ -65,7 +66,7 @@ export function markPartDone(
       const markdown = (JSON.parse(part.body) as { markdown?: string }).markdown ?? "";
       if (partQuestions(parseSmartText(markdown), part.kind).length > 0) throw new Error("part-has-question");
     }
-    const finished = finishPart(db, { partId: part.id, outlineId: outline.id, position: input.position }, now);
+    const finished = finishPart(db, { partId: part.id, outlineId: outline.id }, now);
     return { partDone: true as const, finished };
   })();
 }
