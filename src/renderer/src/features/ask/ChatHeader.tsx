@@ -2,6 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { App, Input } from "antd";
 import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import type { BackTarget } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { invoke } from "../../lib/ipc";
 
 /**
@@ -12,11 +14,14 @@ export function ChatHeader({
   chatId,
   title,
   chip,
+  back,
 }: {
   chatId?: string;
   /** The open chat's title, null when it has none yet, undefined while the list loads or for a new chat. */
   title?: string | null;
   chip?: ReactNode;
+  /** Where the chat was opened from, when it was opened from another page (`usePlace`); a chat from the sidebar has none. */
+  back?: BackTarget | null;
 }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -41,6 +46,12 @@ export function ChatHeader({
 
   return (
     <div className="ask-bar">
+      {back ? (
+        <>
+          <BackControl target={back} variant="bar" />
+          <span className="ask-bar-sep" aria-hidden />
+        </>
+      ) : null}
       <div className="ask-bar-title">
         {chatId && title !== undefined ? (
           editing !== null ? (

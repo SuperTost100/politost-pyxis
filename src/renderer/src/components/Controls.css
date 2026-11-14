@@ -504,8 +504,8 @@ select.px-ctl-field {
   outline-offset: 6px;
 }
 
-/* Kinds as small tiles ("Crea un'attività"): an icon over its name on a soft tile, the chosen one tinted and ringed in
-   --primary-text, so it reads chosen without colour too. */
+/* Kinds as small tiles ("Crea un'attività"): an icon over its name on a soft tile, the chosen one filled with
+   --primary-soft, its name in --primary-text and bold, with no ring. The focus ring shows from the keyboard only. */
 .px-ctl-icontiles {
   display: grid;
   grid-template-columns: repeat(var(--tiles-row, 6), minmax(0, 1fr));
@@ -541,7 +541,6 @@ html[data-text="lg"] .px-ctl-icontiles {
 .px-ctl-icontiles > .px-ctl-tile[aria-checked="true"] {
   background: var(--primary-soft);
   color: var(--primary-text);
-  box-shadow: inset 0 0 0 1.5px var(--primary-text);
 }
 .px-ctl-tile-icon {
   display: grid;

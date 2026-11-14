@@ -141,7 +141,7 @@ test("a failed Chiudi on the build notice says so, and the notice keeps its butt
   }
 });
 
-test("Mappe's handover of a deleted map never lands on the page opened right after it", async () => {
+test("a deleted map's note for Mappe never pulls back a page the student opens right after it, and the map is gone", async () => {
   test.setTimeout(120_000);
   const { app, page, userData, errors } = await startApp();
   try {
@@ -149,27 +149,26 @@ test("Mappe's handover of a deleted map never lands on the page opened right aft
     await openMaps(page);
     await tile(page, "Circuiti RC").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1, name: "Circuiti RC" })).toBeVisible();
-    // A page opens and, a moment later, its list arrives. The student can already be leaving by then: this starts a move
-    // to the Python page, whose code is not loaded yet, right after Mappe opens, so the router is still on Mappe, busy
-    // with that move, when the list arrives and the page hands over the deleted map.
-    await page.evaluate(() => {
-      const push = history.pushState.bind(history);
-      history.pushState = (...args: Parameters<History["pushState"]>) => {
-        push(...args);
-        if (!String(args[2]).includes("/maps?subject=fis")) return;
-        setTimeout(() => {
-          push(null, "", "#/tools/python");
-          dispatchEvent(new PopStateEvent("popstate"));
-        }, 0);
-      };
-    });
     await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
-    await expect(page).toHaveURL(/#\/tools\/python$/);
-    // Give a late replacement time to land. It would take the student back to Mappe.
+    // The delete leaves through the map's way back, back to Mappe, which then reads a note once to shrink the tile. The
+    // student moves on in the same instant, through the sidebar: that move has to win, whether it lands before the way
+    // back, while it is under way, or after Mappe has opened.
+    const confirm = page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" });
+    await confirm.click();
+    await page.getByRole("navigation", { name: "Sezioni" }).getByRole("link", { name: "Flashcard", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    // Give a late move time to land. It would take the student back to Mappe.
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 1000)));
-    await expect(page).toHaveURL(/#\/tools\/python$/);
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    // The delete did not depend on Mappe being on screen: the map is gone when Mappe opens afresh, and nothing is left
+    // to shrink or announce.
+    await page.evaluate(() => {
+      location.hash = "#/maps";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Mappe" })).toBeVisible();
+    await expect(tile(page, "Circuiti RC")).toHaveCount(0);
+    await expect(tile(page, "Campo elettrico")).toHaveCount(1);
     expect(errors).toEqual([]);
   } finally {
     await app.close();

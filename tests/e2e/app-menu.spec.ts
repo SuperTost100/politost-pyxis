@@ -320,11 +320,13 @@ test("Avanti exists, and Indietro and Avanti are on only where there is somewher
     await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
     await expect(page).toHaveURL(/#\/plans\/nav-plan\/settings$/);
+    // The exam stays on screen, with its own way back, until the settings page has loaded: Indietro is the settings'.
+    await expect(page.getByRole("heading", { level: 1, name: "Impostazioni dell'esame" })).toBeVisible();
     await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
     await pick(app, "back");
     await expect(page).toHaveURL(/#\/plans\/nav-plan$/);
-    // Back on the exam, which has none, with a page ahead.
-    await expect.poll(() => navEnabled(app)).toEqual({ back: false, forward: true });
+    // Back on the exam, which opens Esami in its place with nothing behind it, and with a page ahead.
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: true });
     await pick(app, "forward");
     await expect(page).toHaveURL(/#\/plans\/nav-plan\/settings$/);
     await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });

@@ -16,10 +16,15 @@ import { Stepper } from "../../components/Stepper";
 import { PROFILE_LIMITS } from "@shared/limits";
 import { invoke } from "../../lib/ipc";
 import { useMenuLock } from "../../app/menu-state";
+import { pageOf } from "../../app/trail";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
+import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { PyxisMark } from "../../app/layouts/Sidebar";
 import { EnginesStep, type EnginesState } from "./EnginesStep";
 import { MaterialStep } from "./MaterialStep";
 import {
+  answersDiffer,
   firstAnswers,
   savedProfile,
   schoolLevels,
@@ -46,6 +51,8 @@ type StepId = (typeof steps)[number];
  */
 /** Where a rerun of the material step goes back to, by the page that opened it. */
 const LEAVE_TO: Record<string, string> = { maps: "/maps", library: "/exams/library" };
+/** What the way back calls the place it leads to when nothing is behind the page: Settings unless a page sent it here. */
+const LEAVE_NAME: Record<string, string> = { "/maps": "doors.maps", "/exams/library": "nav.library" };
 
 export function OnboardingPage() {
   const [params] = useSearchParams();
@@ -79,6 +86,11 @@ function Setup({
   // Setup is not left through the menu: Shell sends a profile-less student back here, and a rerun has its own Cancel.
   useMenuLock(true);
   const again = stored !== null;
+  // A rerun leads back to the page that opened it; a first setup has no way out but its own steps.
+  const place = usePlace({
+    back: again ? "show" : "none",
+    parent: again ? { to: leaveTo, name: { key: LEAVE_NAME[leaveTo] ?? "settings.title" } } : null,
+  });
   const [index, setIndex] = useState(startAt);
   const [start] = useState(() => firstAnswers(stored));
   const [name, setName] = useState(start.name);
@@ -89,6 +101,12 @@ function Setup({
   const [interests, setInterests] = useState(start.interests);
   // Off for a new install, so nothing is sent unless the student turns it on. A rerun shows the stored choice.
   const [crashReports, setCrashReports] = useState(start.crashReports);
+  // A rerun asks before it drops changes: the answers differ from the profile as it is saved now, which the engines
+  // step saves, so a student who finished it leaves without a question.
+  useLeaveGuard({
+    dirty: again && answersDiffer({ name, level, year, school, course, interests, crashReports }, firstAnswers(stored)),
+    body: t("onboarding.leaveBody"),
+  });
   // Unknown until the engines are read, so the button says Continue rather than flicker to "later".
   const [engines, setEngines] = useState<EnginesState>({
     ready: null,
@@ -140,15 +158,18 @@ function Setup({
     }
   }
 
-  // A rerun ends where it started.
-  const backToSettings = () => navigate(leaveTo, { replace: true });
+  // A rerun ends where it started: the way back, so history keeps one entry for that page.
+  const backToSettings = () => {
+    if (place && pageOf(place.to) === pageOf(leaveTo)) place.go();
+    else void navigate(leaveTo, { replace: true });
+  };
   const next = () => setIndex((value) => Math.min(value + 1, steps.length - 1));
   const back = () => setIndex((value) => Math.max(value - 1, 0));
 
   // Every screen ends in the same footer: one way back or out on the left, the way forward on the right.
   const backButton = (
     <Button shape="round" disabled={busy} onClick={back}>
-      {t("nav.back")}
+      {t("onboarding.previous")}
     </Button>
   );
   let secondary: ReactNode = null;
@@ -156,11 +177,7 @@ function Setup({
   let title = t(`onboarding.${id}.title`);
   let body = t(`onboarding.${id}.body`);
   if (id === "profile") {
-    secondary = again ? (
-      <Button shape="round" onClick={backToSettings}>
-        {t("wizard.cancel")}
-      </Button>
-    ) : (
+    secondary = again ? null : (
       <Button
         shape="round"
         disabled={busy}
@@ -218,6 +235,7 @@ function Setup({
         id === "profile" ? "px-onboarding" : "px-onboarding is-wide"
       }
     >
+      <BackControl target={place} variant="page" />
       <div className="px-onboarding-head">
         <span className="px-brand">
           <PyxisMark />

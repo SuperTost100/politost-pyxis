@@ -107,7 +107,7 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     };
 
     await goto(`/plans/${planId}/review`);
-    await page.getByRole("group", { name: "Flashcard in questo ripasso" }).getByRole("button", { name: "5", exact: true }).click();
+    await page.getByRole("radiogroup", { name: "Flashcard in questo ripasso" }).getByRole("radio", { name: "5", exact: true }).click();
     await page.getByRole("button", { name: "Inizia il ripasso" }).click();
     await expect(page).toHaveURL(/\/review\/cards/);
     await expect(progress).toHaveText(/^0 di (\d+) fatti · 5 flashcard, (\d+) domande$/);

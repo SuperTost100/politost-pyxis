@@ -6,7 +6,6 @@ import { RemindersPanel } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import {
-  ArrowLeft,
   ChevronRight,
   GraduationCap,
   Info,
@@ -23,6 +22,8 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useAppState } from "../../app/app-state";
+import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
 import { EnginesPanel } from "./EnginesPanel";
@@ -96,6 +97,14 @@ export function SettingsPage() {
     (params.get("setup") === "1" ? "engines" : null);
   const navigate = useNavigate();
   const twoPane = useTwoPane();
+  // One way back above "Impostazioni", to where the student was. In a narrow window with a section open it closes the
+  // section instead and names Impostazioni, the list it returns to.
+  const back = usePlace({
+    inner:
+      !twoPane && section !== null && PAGE_OF[section] !== undefined
+        ? { name: { key: "settings.title" }, go: () => void navigate("/settings", { replace: true }) }
+        : null,
+  });
   const client = useQueryClient();
   const profile = useProfile();
 
@@ -342,6 +351,7 @@ export function SettingsPage() {
     // Both layouts share this wrapper and keep the open page in the same slot. Crossing 960 px then re-lays the page
     // out without remounting it, so an open drawer or a half-typed field survives.
     <div className={twoPane ? "px-settings px-settings-panes" : "px-settings"}>
+      <BackControl target={back} variant="page" />
       {twoPane ? (
         <nav className="px-settings-nav" aria-label={t("settings.title")}>
           <h2>{t("settings.title")}</h2>
@@ -359,10 +369,6 @@ export function SettingsPage() {
             </button>
           ))}
         </nav>
-      ) : active ? (
-        <Button type="text" icon={<ArrowLeft size={18} />} className="px-settings-back" onClick={() => open("")}>
-          {t("settings.back")}
-        </Button>
       ) : null}
       {subpage ?? (
         <>

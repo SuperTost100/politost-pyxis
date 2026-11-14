@@ -15,6 +15,7 @@ import "./PracticePage.css";
 import { practiceLine } from "./barLines";
 import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlan } from "../../lib/queries";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { returnTo, usePlace } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { Working } from "../../components/Working";
@@ -95,13 +96,17 @@ function ExerciseCard({
   exercise,
   planId,
   topicId,
+  answer,
+  onAnswer,
 }: {
   exercise: Exercise;
   planId: string | undefined;
   topicId: string | undefined;
+  /** What the student typed, kept by the page, which asks before dropping it. */
+  answer: string;
+  onAnswer: (text: string) => void;
 }) {
   const { t } = useTranslation();
-  const [answer, setAnswer] = useState("");
   const [steps, setSteps] = useState(0);
   const [hints, setHints] = useState(0);
   const flag = useMutation({
@@ -120,7 +125,7 @@ function ExerciseCard({
         rows={2}
         ariaLabel={t("practice.yourAnswer")}
         placeholder={t("practice.yourAnswer")}
-        onChange={setAnswer}
+        onChange={onAnswer}
       />
       {exercise.hints.slice(0, hints).map((hint, index) => (
         <p key={index} className="body">
@@ -192,6 +197,13 @@ export function PracticePage() {
     name: topic ? { text: topic } : null,
     parent: plan.data ? { name: { text: plan.data.title } } : undefined,
   });
+  // Answers are typed into the cards and kept nowhere, since nothing here checks or saves them: leaving the page with
+  // one typed asks first, whichever way out the student takes (the back control, the menu, the sidebar).
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const guard = useLeaveGuard({
+    dirty: Object.values(answers).some((text) => text.trim() !== ""),
+    body: t("practice.leaveBody"),
+  });
   const toPath = () => returnTo(back, `/plans/${planId ?? ""}`, navigate);
   const exercises = useQuery({
     queryKey: ["exercises", planId, topicId],
@@ -207,6 +219,8 @@ export function PracticePage() {
       invoke("plans.complete", { planId: planId ?? "", activity: "practice", topicId: topicId ?? null }),
     onSuccess: async () => {
       await refreshPlan(client, planId ?? "");
+      // Marking the set done is the student's own end of it: the answers typed along the way go without a question.
+      guard.release();
       toPath();
     },
   });
@@ -290,7 +304,14 @@ export function PracticePage() {
       {list.length > 0 ? (
         <ol className="choice-list">
           {list.map((exercise) => (
-            <ExerciseCard key={exercise.id} exercise={exercise} planId={planId} topicId={topicId} />
+            <ExerciseCard
+              key={exercise.id}
+              exercise={exercise}
+              planId={planId}
+              topicId={topicId}
+              answer={answers[exercise.id] ?? ""}
+              onAnswer={(text) => setAnswers((current) => ({ ...current, [exercise.id]: text }))}
+            />
           ))}
         </ol>
       ) : null}
