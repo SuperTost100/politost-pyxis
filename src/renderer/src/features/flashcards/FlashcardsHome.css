@@ -210,16 +210,6 @@
 .px-fc-new {
   display: inline-flex;
 }
-/* The empty page: one line on what will appear and the button that starts it. */
-.px-fc > .empty {
-  padding-top: 56px;
-}
-.px-fc > .empty p {
-  max-width: 54ch;
-  margin-bottom: 14px;
-  font-size: calc(15px * var(--text-scale, 1));
-  line-height: 1.55;
-}
 /* Flashcards just saved under a subject: its card takes a light tint that fades (motion.md, "An item added"). */
 .px-fc-subject[data-landed] {
   animation: px-fc-landed 1600ms var(--ease-out);

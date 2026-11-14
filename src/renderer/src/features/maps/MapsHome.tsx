@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapAddress, type MapEntry } from "@shared/concept-map";
-import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -197,15 +197,10 @@ export function MapsHome() {
   else if (data.length === 0 && !query)
     body =
       (subjects.data?.length ?? 0) > 0 ? (
-        <EmptyState
-          title={t("maps.emptyTitle")}
-          body={t("maps.emptyBody")}
-          action={newMap}
-        />
+        <EmptyState body={t("maps.emptyBody")} action={newMap} />
       ) : (
-        // A map needs a subject's material, so without any subject the ways to add some come first.
+        // A map needs a subject's material, so without any subject the one action is to link where it lives.
         <EmptyState
-          title={t("maps.emptyTitle")}
           body={t("maps.emptyNoSubjects")}
           action={
             <Button
@@ -215,16 +210,6 @@ export function MapsHome() {
             >
               {t("maps.linkFolder")}
             </Button>
-          }
-          secondary={
-            <>
-              <Button shape="round" onClick={() => navigate("/exams/library")}>
-                {t("maps.openLibrary")}
-              </Button>
-              <Button shape="round" onClick={() => navigate("/plans/new")}>
-                {t("exams.newPlan")}
-              </Button>
-            </>
           }
         />
       );

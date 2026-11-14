@@ -1,0 +1,19 @@
+/* The line and its button start at the page head's left edge, below the head. */
+.px-empty {
+  padding-top: var(--space-6);
+}
+.px-empty-art {
+  margin-bottom: var(--space-4);
+}
+.px-empty-line {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--ink-muted);
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.px-empty-action {
+  display: flex;
+  margin-top: var(--space-4);
+}

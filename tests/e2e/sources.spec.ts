@@ -10,7 +10,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams, toLibrary } from "./doors";
+import { fromChiediToExams, openAddFiles, toLibrary } from "./doors";
 
 test("M4 chapter panel, highlight and responsive 600-page import", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-source-check-"));
@@ -38,7 +38,7 @@ test("M4 chapter panel, highlight and responsive 600-page import", async () => {
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
     await fromChiediToExams(page);
     await toLibrary(page);
-    await page.getByRole("button", { name: "Aggiungi file" }).click();
+    await openAddFiles(page);
     await animationsSettled(page);
     await page
       .getByRole("dialog")

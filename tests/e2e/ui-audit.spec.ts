@@ -81,6 +81,7 @@ const routes = [
   ["flashcards-new-review", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
+  ["mistakes-empty", "/exams/mistakes"],
   // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
@@ -990,14 +991,18 @@ async function openAdvancedEngines(page: Page) {
     await toggle.click();
 }
 
+/** Opens "Aggiungi fonti" from the head's "Aggiungi file", or from the empty Library's "Collega una cartella", then picks a tab (File by default). */
 async function openAddSources(page: Page, tab?: RegExp) {
-  await page
-    .getByRole("button", { name: both("Aggiungi file", "Add files") })
-    .click();
+  const head = page.getByRole("button", { name: both("Aggiungi file", "Add files") });
+  const empty = page.locator(".px-empty").getByRole("button", { name: both("Collega una cartella", "Link a folder") });
+  await expect(head.or(empty)).toBeVisible();
+  const fromEmpty = await empty.isVisible();
+  await (fromEmpty ? empty : head).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   // Segmented renders radios; the hidden native input is the accessible control.
-  if (tab) await dialog.getByRole("radio", { name: tab }).locator("..").click();
+  const wanted = tab ?? (fromEmpty ? both("File", "File") : undefined);
+  if (wanted) await dialog.getByRole("radio", { name: wanted }).locator("..").click();
   return dialog;
 }
 
@@ -1638,7 +1643,8 @@ function prepareExamsEmpty(name: string) {
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'",
       )
       .get();
-    if (name === "exams-empty") {
+    // With no exam there is no mistake either, so the notebook is empty.
+    if (name === "exams-empty" || name === "mistakes-empty") {
       if (hidden) return;
       db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
         DELETE FROM plans;`);
@@ -3756,12 +3762,13 @@ async function openState(page: Page, name: string) {
       }
       break;
     }
+    case "mistakes-empty":
+      await expect(page.locator(".px-empty").getByText(/^(Qui si raccolgono le domande che sbagli|Questions you miss in quizzes)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByRole("button")).toHaveCount(0);
+      break;
     case "library-empty":
-      await expect(
-        page.getByRole("heading", {
-          name: both("Nessuna fonte ancora", "No sources yet"),
-        }),
-      ).toBeVisible();
+      await expect(page.locator(".px-empty").getByText(/^(Qui compariranno i tuoi file|Your files will appear here)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByRole("button", { name: both("Collega una cartella", "Link a folder") })).toBeVisible();
       // The subject the audit has stays on the page, with no file in it, so the student can still act on it.
       await expect(page.getByRole("region", { name: /^Fisica (nessun file|no files)$/ })).toBeVisible();
       break;
@@ -3816,11 +3823,8 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "maps-empty":
-      await expect(
-        page.getByRole("heading", {
-          name: both("Ancora nessuna mappa", "No maps yet"),
-        }),
-      ).toBeVisible();
+      await expect(page.locator(".px-empty").getByText(/^(Qui compariranno le mappe che crei|The maps you make will appear here)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByRole("button", { name: both("Nuova mappa", "New map") })).toBeVisible();
       break;
     case "maps-none":
       await page
@@ -4378,11 +4382,8 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-fc-head").getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
     case "cards-browser-empty":
-      await expect(
-        page.getByRole("heading", {
-          name: both("Ancora nessuna flashcard", "No flashcards yet"),
-        }),
-      ).toBeVisible();
+      await expect(page.locator(".px-empty").getByText(/^(Qui compariranno tutte le tue flashcard|All your flashcards will appear here)/)).toBeVisible();
+      await expect(page.locator(".px-empty").getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
     case "cards-browser-none":
       await page
@@ -4853,14 +4854,8 @@ test("M14 every application route in both languages, themes and supported widths
               if (name.startsWith("wizard-"))
                 await openWizard(page, Number(name.split("-")[1]));
               if (name === "library-import") {
-                await page
-                  .getByRole("button", {
-                    name: /Aggiungi file|Add files/,
-                    exact: true,
-                  })
-                  .click();
                 // The dialog mounts a frame after the click; the keyboard check needs it there.
-                await expect(page.getByRole("dialog")).toBeVisible();
+                await openAddSources(page);
               }
               if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.

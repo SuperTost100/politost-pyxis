@@ -4,7 +4,7 @@ The shapes every screen is built from. A new screen picks from these before it i
 
 ## Page head
 
-The title in Young Serif (`.title-1`), one line under it on what the page is for, and the page's main action on the right.
+The title in Young Serif (`.title-1`), one line under it on what the page is for, and the page's main action on the right. While the page is empty the main action leaves the head, because the [empty state](#empty-states) offers it once; the page's dots stay, and the action comes back when the first item arrives, with the head the same size and in the same place.
 
 ## Settings rows in a white card
 
@@ -61,7 +61,17 @@ A page's own actions (importing, exporting, the Library's free books) are the do
 
 ## Empty states
 
-One line on what will appear here and the action that starts it, in the place where the content will be. No illustration, no joke, no second button.
+One line on what will appear here, then the one action that starts it, in the place where the content will be. `EmptyState` in `components/EmptyState.tsx` draws it from `{ body, action?, art? }`.
+
+| Part   | Rule                                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Line   | One paragraph in `--ink-muted`, at most 60ch wide, starting at the left edge of the page's title. It says what will appear and how it gets there, in the words of the page: "Qui compariranno i tuoi esami…" |
+| Action | One button under the line, on the same left edge, doing what its label says. A page with nothing to start has none, as the mistakes notebook does                                                            |
+| Title  | None. The page's own title says what is empty                                                                                                                                                                |
+| `art`  | A slot above the line for a small drawing. With no `art`, nothing is reserved for it                                                                                                                         |
+| Head   | The page's main action is hidden while the page is empty, so the action appears once. The dots stay, with the items that still make sense                                                                    |
+
+An empty page is a page with nothing in it, never a search or a filter with no result: those keep the list's own toolbar and say "Nessuna mappa corrisponde." where the results would be. No illustration unless the `art` slot holds one, no joke, no second button.
 
 ## Scroll areas
 
