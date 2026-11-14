@@ -115,6 +115,7 @@ export const router = createHashRouter([
   { path: "/plans/:planId/intro", lazy: page(() => import("../features/study/IntroPage"), "IntroPage") },
   { path: "/plans/:planId/diagnostic", lazy: quiz },
   { path: "/plans/:planId/quiz/:topicId", lazy: quiz },
+  { path: "/plans/:planId/gap/:gapId", lazy: page(() => import("../features/study/GapPage"), "GapPage") },
   { path: "/plans/:planId/redo", lazy: quizRedo },
   { path: "/plans/:planId/past", lazy: quiz },
   { path: "/plans/:planId/cards/:topicId", lazy: cards },

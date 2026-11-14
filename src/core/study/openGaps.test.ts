@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { pathState, planGuide } from "../plans/create";
 import { planSeries } from "../plans/progress";
-import { assignAnswers, closeGap, insertGap } from "./gapRows";
+import { assignAnswers, closeGap, insertGap, mergeGap } from "./gapRows";
 import { requests } from "../../shared/ipc";
-import { gapLevel, openGaps, OPEN_GAPS_MAX } from "./openGaps";
+import { gapLevel, gapState, openGaps, OPEN_GAPS_MAX } from "./openGaps";
 
 const DAY = 86_400_000;
 const NOW = Date.UTC(2026, 0, 14, 12);
@@ -307,6 +307,39 @@ describe("the list and the count the exam page shows", () => {
       ["mid", 1],
       ["high", 1],
     ]);
+    db.close();
+  });
+});
+
+describe("gapState", () => {
+  it("says whether a gap is open or closed, as a fact about the gap and not about a list", () => {
+    const { db, ids } = fixture();
+    expect(gapState(db, ids.g1!, NOW)).toEqual({ gapId: ids.g1, merged: false, closed: false });
+    // g8 was closed in the fixture.
+    expect(gapState(db, ids.g8!, NOW)).toEqual({ gapId: ids.g8, merged: false, closed: true });
+    expect(gapState(db, "missing", NOW)).toBeNull();
+    db.close();
+  });
+
+  it("follows a merge to the gap that absorbed it and reports that gap, so a merged gap is not called closed", () => {
+    const { db, ids } = fixture();
+    mergeGap(db, ids.g3!, ids.g10!, NOW);
+    // The merged gap leaves the open list, yet nothing was learned: the survivor is open.
+    expect(openGaps(db, "p", NOW).gaps.some((gap) => gap.gapId === ids.g3)).toBe(false);
+    expect(gapState(db, ids.g3!, NOW)).toEqual({ gapId: ids.g10, merged: true, closed: false });
+    // A chain of merges ends at the last survivor, and a survivor that later closed is closed.
+    mergeGap(db, ids.g10!, ids.g6!, NOW);
+    expect(gapState(db, ids.g3!, NOW)).toEqual({ gapId: ids.g6, merged: true, closed: false });
+    closeGap(db, ids.g6!, NOW, "answers");
+    expect(gapState(db, ids.g3!, NOW)).toEqual({ gapId: ids.g6, merged: true, closed: true });
+    db.close();
+  });
+
+  it("reads the exam's gaps first, so a gap that answers have closed since is closed", () => {
+    const { db } = fixture();
+    // High has right answers on many days between 20 and 9 days ago; a gap opened before them closes when they are read.
+    const id = insertGap(db, { planId: "p", topicId: "high", openedAt: NOW - 30 * DAY, origin: "misconception", misconception: "Vecchio errore." });
+    expect(gapState(db, id, NOW)).toEqual({ gapId: id, merged: false, closed: true });
     db.close();
   });
 });

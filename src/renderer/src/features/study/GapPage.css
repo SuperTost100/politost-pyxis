@@ -1,0 +1,78 @@
+/* A gap's page: the sheet that says what the gap is, and under it the drill being written. */
+.px-gp-sheet {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  padding: 28px 40px 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+}
+.px-gp-head {
+  display: grid;
+  gap: 4px;
+}
+.px-gp-label {
+  margin: 0;
+  font: 600 calc(12.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+  color: var(--ink-subtle);
+}
+.px-gp-title {
+  margin: 0;
+  font: 400 calc(30px * var(--text-scale, 1)) / 1.1 var(--font-display);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.px-gp-working {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+.px-gp-working > svg,
+.px-gp-working > span:first-child {
+  flex: none;
+}
+.px-gp-working-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+.px-gp-working-line {
+  font: 600 calc(16px * var(--text-scale, 1)) / 1.35 var(--font-sans);
+  color: var(--ink);
+}
+.px-gp-working-detail {
+  font: 400 calc(14px * var(--text-scale, 1)) / 1.4 var(--font-sans);
+  color: var(--ink-muted);
+}
+/* Still lines where the explanation will be, never a pulsing skeleton (design system, "Working, loading and feedback"). */
+.px-gp-shape {
+  display: grid;
+  gap: 12px;
+}
+.px-gp-shape span {
+  display: block;
+  width: 100%;
+  height: 13px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+}
+.px-gp-shape .is-mid {
+  width: 92%;
+}
+.px-gp-shape .is-short {
+  width: 78%;
+}
+.px-gp-shape .is-box {
+  height: 60px;
+  border-radius: var(--radius-md);
+}
+@media (max-width: 1100px) {
+  .px-gp-sheet {
+    padding: 22px 28px 26px;
+  }
+}

@@ -1555,7 +1555,8 @@ export const requests = {
     output: z.object({ jobId: z.string() }),
   },
   "study.gapDrillRead": {
-    input: z.object({ planId: z.string(), topicId: z.string(), gapId: z.string().optional() }),
+    // With `jobId`, the drill that job is making, whatever has happened to its gap; without it, the gap's (or the topic's) drill.
+    input: z.object({ planId: z.string(), topicId: z.string(), gapId: z.string().optional(), jobId: z.string().optional() }),
     output: z
       .object({
         jobId: z.string(),
@@ -2464,6 +2465,14 @@ export const requests = {
         }),
       ),
     }),
+  },
+  "plans.gapState": {
+    // What is true of one gap: `gapId` is the gap that counts now (the asked one, or the one it merged into), `merged` says
+    // it is another gap, and `closed` says that gap is closed. Null for a gap that does not exist.
+    input: z.object({ gapId: z.string() }),
+    output: z
+      .object({ gapId: z.string(), merged: z.boolean(), closed: z.boolean() })
+      .nullable(),
   },
   "plans.series": {
     input: z.object({ planId: z.string() }),

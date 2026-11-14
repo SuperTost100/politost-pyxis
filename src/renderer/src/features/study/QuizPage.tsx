@@ -32,6 +32,8 @@ import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScree
 import { focusInOpenSurface } from "../../lib/pageKeys";
 import { quizLine } from "./barLines";
 import { StudyLayout } from "./StudyBar";
+import { GapEnd } from "./GapEnd";
+import { GapSentence } from "./GapSentence";
 import { useMenuLock } from "../../app/menu-state";
 import { usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
@@ -58,7 +60,7 @@ import {
   type QuizAnswer,
 } from "./quizText";
 import "./QuizPage.css";
-import { pastPapersQuery, usePlan, useSources } from "../../lib/queries";
+import { gapStateQuery, openGapsQuery, pastPapersQuery, usePlan, useSources } from "../../lib/queries";
 import { Logo } from "../../components/Logo";
 import { Working } from "../../components/Working";
 
@@ -157,6 +159,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const stillHere = useStillHere();
   const paper = searchParams.get("paper") ?? undefined;
   const savedAttempt = searchParams.get("attempt");
+  // Colma una lacuna: the drill's own page opens its quiz with the gap's id, which keeps the page's title and line, shows the
+  // gap above the explanation and says at the end what the drill did to it.
+  const gapId = searchParams.get("gap");
   // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
   const notebookExam = searchParams.get("exam");
   const restoredAttempt = useRef<string | null>(null);
@@ -169,6 +174,10 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const [timerOn, setTimerOn] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState<number | null>(20);
   const plan = usePlan(planId);
+  const gaps = useQuery({ ...openGapsQuery(planId ?? ""), enabled: Boolean(gapId && planId) });
+  // A gap that merged into another while its drill was written is shown as the gap it became.
+  const gapNow = useQuery({ ...gapStateQuery(gapId ?? ""), enabled: Boolean(gapId) });
+  const gap = gapId ? gaps.data?.gaps.find((row) => row.gapId === (gapNow.data?.gapId ?? gapId)) : undefined;
   const preview = useQuery({
     queryKey: ["diagnostic-preview", planId],
     enabled: diagnostic && !savedAttempt && Boolean(planId),
@@ -1010,6 +1019,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         aria-labelledby="quiz-position"
         aria-describedby="quiz-stem"
       >
+        {index === 0 && gap ? <GapSentence gap={gap} /> : null}
         {index === 0 && drillNotes.length ? (
           <section className="px-quiz-explain" aria-labelledby="quiz-explain">
             <h2 id="quiz-explain" className="label">
@@ -1198,7 +1208,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   ? t("pastPapers.practiceTitle")
                   : (topic?.title ?? t("quiz.title"))
       }
-      subtitle={quizLine(t, {
+      subtitle={gapId && !finalResult && !gradingStarted ? t("gaps.barLine") : quizLine(t, {
         stage: finalResult || gradingStarted ? "results" : showIntro ? "intro" : "questions",
         kept: fixed,
         exam: plan.data?.title,
@@ -1561,6 +1571,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             ) : undefined
           }
           after={!finalResult && !gradingStopped ? t("quiz.gradingSaved") : undefined}
+          gapEnd={
+            gapId && finalResult ? <GapEnd planId={planId ?? ""} gapId={gapId} rightAnswers={!hasMistakes} /> : undefined
+          }
           items={quizItems}
           listNote={
             !finalResult && grading.data?.model

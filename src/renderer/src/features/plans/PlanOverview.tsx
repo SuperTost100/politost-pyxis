@@ -50,6 +50,7 @@ import { nowPartText, partPath } from "./partsText";
 import { PlanSources } from "./PlanSources";
 import { skipDiagnosticPath, stepPath } from "./reopen";
 import { UnfinishedSection } from "./Unfinished";
+import { GapsList, useOpenGaps } from "./GapsSection";
 import { useGapDrill } from "./useGapDrill";
 import "./PlanPage.css";
 import "./ExamPage.css";
@@ -705,7 +706,7 @@ function Pending({
   return <>{children()}</>;
 }
 
-/** Flashcard, Da rifare, Mappe and Materiale, beside the path. */
+/** Flashcard, Da rifare, Lacune aperte, Mappe and Materiale, beside the path. */
 function ExamAside({
   planId,
   plan,
@@ -728,6 +729,7 @@ function ExamAside({
     queryKey: ["mistakes", planId],
     queryFn: () => invoke("study.mistakes", { planId }),
   });
+  const gaps = useOpenGaps(planId);
   const maps = useQuery({
     queryKey: ["maps", "all", ""],
     queryFn: () => invoke("maps.all", {}),
@@ -896,6 +898,20 @@ function ExamAside({
               </>
             ) : (
               <p>{t("examPage.redoNone")}</p>
+            )
+          }
+        </Pending>
+      </AsideSection>
+      <AsideSection
+        title={t("gaps.title")}
+        count={gaps.data?.total ? t("gaps.count", { count: gaps.data.total }) : null}
+      >
+        <Pending query={gaps}>
+          {() =>
+            gaps.data!.gaps.length ? (
+              <GapsList planId={planId} exam={plan.title} gaps={gaps.data!.gaps} />
+            ) : (
+              <p>{t("gaps.none")}</p>
             )
           }
         </Pending>

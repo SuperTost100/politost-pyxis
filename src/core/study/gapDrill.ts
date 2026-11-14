@@ -9,18 +9,17 @@ import { aboutPlan } from "./jobAbout";
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, type QuizSnapshot } from "./configuredQuiz";
 import { gapEvidence } from "./gapInsight";
 import { startAttempt } from "./attempt";
+import { GAP_DRILL_QUESTIONS } from "../../shared/gap-drill";
 
 const TEMPLATE = "gap.drill";
 /** A mixed review left alone this long is not resumed (LES-13); its adopted drill questions are free to be adopted again. */
 export const REVIEW_SESSION_TTL = 24 * 3_600_000;
 const ACTIVE = "('queued', 'running', 'interrupted')";
-/** LES-03: a short explanation and five targeted questions. */
-const DRILL_QUESTIONS = 5;
 // Closed-form types only: the drill is graded locally and gives feedback after every question.
 const drillInput = (planId: string, topicId: string) => ({
   planId,
   topicId,
-  count: DRILL_QUESTIONS,
+  count: GAP_DRILL_QUESTIONS,
   drill: true,
   types: ["mcq", "tf", "completion"] as Array<"mcq" | "tf" | "completion">,
 });
@@ -231,7 +230,8 @@ export function readGapDrill(
   gapId?: string,
   now = Date.now(),
 ): { jobId: string; state: string; attemptId: string | null } | null {
-  const gap = openGap(db, planId, topicId, gapId);
+  // A gap that merged while its drill was written hands the drill to the gap that absorbed it, which is the one asked about.
+  const gap = openGap(db, planId, topicId, gapId ? (successor(db, gapId) ?? gapId) : undefined);
   if (!gap) return null;
   // The gap itself and every gap that merged into it: their drills are this gap's drills.
   const row = db
@@ -258,6 +258,26 @@ export function readGapDrill(
     if (!attempt || attempt.submitted_at != null) return null;
     if (adoptedJobs(db, planId, now).has(row.id)) return null;
   }
+  return { jobId: row.id, state: row.state, attemptId: attemptId ?? null };
+}
+
+/**
+ * A drill the page started, read by its job, so what happens to its gap (merged into another, closed) does not hide it.
+ * It is the job's own state and the attempt it made, with no rule about whether the attempt is still to be taken.
+ */
+export function readGapDrillJob(
+  db: Database.Database,
+  planId: string,
+  jobId: string,
+): { jobId: string; state: string; attemptId: string | null } | null {
+  const row = db
+    .prepare(
+      `SELECT id, state, params_json FROM jobs
+       WHERE id = ? AND kind = 'gap-drill' AND json_extract(params_json, '$.planId') = ?`,
+    )
+    .get(jobId, planId) as { id: string; state: string; params_json: string } | undefined;
+  if (!row) return null;
+  const { attemptId } = JSON.parse(row.params_json) as Params;
   return { jobId: row.id, state: row.state, attemptId: attemptId ?? null };
 }
 

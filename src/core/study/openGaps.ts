@@ -52,3 +52,30 @@ export function openGaps(db: Database.Database, planId: string, now = Date.now()
     })),
   };
 }
+
+/**
+ * What is true of one gap, as a fact and not as its absence from a list. A gap that merged into another (PRO-02: the same
+ * idea) is not closed by learning: it counts for the gap that absorbed it, so this follows the merges to the last gap and
+ * says whether that one is closed. `gapId` in the answer is the gap that counts now, the asked one when it did not merge.
+ * It reads the exam's gaps first, as `openGaps` does, since that read is what closes a gap whose answers are right.
+ * Null for a gap that does not exist.
+ */
+export function gapState(db: Database.Database, gapId: string, now = Date.now()): { gapId: string; merged: boolean; closed: boolean } | null {
+  const own = db.prepare("SELECT plan_id FROM gaps WHERE id = ?").pluck().get(gapId) as string | undefined;
+  if (own === undefined) return null;
+  syncGaps(db, own, now);
+  let id = gapId;
+  // A merge chain is short; the bound only keeps a corrupt loop from hanging a read.
+  for (let hops = 0; hops < 32; hops++) {
+    const row = db.prepare("SELECT closed_at, merged_into FROM gaps WHERE id = ?").get(id) as
+      | { closed_at: number | null; merged_into: string | null }
+      | undefined;
+    if (!row) return null;
+    if (row.closed_at != null && row.merged_into) {
+      id = row.merged_into;
+      continue;
+    }
+    return { gapId: id, merged: id !== gapId, closed: row.closed_at != null };
+  }
+  return null;
+}
