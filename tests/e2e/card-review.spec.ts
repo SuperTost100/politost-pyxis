@@ -77,11 +77,14 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     // tool shows under 1,100 px.
     const tools = await bar.locator(".px-studybar-actions button").all();
     expect(tools.length).toBeGreaterThanOrEqual(4);
+    const names: string[] = [];
     for (const tool of tools) {
       const name = (await tool.getAttribute("title")) ?? "";
+      names.push(name);
       expect(name, "a bar tool has a tooltip").not.toBe("");
       await expect(tool).toHaveAccessibleName(name);
     }
+    expect(new Set(names).size, "no two tools share a name").toBe(names.length);
     // Edit is not a tool of the bar: it is in the card's own menu.
     await expect(bar.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     const undoLast = bar.getByRole("button", { name: "Undo last", exact: true });

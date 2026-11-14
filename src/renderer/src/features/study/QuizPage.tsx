@@ -1195,18 +1195,17 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       heading={!sheet}
       back={back}
       title={
-        // The bar's title names the thing, "Test diagnostico" or "Rifai gli errori" as much on the intro as under the
-        // questions. A topic's quiz keeps "Quiz" on its intro, where the page's own headline is the topic.
-        redo
-          ? t("mistakes.redoTitle")
-          : review
-            ? t("cards.reviewTitle")
-            : diagnostic
-              ? t("quiz.diagnosticTitle")
-              : past
-                ? t("pastPapers.practiceTitle")
-                : showIntro
-                  ? t("quiz.title")
+        // The intro's own headline names the topic or the test; the bar says what kind of page this is.
+        showIntro
+          ? t("quiz.title")
+          : redo
+            ? t("mistakes.redoTitle")
+            : review
+              ? t("cards.reviewTitle")
+              : diagnostic
+                ? t("quiz.diagnosticTitle")
+                : past
+                  ? t("pastPapers.practiceTitle")
                   : (topic?.title ?? t("quiz.title"))
       }
       subtitle={gapId && !finalResult && !gradingStarted ? t("gaps.barLine") : quizLine(t, {
