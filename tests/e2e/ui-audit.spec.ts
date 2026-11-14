@@ -3685,11 +3685,13 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-res-working .px-logo-working")).toBeVisible();
       await expect(page.locator(".px-res-changes")).toContainText(/Lo vedi a correzione finita|once grading is done/);
       await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
-      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+      // While it grades there is no primary action: the bar's control is the way back.
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(0);
       break;
     case "simulation-grading-failed":
-      // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
-      // and the exercise not graded yet says so in words. The study bar goes back to the exam by name.
+      // The results screen while grading is stopped: retry is the one primary action, the study bar's control is the
+      // one way back (the foot has none), and the exercise not graded yet says so in words. The bar goes back to the
+      // exam by name.
       await expect(
         page.getByRole("banner").getByRole("button", { name: /^(Torna a|Back to) / }),
       ).toBeVisible();
@@ -3702,7 +3704,7 @@ async function openState(page: Page, name: string) {
         page.getByRole("button", {
           name: /^(Torna al percorso|Back to the path)$/,
         }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await expect(
         page.locator(".px-res-q.is-ungraded").getByText(/^(Da correggere|Not graded yet)$/),
       ).toBeVisible();

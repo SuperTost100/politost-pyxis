@@ -8,7 +8,7 @@ export type ActivityFact = { icon: IconName; label: string };
 
 /**
  * The first screen of a quiz, a review, a simulation and the diagnostic, laid out the same way: eyebrow, title, one
- * sentence, a row of facts, the options, then Back and the one primary action. The focus bar's X stays the exit.
+ * sentence, a row of facts, the options, then the one primary action. The way out is the study bar's back control.
  */
 export function ActivityIntro({
   eyebrow,
@@ -23,7 +23,6 @@ export function ActivityIntro({
   startingLabel,
   disabled,
   onStart,
-  onBack,
 }: {
   eyebrow: string;
   title: string;
@@ -41,7 +40,6 @@ export function ActivityIntro({
   startingLabel?: string;
   disabled?: boolean;
   onStart: () => void;
-  onBack: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(!folded);
@@ -86,9 +84,6 @@ export function ActivityIntro({
       ) : null}
       {Children.toArray(children).length ? <div className="px-intro-state">{children}</div> : null}
       <div className="px-intro-actions">
-        <Button shape="round" size="large" onClick={onBack}>
-          {t("nav.back")}
-        </Button>
         <Button
           type="primary"
           shape="round"

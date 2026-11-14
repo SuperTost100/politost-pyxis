@@ -13,6 +13,8 @@ import { Tag } from "../../components/Tag";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
+import { Download } from "lucide-react";
+import { MenuButton } from "../../components/ItemMenu";
 import { ExportButton } from "../share/ExportButton";
 import { errorDetails } from "../../lib/errorDetails";
 import { errorProvider, useEngineError } from "../../lib/engineError";
@@ -27,8 +29,9 @@ import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
+import { quizLine } from "./barLines";
 import { StudyLayout } from "./StudyBar";
-import { returnTo, usePlace } from "../../app/usePlace";
+import { usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
 import { Button as PxButton } from "../../components/Button";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -45,8 +48,6 @@ import {
   answerSource,
   blanks,
   pairs,
-  quizBack,
-  quizBackLabel,
   skipOrder,
   stemText,
   questionPoints,
@@ -156,7 +157,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const savedAttempt = searchParams.get("attempt");
   // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
   const notebookExam = searchParams.get("exam");
-  const backPath = quizBack({ planId, redo, review: reviewRoute, notebookExam });
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
@@ -450,10 +450,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       return true;
     },
   });
-  async function close() {
-    await drafts.flush();
-    returnTo(back, backPath, navigate);
-  }
   // An answer corrected one by one before 0.5 stays as it was checked: core keeps the checked pick at Consegna.
   const result = question ? checked[question.id] : undefined;
   const locked =
@@ -799,26 +795,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const resultPoints = countedResults.reduce((sum, row) => sum + row.score, 0);
   const excludedResults = (finalResult?.results.length ?? 0) - countedResults.length;
   const hasMistakes = !review && !redo && countedResults.some((row) => row.score < 1);
-  // A finished Review goes on to the exam: its own page is where a review in progress is resumed, not where one ends.
-  const finishedReview = Boolean(finalResult) && reviewRoute;
-  const backButton = (type: "primary" | "default") => (
-    <Button
-      type={type}
-      shape="round"
-      size="large"
-      onClick={() => returnTo(back, finishedReview ? quizBack({ planId, notebookExam }) : backPath, navigate)}
-    >
-      {t(
-        finishedReview
-          ? reopened
-            ? quizBackLabel({})
-            : "quiz.continue"
-          : reopened || redo
-            ? quizBackLabel({ redo, review: reviewRoute })
-            : "quiz.continue",
-      )}
-    </Button>
-  );
   // Only the saved session knows each question's topic; a quiz just started has not read it back yet.
   const topicOf = (id: string) =>
     session.data?.questions.find((item) => item.id === id)?.topicId;
@@ -991,7 +967,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             <>
               {index > 0 ? (
                 <PxButton variant="secondary" icon="chevron-left" onClick={() => goTo(index - 1)}>
-                  {t("nav.back")}
+                  {t("quiz.previous")}
                 </PxButton>
               ) : null}
               <span className="px-qz-grow" />
@@ -1184,7 +1160,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     );
   }
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
-  if (redo && !savedAttempt) return <Navigate to={backPath} replace />;
+  if (redo && !savedAttempt) return <Navigate to={`/exams/mistakes${notebookExam ? `?exam=${encodeURIComponent(notebookExam)}` : ""}`} replace />;
   // A Review's questions belong to the attempt its page started; without one, that page starts or resumes it.
   if (reviewRoute && !savedAttempt) return <Navigate to={`/plans/${planId ?? ""}/review`} replace />;
   // The answer sheet: an attempt being read from this computer, its questions still being written, or answered.
@@ -1204,41 +1180,43 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       wide={sheet}
       // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
       heading={!sheet}
-      actions={
-        sheet && deadlineAt ? <QuizClock deadlineAt={deadlineAt} running={running} expired={expired} /> : undefined
-      }
       back={back}
-      title={[
-        // A handed-in attempt is its results.
-        finalResult ? t("results.title") : "",
+      title={
         redo
           ? t("mistakes.redoTitle")
           : review
             ? t("cards.reviewTitle")
             : diagnostic
               ? t("quiz.diagnosticTitle")
-              : [t("quiz.title"), topic?.title].filter(Boolean).join(" \u00b7 "),
-      ]
-        .filter(Boolean)
-        .join(" \u00b7 ")}
-      subtitle={
-        sheet && !wholeReview
-          ? [
-              plan.data?.title,
-              session.data?.timerMinutes
-                ? t("quiz.sheet.minutes", { count: session.data.timerMinutes })
-                : t("quiz.sheet.untimed"),
-            ]
-              .filter(Boolean)
-              .join(" \u00b7 ")
-          : inQuestions
-          ? wholeReview
-            ? t("cards.reviewPosition", {
-                current: wholeReview.cardsTotal + index + 1,
-                total: wholeReview.total,
-              })
-            : t("quiz.position", { current: index + 1, total: requestedCount })
-          : [plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined
+              : past
+                ? t("pastPapers.practiceTitle")
+                : (topic?.title ?? t("quiz.title"))
+      }
+      subtitle={quizLine(t, {
+        stage: finalResult || gradingStarted ? "results" : showIntro ? "intro" : "questions",
+        kept: fixed,
+        exam: plan.data?.title,
+        position: inQuestions ? { current: index + 1, total: requestedCount } : null,
+        overall:
+          inQuestions && wholeReview
+            ? { current: wholeReview.cardsTotal + index + 1, total: wholeReview.total }
+            : undefined,
+        timerMinutes: session.data?.timerMinutes ?? null,
+      })}
+      tools={
+        sheet && deadlineAt ? <QuizClock deadlineAt={deadlineAt} running={running} expired={expired} /> : undefined
+      }
+      menu={
+        finalResult ? (
+          <MenuButton
+            rightClick
+            menu={{
+              items: [{ key: "export", icon: <Download size={16} aria-hidden />, label: t("export.title") }],
+              onClick: () => setExportOpen(true),
+            }}
+            label={t("quiz.more")}
+          />
+        ) : undefined
       }
       // The results screen, while grading or once graded, has no line: the attempt is over.
       progress={
@@ -1251,6 +1229,16 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               : answered / Math.max(1, requestedCount)
       }
     >
+      {finalResult ? (
+        <ExportButton
+          planId={planId ?? ""}
+          topicId={topicId}
+          kind="quiz"
+          attemptId={attemptId || undefined}
+          open={exportOpen}
+          onOpenChange={setExportOpen}
+        />
+      ) : null}
       {owed > 0 && !finalResult && !sheet ? (
         <Notice
           tone="info"
@@ -1302,7 +1290,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           startingLabel={t("quiz.preparing")}
           disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
-          onBack={() => back?.go()}
           folded
           options={
             diagnostic || past ? undefined : (
@@ -1438,14 +1425,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                 {t("quiz.redo")}
               </Button>
             )}
-            <Button
-              type="primary"
-              shape="round"
-              size="large"
-              onClick={() => returnTo(back, backPath, navigate)}
-            >
-              {t(quizBackLabel({ redo, review: reviewRoute }))}
-            </Button>
           </span>
         </section>
       ) : finalResult || gradingStarted ? (
@@ -1536,27 +1515,17 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           topics={quizTopics}
           topicsLabel={t(diagnostic && !review ? "quiz.startHere" : "results.byTopic")}
           primary={
-            !finalResult ? (
-              gradingStopped ? (
-                <Button
-                  type="primary"
-                  shape="round"
-                  size="large"
-                  loading={control.isPending}
-                  onClick={() =>
-                    control.mutate(gradeState === "interrupted" ? "jobs.resume" : "jobs.retry")
-                  }
-                >
-                  {t("quiz.gradeResume")}
-                </Button>
-              ) : (
-                <Button type="primary" shape="round" size="large" onClick={() => void close()}>
-                  {t(quizBackLabel({ redo, review: reviewRoute }))}
-                </Button>
-              )
-            ) : hasMistakes ? undefined : (
-              backButton("primary")
-            )
+            !finalResult && gradingStopped ? (
+              <Button
+                type="primary"
+                shape="round"
+                size="large"
+                loading={control.isPending}
+                onClick={() => control.mutate(gradeState === "interrupted" ? "jobs.resume" : "jobs.retry")}
+              >
+                {t("quiz.gradeResume")}
+              </Button>
+            ) : undefined
           }
           // Ripasso mirato: a drill on the gap this quiz opened, or this quiz's wrong answers asked again.
           review={
@@ -1570,16 +1539,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           secondary={
             !finalResult ? (
               gradingStopped ? (
-                <>
-                  {gradeState !== "cancelled" ? (
-                    <Button shape="round" size="large" onClick={() => navigate("/settings/engines")}>
-                      {t("quiz.openEngines")}
-                    </Button>
-                  ) : null}
-                  <Button type="text" shape="round" onClick={() => void close()}>
-                    {t(quizBackLabel({ redo, review: reviewRoute }))}
+                gradeState !== "cancelled" ? (
+                  <Button shape="round" size="large" onClick={() => navigate("/settings/engines")}>
+                    {t("quiz.openEngines")}
                   </Button>
-                </>
+                ) : undefined
               ) : (
                 <Button
                   type="text"
@@ -1590,31 +1554,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   {t("quiz.gradeCancel")}
                 </Button>
               )
-            ) : hasMistakes ? (
-              backButton("default")
             ) : undefined
           }
           extra={
-            finalResult ? (
-              <>
-                <Button type="text" shape="round" onClick={() => setExportOpen(true)}>
-                  {t("export.title")}
-                </Button>
-                <ExportButton
-                  planId={planId ?? ""}
-                  topicId={topicId}
-                  kind="quiz"
-                  attemptId={attemptId || undefined}
-                  open={exportOpen}
-                  onOpenChange={setExportOpen}
-                />
-                {reopened && !review && !redo ? (
-                  // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
-                  <Button type="text" shape="round" onClick={() => navigate(redoPath)}>
-                    {t("quiz.redo")}
-                  </Button>
-                ) : null}
-              </>
+            finalResult && reopened && !review && !redo ? (
+              // A new quiz on the same topic (a drill's topic too), or a new diagnostic; this one stays as it is.
+              <Button type="text" shape="round" onClick={() => navigate(redoPath)}>
+                {t("quiz.redo")}
+              </Button>
             ) : undefined
           }
           after={!finalResult && !gradingStopped ? t("quiz.gradingSaved") : undefined}

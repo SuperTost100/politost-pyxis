@@ -34,6 +34,8 @@ type Row = {
   focus: string | RegExp;
   /** The page has a page behind it, so Vai > Indietro, one entry back, goes to the same place. */
   menu?: boolean;
+  /** A study page, with the study bar: one way back, and Attività last at the far right. */
+  study?: boolean;
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -74,6 +76,7 @@ const rows: Row[] = [
     // to the row that held the part.
     focus: /^Funzioni di più variabili/,
     menu: true,
+    study: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -124,6 +127,7 @@ const rows: Row[] = [
     focus: "Rifai la domanda",
     // The menu leaves a quiz alone while its questions are answered (useMenuLock).
     menu: false,
+    study: true,
   },
   {
     page: "/cards/due",
@@ -136,6 +140,7 @@ const rows: Row[] = [
     leadsTo: exam,
     focus: /^Ripassa/,
     menu: true,
+    study: true,
   },
   {
     page: "/cards/due",
@@ -149,6 +154,7 @@ const rows: Row[] = [
     leadsTo: "/flashcards",
     focus: /^Ripassa le 2 di oggi$/,
     menu: true,
+    study: true,
   },
   {
     page: "/exams/cards",
@@ -255,6 +261,7 @@ const rows: Row[] = [
       label: EXAM,
       leadsTo: exam,
       focus: EXAM,
+      study: true,
     }),
   ),
   {
@@ -264,6 +271,7 @@ const rows: Row[] = [
     label: "Flashcard",
     leadsTo: "/flashcards",
     focus: "Flashcard",
+    study: true,
   },
 ];
 
@@ -380,6 +388,14 @@ for (const row of rows) {
     const reached = page.url();
     await expect(backControl(page)).toHaveAccessibleName(`Torna a ${row.label}`);
     await expect(backControl(page)).toHaveText(row.label);
+    if (row.study) {
+      // One way back: the bar's. The foot has no second button that does the same, and Attività is the last thing at the
+      // bar's right end.
+      await expect(
+        page.getByRole("button", { name: /^(Torna al percorso|Torna al ripasso|Torna al quaderno|Indietro)$/ }),
+      ).toHaveCount(0);
+      await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
+    }
     // Escape never leaves a page.
     await page.locator("body").press("Escape");
     expect(page.url()).toBe(reached);

@@ -8,7 +8,9 @@ import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
+import { Download } from "lucide-react";
 import { ExportButton } from "../share/ExportButton";
+import { MenuButton } from "../../components/ItemMenu";
 import { useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { invoke } from "../../lib/ipc";
@@ -26,7 +28,8 @@ import { resumeIndex, toggleMarked } from "./quizSheet";
 import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
-import { returnTo, usePlace } from "../../app/usePlace";
+import { usePlace } from "../../app/usePlace";
+import { barLine } from "./barLines";
 
 /** How long typing pauses before the answers are saved. */
 const DRAFT_DELAY_MS = 500;
@@ -192,7 +195,8 @@ export function SimulationPage() {
     parent: plan.data ? { name: { text: plan.data.title } } : undefined,
     back: !run || run.submitted || locked ? "show" : "none",
   });
-  const toPath = () => returnTo(back, `/plans/${planId}`, navigate);
+  // A running exam has no back control, and the bar's line says why.
+  const noWayOut = Boolean(run) && !run!.submitted && !locked;
   useEffect(() => {
     if (locked) void drafts.flush();
   }, [locked]);
@@ -389,12 +393,13 @@ export function SimulationPage() {
   return (
     <StudyLayout
       back={back}
-      title={run?.submitted ? `${t("results.title")} \u00b7 ${t("simulation.title")}` : t("simulation.title")}
-      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+      title={running ? barLine([t("simulation.title"), plan.data?.title]) : t("simulation.title")}
+      // While it runs there is no way out, and the line says why; before and after, it names the exam.
+      subtitle={noWayOut ? t("simulation.noWayOut") : barLine([plan.data?.subject, plan.data?.title]) || undefined}
       wide={running}
       // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
       heading={!running}
-      actions={
+      tools={
         // The clock belongs to the exam; Consegna sits in the Domande card. Once graded the results take over.
         running && run ? (
           <div className="px-sim-header-actions">
@@ -405,19 +410,22 @@ export function SimulationPage() {
           </div>
         ) : undefined
       }
-      secondary={
-        // The results screen has its own way back; a locked exam waiting for an engine needs one here.
-        run && !run.submitted && !run.grading && locked ? (
-          <Button
-            type="text"
-            shape="round"
-            onClick={() => back?.go()}
-          >
-            {t("nav.back")}
-          </Button>
+      menu={
+        run?.submitted ? (
+          <MenuButton
+            rightClick
+            menu={{
+              items: [{ key: "export", icon: <Download size={16} aria-hidden />, label: t("export.title") }],
+              onClick: () => setExportOpen(true),
+            }}
+            label={t("simulation.more")}
+          />
         ) : undefined
       }
     >
+      {run?.submitted ? (
+        <ExportButton planId={planId} kind="simulation" attemptId={run.attemptId} open={exportOpen} onOpenChange={setExportOpen} />
+      ) : null}
       {run && !running ? noticeBox : null}
       {run && !running && run.blocked && (
         <Notice
@@ -503,7 +511,6 @@ export function SimulationPage() {
           starting={busy}
           disabled={!ready && (open.isPending || (Boolean(building) && !buildStopped))}
           onStart={ready ? startNow : prepare}
-          onBack={() => back?.go()}
         >
           {noticeBox}
           {ready && (
@@ -556,12 +563,8 @@ export function SimulationPage() {
         <section className="px-sim-results">
           <Notice tone="info">{t("quiz.answersNotShared")}</Notice>
           <div className="px-sim-export">
-            <ExportButton planId={planId} kind="simulation" attemptId={run.attemptId} />
             <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
               {t("quiz.redo")}
-            </Button>
-            <Button type="primary" shape="round" onClick={toPath}>
-              {t("lesson.backToPath")}
             </Button>
           </div>
         </section>
@@ -654,42 +657,14 @@ export function SimulationPage() {
               <Button type="primary" shape="round" size="large" disabled={busy} onClick={() => void submit()}>
                 {t("simulation.resumeGrade")}
               </Button>
-            ) : run.submitted && simMistakes ? undefined : (
-              <Button type="primary" shape="round" size="large" onClick={toPath}>
-                {t("lesson.backToPath")}
-              </Button>
-            )
-          }
-          secondary={
-            gradingStopped || (run.submitted && simMistakes) ? (
-              <Button
-                type={gradingStopped ? "text" : "default"}
-                shape="round"
-                size="large"
-                onClick={toPath}
-              >
-                {t("lesson.backToPath")}
-              </Button>
             ) : undefined
           }
           extra={
             run.submitted ? (
-              <>
-                <Button type="text" shape="round" onClick={() => setExportOpen(true)}>
-                  {t("export.title")}
-                </Button>
-                <ExportButton
-                  planId={planId}
-                  kind="simulation"
-                  attemptId={run.attemptId}
-                  open={exportOpen}
-                  onOpenChange={setExportOpen}
-                />
-                {/* A new simulation from the setup; this one keeps its answers and grade. */}
-                <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
-                  {t("quiz.redo")}
-                </Button>
-              </>
+              // A new simulation from the setup; this one keeps its answers and grade.
+              <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
+                {t("quiz.redo")}
+              </Button>
             ) : undefined
           }
           after={!run.submitted && !gradingStopped ? t("simulation.frozen") : undefined}
@@ -798,7 +773,7 @@ export function SimulationPage() {
             <>
               {index > 0 ? (
                 <PxButton variant="secondary" icon="chevron-left" onClick={() => goTo(index - 1)}>
-                  {t("nav.back")}
+                  {t("quiz.previous")}
                 </PxButton>
               ) : null}
               <span className="px-qz-grow" />

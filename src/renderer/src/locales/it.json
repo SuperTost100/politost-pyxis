@@ -988,7 +988,6 @@
     "generateAgain": "Riprova",
     "reviewTitle": "Ripasso",
     "reviewIntro": "Una sessione con le flashcard in scadenza, domande sugli argomenti in cui hai sbagliato e qualche esercizio nuovo dal libro.",
-    "reviewBack": "Torna al ripasso",
     "reviewIntroNoCards": "Domande sugli argomenti in cui hai sbagliato e qualche esercizio nuovo dal libro. Oggi non hai flashcard da ripassare.",
     "reviewIntroMistakes": "Riparti dalle domande che hai sbagliato nel quiz. Se ne restano, aggiungo qualche esercizio sugli argomenti in cui hai ancora lacune.",
     "reviewStart": "Inizia il ripasso",
@@ -1027,6 +1026,7 @@
     "suspended": "Flashcard sospesa.",
     "deleted": "Flashcard rimossa.",
     "more": "Azioni sulla flashcard",
+    "moreOnCards": "Altro sulle flashcard",
     "card": "Flashcard",
     "askTutor": "Chiedi al tutor",
     "askSource": "Fonte: {{section}}",
@@ -1173,7 +1173,6 @@
     "redoTopic_other": "Rifai {{count}} domande",
     "redoFailed": "Non sono riuscito a riaprire le domande. Riprova.",
     "redoTitle": "Rifai gli errori",
-    "back": "Torna al quaderno",
     "summary_one": "{{count}} domanda da rifare tra quiz, verifiche rapide e simulazioni",
     "summary_other": "{{count}} domande da rifare tra quiz, verifiche rapide e simulazioni"
   },
@@ -1390,6 +1389,8 @@
     "recapMeta_other": "Circa {{count}} minuti · tre domande alla fine",
     "partMinutes_one": "Circa 1 minuto",
     "partMinutes_other": "Circa {{count}} minuti",
+    "barMinutes_one": "circa {{count}} minuto",
+    "barMinutes_other": "circa {{count}} minuti",
     "minutesShort": "{{count}} min",
     "finalCheck": "Verifica",
     "partEnd": "Fine della parte {{n}}",
@@ -1541,6 +1542,8 @@
     }
   },
   "simulation": {
+    "more": "Altro sulla simulazione",
+    "noWayOut": "Non puoi uscire: si esce consegnando o allo scadere del tempo",
     "title": "Simulazione",
     "resume": "Riprendi l’esame",
     "start": "Inizia",
@@ -1654,6 +1657,10 @@
     "stoppedHeadline": "La correzione si è fermata"
   },
   "quiz": {
+    "more": "Altro sul quiz",
+    "keptLine": "Le risposte restano: riprendi quando vuoi",
+    "barPosition": "domanda {{current}} di {{total}}",
+    "previous": "Domanda precedente",
     "title": "Quiz",
     "actionFailed": "L’azione non è riuscita. Riprova.",
     "start": "Inizia",
@@ -1768,7 +1775,6 @@
     },
     "questions": "Domande",
     "noAnswer": "Nessuna risposta",
-    "continue": "Continua",
     "redo": "Rifai",
     "answeredOn": "Le tue risposte del {{date}}",
     "answersNotShared": "Le risposte di questo tentativo non erano incluse nell'esame condiviso.",
@@ -1811,6 +1817,11 @@
     }
   },
   "practice": {
+    "doQuiz": "Fai il quiz",
+    "barCount_one": "{{count}} esercizio",
+    "barCount_other": "{{count}} esercizi",
+    "barBook": "dal libro",
+    "barAi": "scritti da Pyxis",
     "title": "Esercizi del libro",
     "empty": "Questo argomento non ha esercizi nel libro.",
     "reveal": "Mostra la soluzione",
@@ -3730,7 +3741,7 @@
     "skipped_other": "{{count}} c’erano già."
   },
   "oggi": {
-    "cardsTitle": "Flashcard da ripassare"
+    "cardsTitle": "Flashcard di oggi"
   },
   "planner": {
     "needed": "Per arrivare a ogni obiettivo in tempo ti servono circa {{hours}} h a settimana.",

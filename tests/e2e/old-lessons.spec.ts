@@ -204,7 +204,7 @@ test("an unfinished old lesson is rewritten in parts when it is opened, once, an
     const rewriting = working(page, "Sto riscrivendo la lezione in parti brevi");
     await expect(rewriting).toBeVisible();
     await expect(page.getByText("La versione di prima resta tra le cose fatte del capitolo.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeFocused();
+    await expect(page.locator(".px-part-working-status > p")).toBeFocused();
     await expect(parts(page)).toHaveCount(0);
     await expect(page).toHaveURL(/\/lesson\/t-funzioni\?part=1$/);
     await expectNoAxeViolations(page);

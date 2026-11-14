@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { Button, Dropdown, Input, Modal, Radio, type MenuProps } from "antd";
-import { ChevronDown, PencilLine, RefreshCw } from "lucide-react";
+import { ChevronDown, PencilLine, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { smartSections } from "@shared/smart-text";
@@ -61,7 +61,7 @@ function LevelMenu({ wording, disabled, onChoose }: { wording: Wording; disabled
           onClick: ({ key }) => onChoose(key as Wording),
         }}
       >
-        <Button shape="round" aria-describedby={hintId}>
+        <Button type="text" className="px-studybar-action" icon={<SlidersHorizontal size={16} strokeWidth={1.75} aria-hidden />} aria-describedby={hintId}>
           <span className="px-reader-level">
             <span className="ink-muted">{t("lesson.level")}</span>
             {t(`lesson.wording.${wording}`)}

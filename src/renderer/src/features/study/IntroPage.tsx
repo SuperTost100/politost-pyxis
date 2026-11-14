@@ -69,8 +69,8 @@ export function IntroPage() {
       eyebrow={t("plans.intro")}
       title={plan.data?.title ?? t("plans.intro")}
       back={back}
-      barTitle={t("plans.intro")}
-      barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
+      barTitle={plan.data?.title ?? t("plans.intro")}
+      barSubtitle={t("plans.intro")}
     >
       {intro.isPending ? <ReaderLoading label={t("lesson.loading")} /> : null}
       {intro.isError ? (
@@ -100,7 +100,6 @@ export function IntroPage() {
           failed={markDone.isError}
           onDone={() => markDone.mutate("done")}
           onContinue={() => markDone.mutate("continue")}
-          onBack={() => returnTo(back, `/plans/${planId}`, navigate)}
         />
       ) : null}
     </ReaderLayout>

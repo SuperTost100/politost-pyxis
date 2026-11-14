@@ -109,11 +109,20 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       page.getByRole("button", { name: "Inizia", exact: true }),
     ).toBeEnabled();
     await saveShot(page, "m11-setup-it-dark.png");
+    // Before it starts the bar has its way back, and the foot has no second one.
+    await expect(page.locator(".px-back")).toBeVisible();
+    await expect(page.locator(".px-intro-actions").getByRole("button")).toHaveText(["Inizia"]);
     await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
     ).toBeVisible();
+    // A running exam has no way out: no back control, and the line under the title says why. Attività is last at the right.
+    await expect(page.locator(".px-back")).toHaveCount(0);
+    await expect(page.locator(".px-studybar-title p")).toHaveText(
+      "Non puoi uscire: si esce consegnando o allo scadere del tempo",
+    );
+    await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
     expect(
       await page.getByRole("link", { name: "Nuova chat", exact: true }).count(),
     ).toBe(0);
