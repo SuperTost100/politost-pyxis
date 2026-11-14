@@ -245,7 +245,9 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     // A page ahead in history, so Avanti has somewhere to go: Fonti and back, with nothing changed yet.
     await page.getByRole("link", { name: "Vai a Fonti" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a\/sources$/);
-    // Indietro runs the page's back control, there once the page has drawn it.
+    // Indietro runs the page's back control, there once the page has drawn it: the settings stay on screen, with their
+    // own control, until Fonti has loaded.
+    await expect(page.getByRole("heading", { level: 1, name: "Materiale" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
     await pick(app, "back");
     await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);

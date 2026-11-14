@@ -646,9 +646,9 @@ test("First setup: interests added on the first step show in Settings > Profile 
     await expect(page).toHaveURL(/#\/ask$/);
     expect(await profile(page)).toMatchObject({ interests: ["calcio", "chitarra"], interestsOn: true });
 
-    await page.evaluate(() => {
-      location.hash = "/settings/profile";
-    });
+    // Opened from the profile menu, as a student does: the router made that entry, so the leave question can hold it.
+    await button(page, /^Ada/).click();
+    await page.getByRole("menuitem", { name: "Impostazioni" }).click();
     await expect(button(page, "Togli calcio")).toBeVisible();
     await expect(button(page, "Togli chitarra")).toBeVisible();
     await expect(page.getByRole("switch", { name: "Usa i miei interessi negli esempi" })).toBeChecked();
@@ -666,14 +666,14 @@ test("First setup: interests added on the first step show in Settings > Profile 
     await expect(button(page, "Togli calcio")).toHaveCount(0);
     await button(page, "Torna a Impostazioni").click();
     await leave.getByRole("button", { name: "Esci senza salvare" }).click();
-    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    await expect(page).toHaveURL(/#\/settings$/);
     expect((await profile(page))?.interests).toEqual(["calcio", "chitarra"]);
     await button(page, "Rifai la configurazione").click();
     await button(page, "Togli calcio").click();
     await button(page, "Continua").click();
     await button(page, "Lo faccio dopo").click();
     await button(page, "Lo faccio dopo").click();
-    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    await expect(page).toHaveURL(/#\/settings$/);
     expect((await profile(page))?.interests).toEqual(["chitarra"]);
   } finally {
     await app.close();

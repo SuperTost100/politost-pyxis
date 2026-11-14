@@ -241,6 +241,8 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       );
       await page.setViewportSize({ width, height: 800 });
       await page.reload();
+      // How far the page itself scrolls: the exam page can run a few pixels past the window, with its way back above it.
+      const scroll = () => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight);
       await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
       await page.getByRole("menuitem", { name: /^(Aggiungi al calendario|Add to calendar)$/ }).click();
       const notice = page.locator(".ant-message-notice", {
@@ -262,10 +264,11 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       // As wide as its text, up to 560px, and a longer text wraps instead of spanning the window.
       expect(box.width).toBeLessThan(560);
       expect(await notice.evaluate((element) => getComputedStyle(element).maxWidth)).toBe("560px");
-      // It adds nothing to the page's height: a page that could scroll while it shows would jump back when it closes.
-      expect(await page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight)).toBe(0);
+      // It adds nothing to the page's height: the page scrolls as far with it as without it, so it does not jump when it closes.
+      const scrollWith = await scroll();
       await saveShot(page, `notice-${language}-${theme}-${width}.png`, { animations: "disabled" });
       await expect(notice).toHaveCount(0, { timeout: 10000 });
+      expect(await scroll()).toBe(scrollWith);
     }
   } finally {
     await app.close();

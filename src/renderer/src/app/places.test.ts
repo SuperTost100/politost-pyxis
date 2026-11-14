@@ -51,6 +51,7 @@ describe("places", () => {
     expect(placeOf("/plans/new").name).toEqual({ key: "wizard.title" });
     expect(placeOf("/settings/engines")).toEqual({ name: { key: "settings.title" }, parent: { to: "/ask", name: { key: "doors.ask" } } });
     expect(placeOf("/onboarding?again=1").parent?.to).toBe("/settings/profile");
+    expect(placeOf("/exams/get")).toEqual({ name: { key: "shared.title" }, parent: { to: "/exams", name: { key: "doors.exams" } } });
     expect(placeOf("/onboarding").parent).toBeNull();
     expect(placeOf("/nowhere/at/all")).toEqual({ name: null, parent: null });
   });

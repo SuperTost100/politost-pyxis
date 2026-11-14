@@ -33,6 +33,13 @@ A page opened from another page has one way back, at its top left: an arrow and 
 
 A page takes its place with `usePlace` (`app/usePlace.ts`): it writes its own name for the controls that lead to it, and gets back its way back. A button that names the place it returns to, such as "Torna al percorso", goes back the same way when the back control leads there (`returnTo`).
 
+A few places differ from the rule:
+
+- **Settings** has its control above both panes. In a window narrower than 960 px with a section open, the same control reads "← Impostazioni" and closes the section (`inner` in `usePlace`), so the page never shows two.
+- **A chat** has a bar control at the left of its head only when it was opened from another page (a lesson's selection, a search from an exam). A chat from the sidebar, and a new chat once it has its first reply, have none.
+- **Setup again** has the page control in place of its Cancel, and asks "Le modifiche al profilo andranno perse." when the answers differ from the saved profile. The first setup has no control, and its foot button reads "Passo precedente" on every step.
+- **A map that is deleted** leaves through its way back. When that leads to Mappe, the tile shrinks where it was: the map page leaves a note with `noteForArrival` (`app/history.ts`), which Mappe reads once with `takeArrivalNote`, since going back through history cannot carry a navigation's state.
+
 ## The study bar
 
 Over the lesson, the quiz and the flashcards. The way back is a ghost button that names where it goes, the title and the count sit in the middle, and the tools are ghost buttons on the right. There is no close button: the way back is the way out.
