@@ -9,6 +9,7 @@ import { pythonMaxChars } from "../../components/pythonRun";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
 import { BarTool, StudyLayout } from "../study/StudyBar";
+import { toolLine } from "./toolLine";
 import {
   addSnippet,
   readCode,
@@ -119,7 +120,7 @@ export function PythonPage() {
     <StudyLayout
       back={back}
       title={t("python.title")}
-      subtitle={back?.name}
+      subtitle={toolLine(back)}
       tools={
         <>
           <BarTool

@@ -2050,6 +2050,7 @@
     "stepDiagnostic": "Preparing the diagnostic test",
     "stepReady": "Exam ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
+    "cancelBuild": "Cancel the preparation",
     "cancelled": "Build cancelled. Retry to resume from the saved step.",
     "continueBuild": "Continue exam build",
     "continue": "Continue",

@@ -10,6 +10,7 @@ import { IconButton } from "../../components/IconButton";
 import { invoke } from "../../lib/ipc";
 import { draftKey, lastAskChat } from "../ask/attachments";
 import { BarTool, StudyLayout } from "../study/StudyBar";
+import { toolLine } from "./toolLine";
 import {
   analyzeGraph,
   graphExpression,
@@ -263,7 +264,7 @@ export function GraphPage() {
       stage
       back={back}
       title={t("graph.title")}
-      subtitle={back?.name}
+      subtitle={toolLine(back)}
       tools={
         <>
           <BarTool

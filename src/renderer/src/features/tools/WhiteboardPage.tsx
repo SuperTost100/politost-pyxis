@@ -8,6 +8,7 @@ import { usePlace } from "../../app/usePlace";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { BarTool, StudyLayout } from "../study/StudyBar";
+import { toolLine } from "./toolLine";
 import { strokeHits } from "./strokes";
 import "./WhiteboardPage.css";
 
@@ -185,7 +186,7 @@ export function WhiteboardPage() {
       stage
       back={back}
       title={t("tools.whiteboardTitle")}
-      subtitle={back?.name}
+      subtitle={toolLine(back)}
       tools={
         <>
           <BarTool

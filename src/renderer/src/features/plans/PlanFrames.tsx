@@ -3,7 +3,6 @@ import { Stepper } from "../../components/Stepper";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
 import { Button, Input, Progress } from "antd";
-import { X } from "lucide-react";
 import "./PlanWizard.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,7 +17,7 @@ import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
-import { BarTool, StudyLayout } from "../study/StudyBar";
+import { StudyLayout } from "../study/StudyBar";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
 import { takePlanText } from "./openedPlan";
@@ -184,15 +183,19 @@ function BuildScreen({ planId }: { planId: string }) {
       back={back}
       title={t("wizard.title")}
       subtitle={name || undefined}
-      tools={
+      // Cancelling stops the build; leaving does not. It sits in the page, in full words, so the bar's top-right corner
+      // never reads as a way to close the screen.
+      secondary={
         busy ? (
-          <BarTool
-            icon={<X size={16} strokeWidth={1.75} aria-hidden />}
-            label={t("wizard.cancel")}
+          <Button
+            type="text"
+            shape="round"
             onClick={() => {
               if (build.data) void invoke("jobs.cancel", { jobId: build.data.jobId });
             }}
-          />
+          >
+            {t("wizard.cancelBuild")}
+          </Button>
         ) : null
       }
       primary={
