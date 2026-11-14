@@ -27,6 +27,7 @@ Paste it into the pull request and tick each line against the screenshots. A lin
 ### States and motion
 
 - [ ] Empty, loading, error and working states are drawn, and background work shows the working mark where its result will appear.
+- [ ] An empty page is one line and one action through `EmptyState`, with no title, and the head's main action is hidden until there is something to act on.
 - [ ] Errors sit next to what failed and give the fix.
 - [ ] Motion starts from what caused it, follows the motion table and has its reduced-motion fallback; nothing animates on typing or frequent actions.
 - [ ] Every scroll area uses the app's thin scrollbar.

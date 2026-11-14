@@ -5,8 +5,8 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { LoadError } from "../../components/LoadError";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -158,9 +158,7 @@ export function FlashcardsHome() {
       </div>
     );
   else if (data.subjects.length === 0)
-    body = (
-      <EmptyState body={t("flashcards.emptyBody")} action={newCard("primary")} />
-    );
+    body = <EmptyState body={t("flashcards.emptyBody")} action={newCard("primary")} />;
   else
     body = (
       <div className="px-fc-subjects">
@@ -176,6 +174,18 @@ export function FlashcardsHome() {
     );
 
   const hasCards = data !== undefined && data.subjects.length > 0;
+  // The first flashcard replaces the empty page and its button, which the dialog gives the focus back to: once both have
+  // happened, a focus that fell to the page goes to the head's "Nuova flashcard".
+  const wasEmpty = useRef(false);
+  useEffect(() => {
+    if (data && !hasCards) wasEmpty.current = true;
+    else if (hasCards && wasEmpty.current && dialog === null) {
+      wasEmpty.current = false;
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) newButton.current?.querySelector("button")?.focus();
+      });
+    }
+  }, [data, hasCards, dialog]);
   return (
     <div className="px-fc">
       <MenuItemArea as="div" className="px-fc-head" menu={menu} region={t("cardBrowser.more")} disabled={!data}>

@@ -76,10 +76,16 @@ const revealKey = (platform: string) =>
 export function LinkedFolders({
   sources,
   onLink,
+  elsewhere,
 }: {
   /** The Library's files, to count the ones the student added and to find the covers that leave. */
   sources: readonly LibrarySource[] | undefined;
   onLink: () => void;
+  /**
+   * Given while the page offers to link a folder itself, as its empty page does: with no folder linked the control is
+   * not drawn, so the link shows once, and the focus goes to what this returns, the element that holds that button.
+   */
+  elsewhere?: () => HTMLElement | null | undefined;
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
@@ -114,7 +120,13 @@ export function LinkedFolders({
     void client.invalidateQueries({ queryKey: ["sources"] });
   };
   // The anchor holds the control in every state, so the focus has somewhere to go after the last folder is unlinked.
-  const focusControl = () => anchor.current?.querySelector("button")?.focus({ preventScroll: true });
+  // The confirmation's `afterClose` runs after the Library has re-rendered, so it reads the latest `elsewhere`.
+  const elsewhereNow = useRef(elsewhere);
+  elsewhereNow.current = elsewhere;
+  const focusControl = () =>
+    (anchor.current?.querySelector("button") ?? elsewhereNow.current?.()?.querySelector("button"))?.focus({
+      preventScroll: true,
+    });
 
   async function reread(folder: LinkedFolder) {
     setProblem(null);
@@ -297,10 +309,12 @@ export function LinkedFolders({
             <span className="px-folders-slot" aria-hidden />
           )
         ) : !list.length ? (
-          <Button variant="secondary" className="px-folders-control" onClick={onLink}>
-            <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
-            {t("sources.shelf.linkFolder")}
-          </Button>
+          elsewhere ? null : (
+            <Button variant="secondary" className="px-folders-control" onClick={onLink}>
+              <FolderPlus size={16} strokeWidth={1.75} aria-hidden />
+              {t("sources.shelf.linkFolder")}
+            </Button>
+          )
         ) : (
           <Button
             variant="secondary"

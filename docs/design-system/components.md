@@ -42,18 +42,19 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 
 ## Status and feedback
 
-| Component      | What it's for                                                                                                           |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `Notice`       | An inline message with a tone (info, warning or danger), an optional action and technical details                       |
-| `ErrorState`   | A failed load, build or quiz: one danger notice that says what failed, the fix, and the details behind a toggle         |
-| `LoadError`    | A failed load with Try again, so a page never stays empty without a word                                                |
-| `StepLines`    | The steps of a long job, each pending, running, done or failed                                                          |
-| `BuildingMark` | The Pyxis mark drawing its trails while an exam is built                                                                |
-| `Logo`         | The Pyxis mark; with `working` its rings turn, the [working mark](feedback.md#the-working-mark) for AI work in progress |
-| `Tag`          | A short label on an item, such as "general knowledge"                                                                   |
-| `CheckBadge`   | Whether a figure or a result was checked, failed the check, or can't be checked                                         |
-| `EngineNotice` | The one-time notice for an AI tool that is ready but not yet acknowledged                                               |
-| `ScanNotice`   | What a scanned source needs before it can be read                                                                       |
+| Component      | What it's for                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `EmptyState`   | A page with nothing in it: one line and one action, an optional `art` above, no title ([empty states](layout.md#empty-states)) |
+| `Notice`       | An inline message with a tone (info, warning or danger), an optional action and technical details                              |
+| `ErrorState`   | A failed load, build or quiz: one danger notice that says what failed, the fix, and the details behind a toggle                |
+| `LoadError`    | A failed load with Try again, so a page never stays empty without a word                                                       |
+| `StepLines`    | The steps of a long job, each pending, running, done or failed                                                                 |
+| `BuildingMark` | The Pyxis mark drawing its trails while an exam is built                                                                       |
+| `Logo`         | The Pyxis mark; with `working` its rings turn, the [working mark](feedback.md#the-working-mark) for AI work in progress        |
+| `Tag`          | A short label on an item, such as "general knowledge"                                                                          |
+| `CheckBadge`   | Whether a figure or a result was checked, failed the check, or can't be checked                                                |
+| `EngineNotice` | The one-time notice for an AI tool that is ready but not yet acknowledged                                                      |
+| `ScanNotice`   | What a scanned source needs before it can be read                                                                              |
 
 ## Study
 

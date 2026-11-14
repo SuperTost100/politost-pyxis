@@ -83,11 +83,11 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
     await button(page, "Lo faccio dopo").click();
     await expect(page).toHaveURL(/#\/ask$/);
 
-    // The empty Library still offers them.
+    // The empty Library still offers them, in the dots of its head.
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    await button(page, "Libri PoliTost gratuiti").click();
+    await openBooksFromMenu(page);
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await expect(dialog.getByText("Fisica di prova")).toBeVisible({
       timeout: 30000,
@@ -147,7 +147,7 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
     await button(page, "Azioni per Fisica di prova").click();
     await page.getByRole("menuitem", { name: "Rimuovi" }).click();
     await expect.poll(async () => (await imported()).length).toBe(0);
-    await button(page, "Libri PoliTost gratuiti").click();
+    await openBooksFromMenu(page);
     await expect(
       again.getByRole("button", { name: "Aggiungi Fisica di prova" }),
     ).toBeVisible({ timeout: 30000 });
@@ -172,7 +172,7 @@ test("Free books: a package that does not match the catalog is refused and nothi
     await page.evaluate(() => {
       location.hash = "/exams/library";
     });
-    await button(page, "Libri PoliTost gratuiti").click();
+    await openBooksFromMenu(page);
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await dialog.getByRole("button", { name: "Aggiungi Fisica di prova" }).click();
     await expect(

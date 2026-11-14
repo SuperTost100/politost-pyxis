@@ -49,18 +49,14 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
-    // The header door opens the section. With no subject yet, the empty state offers material and an exam.
+    // The header door opens the section. With no subject yet, the empty state offers to link the folder with the material.
     await page.getByText("Mappe", { exact: true }).click();
     await expect(page).toHaveURL(/#\/maps$/);
+    await expect(page.getByText(/^Qui compariranno le mappe che crei/)).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Ancora nessuna mappa" }),
+      page.getByRole("button", { name: "Collega una cartella" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Nuovo esame" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Apri la Libreria" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Nuovo esame" })).toHaveCount(0);
 
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
       timeout: 10000,

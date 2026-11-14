@@ -159,7 +159,7 @@ test("the due line counts the flashcards with no exam, with exams or without any
     await page.reload();
 
     // No exam at all: the list is empty, and the daily review still has both flashcards.
-    await expect(page.getByRole("heading", { name: "Create an exam to get started" })).toBeVisible();
+    await expect(page.getByText(/^Your exams will appear here/)).toBeVisible();
     await expect(page.getByText("You have 2 flashcards to review today")).toBeVisible();
     await expect(page.getByRole("button", { name: "Review 2", exact: true })).toBeVisible();
 
@@ -199,7 +199,7 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    await expect(page.getByRole("heading", { name: "Crea un esame per iniziare" })).toBeVisible();
+    await expect(page.getByText(/^Qui compariranno i tuoi esami/)).toBeVisible();
     await expect(page.getByRole("list", { name: "I tuoi esami" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiviati" })).toHaveCount(0);
     // The Esami menu holds importing and the mistakes notebook; every flashcard lives under Flashcard.
