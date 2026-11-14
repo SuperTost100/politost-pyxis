@@ -95,7 +95,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
           .click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await page
-          .getByRole("button", { name: /Keep drawing|Continua a disegnare/ })
+          .getByRole("button", { name: /Stay here|Resta qui/ })
           .click();
         await expect(page.getByRole("dialog")).not.toBeVisible();
         await page
@@ -142,7 +142,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     ).toBeEnabled();
     await page.getByRole("button", { name: "Chiudi", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByRole("button", { name: "Elimina le modifiche" }).click();
+    await page.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => {
       location.hash = "/tools/whiteboard";
@@ -235,7 +235,7 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     await page.keyboard.press("Control+z");
     expect(await strokes(page)).toBe(2);
     await page.getByRole("button", { name: "Chiudi", exact: true }).click();
-    await page.getByRole("button", { name: "Elimina le modifiche" }).click();
+    await page.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await app.close();

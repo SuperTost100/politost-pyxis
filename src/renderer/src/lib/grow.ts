@@ -1,13 +1,14 @@
 /**
  * The dialog grows out of `from` (a button) and shrinks back into it: it moves and scales from the button's centre,
- * 320 ms in and 220 ms out. With reduced motion, or with no button on screen, it only fades.
+ * 320 ms in and 220 ms out. With reduced motion, or with no button on screen, it only fades. The animation comes back, so
+ * a dialog asked to open again while it shrinks can cancel the shrinking (`done` then does not run).
  */
 export function grow(
   node: HTMLElement,
   from: HTMLElement | null,
   way: "in" | "out",
   done?: () => void,
-) {
+): Animation {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const start = from?.getBoundingClientRect();
   const end = node.getBoundingClientRect();
@@ -29,4 +30,5 @@ export function grow(
     easing: "cubic-bezier(0.23, 1, 0.32, 1)",
   });
   if (done) animation.onfinish = done;
+  return animation;
 }

@@ -32,12 +32,13 @@ async function shot(page: Page, name: string) {
 }
 
 /**
- * The dialog's question before it closes, laid out as a confirmation: the sentence, then the two buttons together on one
- * line under it, the safe one first and focused.
+ * The question before the dialog closes, in the one dialog over it: named by its title, the sentence as its description,
+ * then the two buttons together on one line under it, the safe one first and focused.
  */
-async function expectCloseQuestion(page: Page, dialog: Locator, text: RegExp, safe: string, leave: string) {
-  const question = dialog.getByRole("group").filter({ hasText: text });
+async function expectCloseQuestion(page: Page, title: string, text: RegExp, safe: string, leave: string): Promise<Locator> {
+  const question = page.getByRole("dialog", { name: title });
   await expect(question).toBeVisible();
+  await expect(question).toHaveAccessibleDescription(text);
   const keep = question.getByRole("button", { name: safe, exact: true });
   const go = question.getByRole("button", { name: leave, exact: true });
   await expect(keep).toBeFocused();
@@ -48,6 +49,7 @@ async function expectCloseQuestion(page: Page, dialog: Locator, text: RegExp, sa
   expect(Math.abs(a.y - b.y), "the two buttons share a line").toBeLessThan(1);
   expect(a.x + a.width, "the safe one comes first").toBeLessThan(b.x);
   expect(said.y + said.height, "the sentence is above the buttons").toBeLessThanOrEqual(a.y);
+  return question;
 }
 
 async function toFlashcards(page: Page) {
@@ -113,12 +115,13 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
 
     // Escape with text typed asks first, and the safe answer keeps it.
     await page.keyboard.press("Escape");
-    const keep = dialog.getByRole("button", { name: "Continua a scrivere" });
-    await expect(dialog.getByText("Butti via quello che hai scritto?")).toBeVisible();
-    await expect(keep).toBeFocused();
+    const keep = (
+      await expectCloseQuestion(page, "Uscire senza salvare?", /^La flashcard che hai scritto andrà persa\.$/, "Resta qui", "Esci senza salvare")
+    ).getByRole("button", { name: "Resta qui" });
     await keep.click();
+    await expect(keep).toHaveCount(0);
     await expect(front).toHaveValue("Formula degli alcani?\nIn una riga.");
-    // A second Escape takes the question back, and the dialog stays open with its text.
+    // A second Escape answers the question as Resta qui: the dialog stays open with its text and the focus where it was.
     await front.focus();
     await page.keyboard.press("Escape");
     await expect(keep).toBeVisible();
@@ -126,6 +129,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     await expect(keep).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await expect(front).toHaveValue("Formula degli alcani?\nIn una riga.");
+    await expect(front).toBeFocused();
 
     // Pyxis needs an AI tool and says how to set one up; the written card stays on its side.
     await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
@@ -182,6 +186,49 @@ const card = (n: number, front: string) => ({
   front,
   back: `La risposta numero ${n}.`,
   passageId: "{{passage:0}}",
+});
+
+test("text typed before the subjects arrive stays in Fronte, and so does the focus", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-early-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await toFlashcards(page);
+    const newButton = page.getByRole("button", { name: "Nuova flashcard", exact: true });
+    await expect(newButton).toBeVisible();
+    // A student who clicks into Fronte and types the moment the dialog opens, before its subjects are read: here the
+    // text goes in as soon as the field exists. With no subject yet, the dialog then offers the new subject's name.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const observer = new MutationObserver(() => {
+            const field = document.getElementById("nc-front") as HTMLTextAreaElement | null;
+            if (!field) return;
+            observer.disconnect();
+            field.focus();
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Che cos'è");
+            field.dispatchEvent(new Event("input", { bubbles: true }));
+            resolve();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          [...document.querySelectorAll("button")].find((button) => button.textContent === "Nuova flashcard")!.click();
+        }),
+    );
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    // The subjects have arrived once the new subject's name is offered; the dialog places its focus a frame after that.
+    await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toBeVisible();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(front).toBeFocused();
+    await page.keyboard.type(" la velocità?");
+    await expect(front).toHaveValue("Che cos'è la velocità?");
+    await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toHaveValue("");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
 });
 
 test("Pyxis writes a subject's flashcards to check before saving, and another page opens the dialog on a subject", async () => {
@@ -314,9 +361,9 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await expect(dialog.getByRole("radiogroup")).toHaveCount(0);
     await shot(page, "5-pyxis-working");
     await page.keyboard.press("Escape");
-    await expect(dialog.getByText(/Pyxis sta ancora scrivendo/)).toBeVisible();
-    await expectCloseQuestion(page, dialog, /Pyxis sta ancora scrivendo/, "Continua", "Ferma e chiudi");
-    await dialog.getByRole("button", { name: "Continua", exact: true }).click();
+    const stop = await expectCloseQuestion(page, "Fermare Pyxis?", /Pyxis sta ancora scrivendo/, "Continua", "Ferma e chiudi");
+    await stop.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(stop).toHaveCount(0);
 
     // The proposals: the one the subject has already is left out and counted; nothing is saved yet.
     const list = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
@@ -394,9 +441,14 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await shot(page, "7-pyxis-thirty");
     // Closing with proposals not saved asks first; then nothing is saved.
     await dialog.getByRole("button", { name: "Annulla" }).click();
-    await expect(dialog.getByText(/Non hai salvato le flashcard proposte/)).toBeVisible();
-    await expectCloseQuestion(page, dialog, /Non hai salvato le flashcard proposte/, "Torna alle flashcard", "Chiudi senza salvare");
-    await dialog.getByRole("button", { name: "Chiudi senza salvare" }).click();
+    const unsaved = await expectCloseQuestion(
+      page,
+      "Uscire senza salvare?",
+      /Non hai salvato le flashcard proposte/,
+      "Resta qui",
+      "Esci senza salvare",
+    );
+    await unsaved.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(dialog).toHaveCount(0);
     expect(cards(userData).filter((row) => row.subject === "Fisica 2")).toHaveLength(1);
 
@@ -593,7 +645,7 @@ test("a card is saved once, the dialog stays while it saves, and each save is an
       await save.click();
       await expect(save).toBeDisabled();
       await page.keyboard.press("Escape");
-      await expect(dialog.getByText("Butti via quello che hai scritto?")).toHaveCount(0);
+      await expect(page.getByRole("dialog", { name: "Uscire senza salvare?" })).toHaveCount(0);
       await expect(dialog.getByRole("button", { name: "Annulla" })).toBeDisabled();
       await dialog.click({ position: { x: 1, y: 1 } });
       await expect(dialog).toBeVisible();

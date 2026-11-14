@@ -10,7 +10,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 
 | Component                            | What it's for                                                                                            |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `Button`                             | Every text button: `primary` (one per view), `secondary`, `ghost` and `danger`, at 30, 34 and 42px       |
+| `Button`                             | Every text button: `primary`, `secondary`, `ghost`, `danger` and a dialog's `danger-solid`               |
 | `IconButton`                         | An icon-only button with its label for screen readers; can keep focus in the field being typed in        |
 | `ControlGroup`, `ControlList`        | A titled group of settings and the white card of rows under it                                           |
 | `ControlRow`, `TextRow`, `SwitchRow` | A row with any control on its right, a short text field, an on or off switch                             |
@@ -21,6 +21,9 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `TagsField`                          | A free list of words, each a tag                                                                         |
 | `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
 | `Popover`                            | A panel that grows from its button, such as the Library's linked folders, and scrolls inside itself      |
+| `Dialog`                             | The one dialog for a confirmation, a form or a notice; the rules are in controls.md, Dialogs             |
+| `useConfirm` (`Dialog.tsx`)          | Asks a question in `Dialog` and answers with the button chosen, one question at a time                   |
+| `useLeaveGuard` (`app/`)             | Asks "Uscire senza salvare?" before a move away from a page with work it does not save                   |
 | `Chip`                               | A small rounded choice or filter                                                                         |
 | `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                    |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |

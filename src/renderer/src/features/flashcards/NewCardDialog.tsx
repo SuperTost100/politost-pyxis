@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { NEW_CARDS } from "@shared/limits";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
+import { useConfirm } from "../../components/Dialog";
 import { Segmented, Stepper } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
 import { Logo } from "../../components/Logo";
@@ -87,8 +88,9 @@ export function NewCardDialog({
 
   const [side, setSide] = useState<NewCardSide>(openSide);
   const [subjectId, setSubjectId] = useState("");
-  // Asking before something is lost: what would be lost decides the words.
-  const [leaving, setLeaving] = useState<Loss | null>(null);
+  const confirm = useConfirm();
+  // The question asked before something is lost, while it is open: what would be lost decides the words.
+  const asking = useRef<{ loss: Loss; taken: AbortController } | null>(null);
   const [closing, setClosing] = useState(false);
 
   // Scrivila tu
@@ -167,7 +169,7 @@ export function NewCardDialog({
     setMade(null);
     setFailure(null);
     setSavingProposed(false);
-    setLeaving(null);
+    takeBack();
     setClosing(false);
   }, [open]);
 
@@ -182,7 +184,13 @@ export function NewCardDialog({
     });
   }, [open, places.data, side]);
 
-  useEffect(() => () => stopWork(), []);
+  useEffect(
+    () => () => {
+      stopWork();
+      takeBack();
+    },
+    [],
+  );
 
   // Opening: the native modal dialog, grown out of the button that asked for it.
   useLayoutEffect(() => {
@@ -201,7 +209,14 @@ export function NewCardDialog({
     }
     if (focused.current || !places.data || !subjectId) return;
     focused.current = true;
-    requestAnimationFrame(() => firstField()?.focus());
+    requestAnimationFrame(() => {
+      // A student who went to a field and started typing before the subjects arrived keeps it: the rest of what they
+      // type must not land in another field.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && dialog.current?.contains(active) && active.matches("input, textarea, select"))
+        return;
+      firstField()?.focus();
+    });
   }, [open, places.data, subjectId]);
 
   function firstField(): HTMLElement | null {
@@ -216,7 +231,7 @@ export function NewCardDialog({
   function close() {
     const node = dialog.current;
     stopWork();
-    setLeaving(null);
+    takeBack();
     if (!node?.open) return onClose();
     setClosing(true);
     const button = origin();
@@ -232,9 +247,8 @@ export function NewCardDialog({
    * is showing. While a card is being saved the dialog stays: closing then would leave the student unsure what was saved.
    */
   function askClose() {
-    if (closing || busy.current) return;
-    if (leaving) return stay();
-    const ask = whatWouldBeLost({
+    if (closing || busy.current || asking.current) return;
+    const loss = whatWouldBeLost({
       step,
       proposals: rows.length,
       front,
@@ -243,34 +257,57 @@ export function NewCardDialog({
       naming: isNew,
       focus: focusText,
     });
-    if (!ask) return close();
-    asked.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setLeaving(ask);
+    if (!loss) return close();
+    const active = document.activeElement;
+    asked.current = active instanceof HTMLElement && dialog.current?.contains(active) ? active : firstField();
+    void ask(loss);
   }
 
-  /** The student keeps going: the question goes and the focus is back where it was. */
+  /**
+   * The question in the one dialog over this one. Its safe answer has the focus; staying gives the focus back to where it
+   * was, and the answer that throws work away closes this dialog too.
+   */
   const asked = useRef<HTMLElement | null>(null);
-  function stay() {
-    setLeaving(null);
-    const back = asked.current;
-    asked.current = null;
-    requestAnimationFrame(() => (back?.isConnected ? back : firstField())?.focus());
+  async function ask(loss: Loss) {
+    const taken = new AbortController();
+    asking.current = { loss, taken };
+    const words =
+      loss === "working"
+        ? {
+            title: t("flashcards.new.leave.stopTitle"),
+            cancel: t("flashcards.new.leave.wait"),
+            confirm: t("flashcards.new.leave.stop"),
+          }
+        : { title: t("leave.title"), cancel: t("leave.stay"), confirm: t("leave.go") };
+    const answer = await confirm({
+      ...words,
+      body: t(`flashcards.new.leave.${loss}`),
+      tone: "danger",
+      origin: asked.current,
+      returnFocus: asked.current,
+      signal: taken.signal,
+    });
+    if (asking.current?.taken !== taken) return;
+    asking.current = null;
+    if (answer === "confirm") close();
+  }
+
+  /** The question goes away unanswered: the dialog closed, or what it asked about is over. */
+  function takeBack() {
+    const open = asking.current;
+    asking.current = null;
+    open?.taken.abort();
   }
 
   // Pyxis may finish while the student is asked about stopping it: the question becomes the one about its proposals.
   useEffect(() => {
-    if (leaving === "working" && step !== "working") setLeaving(step === "review" && rows.length ? "review" : null);
+    if (asking.current?.loss !== "working" || step === "working") return;
+    takeBack();
+    if (step === "review" && rows.length) void ask("review");
   }, [step]);
-
-  // The confirmation's safe answer takes the focus; the one that throws work away is never the default.
-  const keepButton = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (leaving) keepButton.current?.querySelector("button")?.focus();
-  }, [leaving]);
 
   function switchSide(next: NewCardSide) {
     setSide(next);
-    setLeaving(null);
     // Pyxis writes for a subject that exists, so a new one being named gives way to the first subject.
     if (next === "pyxis" && subjectId === NEW_SUBJECT) setSubjectId(subjects[0]?.id ?? "");
     if (next === "hand" && !subjectId) setSubjectId(subjects[0]?.id ?? NEW_SUBJECT);
@@ -457,26 +494,7 @@ export function NewCardDialog({
   const askedLabel = t("flashcards.new.asked", { count });
 
   let actions: ReactNode;
-  if (leaving)
-    actions = (
-      <div className="px-nc-leave" role="group" aria-labelledby="nc-leave-text">
-        <p id="nc-leave-text" className="small">
-          {t(`flashcards.new.leave.${leaving}`)}
-        </p>
-        {/* The two answers together under the question, the safe one first and focused (keepButton). */}
-        <div className="px-nc-leave-actions">
-          <span ref={keepButton}>
-            <Button variant="secondary" onClick={stay}>
-              {t(`flashcards.new.leave.${leaving === "typed" ? "keep" : leaving === "working" ? "wait" : "back"}`)}
-            </Button>
-          </span>
-          <Button variant="danger" onClick={close}>
-            {t(`flashcards.new.leave.${leaving === "typed" ? "discard" : leaving === "working" ? "stop" : "close"}`)}
-          </Button>
-        </div>
-      </div>
-    );
-  else if (side === "hand")
+  if (side === "hand")
     actions = (
       <>
         <Button variant="ghost" disabled={saving || closing} onClick={askClose}>
@@ -546,7 +564,10 @@ export function NewCardDialog({
         askClose();
       }}
       onMouseDown={(event) => {
-        if (event.target === dialog.current) askClose();
+        if (event.target !== dialog.current) return;
+        // The click's own focus move would come after the question has given the focus to "Resta qui".
+        event.preventDefault();
+        askClose();
       }}
     >
       {open ? (

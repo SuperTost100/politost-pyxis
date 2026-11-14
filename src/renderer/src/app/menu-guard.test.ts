@@ -7,7 +7,7 @@ const free: MenuContext = {
   locked: false,
   modalOpen: false,
   draftAtRisk: false,
-  backSaves: false,
+  keepsTyped: null,
 };
 
 const navigation: MenuCommand[] = [
@@ -63,17 +63,40 @@ describe("menu command guard", () => {
   });
 
   it("lets Indietro through with text in a field when the page saves before it leaves, and never Avanti", () => {
-    const typing = { ...free, draftAtRisk: true, backSaves: true };
+    const typing = { ...free, draftAtRisk: true, keepsTyped: "back" as const };
     expect(menuCommandAllowed("back", typing)).toBe(true);
     // Avanti leaves through the router at once, so the page's own saving does not run.
     expect(menuCommandAllowed("forward", typing)).toBe(false);
   });
 
+  it("lets every move through the router go on with text in a field when the page asks before losing it", () => {
+    const guarded = { ...free, pathname: "/plans/p-1/settings", draftAtRisk: true, keepsTyped: "asks" as const };
+    // The leave guard holds every router move, so it asks "Uscire senza salvare?" instead of the menu doing nothing.
+    for (const command of navigation.filter((command) => command !== "report-problem"))
+      expect(menuCommandAllowed(command, guarded), command).toBe(true);
+    // Reporting a problem opens the browser, which no router move carries, so the guard could not ask.
+    expect(menuCommandAllowed("report-problem", guarded)).toBe(false);
+  });
+
+  it("keeps refusing Indietro and Avanti with an answer typed on a page that neither saves nor asks, as the exercises", () => {
+    const exercises = { ...free, pathname: "/plans/p-1/practice/t-1", draftAtRisk: true, keepsTyped: null };
+    for (const command of stepping) expect(menuCommandAllowed(command, exercises), command).toBe(false);
+  });
+
+  it("refuses Indietro and Avanti on a page that asks, with a dialog open, during setup and under a lock", () => {
+    for (const command of stepping) {
+      const asks = { ...free, draftAtRisk: true, keepsTyped: "asks" as const };
+      expect(menuCommandAllowed(command, { ...asks, modalOpen: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...asks, pathname: "/onboarding" }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...asks, locked: true }), command).toBe(false);
+    }
+  });
+
   it("still refuses Indietro and Avanti with a dialog open, during setup and under a lock, even where the page saves", () => {
     for (const command of stepping) {
-      expect(menuCommandAllowed(command, { ...free, modalOpen: true, draftAtRisk: true, backSaves: true }), command).toBe(false);
-      expect(menuCommandAllowed(command, { ...free, pathname: "/onboarding", draftAtRisk: true, backSaves: true }), command).toBe(false);
-      expect(menuCommandAllowed(command, { ...free, locked: true, draftAtRisk: true, backSaves: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, modalOpen: true, draftAtRisk: true, keepsTyped: "back" as const }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, pathname: "/onboarding", draftAtRisk: true, keepsTyped: "back" as const }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, locked: true, draftAtRisk: true, keepsTyped: "back" as const }), command).toBe(false);
     }
   });
 });
