@@ -406,6 +406,59 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
   }
 });
 
+test("a deleted map's tile gives the focus to the tile that takes its place, though the confirmation is slow to shrink away", async () => {
+  test.setTimeout(120_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await openMaps(page);
+    // The confirmation's shrinking waits until the test lets it go, as it does on a computer that draws slowly. The page
+    // behind it is inert until then, and the tile has left by that time.
+    await page.evaluate(() => {
+      const animate = HTMLElement.prototype.animate;
+      const held: Animation[] = [];
+      Object.assign(window, { releaseDialog: () => held.splice(0).forEach((animation) => animation.play()) });
+      HTMLElement.prototype.animate = function (this: HTMLElement, ...args: Parameters<HTMLElement["animate"]>) {
+        const animation = animate.apply(this, args);
+        if (this instanceof HTMLDialogElement && this.classList.contains("is-closing")) {
+          animation.pause();
+          held.push(animation);
+        }
+        return animation;
+      };
+    });
+    const release = () => page.evaluate(() => (window as unknown as { releaseDialog: () => void }).releaseDialog());
+
+    // From a tile.
+    const campo = tile(page, "Campo elettrico");
+    await campo.locator(".px-maps-thumb").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await expect(campo).toHaveCount(0);
+    // The dialog is still on screen, and the focus has not gone anywhere yet.
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await release();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(tile(page, "Circuiti RC").getByRole("link")).toBeFocused();
+
+    // From the map's page, which leaves for Mappe while the confirmation shrinks.
+    await tile(page, "Teoremi sui limiti").getByRole("link").click();
+    await expect(page.getByRole("heading", { level: 1, name: "Teoremi sui limiti" })).toBeVisible();
+    await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await expect(page).toHaveURL(/#\/maps$/);
+    await expect(tile(page, "Teoremi sui limiti")).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await release();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(tile(page, "Successioni").getByRole("link")).toBeFocused();
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a map deleted while the window's move back is late still shrinks away on Mappe, and no notice says a link broke", async () => {
   test.setTimeout(120_000);
   const { app, page, userData, errors } = await startApp();
