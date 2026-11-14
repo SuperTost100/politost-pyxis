@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EngineProvider } from "@shared/limits";
 import { invoke } from "../lib/ipc";
+import { Dialog } from "./Dialog";
 import "./EngineNotice.css";
 
 const vendors: Record<EngineProvider, string> = {
@@ -135,7 +136,7 @@ export function EngineNoticePanel({
 }
 
 /** The same notice as a dialog, for Settings and for the one check at launch. */
-export function EngineNoticeModal({
+export function EngineNoticeDialog({
   engines,
   onDone,
   onLater,
@@ -147,22 +148,18 @@ export function EngineNoticeModal({
   const { t } = useTranslation();
   const { acknowledge, busy, failed } = useAcknowledge(onDone);
   return (
-    <Modal
+    <Dialog
       open={engines.length > 0}
+      width="md"
       title={t("engines.notice.title")}
-      maskClosable={false}
-      keyboard={!busy}
-      closable={false}
-      okText={t("engines.acknowledge")}
-      cancelText={t("engines.notice.later")}
-      cancelButtonProps={{ disabled: busy }}
-      confirmLoading={busy}
-      onOk={() => void acknowledge(engines)}
-      onCancel={() => {
-        if (!busy) onLater();
-      }}
+      // A stray click must not stand for "later": the student answers it.
+      outside="none"
+      busy={busy}
+      cancel={t("engines.notice.later")}
+      onClose={onLater}
+      actions={[{ label: t("engines.acknowledge"), working: busy, onClick: () => void acknowledge(engines) }]}
     >
       <EngineNoticeBody engines={engines} failed={failed} />
-    </Modal>
+    </Dialog>
   );
 }

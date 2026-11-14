@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router";
 import {
-  EngineNoticeModal,
+  EngineNoticeDialog,
   unacknowledged,
   type NoticeEngine,
 } from "../components/EngineNotice";
@@ -33,7 +33,7 @@ export function LaunchEngineNotice({ ready }: { ready: boolean }) {
   }, [run, overview.isSuccess, overview.data]);
   if (pending.length === 0) return null;
   return (
-    <EngineNoticeModal
+    <EngineNoticeDialog
       engines={pending}
       onDone={() => setPending([])}
       onLater={() => setPending([])}

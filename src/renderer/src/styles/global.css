@@ -386,10 +386,6 @@ a.px-brand:hover {
   padding-bottom: 0;
 }
 
-.ant-modal .ant-modal-header {
-  margin-bottom: var(--space-4);
-}
-
 /* Plain Segmented controls (not the header doors) get a hairline so the track shows on any surface. */
 .ant-segmented:not(.px-doors) {
   border: 1px solid var(--border);

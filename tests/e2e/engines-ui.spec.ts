@@ -171,7 +171,9 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           if (canSave || darwin) {
             await expect(modal.locator("input[type=password]")).toBeVisible();
             await expect(modal.getByRole("combobox")).toBeVisible();
-            await expect(modal.locator("button[type=submit]")).toBeDisabled();
+            await expect(
+              modal.getByRole("button", { name: language === "en" ? "Save and test" : "Salva e prova", exact: true }),
+            ).toBeDisabled();
             await modal.locator("input[type=password]").focus();
             await page.keyboard.press("Tab");
             await expect(
@@ -189,7 +191,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           }
           await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
           await saveShot(page, `m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`, { fullPage: true });
-          await page.locator(".ant-modal-close").click();
+          // The way out is the dialog's own button: Annulla beside the key's button, or Chiudi with nothing to confirm.
+          await modal.getByRole("button", { name: /^(Cancel|Annulla|Close|Chiudi)$/ }).click();
         }
   } finally {
     await app.close();
