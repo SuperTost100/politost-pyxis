@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Input, Modal, Select, type MenuProps } from "antd";
+import { App, Input, Select, type MenuProps } from "antd";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, GraduationCap, Library } from "lucide-react";
 import {
   useCallback,
@@ -38,6 +38,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { BackControl } from "../../components/BackControl";
+import { Dialog } from "../../components/Dialog";
 import { forgetPlaces, noteForArrival } from "../../app/history";
 import { pageOf } from "../../app/trail";
 import { usePlace } from "../../app/usePlace";
@@ -306,6 +307,10 @@ export function MapPage() {
   const [dialog, setDialog] = useState<"add" | "rename" | "connect" | null>(
     null,
   );
+  // Which of the three it shows, kept while it shrinks away, when `dialog` is already null.
+  const lastDialog = useRef<"add" | "rename" | "connect">("add");
+  if (dialog) lastDialog.current = dialog;
+  const dialogKind = lastDialog.current;
   const [label, setLabel] = useState("");
   const [target, setTarget] = useState<string>();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -1962,43 +1967,39 @@ export function MapPage() {
         </aside>
       </div>
       </div>
-      <Modal
-        title={t(
-          dialog === "connect"
-            ? "map.connect"
-            : dialog === "rename"
-              ? "map.rename"
-              : "map.add",
-        )}
+      <Dialog
         open={dialog !== null}
-        onCancel={() => setDialog(null)}
-        okText={t("map.save")}
-        cancelText={t("map.cancel")}
-        okButtonProps={{
-          disabled: dialog === "connect" ? !target : !label.trim(),
-        }}
-        onOk={() => {
-          const op: MapOp =
-            dialog === "connect"
-              ? { op: "connect", from: selected!, to: target! }
-              : dialog === "rename"
-                ? { op: "rename", id: selected!, label: label.trim() }
-                : {
-                    op: "add_node",
-                    id: crypto.randomUUID(),
-                    label: label.trim(),
-                    parent: selected ?? root!.id,
-                  };
-          if (op.op === "add_node" && folded.has(op.parent)) {
-            const ids = new Set(folded);
-            ids.delete(op.parent);
-            setFold({ mapId: activeId, ids });
-          }
-          void patch([op]);
-          setDialog(null);
-        }}
+        width="md"
+        title={t(`map.${dialogKind}`)}
+        onClose={() => setDialog(null)}
+        actions={[
+          {
+            label: t(`map.${dialogKind}Confirm`),
+            disabled: dialogKind === "connect" ? !target : !label.trim(),
+            onClick: () => {
+              const op: MapOp =
+                dialogKind === "connect"
+                  ? { op: "connect", from: selected!, to: target! }
+                  : dialogKind === "rename"
+                    ? { op: "rename", id: selected!, label: label.trim() }
+                    : {
+                        op: "add_node",
+                        id: crypto.randomUUID(),
+                        label: label.trim(),
+                        parent: selected ?? root!.id,
+                      };
+              if (op.op === "add_node" && folded.has(op.parent)) {
+                const ids = new Set(folded);
+                ids.delete(op.parent);
+                setFold({ mapId: activeId, ids });
+              }
+              void patch([op]);
+              setDialog(null);
+            },
+          },
+        ]}
       >
-        {dialog === "connect" ? (
+        {dialogKind === "connect" ? (
           <Select
             aria-label={t("map.target")}
             style={{ width: "100%" }}
@@ -2016,7 +2017,7 @@ export function MapPage() {
             onChange={(event) => setLabel(event.target.value)}
           />
         )}
-      </Modal>
+      </Dialog>
     </div>
   );
 }

@@ -1202,10 +1202,13 @@
     "radial": "Radial",
     "undo": "Undo",
     "add": "Add a branch",
+    "addConfirm": "Add the branch",
     "layout": "Layout",
     "tools": "Map tools",
     "rename": "Rename node",
+    "renameConfirm": "Rename the node",
     "connect": "Connect nodes",
+    "connectConfirm": "Connect the nodes",
     "delete": "Delete branch",
     "recolor": "Node color",
     "fit": "Fit map",
@@ -1232,8 +1235,6 @@
     "generateSubject": "Build the map",
     "building": "Building the map…",
     "buildingOf": "Building the map “{{title}}”…",
-    "save": "Save",
-    "cancel": "Cancel",
     "target": "Connect to",
     "nodeLabel": "Node label",
     "colors": {
@@ -1329,7 +1330,6 @@
     "instructionPlaceholder": "For example “only the theorems, with proofs”",
     "asked": "“{{text}}”",
     "create": "Build the map",
-    "cancel": "Cancel",
     "actionsFor": "More for {{title}}"
   },
   "lesson": {

@@ -1202,10 +1202,13 @@
     "radial": "Radiale",
     "undo": "Annulla",
     "add": "Aggiungi un ramo",
+    "addConfirm": "Aggiungi il ramo",
     "layout": "Disposizione",
     "tools": "Strumenti della mappa",
     "rename": "Rinomina nodo",
+    "renameConfirm": "Rinomina il nodo",
     "connect": "Collega nodi",
+    "connectConfirm": "Collega i nodi",
     "delete": "Elimina ramo",
     "recolor": "Colore del nodo",
     "fit": "Adatta la mappa",
@@ -1232,8 +1235,6 @@
     "generateSubject": "Crea la mappa",
     "building": "Creo la mappa…",
     "buildingOf": "Creo la mappa «{{title}}»…",
-    "save": "Salva",
-    "cancel": "Annulla",
     "target": "Collega a",
     "nodeLabel": "Testo del nodo",
     "colors": {
@@ -1329,7 +1330,6 @@
     "instructionPlaceholder": "Per esempio «solo i teoremi, con le dimostrazioni»",
     "asked": "«{{text}}»",
     "create": "Crea la mappa",
-    "cancel": "Annulla",
     "actionsFor": "Altro su {{title}}"
   },
   "lesson": {
