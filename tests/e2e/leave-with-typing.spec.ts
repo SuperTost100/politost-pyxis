@@ -138,7 +138,15 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
     await fromChiediToExams(page);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
     try {
-      seedPlan(db, { id: "p-build", title: "Chimica", language: "it", target: 0.75, sourceIds: [], topics: [] });
+      seedPlan(db, { id: "p-build", title: "Chimica", status: "building", language: "it", target: 0.75, sourceIds: [], topics: [] });
+      // The build is running, as the wait screen follows it.
+      const now = Date.now();
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-build','plan-build',?,'running',0.4,NULL,?,?)",
+      ).run(JSON.stringify({ planId: "p-build" }), now, now);
+      const step = db.prepare("INSERT INTO job_steps(id,job_id,name,position,label,state) VALUES(?,?,?,?,?,?)");
+      step.run("js0", "j-build", "sources", 0, "wizard.stepSources", "succeeded");
+      step.run("js1", "j-build", "topics", 1, "wizard.stepTopics", "running");
     } finally {
       db.close();
     }
@@ -173,7 +181,7 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
     for (const way of [() => pick(app, "back"), swipe, mouse, () => control("Esami").click()]) {
       await way();
       await expect(leave).toBeVisible();
-      await expect(leave).toContainText("Il nome, la materia e la data che hai scritto andranno persi.");
+      await expect(leave).toContainText("Quello che hai scritto o scelto per questo esame andrà perso.");
       await leave.getByRole("button", { name: "Resta qui" }).click();
       await expect(leave).toHaveCount(0);
       await expect(page).toHaveURL(/#\/plans\/new$/);
@@ -229,10 +237,94 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
     });
     await expect(page.getByRole("heading", { level: 1, name: "Nuovo esame" })).toBeVisible();
     await expect(page.getByText("Chimica", { exact: true }).first()).toBeVisible();
-    // The seeded plan has no build, so the page also offers its own way to Esami: the bar's is the one asked for.
-    await page.getByRole("banner").getByRole("button", { name: "Torna a Esami" }).click();
+    await control("Esami").click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(leave).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/**
+ * Every field the new exam holds counts as work that leaving would lose, not only the name: a room typed before a date
+ * is chosen, a name for the test, a goal moved.
+ */
+test("any field written or changed on the new exam is asked about, and the untouched form is not", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-leave-fields-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page: Page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    const control = page.getByRole("button", { name: "Torna a Esami" });
+    const changes: Array<[string, () => Promise<void>]> = [
+      ["a room", () => page.getByRole("textbox", { name: /^Luogo/ }).fill("Aula 5")],
+      ["a name for the test", () => page.getByRole("textbox", { name: /^Nome \(facoltativo\)/ }).fill("Scritto")],
+      ["a subject", () => page.getByRole("combobox", { name: "Materia", exact: true }).fill("Fisica")],
+      ["the goal", async () => {
+        const goal = page.getByRole("slider", { name: /^Obiettivo/ });
+        await goal.focus();
+        await page.keyboard.press("ArrowRight");
+      }],
+    ];
+    for (const [what, change] of changes) {
+      await page.getByRole("button", { name: "Nuovo esame" }).click();
+      await expect(page.getByRole("textbox", { name: "Nome dell'esame", exact: true })).toBeVisible();
+      // Untouched, the form is left without a question; once changed, leaving asks.
+      await change();
+      await control.click();
+      await expect(leave, what).toBeVisible();
+      await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+      await expect(page).toHaveURL(/#\/exams$/);
+    }
+    await page.getByRole("button", { name: "Nuovo esame" }).click();
+    await control.click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(leave).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/**
+ * The guided exam hands the answers it was given back to the new exam, so going forward again to it asks nothing only
+ * while the new exam still holds those answers. Edited meanwhile, Avanti would restore the old ones, so it asks.
+ */
+test("Avanti into the guided exam asks once the new exam's answers changed since it was opened", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-leave-forward-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page: Page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    const name = page.getByRole("textbox", { name: "Nome dell'esame", exact: true });
+    await page.getByRole("button", { name: "Nuovo esame" }).click();
+    await name.fill("Fisica A");
+    await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+    for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
+    await page.getByRole("button", { name: "Torna a Nuovo esame" }).click();
+    await expect(page).toHaveURL(/#\/plans\/new$/);
+    // Unchanged, Avanti returns to the guided exam without a question.
+    await pick(app, "forward");
+    await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
+    await expect(leave).toHaveCount(0);
+    await page.getByRole("button", { name: "Torna a Nuovo esame" }).click();
+    await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
+    await name.fill("Fisica B");
+    // Changed, Avanti would restore "Fisica A": it asks, and staying keeps the new name.
+    await pick(app, "forward");
+    await expect(leave).toBeVisible();
+    await leave.getByRole("button", { name: "Resta qui" }).click();
+    await expect(page).toHaveURL(/#\/plans\/new$/);
+    await expect(name).toHaveValue("Fisica B");
   } finally {
     await app.close();
     removeTestFolder(userData);

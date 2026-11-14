@@ -1997,6 +1997,7 @@
     "noMaterial": "No material yet. Pyxis can build a draft from general knowledge. It stays a draft until you add a source.",
     "noMaterialLink": "I have no material",
     "guided": {
+      "title": "Exam without material",
       "leaveBody": "The answers you gave will be lost.",
       "steps": {
         "period": "Period",
@@ -2091,7 +2092,7 @@
     "examStep": "The exam",
     "stepLine": "Step {{n}} of {{total}} · {{name}}",
     "materialLine": "The material",
-    "leaveBody": "The name, subject and date you wrote will be lost.",
+    "leaveBody": "What you wrote or chose for this exam will be lost.",
     "daysLeft_one": "in {{count}} day",
     "daysLeft_other": "in {{count}} days",
     "daysLeftToday": "today",

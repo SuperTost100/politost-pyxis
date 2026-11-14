@@ -161,6 +161,7 @@ function BuildScreen({ planId }: { planId: string }) {
   useEffect(() => {
     if (settledSteps) void refetchPlan.current();
   }, [settledSteps]);
+  const missing = !build.isPending && !build.data;
   const name = plan.data?.title ?? "";
   const topics = plan.data?.topics ?? [];
   const retryAction = {
@@ -180,7 +181,8 @@ function BuildScreen({ planId }: { planId: string }) {
   const percent = Math.round((build.data?.progress ?? 0) * 100);
   return (
     <StudyLayout
-      back={back}
+      // A build that is gone offers its own way to Esami below, so the bar draws none beside it.
+      back={missing ? null : back}
       title={t("wizard.title")}
       subtitle={name || undefined}
       // Cancelling stops the build; leaving does not. It sits in the page, in full words, so the bar's top-right corner
@@ -267,7 +269,7 @@ function BuildScreen({ planId }: { planId: string }) {
             </section>
           ) : null}
         </div>
-        {!build.isPending && !build.data ? (
+        {missing ? (
           <div className="px-build-notice">
             <ErrorState action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}>
               {t("wizard.buildMissing")}

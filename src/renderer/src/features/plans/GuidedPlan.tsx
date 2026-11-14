@@ -241,11 +241,12 @@ function Guided({ seed }: { seed: WizardSeed }) {
     <StudyLayout
       back={back}
       title={t("wizard.title")}
-      subtitle={t("wizard.stepLine", {
+      // The line keeps what the page used to be called: this flow builds an exam without material.
+      subtitle={`${t("wizard.guided.title")} · ${t("wizard.stepLine", {
         n: shown + 1,
         total: stepIds.length,
         name: t(`wizard.guided.steps.${stepIds[shown]}`),
-      })}
+      })}`}
       progress={(step + 1) / 6}
       secondary={
         step > 0 ? (
