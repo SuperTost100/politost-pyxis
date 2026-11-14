@@ -389,6 +389,58 @@ test("a gap drill opened from the path is requested once: Back from its quiz doe
   }
 });
 
+test("a gap drill that gets ready while another page is opening does not open there, and opens once the exam page is shown again", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-wait-"));
+  // The model holds the drill's questions until the test releases them, so the drill gets ready when the test chooses.
+  const release = join(userData, "release-drill");
+  const app = await launch(userData, { explanation: { explanation: EXPLANATION }, quizQuestions: { ...drillReply(), hold: release } });
+  const drillJobs = () => {
+    const db = new DatabaseSync(dbPath(userData), { readOnly: true, timeout: 10000 });
+    try {
+      return db.prepare("SELECT state FROM jobs WHERE kind = 'gap-drill'").all() as Array<{ state: string }>;
+    } finally {
+      db.close();
+    }
+  };
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    const { planId } = await setupPlan(userData, page, app);
+    await goto(page, `/plans/${planId}`);
+    await page.getByRole("button", { name: /^Ripasso mirato/ }).first().click();
+    const preparing = page.getByText("Preparo il ripasso");
+    await expect(preparing).toBeVisible();
+    // Mappe's code has not loaded yet, and the test holds it back: going there stays under way, with the exam page still
+    // on screen, until the student goes somewhere else. A slow computer has the same moment, shorter.
+    await app.evaluate(({ session }) => {
+      session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        if (!/\/assets\/MapsHome-[\w-]+\.js$/.test(details.url)) callback({});
+      });
+    });
+    await page.getByRole("navigation", { name: "Sezioni" }).getByRole("link", { name: "Mappe" }).click();
+    // The drill gets ready while the student is leaving. The page reads it and stops saying it is preparing, but does not
+    // take the student to its quiz.
+    writeFileSync(release, "");
+    await expect.poll(() => drillJobs().map((job) => job.state), { timeout: 30000 }).toEqual(["succeeded"]);
+    await expect(preparing).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
+    // Before Mappe opens, the student picks this exam in the search. The exam page stays on screen at a new entry, which
+    // is the moment a page that has just cleaned its own address is in too, and the drill it kept opens.
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+    const finder = page.getByRole("dialog", { name: "Cerca" });
+    await finder.getByRole("combobox", { name: "Cerca" }).fill("Fisica");
+    await finder.getByRole("group", { name: "Esami" }).getByRole("option", { name: /^Fisica/ }).click();
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/);
+    await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
+    expect(drillJobs()).toHaveLength(1);
+  } finally {
+    await app.evaluate(({ session }) => session.defaultSession.webRequest.onBeforeRequest(null));
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a gap drill whose read fails says so and offers to read it again, instead of staying prepared forever", async () => {
   test.setTimeout(240000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-read-"));

@@ -330,7 +330,7 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
     await expect(page).toHaveURL(/#\/plans\/p-phys\/redo\?attempt=/);
     await expect(page.getByText("Question 1 of 2")).toBeVisible();
     // A redo goes back to the notebook, by name.
-    await page.getByRole("button", { name: "Back to the notebook: Mistakes notebook", exact: true }).click();
+    await page.getByRole("button", { name: "Back to Mistakes notebook", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams\/mistakes\?exam=p-phys$/);
 
     // The exam page has no notebook of its own: an old link to it opens the exam's path.

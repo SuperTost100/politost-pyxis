@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { MenuProps } from "antd";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
@@ -7,6 +8,7 @@ import { Button } from "../../components/Button";
 import { emptyRings, ExamRings, useRingText } from "../../components/ExamRings";
 import { Icon } from "../../components/Icon";
 import { LoadError } from "../../components/LoadError";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { Notice } from "../../components/Notice";
 import { Reveal } from "../../components/Controls";
@@ -38,7 +40,16 @@ export function useExamWhen() {
  * Esami: the student's exams as rows of one card, each with its three rings, its date and what to do next, then the
  * archived ones behind a toggle. Due flashcards from every exam sit as one line above the list.
  */
-export function ExamsList({ menu, notice }: { menu: ReactNode; notice?: ReactNode }) {
+export function ExamsList({
+  menu,
+  menuDisabled,
+  notice,
+}: {
+  /** The page's menu: the dots in the head and a right-click on it open the same items. */
+  menu: MenuProps;
+  menuDisabled?: boolean;
+  notice?: ReactNode;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const plans = useQuery(plansQuery);
@@ -52,15 +63,15 @@ export function ExamsList({ menu, notice }: { menu: ReactNode; notice?: ReactNod
 
   return (
     <div className="px-exams">
-      <div className="px-exams-head">
+      <MenuItemArea as="div" className="px-exams-head" menu={menu} region={t("exams.more")} disabled={menuDisabled}>
         <h1 className="title-1">{t("doors.exams")}</h1>
         <span className="px-exams-actions">
-          {menu}
+          <MenuButton rightClick menu={menu} label={t("exams.more")} disabled={menuDisabled} />
           <Button icon="plus" onClick={() => navigate("/plans/new")}>
             {t("exams.newPlan")}
           </Button>
         </span>
-      </div>
+      </MenuItemArea>
       {notice}
       {plans.isError ? (
         <div className="px-exams-error">

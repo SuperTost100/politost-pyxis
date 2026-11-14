@@ -22,7 +22,7 @@ function press(target: unknown, key: string, over: Record<string, unknown> = {})
 }
 /** A pointer pressed on `item`: by default the secondary button of a mouse. */
 function pressOn(item: unknown, over: Record<string, unknown> = {}) {
-  return { currentTarget: item, button: 2, pointerType: "mouse", ...over } as never;
+  return { currentTarget: item, target: item, button: 2, pointerType: "mouse", ...over } as never;
 }
 const focused = { ...plain, getBoundingClientRect: () => ({ left: 30, bottom: 90, right: 400 }) };
 
@@ -168,6 +168,25 @@ describe("item menu behaviour", () => {
     const other = {};
     trigger.onContextMenu(click(focused, { currentTarget: other }));
     expect(open).toHaveBeenLastCalledWith({ x: 38, y: 90 }, true, other);
+  });
+
+  it("takes a press inside a trigger nested in another as the pointer's for both, whichever handler hears it last", () => {
+    // The dots (inner) inside a head (outer), both with the menu: a press reaches the dots first, then the head.
+    const dots = {};
+    const title = {};
+    const head = { contains: (node: unknown) => node === dots || node === title };
+    const openDots = vi.fn();
+    const openHead = vi.fn();
+    const inner = menuTrigger(openDots);
+    const outer = menuTrigger(openHead);
+    inner.onPointerDown(pressOn(dots));
+    outer.onPointerDown(pressOn(head, { target: dots }));
+    inner.onContextMenu(click(focused, { currentTarget: dots }));
+    expect(openDots).toHaveBeenLastCalledWith({ x: 120, y: 48 }, false, dots);
+    // A press on the title is the head's alone.
+    outer.onPointerDown(pressOn(head, { target: title }));
+    outer.onContextMenu(click(focused, { currentTarget: head }));
+    expect(openHead).toHaveBeenLastCalledWith({ x: 120, y: 48 }, false, head);
   });
 
   it("leaves the release of other keys, and of the menu key in a text field, alone", () => {

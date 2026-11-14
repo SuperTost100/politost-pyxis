@@ -138,7 +138,7 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
     for (const route of [`cards/${topic}`, `practice/${topic}`, "review"]) {
       await goto(page, `/plans/${planId}/${route}`);
       await expect(page.getByRole("button", { name: "Chiudi", exact: true }), route).toHaveCount(0);
-      await page.getByRole("button", { name: /^Torna all'esame: / }).click();
+      await page.getByRole("button", { name: /^Torna a / }).click();
       await expect(page, route).toHaveURL(new RegExp(`#/plans/${planId}$`));
     }
   } finally {

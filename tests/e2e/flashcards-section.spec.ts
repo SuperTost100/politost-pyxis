@@ -48,7 +48,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await page.getByRole("button", { name: /Gira/ }).click();
     await page.getByRole("button", { name: "Facile", exact: true }).click();
     await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(page.getByRole("button", { name: "Ripassa le 2 di oggi", exact: true })).toBeVisible();
     await expect(chem).toContainText("2 flashcard · 1 da ripassare oggi");
@@ -57,7 +57,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await page.getByRole("button", { name: "Ripassa le flashcard di Fisica 2", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due\?subject=phys$/);
     await expect(page.getByText("Legge di Gauss?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
 
     // An exam for Chimica: its topic gets a row under the exam's name, the subject's review takes in its cards too, and
@@ -84,24 +84,24 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await expect(page).toHaveURL(/#\/cards\/due\?exam=p-chem&topic=none$/);
     await expect(page.getByText("Che cos’è una mole?", { exact: true })).toBeVisible();
     await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toHaveCount(0);
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
     await chem.getByRole("button", { name: "Ripassa le flashcard di Chimica", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due\?subject=chem$/);
     await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
     await exam.getByRole("link", { name: /^Struttura dell’atomo/ }).click();
     await expect(page).toHaveURL(/#\/plans\/p-chem\/cards\/t-atom$/);
     await expect(page.getByText("Che cos’è un orbitale?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
 
     // The row of Chimica's flashcards with no exam opens them on their own.
     await chem.getByRole("list", { name: "Senza esame" }).getByRole("link").click();
     await expect(page).toHaveURL(/#\/cards\/subject\/chem$/);
     await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Flashcard", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
 
     // The search finds a subject's flashcards and opens the section on it.

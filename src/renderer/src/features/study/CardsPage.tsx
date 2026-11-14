@@ -5,7 +5,7 @@ import { MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
@@ -25,6 +25,7 @@ import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
 import { StudyLayout } from "./StudyBar";
+import { usePlace } from "../../app/usePlace";
 import { Working } from "../../components/Working";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
@@ -67,8 +68,6 @@ export function CardsPage() {
         ? { planId: examParam, noTopic }
         : null;
   const examOnly = only && "planId" in only ? only.planId : undefined;
-  // Opened from the Flashcard section, every way out goes back there.
-  const fromSection = (useLocation().state as { from?: unknown } | null)?.from === "flashcards";
   const reviewQueue = useReviewSession(planId, reviewing);
   const navigate = useNavigate();
   const client = useQueryClient();
@@ -529,12 +528,15 @@ export function CardsPage() {
     if (reviewing || seen.length === 0 || recorded) return navigate(path);
     void finishSession().then((ok) => ok && navigate(path));
   }
-  function close() {
-    // Oggi's session has no plan to go back to; it ends on the exams list. A subject's cards go back to the browser.
-    if (fromSection) leaveTo("/flashcards");
-    else if (examOnly) leaveTo(`/plans/${examOnly}`);
-    else leaveTo(everywhere ? "/exams" : bySubject ? "/exams/cards" : `/plans/${planId ?? ""}`);
-  }
+  // The way back records a session with ratings first, like every way out; a failure keeps the student here. A topic's
+  // cards go by the topic elsewhere and a subject's by the subject.
+  const parentTitle = examOnly ? exam.data?.title : planId ? plan.data?.title : undefined;
+  const placeName = topicTitle ?? (bySubject ? subjectName : undefined);
+  const back = usePlace({
+    name: placeName ? { text: placeName } : null,
+    parent: parentTitle && !reviewing ? { name: { text: parentTitle } } : undefined,
+    beforeLeave: () => (reviewing || seen.length === 0 || recorded ? Promise.resolve(true) : finishSession()),
+  });
 
   useEffect(() => {
     function key(event: KeyboardEvent) {
@@ -641,17 +643,7 @@ export function CardsPage() {
   };
   return (
     <StudyLayout
-      back={
-        fromSection
-          ? { text: t("flashcards.title"), onClick: close }
-          : examOnly
-          ? { text: exam.data?.title ?? t("lesson.back"), label: exam.data ? t("lesson.back") : undefined, onClick: close }
-          : everywhere
-          ? { text: t("nav.exams"), onClick: close }
-          : bySubject
-            ? { text: t("exams.allCards"), onClick: close }
-            : { text: plan.data?.title ?? t("lesson.back"), label: plan.data ? t("lesson.back") : undefined, onClick: close }
-      }
+      back={back}
       title={
         everywhere
           ? [

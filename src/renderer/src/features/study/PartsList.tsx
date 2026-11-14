@@ -53,8 +53,10 @@ export function PartsList({
           const minutes = !part.done && mark !== "writing" ? t("lesson.minutesShort", { count: part.minutes }) : null;
           return (
             <li key={part.id} data-done={part.done ? "" : undefined}>
+              {/* Another part is a move inside the lesson: it takes this entry's place, so Back leaves the lesson. */}
               <Link
                 to={href(part.position)}
+                replace
                 className={`px-parts-link is-${mark}`}
                 aria-current={part.position === current ? "page" : undefined}
                 onClick={onPick}

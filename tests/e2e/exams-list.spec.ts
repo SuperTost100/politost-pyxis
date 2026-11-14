@@ -123,7 +123,7 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
       .toEqual(["p-far:t-atoms", "p-near:t-dyn"]);
     // The deck spans exams, so its way back is Exams; there is no close button.
     await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
-    await page.getByRole("banner").getByRole("button", { name: "Exams", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Back to Exams", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     // Nothing is due any more, so the line is gone.
     await expect(page.getByText(/to review today/)).toHaveCount(0);
@@ -203,12 +203,12 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     await expect(page.getByRole("list", { name: "I tuoi esami" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiviati" })).toHaveCount(0);
     // The Esami menu holds importing, every flashcard and the mistakes notebook.
-    await page.getByRole("button", { name: "Altro" }).click();
+    await page.getByRole("button", { name: "Altro su Esami" }).click();
     await expect(page.getByRole("menuitem", { name: "Importa da un file .pyxis" })).toBeVisible();
     await page.getByRole("menuitem", { name: "Tutte le flashcard" }).click();
     await expect(page).toHaveURL(/#\/exams\/cards$/);
     await expect(page.getByRole("heading", { name: "Tutte le flashcard" })).toBeVisible();
-    await page.getByRole("main").getByRole("link", { name: "Esami", exact: true }).click();
+    await page.getByRole("main").getByRole("button", { name: "Torna a Esami" }).click();
     await page.getByRole("button", { name: "Nuovo esame" }).click();
     await expect(page).toHaveURL(/#\/plans\/new$/);
   } finally {

@@ -55,8 +55,8 @@ test("flashcards with no exam: the due line on Esami follows them, and Undo on o
       location.hash = "#/cards/subject/chem";
     });
     await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
-    // The way back names the browser's page now that Esami has no Flashcards tab.
-    await expect(page.getByRole("banner").getByRole("button", { name: "All flashcards", exact: true })).toBeVisible();
+    // Opened with nothing behind it, the way back leads to the Flashcard section, its parent.
+    await expect(page.getByRole("banner").getByRole("button", { name: "Back to Flashcards", exact: true })).toHaveText("Flashcards");
     await page.getByRole("button", { name: /Flip/ }).click();
     await page.getByRole("button", { name: "Easy", exact: true }).click();
     await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
@@ -79,7 +79,7 @@ test("flashcards with no exam: the due line on Esami follows them, and Undo on o
     await expect(page.getByText("Cos’è un isotopo?", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Undo last", exact: true }).click();
     await expect(page.getByText("Massa molare?", { exact: true })).toBeVisible();
-    await page.getByRole("banner").getByRole("button", { name: "Exams", exact: true }).click();
+    await page.getByRole("banner").getByRole("button", { name: "Back to Exams", exact: true }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect
       .poll(() =>

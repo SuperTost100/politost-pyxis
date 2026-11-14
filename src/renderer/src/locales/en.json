@@ -14,8 +14,13 @@
     "library": "Library",
     "close": "Close",
     "back": "Back",
-    "exams": "Exams",
     "toExams": "Back to Exams"
+  },
+  "places": {
+    "backTo": "Back to {{place}}",
+    "exam": "Exam",
+    "chat": "Chat",
+    "practice": "Exercises"
   },
   "stepper": {
     "label": "Progress",
@@ -44,6 +49,7 @@
       "goLibrary": "Go to Library",
       "goFlashcards": "Go to Flashcards",
       "back": "Back",
+      "pageMenu": "Open the page's menu",
       "shortcuts": "Keyboard shortcuts",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out",
@@ -384,6 +390,7 @@
     "groupOlder": "Earlier"
   },
   "exams": {
+    "more": "More for Exams",
     "plans": "Exams",
     "sources": "Sources",
     "emptyTitle": "Create an exam to get started",
@@ -904,6 +911,7 @@
       "added_other": "You added the other {{count}} files in the Library yourself."
     },
     "shelf": {
+    "more": "More for the Library",
       "addFiles": "Add files",
       "linkFolder": "Link a folder",
       "linkAnother": "Link another folder",
@@ -1083,6 +1091,7 @@
     "historyHint": "Anki continues each flashcard's schedule where Pyxis left it. Leave this off to start every flashcard as new."
   },
   "cardBrowser": {
+    "more": "More for flashcards",
     "search": "Search flashcards",
     "searchPlaceholder": "Search the front and back",
     "exam": "Exam",
@@ -1138,8 +1147,7 @@
     "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
   },
   "listToolbar": {
-    "clearSearch": "Clear search",
-    "more": "More"
+    "clearSearch": "Clear search"
   },
   "mistakes": {
     "title": "Mistakes notebook",
@@ -1340,7 +1348,6 @@
     "flag": "Report",
     "flagged": "Reported",
     "generalNote": "Written from general knowledge, not from your sources.",
-    "back": "Back to the exam",
     "level": "Level",
     "more": "More actions",
     "stop": "Stop",
@@ -1769,7 +1776,6 @@
     "answeredOn": "Your answers from {{date}}",
     "answersNotShared": "The answers of this attempt weren't included in the shared exam.",
     "verdictLow": "Now you know what to review.",
-    "leave": "Leave, resume later",
     "sheet": {
       "title": "Questions",
       "given_one": "{{count}} of {{total}} answered",
@@ -3440,7 +3446,7 @@
     "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
   },
   "examPage": {
-    "back": "Exam",
+    "more": "More for this exam",
     "noDate": "Date to be set",
     "when": "{{label}} {{date}}",
     "whenToday": "{{label}} today",

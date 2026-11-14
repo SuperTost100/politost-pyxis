@@ -52,6 +52,10 @@ const routes = [
   ["exams", "/exams"],
   ["exams-empty", "/exams"],
   ["exams-import-menu", "/exams"],
+  // The page's menu, opened from the dots in the head of the exam page, the Library and the flashcard browser.
+  ["plan-menu", "/plans/audit-plan"],
+  ["library-menu", "/exams/library"],
+  ["cards-browser-menu", "/exams/cards"],
   // An archived exam under the open Archiviati toggle.
   ["exams-archived", "/exams"],
   ["library", "/exams/library"],
@@ -3691,7 +3695,7 @@ async function openState(page: Page, name: string) {
       // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
       // and the exercise not graded yet says so in words. The study bar goes back to the exam by name.
       await expect(
-        page.getByRole("banner").getByRole("button", { name: /^(Torna all'esame|Back to the exam): / }),
+        page.getByRole("banner").getByRole("button", { name: /^(Torna a|Back to) / }),
       ).toBeVisible();
       await expect(
         page.getByRole("button", {
@@ -3787,7 +3791,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       break;
     case "library-books-update":
-      await page.getByRole("button", { name: both("Altro", "More") }).click();
+      await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
       await page
         .getByRole("menuitem", {
           name: both("Libri PoliTost gratuiti", "Free PoliTost books"),
@@ -3951,7 +3955,19 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("list", { name: both("Esami archiviati", "Archived exams") })).toBeVisible();
       break;
     case "exams-import-menu":
-      await page.getByRole("button", { name: both("Altro", "More") }).click();
+      await page.getByRole("button", { name: both("Altro su Esami", "More for Exams") }).click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
+    case "plan-menu":
+      await page.locator(".px-exam-head").getByRole("button", { name: both("Altro sull'esame", "More for this exam") }).click();
+      await expect(page.getByRole("menuitem").first()).toBeVisible();
+      break;
+    case "library-menu":
+      await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") })).toBeVisible();
+      break;
+    case "cards-browser-menu":
+      await page.getByRole("button", { name: both("Altro sulle flashcard", "More for flashcards") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
     case "library-sorting":
@@ -4835,7 +4851,7 @@ test("M14 every application route in both languages, themes and supported widths
               }
               if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.
-                await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+                await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
                 await page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }).click();
                 await expect(page.getByRole("dialog")).toBeVisible();
                 if (name === "plan-create-simulation")
@@ -4874,6 +4890,9 @@ test("M14 every application route in both languages, themes and supported widths
                   name === "library-subject-menu" ||
                   name === "library-empty-subject" ||
                   name === "exams-import-menu" ||
+                  name === "plan-menu" ||
+                  name === "library-menu" ||
+                  name === "cards-browser-menu" ||
                   name === "map-menu" ||
                   name === "map-export" ||
                   name === "map-switcher" ||

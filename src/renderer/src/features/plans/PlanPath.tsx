@@ -291,6 +291,7 @@ export function PlanPath({
       <button
         type="button"
         className="px-xpath-head"
+        data-focus-key={`path:${activity}`}
         onClick={() => (done ? reopen(done, activity) : go(activity, null))}
       >
         <span className="px-xpath-title">{title}</span>
@@ -377,6 +378,8 @@ export function PlanPath({
               <button
                 type="button"
                 className="px-xpath-head"
+                // What a page opened from the path returns the focus to (history.ts): the step, or its row when closed.
+                data-focus-key={`path:${row.id}`}
                 aria-expanded={open}
                 aria-controls={open ? `${ids}-${row.id}` : undefined}
                 onClick={() => setChosen(open ? null : row.id)}
@@ -437,6 +440,7 @@ export function PlanPath({
                         <button
                           type="button"
                           className={`px-xpath-substep is-${chip.state}`}
+                          data-focus-key={`path:${row.id}:${chip.activity}`}
                           aria-label={chipLabel(chip)}
                           disabled={
                             chip.activity === "gaps" && drill.preparing != null
@@ -516,6 +520,7 @@ export function PlanPath({
                           key={item.id}
                           type="button"
                           className="px-xpath-item"
+                          data-focus-key={`path:${topic.id}:item:${item.id}`}
                           disabled={itemsBusy}
                           onClick={() => onOpenItem(item, topic.id)}
                         >
@@ -639,7 +644,11 @@ function TopicParts({
               : null;
           return (
             <li key={part.id}>
-              <Link className={`px-xpath-substep is-${mark}`} to={partPath(planId, topicId, part.position)}>
+              <Link
+                className={`px-xpath-substep is-${mark}`}
+                data-focus-key={`path:${topicId}:part:${part.position}`}
+                to={partPath(planId, topicId, part.position)}
+              >
                 {mark === "writing" ? <Logo working decorative size={16} /> : <Icon name={partIcons[mark]} size={16} />}
                 <span>
                   {recap ? (

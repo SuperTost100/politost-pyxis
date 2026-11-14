@@ -3,7 +3,6 @@ import { App, Button, Input, InputNumber, Modal, Slider } from "antd";
 import {
   Archive,
   ArchiveRestore,
-  ArrowLeft,
   BookMarked,
   BookOpen,
   Clock,
@@ -19,6 +18,8 @@ import {
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
+import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
@@ -249,6 +250,8 @@ export function ExamSettingsPage() {
     });
   }
 
+  // Before the returns below: a hook after them would run on some renders and not others.
+  const back = usePlace({ parent: data ? { name: { text: data.title } } : undefined });
   if (plan.isError || (plan.isSuccess && !data)) {
     const toExams = { label: t("nav.toExams"), onClick: () => navigate("/exams") };
     return plan.isError ? (
@@ -280,10 +283,7 @@ export function ExamSettingsPage() {
 
   return (
     <div className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
-      <Link to={`/plans/${planId}`} className="px-plan-back">
-        <ArrowLeft size={16} aria-hidden />
-        {data?.title ?? t("doors.exams")}
-      </Link>
+      <BackControl target={back} variant="page" />
       <h1 className="title-1">{t("planOverview.settings")}</h1>
       {/* A plan still being built cannot be saved; its page leads back to the build. */}
       {data?.status === "building" ? <p className="body">{t("wizard.buildInProgress")}</p> : null}

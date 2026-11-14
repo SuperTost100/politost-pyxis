@@ -73,7 +73,7 @@ async function expectContent(page: Page, label: string, content: Locator) {
 }
 
 async function pickFromMenu(page: Page, item: string) {
-  await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
+  await page.locator(".px-exam-head").getByRole("button", { name: "More for this exam", exact: true }).click();
   await page.getByRole("menuitem", { name: item, exact: true }).click();
 }
 
@@ -211,12 +211,12 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await aside.getByRole("button", { name: "Review the flashcard" }).click();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
     await expectContent(page, "Review the flashcard", page.getByText("Unità della forza?"));
-    await page.getByRole("button", { name: "Back to the exam: Fisica I" }).click();
+    await page.getByRole("button", { name: "Back to Fisica I" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     await aside.getByRole("button", { name: "Browse all" }).click();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
     await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Fisica I");
-    await page.getByRole("link", { name: "Fisica I", exact: true }).click();
+    await page.getByRole("button", { name: "Back to Fisica I" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     // An exam with no flashcards yet keeps its filter and shows an empty result, not another exam's cards.
     await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
@@ -264,7 +264,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expectContent(page, "All material", page.getByText("Fisica I, Mazzoldi").first());
     await expect(page.getByRole("heading", { level: 1, name: "Material" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Add sources" })).toBeVisible();
-    await page.getByRole("link", { name: "Fisica I", exact: true }).click();
+    await page.getByRole("button", { name: "Back to Fisica I" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
 
     // The page's menu: the exam's review, creating an activity, the calendar and sharing the exam.
@@ -278,7 +278,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(create).toContainText("Lesson");
     await create.getByRole("button", { name: "Cancel" }).click();
     await expect(create).toBeHidden();
-    await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
+    await page.locator(".px-exam-head").getByRole("button", { name: "More for this exam", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Add to calendar" })).toBeVisible();
     await page.keyboard.press("Escape");
     await pickFromMenu(page, "Share the exam");

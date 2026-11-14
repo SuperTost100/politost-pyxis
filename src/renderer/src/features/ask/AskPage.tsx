@@ -15,6 +15,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
+import { usePlace } from "../../app/usePlace";
 import { ChatMessage, ThinkingMessage } from "../../components/ChatMessage";
 import { Composer } from "../../components/Composer";
 import { openMakeCards } from "../../components/MakeCardsDialog";
@@ -775,6 +776,8 @@ export function AskPage() {
   const title = chatId
     ? chats.data?.find((chat) => chat.id === chatId)?.title
     : undefined;
+  // A back control elsewhere calls this chat by its title.
+  usePlace({ name: title ? { text: title } : null, back: "none" });
 
   // Pasted screenshots and dropped files join the picked files. A note says when some could not.
   const [attachNote, setAttachNote] = useState<string | null>(null);

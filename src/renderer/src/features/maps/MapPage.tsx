@@ -37,7 +37,9 @@ import {
   type NodeChange,
   type Viewport,
 } from "@xyflow/react";
-import { BackLink } from "../../components/BackLink";
+import { BackControl } from "../../components/BackControl";
+import { forgetPlaces } from "../../app/history";
+import { usePlace } from "../../app/usePlace";
 import { Button } from "../../components/Button";
 import { Notice } from "../../components/Notice";
 import { IconButton } from "../../components/IconButton";
@@ -1374,6 +1376,16 @@ export function MapPage() {
   const backTo = (scope.data?.subjectId ?? params.subjectId)
     ? `/maps?subject=${encodeURIComponent(scope.data?.subjectId ?? params.subjectId ?? "")}`
     : "/maps";
+  // The map goes by its name elsewhere once it has one; with nothing behind it, the way back leads to Mappe at its subject.
+  const back = usePlace({
+    name: list.data?.some((m) => m.id === activeId) ? { text: title } : null,
+    parent: { to: backTo },
+  });
+  // A deleted map is no longer a place to go back to.
+  const forgetMap = (mapId: string | undefined) => {
+    const here = `${location.pathname}${location.search}`;
+    forgetPlaces((path) => path === here || (mapId !== undefined && new URLSearchParams(path.split("?")[1]).get("map") === mapId));
+  };
   const actions = useMapActions({
     address,
     mapId: writingJob ? undefined : activeId,
@@ -1386,11 +1398,16 @@ export function MapPage() {
     // A stored map leaves from its tile on Mappe, which shrinks away where it was; a map still being written has none.
     onDelete: writingJob
       ? undefined
-      : () =>
+      : () => {
+          forgetMap(activeId);
           navigate(backTo, {
             state: { remove: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } },
-          }),
-    onDeleted: () => navigate(backTo),
+          });
+        },
+    onDeleted: () => {
+      forgetMap(undefined);
+      navigate(backTo);
+    },
   });
   // A right-click on the empty canvas opens the same menu at the pointer.
   const canvasMenu = useItemMenu({ menu: actions.menu, region: t("map.more"), disabled: !graph || fresh });
@@ -1409,11 +1426,12 @@ export function MapPage() {
     },
   };
   // A link to a map that was deleted since lands on Mappe, which says so, rather than on another map of the scope. Only
-  // while this page is the one the router shows: the read can come back after the student has left.
+  // while this page is the one the router shows: the read can come back after the student has left. The answer can also be
+  // no while the page has not yet been drawn at a newer entry of its own, so the effect asks again once it has.
   useEffect(() => {
     if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId && stillHere())
       navigate(backTo, { replace: true, state: { gone: true } });
-  }, [openMap, list.isSuccess, list.isFetching, list.data, jobId]);
+  }, [openMap, list.isSuccess, list.isFetching, list.data, jobId, stillHere]);
   // Several maps of one topic, or of one subject, are told apart by what the student asked for each.
   const switcher: MenuProps | undefined =
     list.data && (list.data.length > 1 || (nothingMatched && list.data.length > 0))
@@ -1458,7 +1476,7 @@ export function MapPage() {
   const hasMap = Boolean(activeMap) && !fresh && !working;
   return (
     <div className="px-map-page">
-      <BackLink to={backTo}>{t("doors.maps")}</BackLink>
+      <BackControl target={back} variant="page" />
       <header className="px-map-head">
         <div className="px-map-title-row">
           {renaming && activeId && graph && !fresh ? (

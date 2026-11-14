@@ -43,6 +43,7 @@ import {
 import { showsLiveText } from "./lessonLive";
 import { sectionFailedKey } from "./partPage";
 import { usePlan } from "../../lib/queries";
+import { returnTo, type BackTarget } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";
 
 type Wording = "simple" | "balanced" | "technical";
@@ -69,7 +70,8 @@ export function LegacyLessonPage({
   old,
   itemId,
   notice,
-}: { old?: "finished" | "earlier"; itemId?: string; notice?: RewriteNotice } = {}) {
+  back,
+}: { old?: "finished" | "earlier"; itemId?: string; notice?: RewriteNotice; back: BackTarget | null }) {
   const { t } = useTranslation();
   const { planId = "", topicId = "" } = useParams();
   useActiveTime(planId, topicId || null);
@@ -169,7 +171,7 @@ export function LegacyLessonPage({
     onSuccess: () => {
       setPartsOpen(false);
       void client.invalidateQueries({ queryKey: ["jobs"] });
-      navigate(`/plans/${planId}/lesson/${topicId}?part=1`);
+      navigate(`/plans/${planId}/lesson/${topicId}?part=1`, { replace: true });
     },
   });
   const openNext = useOpenNext(planId);
@@ -182,7 +184,7 @@ export function LegacyLessonPage({
     onSuccess: async (then) => {
       await refreshPlan(client, planId);
       if (then === "continue") await openNext();
-      else navigate(`/plans/${planId}`);
+      else returnTo(back, `/plans/${planId}`, navigate);
     },
   });
 
@@ -393,12 +395,10 @@ export function LegacyLessonPage({
     <ReaderLayout
       eyebrow={sourceLine}
       title={topic?.title ?? t("lesson.title")}
-      backLabel={t("lesson.back")}
-      backText={plan.data?.title}
+      back={back}
       barTitle={[t("lesson.title"), topic?.title].filter(Boolean).join(" · ")}
       barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
       outline
-      onBack={() => navigate(`/plans/${planId}`)}
       actions={
         <>
           {fixed ? null : levelMenu}
@@ -417,7 +417,7 @@ export function LegacyLessonPage({
         <div className="px-reader-note">
           <Notice
             tone="info"
-            action={{ label: t("lesson.backToParts"), onClick: () => navigate(`/plans/${planId}/lesson/${topicId}`) }}
+            action={{ label: t("lesson.backToParts"), onClick: () => navigate(`/plans/${planId}/lesson/${topicId}`, { replace: true }) }}
           >
             {t("lesson.earlierNote")}
           </Notice>
@@ -520,7 +520,7 @@ export function LegacyLessonPage({
             failed={markDone.isError}
             onDone={() => markDone.mutate("done")}
             onContinue={() => markDone.mutate("continue")}
-            onBack={() => navigate(`/plans/${planId}`)}
+            onBack={() => returnTo(back, `/plans/${planId}`, navigate)}
           />}
           <SourcesFooter sources={data.sources} />
         </>
