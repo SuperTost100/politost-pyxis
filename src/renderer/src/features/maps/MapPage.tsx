@@ -39,7 +39,8 @@ import {
 } from "@xyflow/react";
 import { BackControl } from "../../components/BackControl";
 import { Dialog } from "../../components/Dialog";
-import { forgetPlaces, noteForArrival } from "../../app/history";
+import { noteForArrival } from "../../app/arrival-note";
+import { forgetPlaces } from "../../app/history";
 import { pageOf } from "../../app/trail";
 import { usePlace } from "../../app/usePlace";
 import { Button } from "../../components/Button";
@@ -1392,6 +1393,9 @@ export function MapPage() {
     const here = `${location.pathname}${location.search}`;
     forgetPlaces((path) => path === here || (mapId !== undefined && new URLSearchParams(path.split("?")[1]).get("map") === mapId));
   };
+  // The map this page deleted itself and is leaving. The list then no longer has it, and that is not a link to a map
+  // deleted since, which the effect below sends to Mappe with its notice.
+  const deletedHere = useRef<string | undefined>(undefined);
   const actions = useMapActions({
     address,
     mapId: writingJob ? undefined : activeId,
@@ -1404,9 +1408,10 @@ export function MapPage() {
     // The map is deleted here, so the delete never depends on a page the student may leave first. The way back then
     // leads on, and when it leads to Mappe it hands over a note so the tile shrinks where it was.
     onDeleted: () => {
+      deletedHere.current = activeId;
       forgetMap(undefined);
       if (!back) return void navigate(backTo);
-      if (!writingJob && pageOf(back.to) === "/maps") noteForArrival({ shrinkMap: activeId });
+      if (!writingJob && pageOf(back.to) === "/maps") noteForArrival(back.to, location.pathname, { shrinkMap: activeId });
       back.go();
     },
   });
@@ -1430,7 +1435,7 @@ export function MapPage() {
   // while this page is the one the router shows: the read can come back after the student has left. The answer can also be
   // no while the page has not yet been drawn at a newer entry of its own, so the effect asks again once it has.
   useEffect(() => {
-    if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId && stillHere())
+    if (openMap && list.isSuccess && !list.isFetching && !list.data.some((m) => m.id === openMap) && !jobId && deletedHere.current !== openMap && stillHere())
       navigate(backTo, { replace: true, state: { gone: true } });
   }, [openMap, list.isSuccess, list.isFetching, list.data, jobId, stillHere]);
   // Several maps of one topic, or of one subject, are told apart by what the student asked for each.
