@@ -64,6 +64,7 @@ export function NewCardDialog({
   subjectId: openSubject,
   origin,
   onClose,
+  onClosed,
   onSaved,
 }: {
   open: boolean;
@@ -73,6 +74,8 @@ export function NewCardDialog({
   /** The button it grows out of; focus goes back to it on close. */
   origin: () => HTMLElement | null;
   onClose: () => void;
+  /** Called once it has shrunk away and given the focus back: a page whose button went with the dialog places it then. */
+  onClosed?: () => void;
   onSaved: (saved: { subjectId: string; name: string; count: number; closing: boolean }) => void;
 }) {
   const { t } = useTranslation();
@@ -552,6 +555,7 @@ export function NewCardDialog({
       origin={grownFrom}
       initialFocus={firstControl}
       onClose={askClose}
+      onClosed={onClosed}
       actions={actions}
     >
       <div ref={card} className="px-nc-card">
