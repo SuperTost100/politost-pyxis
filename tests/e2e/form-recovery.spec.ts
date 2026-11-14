@@ -51,12 +51,12 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
         ).toBeVisible();
         await expect(input).toHaveValue("");
         await expect(
-          page.getByRole("button", { name: "Altro", exact: true }),
+          page.getByRole("button", { name: "Altro su Esami", exact: true }),
         ).toBeEnabled();
       }
-      // The More menu works from the keyboard and leads to the shared-plan page.
+      // The Esami menu works from the keyboard and leads to the shared-plan page.
       const trigger = page.getByRole("button", {
-        name: "Altro",
+        name: "Altro su Esami",
         exact: true,
       });
       await trigger.focus();

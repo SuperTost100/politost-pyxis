@@ -22,8 +22,8 @@ export async function toLibrary(page: Page): Promise<void> {
   await expect(page).toHaveURL(/#\/exams\/library$/);
 }
 
-/** Picks an item of the Esami menu (Altro), on the exam list. */
+/** Picks an item of the Esami menu (the dots in its head), on the exam list. */
 export async function fromExamsMenu(page: Page, item: string | RegExp): Promise<void> {
-  await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
+  await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
   await page.getByRole("menuitem", { name: item }).click();
 }

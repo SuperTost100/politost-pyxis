@@ -470,7 +470,7 @@ export function MenuItemArea({
   children,
   ...rest
 }: {
-  as?: "li" | "div" | "article";
+  as?: "li" | "div" | "article" | "header";
   menu: MenuProps;
   region?: string;
   disabled?: boolean;
