@@ -43,7 +43,7 @@ env:
   PYXIS_CRASH_DIR: .tmp/ci-crashes
 
 # Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent
-# runners, so a pull request starts six macOS jobs; runs on main add the macOS x64 route audit.
+# runners, so a pull request starts eight macOS jobs; runs on main add the two macOS x64 route audits.
 jobs:
   test:
     name: test ${{ matrix.target }}
@@ -94,23 +94,29 @@ jobs:
             Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
             Select-Object -First 5 -ExpandProperty Message
 
-  # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
+  # One job per platform and language, each covering both themes and both widths. On macOS arm64 the large-text runs are
+  # jobs of their own, so every job makes four runs of the audit.
   audit:
-    name: route audit ${{ matrix.target }} ${{ matrix.language }}
+    name: route audit ${{ matrix.target }} ${{ matrix.language }}${{ matrix.size == 'large' && ' large' || '' }}
     if: ${{ !inputs.dev }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
-    # A run of the audit covers one combination: 207 states took 7.5 minutes on macOS arm64 in November 2026 (8.8 with large
-    # text) and 5 on Linux. macOS arm64 makes eight runs, four of them with large text, so a healthy job takes about 66
-    # minutes, and one run on a slow runner took 17. That is why 45 and then 60 minutes cancelled it.
-    timeout-minutes: 90
+    # A run of the audit covers one combination. At 207 states it took 7.5 minutes on macOS arm64 in November 2026 (8.8
+    # with large text) and 5 on Linux, and one run on a slow runner took 17. The audit has 274 states now, which makes
+    # about 10 minutes (11.6 with large text) and 22 on a slow runner. A job makes four runs: about 40 minutes on macOS
+    # arm64, 47 with large text, and each slow run adds about 11, so two of them still fit in 75. All eight runs in one
+    # job came to 54 and 61 minutes at 207 states and would take about 84 now, so that would leave no room in 90 (45 and 60
+    # cancelled it earlier).
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         target: [mac-arm64, mac-x64, windows-x64, linux-x64]
         language: [it, en]
-        # macOS x64 renders with the same Chromium as macOS arm64; pull requests leave its audit to main.
-        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"}]' || '[]') }}
+        size: [normal, large]
+        # Large text runs on macOS arm64 only. macOS x64 renders with the same Chromium as macOS arm64; pull requests leave
+        # its audit to main.
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"},{"target":"windows-x64","size":"large"},{"target":"linux-x64","size":"large"}]' || '[{"target":"mac-x64","size":"large"},{"target":"windows-x64","size":"large"},{"target":"linux-x64","size":"large"}]') }}
     defaults:
       run:
         shell: bash
@@ -124,22 +130,21 @@ jobs:
           build: "true"
       - name: Route audit
         run: |
+          suffix=""
+          if [ "${{ matrix.size }}" = large ]; then
+            export PYXIS_UI_LARGE=1
+            suffix="-large"
+          fi
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
-            export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
+            export PYXIS_UI_RECORD="ci-audit/audit-$combo$suffix.json"
             bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
-            if [ "${{ matrix.target }}" = mac-arm64 ]; then
-              export PYXIS_UI_LARGE=1
-              export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
-              bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
-              unset PYXIS_UI_LARGE
-            fi
           done
       - name: Preserve route audit records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}
+          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}${{ matrix.size == 'large' && '-large' || '' }}
           path: ci-audit/
           if-no-files-found: warn
           retention-days: 14
@@ -147,7 +152,7 @@ jobs:
         if: always()
         uses: ./.github/actions/e2e
         with:
-          name: audit-report-${{ matrix.target }}-${{ matrix.language }}
+          name: audit-report-${{ matrix.target }}-${{ matrix.language }}${{ matrix.size == 'large' && '-large' || '' }}
           failed: ${{ job.status == 'failure' }}
 
   package:
