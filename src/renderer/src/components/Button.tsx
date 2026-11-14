@@ -22,6 +22,7 @@ export function Button({
   pressed,
   keyShortcuts,
   title,
+  focusKey,
   onClick,
   type = "button",
 }: {
@@ -46,6 +47,8 @@ export function Button({
   /** The key that presses it, for assistive technology (`aria-keyshortcuts`). */
   keyShortcuts?: string;
   title?: string;
+  /** For a button that opens a page: how the focus finds it again when the student comes back (`data-focus-key`). */
+  focusKey?: string;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
   type?: "button" | "submit" | "reset";
 }) {
@@ -65,6 +68,7 @@ export function Button({
       aria-pressed={pressed}
       aria-keyshortcuts={keyShortcuts}
       title={title}
+      data-focus-key={focusKey}
       htmlType={type}
       type={antType}
       danger={variant === "danger"}

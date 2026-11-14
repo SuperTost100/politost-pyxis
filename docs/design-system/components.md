@@ -25,7 +25,7 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                    |
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
 | `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |
-| `BackLink`                           | The way back above a page's title: an arrow and the name of the place it leads to                        |
+| `BackControl`                        | The way back: an arrow and the name of the place it leads to, from `usePlace`, above a title or in a bar |
 | `ListToolbar`                        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
 | `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
 | `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |

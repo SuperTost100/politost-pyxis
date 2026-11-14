@@ -72,7 +72,8 @@ export function OpenedPlans() {
       const pathname = router.state.location.pathname;
       if (menuCommandAllowed("exams", readMenuContext(pathname))) {
         // On the page already, entering it again gives it a new location key, which is when it takes the text.
-        void router.navigate("/exams/get", { replace: pathname === "/exams/get" });
+        // A file comes from outside the app: the page starts a trail of its own (history.ts).
+        void router.navigate("/exams/get", { replace: pathname === "/exams/get", state: { via: "outside" } });
       } else retry = setTimeout(show, 1000);
     };
     show();

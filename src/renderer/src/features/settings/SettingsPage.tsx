@@ -298,8 +298,9 @@ export function SettingsPage() {
     else (target.querySelector("h2") ?? target).scrollIntoView({ block: "start" });
   }, [section, active]);
   // Switching pages unmounts the page, so a half-confirmed restore or wipe goes with it, like leaving Settings does.
+  // A section is a move inside Settings: it takes this entry's place, so one Back leaves Settings.
   function open(key: string) {
-    navigate(key ? `/settings/${key}` : "/settings");
+    navigate(key ? `/settings/${key}` : "/settings", { replace: true });
   }
   const pageName = (key: PageKey) => t(`settings.pages.${key}`);
   const subpage = page ? (

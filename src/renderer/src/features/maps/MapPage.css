@@ -18,10 +18,9 @@
   --map-node-shadow: var(--shadow-raised);
 }
 
-/* The way back sits over the head, 10px in like the title, with only the page's gap under it. */
-.px-map-page > .px-subpage-back {
-  align-self: flex-start;
-  margin: 0 0 calc(var(--space-1) - var(--space-3)) 10px;
+/* The way back sits over the head, its arrow 10px in like the title, with only the page's gap under it. */
+.px-map-page > .px-back.is-page {
+  margin: 0 0 calc(var(--space-1) - var(--space-3)) 0;
 }
 
 /* The head: the title with the map switcher beside it, the map's actions on

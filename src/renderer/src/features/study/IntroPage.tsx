@@ -9,6 +9,7 @@ import { Notice } from "../../components/Notice";
 import { SmartText } from "../../components/SmartText";
 import { ReaderEnd, ReaderLayout, ReaderLoading, useOpenNext } from "./Reader";
 import { usePlan } from "../../lib/queries";
+import { returnTo, usePlace } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";
 
 type Intro = RequestOutput<"plans.intro">;
@@ -26,6 +27,7 @@ export function IntroPage() {
     queryFn: () => invoke("plans.intro", { planId }),
   });
   const plan = usePlan(planId);
+  const back = usePlace({ parent: plan.data ? { name: { text: plan.data.title } } : undefined });
   const done = plan.data?.steps.some((step) => step.activity === "intro");
   const openNext = useOpenNext(planId);
   // "Done" goes back to the plan; "Done, continue" opens the next step. A page already done only moves on.
@@ -37,7 +39,7 @@ export function IntroPage() {
     onSuccess: async (then) => {
       await refreshPlan(client, planId);
       if (then === "continue") await openNext();
-      else navigate(`/plans/${planId}`);
+      else returnTo(back, `/plans/${planId}`, navigate);
     },
   });
   const unanswered = useMemo(() => {
@@ -66,11 +68,9 @@ export function IntroPage() {
     <ReaderLayout
       eyebrow={t("plans.intro")}
       title={plan.data?.title ?? t("plans.intro")}
-      backLabel={t("lesson.back")}
-      backText={plan.data?.title}
+      back={back}
       barTitle={t("plans.intro")}
       barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
-      onBack={() => navigate(`/plans/${planId}`)}
     >
       {intro.isPending ? <ReaderLoading label={t("lesson.loading")} /> : null}
       {intro.isError ? (
@@ -100,7 +100,7 @@ export function IntroPage() {
           failed={markDone.isError}
           onDone={() => markDone.mutate("done")}
           onContinue={() => markDone.mutate("continue")}
-          onBack={() => navigate(`/plans/${planId}`)}
+          onBack={() => returnTo(back, `/plans/${planId}`, navigate)}
         />
       ) : null}
     </ReaderLayout>

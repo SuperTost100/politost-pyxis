@@ -14,8 +14,13 @@
     "library": "Library",
     "close": "Close",
     "back": "Back",
-    "exams": "Exams",
     "toExams": "Back to Exams"
+  },
+  "places": {
+    "backTo": "Back to {{place}}",
+    "exam": "Exam",
+    "chat": "Chat",
+    "practice": "Exercises"
   },
   "stepper": {
     "label": "Progress",
@@ -1340,7 +1345,6 @@
     "flag": "Report",
     "flagged": "Reported",
     "generalNote": "Written from general knowledge, not from your sources.",
-    "back": "Back to the exam",
     "level": "Level",
     "more": "More actions",
     "stop": "Stop",
@@ -1769,7 +1773,6 @@
     "answeredOn": "Your answers from {{date}}",
     "answersNotShared": "The answers of this attempt weren't included in the shared exam.",
     "verdictLow": "Now you know what to review.",
-    "leave": "Leave, resume later",
     "sheet": {
       "title": "Questions",
       "given_one": "{{count}} of {{total}} answered",
@@ -3440,7 +3443,6 @@
     "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
   },
   "examPage": {
-    "back": "Exam",
     "noDate": "Date to be set",
     "when": "{{label}} {{date}}",
     "whenToday": "{{label}} today",

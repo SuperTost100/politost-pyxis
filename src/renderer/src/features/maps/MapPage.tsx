@@ -37,7 +37,9 @@ import {
   type NodeChange,
   type Viewport,
 } from "@xyflow/react";
-import { BackLink } from "../../components/BackLink";
+import { BackControl } from "../../components/BackControl";
+import { forgetPlaces } from "../../app/history";
+import { usePlace } from "../../app/usePlace";
 import { Button } from "../../components/Button";
 import { Notice } from "../../components/Notice";
 import { IconButton } from "../../components/IconButton";
@@ -1374,6 +1376,16 @@ export function MapPage() {
   const backTo = (scope.data?.subjectId ?? params.subjectId)
     ? `/maps?subject=${encodeURIComponent(scope.data?.subjectId ?? params.subjectId ?? "")}`
     : "/maps";
+  // The map goes by its name elsewhere once it has one; with nothing behind it, the way back leads to Mappe at its subject.
+  const back = usePlace({
+    name: list.data?.some((m) => m.id === activeId) ? { text: title } : null,
+    parent: { to: backTo },
+  });
+  // A deleted map is no longer a place to go back to.
+  const forgetMap = (mapId: string | undefined) => {
+    const here = `${location.pathname}${location.search}`;
+    forgetPlaces((path) => path === here || (mapId !== undefined && new URLSearchParams(path.split("?")[1]).get("map") === mapId));
+  };
   const actions = useMapActions({
     address,
     mapId: writingJob ? undefined : activeId,
@@ -1386,11 +1398,16 @@ export function MapPage() {
     // A stored map leaves from its tile on Mappe, which shrinks away where it was; a map still being written has none.
     onDelete: writingJob
       ? undefined
-      : () =>
+      : () => {
+          forgetMap(activeId);
           navigate(backTo, {
             state: { remove: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } },
-          }),
-    onDeleted: () => navigate(backTo),
+          });
+        },
+    onDeleted: () => {
+      forgetMap(undefined);
+      navigate(backTo);
+    },
   });
   // A right-click on the empty canvas opens the same menu at the pointer.
   const canvasMenu = useItemMenu({ menu: actions.menu, region: t("map.more"), disabled: !graph || fresh });
@@ -1459,7 +1476,7 @@ export function MapPage() {
   const hasMap = Boolean(activeMap) && !fresh && !working;
   return (
     <div className="px-map-page">
-      <BackLink to={backTo}>{t("doors.maps")}</BackLink>
+      <BackControl target={back} variant="page" />
       <header className="px-map-head">
         <div className="px-map-title-row">
           {renaming && activeId && graph && !fresh ? (

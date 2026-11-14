@@ -9,6 +9,7 @@ Paste it into the pull request and tick each line against the screenshots. A lin
 - [ ] The main thing on the screen is the largest, and each element appears once.
 - [ ] Groups are made with space first; no card inside a card, no box around everything.
 - [ ] Each choice uses its control from the control table.
+- [ ] A page opened from another has one back control at its top left, named by its place (`usePlace`, `BackControl`).
 - [ ] The examples show real study content (Fisica I, «Moto nel piano»), never placeholder text.
 
 ### Type, colour and shape

@@ -26,6 +26,7 @@ import { resumeIndex, toggleMarked } from "./quizSheet";
 import { questionPoints, verdict, verdictLine } from "./quizText";
 import "./SimulationPage.css";
 import { pastPapersQuery, usePlan } from "../../lib/queries";
+import { returnTo, usePlace } from "../../app/usePlace";
 
 /** How long typing pauses before the answers are saved. */
 const DRAFT_DELAY_MS = 500;
@@ -186,6 +187,12 @@ export function SimulationPage() {
   );
   // The menu leaves a running simulation alone.
   useMenuLock(Boolean(run) && !locked);
+  // A running exam has no way out until it is handed in, as in the exam room.
+  const back = usePlace({
+    parent: plan.data ? { name: { text: plan.data.title } } : undefined,
+    back: !run || run.submitted || locked ? "show" : "none",
+  });
+  const toPath = () => returnTo(back, `/plans/${planId}`, navigate);
   useEffect(() => {
     if (locked) void drafts.flush();
   }, [locked]);
@@ -381,16 +388,7 @@ export function SimulationPage() {
   });
   return (
     <StudyLayout
-      // A running exam has no way out until it is handed in, as in the exam room.
-      back={
-        !run || run.submitted || locked
-          ? {
-              text: plan.data?.title ?? t("lesson.back"),
-              label: plan.data ? t("lesson.back") : undefined,
-              onClick: () => navigate(`/plans/${planId}`),
-            }
-          : undefined
-      }
+      back={back}
       title={run?.submitted ? `${t("results.title")} \u00b7 ${t("simulation.title")}` : t("simulation.title")}
       subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
       wide={running}
@@ -413,7 +411,7 @@ export function SimulationPage() {
           <Button
             type="text"
             shape="round"
-            onClick={() => navigate(`/plans/${planId}`)}
+            onClick={() => back?.go()}
           >
             {t("nav.back")}
           </Button>
@@ -505,7 +503,7 @@ export function SimulationPage() {
           starting={busy}
           disabled={!ready && (open.isPending || (Boolean(building) && !buildStopped))}
           onStart={ready ? startNow : prepare}
-          onBack={() => navigate(`/plans/${planId}`)}
+          onBack={() => back?.go()}
         >
           {noticeBox}
           {ready && (
@@ -562,7 +560,7 @@ export function SimulationPage() {
             <Button shape="round" onClick={() => navigate(`/plans/${planId}/simulation`)}>
               {t("quiz.redo")}
             </Button>
-            <Button type="primary" shape="round" onClick={() => navigate(`/plans/${planId}`)}>
+            <Button type="primary" shape="round" onClick={toPath}>
               {t("lesson.backToPath")}
             </Button>
           </div>
@@ -657,7 +655,7 @@ export function SimulationPage() {
                 {t("simulation.resumeGrade")}
               </Button>
             ) : run.submitted && simMistakes ? undefined : (
-              <Button type="primary" shape="round" size="large" onClick={() => navigate(`/plans/${planId}`)}>
+              <Button type="primary" shape="round" size="large" onClick={toPath}>
                 {t("lesson.backToPath")}
               </Button>
             )
@@ -668,7 +666,7 @@ export function SimulationPage() {
                 type={gradingStopped ? "text" : "default"}
                 shape="round"
                 size="large"
-                onClick={() => navigate(`/plans/${planId}`)}
+                onClick={toPath}
               >
                 {t("lesson.backToPath")}
               </Button>

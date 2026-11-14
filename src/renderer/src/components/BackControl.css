@@ -1,0 +1,62 @@
+/* The way back (BackControl.tsx): a ghost button with an arrow and the place's name. */
+.px-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 calc(13.5px * var(--text-scale, 1)) / 1 var(--font-sans);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-micro) var(--ease-out),
+    color var(--duration-micro) var(--ease-out),
+    transform var(--duration-micro) var(--ease-out);
+}
+
+.px-back > svg {
+  flex: none;
+}
+
+.px-back:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+
+.px-back:active:not([aria-disabled]) {
+  transform: scale(0.98);
+}
+
+/* While the page records what it must before leaving, as a flashcard session does. */
+.px-back[aria-disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* A long name is cut; the full one is in the control's title and its accessible name. */
+.px-back-text {
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Above a shell page's title: the arrow lines up with the title's first letter, so the padding hangs to the left. */
+.px-back.is-page {
+  align-self: flex-start;
+  margin: 0 0 var(--space-2) -10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-back {
+    transition: none;
+  }
+  .px-back:active:not([aria-disabled]) {
+    transform: none;
+  }
+}
