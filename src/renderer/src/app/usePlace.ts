@@ -4,7 +4,7 @@ import { useLocation, useNavigate, type NavigateFunction } from "react-router";
 import { changed, registerBack } from "./back-slot";
 import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
 import { placeOf } from "./places";
-import { origin, pageOf, type PlaceName } from "./trail";
+import { origin, pageOf, wayBack, type PlaceName } from "./trail";
 
 /** Where a page's back control leads, and what it says. */
 export type BackTarget = {
@@ -65,15 +65,13 @@ export function usePlace(input: {
       go: () => {
         if (busy) return;
         const leave = () => {
-          // Read again at the press: the trail may have moved since this render.
-          const now = readTrail();
-          const behind = origin(now, key);
-          const here = now.visits.find((visit) => visit.key === key);
-          if (behind && here) void navigate(behind.idx - here.idx);
-          else if (parent) {
+          // Read when leaving, which can come after `beforeLeave`: by then the student may be on another page, which
+          // this page's way back must not move.
+          const step = wayBack(readTrail(), key, parent !== null);
+          if (step === "parent" && parent) {
             goingBackToParent(parent.to);
             void navigate(parent.to, { replace: true });
-          }
+          } else if (step && step !== "parent") void navigate(step.delta);
         };
         if (!input.beforeLeave) return leave();
         setBusy(true);

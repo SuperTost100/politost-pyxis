@@ -84,9 +84,17 @@ const isChat = (section: Section): boolean => section === "ask" || (section !== 
 const find = (trail: Trail, key: string | null) =>
   key == null ? undefined : trail.visits.find((visit) => visit.key === key);
 
-function capped(visits: Visit[]): Visit[] {
+/**
+ * At most TRAIL_CAP visits: the ones nearest the visit the window shows, so it always stays, with the entries just
+ * behind it that its way back needs. After a push those are the newest.
+ */
+function capped(visits: Visit[], current: string | null): Visit[] {
   if (visits.length <= TRAIL_CAP) return visits;
-  return [...visits].sort((a, b) => a.idx - b.idx).slice(visits.length - TRAIL_CAP);
+  const at = visits.find((visit) => visit.key === current)?.idx ?? Math.max(...visits.map((visit) => visit.idx));
+  return [...visits]
+    .sort((a, b) => Math.abs(a.idx - at) - Math.abs(b.idx - at) || b.idx - a.idx)
+    .slice(0, TRAIL_CAP)
+    .sort((a, b) => a.idx - b.idx);
 }
 
 /**
@@ -129,7 +137,7 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
       };
     const others = trail.visits.filter((visit) => visit.idx !== nav.idx && visit.key !== nav.key);
     return {
-      visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, section: sectionOf(nav.path), from: null }]),
+      visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, section: sectionOf(nav.path), from: null }], nav.key),
       current: nav.key,
     };
   }
@@ -143,12 +151,16 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
       path: nav.path,
       page,
       section: own ? sectionOf(nav.path) : (showing?.section ?? sectionOf(nav.path)),
+      // A page from outside (a file opened over the shared-exam page) starts the trail over, so it goes to its parent.
       from: nav.via ? null : (showing?.from ?? null),
       ...(samePage && showing?.name ? { name: showing.name } : {}),
       ...(showing?.opener ? { opener: showing.opener } : {}),
     };
-    const others = trail.visits.filter((visit) => visit !== showing && visit.idx !== nav.idx && visit.key !== nav.key);
-    return { visits: capped([...others, visit]), current: nav.key };
+    // An entry ahead that was opened from the replaced one now comes from its replacement.
+    const others = trail.visits
+      .filter((visit) => visit !== showing && visit.idx !== nav.idx && visit.key !== nav.key)
+      .map((visit) => (showing && visit.from === showing.key ? { ...visit, from: nav.key } : visit));
+    return { visits: capped([...others, visit], nav.key), current: nav.key };
   }
   // PUSH: the entries ahead of the new one are gone from the window's history, as the browser drops them.
   const from = nav.via || !showing ? null : showing.page === page ? showing.from : showing.key;
@@ -160,7 +172,7 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
       return nav.opener === undefined ? rest : { ...rest, opener: nav.opener };
     });
   const section = pushedSection(showing, nav.path, nav.via);
-  return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, section, from }]), current: nav.key };
+  return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, section, from }], nav.key), current: nav.key };
 }
 
 /** The visit `key` was opened from, while it is still behind it in the window's history and still exists. */
@@ -188,6 +200,18 @@ export function canForward(trail: Trail, key: string | null): boolean {
 export function lastChat(trail: Trail): string | undefined {
   const section = find(trail, trail.current)?.section;
   return section && typeof section === "object" ? section.chat : undefined;
+}
+
+/**
+ * How the back control of the visit `key` leaves it: back in history to its origin, to its parent when it has one,
+ * or not at all when the window no longer shows that visit (the student moved on while the page finished its work).
+ */
+export function wayBack(trail: Trail, key: string, hasParent: boolean): { delta: number } | "parent" | null {
+  if (trail.current !== key) return null;
+  const behind = origin(trail, key);
+  const here = find(trail, key);
+  if (behind && here) return { delta: behind.idx - here.idx };
+  return hasParent ? "parent" : null;
 }
 
 /** The visit the window shows. */
@@ -254,7 +278,13 @@ export function parseTrail(raw: string | null): Trail {
     const { visits, current } = value as Record<string, unknown>;
     if (!Array.isArray(visits) || !visits.every(isVisit) || !(current === null || typeof current === "string"))
       return emptyTrail;
-    return { visits: capped(visits.map((visit) => ({ ...visit, section: visit.section === undefined ? sectionOf(visit.path) : visit.section }))), current };
+    return {
+      visits: capped(
+        visits.map((visit) => ({ ...visit, section: visit.section === undefined ? sectionOf(visit.path) : visit.section })),
+        current,
+      ),
+      current,
+    };
   } catch {
     return emptyTrail;
   }
