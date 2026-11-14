@@ -29,6 +29,7 @@ import { useReviewSession } from "./ReviewProgress";
 import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
+import { focusInOpenSurface } from "../../lib/pageKeys";
 import { quizLine } from "./barLines";
 import { StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
@@ -624,7 +625,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       const current = keys.current;
       if (event.altKey || event.repeat || event.defaultPrevented || !current.question) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target?.closest("[role=dialog], .ant-drawer, .ant-select-dropdown, .px-qz-confirm")) return;
+      if (focusInOpenSurface(target) || target?.closest(".px-qz-confirm")) return;
       const field = target?.closest("input, textarea, select, [contenteditable=true], .px-mathinput");
       if (event.key === "Enter") {
         if (event.shiftKey) return;
@@ -1180,15 +1181,18 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       heading={!sheet}
       back={back}
       title={
-        redo
-          ? t("mistakes.redoTitle")
-          : review
-            ? t("cards.reviewTitle")
-            : diagnostic
-              ? t("quiz.diagnosticTitle")
-              : past
-                ? t("pastPapers.practiceTitle")
-                : (topic?.title ?? t("quiz.title"))
+        // The intro's own headline names the topic or the test; the bar says what kind of page this is.
+        showIntro
+          ? t("quiz.title")
+          : redo
+            ? t("mistakes.redoTitle")
+            : review
+              ? t("cards.reviewTitle")
+              : diagnostic
+                ? t("quiz.diagnosticTitle")
+                : past
+                  ? t("pastPapers.practiceTitle")
+                  : (topic?.title ?? t("quiz.title"))
       }
       subtitle={quizLine(t, {
         stage: finalResult || gradingStarted ? "results" : showIntro ? "intro" : "questions",

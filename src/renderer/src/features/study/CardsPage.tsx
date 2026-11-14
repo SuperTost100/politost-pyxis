@@ -26,6 +26,7 @@ import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
 import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
+import { focusInOpenSurface } from "../../lib/pageKeys";
 import { cardsLine } from "./barLines";
 import { Working } from "../../components/Working";
 
@@ -553,12 +554,7 @@ export function CardsPage() {
       )
         return;
       const target = event.target as HTMLElement;
-      if (
-        target.closest(
-          "input, textarea, select, button, [contenteditable=true], [role=dialog]",
-        )
-      )
-        return;
+      if (target.closest("input, textarea, select, button, [contenteditable=true]") || focusInOpenSurface(target)) return;
       const letter = event.key.toLowerCase();
       if (letter === "u" && lastAction) {
         event.preventDefault();

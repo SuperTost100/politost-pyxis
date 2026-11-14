@@ -46,6 +46,7 @@ export function StudyBar({
   progress,
   heading = true,
   titleMenu,
+  noWayOut,
   className,
 }: {
   /** The page's way back (`usePlace`). Without it the bar has no way out, as in a running exam simulation. */
@@ -61,6 +62,8 @@ export function StudyBar({
   progress?: number;
   /** The title is the page's heading; a page with its own heading below shows the bar's title to sight only. */
   heading?: boolean;
+  /** Why nothing leaves this page, as on a running exam: Attività then offers no link that goes elsewhere. */
+  noWayOut?: string;
   /** The title and its line become one button with a chevron that opens a panel under it. */
   titleMenu?: StudyTitleMenu;
   className?: string;
@@ -103,7 +106,7 @@ export function StudyBar({
         {tools}
         {menu}
         {/* The shell's jobs entry, so work running while a student studies stays in sight, last at the far right. */}
-        <JobsButton keep />
+        <JobsButton keep leave={back?.leave} blocked={noWayOut} />
       </div>
       {progress != null ? (
         <div

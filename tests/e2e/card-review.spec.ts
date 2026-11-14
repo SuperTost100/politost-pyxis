@@ -284,6 +284,58 @@ test("card review: the study bar, ratings only under the card, undo, the card me
   }
 });
 
+test("the Attività list on the cards page leaves the way the back control does, and takes none of the page's keys", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-jobs-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed(db);
+    // A job that failed for want of an AI tool: its card in Attività leads to Settings.
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-fail','lesson-part',?,'failed',0,'engines.errors.engine-missing',?,?)",
+    ).run(JSON.stringify({ planId: "p", topicId: "t", position: 1 }), Date.now(), Date.now());
+    const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+    const cardSteps = () =>
+      count(
+        "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'lesson_completed' AND plan_id = 'p' AND payload_json LIKE '%\"cards\"%'",
+      );
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await page.reload();
+    const card = page.locator("article.px-card");
+    await expect(card.locator(".px-card-front")).toHaveText("Seconda legge di Newton?");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(card.locator(".px-card-front")).toHaveText("Unità della forza?");
+    await expect.poll(() => count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
+
+    // The list has the focus once it opens: Space and a rating key do nothing to the card under it.
+    await page.getByRole("banner").getByRole("button", { name: /^Background tasks/ }).click();
+    await expect(page.locator(".px-jobs")).toBeFocused();
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(card).toHaveAttribute("data-face", "front");
+    await expect(card.locator(".px-card-front")).toHaveText("Unità della forza?");
+    expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(1);
+
+    // Its link to Settings leaves the page like the back control: the session with a rating is recorded first.
+    expect(cardSteps()).toBe(0);
+    await page.getByRole("button", { name: "Go to AI tools" }).click();
+    await expect(page).toHaveURL(/#\/settings\/engines/);
+    expect(cardSteps()).toBe(1);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("new flashcard: a form grown from the bar adds to the deck, closes on Esc and Cancel, and holds the card's keys", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-new-"));

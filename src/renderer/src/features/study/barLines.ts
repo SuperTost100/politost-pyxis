@@ -29,7 +29,8 @@ export function quizLine(
   },
 ): string {
   if (input.stage === "results") return barLine([t("quiz.title"), t("results.title")]);
-  if (input.stage === "intro") return barLine([t("quiz.title"), input.exam]);
+  // The intro's own headline names the topic or the test, so the bar says only what kind of page this is.
+  if (input.stage === "intro") return input.exam ?? "";
   if (input.kept) return barLine([input.overall ? t("cards.reviewPosition", input.overall) : null, t("quiz.keptLine")]);
   return barLine([
     t("quiz.title"),

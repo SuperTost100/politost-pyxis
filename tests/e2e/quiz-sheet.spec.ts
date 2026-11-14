@@ -278,6 +278,36 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
   }
 });
 
+test("the number keys pick nothing while the Attività list has the focus", async () => {
+  test.setTimeout(120_000);
+  const { page, done, userData } = await launch();
+  try {
+    // A finished job, so the list has something in it to take the focus.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('j-done','lesson-part',?,'succeeded',1,?,?)",
+    ).run(JSON.stringify({ planId: "p-fis", topicId: "t-kin", position: 1 }), Date.now(), Date.now());
+    db.close();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/quiz/t-kin?attempt=a-quiz");
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
+    await expect(page.locator(".px-jobs")).toBeFocused();
+    await page.keyboard.press("3");
+    await page.keyboard.press("2");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "false");
+    await expect(sheet(page).locator(".px-qz-count")).toHaveText("0 di 8 date");
+    // Closed again, the keys are the quiz's.
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".px-jobs")).toBeHidden();
+    await page.locator(".px-qz-sheet").focus();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    await done();
+  }
+});
+
 test("the exam simulation runs on the same sheet, with its clock, Segna per dopo and Consegna", async () => {
   test.setTimeout(90_000);
   const { page, done } = await launch();

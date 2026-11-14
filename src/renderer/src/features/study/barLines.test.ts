@@ -39,9 +39,9 @@ describe("the quiz's line", () => {
     );
   });
 
-  it("names the exam on the intro and the results on the results", () => {
-    expect(quizLine(key, { ...base, stage: "intro", exam: "Analisi 2" })).toBe(`quiz.title${dot}Analisi 2`);
-    expect(quizLine(key, { ...base, stage: "intro" })).toBe("quiz.title");
+  it("names only the exam on the intro and the results on the results", () => {
+    expect(quizLine(key, { ...base, stage: "intro", exam: "Analisi 2" })).toBe("Analisi 2");
+    expect(quizLine(key, { ...base, stage: "intro" })).toBe("");
     expect(quizLine(key, { ...base, stage: "results", kept: true })).toBe(`quiz.title${dot}results.title`);
   });
 });

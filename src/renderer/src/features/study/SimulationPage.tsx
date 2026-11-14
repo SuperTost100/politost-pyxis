@@ -396,6 +396,7 @@ export function SimulationPage() {
       title={running ? barLine([t("simulation.title"), plan.data?.title]) : t("simulation.title")}
       // While it runs there is no way out, and the line says why; before and after, it names the exam.
       subtitle={noWayOut ? t("simulation.noWayOut") : barLine([plan.data?.subject, plan.data?.title]) || undefined}
+      noWayOut={noWayOut ? t("simulation.noWayOut") : undefined}
       wide={running}
       // On the answer sheet the question card's "Domanda 3 di 8" is the page's heading.
       heading={!running}

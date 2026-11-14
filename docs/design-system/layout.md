@@ -45,19 +45,21 @@ A page takes its place with `usePlace` (`app/usePlace.ts`): it writes its own na
 6. The page's dots (`MenuButton`), when the page has a menu. They hold actions only, and a right-click on them opens the same menu.
 7. Attività (`JobsButton keep`), always last at the far right.
 
+A link in the Attività list that leaves the page (a failed job's "Vai agli strumenti AI") leaves it the way the back control does: it waits for the page's `beforeLeave` (`BackTarget.leave`) and stays when that says no. On a running simulation, where nothing leaves, those links are off and give the reason. A page's own shortcuts (the flashcards' Space and ratings, a quiz's number keys) do nothing while the focus is inside an open dialog, menu or the Attività list (`lib/pageKeys.ts`).
+
 The bar draws the page's `progress` as a thin line along its bottom edge. A page has no foot button for the way back, since the bar's control is that: no "Indietro", no "Torna al percorso". The questions of a quiz and a simulation have "Domanda precedente" for the previous question.
 
-| Page | Title | Line | Tools | Dots |
-| --- | --- | --- | --- | --- |
-| Lesson part | the topic | "Lezione · Parte 3 di 5 · circa 6 minuti" | Livello | the part's menu |
-| Older lesson | the topic | "Lezione · circa 8 minuti" | Livello | the lesson's menu |
-| Quiz | the topic, or "Test diagnostico", "Rifai gli errori", "Ripasso" | "Quiz · domanda 3 di 10, senza limite di tempo"; on a diagnostic and a Ripasso "Le risposte restano: riprendi quando vuoi" | the clock of a timed quiz | Esporta, on the results |
-| Flashcards | the topic, the subject, "Flashcard di oggi" or "Ripasso" | "Flashcard · 4 di 12" | Nuova flashcard, Annulla l'ultima | Esporta, on a topic's deck. Modifica is in the card's own menu |
-| Exercises | the topic | "Esercizi · 6 esercizi, dal libro" | Fai il quiz | none |
-| Introduction | the exam | "Introduzione" | none | none |
-| Ripasso, before it starts | the exam | "Ripasso · the subject" | none | none |
-| Simulation, running | "Simulazione · the exam" | "Non puoi uscire: si esce consegnando o allo scadere del tempo" | the clock | none |
-| Simulation, before and after | "Simulazione" | the exam's subject and title | none | Esporta, on the results |
+| Page                         | Title                                                           | Line                                                                                                                       | Tools                             | Dots                                                           |
+| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------- |
+| Lesson part                  | the topic                                                       | "Lezione · Parte 3 di 5 · circa 6 minuti"                                                                                  | Livello                           | the part's menu                                                |
+| Older lesson                 | the topic                                                       | "Lezione · circa 8 minuti"                                                                                                 | Livello                           | the lesson's menu                                              |
+| Quiz                         | the topic, or "Test diagnostico", "Rifai gli errori", "Ripasso" | "Quiz · domanda 3 di 10, senza limite di tempo"; on a diagnostic and a Ripasso "Le risposte restano: riprendi quando vuoi" | the clock of a timed quiz         | Esporta, on the results                                        |
+| Flashcards                   | the topic, the subject, "Flashcard di oggi" or "Ripasso"        | "Flashcard · 4 di 12"                                                                                                      | Nuova flashcard, Annulla l'ultima | Esporta, on a topic's deck. Modifica is in the card's own menu |
+| Exercises                    | the topic                                                       | "Esercizi · 6 esercizi, dal libro"                                                                                         | Fai il quiz                       | none                                                           |
+| Introduction                 | the exam                                                        | "Introduzione"                                                                                                             | none                              | none                                                           |
+| Ripasso, before it starts    | the exam                                                        | "Ripasso · the subject"                                                                                                    | none                              | none                                                           |
+| Simulation, running          | "Simulazione · the exam"                                        | "Non puoi uscire: si esce consegnando o allo scadere del tempo"                                                            | the clock                         | none                                                           |
+| Simulation, before and after | "Simulazione"                                                   | the exam's subject and title                                                                                               | none                              | Esporta, on the results                                        |
 
 The new exam, the guided exam and the tools (Lavagna, Grafico, Python) keep their own top bar until they move onto this one.
 
