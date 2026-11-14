@@ -1,13 +1,14 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
-import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { Download, Paperclip } from "lucide-react";
 import { useAppState } from "../../app/app-state";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
+import { usePlace } from "../../app/usePlace";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
-import { lastAskChat } from "../ask/attachments";
+import { BarTool, StudyLayout } from "../study/StudyBar";
+import { toolLine } from "./toolLine";
 import { strokeHits } from "./strokes";
 import "./WhiteboardPage.css";
 
@@ -17,7 +18,8 @@ type Stroke = { width: number; points: Point[] };
 export function WhiteboardPage() {
   const { t } = useTranslation();
   const { appearance } = useAppState();
-  const navigate = useNavigate();
+  // The chat the board was opened from, which Attach returns to with the picture.
+  const back = usePlace({});
   const [tool, setTool] = useState<"pen" | "erase">("pen");
   const [strokes, setStrokes] = useState<Stroke[]>(() => {
     try {
@@ -50,14 +52,20 @@ export function WhiteboardPage() {
     },
   });
 
+  // Strokes live in the board's own pixels, so a window that grows or shrinks shows them where they were drawn, at the
+  // size they were drawn. The canvas is as big as the board (times the screen's density, for sharp lines).
   function paint(next: Stroke[]) {
     const canvas = board.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
+    const density = window.devicePixelRatio || 1;
+    ctx.setTransform(density, 0, 0, density, 0, 0);
+    const width = canvas.width / density;
+    const height = canvas.height / density;
     const colors = getComputedStyle(document.documentElement);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = colors.getPropertyValue("--surface").trim();
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, width, height);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.strokeStyle = colors.getPropertyValue("--ink").trim();
@@ -78,14 +86,32 @@ export function WhiteboardPage() {
   function point(event: PointerEvent<HTMLCanvasElement>): Point {
     const canvas = event.currentTarget;
     const rect = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
-      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
-    };
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   }
+  const latest = useRef(strokes);
+  latest.current = strokes;
   useEffect(() => {
     paint(strokes);
   }, [strokes, appearance.resolved]);
+  // The canvas takes the board's size, and draws again whenever that changes.
+  useEffect(() => {
+    const canvas = board.current;
+    if (!canvas) return;
+    const fit = () => {
+      const density = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(1, Math.round(rect.width * density));
+      const height = Math.max(1, Math.round(rect.height * density));
+      if (canvas.width === width && canvas.height === height) return;
+      canvas.width = width;
+      canvas.height = height;
+      paint(latest.current);
+    };
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(canvas);
+    return () => watch.disconnect();
+  }, []);
 
   function apply(next: Stroke[]) {
     dirty.current = JSON.stringify(next) !== JSON.stringify(baseline.current);
@@ -170,8 +196,7 @@ export function WhiteboardPage() {
       if (attach) {
         sessionStorage.setItem("pyxis-board-png", url);
         // Back to the chat the student came from, where their draft and picked files wait.
-        const chat = lastAskChat(sessionStorage);
-        navigate(chat ? `/ask/${chat}` : "/ask");
+        back?.go();
       }
     } catch {
       setError(true);
@@ -181,7 +206,29 @@ export function WhiteboardPage() {
   }
 
   return (
-    <CanvasLayout title={t("tools.whiteboardTitle")} closeTo="/ask">
+    <StudyLayout
+      stage
+      back={back}
+      title={t("tools.whiteboardTitle")}
+      subtitle={toolLine(back)}
+      tools={
+        <>
+          <BarTool
+            icon={<Download size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("tools.save")}
+            loading={busy}
+            disabled={busy || strokes.length === 0}
+            onClick={() => void keep(false)}
+          />
+          <BarTool
+            icon={<Paperclip size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("tools.attach")}
+            disabled={busy || strokes.length === 0}
+            onClick={() => void keep(true)}
+          />
+        </>
+      }
+    >
       <div className="px-whiteboard">
         <div
           className="px-whiteboard-toolbar"
@@ -244,28 +291,9 @@ export function WhiteboardPage() {
           >
             {t("tools.clear")}
           </Button>
-          <span className="px-whiteboard-divider" aria-hidden="true" />
-          <Button
-            shape="round"
-            loading={busy}
-            disabled={busy || strokes.length === 0}
-            onClick={() => void keep(false)}
-          >
-            {t("tools.save")}
-          </Button>
-          <Button
-            type="primary"
-            shape="round"
-            disabled={busy || strokes.length === 0}
-            onClick={() => void keep(true)}
-          >
-            {t("tools.attach")}
-          </Button>
         </div>
         <canvas
           ref={board}
-          width={1200}
-          height={700}
           aria-label={t("tools.whiteboardTitle")}
           onPointerDown={(event) => {
             if (busy) return;
@@ -320,6 +348,6 @@ export function WhiteboardPage() {
           </div>
         ) : null}
       </div>
-    </CanvasLayout>
+    </StudyLayout>
   );
 }

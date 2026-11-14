@@ -103,7 +103,7 @@ test("UI-01 the menu works while a plan builds, a wizard error goes away, and th
     await picker.getByRole("button", { name: "Aggiungi 1 fonte", exact: true }).click();
     await page.getByRole("button", { name: "Crea l'esame", exact: true }).click();
     await expect(page.getByRole("alert")).toHaveText("Inserisci una materia da 1 a 120 caratteri.");
-    await page.getByRole("button", { name: "Indietro", exact: true }).click();
+    await page.getByRole("button", { name: "Passo precedente", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Quale esame prepari?" })).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
 

@@ -1,4 +1,4 @@
-import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
+import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, skipSpent, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
 import { canTakeFocus } from "./focusable";
 
 /**
@@ -60,6 +60,11 @@ export function takeArrivalNote<T>(): T | undefined {
 /** Writes the name a page gives itself on its history entry. */
 export function nameVisit(key: string, name: PlaceName): void {
   update(named(trail, key, name));
+}
+
+/** Once an exam exists: its build wait goes back to where the forms were opened, and the forms are left behind. */
+export function skipSpentForms(key: string, spent: (path: string) => boolean): void {
+  update(skipSpent(trail, key, spent));
 }
 
 /** After a delete: the entries that showed it are no longer a place to go back to. */

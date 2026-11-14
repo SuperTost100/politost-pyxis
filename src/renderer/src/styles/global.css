@@ -481,64 +481,12 @@ html[data-focus-source="keyboard"] .ant-picker-focused:has(:focus-visible) {
   color: var(--ink-subtle);
 }
 
-.focus,
-.canvas {
+.focus {
   min-height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--bg);
   color: var(--ink);
-}
-
-.focus-bar,
-.canvas-bar {
-  height: 56px;
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-4);
-  -webkit-app-region: drag;
-}
-
-html[data-platform="darwin"] .focus-bar,
-html[data-platform="darwin"] .canvas-bar {
-  padding-left: 80px;
-}
-
-.focus-bar button,
-.canvas-bar button,
-.canvas-bar a {
-  -webkit-app-region: no-drag;
-}
-
-.focus-header-right {
-  justify-self: end;
-}
-
-.focus-title {
-  margin: 0;
-}
-
-.focus-meta {
-  color: var(--ink-muted);
-}
-
-/* The progress line sits under the header's 56px, inside it so it belongs to a landmark. */
-.focus-bar {
-  position: relative;
-}
-
-.focus-bar:has(.focus-progress) {
-  margin-bottom: 2px;
-}
-
-.focus-progress {
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  height: 2px;
-  background: var(--primary);
 }
 
 .focus-main {
@@ -556,14 +504,6 @@ html[data-platform="darwin"] .canvas-bar {
 
 .focus-main .gallery-row {
   margin-bottom: var(--space-6);
-}
-
-.canvas-stage {
-  flex: 1;
-  margin: 0 var(--space-4) var(--space-4);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  border: 1px solid var(--border);
 }
 
 /* Tabs sit directly under their page title, aligned with it. */

@@ -81,7 +81,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
       window.location.hash = `/plans/new?build=${id}`;
     }, created.planId);
     await expect(
-      page.getByRole("button", { name: "Annulla", exact: true }),
+      page.getByRole("button", { name: "Annulla la preparazione", exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Preparo Fisica 1" })).toBeVisible();
     for (const theme of ["dark", "light"] as const) {
@@ -97,7 +97,7 @@ test("PLAN-21 document tree and build resume after cancel and restart", async ()
         await saveShot(page, `m7-building-it-${theme}-${width}.png`, { animations: "disabled" });
       }
     }
-    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await page.getByRole("button", { name: "Annulla la preparazione", exact: true }).click();
     await expect(
       page.getByRole("button", { name: "Riprova", exact: true }),
     ).toBeVisible();
