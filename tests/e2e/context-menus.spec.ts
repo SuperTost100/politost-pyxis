@@ -488,7 +488,25 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
   }
 });
 
-test("the head of Esami, an exam, the flashcard list and the Library has the dots, and a right-click on it opens the same menu at the pointer", async () => {
+/** The four pages whose head holds the page's menu, with the head, the dots' name and the menu's items. */
+const pageHeads: Array<{ hash: string; head: string; dots: string; items: string[] }> = [
+  {
+    hash: "/exams",
+    head: ".px-exams-head",
+    dots: "Altro su Esami",
+    items: ["Importa da un file .pyxis", "Importa da un link", "Tutte le flashcard", "Quaderno degli errori", "Gestisci materie"],
+  },
+  {
+    hash: "/plans/p1",
+    head: ".px-exam-head",
+    dots: "Altro sull'esame",
+    items: ["Ripasso", "Crea un'attività", "Condividi l'esame"],
+  },
+  { hash: "/exams/cards", head: ".px-subpage-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
+  { hash: "/exams/library", head: ".px-library-head", dots: "Altro sulla Libreria", items: ["Libri PoliTost gratuiti"] },
+];
+
+test("the head of Esami, an exam, the flashcard list and the Library has the dots, and a right-click on it or on the dots opens the same menu at the pointer", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-page-menus-"));
   const app = await launchPyxis({ userData });
@@ -512,23 +530,7 @@ test("the head of Esami, an exam, the flashcard list and the Library has the dot
     db.close();
     await page.reload();
 
-    const pages: Array<{ hash: string; head: string; dots: string; items: string[] }> = [
-      {
-        hash: "/exams",
-        head: ".px-exams-head",
-        dots: "Altro su Esami",
-        items: ["Importa da un file .pyxis", "Importa da un link", "Tutte le flashcard", "Quaderno degli errori", "Gestisci materie"],
-      },
-      {
-        hash: "/plans/p1",
-        head: ".px-exam-head",
-        dots: "Altro sull'esame",
-        items: ["Ripasso", "Crea un'attività", "Condividi l'esame"],
-      },
-      { hash: "/exams/cards", head: ".px-subpage-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
-      { hash: "/exams/library", head: ".px-library-head", dots: "Altro sulla Libreria", items: ["Libri PoliTost gratuiti"] },
-    ];
-    for (const { hash, head, dots, items } of pages) {
+    for (const { hash, head, dots, items } of pageHeads) {
       await page.evaluate((next) => {
         location.hash = next;
       }, hash);
@@ -540,21 +542,38 @@ test("the head of Esami, an exam, the flashcard list and the Library has the dot
       // The dots open it by a click, a right-click and the menu keys; Shift+F10 on them opens it under them.
       expect(await opensEveryWay(page, button, dots, items), hash).toEqual(items);
 
+      // The open menu hangs from the pointer: its top is level with it and one of its sides is where it was.
+      const hangsFrom = (point: { x: number; y: number }, message: string) =>
+        expect
+          .poll(
+            async () => {
+              const at = (await page.getByRole("menu").boundingBox())!;
+              return [Math.abs(at.y - point.y) < 24, Math.abs(at.x - point.x) < 24 || Math.abs(at.x + at.width - point.x) < 24];
+            },
+            { message },
+          )
+          .toEqual([true, true]);
+
       // A right-click on the head's title opens the same menu with its corner at the pointer, far from the dots.
       const title = area.getByRole("heading", { level: 1 });
       const box = (await title.boundingBox())!;
       const point = { x: box.x + Math.min(40, box.width / 2), y: box.y + box.height / 2 };
       await page.mouse.click(point.x, point.y, { button: "right" });
       expect(await itemsOf(page, dots), hash).toEqual(items);
-      await expect
-        .poll(
-          async () => {
-            const at = (await page.getByRole("menu").boundingBox())!;
-            return [Math.abs(at.x - point.x) < 24, Math.abs(at.y - point.y) < 24];
-          },
-          { message: hash },
-        )
-        .toEqual([true, true]);
+      await hangsFrom(point, `${hash}: the title`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu"), hash).toHaveCount(0);
+
+      // A right-click on the dots themselves opens it at the pointer, not under the button, as on the head around them.
+      // A right-click elsewhere on the head, with that menu open, moves it there: one menu stays.
+      const dotsBox = (await button.boundingBox())!;
+      const onDots = { x: dotsBox.x + 3, y: dotsBox.y + 3 };
+      await page.mouse.click(onDots.x, onDots.y, { button: "right" });
+      expect(await itemsOf(page, dots), hash).toEqual(items);
+      await hangsFrom(onDots, `${hash}: the dots`);
+      await page.mouse.click(point.x, point.y, { button: "right" });
+      await expect(page.getByRole("menu"), hash).toHaveCount(1);
+      await hangsFrom(point, `${hash}: the title, with the menu open`);
       await page.keyboard.press("Escape");
       await expect(page.getByRole("menu"), hash).toHaveCount(0);
     }
