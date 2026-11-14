@@ -35,6 +35,12 @@ export function isStillHere(
  * "The page" is one history entry, not one path: two entries can share a pathname, as two requests opened on the same
  * map page do, so the entry's key is compared too. A callback made while another entry was showing never passes, and
  * neither does one that outlives the component.
+ *
+ * A no is not always final. The router moves to a new entry at once, and React draws the page at it a little later, in
+ * a transition that the page's own reads can hold back. Until then a page that stays where it is, because it has just
+ * cleaned its own address, gets no for its own new entry. Work that must happen once the answer is yes, such as opening
+ * what a job made, keeps what it needs until then and lists the returned function among its effect's dependencies:
+ * the function changes when the page is drawn at a new entry, so the effect asks again.
  */
 
 export function useStillHere(): () => boolean {
