@@ -1,25 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router";
-import { changed, registerBack } from "./back-slot";
+import { changed, registerBack, type BackTarget } from "./back-slot";
 import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
 import { placeOf } from "./places";
 import { origin, pageOf, wayBack, type PlaceName } from "./trail";
 
-/** Where a page's back control leads, and what it says. */
-export type BackTarget = {
-  /** The place's name, in the app's language: the control's text. */
-  name: string;
-  /** "Torna a {{place}}", what a screen reader hears. */
-  label: string;
-  /** The path it leads to. */
-  to: string;
-  go: () => void;
-  /** True while `beforeLeave` runs. */
-  busy: boolean;
-  /** The page saves what it holds in `beforeLeave`, so leaving by this way loses nothing the student typed. */
-  saves: boolean;
-};
+export type { BackTarget };
+
 
 /**
  * The one hook a page calls to take its place on the trail: it writes the page's name on its history entry, so a back
@@ -96,7 +84,7 @@ export function usePlace(input: {
     latest.current = target;
     changed();
   });
-  useEffect(() => registerBack(() => latest.current), []);
+  useEffect(() => registerBack(key, () => latest.current), [key]);
 
   return target;
 }

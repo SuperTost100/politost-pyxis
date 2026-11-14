@@ -209,7 +209,14 @@ export function NewCardDialog({
     }
     if (focused.current || !places.data || !subjectId) return;
     focused.current = true;
-    requestAnimationFrame(() => firstField()?.focus());
+    requestAnimationFrame(() => {
+      // A student who went to a field and started typing before the subjects arrived keeps it: the rest of what they
+      // type must not land in another field.
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && dialog.current?.contains(active) && active.matches("input, textarea, select"))
+        return;
+      firstField()?.focus();
+    });
   }, [open, places.data, subjectId]);
 
   function firstField(): HTMLElement | null {
