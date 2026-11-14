@@ -410,6 +410,12 @@ test("a running exam keeps the student in: the Attività list offers no link tha
     await expect(toTools).toHaveAttribute("title", "Non puoi uscire: si esce consegnando o allo scadere del tempo");
     await toTools.click({ force: true });
     expect(page.url()).toBe(reached);
+    // No back target is registered while the exam runs, so the menu's Indietro and Avanti are greyed too.
+    await page.keyboard.press("Escape");
+    for (const id of ["back", "forward"])
+      await expect
+        .poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.enabled, id))
+        .toBe(false);
     db.close();
   } finally {
     await app.close();

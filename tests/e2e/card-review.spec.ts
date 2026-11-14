@@ -336,6 +336,47 @@ test("the Attività list on the cards page leaves the way the back control does,
   }
 });
 
+test("Vai > Indietro on the cards page does what the back control does: the session with a rating is recorded first", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-menu-back-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed(db);
+    const cardSteps = () =>
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'lesson_completed' AND plan_id = 'p' AND payload_json LIKE '%\"cards\"%'",
+          )
+          .get() as { n: number }
+      ).n;
+    await page.evaluate(() => {
+      location.hash = "#/plans/p";
+    });
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    const front = page.locator("article.px-card .px-card-front");
+    await expect(front).toHaveText("Seconda legge di Newton?");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(front).toHaveText("Unità della forza?");
+    expect(cardSteps()).toBe(0);
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
+    await expect(page).toHaveURL(/#\/plans\/p$/);
+    await expect.poll(cardSteps).toBe(1);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("new flashcard: a form grown from the bar adds to the deck, closes on Esc and Cancel, and holds the card's keys", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-new-"));
