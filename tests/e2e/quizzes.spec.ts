@@ -126,7 +126,41 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
     await expect(page.getByText("Correzione alla consegna", { exact: true })).toBeVisible();
     await axe(page);
     await page.getByRole("button", { name: "Personalizza" }).click();
+
+    // Ambito is one radio group: one tab stop, the arrows move the choice and the number keys leave it alone.
+    const scope = page.getByRole("radiogroup", { name: "Ambito" });
+    const topicScope = scope.getByRole("radio", { name: "Questo argomento" });
+    const examScope = scope.getByRole("radio", { name: "Tutto l'esame" });
+    await expect(scope.getByRole("radio")).toHaveCount(3);
+    await expect(topicScope).toBeChecked();
+    await topicScope.focus();
+    await page.keyboard.press("2");
+    await expect(topicScope).toBeChecked();
+    await page.keyboard.press("ArrowRight");
+    await expect(examScope).toBeChecked();
+    await expect(examScope).toBeFocused();
+    await page.keyboard.press("ArrowLeft");
+    await expect(topicScope).toBeChecked();
+    await expect(topicScope).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(scope.locator(":focus")).toHaveCount(0);
+
+    // The question types are toggles that keep one: the last one chosen says why it stays.
+    const kinds = page.getByRole("group", { name: "Tipi di domanda" });
+    await expect(kinds.getByRole("button", { pressed: true })).toHaveCount(5);
+    for (const name of ["Scelta multipla", "Completamento", "Abbinamento", "Vero o falso"])
+      await kinds.getByRole("button", { name, exact: true }).click();
+    const open = kinds.getByRole("button", { name: "Risposta aperta", exact: true });
+    await expect(open).toHaveAttribute("aria-pressed", "true");
+    await expect(open).toHaveAttribute("aria-disabled", "true");
+    await expect(open).toHaveAccessibleDescription(/Almeno un tipo di domanda resta scelto/);
+    // `force`: Playwright treats aria-disabled as not clickable, and a pointer press is what the student does.
+    await open.click({ force: true });
+    await expect(open).toHaveAttribute("aria-pressed", "true");
+
     await page.getByRole("button", { name: "Solo vero o falso", exact: true }).click();
+    await expect(kinds.getByRole("button", { pressed: true })).toHaveCount(1);
+    await expect(kinds.getByRole("button", { name: "Vero o falso", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     await page.clock.install();
