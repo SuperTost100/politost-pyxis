@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
+import { openBox, trackEvents, withTrail } from "./event-trail";
 import { animationsSettled, atRest } from "./settled";
 import { saveShot } from "./shots";
 import { seedSource, seedSubjects } from "./seed";
@@ -506,6 +507,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
   test.setTimeout(240000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
   try {
+    await trackEvents(page);
     await page.setViewportSize({ width: 960, height: 900 });
     for (const name of ["Chimica", "Geometria", "Algebra", "Statistica"])
       await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
@@ -557,7 +559,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       );
     /** Fails when the menu is off the window or far from where it was asked, or when a cover but the owner looks hovered. */
     const expectMenuAt = async (menu: Locator, at: { x: number; y: number }, owner: string | null, shot: string) => {
-      await expect(menu).toBeVisible();
+      await withTrail(page, () => expect(menu).toBeVisible());
       await animationsSettled(page);
       const box = (await menu.boundingBox())!;
       const view = page.viewportSize()!;
@@ -597,7 +599,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     });
     await expect(sub).toBeVisible();
     await animationsSettled(page);
-    const parent = (await fileMenu.boundingBox())!;
+    const parent = await openBox(fileMenu, page, "The file's menu, with its submenu shown a moment ago,");
     const child = (await sub.boundingBox())!;
     expect(child.x).toBeGreaterThanOrEqual(0);
     expect(child.x + child.width).toBeLessThanOrEqual(960);
