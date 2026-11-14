@@ -66,6 +66,8 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
     await page.keyboard.press("Enter");
     await expect(dialog.locator(".ant-select").first()).toContainText("Chimica");
     await expect(dialog).toBeVisible();
+    // The list has shut after the pick; an Escape before that is still the list's.
+    await expect(list).toBeHidden();
 
     // A second Escape closes the dialog and the focus goes back to the button it grew out of.
     await page.keyboard.press("Escape");
