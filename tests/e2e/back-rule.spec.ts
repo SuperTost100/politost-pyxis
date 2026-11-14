@@ -38,6 +38,8 @@ type Row = {
   lit: string | RegExp | null;
   /** Nothing is behind the page, so Back opens its parent in the page's place and Avanti has nothing to return to. */
   parent?: boolean;
+  /** The forms behind the page are spent (the exam exists), so Avanti from where Back leads has nothing to return to. */
+  noForward?: boolean;
   /** Setup holds the menu's commands, so Indietro is greyed there while the page's own control works. */
   menu?: "greyed";
   /** A study page, with the study bar: one way back, and Attività last at the far right. */
@@ -99,6 +101,110 @@ const first = (path: string) => async ({ page }: Walk) => {
   }, path);
   await page.reload();
   await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+};
+
+/**
+ * Leaves the new exam wizard when the walk is on it, as a student would: its way back, and "Esci senza salvare" when
+ * answers were typed (the guided exam hands them back to it).
+ */
+async function leaveWizard(page: Page) {
+  if (!/#\/plans\/new$/.test(page.url())) return;
+  await backControl(page).click();
+  const question = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+  const exams = page.getByRole("heading", { level: 1, name: "Esami" });
+  await expect(question.or(exams)).toBeVisible();
+  if (await question.isVisible()) await question.getByRole("button", { name: "Esci senza salvare" }).click();
+  await expect(exams).toBeVisible();
+}
+
+/** The new exam's first step, from Esami. */
+async function openWizard(page: Page) {
+  await leaveWizard(page);
+  await start(page, "#/exams", "Esami");
+  await page.getByRole("button", { name: "Nuovo esame" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Nuovo esame" })).toBeVisible();
+}
+
+/** Recorded replies for the builds the rows below start: the guided flow's proposals, then the plan's own steps. */
+const planReplies = {
+  modules: { modules: [{ title: "Cinematica", summary: "Il moto dei corpi" }, { title: "Dinamica", summary: "Le forze" }] },
+  topics: {
+    topics: [
+      { title: "Cinematica del punto", summary: "Moto", subtopics: ["Velocità"], segmentIds: ["{{segment:0}}"] },
+      { title: "Dinamica", summary: "Forze", subtopics: [], segmentIds: ["{{segment:0}}"] },
+    ],
+  },
+  markdown: { markdown: "## Introduzione\n\nStudierai la fisica." },
+  questions: {
+    questions: Array.from({ length: 10 }, (_, i) => ({
+      stem: `Domanda ${i + 1}?`,
+      options: ["Uno", "Due", "Tre", "Quattro"],
+      correct: 0,
+      topicIndex: i % 2,
+      passageIds: ["{{passage:0}}"],
+      explanation: "Perché sì.",
+    })),
+  },
+};
+
+/** The AI tools the app starts with, which the seed takes away for the lessons: creating an exam from a book needs one. */
+let engines: Array<{ feature: string; selection_json: string; updated_at: number }> = [];
+
+function restoreEngines() {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  try {
+    const put = db.prepare("INSERT OR REPLACE INTO feature_engines(feature, selection_json, updated_at) VALUES(?,?,?)");
+    for (const row of engines) put.run(row.feature, row.selection_json, row.updated_at);
+  } finally {
+    db.close();
+  }
+}
+
+/** The new exam made from the library's book, up to its build wait. */
+async function createFromWizard(page: Page) {
+  restoreEngines();
+  await openWizard(page);
+  await page.getByRole("textbox", { name: "Nome dell'esame", exact: true }).fill("Fisica generale");
+  await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+  await page.getByRole("button", { name: "Continua", exact: true }).click();
+  await page.getByRole("button", { name: "Dalla tua libreria" }).click();
+  const picker = page.getByRole("dialog");
+  await picker.getByRole("checkbox", { name: /Bramanti, Pagani, Salsa/ }).check();
+  await picker.getByRole("button", { name: "Aggiungi 1 fonte" }).click();
+  await expect(picker).toBeHidden();
+  await page.getByRole("button", { name: "Crea l'esame" }).click();
+  await expect(page).toHaveURL(/#\/plans\/new\?build=/);
+}
+
+/** The new exam made without material, through the guided flow, up to its build wait. */
+async function createFromGuided(page: Page) {
+  await openWizard(page);
+  await page.getByRole("textbox", { name: "Nome dell'esame", exact: true }).fill("Fisica generale");
+  await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+  for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Continua", exact: true }).click();
+  await page.getByRole("group", { name: "Periodo" }).getByRole("button").first().click();
+  await page.getByRole("button", { name: "Continua", exact: true }).click();
+  await page.getByLabel("Cinematica", { exact: true }).check();
+  for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Continua", exact: true }).click();
+  await page.getByRole("button", { name: "Crea l'esame" }).click();
+  await expect(page).toHaveURL(/#\/plans\/new\?build=/);
+}
+
+/** The exam a finished build opens. */
+async function openBuilt(page: Page) {
+  await page.getByRole("button", { name: "Apri l'esame", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Fisica generale" })).toBeVisible();
+}
+
+/** A chat with a tool opened from its composer, as a student does. */
+const fromChat = (tool: string, heading: string) => async ({ page }: Walk) => {
+  await leaveWizard(page);
+  await page.evaluate(() => {
+    location.hash = "#/ask/c-bayes";
+  });
+  await expect(page.locator(".ask-bar-name")).toHaveText("Teorema di Bayes");
+  await page.locator(".px-composer").getByRole("button", { name: tool, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
 };
 
 const rows: Row[] = [
@@ -526,6 +632,64 @@ const rows: Row[] = [
     leadsTo: `${exam}/lesson/t-serie`,
     focus: "Successioni e serie di funzioni",
   },
+  {
+    page: "/plans/new",
+    how: "the new exam from Esami",
+    reach: async ({ page }) => openWizard(page),
+    label: "Esami",
+    lit: null,
+    leadsTo: "/exams",
+    focus: "Nuovo esame",
+    study: true,
+  },
+  {
+    page: "/plans/new/guided",
+    how: "the guided exam, from the new exam's material step",
+    reach: async ({ page }) => {
+      await openWizard(page);
+      await page.getByRole("textbox", { name: "Nome dell'esame", exact: true }).fill("Fisica generale");
+      await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+      // The material step with nothing picked leads to the guided flow, which asks its own questions.
+      for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Continua", exact: true }).click();
+      await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
+    },
+    label: "Nuovo esame",
+    lit: null,
+    leadsTo: "/plans/new",
+    focus: "Continua",
+    study: true,
+  },
+  {
+    page: "/tools/whiteboard",
+    how: "the whiteboard from a chat",
+    reach: fromChat("Lavagna", "Lavagna"),
+    label: "Teorema di Bayes",
+    lit: null,
+    leadsTo: "/ask/c-bayes",
+    focus: "Lavagna",
+    study: true,
+  },
+  {
+    page: "/tools/graph",
+    how: "the graph from a chat",
+    reach: fromChat("Grafico", "Grafico"),
+    label: "Teorema di Bayes",
+    lit: null,
+    leadsTo: "/ask/c-bayes",
+    focus: "Grafico",
+    study: true,
+  },
+  {
+    page: "/tools/python",
+    how: "Python with nothing behind it",
+    reach: direct("/tools/python"),
+    label: "Chiedi",
+    lit: null,
+    parent: true,
+    leadsTo: "/ask",
+    focus: /^(Buongiorno|Buon pomeriggio|Buonasera)/,
+    study: true,
+  },
   ...[
     ["/plans/:planId/intro", `${exam}/intro`],
     ["/plans/:planId/practice/:topicId", `${exam}/practice/t-fun`],
@@ -559,6 +723,36 @@ const rows: Row[] = [
     focus: "Flashcard",
     study: true,
   },
+  // Once the exam exists, nothing leads back to the form that made it: the way back goes to where it was started.
+  ...[
+    ["the exam made from the wizard", createFromWizard],
+    ["the exam made from the guided flow", createFromGuided],
+  ].flatMap(([made, create]) => [
+    {
+      page: "/plans/new",
+      how: `the build wait of ${made as string}`,
+      reach: async ({ page }: Walk) => (create as typeof createFromWizard)(page),
+      label: "Esami",
+      lit: null,
+      leadsTo: "/exams",
+      focus: "Nuovo esame",
+      study: true,
+      noForward: made === "the exam made from the guided flow",
+    } satisfies Row,
+    {
+      page: "/plans/:planId/:view?",
+      how: `the exam opened from the build wait of ${made as string}`,
+      reach: async ({ page }: Walk) => {
+        await (create as typeof createFromWizard)(page);
+        await openBuilt(page);
+      },
+      label: "Esami",
+      lit: "Esami",
+      leadsTo: "/exams",
+      focus: "Nuovo esame",
+      noForward: made === "the exam made from the guided flow",
+    } satisfies Row,
+  ]),
 ];
 
 /** A topic in parts with two parts written from book text (no AI tool), a map, a missed question and two new cards. */
@@ -667,12 +861,13 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), "pyxis-back-rule-"));
-  const app = await launchPyxis({ userData });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies) } });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
   try {
+    engines = db.prepare("SELECT feature, selection_json, updated_at FROM feature_engines").all() as typeof engines;
     seed(db);
   } finally {
     db.close();
@@ -723,7 +918,7 @@ async function walkRow(row: Row) {
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
   await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
   await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
-  if (row.parent) return;
+  if (row.parent || row.noForward) return;
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click());
   await expect(page).toHaveURL(again);
 }
@@ -738,6 +933,22 @@ for (const row of rows) {
     }
   });
 }
+
+test("a drawing attached from the whiteboard lands in the chat it was opened from", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  await fromChat("Lavagna", "Lavagna")(walk);
+  const canvas = page.locator(".px-whiteboard canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 100, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 250, box.y + 300, { steps: 8 });
+  await page.mouse.up();
+  await page.getByRole("banner").getByRole("button", { name: "Allega alla chat" }).click();
+  // The way back moves one step in the window's history, so the picture arrives in the chat itself.
+  await expect(page).toHaveURL(/#\/ask\/c-bayes$/);
+  await expect(page.getByAltText("Lavagna")).toBeVisible();
+});
 
 test("a chat made from a lesson keeps its way back through a reload", async () => {
   test.setTimeout(90_000);
@@ -859,14 +1070,7 @@ test("every page with a back control has a row", () => {
     .map((match) => match[1]!)
     .filter((path) => path !== "/")
     .map((path) => (path.startsWith("/") || path === "*" ? path : `/${path}`));
-  // Pages whose back control comes later, and pages that have none: sidebar sections, redirects, the gallery.
-  const later = new Set([
-    "/plans/new",
-    "/plans/new/guided",
-    "/tools/whiteboard",
-    "/tools/graph",
-    "/tools/python",
-  ]);
+  // Pages that have no back control: sidebar sections, redirects, the gallery.
   const none = new Set([
     "/exams",
     "/exams/library",
@@ -888,5 +1092,5 @@ test("every page with a back control has a row", () => {
     "/plans/:planId/review/questions",
     "/plans/:planId/exam/:attemptId",
   ]);
-  expect(routes.filter((route) => !walked.has(route) && !later.has(route) && !none.has(route) && !shared.has(route))).toEqual([]);
+  expect(routes.filter((route) => !walked.has(route) && !none.has(route) && !shared.has(route))).toEqual([]);
 });

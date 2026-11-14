@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AutoComplete, Button, Input, Slider } from "antd";
 import dayjs from "dayjs";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { FreeBooks } from "../../components/FreeBooks";
 import { invoke } from "../../lib/ipc";
 import {
@@ -24,10 +25,13 @@ import "./PlanWizard.css";
 
 type Style = "read" | "practice" | "decide";
 
+const GUIDED_PATH = "/plans/new/guided";
+
 /**
  * The answers for a new exam, shared by the exam wizard and the last two steps of first setup: the exam (name,
  * subject, date, goal) and its material. `scale` is the one the goal is shown on. The goal is stored as a fraction;
- * until the student moves it, it is the scale's default.
+ * until the student moves it, it is the scale's default. The answers live only on this page, so leaving it with some
+ * written asks first (`useLeaveGuard`), except for the guided flow, which takes them along.
  */
 export function useExamDraft({
   seed,
@@ -38,8 +42,9 @@ export function useExamDraft({
   books?: boolean;
   scale: GradeScale;
 }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const client = useQueryClient();
   const sources = useQuery({
     ...sourcesQuery,
@@ -75,6 +80,37 @@ export function useExamDraft({
     ["failed", "needs-ocr", "cancelled", "interrupted"].includes(source.status),
   );
   const examReady = Boolean(title.trim()) && examChosen(examChoice, sessions);
+  // Everything the form holds, as the student left it. It differs from a blank form's when anything was written or
+  // chosen, whichever field, so no list of fields can go stale here.
+  const defaultLanguage = i18n.language.startsWith("en") ? "en" : "it";
+  const snapshot = JSON.stringify({
+    title: title.trim(),
+    subject: subject.trim(),
+    picked,
+    examChoice,
+    sessions: sessions.map(({ date, time, place, label }) => [date, time, place.trim(), label.trim()]),
+    goal,
+    language,
+    style,
+  });
+  const blank = JSON.stringify({
+    title: "",
+    subject: "",
+    picked: [],
+    examChoice: "",
+    sessions: [["", "", "", ""]],
+    goal: null,
+    language: defaultLanguage,
+    style: "decide",
+  });
+  // What the guided flow was last handed, and so what its entry in the history holds. Going forward to it asks nothing
+  // only while the form still holds exactly that; otherwise it would restore older answers.
+  const handedOver = useRef<string | null>(seed ? snapshot : null);
+  useLeaveGuard({
+    dirty: starting || snapshot !== blank,
+    body: t("wizard.leaveBody"),
+    carries: (pathname) => pathname === GUIDED_PATH && snapshot === handedOver.current,
+  });
 
   /** Creates the exam and starts its build. Resolves with the new plan's id, or null when it did not start. */
   async function create(): Promise<string | null> {
@@ -120,7 +156,11 @@ export function useExamDraft({
       target,
       language,
     };
-    navigate("/plans/new/guided", { state: answers });
+    // This page's own entry keeps the answers, so going back to it from the guided flow finds them there.
+    handedOver.current = snapshot;
+    void Promise.resolve(
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: { wizard: answers, step: 1 } }),
+    ).then(() => navigate(GUIDED_PATH, { state: answers }));
   }
 
   return {

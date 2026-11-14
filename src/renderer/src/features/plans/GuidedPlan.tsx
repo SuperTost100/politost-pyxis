@@ -5,10 +5,10 @@ import { useEffect, useRef, useState } from "react";
 import type { RequestInput, RequestOutput } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { RadioRows } from "../../components/Controls";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
+import { StudyLayout } from "../study/StudyBar";
 import { Stepper } from "../../components/Stepper";
 import { Tag } from "../../components/Tag";
 import { errorProvider, useEngineError } from "../../lib/engineError";
@@ -28,7 +28,8 @@ import {
   type DraftNode,
 } from "./draftTree";
 import { isWizardSeed, seedSessions, type WizardSeed } from "./wizardSeed";
-import { useMenuLock } from "../../app/menu-state";
+import { usePlace } from "../../app/usePlace";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import "./PlanPage.css";
 import "./PlanWizard.css";
 import "./GuidedPlan.css";
@@ -61,8 +62,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  // The outline built here is not saved until the plan is created.
-  useMenuLock(true);
+  const back = usePlace({});
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<string[]>([]);
   const [language, setLanguage] = useState(seed.language);
@@ -82,6 +82,11 @@ function Guided({ seed }: { seed: WizardSeed }) {
   }
   const failure = error ? describeEngineError(error, errorEngine) : null;
   const [creating, setCreating] = useState(false);
+  // The outline built here is not saved until the plan is created, so leaving with an answer given asks first.
+  const { release } = useLeaveGuard({
+    dirty: step > 0 || picked.length > 0 || language !== seed.language || style !== "decide",
+    body: t("wizard.guided.leaveBody"),
+  });
   // Each model call is tagged so a result that arrives after Back is ignored.
   const call = useRef(0);
   const cancel = useRef<(() => void) | null>(null);
@@ -181,6 +186,8 @@ function Guided({ seed }: { seed: WizardSeed }) {
         draftTopics: topics,
       });
       await client.invalidateQueries({ queryKey: ["plans"] });
+      // The plan exists now: moving on to its build is not leaving the answers behind.
+      release();
       navigate(`/plans/new?build=${result.planId}`, { replace: true });
     } catch (err) {
       failWith(err);
@@ -188,13 +195,11 @@ function Guided({ seed }: { seed: WizardSeed }) {
     }
   }
 
-  function back() {
+  function previous() {
     call.current += 1;
     cancel.current?.();
     setError(null);
-    if (step === 0)
-      navigate("/plans/new", { state: { wizard: seed, step: 1 } });
-    else if (step === 1) setStep(0);
+    if (step === 1) setStep(0);
     else if (step === 2) setStep(0);
     else if (step === 3) setStep(2);
     else if (step === 4) setStep(3);
@@ -203,6 +208,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
 
   const loading = step === 1 || step === 4;
   const shown = [0, 0, 1, 2, 2, 3][step]!;
+  const stepIds = ["period", "modules", "style", "topics"] as const;
   const primary = loading ? null : step === 0 ? (
     <Button
       type="primary"
@@ -232,22 +238,29 @@ function Guided({ seed }: { seed: WizardSeed }) {
   );
 
   return (
-    <FocusLayout
-      title={t("wizard.guided.title")}
+    <StudyLayout
+      back={back}
+      title={t("wizard.title")}
+      // The line keeps what the page used to be called: this flow builds an exam without material.
+      subtitle={`${t("wizard.guided.title")} · ${t("wizard.stepLine", {
+        n: shown + 1,
+        total: stepIds.length,
+        name: t(`wizard.guided.steps.${stepIds[shown]}`),
+      })}`}
       progress={(step + 1) / 6}
       secondary={
-        <Button type="text" shape="round" onClick={back}>
-          {t("nav.back")}
-        </Button>
+        step > 0 ? (
+          <Button type="text" shape="round" onClick={previous}>
+            {t("nav.previousStep")}
+          </Button>
+        ) : null
       }
       primary={primary}
     >
       <div className="px-plan-wizard">
         <Stepper
           current={shown}
-          steps={(["period", "modules", "style", "topics"] as const).map((id) =>
-            t(`wizard.guided.steps.${id}`),
-          )}
+          steps={stepIds.map((id) => t(`wizard.guided.steps.${id}`))}
         />
         <h2 className="title-1 px-wizard-question" id="guided-question">
           {t(`wizard.guided.questions.${step}`)}
@@ -405,7 +418,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
           </>
         ) : null}
       </div>
-    </FocusLayout>
+    </StudyLayout>
   );
 }
 

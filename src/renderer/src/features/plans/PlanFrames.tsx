@@ -4,10 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
 import { Button, Input, Progress } from "antd";
 import "./PlanWizard.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
@@ -16,9 +15,10 @@ import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
-import { useMenuLock } from "../../app/menu-state";
+import { readTrail, skipSpentForms, watchTrail } from "../../app/history";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
+import { StudyLayout } from "../study/StudyBar";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
 import { takePlanText } from "./openedPlan";
@@ -35,42 +35,42 @@ export function WizardFrame() {
 
 function Wizard() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { scale } = useGradeScale();
+  const back = usePlace({});
   // Back from the guided flow returns here with the answers already given.
   const location = useLocation();
-  const back =
+  const carried =
     (location.state as {
       wizard?: unknown;
       step?: number;
       books?: boolean;
     } | null) ?? {};
-  const seed = isWizardSeed(back.wizard) ? back.wizard : null;
-  const [step, setStep] = useState(seed ? Math.min(back.step ?? 1, 1) : 0);
+  const seed = isWizardSeed(carried.wizard) ? carried.wizard : null;
+  const [step, setStep] = useState(seed ? Math.min(carried.step ?? 1, 1) : 0);
   // "Start from a free PoliTost book" opens the wizard with the books already showing.
-  const draft = useExamDraft({ seed, books: back.books === true, scale });
+  const draft = useExamDraft({ seed, books: carried.books === true, scale });
   const [, setParams] = useSearchParams();
-  // Answers given so far live only on this page, so the menu leaves it alone until it has some.
-  useMenuLock(
-    step > 0 || draft.starting || draft.title.trim() !== "" || draft.picked.length > 0,
-  );
   // An error belongs to the step and the attempt that raised it.
   function goTo(next: number) {
     draft.setStartError(null);
     setStep(next);
   }
   return (
-    <FocusLayout
+    <StudyLayout
+      back={back}
       title={t("wizard.title")}
+      subtitle={t("wizard.stepLine", {
+        n: step + 1,
+        total: 2,
+        name: t(step === 0 ? "wizard.examStep" : "wizard.materialLine"),
+      })}
       progress={(step + 1) / 2}
       secondary={
-        <Button
-          type="text"
-          shape="round"
-          onClick={() => (step === 0 ? navigate("/exams") : goTo(0))}
-        >
-          {t("nav.back")}
-        </Button>
+        step > 0 ? (
+          <Button type="text" shape="round" onClick={() => goTo(0)}>
+            {t("nav.previousStep")}
+          </Button>
+        ) : null
       }
       primary={
         step === 0 ? (
@@ -86,7 +86,8 @@ function Wizard() {
         ) : (
           <MaterialPrimary
             draft={draft}
-            onCreated={(planId) => setParams({ build: planId })}
+            // The wait takes the form's place in the history: once the exam exists, nothing leads back to the form.
+            onCreated={(planId) => setParams({ build: planId }, { replace: true })}
           />
         )
       }
@@ -112,9 +113,12 @@ function Wizard() {
           <MaterialStep draft={draft} />
         )}
       </div>
-    </FocusLayout>
+    </StudyLayout>
   );
 }
+
+/** The new exam's form and the guided flow, not its build wait. */
+const isNewExamForm = (path: string) => path.startsWith("/plans/new") && !path.includes("build=");
 
 const SETTLED = ["succeeded", "failed", "cancelled", "interrupted"];
 
@@ -125,6 +129,13 @@ const SETTLED = ["succeeded", "failed", "cancelled", "interrupted"];
 function BuildScreen({ planId }: { planId: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // Leaving never stops the build, which goes on in Attività, so this page asks nothing.
+  const back = usePlace({});
+  // The guided flow replaced its own page with this one, and the new exam's form is behind that: once the exam exists
+  // they are not a place to go back to, so the way back leads to where the new exam was started.
+  const { key } = useLocation();
+  const trail = useSyncExternalStore(watchTrail, readTrail);
+  useEffect(() => skipSpentForms(key, isNewExamForm), [key, trail]);
   const build = useQuery({
     queryKey: ["plan-build", planId],
     queryFn: () => invoke("plans.build", { planId }),
@@ -160,6 +171,7 @@ function BuildScreen({ planId }: { planId: string }) {
   useEffect(() => {
     if (settledSteps) void refetchPlan.current();
   }, [settledSteps]);
+  const missing = !build.isPending && !build.data;
   const name = plan.data?.title ?? "";
   const topics = plan.data?.topics ?? [];
   const retryAction = {
@@ -178,9 +190,14 @@ function BuildScreen({ planId }: { planId: string }) {
       : t("wizard.waitTitle");
   const percent = Math.round((build.data?.progress ?? 0) * 100);
   return (
-    <FocusLayout
-      title={t("wizard.waitTitle")}
-      headerRight={
+    <StudyLayout
+      // A build that is gone offers its own way to Esami below, so the bar draws none beside it.
+      back={missing ? null : back}
+      title={t("wizard.title")}
+      subtitle={name || undefined}
+      // Cancelling stops the build; leaving does not. It sits in the page, in full words, so the bar's top-right corner
+      // never reads as a way to close the screen.
+      secondary={
         busy ? (
           <Button
             type="text"
@@ -189,7 +206,7 @@ function BuildScreen({ planId }: { planId: string }) {
               if (build.data) void invoke("jobs.cancel", { jobId: build.data.jobId });
             }}
           >
-            {t("wizard.cancel")}
+            {t("wizard.cancelBuild")}
           </Button>
         ) : null
       }
@@ -201,7 +218,8 @@ function BuildScreen({ planId }: { planId: string }) {
             size="large"
             // The one thing left to do once the exam is ready, so Enter opens it.
             autoFocus
-            onClick={() => navigate(`/plans/${planId}`)}
+            // The wait is not a page to come back to: the exam takes its place, and its way back leads to where the wizard was opened.
+            onClick={() => navigate(`/plans/${planId}`, { replace: true })}
           >
             {t("wizard.open")}
           </Button>
@@ -261,7 +279,7 @@ function BuildScreen({ planId }: { planId: string }) {
             </section>
           ) : null}
         </div>
-        {!build.isPending && !build.data ? (
+        {missing ? (
           <div className="px-build-notice">
             <ErrorState action={{ label: t("nav.toExams"), onClick: () => navigate("/exams") }}>
               {t("wizard.buildMissing")}
@@ -288,7 +306,7 @@ function BuildScreen({ planId }: { planId: string }) {
           </div>
         ) : null}
       </div>
-    </FocusLayout>
+    </StudyLayout>
   );
 }
 

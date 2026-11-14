@@ -14,6 +14,7 @@
     "library": "Libreria",
     "close": "Chiudi",
     "back": "Indietro",
+    "previousStep": "Passo precedente",
     "toExams": "Torna a Esami"
   },
   "places": {
@@ -2007,6 +2008,7 @@
     "noMaterialLink": "Non ho materiale",
     "guided": {
       "title": "Esame senza materiale",
+      "leaveBody": "Le risposte che hai dato andranno perse.",
       "steps": {
         "period": "Periodo",
         "modules": "Moduli",
@@ -2052,6 +2054,7 @@
     "stepDiagnostic": "Preparo il test diagnostico",
     "stepReady": "Esame pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire l’esame.",
+    "cancelBuild": "Annulla la preparazione",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
     "continueBuild": "Riprendi la creazione dell'esame",
     "continue": "Continua",
@@ -2097,6 +2100,9 @@
     "ready": "{{title}} è pronto",
     "subjectHelp": "Raggruppa gli esami della stessa materia.",
     "examStep": "L'esame",
+    "stepLine": "Passo {{n}} di {{total}} · {{name}}",
+    "materialLine": "Il materiale",
+    "leaveBody": "Quello che hai scritto o scelto per questo esame andrà perso.",
     "daysLeft_one": "tra {{count}} giorno",
     "daysLeft_other": "tra {{count}} giorni",
     "daysLeftToday": "oggi",

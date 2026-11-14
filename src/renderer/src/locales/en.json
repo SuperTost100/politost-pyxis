@@ -14,6 +14,7 @@
     "library": "Library",
     "close": "Close",
     "back": "Back",
+    "previousStep": "Previous step",
     "toExams": "Back to Exams"
   },
   "places": {
@@ -2007,6 +2008,7 @@
     "noMaterialLink": "I have no material",
     "guided": {
       "title": "Exam without material",
+      "leaveBody": "The answers you gave will be lost.",
       "steps": {
         "period": "Period",
         "modules": "Modules",
@@ -2052,6 +2054,7 @@
     "stepDiagnostic": "Preparing the diagnostic test",
     "stepReady": "Exam ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
+    "cancelBuild": "Cancel the preparation",
     "cancelled": "Build cancelled. Retry to resume from the saved step.",
     "continueBuild": "Continue exam build",
     "continue": "Continue",
@@ -2097,6 +2100,9 @@
     "ready": "{{title}} is ready",
     "subjectHelp": "Groups the exams of the same subject.",
     "examStep": "The exam",
+    "stepLine": "Step {{n}} of {{total}} · {{name}}",
+    "materialLine": "The material",
+    "leaveBody": "What you wrote or chose for this exam will be lost.",
     "daysLeft_one": "in {{count}} day",
     "daysLeft_other": "in {{count}} days",
     "daysLeftToday": "today",

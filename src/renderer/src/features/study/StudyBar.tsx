@@ -126,23 +126,28 @@ export function StudyBar({
 /**
  * A study screen that is not a reading: the bar over one centred column, with an optional row of actions at its end.
  * `wide` gives the content the whole width under the bar, for a screen that lays out its own columns, such as the quiz.
+ * `stage` gives it one bordered surface that fills the window, for a tool's canvas, such as the whiteboard.
  */
 export function StudyLayout({
   children,
   primary,
   secondary,
   wide,
+  stage,
   ...bar
 }: Parameters<typeof StudyBar>[0] & {
   children: ReactNode;
   primary?: ReactNode;
   secondary?: ReactNode;
   wide?: boolean;
+  stage?: boolean;
 }) {
   return (
     <div className="focus">
       <StudyBar {...bar} />
-      {wide ? (
+      {stage ? (
+        <main className="focus-main is-stage">{children}</main>
+      ) : wide ? (
         <main className="focus-main is-wide">{children}</main>
       ) : (
         <main className="focus-main">
