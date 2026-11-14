@@ -327,23 +327,31 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     const strokes = () => page.evaluate(() => JSON.parse(sessionStorage.getItem("pyxis-board") ?? "[]").length);
     expect(await strokes()).toBe(1);
     const drawingBody = "Il disegno dopo l'ultimo salvataggio andrà perso.";
-    const closeBoard = page.getByRole("button", { name: "Chiudi", exact: true });
-    await closeBoard.click();
+    // The board's way back leads to the chat it was opened from, and every way out asks the same question once.
+    const backBoard = page.getByRole("button", { name: "Torna a Chiedi" });
+    await backBoard.click();
     question = await expectLeaveQuestion(page, drawingBody);
     await question.getByRole("button", { name: "Resta qui" }).click();
-    await expect(question).toHaveCount(0);
-    await expect(closeBoard).toBeFocused();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(backBoard).toBeFocused();
     expect(await strokes()).toBe(1);
-    // The board has no back control yet, only its X, so the menu's Indietro is greyed here and its X is the way out.
+    // Vai > Indietro runs the same control: it is on here, and it asks the same question rather than leaving.
     await expect
       .poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.enabled))
-      .toBe(false);
-    await closeBoard.click();
+      .toBe(true);
+    await pick(app, "back");
     question = await expectLeaveQuestion(page, drawingBody);
     await page.keyboard.press("Escape");
-    await expect(question).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
-    await closeBoard.click();
+    // So does a row of the sidebar.
+    await sections.getByRole("link", { name: /^Esami$/ }).click();
+    question = await expectLeaveQuestion(page, drawingBody);
+    await question.getByRole("button", { name: "Resta qui" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
+    expect(await strokes()).toBe(1);
+    await backBoard.click();
     question = await expectLeaveQuestion(page, drawingBody);
     await question.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);

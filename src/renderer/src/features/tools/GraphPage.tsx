@@ -1,14 +1,15 @@
 import { Button, Input, InputNumber, Switch } from "antd";
-import { Plus } from "lucide-react";
+import { Copy, Download, Paperclip, Plus } from "lucide-react";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { toPng } from "html-to-image";
 import katex from "katex";
-import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { usePlace } from "../../app/usePlace";
 import { IconButton } from "../../components/IconButton";
 import { invoke } from "../../lib/ipc";
 import { draftKey, lastAskChat } from "../ask/attachments";
+import { BarTool, StudyLayout } from "../study/StudyBar";
 import {
   analyzeGraph,
   graphExpression,
@@ -43,6 +44,8 @@ const coordinate = (value: number) => String(Number(value.toPrecision(4)));
 export function GraphPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  // The chat the graph was opened from, which Attach returns to with the picture and the formulas.
+  const back = usePlace({});
   const nextKey = useRef(1);
   const [curves, setCurves] = useState([{ key: 0, source: "sin(x)/x" }]);
   const [extent, setExtent] = useState<GraphRange>([-8, 8]);
@@ -172,7 +175,7 @@ export function GraphPage() {
             .filter(Boolean)
             .join("\n\n"),
         );
-        navigate(chat ? `/ask/${chat}` : "/ask");
+        back?.go();
       } else {
         const saved = await window.pyxis.saveArtifact({
           filename: "graph.png",
@@ -239,8 +242,53 @@ export function GraphPage() {
       expression: expression(curve),
     }));
   const exact = (curve: (typeof plotted)[number]) => symbolic[curve.formula];
+  function copyFormulas() {
+    const valid = curves.filter((_, index) => parsed[index]);
+    void navigator.clipboard
+      .writeText(
+        valid.length === 1
+          ? valid[0]!.source
+          : curves
+              .map((curve, index) =>
+                parsed[index] ? `${STYLES[index]!.name}(x) = ${curve.source}` : "",
+              )
+              .filter(Boolean)
+              .join("\n"),
+      )
+      .then(() => setNotice(t("graph.copied", { count: valid.length })))
+      .catch(() => setNotice(t("graph.copyFailed")));
+  }
   return (
-    <CanvasLayout title={t("graph.title")} closeTo="/ask">
+    <StudyLayout
+      stage
+      back={back}
+      title={t("graph.title")}
+      subtitle={back?.name}
+      tools={
+        <>
+          <BarTool
+            icon={<Copy size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("graph.copy", { count: Math.max(1, formulas.length) })}
+            disabled={!formulas.length}
+            onClick={copyFormulas}
+          />
+          <BarTool
+            icon={<Download size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("graph.download")}
+            loading={busy}
+            disabled={!plotted.length}
+            onClick={() => void artifact(false)}
+          />
+          <BarTool
+            icon={<Paperclip size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("graph.attach")}
+            loading={busy}
+            disabled={!plotted.length}
+            onClick={() => void artifact(true)}
+          />
+        </>
+      }
+    >
       <div className="px-graph">
         <aside className="px-graph-controls">
           <p className="small" id="graph-functions">
@@ -388,49 +436,6 @@ export function GraphPage() {
             <Button shape="round" onClick={() => setRange(extent)}>
               {t("graph.reset")}
             </Button>
-            <Button
-              shape="round"
-              disabled={!formulas.length}
-              onClick={() => {
-                const valid = curves.filter((_, index) => parsed[index]);
-                void navigator.clipboard
-                  .writeText(
-                    valid.length === 1
-                      ? valid[0]!.source
-                      : curves
-                          .map((curve, index) =>
-                            parsed[index]
-                              ? `${STYLES[index]!.name}(x) = ${curve.source}`
-                              : "",
-                          )
-                          .filter(Boolean)
-                          .join("\n"),
-                  )
-                  .then(() =>
-                    setNotice(t("graph.copied", { count: valid.length })),
-                  )
-                  .catch(() => setNotice(t("graph.copyFailed")));
-              }}
-            >
-              {t("graph.copy", { count: Math.max(1, formulas.length) })}
-            </Button>
-            <Button
-              shape="round"
-              loading={busy}
-              disabled={!plotted.length}
-              onClick={() => void artifact(false)}
-            >
-              {t("graph.download")}
-            </Button>
-            <Button
-              type="primary"
-              shape="round"
-              loading={busy}
-              disabled={!plotted.length}
-              onClick={() => void artifact(true)}
-            >
-              {t("graph.attach")}
-            </Button>
           </div>
           {notice ? (
             <p role="status" className="small">
@@ -514,7 +519,7 @@ export function GraphPage() {
           ) : null}
         </div>
       </div>
-    </CanvasLayout>
+    </StudyLayout>
   );
 }
 /** The curve's line as drawn in the plots: its color and dash pattern. */

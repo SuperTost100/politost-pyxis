@@ -175,3 +175,14 @@ html[data-platform="darwin"] .px-studybar {
 .focus-main.is-wide {
   padding: 6px 0 28px;
 }
+
+/* A tool's canvas fills the window under the bar in one bordered surface, as the whiteboard and the graph do. */
+.focus-main.is-stage {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0 var(--space-4) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}

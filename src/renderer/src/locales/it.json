@@ -14,6 +14,7 @@
     "library": "Libreria",
     "close": "Chiudi",
     "back": "Indietro",
+    "previousStep": "Passo precedente",
     "toExams": "Torna a Esami"
   },
   "places": {
@@ -2003,7 +2004,7 @@
     "noMaterial": "Ancora niente materiale. Pyxis può costruire una bozza dalla conoscenza generale. Resta una bozza finché non aggiungi una fonte.",
     "noMaterialLink": "Non ho materiale",
     "guided": {
-      "title": "Esame senza materiale",
+      "leaveBody": "Le risposte che hai dato andranno perse.",
       "steps": {
         "period": "Periodo",
         "modules": "Moduli",
@@ -2094,6 +2095,9 @@
     "ready": "{{title}} è pronto",
     "subjectHelp": "Raggruppa gli esami della stessa materia.",
     "examStep": "L'esame",
+    "stepLine": "Passo {{n}} di {{total}} · {{name}}",
+    "materialLine": "Il materiale",
+    "leaveBody": "Il nome, la materia e la data che hai scritto andranno persi.",
     "daysLeft_one": "tra {{count}} giorno",
     "daysLeft_other": "tra {{count}} giorni",
     "daysLeftToday": "oggi",

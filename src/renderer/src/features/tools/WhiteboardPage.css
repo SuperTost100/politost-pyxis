@@ -1,6 +1,6 @@
 .px-whiteboard {
   position: relative;
-  height: calc(100vh - 112px);
+  flex: 1;
   min-height: 400px;
   overflow: hidden;
   border-radius: inherit;
@@ -39,11 +39,6 @@
   display: block;
   border-radius: 50%;
   background: currentColor;
-}
-.px-whiteboard-divider {
-  align-self: stretch;
-  border-left: 1px solid var(--border-control);
-  margin-inline: var(--space-1);
 }
 .px-whiteboard-notice {
   position: absolute;

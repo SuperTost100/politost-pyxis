@@ -1,8 +1,4 @@
-import { Button } from "antd";
-import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
 
 export function EmptyState(props: {
   /** Left out where the page's own title already says what is empty. */
@@ -19,100 +15,6 @@ export function EmptyState(props: {
         {props.action}
         {props.secondary}
       </div>
-    </div>
-  );
-}
-
-export function FocusLayout(props: {
-  title: string;
-  meta?: string;
-  children: ReactNode;
-  primary?: ReactNode;
-  secondary?: ReactNode;
-  progress?: number;
-  closable?: boolean;
-  /** Where the close button leads; the exams list when not given. */
-  onClose?: () => void;
-  headerRight?: ReactNode;
-}) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  return (
-    <div className="focus">
-      <header className="focus-bar">
-        {props.closable === false ? (
-          <span />
-        ) : (
-          <Button
-            shape="circle"
-            type="text"
-            aria-label={t("nav.close")}
-            icon={<X size={18} strokeWidth={1.75} />}
-            onClick={props.onClose ?? (() => navigate("/exams"))}
-          />
-        )}
-        <div>
-          <h1 className="title-3 focus-title">{props.title}</h1>
-          {props.meta ? (
-            <div className="meta focus-meta">{props.meta}</div>
-          ) : null}
-        </div>
-        <div className="focus-header-right">{props.headerRight}</div>
-        {props.progress != null ? (
-          <div
-            className="focus-progress"
-            role="progressbar"
-            aria-label={props.title}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(props.progress * 100)}
-            style={{ width: `${Math.round(props.progress * 100)}%` }}
-          />
-        ) : null}
-      </header>
-      <main className="focus-main">
-        <div className="column">
-          {props.children}
-          <div className="focus-actions-bar">
-            <span>{props.secondary}</span>
-            <span>{props.primary}</span>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-export function CanvasLayout(props: {
-  title: string;
-  /** A line under the title, such as what the page belongs to. */
-  meta?: ReactNode;
-  children: ReactNode;
-  closeTo?: string;
-}) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  return (
-    <div className="canvas">
-      <header className="canvas-bar">
-        <Button
-          shape="circle"
-          type="text"
-          aria-label={t("nav.close")}
-          icon={<X size={18} strokeWidth={1.75} />}
-          onClick={() => navigate(props.closeTo ?? "/ask")}
-        />
-        {props.meta ? (
-          <div>
-            <h1 className="title-3 focus-title">{props.title}</h1>
-            <div className="meta focus-meta">{props.meta}</div>
-          </div>
-        ) : (
-          <h1 className="title-3 focus-title">{props.title}</h1>
-        )}
-        <span />
-      </header>
-      <main className="canvas-stage">{props.children}</main>
     </div>
   );
 }

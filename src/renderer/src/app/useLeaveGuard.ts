@@ -14,22 +14,25 @@ import { useAsksBeforeLeaving } from "./menu-state";
  *
  * `dirty` is read when a move starts; a function suits work kept in a ref. Call `release()` before a move that follows a
  * save or a delete, so that move goes without asking. One page at a time holds the guard: the router keeps one blocker.
- * A dialog that holds typed work asks through `useConfirm` instead, since closing it is not a move.
+ * A dialog that holds typed work asks through `useConfirm` instead, since closing it is not a move. A move to a page that
+ * takes the work along (`carries`, given the page's pathname) goes without asking.
  */
 export function useLeaveGuard({
   dirty,
   body,
   onLeave,
+  carries,
 }: {
   dirty: boolean | (() => boolean);
   /** What would be lost, in a sentence. */
   body: string;
   onLeave?: () => void;
+  carries?: (pathname: string) => boolean;
 }): { release: () => void } {
   const { t } = useTranslation();
   const confirm = useConfirm();
-  const latest = useRef({ dirty, body, onLeave });
-  latest.current = { dirty, body, onLeave };
+  const latest = useRef({ dirty, body, onLeave, carries });
+  latest.current = { dirty, body, onLeave, carries };
   // The menu lets its commands through with text in a field: this guard asks before any of them drops it.
   useAsksBeforeLeaving();
   const released = useRef(false);
@@ -40,6 +43,7 @@ export function useLeaveGuard({
   }, [key]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => {
     if (released.current || currentLocation.pathname === nextLocation.pathname) return false;
+    if (latest.current.carries?.(nextLocation.pathname)) return false;
     const held = latest.current.dirty;
     return typeof held === "function" ? held() : held;
   });

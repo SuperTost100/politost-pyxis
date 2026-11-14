@@ -1,7 +1,7 @@
 .px-graph {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
-  min-height: calc(100vh - 100px);
+  flex: 1;
 }
 .px-graph-controls {
   display: flex;

@@ -90,9 +90,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         expect(await strokes(page)).toBe(0);
         await page.keyboard.press("Control+Shift+z");
         expect(await strokes(page)).toBe(1);
-        await page
-          .getByRole("button", { name: /Close|Chiudi/, exact: true })
-          .click();
+        await page.getByRole("button", { name: /^(Back to|Torna a) / }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await page
           .getByRole("button", { name: /Stay here|Resta qui/ })
@@ -122,9 +120,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         ).toBeEnabled();
         await expectNoAxeViolations(page);
         await saveShot(page, `m15-whiteboard-${language}-${theme}.png`);
-        await page
-          .getByRole("button", { name: /Close|Chiudi/, exact: true })
-          .click();
+        await page.getByRole("button", { name: /^(Back to|Torna a) / }).click();
         await expect(page).toHaveURL(/#\/ask$/);
         rmSync(output);
       }
@@ -140,7 +136,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     await expect(
       page.getByRole("button", { name: "Salva", exact: true }),
     ).toBeEnabled();
-    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+    await page.getByRole("button", { name: "Torna a Chiedi" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
@@ -234,7 +230,7 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     await expect(save).toBeDisabled();
     await page.keyboard.press("Control+z");
     expect(await strokes(page)).toBe(2);
-    await page.getByRole("button", { name: "Chiudi", exact: true }).click();
+    await page.getByRole("button", { name: "Torna a Chiedi" }).click();
     await page.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {

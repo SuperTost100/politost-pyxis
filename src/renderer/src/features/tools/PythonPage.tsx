@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Popconfirm } from "antd";
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { FocusLayout } from "../../app/layouts/TaskLayouts";
+import { BookmarkPlus, Play } from "lucide-react";
+import { usePlace } from "../../app/usePlace";
 import { IconButton } from "../../components/IconButton";
 import { pythonMaxChars } from "../../components/pythonRun";
 import { invoke } from "../../lib/ipc";
 import { useJobs } from "../jobs/queries";
+import { BarTool, StudyLayout } from "../study/StudyBar";
 import {
   addSnippet,
   readCode,
@@ -21,6 +23,8 @@ const INITIAL_CODE = "print(1 + 1)";
 
 export function PythonPage() {
   const { t, i18n } = useTranslation();
+  // The chat or page the editor was opened from, which the bar names under the title.
+  const back = usePlace({});
   const mb = (bytes: number) =>
     new Intl.NumberFormat(i18n.language, {
       minimumFractionDigits: 1,
@@ -112,7 +116,29 @@ export function PythonPage() {
     }
   }
   return (
-    <FocusLayout title={t("python.title")}>
+    <StudyLayout
+      back={back}
+      title={t("python.title")}
+      subtitle={back?.name}
+      tools={
+        <>
+          <BarTool
+            icon={<Play size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("python.run")}
+            aria-keyshortcuts="Control+Enter Meta+Enter"
+            loading={busy}
+            disabled={!ready || tooLong}
+            onClick={() => void run()}
+          />
+          <BarTool
+            icon={<BookmarkPlus size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("python.saveSnippet")}
+            disabled={!code.trim() || tooLong}
+            onClick={() => keepSnippets(addSnippet(snippets, code))}
+          />
+        </>
+      }
+    >
       <section className="px-python" onKeyDown={onKeyDown}>
         {!ready && runtime.data ? (
           <div className="px-python-consent" role="group">
@@ -175,22 +201,6 @@ export function PythonPage() {
           />
         </div>
         <div className="px-python-actions">
-          <Button
-            type="primary"
-            shape="round"
-            loading={busy}
-            disabled={!ready || tooLong}
-            onClick={() => void run()}
-          >
-            {t("python.run")}
-          </Button>
-          <Button
-            shape="round"
-            disabled={!code.trim() || tooLong}
-            onClick={() => keepSnippets(addSnippet(snippets, code))}
-          >
-            {t("python.saveSnippet")}
-          </Button>
           {busy ? (
             <span className="meta" role="status">
               {t("python.running")}
@@ -270,6 +280,6 @@ export function PythonPage() {
           />
         ))}
       </section>
-    </FocusLayout>
+    </StudyLayout>
   );
 }

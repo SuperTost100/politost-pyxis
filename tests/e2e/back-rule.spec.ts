@@ -99,6 +99,39 @@ const first = (path: string) => async ({ page }: Walk) => {
   await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
 };
 
+/**
+ * Leaves the new exam wizard when the walk is on it, as a student would: its way back, and "Esci senza salvare" when
+ * answers were typed (the guided exam hands them back to it).
+ */
+async function leaveWizard(page: Page) {
+  if (!/#\/plans\/new$/.test(page.url())) return;
+  await backControl(page).click();
+  const question = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+  const exams = page.getByRole("heading", { level: 1, name: "Esami" });
+  await expect(question.or(exams)).toBeVisible();
+  if (await question.isVisible()) await question.getByRole("button", { name: "Esci senza salvare" }).click();
+  await expect(exams).toBeVisible();
+}
+
+/** The new exam's first step, from Esami. */
+async function openWizard(page: Page) {
+  await leaveWizard(page);
+  await start(page, "#/exams", "Esami");
+  await page.getByRole("button", { name: "Nuovo esame" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Nuovo esame" })).toBeVisible();
+}
+
+/** A chat with a tool opened from its composer, as a student does. */
+const fromChat = (tool: string, heading: string) => async ({ page }: Walk) => {
+  await leaveWizard(page);
+  await page.evaluate(() => {
+    location.hash = "#/ask/c-bayes";
+  });
+  await expect(page.locator(".ask-bar-name")).toHaveText("Teorema di Bayes");
+  await page.locator(".px-composer").getByRole("button", { name: tool, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
+};
+
 const rows: Row[] = [
   {
     page: "/plans/:planId/lesson/:topicId",
@@ -500,6 +533,64 @@ const rows: Row[] = [
     leadsTo: `${exam}/lesson/t-serie`,
     focus: "Successioni e serie di funzioni",
   },
+  {
+    page: "/plans/new",
+    how: "the new exam from Esami",
+    reach: async ({ page }) => openWizard(page),
+    label: "Esami",
+    lit: null,
+    leadsTo: "/exams",
+    focus: "Nuovo esame",
+    study: true,
+  },
+  {
+    page: "/plans/new/guided",
+    how: "the guided exam, from the new exam's material step",
+    reach: async ({ page }) => {
+      await openWizard(page);
+      await page.getByRole("textbox", { name: "Nome dell'esame", exact: true }).fill("Fisica generale");
+      await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+      // The material step with nothing picked leads to the guided flow, which asks its own questions.
+      for (let i = 0; i < 2; i++) await page.getByRole("button", { name: "Continua", exact: true }).click();
+      await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
+    },
+    label: "Nuovo esame",
+    lit: null,
+    leadsTo: "/plans/new",
+    focus: "Continua",
+    study: true,
+  },
+  {
+    page: "/tools/whiteboard",
+    how: "the whiteboard from a chat",
+    reach: fromChat("Lavagna", "Lavagna"),
+    label: "Teorema di Bayes",
+    lit: null,
+    leadsTo: "/ask/c-bayes",
+    focus: "Lavagna",
+    study: true,
+  },
+  {
+    page: "/tools/graph",
+    how: "the graph from a chat",
+    reach: fromChat("Grafico", "Grafico"),
+    label: "Teorema di Bayes",
+    lit: null,
+    leadsTo: "/ask/c-bayes",
+    focus: "Grafico",
+    study: true,
+  },
+  {
+    page: "/tools/python",
+    how: "Python with nothing behind it",
+    reach: direct("/tools/python"),
+    label: "Chiedi",
+    lit: null,
+    parent: true,
+    leadsTo: "/ask",
+    focus: /^(Buongiorno|Buon pomeriggio|Buonasera)/,
+    study: true,
+  },
   ...[
     ["/plans/:planId/intro", `${exam}/intro`],
     ["/plans/:planId/practice/:topicId", `${exam}/practice/t-fun`],
@@ -815,14 +906,7 @@ test("every page with a back control has a row", () => {
     .map((match) => match[1]!)
     .filter((path) => path !== "/")
     .map((path) => (path.startsWith("/") || path === "*" ? path : `/${path}`));
-  // Pages whose back control comes later, and pages that have none: sidebar sections, redirects, the gallery.
-  const later = new Set([
-    "/plans/new",
-    "/plans/new/guided",
-    "/tools/whiteboard",
-    "/tools/graph",
-    "/tools/python",
-  ]);
+  // Pages that have no back control: sidebar sections, redirects, the gallery.
   const none = new Set([
     "/exams",
     "/exams/library",
@@ -844,5 +928,5 @@ test("every page with a back control has a row", () => {
     "/plans/:planId/review/questions",
     "/plans/:planId/exam/:attemptId",
   ]);
-  expect(routes.filter((route) => !walked.has(route) && !later.has(route) && !none.has(route) && !shared.has(route))).toEqual([]);
+  expect(routes.filter((route) => !walked.has(route) && !none.has(route) && !shared.has(route))).toEqual([]);
 });

@@ -1,13 +1,13 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
-import { CanvasLayout } from "../../app/layouts/TaskLayouts";
+import { Download, Paperclip } from "lucide-react";
 import { useAppState } from "../../app/app-state";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
+import { usePlace } from "../../app/usePlace";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
-import { lastAskChat } from "../ask/attachments";
+import { BarTool, StudyLayout } from "../study/StudyBar";
 import { strokeHits } from "./strokes";
 import "./WhiteboardPage.css";
 
@@ -17,7 +17,8 @@ type Stroke = { width: number; points: Point[] };
 export function WhiteboardPage() {
   const { t } = useTranslation();
   const { appearance } = useAppState();
-  const navigate = useNavigate();
+  // The chat the board was opened from, which Attach returns to with the picture.
+  const back = usePlace({});
   const [tool, setTool] = useState<"pen" | "erase">("pen");
   const [strokes, setStrokes] = useState<Stroke[]>(() => {
     try {
@@ -170,8 +171,7 @@ export function WhiteboardPage() {
       if (attach) {
         sessionStorage.setItem("pyxis-board-png", url);
         // Back to the chat the student came from, where their draft and picked files wait.
-        const chat = lastAskChat(sessionStorage);
-        navigate(chat ? `/ask/${chat}` : "/ask");
+        back?.go();
       }
     } catch {
       setError(true);
@@ -181,7 +181,29 @@ export function WhiteboardPage() {
   }
 
   return (
-    <CanvasLayout title={t("tools.whiteboardTitle")} closeTo="/ask">
+    <StudyLayout
+      stage
+      back={back}
+      title={t("tools.whiteboardTitle")}
+      subtitle={back?.name}
+      tools={
+        <>
+          <BarTool
+            icon={<Download size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("tools.save")}
+            loading={busy}
+            disabled={busy || strokes.length === 0}
+            onClick={() => void keep(false)}
+          />
+          <BarTool
+            icon={<Paperclip size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("tools.attach")}
+            disabled={busy || strokes.length === 0}
+            onClick={() => void keep(true)}
+          />
+        </>
+      }
+    >
       <div className="px-whiteboard">
         <div
           className="px-whiteboard-toolbar"
@@ -244,23 +266,6 @@ export function WhiteboardPage() {
           >
             {t("tools.clear")}
           </Button>
-          <span className="px-whiteboard-divider" aria-hidden="true" />
-          <Button
-            shape="round"
-            loading={busy}
-            disabled={busy || strokes.length === 0}
-            onClick={() => void keep(false)}
-          >
-            {t("tools.save")}
-          </Button>
-          <Button
-            type="primary"
-            shape="round"
-            disabled={busy || strokes.length === 0}
-            onClick={() => void keep(true)}
-          >
-            {t("tools.attach")}
-          </Button>
         </div>
         <canvas
           ref={board}
@@ -320,6 +325,6 @@ export function WhiteboardPage() {
           </div>
         ) : null}
       </div>
-    </CanvasLayout>
+    </StudyLayout>
   );
 }

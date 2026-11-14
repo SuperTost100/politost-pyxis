@@ -116,6 +116,7 @@ const routes = [
   ["gallery-dialog-form", "/dev/gallery"],
   ["gallery-dialog-info", "/dev/gallery"],
   ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
+  ["wizard-leave", "/plans/new"],
   ["plan", "/plans/audit-plan"],
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
@@ -4468,6 +4469,14 @@ async function openState(page: Page, name: string) {
         page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
       ).toBeVisible();
       break;
+    case "wizard-leave":
+      // A name typed on the first step is lost by leaving, so the bar's way back asks first.
+      await openWizard(page, 1);
+      await page.getByRole("button", { name: /^(Torna a|Back to) / }).click();
+      await expect(
+        page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
+      ).toBeVisible();
+      break;
     case "whiteboard-leave": {
       const canvas = page.locator(".px-whiteboard canvas");
       const box = (await canvas.boundingBox())!;
@@ -4477,7 +4486,7 @@ async function openState(page: Page, name: string) {
       await page.mouse.up();
       // The page keeps the stroke; the next states open on an empty board.
       await page.evaluate(() => sessionStorage.removeItem("pyxis-board"));
-      await page.getByRole("button", { name: both("Chiudi", "Close") }).click();
+      await page.getByRole("button", { name: /^(Torna a|Back to) / }).click();
       await expect(
         page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
       ).toBeVisible();
@@ -4546,7 +4555,7 @@ async function focusRingChecks(page: Page, name: string) {
   const cases: { field: string; frame: string }[] = [];
   if (name === "ask-new")
     cases.push({ field: ".px-composer-field", frame: ".px-composer" });
-  if (name.startsWith("wizard-") && (await page.locator("#plan-date").isVisible()))
+  if (/^wizard-\d$/.test(name) && (await page.locator("#plan-date").isVisible()))
     cases.push({ field: "#plan-date", frame: ".ant-picker-focused" });
   const outline = (frame: string) =>
     page
@@ -4672,7 +4681,7 @@ async function keyboardCheck(page: Page, name: string) {
     ).toBe(true);
     await expect(code).toHaveCSS("outline-style", "solid");
   }
-  if (name === "ask-new" || name.startsWith("wizard-")) await focusRingChecks(page, name);
+  if (name === "ask-new" || /^wizard-\d$/.test(name)) await focusRingChecks(page, name);
   if (name === "quiz") {
     const first = page.locator("button[aria-keyshortcuts='1']");
     const second = page.locator("button[aria-keyshortcuts='2']");
@@ -4932,7 +4941,7 @@ test("M14 every application route in both languages, themes and supported widths
               }, route);
               await page.reload();
               await expect(page.locator("h1:visible").first()).toBeVisible();
-              if (name.startsWith("wizard-"))
+              if (/^wizard-\d$/.test(name))
                 await openWizard(page, Number(name.split("-")[1]));
               if (name === "library-import") {
                 await page
