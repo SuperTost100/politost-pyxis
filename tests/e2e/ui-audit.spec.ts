@@ -3335,7 +3335,7 @@ async function openState(page: Page, name: string) {
         .getByRole("button", { name: /^(Personalizza|Customize)$/ })
         .click();
       await page
-        .getByRole("button", { name: /^(Una pagina|One page)$/ })
+        .getByRole("radio", { name: /^(Una pagina|One page)$/ })
         .click();
       await expect(page.getByRole("spinbutton")).toBeVisible();
       break;
