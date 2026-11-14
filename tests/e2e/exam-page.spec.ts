@@ -206,7 +206,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await openExam(page);
 
     // Flashcard: review this exam's due cards, or browse its cards. Each way back returns to the exam.
-    const aside = page.getByRole("complementary", { name: "Flashcards, questions to redo, maps and material" });
+    const aside = page.getByRole("complementary", { name: "Flashcards, questions to redo, open gaps, maps and material" });
     await expect(aside.getByRole("heading", { name: /^Flashcards/ })).toContainText("1 in all");
     await aside.getByRole("button", { name: "Review the flashcard" }).click();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
