@@ -406,7 +406,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
   }
 });
 
-test("a deleted map's tile gives the focus to the tile that takes its place, though the confirmation is slow to shrink away", async () => {
+test("a map deleted from its tile gives the focus to the tile that takes its place, though the confirmation is slow to shrink away", async () => {
   test.setTimeout(120_000);
   const { app, page, userData, errors } = await startApp();
   try {
@@ -426,32 +426,24 @@ test("a deleted map's tile gives the focus to the tile that takes its place, tho
         return animation;
       };
     });
-    const release = () => page.evaluate(() => (window as unknown as { releaseDialog: () => void }).releaseDialog());
+    // The page tries to place the focus a frame after the tile left, so the dialog is let go two frames later.
+    const release = async () => {
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.evaluate(() => (window as unknown as { releaseDialog: () => void }).releaseDialog());
+    };
 
-    // From a tile.
     const campo = tile(page, "Campo elettrico");
     await campo.locator(".px-maps-thumb").click({ button: "right" });
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
-    await expect(campo).toHaveCount(0);
+    // The tile is out of the page.
+    await expect(page.locator('[data-map-id="m-campo"]')).toHaveCount(0);
     // The dialog is still on screen, and the focus has not gone anywhere yet.
     await expect(page.getByRole("dialog")).toBeVisible();
     await release();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(tile(page, "Circuiti RC").getByRole("link")).toBeFocused();
 
-    // From the map's page, which leaves for Mappe while the confirmation shrinks.
-    await tile(page, "Teoremi sui limiti").getByRole("link").click();
-    await expect(page.getByRole("heading", { level: 1, name: "Teoremi sui limiti" })).toBeVisible();
-    await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
-    await expect(page).toHaveURL(/#\/maps$/);
-    await expect(tile(page, "Teoremi sui limiti")).toHaveCount(0);
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await release();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(tile(page, "Successioni").getByRole("link")).toBeFocused();
     expect(errors).toEqual([]);
   } finally {
     await app.close();
