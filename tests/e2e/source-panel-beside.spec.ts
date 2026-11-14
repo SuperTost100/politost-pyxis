@@ -89,6 +89,12 @@ test("the source panel leaves the Library, the chat, a lesson and the exam's mat
             }, route);
             await page.reload();
             await expect(page.locator("h1:visible, .ask-bar-name").first()).toBeVisible();
+            // The page places the focus itself as its data arrives: a lesson that is still being planned shows its
+            // working block, which takes the focus, and a part that arrives puts it on its title a frame later. A panel
+            // opened before that loses the focus to the page, and Escape then belongs to the page. Open it once the
+            // page has its text and has stopped moving.
+            if (route.includes("/lesson/")) await expect(page.getByRole("heading", { name: "La dinamica" })).toBeVisible();
+            await atRest(page.locator("main"));
             await open();
             await atRest(panel);
             const label = where(route);
@@ -105,8 +111,13 @@ test("the source panel leaves the Library, the chat, a lesson and the exam's mat
               for (const height of rows) expect(height, `${label}: a file's row is not a tall column`).toBeLessThan(220);
             }
             await saveShot(page, `panel-beside-${route.split("/").filter(Boolean).join("-")}-${language}-${text}-${width}.png`);
+            // Escape closes the panel only from inside it, so a failure says where the focus was.
+            const focus = await page.evaluate(() => {
+              const at = document.activeElement;
+              return `${at?.tagName.toLowerCase()}${at?.className ? `.${String(at.className).split(" ")[0]}` : ""} "${(at?.textContent ?? "").trim().slice(0, 30)}", ${at?.closest("aside.source-panel") ? "inside" : "outside"} the panel`;
+            });
             await page.keyboard.press("Escape");
-            await expect(panel).toHaveCount(0);
+            await expect(panel, `${label}: Escape closes the panel; focus was in ${focus}`).toHaveCount(0);
           }
         }
       }
