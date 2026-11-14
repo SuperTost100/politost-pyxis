@@ -221,7 +221,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // An exam with no flashcards yet keeps its filter and shows an empty result, not another exam's cards.
     await expect(page.getByRole("heading", { level: 1, name: "Fisica I" })).toBeVisible();
     await page.evaluate(() => {
-      location.hash = "/exams/cards?exam=p-chi";
+      location.hash = "/flashcards/all?exam=p-chi";
     });
     await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Chimica generale");
     await expect(page.getByText("No flashcard matches.")).toBeVisible();

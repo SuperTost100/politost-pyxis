@@ -33,7 +33,7 @@ Changing retention or scheduler parameters changes future scheduling. Keep persi
 
 ## Card browser
 
-The Flashcards tab (`/exams/cards`) reads the same stored state. A card with no review is new, one whose latest review has `dueAt` at or before now is due, and any other card shows its next review date. Editing a card changes only its front and back, so its `card_reviews` rows and schedule stay as they were. Deleting a card Pyxis wrote sets `removed`, and Restore clears it. A hand-made card is deleted for good, so the browser asks first. Cards of an archived topic are not listed.
+The all-flashcards page (`/flashcards/all`) reads the same stored state. A card with no review is new, one whose latest review has `dueAt` at or before now is due, and any other card shows its next review date. Editing a card changes only its front and back, so its `card_reviews` rows and schedule stay as they were. Deleting a card Pyxis wrote sets `removed`, and Restore clears it. A hand-made card is deleted for good, so the browser asks first. Cards of an archived topic are not listed.
 
 A card with 6 or more FSRS lapses is a leech: the browser tags it "Often forgotten", the Show filter lists leeches, and the card offers Rewrite (the edit dialog), Open source (its passage) and Suspend.
 

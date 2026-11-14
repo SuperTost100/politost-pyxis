@@ -446,7 +446,7 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     ).run(state, Date.now());
     db.close();
     await page.evaluate(() => {
-      location.hash = "#/exams/cards";
+      location.hash = "#/flashcards/all";
     });
     await page.reload();
     await expect(page.getByRole("status")).toHaveText("4 flashcards");

@@ -41,8 +41,15 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await expect(chem.getByRole("heading", { level: 3, name: "Senza esame" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Fisica 2" })).toContainText("1 flashcard · 1 da ripassare oggi");
 
+    // The head holds the browser and a new flashcard as secondary buttons, the day's review sits in the band under it.
+    const head = page.locator(".px-fc-head");
+    await expect(head.getByRole("button", { name: "Sfoglia tutte", exact: true })).toBeVisible();
+    await expect(head.getByRole("button", { name: "Nuova flashcard", exact: true })).toHaveClass(/ant-btn-default/);
+    const band = page.locator(".px-fc-band");
+    await expect(band).toContainText("Oggi ne hai 3 da ripassare, in 2 materie");
+
     // The daily review holds every subject's flashcards, though there is no exam, and closing it comes back here.
-    await page.getByRole("button", { name: "Ripassa le 3 di oggi", exact: true }).click();
+    await band.getByRole("button", { name: "Ripassa le 3 di oggi", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due$/);
     await expect(page.getByText("Numero atomico?", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /Gira/ }).click();
@@ -51,6 +58,7 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await page.getByRole("banner").getByRole("button", { name: "Torna a Flashcard", exact: true }).click();
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(page.getByRole("button", { name: "Ripassa le 2 di oggi", exact: true })).toBeVisible();
+    await expect(band).toContainText("Oggi ne hai 2 da ripassare, in 2 materie");
     await expect(chem).toContainText("2 flashcard · 1 da ripassare oggi");
 
     // Fisica 2's review is its own flashcards only.
