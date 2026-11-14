@@ -13,7 +13,7 @@ import {
   withAnswer,
   workingCopy,
   type PartData,
-} from "./partPage";
+} from "./partView";
 
 const part = (position: number, state: "unwritten" | "writing" | "written" | "failed", done = false) => ({
   position,
