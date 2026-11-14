@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MenuProps } from "antd";
 import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { topicTitle } from "@shared/book-text";
 import { spokenText } from "@shared/spoken-math";
@@ -529,6 +530,8 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
   const shownAt = useRef<string | null>(null);
   const leavingAnimation = useRef<Animation | null>(null);
   const overDialog = useRef(false);
+  // The dialog the panel was opened from, when it was, which holds the panel while it is open.
+  const dialogHost = useRef<HTMLDialogElement | null>(null);
   useEffect(() => {
     const open = (event: Event) => {
       const active = document.activeElement;
@@ -540,8 +543,19 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
       }
       counter.current += 1;
       shownAt.current = pathOf(window.location.hash);
-      // Opened from a dialog (a citation in "Crea flashcard"), it sits over that dialog, as what was opened last.
-      overDialog.current = active instanceof Element && active.closest(".ant-modal-wrap, .ant-drawer") !== null;
+      // Opened from a dialog (a citation in "Crea flashcard"): the dialog is in the top layer and the page behind it is
+      // inert, so the panel is drawn inside that dialog, over it, and goes with it. A drawer is covered by z-index.
+      if (!inside) {
+        const host = active instanceof Element ? active.closest<HTMLDialogElement>("dialog.px-dialog") : null;
+        dialogHost.current = host;
+        if (host) {
+          const withHost = () => {
+            if (dialogHost.current === host) shut();
+          };
+          host.addEventListener("close", withHost, { once: true });
+        }
+      }
+      overDialog.current = active instanceof Element && active.closest(".ant-drawer") !== null;
       // A panel on its way out comes back for the new source.
       leavingAnimation.current?.cancel();
       leavingAnimation.current = null;
@@ -648,14 +662,14 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
     : undefined;
   const view = useSourceView(opening, { titleId, onClose: close, onBack: goBack, menu: opening?.menu, openKey: opening?.key });
   if (!opening) return null;
-  return (
+  const sheet = (
     <aside
       ref={panel}
       className={["source-panel", leaving && "is-leaving", overDialog.current && "is-over-dialog"].filter(Boolean).join(" ")}
       aria-labelledby={titleId}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
-        if (menuTakesEscape(event.nativeEvent) || (event.target as HTMLElement).closest(".px-item-menu, .ant-modal")) return;
+        if (menuTakesEscape(event.nativeEvent) || (event.target as HTMLElement).closest(".px-item-menu")) return;
         event.preventDefault();
         close();
       }}
@@ -664,6 +678,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
       {view.body}
     </aside>
   );
+  return dialogHost.current?.isConnected ? createPortal(sheet, dialogHost.current) : sheet;
 }
 
 /** The page part of the address, without its query: a passage chosen on the same page does not count as leaving it. */

@@ -648,8 +648,7 @@
       "title": "Open a locked PDF",
       "label": "Password for {{title}}",
       "hint": "I use it once to read this file and don't save it. If the import stops before it finishes, I'll ask again.",
-      "submit": "Open",
-      "cancel": "Cancel",
+      "submit": "Open the PDF",
       "enter": "Enter password",
       "enterNamed": "Enter password for {{title}}"
     },
@@ -845,7 +844,6 @@
       "newSubjectTitle": "Move to a new subject",
       "newSubjectName": "Subject name",
       "newSubjectMove": "Move",
-      "cancel": "Cancel",
       "unsortedTitle": "To sort",
       "noAi": "You haven't connected an AI tool, so you choose the subject of these files.",
       "noAiLink": "Connect a tool",

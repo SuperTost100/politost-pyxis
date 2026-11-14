@@ -32,6 +32,8 @@ export type DialogAction = {
   disabled?: boolean;
   /** The work it started is running: the button shows the working mark and stays where it is. */
   working?: boolean;
+  /** Lets the page find the button to move the focus to it (`data-focus-key`), as after the last card is dropped. */
+  focusKey?: string;
 };
 
 /**
@@ -79,6 +81,7 @@ export function Dialog({
   onClose,
   width = "sm",
   busy = false,
+  closeOnOutside = true,
   origin,
   initialFocus,
   returnFocus,
@@ -98,6 +101,8 @@ export function Dialog({
   /** 460px for a confirmation, 560 for a form, 720 for a preview. */
   width?: DialogWidth;
   busy?: boolean;
+  /** False for a dialog whose work a stray click outside would throw away, as one waiting on an answer. */
+  closeOnOutside?: boolean;
   origin?: RefObject<HTMLElement | null>;
   initialFocus?: RefObject<HTMLElement | null>;
   returnFocus?: RefObject<HTMLElement | null>;
@@ -115,11 +120,13 @@ export function Dialog({
   const grownFrom = useRef<HTMLElement | null>(null);
   const before = useRef<HTMLElement | null>(null);
   const motion = useRef<Animation | null>(null);
+  // The Escape being delivered, and whether it got as far as this dialog's own key handler.
+  const escape = useRef<{ reached: boolean } | null>(null);
   // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
-  const latest = useRef({ open, onClose, onClosed, busy, initialFocus, returnFocus, origin });
-  latest.current = { open, onClose, onClosed, busy, initialFocus, returnFocus, origin };
+  const latest = useRef({ open, onClose, onClosed, busy, closeOnOutside, initialFocus, returnFocus, origin });
+  latest.current = { open, onClose, onClosed, busy, closeOnOutside, initialFocus, returnFocus, origin };
 
   useLayoutEffect(() => {
     const dialog = node.current;
@@ -203,6 +210,7 @@ export function Dialog({
       <Button
         variant={action.tone === "danger" ? "danger-solid" : (action.tone ?? "primary")}
         disabled={busy || answered || action.disabled}
+        focusKey={action.focusKey}
         onClick={() => void action.onClick()}
       >
         {action.working ? <Logo size={16} working decorative /> : null}
@@ -222,15 +230,21 @@ export function Dialog({
       tabIndex={-1}
       className={["px-dialog", `is-${width}`, className].filter(Boolean).join(" ")}
       onKeyDownCapture={(event) => {
-        // A select's list stops the Escape it closes on, so it never reaches `onKeyDown`, and the browser would close
-        // the dialog with it. Decided here, while the list still reads as open.
-        if (event.key === "Escape" && event.target instanceof Element && event.target.closest(ESCAPE_NOT_MINE))
-          event.preventDefault();
+        // A field or list inside may use an Escape and stop it there (a select closing its list, a rename field
+        // cancelling), so it never reaches `onKeyDown`, and the browser would close the dialog with it. Noted here, and
+        // `onCancel` lets that one go.
+        if (event.key !== "Escape") return;
+        const seen = { reached: false };
+        escape.current = seen;
+        setTimeout(() => {
+          if (escape.current === seen) escape.current = null;
+        });
       }}
       onKeyDown={(event) => {
         const dialog = node.current;
         if (!dialog) return;
         if (event.key === "Escape") {
+          if (escape.current) escape.current.reached = true;
           if (event.defaultPrevented) return;
           // Always: Chromium closes a modal dialog by itself on a second Escape, which would skip `busy` and the page's
           // own question before losing work.
@@ -252,8 +266,10 @@ export function Dialog({
         stops[next]!.focus();
       }}
       onCancel={(event) => {
-        // Any other request to close, such as the system's back gesture, goes the same way as Escape.
         event.preventDefault();
+        // An Escape that never reached `onKeyDown` was answered inside, and closes nothing here.
+        if (escape.current && !escape.current.reached) return;
+        // Any other request to close, such as the system's back gesture, goes the same way as Escape.
         close();
       }}
       onMouseDown={(event) => {
@@ -261,7 +277,7 @@ export function Dialog({
         if (!dialog || event.target !== dialog) return;
         // A click outside leaves the focus where it is, so a dialog that stays keeps it in its field.
         event.preventDefault();
-        if (outsideClickCloses(typedText(dialog), latest.current.busy)) close();
+        if (latest.current.closeOnOutside && outsideClickCloses(typedText(dialog), latest.current.busy)) close();
       }}
     >
       {/* Menus and lists opened inside are drawn inside, so they sit above it and are not inert behind it. */}

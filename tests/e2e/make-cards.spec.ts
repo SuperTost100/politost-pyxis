@@ -196,6 +196,8 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     await dialog.getByRole("button", { name: "Save 3 flashcards" }).click();
     await expect(page.getByText(/Saved 1 flashcard to Integrali\. 2 were already there\./)).toBeVisible();
     expect(rows(userData)).toHaveLength(3);
+    // The dialog covers the selection until it has shrunk away, and a selection under it gets no menu.
+    await expect(dialog).toHaveCount(0);
 
     // Cancel leaves nothing behind.
     await select();
@@ -268,6 +270,27 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
     // The two linked cards name their source; the concept with no passage has no chip.
     await expect(cards.nth(0).getByRole("button", { name: "Appunti di analisi" })).toBeVisible();
     await expect(cards.nth(2).getByRole("button")).toHaveCount(1);
+
+    // A source opened from the chip is drawn over the dialog, which is in the top layer: the student can reach it, and
+    // an Escape closes the panel and leaves the dialog.
+    const chip = cards.nth(0).getByRole("button", { name: "Appunti di analisi" });
+    await chip.click();
+    const panel = dialog.locator("aside.source-panel");
+    await expect(panel).toBeVisible();
+    await animationsSettled(page);
+    expect(
+      await panel.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return hit !== null && node.contains(hit);
+      }),
+      "the panel is on top of the dialog",
+    ).toBe(true);
+    await expect(panel.getByRole("heading", { name: "Appunti di analisi" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(chip).toBeFocused();
 
     // With the exit slowed down, the dropped card is out of Save and its count at once.
     await page.evaluate(() => {

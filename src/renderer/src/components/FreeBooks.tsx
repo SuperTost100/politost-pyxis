@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { Check } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
-import { useConfirm } from "./Dialog";
+import { Dialog, useConfirm } from "./Dialog";
 import { Notice } from "./Notice";
 import "./FreeBooks.css";
 import { formatBytes } from "@shared/format-bytes";
@@ -192,14 +192,8 @@ export function FreeBooks({
   }
 
   return (
-    <Modal
-      open={open}
-      width={600}
-      title={t("books.title")}
-      footer={null}
-      onCancel={onClose}
-      className="px-books"
-    >
+    // The list has no action of its own: each book has its own button, so the dialog only closes.
+    <Dialog open={open} width="md" title={t("books.title")} cancel={t("dialog.close")} onClose={onClose} className="px-books">
       <p className="small px-books-intro">{t("books.intro")}</p>
       {books.isPending ? (
         <p className="body" role="status">
@@ -254,6 +248,6 @@ export function FreeBooks({
           ))}
         </ul>
       ) : null}
-    </Modal>
+    </Dialog>
   );
 }

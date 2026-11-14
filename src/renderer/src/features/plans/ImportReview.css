@@ -7,8 +7,14 @@
   margin-top: var(--space-5);
 }
 .px-import-review h2,
+.px-import-review h3,
 .px-import-review p {
   margin: 0;
+}
+/* In the dialog the card is the frame: no extra top margin and no narrower column. */
+.px-dialog .px-import-review {
+  max-width: none;
+  margin-top: 0;
 }
 .px-import-counts {
   display: flex;

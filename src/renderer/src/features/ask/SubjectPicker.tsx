@@ -2,10 +2,11 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Popconfirm } from "antd";
+import { Button, Input, Popconfirm } from "antd";
 import { GripVertical } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialog } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./SubjectPicker.css";
@@ -50,7 +51,7 @@ function SubjectRow({ item, disabled, remove, rename }: { item: Subject; disable
 }
 
 /** The subject list as a dialog: add, reorder by drag or keyboard, remove. `value` is the subject in use, so removing it clears it. */
-export function SubjectManagerModal({ open, onClose, value, onChange }: { open: boolean; onClose: () => void; value: string; onChange: (value: string) => void }) {
+export function SubjectManagerDialog({ open, onClose, value, onChange }: { open: boolean; onClose: () => void; value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation();
   const client = useQueryClient();
   const subjects = useSubjects();
@@ -72,8 +73,12 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
     onSuccess: () => void refreshSubjects(client),
   });
   const rows = subjects.data ?? [];
+  useEffect(() => {
+    if (open) change.reset();
+  }, [open]);
+  // Nothing here is confirmed at the end: each row and the add field act at once, so the only button is the way out.
   return <>
-    <Modal open={open} onCancel={onClose} afterOpenChange={(next) => { if (next) change.reset(); }} title={t("ask.manageSubjects")} footer={null}>
+    <Dialog open={open} onClose={onClose} width="md" title={t("ask.manageSubjects")} cancel={t("dialog.close")}>
       <p className="small">{t("ask.subjectOrderHelp")}</p>
       {subjects.isError || change.isError ? <Notice tone="danger">{t((change.error as { messageKey?: unknown } | null)?.messageKey === "errors.subjectExists" ? "errors.subjectExists" : "ask.subjectSaveFailed")}</Notice> : null}
       <DndContext sensors={sensors} collisionDetection={closestCenter} accessibility={{ screenReaderInstructions: { draggable: t("ask.subjectDragInstructions") }, announcements: {
@@ -95,6 +100,6 @@ export function SubjectManagerModal({ open, onClose, value, onChange }: { open: 
         <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} aria-label={t("ask.newSubject")} placeholder={t("ask.newSubject")} disabled={change.isPending} />
         <Button htmlType="submit" type="primary" disabled={!name.trim() || change.isPending}>{t("ask.addSubject")}</Button>
       </form>
-    </Modal>
+    </Dialog>
   </>;
 }

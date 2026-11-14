@@ -648,8 +648,7 @@
       "title": "Apri un PDF protetto",
       "label": "Password di {{title}}",
       "hint": "La uso una volta sola per leggere questo file e non la salvo. Se l'importazione si ferma prima di finire, te la chiedo di nuovo.",
-      "submit": "Apri",
-      "cancel": "Annulla",
+      "submit": "Apri il PDF",
       "enter": "Inserisci password",
       "enterNamed": "Inserisci password di {{title}}"
     },
@@ -845,7 +844,6 @@
       "newSubjectTitle": "Sposta in una materia nuova",
       "newSubjectName": "Nome della materia",
       "newSubjectMove": "Sposta",
-      "cancel": "Annulla",
       "unsortedTitle": "Da sistemare",
       "noAi": "Non hai collegato uno strumento AI, quindi la materia di questi file la scegli tu.",
       "noAiLink": "Collega uno strumento",

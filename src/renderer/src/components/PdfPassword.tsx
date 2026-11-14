@@ -1,7 +1,8 @@
-import { Input, Modal } from "antd";
+import { Input } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../lib/ipc";
+import { Dialog } from "./Dialog";
 import { Notice } from "./Notice";
 import "./PdfPassword.css";
 
@@ -26,18 +27,13 @@ export function PdfPasswordDialog({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  function close() {
-    setPassword("");
-    setError(null);
-    onClose();
-  }
   async function submit() {
     if (!target || !password || busy) return;
     setBusy(true);
     setError(null);
     try {
       await invoke("sources.unlockPdf", { jobId: target.jobId, password });
-      close();
+      onClose();
     } catch (err) {
       setError(messageKeyOf(err));
     } finally {
@@ -45,20 +41,20 @@ export function PdfPasswordDialog({
     }
   }
   return (
-    <Modal
+    <Dialog
       open={target != null}
+      width="md"
       title={t("sources.pdfPassword.title")}
-      onCancel={() => {
-        if (!busy) close();
+      busy={busy}
+      onClose={onClose}
+      // The password is dropped once the dialog is gone, not while it shrinks away.
+      onClosed={() => {
+        setPassword("");
+        setError(null);
       }}
-      okText={t("sources.pdfPassword.submit")}
-      cancelText={t("sources.pdfPassword.cancel")}
-      onOk={() => void submit()}
-      okButtonProps={{ disabled: !password }}
-      confirmLoading={busy}
-      cancelButtonProps={{ disabled: busy }}
-      destroyOnHidden
-      className="px-pdf-password"
+      actions={[
+        { label: t("sources.pdfPassword.submit"), disabled: !password, working: busy, onClick: () => void submit() },
+      ]}
     >
       <form
         className="px-pdf-password-form"
@@ -72,7 +68,6 @@ export function PdfPasswordDialog({
         </label>
         <Input.Password
           id="pdf-password"
-          autoFocus
           autoComplete="off"
           value={password}
           disabled={busy}
@@ -81,6 +76,6 @@ export function PdfPasswordDialog({
         <p className="small ink-muted">{t("sources.pdfPassword.hint")}</p>
         {error ? <Notice tone="danger">{t(error)}</Notice> : null}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

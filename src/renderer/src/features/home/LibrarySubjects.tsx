@@ -1,9 +1,8 @@
-import { Modal } from "antd";
 import { useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { Button } from "../../components/Button";
+import { Dialog } from "../../components/Dialog";
 import { mixedReasons, unsortedReasons } from "./shelf";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
@@ -115,18 +114,13 @@ export function NewSubjectDialog({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fieldId = useId();
-  const close = () => {
-    setName("");
-    setError(null);
-    onClose();
-  };
   const save = async () => {
     if (!source || !name.trim()) return;
     setSaving(true);
     setError(null);
     try {
       await onMove(source, name.trim());
-      close();
+      onClose();
     } catch (err) {
       setError(messageKeyOf(err));
     } finally {
@@ -134,7 +128,21 @@ export function NewSubjectDialog({
     }
   };
   return (
-    <Modal open={source !== null} title={t("sources.sort.newSubjectTitle")} footer={null} destroyOnHidden onCancel={close}>
+    <Dialog
+      open={source !== null}
+      width="md"
+      title={t("sources.sort.newSubjectTitle")}
+      busy={saving}
+      onClose={onClose}
+      // The name and the error stay while it shrinks away.
+      onClosed={() => {
+        setName("");
+        setError(null);
+      }}
+      actions={[
+        { label: t("sources.sort.newSubjectMove"), disabled: !name.trim(), working: saving, onClick: () => void save() },
+      ]}
+    >
       <form
         className="px-library-newsubject-form"
         onSubmit={(event) => {
@@ -148,7 +156,6 @@ export function NewSubjectDialog({
         <input
           id={fieldId}
           className="px-ctl-field"
-          autoFocus
           autoComplete="off"
           maxLength={120}
           value={name}
@@ -156,16 +163,8 @@ export function NewSubjectDialog({
           onChange={(event) => setName(event.target.value)}
         />
         {error ? <p className="small px-library-flag">{t(error)}</p> : null}
-        <div className="px-library-newsubject-actions">
-          <Button variant="ghost" onClick={close}>
-            {t("sources.sort.cancel")}
-          </Button>
-          <Button type="submit" disabled={!name.trim() || saving}>
-            {t("sources.sort.newSubjectMove")}
-          </Button>
-        </div>
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 

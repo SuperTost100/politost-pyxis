@@ -204,7 +204,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await expect(page).toHaveURL(/#\/maps\?subject=/);
     const newMap = page.getByRole("dialog", { name: "Nuova mappa" });
     await expect(newMap).toBeVisible();
-    await expect(newMap.getByText("Probabilità", { exact: true }).first()).toBeVisible();
+    await expect(newMap.locator(".ant-select").first()).toContainText("Probabilità");
     await expect(newMap.getByText("Scegli una materia", { exact: true })).toHaveCount(0);
   } finally {
     await app.close();
