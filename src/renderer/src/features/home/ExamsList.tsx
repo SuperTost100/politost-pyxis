@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
 import { emptyRings, ExamRings, useRingText } from "../../components/ExamRings";
 import { Icon } from "../../components/Icon";
 import { LoadError } from "../../components/LoadError";
@@ -60,6 +61,28 @@ export function ExamsList({
   const active = all.filter((plan) => !plan.archived);
   const archived = all.filter((plan) => plan.archived);
   const ringOf = new Map(rings.data?.map((ring) => [ring.planId, ring]));
+  // With no exam at all, "Nuovo esame" is the empty page's own button and leaves the head, so it shows once.
+  const noExams = plans.isSuccess && all.length === 0;
+  const newExam = (
+    <Button icon="plus" onClick={() => navigate("/plans/new")}>
+      {t("exams.newPlan")}
+    </Button>
+  );
+  const archiveToggle = (
+    <Button
+      variant="ghost"
+      size="sm"
+      icon="archive"
+      className="px-exams-archbtn"
+      expanded={showArchived}
+      onClick={() => setShowArchived(!showArchived)}
+    >
+      <span className="px-exams-archlabel">
+        {t("exams.statusArchived")}
+        <Icon name="chevron-down" size={14} />
+      </span>
+    </Button>
+  );
 
   return (
     <div className="px-exams">
@@ -67,9 +90,7 @@ export function ExamsList({
         <h1 className="title-1">{t("doors.exams")}</h1>
         <span className="px-exams-actions">
           <MenuButton rightClick menu={menu} label={t("exams.more")} disabled={menuDisabled} />
-          <Button icon="plus" onClick={() => navigate("/plans/new")}>
-            {t("exams.newPlan")}
-          </Button>
+          {noExams ? null : newExam}
         </span>
       </MenuItemArea>
       {notice}
@@ -100,31 +121,15 @@ export function ExamsList({
                 <ExamRow key={plan.id} plan={plan} ring={ringOf.get(plan.id)} ringsPending={rings.isPending} />
               ))}
             </ul>
+          ) : archived.length > 0 ? (
+            // Everything is archived: the line says where the exams are, and its button opens them.
+            <EmptyState body={t("exams.allArchivedBody")} action={archiveToggle} />
           ) : (
-            <div className="px-exams-list px-exams-empty">
-              <h2 className="title-2">
-                {archived.length > 0 ? t("exams.allArchivedTitle") : t("exams.emptyTitle")}
-              </h2>
-              <p className="body ink-muted">
-                {archived.length > 0 ? t("exams.allArchivedBody") : t("exams.emptyBody")}
-              </p>
-            </div>
+            <EmptyState body={t("exams.emptyBody")} action={newExam} />
           )}
           {archived.length > 0 ? (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon="archive"
-                className="px-exams-archbtn"
-                expanded={showArchived}
-                onClick={() => setShowArchived(!showArchived)}
-              >
-                <span className="px-exams-archlabel">
-                  {t("exams.statusArchived")}
-                  <Icon name="chevron-down" size={14} />
-                </span>
-              </Button>
+              {active.length > 0 ? archiveToggle : null}
               {showArchived ? (
                 <Reveal>
                   <ul className="px-exams-list is-archived" aria-label={t("exams.archivedLabel")}>

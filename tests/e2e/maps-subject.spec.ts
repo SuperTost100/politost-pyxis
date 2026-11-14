@@ -66,18 +66,17 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await fromChiediToExams(page);
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
 
-    // With no subject at all, Mappe offers the ways to add material, and an exam.
+    // With no subject at all, Mappe offers one way to add material.
     await page.getByText("Mappe", { exact: true }).click();
     await expect(page).toHaveURL(/#\/maps$/);
-    await expect(page.getByRole("heading", { name: "Ancora nessuna mappa" })).toBeVisible();
-    await expect(page.getByText(/Collega la cartella dove studi/)).toBeVisible();
-    for (const action of ["Collega una cartella", "Apri la Libreria", "Nuovo esame"])
-      await expect(page.getByRole("button", { name: action })).toBeVisible();
+    await expect(page.getByText(/Prima serve il materiale: collega la cartella dove lo tieni/)).toBeVisible();
+    await expect(page.locator(".px-empty").getByRole("button")).toHaveText(["Collega una cartella"]);
     await saveShot(page, "maps-subject/empty-no-subjects.png");
     // The folder step of setup opens from here, and leaving it comes back to Mappe.
     await page.getByRole("button", { name: "Collega una cartella" }).click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=maps$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Come tieni il materiale per studiare?");
+    await expect(page.getByRole("button", { name: "Torna a Mappe" })).toBeVisible();
     await page.getByRole("button", { name: "Lo faccio dopo" }).click();
     await expect(page).toHaveURL(/#\/maps$/);
 
@@ -99,7 +98,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.reload();
 
     // With subjects and no maps, the empty state offers a new map and no longer asks for an exam first.
-    await expect(page.getByRole("heading", { name: "Ancora nessuna mappa" })).toBeVisible();
+    await expect(page.getByText(/Ne fai una da un argomento/)).toBeVisible();
     await expect(page.getByText(/Crea prima un esame/)).toHaveCount(0);
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });

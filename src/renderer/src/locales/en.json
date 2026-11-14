@@ -110,7 +110,7 @@
     "previous": "Previous step",
     "leaveBody": "Your profile changes will be lost.",
     "again": {
-      "done": "Save and back to Settings"
+      "done": "Save and back to {{place}}"
     },
     "done": "Start studying",
     "contentLanguage": "English",
@@ -398,12 +398,10 @@
     "more": "More for Exams",
     "plans": "Exams",
     "sources": "Sources",
-    "emptyTitle": "Create an exam to get started",
-    "emptyBody": "Add your course material and Pyxis builds a path of lessons and quizzes up to the exam. The date is optional.",
+    "emptyBody": "Your exams will appear here, each with a path of lessons and quizzes up to its date. All you need is the name and the course material.",
     "newPlan": "New exam",
     "importFileItem": "Import from a .pyxis file",
     "importLinkItem": "Import from a link",
-    "sourcesEmptyTitle": "No sources yet",
     "sourcesEmptyBody": "PDFs, notes and smartbooks stay here. You attach them to an exam.",
     "addSources": "Add sources",
     "days_one": "{{count}} day",
@@ -420,7 +418,6 @@
     "ringsFailed": "Pyxis couldn't work out the exam rings.",
     "listLabel": "Your exams",
     "archivedLabel": "Archived exams",
-    "allArchivedTitle": "All your exams are archived",
     "allArchivedBody": "You'll find them under Archived. To prepare a new one, choose New exam.",
     "due_one": "You have {{count}} flashcard to review today",
     "due_other": "You have {{count}} flashcards to review today",
@@ -920,7 +917,7 @@
       "addFiles": "Add files",
       "linkFolder": "Link a folder",
       "linkAnother": "Link another folder",
-      "emptyBody": "PDFs, notes, slides and books stay here, sorted by subject. Add a file or link the folder where you keep your material.",
+      "emptyBody": "Your files will appear here, by subject. Link the folder where you keep your material and Pyxis reads them from there.",
       "count_one": "{{count}} file",
       "count_other": "{{count}} files",
       "countNone": "no files",
@@ -1128,8 +1125,7 @@
     "restore": "Restore",
     "action": "{{action}}: {{card}}",
     "moreActions": "More actions",
-    "emptyTitle": "No flashcards yet",
-    "emptyBody": "Flashcards you write, and flashcards Pyxis builds for a topic, appear here grouped by subject.",
+    "emptyBody": "All your flashcards will appear here, to search and edit. You write them, or Pyxis makes them from your material.",
     "noMatch": "No flashcard matches.",
     "clear": "Clear filters",
     "loadFailed": "The flashcards could not be loaded.",
@@ -1165,7 +1161,6 @@
   },
   "mistakes": {
     "title": "Mistakes notebook",
-    "emptyTitle": "No mistakes to go over",
     "emptyBody": "Questions you miss in quizzes, simulations, the diagnostic test and lesson quick checks collect here. Each one leaves once you answer it right.",
     "loadFailed": "The notebook could not be loaded.",
     "retry": "Try again",
@@ -1309,11 +1304,9 @@
     "concepts_one": "{{count}} concept",
     "concepts_other": "{{count}} concepts",
     "general": "general knowledge",
-    "emptyTitle": "No maps yet",
-    "emptyBody": "A map lays out a subject, or one of its topics, as concepts and the links between them. Pick a subject and Pyxis builds the map from its material.",
-    "emptyNoSubjects": "Maps are built from a subject’s material. Link the folder you study from, add files in the Library, or create an exam.",
+    "emptyBody": "The maps you make will appear here, by subject. You make one from a topic.",
+    "emptyNoSubjects": "The maps you make will appear here, by subject. First you need material: link the folder where you keep it.",
     "linkFolder": "Link a folder",
-    "openLibrary": "Open the Library",
     "loadFailed": "The maps could not be loaded.",
     "retry": "Try again",
     "subject": "Subject",
@@ -3941,7 +3934,7 @@
         "stopTitle": "Stop Pyxis?"
       }
     },
-    "emptyBody": "Your flashcards will appear here, by subject: you write them, or Pyxis makes them from the material in your Library.",
+    "emptyBody": "Your flashcards will appear here, by subject. You write them, or Pyxis makes them from your material.",
     "loadFailed": "The flashcards didn't load."
   }
 }

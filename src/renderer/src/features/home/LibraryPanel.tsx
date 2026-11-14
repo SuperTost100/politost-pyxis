@@ -20,7 +20,7 @@ import { FILE_KINDS } from "@shared/file-kind";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
-import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
 import { OcrDataCard } from "../../components/OcrData";
@@ -139,6 +139,7 @@ export function LibraryPanel({
   // What a file's cover, row and menu do, read when one is used, so the covers can skip renders the shelf does not need.
   const rowHandlers = useRef<ShelfHandlers | null>(null);
   const addButton = useRef<HTMLDivElement>(null);
+  const linkButton = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const [pickedPassage, setPickedPassage] = useState<string | null>(null);
   const [searchPicked, setSearchPicked] = useState(false);
@@ -607,7 +608,7 @@ export function LibraryPanel({
   const typeFilter = useRef<GetRef<typeof Select>>(null);
   // A change that takes the last file out of the list (its kind, its title, its removal) removes the cover that held
   // the focus along with the shelves. The focus goes to the control that filters, because changing it is what brings
-  // the file back: the type when it is set, else the search field. With no file at all it goes to "Aggiungi file". A
+  // the file back: the type when it is set, else the search field. With no file at all it goes to the empty page's own button. A
   // focus that stayed on something else, such as the details panel, is left where it is.
   const hadFiles = useRef(false);
   useEffect(() => {
@@ -617,7 +618,7 @@ export function LibraryPanel({
     if (!nothingMatches && !emptied) return;
     const active = document.activeElement;
     if (active && active !== document.body) return;
-    if (emptied) addButton.current?.querySelector("button")?.focus();
+    if (emptied) (linkButton.current ?? addButton.current)?.querySelector("button")?.focus();
     else (filterType !== "all" ? typeFilter.current : document.getElementById("source-search"))?.focus();
   }, [nothingMatches, libraryEmpty, filterType, sources.length]);
   function openHit(hit: (typeof hits)[number]) {
@@ -1060,6 +1061,8 @@ export function LibraryPanel({
       }
     },
   };
+  /** Links a folder the way setup does, so Pyxis reads it again when its files change; the Cartella tab copies files once. */
+  const linkFolder = () => navigate("/onboarding?again=1&step=material&from=library");
   // The Library's menu, for the dots in the head and a right-click on it.
   const pageMenu: MenuProps = {
     items: [{ key: "books", label: t("books.open") }],
@@ -1081,15 +1084,18 @@ export function LibraryPanel({
           <h1 className="title-1">{t("nav.library")}</h1>
         </div>
         <div className="px-library-head-acts">
+          {/* While the Library is empty its own page links the first folder, so the head does not. */}
           {sortsSubjects ? (
             <LinkedFolders
               sources={list.data}
-              onLink={() => navigate("/onboarding?again=1&step=material&from=library")}
+              onLink={linkFolder}
+              elsewhere={empty ? () => linkButton.current : undefined}
             />
           ) : null}
           <MenuButton rightClick menu={pageMenu} label={t("sources.shelf.more")} />
+          {/* Adding loose files is not what the empty page offers, so it stays, as the second button. */}
           <div ref={addButton} className="px-library-add-button">
-            <PxButton icon="file-plus" onClick={() => setAddOpen(true)}>
+            <PxButton variant={empty ? "secondary" : "primary"} icon="file-plus" onClick={() => setAddOpen(true)}>
               {t("sources.shelf.addFiles")}
             </PxButton>
           </div>
@@ -1101,12 +1107,13 @@ export function LibraryPanel({
         </LoadError>
       ) : empty ? (
         <EmptyState
-          title={t("exams.sourcesEmptyTitle")}
           body={t("sources.shelf.emptyBody")}
           action={
-            <PxButton variant="secondary" onClick={() => setBooksOpen(true)}>
-              {t("books.open")}
-            </PxButton>
+            <div ref={linkButton}>
+              <PxButton icon="folder-plus" onClick={linkFolder}>
+                {t("sources.shelf.linkFolder")}
+              </PxButton>
+            </div>
           }
         />
       ) : list.isPending ? null : (

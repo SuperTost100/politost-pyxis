@@ -412,7 +412,7 @@ test("The focus stays in the page when the file that held it is renamed out of a
     await expect(page.getByRole("button", { name: "IMG_2077", exact: true })).toHaveCount(0);
     expect(await focused(page)).not.toBe("body");
 
-    // The Library's last file removed, with no subject left: the page shows its empty state, and the focus is on "Aggiungi file".
+    // The Library's last file removed, with no subject left: the page shows its empty state, and the focus is on its "Collega una cartella".
     await page.evaluate(async (keep) => {
       for (const source of await window.pyxis.invoke("sources.list", {}))
         if (source.id !== keep) await window.pyxis.invoke("sources.remove", { sourceId: source.id, confirmed: true });
@@ -421,8 +421,8 @@ test("The focus stays in the page when the file that held it is renamed out of a
     await page.reload();
     page.once("dialog", (dialog) => void dialog.accept());
     await choose("Esercizi misti", "Rimuovi");
-    await expect(page.getByText("Nessuna fonte ancora")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Aggiungi file" })).toBeFocused();
+    await expect(page.getByText(/^Qui compariranno i tuoi file/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
   } finally {
     await app.close();
     removeTestFolder(userData);

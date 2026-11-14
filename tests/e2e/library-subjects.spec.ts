@@ -90,7 +90,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     // chat's subject below needs the open sidebar, so the page gets that width whatever the window is.
     await page.setViewportSize({ width: 1280, height: 800 });
     // Before any file, the Library says what goes in it.
-    await expect(page.getByRole("heading", { name: "Nessuna fonte ancora" })).toBeVisible();
+    await expect(page.getByText(/^Qui compariranno i tuoi file/)).toBeVisible();
     await addFiles(app, page, [files.limits, files.notes]);
     // One lands in Analisi 1; the other in a subject made for it, whose card says it is new.
     await expect(cover(page, "Analisi 1", "Esercizi sui limiti")).toBeVisible({ timeout: 60000 });
@@ -1171,7 +1171,7 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const empty = page.getByRole("heading", { name: "Nessuna fonte ancora" });
+    const empty = page.getByText(/^Qui compariranno i tuoi file/);
     await expect(empty).toBeVisible();
     // The student can see both subjects, and act on them.
     for (const name of ["Analisi 1", "Fisica 2"]) await expect(shelf(page, name)).toContainText("nessun file");
