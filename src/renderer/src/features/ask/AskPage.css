@@ -41,6 +41,13 @@
   background: var(--bg);
 }
 
+.ask-bar-sep {
+  flex: none;
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+
 .ask-bar-title {
   flex: 1;
   min-width: 0;

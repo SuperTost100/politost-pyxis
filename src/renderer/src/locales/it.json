@@ -107,6 +107,8 @@
     "course": "Corso",
     "continue": "Continua",
     "skip": "Salta",
+    "previous": "Passo precedente",
+    "leaveBody": "Le modifiche al profilo andranno perse.",
     "again": {
       "done": "Salva e torna alle impostazioni"
     },
@@ -1826,6 +1828,7 @@
     }
   },
   "practice": {
+    "leaveBody": "La risposta che hai scritto andrà persa.",
     "title": "Esercizi del libro",
     "empty": "Questo argomento non ha esercizi nel libro.",
     "reveal": "Mostra la soluzione",
@@ -2325,7 +2328,6 @@
     "runSetup": "Rifai la configurazione",
     "runSetupHint": "Ripassa i passi con le risposte già inserite. Il profilo si salva alla fine.",
     "enginesTitle": "Strumenti AI",
-    "back": "Torna alle impostazioni",
     "saveFailed": "L’impostazione non è stata salvata. Riprova.",
     "readingSample": "La velocità descrive come cambia lo spostamento nel tempo. Leggi questo paragrafo mentre scegli la dimensione e la spaziatura più adatte a te.",
     "crashWhy": "Pyxis funziona sul tuo computer, quindi chi lo sviluppa non vede gli errori che capitano a te: questi rapporti sono l'unico modo per scoprirli e correggerli. Non rallentano Pyxis, e un rapporto parte solo dopo un errore.",

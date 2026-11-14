@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type Database from "better-sqlite3";
+import { partMarkdown, seedOutline } from "../../src/core/study/test-parts";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -33,9 +35,11 @@ type Row = {
   /** The accessible name of what has the focus afterwards. */
   focus: string | RegExp;
   /** The sidebar row lit while the page shows: the section it was opened from, or null for a page without the sidebar. */
-  lit: string | null;
+  lit: string | RegExp | null;
   /** Nothing is behind the page, so Back opens its parent in the page's place and Avanti has nothing to return to. */
   parent?: boolean;
+  /** Setup holds the menu's commands, so Indietro is greyed there while the page's own control works. */
+  menu?: "greyed";
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -58,6 +62,38 @@ const direct = (path: string) => async ({ page }: Walk) => {
   await page.evaluate((to) => {
     location.hash = to;
   }, `#${path}`);
+  await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+};
+
+
+/** Opens Settings from the profile menu, as a student does. */
+async function openSettings(page: Page) {
+  await page.getByRole("button", { name: /^Profilo/ }).click();
+  await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Profilo" })).toBeVisible();
+}
+
+/** Selects a paragraph of the lesson and asks the tutor about it, which opens a chat seeded with it. */
+async function askAboutSelection(page: Page) {
+  await page.evaluate(() => {
+    const paragraph = [...document.querySelectorAll("main p")].find((p) => p.textContent?.startsWith("Che cosa dice"))!;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  await page.getByRole("group", { name: "Chiedi al tutor" }).getByRole("button", { name: "Chiedi al tutor" }).click();
+  await expect(page.locator(".ask-bar-name")).toBeVisible();
+}
+
+/** As `direct`, from a window with no trail at all, so what an earlier row left on the trail cannot place the focus. */
+const first = (path: string) => async ({ page }: Walk) => {
+  await page.evaluate((to) => {
+    sessionStorage.removeItem("pyxis.trail");
+    location.hash = `#${to}`;
+  }, path);
+  await page.reload();
   await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
 };
 
@@ -109,6 +145,19 @@ const rows: Row[] = [
       await side(page).getByRole("button", { name: "Quaderno degli errori" }).click();
       await expect(page.getByRole("heading", { level: 1, name: "Quaderno degli errori" })).toBeVisible();
     }),
+    label: EXAM,
+    lit: "Esami",
+    leadsTo: exam,
+    focus: "Quaderno degli errori",
+  },
+  {
+    page: "/exams/mistakes",
+    how: "the Quaderno from the exam, reloaded",
+    reach: async (walk) => {
+      await rows.find((row) => row.page === "/exams/mistakes")!.reach(walk);
+      await walk.page.reload();
+      await expect(walk.page.getByRole("heading", { level: 1, name: "Quaderno degli errori" })).toBeVisible();
+    },
     label: EXAM,
     lit: "Esami",
     leadsTo: exam,
@@ -245,6 +294,193 @@ const rows: Row[] = [
     leadsTo: "/flashcards",
     focus: "Flashcard",
   },
+  {
+    page: "/plans/:planId/:view?",
+    how: "the exam from Esami",
+    reach: async ({ page }) => {
+      await start(page, "#/exams", "Esami");
+      await page.getByRole("link", { name: /Analisi Matematica 2/ }).click();
+      await expect(page.getByRole("heading", { level: 1, name: EXAM })).toBeVisible();
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    focus: /Analisi Matematica 2/,
+  },
+  {
+    page: "/plans/:planId/:view?",
+    how: "the exam from a chat, found in the search",
+    reach: async ({ page }) => {
+      await page.evaluate(() => {
+        location.hash = "#/ask/c-bayes";
+      });
+      await expect(page.locator(".ask-bar-name")).toHaveText("Teorema di Bayes");
+      await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+      const finder = page.getByRole("dialog", { name: "Cerca" });
+      await finder.getByRole("combobox", { name: "Cerca" }).fill("Analisi");
+      await finder.getByRole("group", { name: "Esami" }).getByRole("option", { name: /^Analisi Matematica 2/ }).click();
+      await expect(page.getByRole("heading", { level: 1, name: EXAM })).toBeVisible();
+    },
+    label: "Teorema di Bayes",
+    lit: /^Teorema di Bayes/,
+    leadsTo: "/ask/c-bayes",
+    // The finder's option is gone with the finder: the chat's heading, which names the section, takes the focus.
+    focus: "Chiedi",
+  },
+  {
+    page: "/plans/:planId/:view?",
+    how: "the exam from Esami, reloaded",
+    reach: async (walk) => {
+      await rows.find((row) => row.how === "the exam from Esami")!.reach(walk);
+      await walk.page.reload();
+      await expect(walk.page.getByRole("heading", { level: 1, name: EXAM })).toBeVisible();
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    focus: /Analisi Matematica 2/,
+  },
+  {
+    page: "/plans/:planId/:view?",
+    how: "the exam with nothing behind it",
+    reach: first(exam),
+    label: "Esami",
+    lit: "Esami",
+    parent: true,
+    leadsTo: "/exams",
+    focus: "Esami",
+  },
+  {
+    page: "/exams/get",
+    how: "Apri un esame condiviso, from Esami's menu",
+    reach: async ({ page }) => {
+      await start(page, "#/exams", "Esami");
+      await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
+      await page.getByRole("menuitem", { name: "Importa da un link" }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    // The menu closes as the page opens: the focus returns to its button when that was still the opener, else to the heading.
+    focus: /^(Esami|Altro su Esami)$/,
+  },
+  {
+    page: "/exams/get",
+    how: "Apri un esame condiviso, reloaded",
+    reach: async (walk) => {
+      await rows.find((row) => row.page === "/exams/get")!.reach(walk);
+      await walk.page.reload();
+      await expect(walk.page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    // The menu closes as the page opens: the focus returns to its button when that was still the opener, else to the heading.
+    focus: /^(Esami|Altro su Esami)$/,
+  },
+  {
+    page: "/exams/get",
+    how: "with nothing behind it",
+    reach: first("/exams/get"),
+    label: "Esami",
+    lit: "Esami",
+    parent: true,
+    leadsTo: "/exams",
+    focus: "Esami",
+  },
+  {
+    page: "/settings/:section?",
+    how: "Settings from the profile menu, over Esami",
+    reach: async ({ page }) => {
+      await start(page, "#/exams", "Esami");
+      await openSettings(page);
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    focus: "Esami",
+  },
+  {
+    page: "/settings/:section?",
+    how: "Settings, reloaded",
+    reach: async (walk) => {
+      await rows.find((row) => row.how === "Settings from the profile menu, over Esami")!.reach(walk);
+      await walk.page.reload();
+      await expect(walk.page.getByRole("heading", { level: 1, name: "Profilo" })).toBeVisible();
+    },
+    label: "Esami",
+    lit: "Esami",
+    leadsTo: "/exams",
+    focus: "Esami",
+  },
+  {
+    page: "/settings/:section?",
+    how: "a section of Settings with nothing behind it",
+    reach: async ({ page }) => {
+      await page.evaluate(() => {
+        location.hash = "#/settings/appearance";
+      });
+      await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+    },
+    label: "Chiedi",
+    lit: null,
+    parent: true,
+    leadsTo: "/ask",
+    // Chiedi's heading is the greeting, which follows the time of day.
+    focus: /^(Buongiorno|Buon pomeriggio|Buonasera)/,
+  },
+  {
+    page: "/onboarding",
+    how: "Rifai la configurazione, from Settings > Profile",
+    reach: async ({ page }) => {
+      await start(page, "#/settings/profile", "Profilo");
+      await page.getByRole("button", { name: "Rifai la configurazione" }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Ciao, come ti chiami e cosa studi?" })).toBeVisible();
+    },
+    label: "Impostazioni",
+    lit: null,
+    leadsTo: "/settings/profile",
+    focus: "Rifai la configurazione",
+    menu: "greyed",
+  },
+  {
+    page: "/onboarding",
+    how: "setup again, reloaded",
+    reach: async (walk) => {
+      await rows.find((row) => row.page === "/onboarding")!.reach(walk);
+      await walk.page.reload();
+      await expect(walk.page.getByRole("heading", { level: 1, name: "Ciao, come ti chiami e cosa studi?" })).toBeVisible();
+    },
+    label: "Impostazioni",
+    lit: null,
+    leadsTo: "/settings/profile",
+    focus: "Rifai la configurazione",
+    menu: "greyed",
+  },
+  {
+    page: "/onboarding",
+    how: "setup again with nothing behind it",
+    reach: first("/onboarding?again=1"),
+    label: "Impostazioni",
+    lit: null,
+    parent: true,
+    leadsTo: "/settings/profile",
+    focus: "Profilo",
+    menu: "greyed",
+  },
+  {
+    page: "/ask/:chatId?",
+    how: "a chat made from a lesson's selection",
+    reach: async ({ page }) => {
+      await start(page, `#${exam}/lesson/t-serie?part=1`, "Successioni e serie di funzioni");
+      await askAboutSelection(page);
+    },
+    label: "Successioni e serie di funzioni",
+    lit: /^Che cosa dice/,
+    leadsTo: `${exam}/lesson/t-serie`,
+    focus: "Successioni e serie di funzioni",
+  },
   ...[
     ["/plans/:planId/intro", `${exam}/intro`],
     ["/plans/:planId/practice/:topicId", `${exam}/practice/t-fun`],
@@ -301,6 +537,7 @@ function seed(db: DatabaseSync) {
   const link = db.prepare("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-fun',?)");
   for (const passage of passages) link.run(passage.id);
   db.exec(`INSERT INTO chats(id,title,created_at,updated_at) VALUES('c-bayes','Teorema di Bayes',1,1);
+    INSERT INTO messages(id,chat_id,role,body,created_at) VALUES('m-bayes','c-bayes','user','Come si usa il teorema di Bayes?',1);
     DELETE FROM feature_engines;
     INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES('o-fun','p-an2','t-fun','k','model',1);
     INSERT INTO lesson_parts(id,outline_id,position,kind,title,about,passage_ids_json,minutes) VALUES
@@ -328,6 +565,12 @@ function seed(db: DatabaseSync) {
       ],
     }),
   );
+  // A second topic whose only part is written, so a lesson has text to select.
+  seedOutline(db as unknown as Database.Database, {
+    planId: "p-an2",
+    topicId: "t-serie",
+    parts: [{ title: "Successioni di funzioni", minutes: 5, markdown: partMarkdown("Successioni di funzioni") }],
+  });
   const now = Date.now();
   db.prepare(
     "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,model_id,created_at) VALUES('quiz-fun','p-an2','t-fun','quiz',?,'claude','m',1)",
@@ -405,6 +648,13 @@ for (const row of rows) {
     await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
     // Vai > Indietro goes where the control goes, and Vai > Avanti returns to the page.
     await row.reach(walk);
+    if (row.menu === "greyed") {
+      // Setup holds the menu: Indietro is greyed, and the control on the page is the way out.
+      await expect
+        .poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.enabled))
+        .toBe(false);
+      return;
+    }
     // A page that opens a session of its own (Rifai gli errori) has a new address each time.
     const again = page.url();
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
@@ -415,6 +665,17 @@ for (const row of rows) {
     await expect(page).toHaveURL(again);
   });
 }
+
+test("a chat made from a lesson keeps its way back through a reload", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  await rows.find((row) => row.page === "/ask/:chatId?")!.reach(walk);
+  await page.reload();
+  await expect(page.locator(".ask-bar-name")).toBeVisible();
+  await expect(backControl(page)).toHaveText("Successioni e serie di funzioni");
+  await backControl(page).click();
+  await expect(page).toHaveURL(new RegExp(`#${exam}/lesson/t-serie`));
+});
 
 test("a part moved to inside the lesson is one entry: one press leaves the lesson", async () => {
   test.setTimeout(90_000);
@@ -525,17 +786,13 @@ test("every page with a back control has a row", () => {
     .map((match) => match[1]!)
     .filter((path) => path !== "/")
     .map((path) => (path.startsWith("/") || path === "*" ? path : `/${path}`));
-  // Pages whose back control comes later, and pages that have none: sidebar sections, redirects, setup, the gallery.
+  // Pages whose back control comes later, and pages that have none: sidebar sections, redirects, the gallery.
   const later = new Set([
     "/plans/new",
     "/plans/new/guided",
-    "/exams/get",
-    "/settings/:section?",
     "/tools/whiteboard",
     "/tools/graph",
     "/tools/python",
-    "/onboarding",
-    "/ask/:chatId?",
   ]);
   const none = new Set(["/exams", "/exams/library", "/maps", "/flashcards", "/exams/planner", "/settings/subjects", "/dev/gallery", "*"]);
   const walked = new Set(rows.map((row) => row.page));

@@ -45,8 +45,13 @@
 .px-settings-panes {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
-  gap: 36px;
+  gap: 0 36px;
   align-items: start;
+}
+/* The way back sits over both panes, as over any shell page's title. */
+.px-settings-panes > .px-back {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 .px-settings-nav {
   position: sticky;
@@ -138,10 +143,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-}
-.px-settings-back {
-  margin-bottom: var(--space-5);
-  margin-inline-start: calc(var(--space-3) * -1);
 }
 .px-settings-subpage {
   display: flex;

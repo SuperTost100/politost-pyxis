@@ -241,7 +241,7 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
     await expect(button(page, "Scegli le cartelle")).toBeVisible();
     await expect(page.getByText("Quando aggiungi un file, lo legge da solo.", { exact: false })).toBeVisible();
     await noAxeViolations(page);
-    await button(page, "Indietro").click();
+    await button(page, "Passo precedente").click();
     await expect(
       page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
     ).toBeFocused();
@@ -363,7 +363,7 @@ esac
     // The pick outlasts leaving the step, and opens Advanced by itself on the way back. Automatic puts every ready
     // engine back.
     await button(page, "Continua").click();
-    await button(page, "Indietro").click();
+    await button(page, "Passo precedente").click();
     await expect(page.getByRole("radio", { name: /^Scelgo io/ })).toBeChecked({
       timeout: 30000,
     });
@@ -454,7 +454,7 @@ test("First setup: a signed-out tool offers sign-in first, with none installed n
     await expect(
       page.getByRole("heading", { name: "Come tieni il materiale per studiare?" }),
     ).toBeVisible();
-    await button(page, "Indietro").click();
+    await button(page, "Passo precedente").click();
     await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
     rmSync(none.bin, { recursive: true, force: true });
   } finally {
@@ -624,6 +624,8 @@ test("First setup: interests added on the first step show in Settings > Profile 
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
+    // A first setup has no way back: it is not left from the top, only through its own steps.
+    await expect(button(page, /^Torna a /)).toHaveCount(0);
     await page.getByLabel("Nome", { exact: true }).fill("Ada");
     // The visible label names the field, optional note included, and focuses it. Enter adds an interest, and so does a
     // comma.
@@ -653,6 +655,20 @@ test("First setup: interests added on the first step show in Settings > Profile 
     // Setup again opens with them, and one removed there is gone from the profile.
     await button(page, "Rifai la configurazione").click();
     await expect(button(page, "Togli calcio")).toBeVisible();
+    await button(page, "Togli calcio").click();
+    // Leaving with the change asks first. Stay keeps the page and the change; leaving drops it and saves nothing.
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    await button(page, "Torna a Impostazioni").click();
+    await expect(leave).toContainText("Le modifiche al profilo andranno perse.");
+    await leave.getByRole("button", { name: "Resta qui" }).click();
+    await expect(leave).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/onboarding\?again=1$/);
+    await expect(button(page, "Togli calcio")).toHaveCount(0);
+    await button(page, "Torna a Impostazioni").click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/settings\/profile$/);
+    expect((await profile(page))?.interests).toEqual(["calcio", "chitarra"]);
+    await button(page, "Rifai la configurazione").click();
     await button(page, "Togli calcio").click();
     await button(page, "Continua").click();
     await button(page, "Lo faccio dopo").click();
@@ -725,7 +741,11 @@ test("Run setup again: Settings reopens all three steps filled in, without Skip,
     ).toBeVisible();
     await expect(currentStep(page)).toHaveText("Passo 1 di 3: 1 · Tu");
     await expect(button(page, "Salta")).toHaveCount(0);
-    await button(page, "Annulla").click();
+    // The page's own way back replaces the foot's Cancel: it names Impostazioni, where the student was.
+    await expect(button(page, "Annulla")).toHaveCount(0);
+    await expect(button(page, "Indietro")).toHaveCount(0);
+    await expect(button(page, "Torna a Impostazioni")).toHaveText("Impostazioni");
+    await button(page, "Torna a Impostazioni").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
     await button(page, "Rifai la configurazione").click();
 

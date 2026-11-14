@@ -38,7 +38,8 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { BackControl } from "../../components/BackControl";
-import { forgetPlaces } from "../../app/history";
+import { forgetPlaces, noteForArrival } from "../../app/history";
+import { pageOf } from "../../app/trail";
 import { usePlace } from "../../app/usePlace";
 import { Button } from "../../components/Button";
 import { Notice } from "../../components/Notice";
@@ -1395,18 +1396,20 @@ export function MapPage() {
     settle: () => moves.current.catch(() => undefined),
     exportView: writingJob ? undefined : () => void exportPng(),
     onRename: () => setRenaming(true),
-    // A stored map leaves from its tile on Mappe, which shrinks away where it was; a map still being written has none.
-    onDelete: writingJob
-      ? undefined
-      : () => {
-          forgetMap(activeId);
-          navigate(backTo, {
-            state: { remove: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } },
-          });
-        },
+    // A stored map leaves from its tile on Mappe, which shrinks away where it was: the way back leads there and hands
+    // the delete over. Opened from anywhere else, the map is deleted here and the way back follows.
+    onDelete:
+      writingJob || !back || pageOf(back.to) !== "/maps"
+        ? undefined
+        : () => {
+            forgetMap(activeId);
+            noteForArrival({ removeMap: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } });
+            back.go();
+          },
     onDeleted: () => {
       forgetMap(undefined);
-      navigate(backTo);
+      if (back) back.go();
+      else navigate(backTo);
     },
   });
   // A right-click on the empty canvas opens the same menu at the pointer.

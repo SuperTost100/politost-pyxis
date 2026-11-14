@@ -107,6 +107,8 @@
     "course": "Course",
     "continue": "Continue",
     "skip": "Skip",
+    "previous": "Previous step",
+    "leaveBody": "Your profile changes will be lost.",
     "again": {
       "done": "Save and back to Settings"
     },
@@ -1826,6 +1828,7 @@
     }
   },
   "practice": {
+    "leaveBody": "The answer you wrote will be lost.",
     "title": "Book exercises",
     "empty": "This topic has no exercises in the book.",
     "reveal": "Show the solution",
@@ -2325,7 +2328,6 @@
     "runSetup": "Redo the setup",
     "runSetupHint": "Go through the steps again with your answers filled in. Your profile is saved at the end.",
     "enginesTitle": "AI tools",
-    "back": "Back to settings",
     "saveFailed": "The setting could not be saved. Try again.",
     "readingSample": "Velocity tells us how displacement changes over time. Read this paragraph while choosing the size and spacing that suit you.",
     "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them. They don't slow Pyxis down, and a report goes only after an error.",

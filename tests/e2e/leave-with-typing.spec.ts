@@ -9,8 +9,9 @@ import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource } from "./seed";
 
 /**
- * Indietro and Avanti, from the menu, the mouse's side buttons and the swipe, must not drop an answer typed into a
- * page that keeps it only in the window: they stay refused, as every other menu command does, until the page saves.
+ * An answer typed into the exercises page lives only in the window, so every way out of the page asks "Uscire senza
+ * salvare?" before it drops it: the page's own back control and its foot's Indietro, the menu's Indietro, the mouse's
+ * side button and the swipe. Without an answer typed, they leave at once.
  */
 
 const practice = /#\/plans\/p-ex\/practice\/t-ex$/;
@@ -24,7 +25,7 @@ async function pick(app: ElectronApplication, id: string) {
   expect(found, `menu item ${id}`).toBe(true);
 }
 
-test("typing an answer on the exercises page keeps Indietro and Avanti from leaving it", async () => {
+test("an answer typed on the exercises page is asked about by every way out, and nothing asks without one", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-leave-typing-"));
   const app = await launchPyxis({ userData });
@@ -69,13 +70,41 @@ test("typing an answer on the exercises page keeps Indietro and Avanti from leav
       });
     const mouse = () =>
       page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true })));
-    for (const way of [() => pick(app, "back"), swipe, mouse]) {
+    const control = () => page.getByRole("button", { name: "Torna a Fisica 1" });
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    const ways = [
+      () => pick(app, "back"),
+      swipe,
+      mouse,
+      () => control().click(),
+      () => page.getByRole("button", { name: "Indietro", exact: true }).click(),
+    ];
+    for (const way of ways) {
       await way();
-      // A fixed wait on purpose: nothing signals that a command was ignored.
-      await page.waitForTimeout(400);
+      // The question comes with what would be lost, and staying keeps the page and the answer as they were.
+      await expect(leave).toBeVisible();
+      await expect(leave).toContainText("La risposta che hai scritto andrà persa.");
+      await leave.getByRole("button", { name: "Resta qui" }).click();
+      await expect(leave).toHaveCount(0);
       await expect(page).toHaveURL(practice);
       await expect(answer).toContainText("F = 6 N");
     }
+    // Leaving drops the answer and goes where the control said.
+    await control().click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-ex$/);
+
+    // With nothing typed, and with an answer wiped out again, nothing asks.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-ex/practice/t-ex";
+    });
+    await expect(answer).toBeVisible();
+    await answer.click();
+    await page.keyboard.type("x");
+    await page.keyboard.press("Backspace");
+    await control().click();
+    await expect(page).toHaveURL(/#\/plans\/p-ex$/);
+    await expect(leave).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);

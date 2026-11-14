@@ -32,12 +32,15 @@ export type BackTarget = {
  * - `parent`: the parent's own name or address when the page knows better than the table, such as the exam's title.
  * - `back: "none"`: the page has no way back of its own (a sidebar section, a running simulation).
  * - `beforeLeave`: saves what the page holds, and runs before the page is left this way; false keeps the student here.
+ * - `inner`: a level inside the page that its way back closes first (a Settings section in a narrow window). The control
+ *   then names the page it returns to, and `go` closes the level; the page's own way back shows again once it is shut.
  */
 export function usePlace(input: {
   name?: PlaceName | null;
   parent?: { to?: string; name?: PlaceName } | null;
   back?: "show" | "none";
   beforeLeave?: () => Promise<boolean>;
+  inner?: { name: PlaceName; go: () => void } | null;
 }): BackTarget | null {
   const { t } = useTranslation();
   const location = useLocation();
@@ -53,6 +56,11 @@ export function usePlace(input: {
   const target = input.back === "none" ? null : backTarget();
 
   function backTarget(): BackTarget | null {
+    if (input.inner) {
+      const { name: place, go } = input.inner;
+      const text = "key" in place ? t(place.key, place.values) : place.text;
+      return { name: text, label: t("places.backTo", { place: text }), to: location.pathname + location.search, busy: false, saves: false, go };
+    }
     const from = origin(trail, key);
     const table = placeOf(location.pathname + location.search).parent;
     const parent = input.parent === null || !table ? null : { ...table, ...input.parent };
