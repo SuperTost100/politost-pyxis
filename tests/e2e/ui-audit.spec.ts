@@ -4505,7 +4505,7 @@ async function openState(page: Page, name: string) {
       if (name === "build-running") await expect(cancel).toBeVisible();
       else await expect(cancel).toHaveCount(0);
       if (name === "build-done") await expect(page.getByRole("button", { name: both("Apri l'esame", "Open the exam") })).toBeVisible();
-      if (name === "build-cancelled") await expect(page.getByRole("button", { name: both("Riprova", "Retry") })).toBeVisible();
+      if (name === "build-cancelled") await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toBeVisible();
       break;
     }
     case "wizard-leave":
