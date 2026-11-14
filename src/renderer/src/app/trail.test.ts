@@ -11,6 +11,7 @@ import {
   parseTrail,
   type Navigation,
   type Trail,
+  wayBack,
 } from "./trail";
 
 /** Plays navigations from an empty trail, as the router reports them. */
@@ -135,6 +136,58 @@ describe("arrive", () => {
     expect(origin(trail, `k${TRAIL_CAP + 20}`)?.key).toBe(`k${TRAIL_CAP + 19}`);
     // The oldest kept visit's origin was dropped, so it goes back to its parent.
     expect(origin(trail, "k21")).toBeNull();
+  });
+});
+
+describe("arrive, review findings", () => {
+  it("keeps the visit it returns to beyond the cap, so a page opened from there comes from it", () => {
+    let trail = walk(pop("k0", 0, "/exams"));
+    for (let idx = 1; idx <= TRAIL_CAP + 20; idx++) trail = arrive(trail, push(`k${idx}`, idx, `/plans/p${idx}`));
+    // Back 210 entries, past the oldest kept, to an entry the trail no longer has.
+    trail = arrive(trail, pop("k5", 5, "/plans/p5"));
+    expect(currentVisit(trail)?.key).toBe("k5");
+    expect(trail.visits).toHaveLength(TRAIL_CAP);
+    trail = arrive(trail, push("child", 6, "/plans/p5/lesson/t"));
+    expect(origin(trail, "child")?.key).toBe("k5");
+  });
+
+  it("starts the trail over when a page from outside replaces the one showing", () => {
+    const trail = walk(
+      pop("a", 0, "/exams"),
+      push("b", 1, "/exams/get"),
+      { action: "REPLACE", key: "c", idx: 1, path: "/exams/get", via: "outside" },
+    );
+    expect(currentVisit(trail)).toMatchObject({ key: "c", from: null });
+    expect(origin(trail, "c")).toBeNull();
+  });
+
+  it("leads an entry ahead to the replacement of the page it was opened from", () => {
+    const trail = walk(
+      pop("a", 0, "/exams"),
+      push("b", 1, "/plans/p"),
+      push("c", 2, "/plans/p/lesson/t"),
+      pop("b", 1, "/plans/p"),
+      replace("b2", 1, "/plans/p"),
+      pop("c", 2, "/plans/p/lesson/t"),
+    );
+    expect(origin(trail, "c")?.key).toBe("b2");
+  });
+});
+
+describe("wayBack", () => {
+  const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/plans/p/lesson/t"));
+  it("moves back to the origin, or to the parent with nothing behind", () => {
+    expect(wayBack(trail, "c", true)).toEqual({ delta: -1 });
+    const first = walk(pop("x", 0, "/plans/p/lesson/t"));
+    expect(wayBack(first, "x", true)).toBe("parent");
+    expect(wayBack(first, "x", false)).toBeNull();
+  });
+
+  it("does nothing once the window shows another entry, as after a slow save the student did not wait for", () => {
+    const moved = arrive(trail, push("d", 3, "/maps"));
+    expect(wayBack(moved, "c", true)).toBeNull();
+    const back = arrive(trail, pop("b", 1, "/plans/p"));
+    expect(wayBack(back, "c", true)).toBeNull();
   });
 });
 

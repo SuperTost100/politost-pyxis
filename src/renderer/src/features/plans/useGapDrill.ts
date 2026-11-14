@@ -49,11 +49,14 @@ export function useGapDrill(planId: string) {
   const readyAttempt =
     drill && state === "succeeded" ? drillRead.data?.attemptId : null;
   // The drill opens only while this page is the one the router shows: the read can come back after the student has left.
+  // Until then it is kept, because the answer can also be no while the page has not yet been drawn at a newer entry of
+  // its own, such as the one without `?drill` that the request below leaves. A drill already built is ready at the
+  // first read, inside that moment. The effect asks again once the page has caught up.
   useEffect(() => {
-    if (!drill || !readyAttempt) return;
+    if (!drill || !readyAttempt || !stillHere()) return;
     setDrill(null);
-    if (stillHere()) navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
-  }, [drill, readyAttempt, planId]);
+    navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
+  }, [drill, readyAttempt, planId, stillHere]);
 
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
