@@ -2394,7 +2394,7 @@
   },
   {
     "name": "better-sqlite3",
-    "version": "13.1.1",
+    "version": "13.2.0",
     "license": "MIT",
     "texts": [
       {
@@ -3744,7 +3744,7 @@
   },
   {
     "name": "lucide-react",
-    "version": "1.72.0",
+    "version": "1.73.0",
     "license": "ISC",
     "texts": [
       {
