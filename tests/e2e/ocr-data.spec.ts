@@ -9,6 +9,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   truncateSync,
 } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
@@ -92,12 +93,19 @@ function expectPinned(userData: string) {
  * A local server standing in for GitHub, so no test downloads from it: it serves the pinned files the fixtures task
  * downloaded once (`npm run test:fixtures`) and records each request.
  */
-async function tessdataServer() {
+async function tessdataServer(kept?: string) {
   const dir = process.env.PYXIS_TESSDATA_DIR ?? join(process.cwd(), ".tmp", "tessdata-fast");
   const requests: string[] = [];
+  // Each request with when it came, on which connection, and how big the file it asks for is on the student's disk just
+  // then: the run of 2026-11-14 on Windows saw the repair of one file fetch it twice, and this tells a second download
+  // that started while the first was under way from one that started after it, and a retried request from a second job.
+  const trail: string[] = [];
+  const began = Date.now();
   const server = createHttpServer((request, response) => {
     const path = request.url ?? "";
     requests.push(path);
+    const onDisk = kept && path.endsWith(".traineddata") ? existsSync(join(kept, path)) && statSync(join(kept, path)).size : "-";
+    trail.push(`${Date.now() - began} ms ${path} from port ${request.socket.remotePort}, on disk ${onDisk}`);
     const name = /^\/(eng|ita)\.traineddata$/.exec(path)?.[0].slice(1);
     if (!name || !existsSync(join(dir, name))) return void response.writeHead(404).end();
     response.writeHead(200, { "content-type": "application/octet-stream" }).end(readFileSync(join(dir, name)));
@@ -106,6 +114,7 @@ async function tessdataServer() {
   return {
     base: `http://127.0.0.1:${(server.address() as { port: number }).port}/`,
     requests,
+    trail,
     close: () => {
       // Chromium keeps connections alive, and close() alone would wait for them.
       server.closeAllConnections();
@@ -123,7 +132,7 @@ async function noAxeViolations(page: Page) {
 test("OCR data: once setup is done Pyxis downloads the pinned files by itself, reads a photo with them, and repairs an altered file", async () => {
   test.setTimeout(300000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ocr-data-"));
-  const files = await tessdataServer();
+  const files = await tessdataServer(tessDir(userData));
   let app = await launch(userData, { PYXIS_E2E_OCR_BASE: files.base });
   try {
     // Setup downloads nothing.
@@ -200,7 +209,13 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
       page.getByText(readyRow),
     ).toBeVisible({ timeout: 120000 });
     expectPinned(userData);
-    expect(files.requests.slice(2)).toEqual(["/eng.traineddata"]);
+    const finished = (await invoke<Array<Job & { updatedAt: number }>>(page, "jobs.finished")).filter(
+      (job) => job.kind === "ocr-data-download",
+    );
+    expect(
+      files.requests.slice(2),
+      `Requests: ${files.trail.join("; ")}. Download jobs finished today: ${finished.map((job) => `${job.state} at ${job.updatedAt}`).join(", ")}.`,
+    ).toEqual(["/eng.traineddata"]);
   } finally {
     await app.close();
     files.close();
