@@ -6,7 +6,6 @@ import {
 import {
   Button,
   type MenuProps,
-  Modal,
   Pagination,
   Select,
   Skeleton,
@@ -16,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button as PxButton } from "../../components/Button";
-import { useConfirm } from "../../components/Dialog";
+import { Dialog, useConfirm } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -32,7 +31,7 @@ import { invoke } from "../../lib/ipc";
 import { usePlans } from "../../lib/queries";
 import { i18n } from "../../locales/i18n";
 import { NewCardDialog } from "../flashcards/NewCardDialog";
-import { AnkiModal } from "./AnkiModal";
+import { AnkiDialog } from "./AnkiDialog";
 import "./CardBrowser.css";
 import { CardFaceFields } from "../../components/CardFaceFields";
 
@@ -183,8 +182,8 @@ export function CardBrowser({
     ],
     onClick: ({ key }) => setAnki(key === "export" ? "export" : "import"),
   };
-  const ankiModal = (
-    <AnkiModal
+  const ankiDialog = (
+    <AnkiDialog
       mode={anki ?? "import"}
       open={anki !== null}
       onClose={() => setAnki(null)}
@@ -508,7 +507,7 @@ export function CardBrowser({
           <MenuButton rightClick menu={ankiMenu} label={t("cardBrowser.more")} />
         </MenuItemArea>
       </div>
-      {ankiModal}
+      {ankiDialog}
       {emptyPage ? (
         <EmptyState
           body={t("cardBrowser.emptyBody")}
@@ -695,17 +694,22 @@ export function CardBrowser({
         </>
       )}
 
-      <Modal
+      <Dialog
         open={editing !== null}
+        width="md"
         title={t("cardBrowser.editTitle")}
-        okText={t("cards.save")}
-        cancelText={t("cardBrowser.cancel")}
-        okButtonProps={{ disabled: !draftFront.trim() || !draftBack.trim() }}
-        confirmLoading={saving}
-        onOk={() => void save()}
-        onCancel={() => setEditing(null)}
-        maskClosable={false}
-        destroyOnHidden
+        busy={saving}
+        // The edit written so far would be lost by a stray click.
+        outside="none"
+        onClose={() => setEditing(null)}
+        actions={[
+          {
+            label: t("cards.save"),
+            disabled: !draftFront.trim() || !draftBack.trim(),
+            working: saving,
+            onClick: () => void save(),
+          },
+        ]}
       >
         <div className="px-cardbrowser-edit">
           <p className="small">{t("cardBrowser.editHint")}</p>
@@ -720,7 +724,7 @@ export function CardBrowser({
             <Notice tone="danger">{t("cards.actionFailed")}</Notice>
           ) : null}
         </div>
-      </Modal>
+      </Dialog>
       <NewCardDialog
         open={newCard}
         side="hand"

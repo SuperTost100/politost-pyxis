@@ -15,7 +15,7 @@ import { claimOnce } from "../../lib/claimOnce";
 import { cardSectionsQuery } from "../../lib/queries";
 import { useStillHere } from "../../lib/useStillHere";
 import { stepPath } from "../plans/reopen";
-import { AnkiModal } from "../home/AnkiModal";
+import { AnkiDialog } from "../home/AnkiDialog";
 import { NewCardDialog, type NewCardSide } from "./NewCardDialog";
 import "./FlashcardsHome.css";
 
@@ -229,7 +229,7 @@ export function FlashcardsHome() {
       <p className="visually-hidden" role="status">
         {said}
       </p>
-      <AnkiModal
+      <AnkiDialog
         mode={anki ?? "import"}
         open={anki !== null}
         onClose={() => setAnki(null)}

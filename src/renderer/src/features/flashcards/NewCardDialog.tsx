@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { NEW_CARDS } from "@shared/limits";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
-import { useConfirm } from "../../components/Dialog";
+import { Dialog, useConfirm, type DialogAction } from "../../components/Dialog";
 import { Segmented, Stepper } from "../../components/Controls";
 import { Icon } from "../../components/Icon";
 import { Logo } from "../../components/Logo";
@@ -13,7 +13,6 @@ import { FormulaPreview } from "../../components/FormulaPreview";
 import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
 import { errorProvider, useEngineError } from "../../lib/engineError";
-import { grow } from "../../lib/grow";
 import { invoke } from "../../lib/ipc";
 import { saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
 import "./NewCardDialog.css";
@@ -80,8 +79,19 @@ export function NewCardDialog({
   const navigate = useNavigate();
   const client = useQueryClient();
   const describeEngineError = useEngineError(navigate);
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
+  // Everything inside the dialog: where its fields are looked for.
+  const card = useRef<HTMLDivElement>(null);
+  // What it grows out of and gives the focus back to, asked each time it opens or closes.
+  const originNow = useRef(origin);
+  originNow.current = origin;
+  const grownFrom = useMemo(
+    () => ({
+      get current() {
+        return originNow.current();
+      },
+    }),
+    [],
+  );
   const switchId = useId();
   const places = useQuery({ ...newCardsQuery, enabled: open });
   const subjects = places.data?.subjects ?? [];
@@ -91,7 +101,6 @@ export function NewCardDialog({
   const confirm = useConfirm();
   // The question asked before something is lost, while it is open: what would be lost decides the words.
   const asking = useRef<{ loss: Loss; taken: AbortController } | null>(null);
-  const [closing, setClosing] = useState(false);
 
   // Scrivila tu
   const [planId, setPlanId] = useState("");
@@ -170,7 +179,6 @@ export function NewCardDialog({
     setFailure(null);
     setSavingProposed(false);
     takeBack();
-    setClosing(false);
   }, [open]);
 
   // Once the subjects are known: the one asked for if it exists, else the first, else a new one to name.
@@ -192,14 +200,6 @@ export function NewCardDialog({
     [],
   );
 
-  // Opening: the native modal dialog, grown out of the button that asked for it.
-  useLayoutEffect(() => {
-    const node = dialog.current;
-    if (!node || !open || node.open) return;
-    node.showModal();
-    grow(node, origin(), "in");
-  }, [open]);
-
   // The first field of the side on show takes the focus once its choices are there.
   const focused = useRef(false);
   useEffect(() => {
@@ -213,33 +213,25 @@ export function NewCardDialog({
       // A student who went to a field and started typing before the subjects arrived keeps it: the rest of what they
       // type must not land in another field.
       const active = document.activeElement;
-      if (active instanceof HTMLElement && dialog.current?.contains(active) && active.matches("input, textarea, select"))
+      if (active instanceof HTMLElement && card.current?.contains(active) && active.matches("input, textarea, select"))
         return;
       firstField()?.focus();
     });
   }, [open, places.data, subjectId]);
 
   function firstField(): HTMLElement | null {
-    const pane = dialog.current?.querySelector(`[data-pane="${side}"]`);
+    const pane = card.current?.querySelector(`[data-pane="${side}"]`);
     if (!pane) return null;
     if (side === "hand" && subjectId === NEW_SUBJECT && subjects.length === 0)
       return pane.querySelector<HTMLElement>("#nc-new-name");
     return pane.querySelector<HTMLElement>("select, textarea, input");
   }
 
-  /** Closes for good: shrinks back into the button, which gets the focus again. */
+  /** Closes for good: the dialog shrinks back into the button, which gets the focus again. */
   function close() {
-    const node = dialog.current;
     stopWork();
     takeBack();
-    if (!node?.open) return onClose();
-    setClosing(true);
-    const button = origin();
-    grow(node, button, "out", () => {
-      node.close();
-      onClose();
-      button?.focus();
-    });
+    onClose();
   }
 
   /**
@@ -247,7 +239,7 @@ export function NewCardDialog({
    * is showing. While a card is being saved the dialog stays: closing then would leave the student unsure what was saved.
    */
   function askClose() {
-    if (closing || busy.current || asking.current) return;
+    if (busy.current || asking.current) return;
     const loss = whatWouldBeLost({
       step,
       proposals: rows.length,
@@ -259,7 +251,7 @@ export function NewCardDialog({
     });
     if (!loss) return close();
     const active = document.activeElement;
-    asked.current = active instanceof HTMLElement && dialog.current?.contains(active) ? active : firstField();
+    asked.current = active instanceof HTMLElement && card.current?.contains(active) ? active : firstField();
     void ask(loss);
   }
 
@@ -311,7 +303,7 @@ export function NewCardDialog({
     // Pyxis writes for a subject that exists, so a new one being named gives way to the first subject.
     if (next === "pyxis" && subjectId === NEW_SUBJECT) setSubjectId(subjects[0]?.id ?? "");
     if (next === "hand" && !subjectId) setSubjectId(subjects[0]?.id ?? NEW_SUBJECT);
-    const pane = dialog.current?.querySelector(`[data-pane="${next}"]`);
+    const pane = card.current?.querySelector(`[data-pane="${next}"]`);
     if (pane && !window.matchMedia("(prefers-reduced-motion: reduce)").matches)
       pane.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, easing: "ease-out" });
   }
@@ -493,14 +485,12 @@ export function NewCardDialog({
   const reviewing = side === "pyxis" && step === "review";
   const askedLabel = t("flashcards.new.asked", { count });
 
-  let actions: ReactNode;
+  // Annulla is the dialog's own and asks first when something would be lost. The extra action sits on the left.
+  let actions: DialogAction[];
   if (side === "hand")
-    actions = (
-      <>
-        <Button variant="ghost" disabled={saving || closing} onClick={askClose}>
-          {t("flashcards.new.cancel")}
-        </Button>
-        <Button variant="secondary" disabled={saving || closing || !places.data} onClick={() => void saveByHand(true)}>
+    actions = [
+      {
+        label: (
           <span className="px-nc-swap">
             <span data-off={added ? "" : undefined}>{t("flashcards.new.saveMore")}</span>
             <span data-off={added ? undefined : ""}>
@@ -508,99 +498,87 @@ export function NewCardDialog({
               {t("flashcards.new.added")}
             </span>
           </span>
-        </Button>
-        <Button disabled={saving || closing || !places.data} onClick={() => void saveByHand(false)}>
-          {t("flashcards.new.save")}
-        </Button>
-      </>
-    );
+        ),
+        tone: "secondary",
+        disabled: !places.data,
+        onClick: () => void saveByHand(true),
+      },
+      { label: t("flashcards.new.save"), disabled: !places.data, onClick: () => void saveByHand(false) },
+    ];
   else
-    actions = (
-      <>
-        <Button variant="ghost" disabled={savingProposed || closing} onClick={askClose}>
-          {t("flashcards.new.cancel")}
-        </Button>
-        {reviewing ? (
-          <Button variant="secondary" disabled={savingProposed || closing} onClick={() => void make()}>
-            {t("flashcards.new.again")}
-          </Button>
-        ) : null}
-        {working ? (
-          <Button disabled className="px-nc-busy">
-            <Logo size={16} working decorative />
-            {t("flashcards.new.making")}
-          </Button>
-        ) : reviewing ? (
-          <Button
-            disabled={!rows.length || incomplete || savingProposed || closing}
-            onClick={() => void saveProposed()}
-          >
-            {t("flashcards.new.saveProposed", { count: rows.length })}
-          </Button>
-        ) : (
-          <Button disabled={!canMake} onClick={() => void make()}>
-            {t("flashcards.new.make")}
-          </Button>
-        )}
-      </>
-    );
+    actions = [
+      ...(reviewing
+        ? [
+            {
+              label: t("flashcards.new.again"),
+              tone: "secondary" as const,
+              side: "start" as const,
+              onClick: () => void make(),
+            },
+          ]
+        : []),
+      working
+        ? { label: t("flashcards.new.making"), working: true, disabled: true, onClick: () => undefined }
+        : reviewing
+          ? {
+              label: t("flashcards.new.saveProposed", { count: rows.length }),
+              disabled: !rows.length || incomplete,
+              onClick: () => void saveProposed(),
+            }
+          : { label: t("flashcards.new.make"), disabled: !canMake, onClick: () => void make() },
+    ];
+
+  // Where the focus goes as it opens: the first field of the side on show when the subjects are there, else the dialog
+  // itself, and the effect above places it once they arrive, unless the student has already gone to a field.
+  const firstControl = useMemo(
+    () => ({
+      get current() {
+        return (places.data && subjectId ? firstField() : null) ?? card.current?.closest("dialog") ?? null;
+      },
+    }),
+    [places.data, subjectId, side],
+  );
 
   return (
-    <dialog
-      ref={dialog}
-      className={["px-nc", reviewing ? "is-wide" : ""].filter(Boolean).join(" ")}
-      role="dialog"
-      aria-labelledby={titleId}
-      onKeyDown={(event) => {
-        // Escape is handled here rather than left to the dialog: Chromium closes a modal dialog outright on a second
-        // Escape with no click in between, which would throw typed text away without asking.
-        if (event.key !== "Escape" || event.defaultPrevented) return;
-        event.preventDefault();
-        askClose();
-      }}
-      onCancel={(event) => {
-        // Any other close request (the system's back gesture) asks the same way.
-        event.preventDefault();
-        askClose();
-      }}
-      onMouseDown={(event) => {
-        if (event.target !== dialog.current) return;
-        // The click's own focus move would come after the question has given the focus to "Resta qui".
-        event.preventDefault();
-        askClose();
-      }}
+    <Dialog
+      open={open}
+      width={reviewing ? "lg" : "md"}
+      className="px-nc"
+      title={t("flashcards.new.title")}
+      // A click outside asks like Annulla does, even with text typed: the leave question is how it is answered.
+      outside="close"
+      // While a card is being saved the dialog stays.
+      busy={saving || savingProposed}
+      origin={grownFrom}
+      initialFocus={firstControl}
+      onClose={askClose}
+      actions={actions}
     >
-      {open ? (
-        <div className="px-nc-card">
-          <div className="px-nc-head">
-            <h2 className="px-nc-title" id={titleId}>
-              {t("flashcards.new.title")}
-            </h2>
-            {reviewing ? null : working ? (
-              // What Pyxis was asked, while it works; its proposals then say it in their own line.
-              <p className="small px-nc-summary">
-                <b>{[subject?.name, topicTitle].filter(Boolean).join(" · ")}</b>
-                {focusText.trim() ? ` · «${focusText.trim()}»` : ""} · {askedLabel}
-              </p>
-            ) : (
-              <>
-                <span className="visually-hidden" id={switchId}>
-                  {t("flashcards.new.how")}
-                </span>
-                <div className="px-nc-switch">
-                  <Segmented<NewCardSide>
-                    label={switchId}
-                    value={side}
-                    options={[
-                      { value: "hand", label: t("flashcards.new.byHand") },
-                      { value: "pyxis", label: t("flashcards.new.byPyxis") },
-                    ]}
-                    onChange={switchSide}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+      <div ref={card} className="px-nc-card">
+        {reviewing ? null : working ? (
+          // What Pyxis was asked, while it works; its proposals then say it in their own line.
+          <p className="small px-nc-summary">
+            <b>{[subject?.name, topicTitle].filter(Boolean).join(" · ")}</b>
+            {focusText.trim() ? ` · «${focusText.trim()}»` : ""} · {askedLabel}
+          </p>
+        ) : (
+          <>
+            <span className="visually-hidden" id={switchId}>
+              {t("flashcards.new.how")}
+            </span>
+            <div className="px-nc-switch">
+              <Segmented<NewCardSide>
+                label={switchId}
+                value={side}
+                options={[
+                  { value: "hand", label: t("flashcards.new.byHand") },
+                  { value: "pyxis", label: t("flashcards.new.byPyxis") },
+                ]}
+                onChange={switchSide}
+              />
+            </div>
+          </>
+        )}
 
           <div className="px-nc-body">
             {places.isError && !places.data ? (
@@ -861,10 +839,8 @@ export function NewCardDialog({
             </div>
           </div>
 
-          <div className="px-nc-actions">{actions}</div>
-        </div>
-      ) : null}
-    </dialog>
+      </div>
+    </Dialog>
   );
 }
 

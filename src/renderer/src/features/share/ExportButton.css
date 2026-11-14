@@ -33,6 +33,3 @@
 .px-export-formats .ant-radio-button-wrapper::before {
   display: none;
 }
-.px-export-modal .ant-modal-footer .ant-btn {
-  white-space: nowrap;
-}

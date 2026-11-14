@@ -23,7 +23,8 @@ import "./Dialog.css";
 export type DialogWidth = "sm" | "md" | "lg";
 
 export type DialogAction = {
-  label: string;
+  /** Its name; markup when the label changes while the button stays, as Nuova flashcard's "Aggiunta". */
+  label: ReactNode;
   onClick: () => unknown;
   /** `danger` for an action that destroys something: the only solid red button. `secondary` for an extra action. */
   tone?: "primary" | "danger" | "secondary";
@@ -81,7 +82,7 @@ export function Dialog({
   onClose,
   width = "sm",
   busy = false,
-  closeOnOutside = true,
+  outside = "auto",
   origin,
   initialFocus,
   returnFocus,
@@ -101,8 +102,12 @@ export function Dialog({
   /** 460px for a confirmation, 560 for a form, 720 for a preview. */
   width?: DialogWidth;
   busy?: boolean;
-  /** False for a dialog whose work a stray click outside would throw away, as one waiting on an answer. */
-  closeOnOutside?: boolean;
+  /**
+   * What a click outside does. `auto` closes it like Annulla unless it is busy or a text field holds typed text; `close`
+   * always asks `onClose`, for a dialog that asks before it drops typed work; `none` leaves it open, for one whose work a
+   * stray click would throw away.
+   */
+  outside?: "auto" | "close" | "none";
   origin?: RefObject<HTMLElement | null>;
   initialFocus?: RefObject<HTMLElement | null>;
   returnFocus?: RefObject<HTMLElement | null>;
@@ -125,8 +130,8 @@ export function Dialog({
   // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
-  const latest = useRef({ open, onClose, onClosed, busy, closeOnOutside, initialFocus, returnFocus, origin });
-  latest.current = { open, onClose, onClosed, busy, closeOnOutside, initialFocus, returnFocus, origin };
+  const latest = useRef({ open, onClose, onClosed, busy, outside, initialFocus, returnFocus, origin });
+  latest.current = { open, onClose, onClosed, busy, outside, initialFocus, returnFocus, origin };
 
   useLayoutEffect(() => {
     const dialog = node.current;
@@ -201,9 +206,9 @@ export function Dialog({
   const close = () => {
     if (!latest.current.busy && latest.current.open) latest.current.onClose();
   };
-  const button = (action: DialogAction) => (
+  const button = (action: DialogAction, index: number) => (
     <span
-      key={action.label}
+      key={typeof action.label === "string" ? action.label : index}
       className="px-dialog-button"
       data-dialog-role={action.tone === "danger" ? "danger" : "action"}
     >
@@ -277,7 +282,8 @@ export function Dialog({
         if (!dialog || event.target !== dialog) return;
         // A click outside leaves the focus where it is, so a dialog that stays keeps it in its field.
         event.preventDefault();
-        if (latest.current.closeOnOutside && outsideClickCloses(typedText(dialog), latest.current.busy)) close();
+        const way = latest.current.outside;
+        if (way === "close" || (way === "auto" && outsideClickCloses(typedText(dialog), latest.current.busy))) close();
       }}
     >
       {/* Menus and lists opened inside are drawn inside, so they sit above it and are not inert behind it. */}

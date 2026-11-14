@@ -251,7 +251,7 @@ export function MakeCardsDialog() {
       title={t("makeCards.title")}
       busy={saving}
       // A stray click would stop the answer being written.
-      closeOnOutside={!working}
+      outside={working ? "none" : "auto"}
       onClose={close}
       actions={actions}
     >

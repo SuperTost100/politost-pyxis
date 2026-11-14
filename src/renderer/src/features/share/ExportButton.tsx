@@ -1,6 +1,7 @@
-import { App, Button, Checkbox, Modal, Radio } from "antd";
+import { App, Button, Checkbox, Radio } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialog } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import "./ExportButton.css";
@@ -153,21 +154,13 @@ export function ExportButton({
           {t("export.title")}
         </Button>
       ) : null}
-      <Modal
-        title={t("export.title")}
+      <Dialog
         open={open}
-        onCancel={() => {
-          if (!busy) setOpen(false);
-        }}
-        closable={!busy}
-        maskClosable={!busy}
-        keyboard={!busy}
-        okText={t("export.save")}
-        cancelText={t("export.cancel")}
-        onOk={() => void save()}
-        confirmLoading={busy}
-        cancelButtonProps={{ disabled: busy }}
-        className="px-export-modal"
+        width="md"
+        title={t("export.title")}
+        busy={busy}
+        onClose={() => setOpen(false)}
+        actions={[{ label: t("export.save"), working: busy, onClick: () => void save() }]}
       >
         <div className="px-export-body">
           <fieldset className="px-export-formats" disabled={busy}>
@@ -232,7 +225,7 @@ export function ExportButton({
           ) : null}
           {error ? <Notice tone="danger">{t("export.failed")}</Notice> : null}
         </div>
-      </Modal>
+      </Dialog>
     </>
   );
 }
