@@ -1,9 +1,8 @@
-import { ArrowLeft, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { ReactNode, RefObject } from "react";
+import { BackControl } from "../../components/BackControl";
+import type { BackTarget } from "../../app/usePlace";
 import "./StudyBar.css";
-
-/** Where the bar's back button leads. `label` is read before `text`, such as "Back to the exam: Fisica I". */
-export type StudyBack = { text: string; label?: string; onClick: () => void };
 
 /** A bar title that opens a panel under it, such as the parts of a lesson in a narrow window. */
 export type StudyTitleMenu = {
@@ -29,8 +28,8 @@ export function StudyBar({
   titleMenu,
   className,
 }: {
-  /** Without it the bar has no way out, as in a running exam simulation. */
-  back?: StudyBack;
+  /** The page's way back (`usePlace`). Without it the bar has no way out, as in a running exam simulation. */
+  back?: BackTarget | null;
   title: string;
   subtitle?: string;
   actions?: ReactNode;
@@ -46,11 +45,7 @@ export function StudyBar({
     <header className={className ? `px-studybar ${className}` : "px-studybar"}>
       {back ? (
         <>
-          <button type="button" className="px-studybar-back" onClick={back.onClick}>
-            <ArrowLeft size={16} strokeWidth={1.75} aria-hidden />
-            {back.label ? <span className="visually-hidden">{back.label}: </span> : null}
-            <span className="px-studybar-back-text">{back.text}</span>
-          </button>
+          <BackControl target={back} variant="bar" />
           <span className="px-studybar-sep" aria-hidden />
         </>
       ) : null}

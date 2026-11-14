@@ -14,6 +14,7 @@ import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
 import { StudyLayout } from "./StudyBar";
 import { usePlan } from "../../lib/queries";
+import { returnTo, usePlace } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { Working } from "../../components/Working";
 
@@ -185,6 +186,12 @@ export function PracticePage() {
   const [searchParams] = useSearchParams();
   const reviewing = searchParams.get("review") === "1";
   const plan = usePlan(planId);
+  const topic = plan.data?.topics.find((item) => item.id === topicId)?.title;
+  const back = usePlace({
+    name: topic ? { text: topic } : null,
+    parent: plan.data ? { name: { text: plan.data.title } } : undefined,
+  });
+  const toPath = () => returnTo(back, `/plans/${planId ?? ""}`, navigate);
   const exercises = useQuery({
     queryKey: ["exercises", planId, topicId],
     enabled: Boolean(topicId),
@@ -199,7 +206,7 @@ export function PracticePage() {
       invoke("plans.complete", { planId: planId ?? "", activity: "practice", topicId: topicId ?? null }),
     onSuccess: async () => {
       await refreshPlan(client, planId ?? "");
-      navigate(`/plans/${planId ?? ""}`);
+      toPath();
     },
   });
   const generate = useMutation({
@@ -217,12 +224,8 @@ export function PracticePage() {
 
   return (
     <StudyLayout
-      back={{
-        text: plan.data?.title ?? t("lesson.back"),
-        label: plan.data ? t("lesson.back") : undefined,
-        onClick: () => navigate(`/plans/${planId ?? ""}`),
-      }}
-      title={[t("practice.title"), plan.data?.topics.find((topic) => topic.id === topicId)?.title]
+      back={back}
+      title={[t("practice.title"), topic]
         .filter(Boolean)
         .join(" \u00b7 ")}
       subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
@@ -237,13 +240,13 @@ export function PracticePage() {
         </Button>
       }
       secondary={
-        <Button type="text" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+        <Button type="text" shape="round" onClick={() => (back ? back.go() : navigate(`/plans/${planId ?? ""}`))}>
           {t("nav.back")}
         </Button>
       }
       primary={
         reviewing ? (
-          <Button type="primary" shape="round" onClick={() => navigate(`/plans/${planId ?? ""}`)}>
+          <Button type="primary" shape="round" onClick={toPath}>
             {t("lesson.backToPath")}
           </Button>
         ) : // Done comes after the exercises, as at the end of a lesson.

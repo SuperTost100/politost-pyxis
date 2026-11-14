@@ -6,6 +6,7 @@ Every word on screen is part of the design. Pyxis talks like a calm tutor who si
 | ------------------------------------------ | ----------------------------------- | -------------------------------------------------------------------------- |
 | Say plainly what is happening              | Elaborazione in corso…              | Sto leggendo le slide del corso                                            |
 | A button names its action                  | OK                                  | Crea l'esame                                                               |
+| The way back names its place               | ← Indietro                          | ← Analisi Matematica 2                                                     |
 | Headings say what is there                 | Impostazioni generali               | Come ti spiega                                                             |
 | No filler badges                           | Lezione «Moto nel piano» NUOVO · AI | Lezione «Moto nel piano»                                                   |
 | No labels the layout already gives         | Stato: completato                   | Finita alle 10:42                                                          |

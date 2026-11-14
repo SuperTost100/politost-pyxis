@@ -28,6 +28,7 @@ import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
+import { returnTo, usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
 import { Button as PxButton } from "../../components/Button";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -155,7 +156,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const savedAttempt = searchParams.get("attempt");
   // The mistakes notebook lives only under Exams; a redo returns to it narrowed to the exam it was narrowed to.
   const notebookExam = searchParams.get("exam");
-  const back = quizBack({ planId, redo, review: reviewRoute, notebookExam });
+  const backPath = quizBack({ planId, redo, review: reviewRoute, notebookExam });
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
@@ -439,10 +440,16 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     canFinish,
     session.data?.submittedAt,
   ]);
-  // Closing never loses work.
+  // The page goes by its topic elsewhere. Leaving it never loses work: the answers are saved first, and a save that
+  // fails keeps the student here, under the page's notice that saving failed.
+  const topicName = topicId ? plan.data?.topics.find((row) => row.id === topicId)?.title : undefined;
+  const back = usePlace({
+    name: topicName ? { text: topicName } : null,
+    parent: plan.data && !reviewRoute ? { name: { text: plan.data.title } } : undefined,
+    beforeLeave: () => drafts.flush(),
+  });
   async function close() {
-    await drafts.flush();
-    navigate(back);
+    if (await drafts.flush()) returnTo(back, backPath, navigate);
   }
   // An answer corrected one by one before 0.5 stays as it was checked: core keeps the checked pick at Consegna.
   const result = question ? checked[question.id] : undefined;
@@ -796,7 +803,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       type={type}
       shape="round"
       size="large"
-      onClick={() => navigate(finishedReview ? quizBack({ planId, notebookExam }) : back)}
+      onClick={() => returnTo(back, finishedReview ? quizBack({ planId, notebookExam }) : backPath, navigate)}
     >
       {t(
         finishedReview
@@ -1174,7 +1181,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     );
   }
   // A redo exists only as an attempt the notebook started; without one there is nothing to show.
-  if (redo && !savedAttempt) return <Navigate to={back} replace />;
+  if (redo && !savedAttempt) return <Navigate to={backPath} replace />;
   // A Review's questions belong to the attempt its page started; without one, that page starts or resumes it.
   if (reviewRoute && !savedAttempt) return <Navigate to={`/plans/${planId ?? ""}/review`} replace />;
   // The answer sheet: an attempt being read from this computer, its questions still being written, or answered.
@@ -1197,17 +1204,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       actions={
         sheet && deadlineAt ? <QuizClock deadlineAt={deadlineAt} running={running} expired={expired} /> : undefined
       }
-      back={
-        // A diagnostic and a Review open again where they stopped from where the student finds them, so their way out
-        // says so. A topic quiz's intro starts a new one, so the others go back by name; every answer is saved anyway.
-        sheet && (diagnostic || reviewRoute)
-          ? { text: t("quiz.leave"), onClick: () => void close() }
-          : {
-              text: (redo ? t("mistakes.title") : reviewRoute ? t("cards.reviewTitle") : plan.data?.title) ?? t("lesson.back"),
-              label: redo ? t("mistakes.back") : reviewRoute ? t("cards.reviewBack") : plan.data ? t("lesson.back") : undefined,
-              onClick: () => void close(),
-            }
-      }
+      back={back}
       title={[
         // A handed-in attempt is its results.
         finalResult ? t("results.title") : "",
@@ -1302,7 +1299,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           startingLabel={t("quiz.preparing")}
           disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
           onStart={() => start.mutate()}
-          onBack={() => navigate(`/plans/${planId ?? ""}`)}
+          onBack={() => back?.go()}
           folded
           options={
             diagnostic || past ? undefined : (
@@ -1442,7 +1439,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               type="primary"
               shape="round"
               size="large"
-              onClick={() => navigate(back)}
+              onClick={() => returnTo(back, backPath, navigate)}
             >
               {t(quizBackLabel({ redo, review: reviewRoute }))}
             </Button>

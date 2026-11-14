@@ -187,7 +187,7 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
     await expect(heading(page)).toHaveText("Domanda 1 di 8");
     await expect(page.locator(".px-qz-kicker")).toHaveText("Scelta multipla");
     // The way back names the exam; the line under the title says the quiz has no time limit.
-    await expect(page.locator(".px-studybar-back")).toHaveAccessibleName("Torna all'esame: Fisica I");
+    await expect(page.locator(".px-back")).toHaveAccessibleName("Torna a Fisica I");
     await expect(page.locator(".px-studybar-title p")).toHaveText("Fisica I · senza limite di tempo");
     await expect(sheet(page).locator(".px-qz-count")).toHaveText("0 di 8 date");
     // A new question takes focus, so a screen reader hears its position and its text.
@@ -239,7 +239,7 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
       marked: ["q-segno"],
       picks: { "q-auto": "1", "q-segno": "", "q-unita": JSON.stringify(["m/s^2"]) },
     });
-    await page.locator(".px-studybar-back").click();
+    await page.locator(".px-back").click();
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await go(page, "/plans/p-fis/quiz/t-kin?attempt=a-quiz");
     await expect(heading(page)).toHaveText("Domanda 4 di 8");
@@ -287,7 +287,7 @@ test("the exam simulation runs on the same sheet, with its clock, Segna per dopo
     await expect(heading(page)).toHaveText("Domanda 1 di 3");
     await expect(page.getByRole("timer", { name: "Tempo rimanente" })).toBeVisible();
     // A running exam has no way out until it is handed in.
-    await expect(page.locator(".px-studybar-back")).toHaveCount(0);
+    await expect(page.locator(".px-back")).toHaveCount(0);
     await page.getByRole("textbox", { name: "La tua risposta" }).click();
     await page.keyboard.type("80 km/h");
     await page.getByRole("button", { name: "Avanti" }).click();

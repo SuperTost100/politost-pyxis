@@ -217,7 +217,7 @@ test("the map page keeps its tools on the canvas, its maps beside the title and 
     await expect(page.locator(".px-map-title-row").getByRole("button", { name: /ora: «solo i teoremi/ })).toBeFocused();
 
     // A topic with one map has no switcher.
-    await page.locator(".px-map-page").getByRole("link", { name: "Mappe", exact: true }).click();
+    await page.locator(".px-map-page").getByRole("button", { name: "Torna a Mappe" }).click();
     await tile(page, "Successioni").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1, name: "Successioni" })).toBeVisible();
     await expect(page.locator(".px-map-switch")).toHaveCount(0);
@@ -274,7 +274,7 @@ test("a map is renamed in place on its page and on its tile, and an empty name i
     await saveShot(page, "maps-menu/long-title.png");
 
     // On Mappe the tile renames in place too, from its dots.
-    await page.locator(".px-map-page").getByRole("link", { name: "Mappe", exact: true }).click();
+    await page.locator(".px-map-page").getByRole("button", { name: "Torna a Mappe" }).click();
     const card = tile(page, "Successioni");
     await card.hover();
     await card.getByRole("button", { name: "Altro su Successioni" }).click();

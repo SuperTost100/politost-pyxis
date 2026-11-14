@@ -2,9 +2,10 @@ import { Button, Modal } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
+import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { ErrorState } from "../../components/ErrorState";
-import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
 import { SourceDetails } from "../../components/SourceDetails";
@@ -28,6 +29,7 @@ export function PlanSources({ planId }: { planId: string }) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const plan = usePlan(planId);
+  const back = usePlace({ parent: plan.data ? { name: { text: plan.data.title } } : undefined });
   // The rows show each file's size, which the library holds.
   const library = useQuery(sourcesQuery);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -75,10 +77,7 @@ export function PlanSources({ planId }: { planId: string }) {
   return (
     <div className="px-exam-sub">
       {modalContext}
-      <Link to={`/plans/${planId}`} className="px-exam-back">
-        <Icon name="arrow-left" size={16} />
-        {plan.data?.title ?? t("examPage.back")}
-      </Link>
+      <BackControl target={back} variant="page" />
       <h1 className="title-1">{t("examPage.material")}</h1>
       {error ? <Notice tone="danger">{error}</Notice> : null}
       {plan.isPending ? (

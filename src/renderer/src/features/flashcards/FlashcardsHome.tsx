@@ -19,9 +19,6 @@ import "./FlashcardsHome.css";
 type Sections = RequestOutput<"study.cardSections">;
 type Subject = Sections["subjects"][number];
 
-/** Every review opened here comes back to this page when it closes (CardsPage reads it). */
-const FROM_SECTION = { from: "flashcards" } as const;
-
 /** Where a subject's review opens: the daily review narrowed to the subject, with `examless` to its cards with no exam. */
 export function subjectReviewPath(subjectId: string | null, examless = false): string {
   // A real subject's cards with no exam have their own review, where new ones can be added to the subject.
@@ -63,7 +60,7 @@ export function FlashcardsHome() {
   const location = useLocation();
   const sections = useQuery(cardSectionsQuery);
   const data = sections.data;
-  const go = (path: string) => navigate(path, { state: FROM_SECTION });
+  const go = (path: string) => navigate(path);
 
   // "Nuova flashcard": the page's button opens it; another page opens it with `newCardPath` (`?new=…&subject=…`).
   const [params, setParams] = useSearchParams();
@@ -289,7 +286,7 @@ function Row({ title, total, due, to }: { title: string; total: number; due: num
   const { t } = useTranslation();
   return (
     <li>
-      <Link className="px-fc-row" to={to} state={FROM_SECTION}>
+      <Link className="px-fc-row" to={to}>
         <span className="px-fc-row-name">
           <b title={title}>{title}</b>
           <small>{t("cardBrowser.count", { count: total })}</small>

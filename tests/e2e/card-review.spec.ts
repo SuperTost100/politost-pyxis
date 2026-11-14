@@ -68,10 +68,10 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await expect(front).toHaveText("Seconda legge di Newton?");
     // The study bar: the way back named after the exam, the deck's name, and the deck's actions. No close button.
     await expect(bar.getByRole("heading", { level: 1 })).toHaveText("Flashcards · Dinamica");
-    const back = bar.getByRole("button", { name: "Back to the exam: Fisica 1", exact: true });
+    const back = bar.getByRole("button", { name: "Back to Fisica 1", exact: true });
     await expect(back).toBeVisible();
     await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
-    await expect(bar.getByRole("button")).toHaveText(["Back to the exam: Fisica 1", "New flashcard", "Undo last", "Edit"]);
+    await expect(bar.getByRole("button")).toHaveText(["Fisica 1", "New flashcard", "Undo last", "Edit"]);
     const undoLast = bar.getByRole("button", { name: "Undo last", exact: true });
     await expect(undoLast).toBeDisabled();
     // The header counts the card on screen, and the deck counts say why the session is shorter than the deck.

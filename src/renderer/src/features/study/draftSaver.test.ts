@@ -65,6 +65,49 @@ describe("draftSaver", () => {
     expect(errors).toEqual([1]);
   });
 
+  it("reports a failed save and keeps its draft, so the next flush sends it again", async () => {
+    const sent: string[] = [];
+    let failing = true;
+    const errors: number[] = [];
+    const saver = draftSaver(
+      async (draft: string) => {
+        sent.push(draft);
+        if (failing) throw new Error("disk full");
+      },
+      () => errors.push(1),
+      500,
+    );
+    saver.schedule("answers");
+    expect(await saver.flush()).toBe(false);
+    expect(errors).toEqual([1]);
+    failing = false;
+    expect(await saver.flush()).toBe(true);
+    expect(sent).toEqual(["answers", "answers"]);
+    // Once saved, nothing is left to send.
+    expect(await saver.flush()).toBe(true);
+    expect(sent).toEqual(["answers", "answers"]);
+  });
+
+  it("drops a failed draft that a newer one replaced, and reports the newer one's save", async () => {
+    const sent: string[] = [];
+    const saver = draftSaver(
+      async (draft: string) => {
+        sent.push(draft);
+        if (draft === "old") throw new Error("disk full");
+      },
+      () => undefined,
+      500,
+    );
+    saver.schedule("old");
+    const first = saver.flush();
+    // "old" is on its way and fails; "new" is typed meanwhile and takes its place.
+    await vi.advanceTimersByTimeAsync(0);
+    saver.schedule("new");
+    expect(await first).toBe(false);
+    expect(await saver.flush()).toBe(true);
+    expect(sent).toEqual(["old", "new"]);
+  });
+
   it("sends the newest draft when a queued save's turn comes", async () => {
     const { saver, sent, landed, release } = slowSaver();
     saver.schedule("A");

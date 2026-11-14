@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useNavigationType } from "react-router";
 import { parseSmartText, partQuestions } from "@shared/smart-text";
+import { returnTo, type BackTarget } from "../../app/usePlace";
 import { Button } from "../../components/Button";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
@@ -101,12 +102,14 @@ export function PartPage({
   data,
   query,
   queryKey,
+  back,
 }: {
   planId: string;
   topicId: string;
   data: PartData;
   query: UseQueryResult;
   queryKey: readonly unknown[];
+  back: BackTarget | null;
 }) {
   const { t } = useTranslation();
   useActiveTime(planId, topicId);
@@ -132,6 +135,8 @@ export function PartPage({
   const written = data.state === "written" && lesson !== null;
   const examLine = [plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined;
   const href = (position: number) => `/plans/${planId}/lesson/${topicId}?part=${position}`;
+  // "Torna al percorso" goes back the way the bar does when the bar leads to the exam, and opens the exam otherwise.
+  const toPath = () => returnTo(back, `/plans/${planId}`, navigate);
 
   useEffect(() => {
     if (!narrow || !many) setListOpen(false);
@@ -247,7 +252,7 @@ export function PartPage({
     onSuccess: async (then) => {
       await refreshPlan(client, planId);
       if (then === "continue") await openNext();
-      else navigate(`/plans/${planId}`);
+      else toPath();
     },
   });
 
@@ -273,12 +278,14 @@ export function PartPage({
     t("lesson.backToPath")
   );
   const goOn = () => {
+    // The next part is a move inside the page, so it takes this entry's place in history: one Back leaves the lesson.
     if (data.next) {
-      navigate(href(data.next.position));
+      navigate(href(data.next.position), { replace: true });
       return;
     }
     const to = pathNext ? stepPath(planId, pathNext.activity, pathNext.topicId) : null;
-    navigate(to ?? `/plans/${planId}`);
+    if (to) navigate(to);
+    else toPath();
   };
 
   // "Scegli altro": the topic's exercises and flashcards with their counts, and a part to reread.
@@ -387,7 +394,8 @@ export function PartPage({
   // While an old lesson is rewritten, the block says so and keeps the way to the version the student had.
   const rewritingCopy: ReturnType<typeof workingCopy> = { title: ["lesson.rewritingOld"], line: ["lesson.rewritingOldLine"] };
   const readEarlier = data.replaces
-    ? () => navigate(`/plans/${planId}/lesson/${topicId}?item=${encodeURIComponent(data.replaces!.itemId)}`)
+    ? () =>
+        navigate(`/plans/${planId}/lesson/${topicId}?item=${encodeURIComponent(data.replaces!.itemId)}`, { replace: true })
     : undefined;
   const block = working ? (
     <WorkingBlock
@@ -401,7 +409,7 @@ export function PartPage({
               many,
             })
       }
-      onBack={() => navigate(`/plans/${planId}`)}
+      onBack={toPath}
       onEarlier={rewritingOld ? readEarlier : undefined}
     />
   ) : arriving?.position === data.position ? (
@@ -411,12 +419,12 @@ export function PartPage({
           ? rewritingCopy
           : workingCopy({ state: arriving.state, position: data.position, kind: part?.kind ?? null, many })
       }
-      onBack={() => navigate(`/plans/${planId}`)}
+      onBack={toPath}
       onEarlier={arriving.rewriting ? readEarlier : undefined}
       still
     />
   ) : rewriting || rewriteArrived ? (
-    <WorkingBlock copy={rewrites.copy} onBack={() => navigate(`/plans/${planId}`)} still={!rewriting} />
+    <WorkingBlock copy={rewrites.copy} onBack={toPath} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";
@@ -441,8 +449,7 @@ export function PartPage({
       titleFocusable
       meta={meta}
       headProps={headMenu.bind}
-      backLabel={t("lesson.back")}
-      backText={plan.data?.title}
+      back={back}
       barTitle={topicTitle}
       barSubtitle={barSubtitle}
       barMenu={
@@ -451,7 +458,6 @@ export function PartPage({
           : undefined
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
-      onBack={() => navigate(`/plans/${planId}`)}
       actions={
         <>
           {rewrites.levelMenu}
@@ -502,7 +508,7 @@ export function PartPage({
             <Notice
               tone={stoppedTone(error)}
               action={{ label: t("lesson.partRetry"), onClick: () => retry.mutate() }}
-              secondary={engineError?.action ?? { label: t("lesson.backToPath"), onClick: () => navigate(`/plans/${planId}`) }}
+              secondary={engineError?.action ?? { label: t("lesson.backToPath"), onClick: toPath }}
               details={error.trim() ? error.trim().slice(0, 2000) : undefined}
             >
               {failedText}
@@ -568,7 +574,7 @@ export function PartPage({
                   reread,
                 }}
                 onOther={onOther}
-                onEnough={() => navigate(`/plans/${planId}`)}
+                onEnough={() => (back ? back.go() : navigate(`/plans/${planId}`))}
                 continueRef={continueRef}
                 failed={finish.isError}
               />
@@ -580,7 +586,7 @@ export function PartPage({
                 failed={markRead.isError}
                 onDone={() => markRead.mutate("done")}
                 onContinue={() => markRead.mutate("continue")}
-                onBack={() => navigate(`/plans/${planId}`)}
+                onBack={toPath}
               />
             )}
             <SourcesFooter sources={lesson.sources} />
@@ -664,18 +670,15 @@ function PageShape() {
 }
 
 /** The page while `study.part` is first read from disk: the bar and the sheet's shape, as today's reader shows. */
-export function PartLoading({ planId, topicId }: { planId: string; topicId: string }) {
+export function PartLoading({ planId, topicId, back }: { planId: string; topicId: string; back: BackTarget | null }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const plan = usePlan(planId);
   const topic = plan.data?.topics.find((item) => item.id === topicId)?.title ?? t("lesson.title");
   return (
     <ReaderLayout
       title={topic}
-      backLabel={t("lesson.back")}
-      backText={plan.data?.title}
+      back={back}
       barTitle={topic}
-      onBack={() => navigate(`/plans/${planId}`)}
     >
       <ReaderLoading label={t("lesson.loading")} />
     </ReaderLayout>
