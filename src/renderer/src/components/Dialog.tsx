@@ -221,6 +221,12 @@ export function Dialog({
       aria-busy={busy || undefined}
       tabIndex={-1}
       className={["px-dialog", `is-${width}`, className].filter(Boolean).join(" ")}
+      onKeyDownCapture={(event) => {
+        // A select's list stops the Escape it closes on, so it never reaches `onKeyDown`, and the browser would close
+        // the dialog with it. Decided here, while the list still reads as open.
+        if (event.key === "Escape" && event.target instanceof Element && event.target.closest(ESCAPE_NOT_MINE))
+          event.preventDefault();
+      }}
       onKeyDown={(event) => {
         const dialog = node.current;
         if (!dialog) return;
