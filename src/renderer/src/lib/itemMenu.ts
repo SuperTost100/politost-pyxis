@@ -51,6 +51,32 @@ export function movedBy(before: Box, now: Box): boolean {
   );
 }
 
+/** Where a scroller was scrolled to, and how far it can be: the numbers an element has under these names. */
+export type Scrolled = {
+  scrollTop: number;
+  scrollLeft: number;
+  scrollHeight: number;
+  scrollWidth: number;
+  clientHeight: number;
+  clientWidth: number;
+};
+
+/**
+ * Whether a scroll was the page's own and not the student's: the scroller had been scrolled to `before` (its `scrollTop`
+ * and `scrollLeft` at the last scroll it sent), the content under it then got shorter or narrower, and the browser, with
+ * no room left for that position, moved it back to the end. A scroll the student makes can come to rest at the end too,
+ * but only by moving away from where it was, towards the end, so a scroll that moves back from `before` onto the end
+ * (within a pixel) can only be the page giving way. Read from the scroller's own numbers at the scroll event, so it
+ * needs nothing watched between events.
+ */
+export function clampedBy(before: { top: number; left: number }, now: Scrolled): boolean {
+  const clamped = (was: number, at: number, extent: number, view: number) => at < was && at >= extent - view - 1;
+  return (
+    clamped(before.top, now.scrollTop, now.scrollHeight, now.clientHeight) ||
+    clamped(before.left, now.scrollLeft, now.scrollWidth, now.clientWidth)
+  );
+}
+
 type MenuMouseEvent = {
   clientX: number;
   clientY: number;
