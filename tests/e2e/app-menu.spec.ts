@@ -406,6 +406,50 @@ test("the swipe and the mouse's side buttons go back and forward, as the menu do
   }
 });
 
+test("Indietro pressed the moment a page appears goes back from that page, not from the one before", async () => {
+  test.setTimeout(90000);
+  const { app, page, userData } = await launch({ onboarded: true });
+  try {
+    seed(userData, (db) => {
+      seedPlan(db, { id: "nav-plan", title: "Fisica 1", language: "it", topics: [{ id: "nav-topic", title: "Dinamica" }] });
+    });
+    await page.reload();
+    await page.evaluate(() => {
+      location.hash = "/plans/nav-plan";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
+    await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
+    const settings = /#\/plans\/nav-plan\/settings$/;
+    await expect(page).toHaveURL(settings);
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
+    // Fonti opens from a link in the settings, and the mouse's back button is pressed as soon as its back control is
+    // in the page: before the page has registered its way back, which a student pressing quickly, or on a slow
+    // computer, can do. The press goes back to the settings rather than being lost.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const observer = new MutationObserver(() => {
+            const arrived =
+              location.hash.endsWith("/sources") &&
+              [...document.querySelectorAll("button")].some((button) =>
+                (button.getAttribute("aria-label") ?? "").startsWith("Torna a "),
+              );
+            if (!arrived) return;
+            observer.disconnect();
+            window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true }));
+            resolve();
+          });
+          observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+          document.querySelector<HTMLAnchorElement>('a[href$="/plans/nav-plan/sources"]')!.click();
+        }),
+    );
+    await expect(page).toHaveURL(settings);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a menu pick does nothing during setup", async () => {
   const { app, page, userData } = await launch({ onboarded: false });
   try {
