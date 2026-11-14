@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { goPages, pageCommands, reportProblemUrl } from "@shared/menu";
-import { registeredBack, watchBack, whenArrived } from "./back-slot";
+import { registeredBack, routerAt, watchBack, whenArrived } from "./back-slot";
 import { readTrail, watchTrail } from "./history";
 import { menuCommandAllowed } from "./menu-guard";
 import { isMenuLocked, readMenuContext, watchMenuLocks } from "./menu-state";
@@ -58,6 +58,9 @@ export function MenuCommands() {
     // Without the call the items stay as main last had them, which only leaves a key that does nothing.
     window.pyxis.setNavState({ back, forward }).catch(() => undefined);
   }, [back, forward]);
+
+  // A back press waiting for an arriving page ends when the router moves on from that page's entry.
+  useEffect(() => router.subscribe((state) => routerAt(state.location.key)), []);
 
   useEffect(
     () =>

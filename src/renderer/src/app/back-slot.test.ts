@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { backOf, registerBack, registeredBack, whenArrived, type BackTarget } from "./back-slot";
+import { backOf, registerBack, registeredBack, routerAt, whenArrived, type BackTarget } from "./back-slot";
 
 const target = (to: string): BackTarget => ({ name: to, label: to, to, go: () => undefined, busy: false, saves: false });
 const cleanups: Array<() => void> = [];
@@ -38,6 +38,31 @@ describe("back slot", () => {
     expect(run).toHaveBeenCalledWith(expect.objectContaining({ to: "/plans/p/settings" }));
     // Later changes of the slot do not run it again.
     register("other", target("/x"));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a press once the router leaves its entry, even when it comes back to it", () => {
+    const run = vi.fn();
+    whenArrived("A", run);
+    routerAt("B");
+    routerAt("A");
+    register("A", target("/before-a"));
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("keeps the press while the router stays on its entry", () => {
+    const run = vi.fn();
+    whenArrived("A", run);
+    routerAt("A");
+    register("A", target("/before-a"));
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes back once for two presses made while the same page arrives", () => {
+    const run = vi.fn();
+    whenArrived("A", run);
+    whenArrived("A", run);
+    register("A", target("/before-a"));
     expect(run).toHaveBeenCalledTimes(1);
   });
 
