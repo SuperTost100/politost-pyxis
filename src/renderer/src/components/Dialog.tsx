@@ -144,7 +144,8 @@ export function Dialog({
         return;
       }
       const active = document.activeElement;
-      before.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      // A form opened from a menu item grows out of the menu's opener, which is what will still be there when it closes.
+      before.current = menuOpener() ?? (active instanceof HTMLElement && active !== document.body ? active : null);
       grownFrom.current = latest.current.origin?.current ?? before.current;
       dialog.showModal();
       focusOnOpen(dialog);
@@ -367,9 +368,10 @@ type Ask = {
 
 /**
  * What a menu was opened from, when the focus is on one of its items. The item leaves the page as the menu closes, so a
- * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to.
+ * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to. `Dialog`
+ * and `useConfirm` both use it.
  */
-function menuOpener(): HTMLElement | null {
+export function menuOpener(): HTMLElement | null {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || !active.closest(".px-item-menu, .ant-dropdown")) return null;
   return document.querySelector<HTMLElement>('[aria-haspopup="menu"][aria-expanded="true"]');
