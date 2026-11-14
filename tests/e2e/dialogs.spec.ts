@@ -245,7 +245,9 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     // A page ahead in history, so Avanti has somewhere to go: Fonti and back, with nothing changed yet.
     await page.getByRole("link", { name: "Vai a Fonti" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a\/sources$/);
-    // Indietro runs the page's back control, there once the page has drawn it.
+    // Indietro runs the page's back control, there once the page has drawn it: the settings stay on screen, with their
+    // own control, until Fonti has loaded.
+    await expect(page.getByRole("heading", { level: 1, name: "Materiale" })).toBeVisible();
     await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
     await pick(app, "back");
     await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
@@ -356,6 +358,31 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     const front = dialog.getByRole("textbox", { name: "Fronte" });
     await front.fill("Che cos'è la velocità?");
     const typed = "La flashcard che hai scritto andrà persa.";
+    // Once this step lost the typed front in CI and never here. What the window showed, frame by frame, goes with the
+    // failure if it comes back: the front's value, the dialogs open and what had the focus.
+    await page.evaluate(() => {
+      const log: string[] = [];
+      (window as unknown as { frontLog: string[] }).frontLog = log;
+      let last = "";
+      const note = () => {
+        const field = document.getElementById("nc-front") as HTMLTextAreaElement | null;
+        const dialogs = [...document.querySelectorAll("dialog[open]")].map((node) => node.getAttribute("aria-labelledby") && document.getElementById(node.getAttribute("aria-labelledby")!)?.textContent);
+        const active = document.activeElement;
+        const now = JSON.stringify([field?.value ?? null, dialogs, active?.id || active?.textContent?.slice(0, 30) || active?.tagName]);
+        if (now !== last) log.push(`${Math.round(performance.now())} ${now}`);
+        last = now;
+        requestAnimationFrame(note);
+      };
+      note();
+    });
+    const frontKept = async (way: string) => {
+      try {
+        await expect(front).toHaveValue("Che cos'è la velocità?");
+      } catch (error) {
+        const log = await page.evaluate(() => (window as unknown as { frontLog: string[] }).frontLog.join("\n"));
+        throw new Error(`After "Resta qui" (${way}) the front was not kept. The window, frame by frame:\n${log}\n${error}`);
+      }
+    };
     for (const way of ["Escape", "Annulla", "outside"] as const) {
       await front.focus();
       if (way === "Escape") await page.keyboard.press("Escape");
@@ -365,7 +392,7 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
       await question.getByRole("button", { name: "Resta qui" }).click();
       await expect(question).toHaveCount(0);
       await expect(dialog).toBeVisible();
-      await expect(front).toHaveValue("Che cos'è la velocità?");
+      await frontKept(way);
     }
     await page.keyboard.press("Escape");
     question = await expectLeaveQuestion(page, typed);
