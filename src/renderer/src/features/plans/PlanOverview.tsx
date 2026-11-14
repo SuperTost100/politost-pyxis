@@ -5,6 +5,7 @@ import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
 import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { Button } from "../../components/Button";
@@ -96,8 +97,8 @@ function ExamPage({ planId }: { planId: string }) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const plan = usePlan(planId);
-  // A back control elsewhere calls the exam by its title.
-  usePlace({ name: plan.data ? { text: plan.data.title } : null, back: "none" });
+  // A back control elsewhere calls the exam by its title; this page's own leads to Esami or to the page that opened it.
+  const back = usePlace({ name: plan.data ? { text: plan.data.title } : null });
   const recommended = useRecommend(planId);
   const schedule = useQuery({ ...scheduleQuery(planId), enabled: !!planId });
   const rings = useQuery(ringsQuery);
@@ -186,6 +187,7 @@ function ExamPage({ planId }: { planId: string }) {
   if (plan.data?.status === "building")
     return (
       <section className="px-exam">
+        <BackControl target={back} variant="page" />
         <h1 className="title-1">{plan.data.title}</h1>
         <Working line={t("wizard.buildInProgress")} />
         <Button onClick={() => navigate(`/plans/new?build=${planId}`)}>
@@ -253,6 +255,7 @@ function ExamPage({ planId }: { planId: string }) {
 
   return (
     <div className="px-exam">
+      <BackControl target={back} variant="page" />
       <MenuItemArea as="header" className="px-exam-head" menu={menu} region={t("examPage.more")}>
         <div className="px-exam-name">
           <h1 className="title-1">{data.title}</h1>

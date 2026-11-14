@@ -643,7 +643,9 @@ export function AskPage() {
         writePendingFiles(sessionStorage, undefined, []);
         composerFor.current = to;
       }
-      navigate(`/ask/${to}`);
+      // The new chat takes the place of the empty page it was written on, which starts the trail as Nuova chat does: a
+      // chat made here has no way back, and Back never returns to an empty Chiedi.
+      navigate(`/ask/${to}`, { replace: true, state: { via: "sidebar" } });
     },
     fail,
   };
@@ -776,8 +778,9 @@ export function AskPage() {
   const title = chatId
     ? chats.data?.find((chat) => chat.id === chatId)?.title
     : undefined;
-  // A back control elsewhere calls this chat by its title.
-  usePlace({ name: title ? { text: title } : null, back: "none" });
+  // A back control elsewhere calls this chat by its title. A chat opened from another page (a lesson's selection, an
+  // exam's topic) leads back there; one opened from the sidebar, and a new chat, have none.
+  const back = usePlace({ name: title ? { text: title } : null, back: chatId ? "show" : "none" });
 
   // Pasted screenshots and dropped files join the picked files. A note says when some could not.
   const [attachNote, setAttachNote] = useState<string | null>(null);
@@ -846,6 +849,7 @@ export function AskPage() {
       <ChatHeader
         chatId={chatId}
         title={title}
+        back={back}
         chip={
           // With no subject in the Library there is nothing to choose, until a chat has one of its own.
           chip && (subjectNames.length > 0 || chip.kind !== "auto") ? (

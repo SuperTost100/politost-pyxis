@@ -350,8 +350,13 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await expect(page.getByRole("heading", { level: 1, name: "Teoremi sui limiti" })).toBeVisible();
     // Confirming leads back to Mappe, where the tile goes and the other map of the topic stays.
     dialog = await askDelete();
+    const position = () => page.evaluate(() => (history.state as { idx: number }).idx);
+    const onMap = await position();
     await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
-    await expect(page).toHaveURL(/#\/maps\?subject=an$/);
+    // Mappe as the student left it, not at the map's subject.
+    await expect(page).toHaveURL(/#\/maps$/);
+    // The map left through its way back: the window went back one entry to Mappe, which no longer has a map ahead of it.
+    expect(await position()).toBe(onMap - 1);
     await expect(tile(page, "Teoremi sui limiti")).toHaveCount(0);
     await expect(tile(page, "Limiti")).toHaveCount(1);
     await expect(page.locator("[aria-live]").filter({ hasText: "Ho eliminato la mappa «Teoremi sui limiti»." })).toHaveCount(1);
@@ -388,7 +393,8 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await dots.click();
     await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
-    await expect(page).toHaveURL(/#\/maps\?subject=chem$/);
+    // Back to Mappe as it was, at the subject the student was looking at.
+    await expect(page).toHaveURL(/#\/maps\?subject=an$/);
     await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toHaveCount(0);
     await expect(page.getByRole("heading", { level: 2, name: "Fisica 2" })).toBeVisible();
     expect(errors).toEqual([]);

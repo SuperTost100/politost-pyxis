@@ -9,8 +9,9 @@ import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource } from "./seed";
 
 /**
- * Indietro and Avanti, from the menu, the mouse's side buttons and the swipe, must not drop an answer typed into a
- * page that keeps it only in the window: they stay refused, as every other menu command does, until the page saves.
+ * An answer typed into the exercises page lives only in the window, so every way out of the page asks "Uscire senza
+ * salvare?" before it drops it: the bar's back control and its Fai il quiz tool, a link in the Attività panel, the menu's Indietro, the mouse's
+ * side button and the swipe. Without an answer typed, they leave at once.
  */
 
 const practice = /#\/plans\/p-ex\/practice\/t-ex$/;
@@ -24,7 +25,7 @@ async function pick(app: ElectronApplication, id: string) {
   expect(found, `menu item ${id}`).toBe(true);
 }
 
-test("typing an answer on the exercises page keeps Indietro and Avanti from leaving it", async () => {
+test("an answer typed on the exercises page is asked about by every way out, and nothing asks without one", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-leave-typing-"));
   const app = await launchPyxis({ userData });
@@ -45,6 +46,10 @@ test("typing an answer on the exercises page keeps Indietro and Avanti from leav
         INSERT INTO smartbooks(id,source_id,meta_json,created_at) VALUES('b-ex','src-ex','{"title":"Fisica","chapters":[]}',1);
         INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,grounding,created_at)
           VALUES('x-ex','b-ex','ps-ex','Calcola la forza per m=2 kg e a=3 m/s2.','F=ma=6 N','{"chapter":1,"kind":"esame"}','sources',1);`);
+      // A job that failed for want of an AI tool: its card in Attività has a link that leaves the page.
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-fail','lesson-part',?,'failed',0,'engines.errors.engine-missing',?,?)",
+      ).run(JSON.stringify({ planId: "p-ex", topicId: "t-ex", position: 1 }), Date.now(), Date.now());
     } finally {
       db.close();
     }
@@ -69,13 +74,49 @@ test("typing an answer on the exercises page keeps Indietro and Avanti from leav
       });
     const mouse = () =>
       page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true })));
-    for (const way of [() => pick(app, "back"), swipe, mouse]) {
+    const control = () => page.getByRole("button", { name: "Torna a Fisica 1" });
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    const ways = [
+      () => pick(app, "back"),
+      swipe,
+      mouse,
+      () => control().click(),
+      // The bar's own tool, and a link in the Attività panel: both leave the page like the back control.
+      () => page.getByRole("banner").getByRole("button", { name: "Fai il quiz" }).click(),
+      async () => {
+        await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
+        await page.getByRole("button", { name: "Vai agli strumenti AI" }).click();
+      },
+    ];
+    // The foot's Indietro and Torna al percorso are gone: the bar's control is the one way back.
+    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Torna al percorso", exact: true })).toHaveCount(0);
+    for (const way of ways) {
       await way();
-      // A fixed wait on purpose: nothing signals that a command was ignored.
-      await page.waitForTimeout(400);
+      // The question comes with what would be lost, and staying keeps the page and the answer as they were.
+      await expect(leave).toBeVisible();
+      await expect(leave).toContainText("La risposta che hai scritto andrà persa.");
+      await leave.getByRole("button", { name: "Resta qui" }).click();
+      await expect(leave).toHaveCount(0);
       await expect(page).toHaveURL(practice);
       await expect(answer).toContainText("F = 6 N");
     }
+    // Leaving drops the answer and goes where the control said.
+    await control().click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-ex$/);
+
+    // With nothing typed, and with an answer wiped out again, nothing asks.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-ex/practice/t-ex";
+    });
+    await expect(answer).toBeVisible();
+    await answer.click();
+    await page.keyboard.type("x");
+    await page.keyboard.press("Backspace");
+    await control().click();
+    await expect(page).toHaveURL(/#\/plans\/p-ex$/);
+    await expect(leave).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);
