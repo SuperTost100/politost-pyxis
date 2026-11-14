@@ -1,21 +1,37 @@
 import { useEffect } from "react";
+import { registeredBack } from "./back-slot";
 import type { MenuContext } from "./menu-guard";
 
 /**
- * A page that holds work the router cannot give back (a quiz being answered, a timed simulation, a half-filled plan)
+ * A page that holds work the router cannot give back (a timed simulation, a half-filled plan)
  * holds a lock with `useMenuLock`. Open dialogs and unsaved text in a field block menu commands too.
  */
 const locks = new Set<symbol>();
+const watchers = new Set<() => void>();
+
+const lockChanged = () => {
+  for (const watcher of watchers) watcher();
+};
 
 export function useMenuLock(active: boolean): void {
   useEffect(() => {
     if (!active) return;
     const lock = Symbol("menu-lock");
     locks.add(lock);
+    lockChanged();
     return () => {
       locks.delete(lock);
+      lockChanged();
     };
   }, [active]);
+}
+
+/** Whether a page holds a lock now, and a way to hear when that changes: the menu greys Indietro and Avanti under one. */
+export const isMenuLocked = () => locks.size > 0;
+
+export function watchMenuLocks(watcher: () => void): () => void {
+  watchers.add(watcher);
+  return () => watchers.delete(watcher);
 }
 
 const TEXT_INPUTS = new Set([
@@ -57,8 +73,9 @@ function modalOpen(): boolean {
 export function readMenuContext(pathname: string): MenuContext {
   return {
     pathname,
-    locked: locks.size > 0,
+    locked: isMenuLocked(),
     modalOpen: modalOpen(),
     draftAtRisk: draftAtRisk(document.activeElement),
+    backSaves: registeredBack()?.saves ?? false,
   };
 }

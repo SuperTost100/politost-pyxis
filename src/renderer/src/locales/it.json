@@ -49,6 +49,7 @@
       "goLibrary": "Vai alla Libreria",
       "goFlashcards": "Vai alle Flashcard",
       "back": "Indietro",
+      "forward": "Avanti",
       "pageMenu": "Apri il menu della pagina",
       "shortcuts": "Scorciatoie da tastiera",
       "zoomIn": "Ingrandisci",
@@ -87,9 +88,11 @@
       "cmd": "Comando",
       "option": "Opzione",
       "left": "Freccia sinistra",
+      "right": "Freccia destra",
       "comma": "Virgola",
       "slash": "Barra",
       "bracket": "Parentesi quadra aperta",
+      "rbracket": "Parentesi quadra chiusa",
       "plus": "Più",
       "minus": "Meno",
       "delete": "Canc",
@@ -911,7 +914,7 @@
       "added_other": "Gli altri {{count}} file della Libreria li hai aggiunti tu."
     },
     "shelf": {
-    "more": "Altro sulla Libreria",
+      "more": "Altro sulla Libreria",
       "addFiles": "Aggiungi file",
       "linkFolder": "Collega una cartella",
       "linkAnother": "Collega un'altra cartella",

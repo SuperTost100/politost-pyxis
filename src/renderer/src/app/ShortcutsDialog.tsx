@@ -27,6 +27,7 @@ function groups(mac: boolean): Group[] {
           keys: ["mod", page.accelerator.split("+").at(-1)!],
         })),
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
+        { id: "forward", keys: mac ? ["mod", "rbracket"] : ["alt", "right"] },
         { id: "pageMenu", keys: ["shift", "F10"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },
@@ -85,9 +86,11 @@ function groups(mac: boolean): Group[] {
 
 const GLYPHS: Record<string, string> = {
   left: "←",
+  right: "→",
   comma: ",",
   slash: "/",
   bracket: "[",
+  rbracket: "]",
   plus: "+",
   minus: "−",
   backspace: "⌫",

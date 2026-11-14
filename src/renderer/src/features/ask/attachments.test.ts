@@ -101,9 +101,12 @@ describe("Ask attachments", () => {
     expect(readPendingFiles(store({ "pyxis-files:a": '[1,"/tmp/x.txt"]' }), "a")).toEqual(["/tmp/x.txt"]);
   });
 
-  it("names the chat Ask last showed, or none for a new chat", () => {
-    expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask/0199-abc","exams":"/exams"}' }))).toBe("0199-abc");
-    expect(lastAskChat(store({ "pyxis.lastDoorPath": '{"ask":"/ask"}' }))).toBeUndefined();
+  it("names the chat the page was opened from, or none for a new chat", () => {
+    const trail = (path: string, section: unknown) =>
+      JSON.stringify({ visits: [{ key: "a", idx: 0, path, page: path, from: null, section }], current: "a" });
+    expect(lastAskChat(store({ "pyxis.trail": trail("/tools/whiteboard", { chat: "0199-abc" }) }))).toBe("0199-abc");
+    expect(lastAskChat(store({ "pyxis.trail": trail("/tools/whiteboard", "ask") }))).toBeUndefined();
+    expect(lastAskChat(store({ "pyxis.trail": "{" }))).toBeUndefined();
     expect(lastAskChat(store({}))).toBeUndefined();
   });
 });

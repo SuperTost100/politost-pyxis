@@ -1,5 +1,5 @@
 import type { ErrorFields } from "./error-fields";
-import type { MenuCommand, MenuLanguage } from "./menu";
+import type { MenuCommand, MenuLanguage, NavState } from "./menu";
 import type {
   UpdateFinishResult,
   UpdateInstallView,
@@ -183,6 +183,11 @@ export interface PyxisBridge {
   checkUpdates(force?: boolean): Promise<UpdateView>;
   /** Tells main which language to write the application menu in. Main rebuilds the menu when it changes. */
   setMenuLanguage(language: MenuLanguage): Promise<void>;
+  /**
+   * Tells main which of Vai > Indietro and Vai > Avanti can do something now, so the menu greys the other. Main keeps the
+   * last state when it rebuilds the menu.
+   */
+  setNavState(state: NavState): Promise<void>;
   /** Runs when the student picks a menu item or presses its shortcut. Unknown commands never arrive. */
   onMenuCommand(cb: (command: MenuCommand) => void): () => void;
   /** Downloads and verifies the installer for this computer. Only a click on Download and install calls it. */
@@ -253,6 +258,7 @@ export const mainChannels = {
   printReady: "print:ready",
   updatesCheck: "updates:check",
   menuLanguage: "menu:language",
+  navState: "menu:nav-state",
   menuCommand: "menu:command",
   updatesInstall: "updates:install",
   updatesCancel: "updates:cancel",

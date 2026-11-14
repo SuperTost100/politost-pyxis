@@ -32,8 +32,10 @@ type Row = {
   leadsTo: string;
   /** The accessible name of what has the focus afterwards. */
   focus: string | RegExp;
-  /** The page has a page behind it, so Vai > Indietro, one entry back, goes to the same place. */
-  menu?: boolean;
+  /** The sidebar row lit while the page shows: the section it was opened from, or null for a page without the sidebar. */
+  lit: string | null;
+  /** Nothing is behind the page, so Back opens its parent in the page's place and Avanti has nothing to return to. */
+  parent?: boolean;
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -69,11 +71,11 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Intorni e distanza" })).toBeVisible();
     }),
     label: EXAM,
+    lit: null,
     leadsTo: exam,
     // The topic's row folds again on the exam page, since the diagnostic is still what the path is on: the focus goes
     // to the row that held the part.
     focus: /^Funzioni di più variabili/,
-    menu: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -83,9 +85,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     }),
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: /Funzioni di più variabili/,
-    menu: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -96,9 +98,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     },
     label: "Mappe",
+    lit: "Mappe",
     leadsTo: "/maps",
     focus: /Funzioni di più variabili/,
-    menu: true,
   },
   {
     page: "/exams/mistakes",
@@ -108,9 +110,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Quaderno degli errori" })).toBeVisible();
     }),
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: "Quaderno degli errori",
-    menu: true,
   },
   {
     page: "/plans/:planId/redo",
@@ -120,10 +122,9 @@ const rows: Row[] = [
       await expect(page.getByRole("button", { name: "Consegna" }).first()).toBeVisible();
     }),
     label: EXAM,
+    lit: null,
     leadsTo: exam,
     focus: "Rifai la domanda",
-    // The menu leaves a quiz alone while its questions are answered (useMenuLock).
-    menu: false,
   },
   {
     page: "/cards/due",
@@ -133,9 +134,9 @@ const rows: Row[] = [
       await expect(page.getByRole("button", { name: "Gira", exact: true })).toBeVisible();
     }),
     label: EXAM,
+    lit: null,
     leadsTo: exam,
     focus: /^Ripassa/,
-    menu: true,
   },
   {
     page: "/cards/due",
@@ -146,9 +147,9 @@ const rows: Row[] = [
       await expect(page.getByRole("button", { name: "Gira", exact: true })).toBeVisible();
     },
     label: "Flashcard",
+    lit: null,
     leadsTo: "/flashcards",
     focus: /^Ripassa le 2 di oggi$/,
-    menu: true,
   },
   {
     page: "/exams/cards",
@@ -158,9 +159,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Tutte le flashcard" })).toBeVisible();
     }),
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: "Sfoglia tutte",
-    menu: true,
   },
   {
     page: "/plans/:planId/settings",
@@ -170,9 +171,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Impostazioni dell'esame" })).toBeVisible();
     }),
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: "Impostazioni dell'esame",
-    menu: true,
   },
   {
     page: "/plans/:planId/:view?",
@@ -182,9 +183,9 @@ const rows: Row[] = [
       await expect(page.getByRole("heading", { level: 1, name: "Materiale" })).toBeVisible();
     }),
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: /^Tutto il materiale/,
-    menu: true,
   },
   {
     page: "/plans/:planId/map/:topicId",
@@ -196,10 +197,10 @@ const rows: Row[] = [
       await expect(walk.page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     },
     label: "Funzioni di più variabili",
+    lit: "Esami",
     leadsTo: `${exam}/lesson/t-fun`,
     // The menu item that opened the map is gone with its menu: the part's heading takes the focus.
     focus: "Intorni e distanza",
-    menu: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -210,6 +211,7 @@ const rows: Row[] = [
       await expect(walk.page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     },
     label: EXAM,
+    lit: "Esami",
     leadsTo: exam,
     focus: /Funzioni di più variabili/,
   },
@@ -223,6 +225,8 @@ const rows: Row[] = [
       await expect(walk.page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     },
     label: "Mappe",
+    lit: "Mappe",
+    parent: true,
     leadsTo: "/maps?subject=s-an",
     // Mappe opened at a subject puts the focus on that subject's heading.
     focus: "Analisi",
@@ -236,6 +240,8 @@ const rows: Row[] = [
       await expect(walk.page.getByRole("button", { name: "Gira", exact: true })).toBeVisible();
     },
     label: "Flashcard",
+    lit: null,
+    parent: true,
     leadsTo: "/flashcards",
     focus: "Flashcard",
   },
@@ -253,6 +259,8 @@ const rows: Row[] = [
       how: "with nothing behind it",
       reach: direct(path!),
       label: EXAM,
+      lit: null,
+      parent: true,
       leadsTo: exam,
       focus: EXAM,
     }),
@@ -262,6 +270,8 @@ const rows: Row[] = [
     how: "with nothing behind it",
     reach: direct("/cards/subject/s-an"),
     label: "Flashcard",
+    lit: null,
+    parent: true,
     leadsTo: "/flashcards",
     focus: "Flashcard",
   },
@@ -290,7 +300,8 @@ function seed(db: DatabaseSync) {
   });
   const link = db.prepare("INSERT INTO topic_passages(topic_id,passage_id) VALUES('t-fun',?)");
   for (const passage of passages) link.run(passage.id);
-  db.exec(`DELETE FROM feature_engines;
+  db.exec(`INSERT INTO chats(id,title,created_at,updated_at) VALUES('c-bayes','Teorema di Bayes',1,1);
+    DELETE FROM feature_engines;
     INSERT INTO lesson_outlines(id,plan_id,topic_id,passage_key,origin,created_at) VALUES('o-fun','p-an2','t-fun','k','model',1);
     INSERT INTO lesson_parts(id,outline_id,position,kind,title,about,passage_ids_json,minutes) VALUES
       ('o-fun-1','o-fun',1,'part','Intorni e distanza','','["ps-1","ps-2"]',5),
@@ -344,6 +355,9 @@ function seed(db: DatabaseSync) {
   );
 }
 
+/** The sidebar's lit row, if the page shows the sidebar. */
+const lit = (page: Page) => page.locator('.px-side [aria-current="page"]');
+
 const backControl = (page: Page) => page.getByRole("button", { name: /^Torna a / });
 
 let walk: Walk;
@@ -380,18 +394,25 @@ for (const row of rows) {
     const reached = page.url();
     await expect(backControl(page)).toHaveAccessibleName(`Torna a ${row.label}`);
     await expect(backControl(page)).toHaveText(row.label);
+    // The sidebar lights the section the page was opened from, not the one its address belongs to.
+    if (row.lit === null) await expect(lit(page)).toHaveCount(0);
+    else await expect(lit(page)).toHaveAccessibleName(row.lit);
     // Escape never leaves a page.
     await page.locator("body").press("Escape");
     expect(page.url()).toBe(reached);
     await backControl(page).click();
     await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
     await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
-    if (!row.menu) return;
-    // Vai > Indietro moves one entry back, which is the same place, since history keeps one entry per page.
+    // Vai > Indietro goes where the control goes, and Vai > Avanti returns to the page.
     await row.reach(walk);
+    // A page that opens a session of its own (Rifai gli errori) has a new address each time.
+    const again = page.url();
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
     await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
     await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
+    if (row.parent) return;
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click());
+    await expect(page).toHaveURL(again);
   });
 }
 
@@ -416,6 +437,57 @@ test("A, B, back to A, then C: C goes back to A", async () => {
   await expect(backControl(page)).toHaveText(EXAM);
   await backControl(page).click();
   await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+});
+
+test("the sidebar lights the section the page came from, and every row opens its section's main page", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  const sections = page.getByRole("navigation", { name: "Sezioni" });
+  const row = (name: string) => sections.getByRole("link", { name, exact: true });
+  // A map opened from an exam keeps Esami lit, and Settings opened over that map does too.
+  await rows[1]!.reach(walk);
+  await expect(lit(page)).toHaveAccessibleName("Esami");
+  await page.getByRole("button", { name: /^Profilo/ }).click();
+  await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(lit(page)).toHaveAccessibleName("Esami");
+  // The rows go to the sections' main pages, whatever page the student left them on.
+  await row("Mappe").click();
+  await expect(page).toHaveURL(/#\/maps$/);
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  await expect(backControl(page)).toHaveCount(0);
+  await row("Esami").click();
+  await expect(page).toHaveURL(/#\/exams$/);
+  await expect(lit(page)).toHaveAccessibleName("Esami");
+  // A chat lights its own row and nothing else.
+  await page.locator(".px-side-chats").getByRole("link", { name: /Teorema di Bayes/ }).click();
+  await expect(page).toHaveURL(/#\/ask\/c-bayes$/);
+  await expect(lit(page)).toHaveCount(1);
+  await expect(lit(page)).toHaveAccessibleName(/Teorema di Bayes/);
+  await expect(backControl(page)).toHaveCount(0);
+  // Vai goes straight to a section's root, and Indietro has nothing to do from there.
+  await walk.app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+  await expect(page).toHaveURL(/#\/maps$/);
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  await expect(backControl(page)).toHaveCount(0);
+});
+
+test("Vai > Mappe does what the sidebar's row does, also on Mappe opened from an exam", async () => {
+  test.setTimeout(90_000);
+  const { page, app } = walk;
+  await fromExam(async () => undefined)(walk);
+  await side(page).getByRole("link", { name: "Tutte le mappe" }).click();
+  await expect(page).toHaveURL(/#\/maps\?subject=s-an$/);
+  // Mappe keeps the section of the exam it was opened from.
+  await expect(lit(page)).toHaveAccessibleName("Esami");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  await expect(page).toHaveURL(/#\/maps$/);
+  // Again, from the page the row opened: nothing is added to the history, and the row stays lit.
+  const length = await page.evaluate(() => history.length);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  expect(await page.evaluate(() => history.length)).toBe(length);
 });
 
 test("the label follows the app's language, also after a reload", async () => {
