@@ -34,6 +34,8 @@ function flat(menu: Item[]): Item[] {
   );
 }
 
+const go_ = (language: "it" | "en") => (language === "en" ? "Go" : "Vai");
+
 function labels(items: Item[]): string[] {
   return items
     .filter((item) => item.type !== "separator")
@@ -119,11 +121,11 @@ describe("application menu", () => {
       ).toEqual(["undo", "redo", "cut", "copy", "paste", "selectAll"]);
   });
 
-  it("lists the Go pages with number keys, then Back with the platform's accelerator", () => {
+  it("lists the Go pages with number keys, then Back and Forward with the platform's accelerators", () => {
     const go = submenu(build("linux"), "Go");
     expect(
       go
-        .filter((item) => item.id !== "back" && item.type !== "separator")
+        .filter((item) => item.id !== "back" && item.id !== "forward" && item.type !== "separator")
         .map((item) => [item.id, item.accelerator]),
     ).toEqual(goPages.map((page) => [page.command, page.accelerator]));
     expect(go.map((item) => item.accelerator).filter(Boolean)).toEqual([
@@ -133,6 +135,7 @@ describe("application menu", () => {
       "CmdOrCtrl+4",
       "CmdOrCtrl+5",
       "Alt+Left",
+      "Alt+Right",
     ]);
     expect(
       submenu(build("win32"), "Go").find((item) => item.id === "back")
@@ -142,6 +145,36 @@ describe("application menu", () => {
       submenu(build("darwin"), "Go").find((item) => item.id === "back")
         ?.accelerator,
     ).toBe("Cmd+[");
+    for (const [platform, accelerator] of [
+      ["linux", "Alt+Right"],
+      ["win32", "Alt+Right"],
+      ["darwin", "Cmd+]"],
+    ] as const)
+      expect(
+        submenu(build(platform), "Go").find((item) => item.id === "forward")?.accelerator,
+        platform,
+      ).toBe(accelerator);
+  });
+
+  it("puts Forward after Back, in both languages", () => {
+    for (const [language, back, forward] of [
+      ["en", "Back", "Forward"],
+      ["it", "Indietro", "Avanti"],
+    ] as const) {
+      const go = submenu(build("linux", language), go_(language)).filter((item) => item.type !== "separator");
+      expect(go.slice(-2).map((item) => item.label)).toEqual([back, forward]);
+    }
+  });
+
+  it("enables Back and Forward as the renderer's navigation state says, and neither before it has said anything", () => {
+    const enabled = (nav?: { back: boolean; forward: boolean }) => {
+      const go = submenu(buildMenuTemplate({ platform: "linux", language: "en", packaged: true, send: () => undefined, ...(nav ? { nav } : {}) }), "Go");
+      return ["back", "forward"].map((id) => go.find((item) => item.id === id)?.enabled);
+    };
+    expect(enabled()).toEqual([false, false]);
+    expect(enabled({ back: true, forward: false })).toEqual([true, false]);
+    expect(enabled({ back: false, forward: true })).toEqual([false, true]);
+    expect(enabled({ back: true, forward: true })).toEqual([true, true]);
   });
 
   it("offers zoom everywhere, and reload and developer tools only in development", () => {
@@ -197,7 +230,7 @@ describe("application menu", () => {
     ]);
     expect(
       submenu(menu, "Vai").flatMap((item) => (item.label ? [item.label] : [])),
-    ).toEqual(["Chiedi", "Esami", "Mappe", "Flashcard", "Libreria", "Indietro"]);
+    ).toEqual(["Chiedi", "Esami", "Mappe", "Flashcard", "Libreria", "Indietro", "Avanti"]);
     expect(
       submenu(menu, "Aiuto").flatMap((item) =>
         item.label ? [item.label] : [],

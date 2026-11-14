@@ -192,4 +192,44 @@ describe("draftSaver", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(sent).toEqual(["typed on question 1", "question 2, marked"]);
   });
+
+  it("says when the newest answers are not saved: a save on its way, or one that failed, until a save lands", async () => {
+    let fail = true;
+    const releases: Array<() => void> = [];
+    const saver = draftSaver(
+      (draft: string) =>
+        fail
+          ? Promise.reject(new Error("disk full"))
+          : new Promise<void>((resolve) => releases.push(resolve)),
+      () => undefined,
+      500,
+    );
+    const states: boolean[] = [];
+    saver.watch(() => states.push(saver.unsaved()));
+    expect(saver.unsaved()).toBe(false);
+    // Waiting for the pause to end is not enough to hold anything: leaving sends it.
+    saver.schedule("a");
+    expect(saver.unsaved()).toBe(false);
+    await saver.flush();
+    // The save failed: the draft waits for the next flush.
+    expect(saver.unsaved()).toBe(true);
+    fail = false;
+    const retried = saver.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    // Not yet: a save is on its way.
+    expect(saver.unsaved()).toBe(true);
+    releases.forEach((release) => release());
+    expect(await retried).toBe(true);
+    expect(saver.unsaved()).toBe(false);
+    expect(states).toEqual([true, false]);
+  });
+
+  it("holds nothing once the answers are dropped", async () => {
+    const saver = draftSaver(() => Promise.reject(new Error("disk full")), () => undefined, 500);
+    saver.schedule("a");
+    await saver.flush();
+    expect(saver.unsaved()).toBe(true);
+    saver.cancel();
+    expect(saver.unsaved()).toBe(false);
+  });
 });

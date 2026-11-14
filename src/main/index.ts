@@ -35,8 +35,10 @@ import { applySpellCheckerLanguages } from "./spellcheck";
 import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuPopupOptions, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
+  isNavState,
   type MenuCommand,
   type MenuLanguage,
+  type NavState,
 } from "../shared/menu";
 import { updateInstaller } from "./update-install";
 import { updateSeam } from "./update-fixture";
@@ -721,6 +723,14 @@ function createWindow(route?: string): void {
     clearTimeout(boundsTimer);
     boundsTimer = setTimeout(saveBounds, 500);
   };
+  // Electron's `swipe` is the old three-finger swipe event, which its documentation says macOS sends only when the
+  // trackpad's "Swipe between pages" is set to "Swipe with two or three fingers", and which most trackpads no longer are.
+  // Electron documents no event for the two-finger gesture. It does what Indietro and Avanti do; the renderer decides
+  // whether it may.
+  mainWindow.on("swipe", (_event, direction) => {
+    if (direction === "left") sendMenuCommand("back");
+    else if (direction === "right") sendMenuCommand("forward");
+  });
   mainWindow.on("resize", saveBoundsSoon);
   mainWindow.on("move", saveBoundsSoon);
   mainWindow.on("close", () => {
@@ -1030,6 +1040,8 @@ function startCore(strict = false): Promise<void> {
  * command was chosen, and the renderer decides whether it may run now (see `src/renderer/src/app/menu-guard.ts`).
  */
 let menuLanguage: MenuLanguage | null = null;
+/** Which of Vai > Indietro and Avanti can do something now, as the renderer said; kept across a rebuild of the menu. */
+let navState: NavState = { back: false, forward: false };
 
 function sendMenuCommand(command: MenuCommand): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -1044,6 +1056,7 @@ function installMenu(): void {
         language: menuLanguage ?? systemLanguage(),
         packaged: app.isPackaged,
         send: sendMenuCommand,
+        nav: navState,
       }),
     ),
   );
@@ -1395,6 +1408,17 @@ function registerIpc(): void {
     menuLanguage = language;
     installMenu();
     installSpellChecker();
+  });
+  ipcMain.handle(mainChannels.navState, (event, state: unknown) => {
+    requireMainSender(event, "menu-untrusted-sender");
+    if (!isNavState(state)) throw new Error("invalid-nav-state");
+    navState = { back: state.back, forward: state.forward };
+    // The menu is changed where it stands: a rebuild would close it if it were open.
+    const menu = Menu.getApplicationMenu();
+    const back = menu?.getMenuItemById("back");
+    const forward = menu?.getMenuItemById("forward");
+    if (back) back.enabled = navState.back;
+    if (forward) forward.enabled = navState.forward;
   });
   const installer = updateInstaller({
     repository,
