@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { openDatabase } from "./connection";
 import { listPlans, planGuide } from "../plans/create";
 import { planMastery, planSeries } from "../plans/progress";
+import { openGaps } from "../study/openGaps";
 import { browseCards } from "../study/cardBrowser";
 import {
   countDueCards,
@@ -102,6 +103,7 @@ describe("hot queries", () => {
       listPlans(db, now);
       planGuide(db, "p", now);
       planSeries(db, "p", now);
+      openGaps(db, "p", now);
       currentSelfRatings(db, "t", now);
       smartAnswers(db, "lesson");
       browseCards(db, { query: "velocita" }, now);
@@ -118,6 +120,37 @@ describe("hot queries", () => {
     );
     expect(sql.size).toBeGreaterThan(20);
     expect(scans).toEqual([]);
+    db.close();
+  });
+});
+
+describe("open gap reads", () => {
+  it("find a plan's open gaps, their topics and their linked answers through indexes", () => {
+    const db = openDatabase(":memory:");
+    db.exec(`
+      INSERT INTO plans (id, title, status, created_at, updated_at) VALUES ('p', 'Physics', 'ready', 1, 1);
+      INSERT INTO topics (id, plan_id, title, position, created_at) VALUES ('t', 'p', 'Motion', 0, 1);
+      INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('g', 'p', 't', 1);
+    `);
+    const sql = preparedDuring(db, () => {
+      openGaps(db, "p", 1000);
+      planGuide(db, "p", 1000);
+      planSeries(db, "p", 1000);
+    });
+    // The list's read and the count's read, which share the rule that says which gaps are open.
+    const reads = [...sql].filter((text) => text.includes("@plan") && /\bFROM gaps g\b/.test(text));
+    expect(reads).toHaveLength(2);
+    for (const text of reads) {
+      const plan = (db.prepare(`EXPLAIN QUERY PLAN ${text}`).all({ plan: "p" }) as Array<{ detail: string }>).map((row) => row.detail);
+      expect(plan.filter((detail) => /^SCAN /.test(detail)), text).toEqual([]);
+      expect(plan).toContain("SEARCH g USING INDEX gaps_plan (plan_id=?)");
+      expect(plan).toContain("SEARCH topics USING INDEX topics_plan (plan_id=?)");
+    }
+    expect(
+      (db.prepare("EXPLAIN QUERY PLAN SELECT count(*) FROM gap_answers ga WHERE ga.gap_id = ?").all("g") as Array<{ detail: string }>).map(
+        (row) => row.detail,
+      ),
+    ).toEqual(["SEARCH ga USING COVERING INDEX sqlite_autoindex_gap_answers_1 (gap_id=?)"]);
     db.close();
   });
 });
