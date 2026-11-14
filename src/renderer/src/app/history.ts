@@ -1,4 +1,5 @@
 import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, skipSpent, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
+import { arrivedAt } from "./arrival-note";
 import { canTakeFocus } from "./focusable";
 
 /**
@@ -36,25 +37,6 @@ export function readTrail(): Trail {
 export function watchTrail(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
-}
-
-/**
- * A word for the page a way back is about to open, which that page reads once on arrival (`takeArrivalNote`): what a
- * navigation's `state` would carry, except that going back through the window's history cannot carry one. It is for the
- * next page the router finishes opening and no later one, so a destination that never reads it leaves nothing behind.
- */
-let note: { value: unknown; arrived: boolean } | null = null;
-
-export function noteForArrival(value: unknown): void {
-  note = { value, arrived: false };
-}
-
-/** The note the page now showing was left, once; undefined when there is none or the page is not the one it was for. */
-export function takeArrivalNote<T>(): T | undefined {
-  if (!note?.arrived) return undefined;
-  const { value } = note;
-  note = null;
-  return value as T;
 }
 
 /** Writes the name a page gives itself on its history entry. */
@@ -203,8 +185,7 @@ export function trackHistory(router: { state: RouterState; subscribe: (fn: (stat
     const at = `${location.key} ${location.pathname}${location.search}`;
     if (at === seen) return;
     seen = at;
-    // The navigation that finishes after a note was left is the one the note is for; the next one ends it.
-    if (note) note = note.arrived ? null : { ...note, arrived: true };
+    arrivedAt(location.pathname);
     const idx = (window.history.state as { idx?: unknown } | null)?.idx;
     const action = state.historyAction;
     update(
