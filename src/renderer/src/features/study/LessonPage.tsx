@@ -48,7 +48,8 @@ export function LessonPage() {
   if (query.data?.mode === "parts" && !choosing)
     return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} />;
   if ((query.data?.mode === "legacy" && !choosing) || query.isError)
-    return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} />;
+    // The reader notes the lesson it was opened on when it mounts, so another item of the topic is a reader of its own.
+    return <LegacyLessonPage key={itemId ?? ""} old={query.data?.mode === "legacy" ? query.data.old : undefined} />;
   return <PartLoading planId={planId} topicId={topicId} />;
 }
 
@@ -84,6 +85,7 @@ function RewriteFallback({
   const engine = key && key.startsWith("engines.errors.") ? describeEngineError(key, jobErrorEngine(error)) : undefined;
   return (
     <LegacyLessonPage
+      key={data.replaces!.itemId}
       itemId={data.replaces!.itemId}
       notice={{
         text: engine ? `${t("lesson.oldRewriteFailed")} ${engine.text}` : t("lesson.oldRewriteFailed"),
