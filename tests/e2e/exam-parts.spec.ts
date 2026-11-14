@@ -292,7 +292,7 @@ test("a suggestion that is not a lesson reads as before under Consigliato adesso
     const taylor = page.getByRole("list", { name: "Passi di Formula di Taylor in più variabili" });
     await expect(taylor.getByRole("button", { name: /^Lezione/ })).toBeVisible();
     await expect(page.locator(".px-xpath-parts")).toHaveCount(0);
-    await expect(page.locator(".px-xpath-row.is-open .px-xpath-head .px-xpath-sub")).toHaveText(/ su 3 fatti$/);
+    await expect(page.locator(".px-xpath-row.is-open .px-xpath-head .px-xpath-sub")).toHaveText("1 passo su 3 fatto");
 
     // A topic of one part does too.
     await path.getByRole("button", { name: /^Massimi e minimi liberi/ }).click();
