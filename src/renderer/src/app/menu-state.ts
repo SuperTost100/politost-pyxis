@@ -26,6 +26,20 @@ export function useMenuLock(active: boolean): void {
   }, [active]);
 }
 
+/** The pages on screen whose leave guard asks before a move drops their typed work (`useLeaveGuard`). */
+const guards = new Set<symbol>();
+
+/** Says, while the page is on screen, that it asks before any move drops what is typed: the menu then lets moves through. */
+export function useAsksBeforeLeaving(): void {
+  useEffect(() => {
+    const guard = Symbol("leave-guard");
+    guards.add(guard);
+    return () => {
+      guards.delete(guard);
+    };
+  }, []);
+}
+
 /** Whether a page holds a lock now, and a way to hear when that changes: the menu greys Indietro and Avanti under one. */
 export const isMenuLocked = () => locks.size > 0;
 
@@ -76,6 +90,6 @@ export function readMenuContext(pathname: string): MenuContext {
     locked: isMenuLocked(),
     modalOpen: modalOpen(),
     draftAtRisk: draftAtRisk(document.activeElement),
-    backSaves: registeredBack()?.saves ?? false,
+    keepsTyped: guards.size > 0 ? "asks" : registeredBack()?.saves ? "back" : null,
   };
 }

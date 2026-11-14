@@ -77,6 +77,8 @@ const routes = [
   ["flashcards-new-pyxis", "/flashcards"],
   ["flashcards-new-working", "/flashcards"],
   ["flashcards-new-review", "/flashcards"],
+  // Nuova flashcard closed with a card written: the same question as leaving a page, over the dialog.
+  ["flashcards-new-leave", "/flashcards"],
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
   // The due flashcards from every plan, as the exam list's line opens them.
@@ -105,6 +107,10 @@ const routes = [
   ["settings-engines-advanced", "/settings/engines"],
   ["settings-engines-debug", "/settings/engines"],
   ["gallery", "/dev/gallery"],
+  // The one dialog in its three kinds, from the gallery: a confirmation that deletes, a form, one that only informs.
+  ["gallery-dialog-confirm", "/dev/gallery"],
+  ["gallery-dialog-form", "/dev/gallery"],
+  ["gallery-dialog-info", "/dev/gallery"],
   ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
   ["plan", "/plans/audit-plan"],
   ["plan-dated", "/plans/audit-ready-plan"],
@@ -118,6 +124,8 @@ const routes = [
   // The same page with a goal and a name changed, so the save bar lists them.
   ["plan-settings-changes", "/plans/audit-plan/settings"],
   ["plan-settings-delete", "/plans/audit-plan/settings"],
+  // The same changes, and the sidebar's Esami asks before they are lost.
+  ["plan-settings-leave", "/plans/audit-plan/settings"],
   ["plan-create", "/plans/audit-plan"],
   // "Crea un'attività" on a simulation, with its length and material in place.
   ["plan-create-simulation", "/plans/audit-plan"],
@@ -270,6 +278,8 @@ const routes = [
   ["map-cards", "/maps/audit-subject/audit-topic?from=maps&map=audit-map-entry"],
   ["map-cards-no-exam", "/maps/audit-chem?from=maps&map=audit-chem-map-entry"],
   ["whiteboard", "/tools/whiteboard"],
+  // A stroke not saved, and the board's Chiudi asks before it is lost.
+  ["whiteboard-leave", "/tools/whiteboard"],
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
   ["jobs-popover", "/exams"],
@@ -4412,6 +4422,55 @@ async function openState(page: Page, name: string) {
         }),
       ).toContainText(/2 (modifiche da salvare|changes to save)/);
       break;
+    case "plan-settings-leave":
+      await page.getByLabel(both("Nome dell'esame", "Exam name")).fill("Fisica generale");
+      await page
+        .getByRole("navigation", { name: both("Sezioni", "Sections") })
+        .getByRole("link", { name: both("Esami", "Exams") })
+        .click();
+      await expect(
+        page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
+      ).toBeVisible();
+      break;
+    case "whiteboard-leave": {
+      const canvas = page.locator(".px-whiteboard canvas");
+      const box = (await canvas.boundingBox())!;
+      await page.mouse.move(box.x + 100, box.y + 120);
+      await page.mouse.down();
+      await page.mouse.move(box.x + 260, box.y + 220, { steps: 8 });
+      await page.mouse.up();
+      // The page keeps the stroke; the next states open on an empty board.
+      await page.evaluate(() => sessionStorage.removeItem("pyxis-board"));
+      await page.getByRole("button", { name: both("Chiudi", "Close") }).click();
+      await expect(
+        page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
+      ).toBeVisible();
+      break;
+    }
+    case "flashcards-new-leave": {
+      await page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") }).click();
+      const card = page.getByRole("dialog", { name: both("Nuova flashcard", "New flashcard") });
+      await expect(card.getByRole("combobox", { name: both("Materia", "Subject") })).toBeFocused();
+      await card.getByRole("textbox", { name: both("Fronte", "Front") }).fill("Che cos'è il numero atomico?");
+      await page.keyboard.press("Escape");
+      await expect(
+        page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
+      ).toBeVisible();
+      break;
+    }
+    case "gallery-dialog-confirm":
+    case "gallery-dialog-form":
+    case "gallery-dialog-info": {
+      const kinds: Record<string, [RegExp, RegExp]> = {
+        "gallery-dialog-confirm": [both("Conferma che elimina", "Confirmation that deletes"), both("Eliminare Fisica 1\\?", "Delete Physics 1\\?")],
+        "gallery-dialog-form": [both("Modulo", "Form"), both("Nuova mappa", "New map")],
+        "gallery-dialog-info": [both("Solo informa", "Only informs"), both("Scorciatoie da tastiera", "Keyboard shortcuts")],
+      };
+      const [opener, title] = kinds[name]!;
+      await page.getByRole("button", { name: opener }).click();
+      await expect(page.getByRole("dialog", { name: title })).toBeVisible();
+      break;
+    }
     case "plan-settings-delete":
       await page
         .getByRole("button", { name: both("Elimina", "Delete") })

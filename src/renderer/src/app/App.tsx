@@ -14,6 +14,7 @@ import { CoreNotice } from "./CoreNotice";
 import { EngineFallbackNotice } from "./EngineFallbackNotice";
 import { MenuCommands } from "./MenuCommands";
 import { OpenedPlans } from "./OpenedPlans";
+import { ConfirmProvider } from "../components/Dialog";
 import { MakeCardsDialog } from "../components/MakeCardsDialog";
 import { SourceViewer } from "../components/SourceViewer";
 import { JobsSync } from "../features/jobs/queries";
@@ -146,6 +147,7 @@ function StudyApp() {
         button={buttonIcons}
       >
         <AntApp message={messageConfig}>
+          <ConfirmProvider>
           <JobsSync />
           <div className="px-corner-notices">
             <BackupNotice />
@@ -158,6 +160,7 @@ function StudyApp() {
           <RouterProvider router={router} />
           <SourceViewer watch={watchRouter} />
           <MakeCardsDialog />
+          </ConfirmProvider>
         </AntApp>
       </ConfigProvider>
     </AppStateContext.Provider>
