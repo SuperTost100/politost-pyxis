@@ -176,7 +176,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     await expect(page.getByText("Formato", { exact: true })).toBeVisible();
     await expect(page.getByText("Come i tuoi appelli passati")).toBeVisible();
     await expect(page.getByText("6 domande nello stile del tuo appello passato.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "150 minuti", pressed: true })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Tempo a disposizione" })).toHaveValue("150");
     await animationsSettled(page);
     await shoot(page, "simulation-setup-it-dark");
     await look(page, "en", "light");

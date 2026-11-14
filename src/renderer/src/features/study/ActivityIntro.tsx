@@ -1,6 +1,7 @@
 import { Button } from "antd";
 import { Children, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Segmented } from "../../components/Controls";
 import { Icon, type IconName } from "../../components/Icon";
 import "./ActivityIntro.css";
 
@@ -104,7 +105,14 @@ export function ActivityIntro({
   );
 }
 
-/** One choice among a few, as a row of pills under its label: a duration, a question count, a scope. */
+/** More options than this do not sit side by side: the choice becomes a native select in the same row. */
+const MAX_SEGMENTS = 3;
+
+/**
+ * One choice among a few, in a row with its label: a duration, a question count, a scope. Up to three options are a
+ * `Segmented` (one tab stop, arrows move the choice); more are a native `select`, because a growing list of durations
+ * would not fit side by side at 960 px with large text.
+ */
 export function ActivityChoice<T extends string | number>({
   label,
   value,
@@ -118,23 +126,40 @@ export function ActivityChoice<T extends string | number>({
   disabled?: boolean;
   onChange: (value: T) => void;
 }) {
+  const id = useId();
+  // The controls speak in strings; the page keeps its own type, as numbers for a count or a length.
+  const change = (key: string) => {
+    const next = choices.find((choice) => String(choice.value) === key);
+    if (next) onChange(next.value);
+  };
   return (
-    <fieldset className="px-intro-field">
-      <legend className="body-strong">{label}</legend>
-      <div className="px-intro-pills">
-        {choices.map((choice) => (
-          <button
-            key={choice.value}
-            type="button"
-            className={choice.value === value ? "choice is-selected" : "choice"}
-            aria-pressed={choice.value === value}
-            disabled={disabled}
-            onClick={() => onChange(choice.value)}
-          >
-            {choice.label}
-          </button>
-        ))}
-      </div>
-    </fieldset>
+    <div className="px-intro-field">
+      <span id={id} className="body-strong px-intro-field-label">
+        {label}
+      </span>
+      {choices.length > MAX_SEGMENTS ? (
+        <select
+          className="px-ctl-field px-intro-select"
+          aria-labelledby={id}
+          value={String(value)}
+          disabled={disabled}
+          onChange={(event) => change(event.target.value)}
+        >
+          {choices.map((choice) => (
+            <option key={choice.value} value={String(choice.value)}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <Segmented
+          label={id}
+          value={String(value)}
+          disabled={disabled}
+          options={choices.map((choice) => ({ value: String(choice.value), label: choice.label }))}
+          onChange={change}
+        />
+      )}
+    </div>
   );
 }
