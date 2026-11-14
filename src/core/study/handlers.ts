@@ -29,7 +29,7 @@ import {
 } from "./cardsFromBook";
 import { cardPlaces, proposeCards, saveProposedCards } from "./cardsFromText";
 import { newCardPlaces, proposeSubjectCards, type SubjectCardsInput } from "./cardsForSubject";
-import { enqueueGapDrill, readGapDrill, registerGapJobs } from "./gapDrill";
+import { enqueueGapDrill, readGapDrill, readGapDrillJob, registerGapJobs } from "./gapDrill";
 import { registerGapInsightJobs } from "./gapInsight";
 import { exerciseView, topicExercises } from "./exercises";
 import {
@@ -544,7 +544,8 @@ export function studyHandlers(
       if (!runner) throw new Error("jobs-unavailable");
       return enqueueGapDrill(db, runner, input);
     },
-    gapDrillRead(input: { planId: string; topicId: string; gapId?: string }) {
+    gapDrillRead(input: { planId: string; topicId: string; gapId?: string; jobId?: string }) {
+      if (input.jobId) return readGapDrillJob(db, input.planId, input.jobId);
       return readGapDrill(db, input.planId, input.topicId, input.gapId);
     },
     save(input: {

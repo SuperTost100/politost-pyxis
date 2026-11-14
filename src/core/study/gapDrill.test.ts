@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
-import { buildGapDrill, readGapDrill } from "./gapDrill";
+import { buildGapDrill, readGapDrill, readGapDrillJob } from "./gapDrill";
 import { saveQuiz, startAttempt } from "./attempt";
 import { gapMisses } from "./gapInsight";
 import { mergeGap } from "./gapRows";
@@ -374,6 +374,49 @@ describe("a drill built for a gap that later merged", () => {
     await buildGapDrill(db, { planId: "plan", topicId: "topic", gapId: "gap" }, run, undefined, (params) => (saved = params));
     expect(db.prepare("SELECT gap_id FROM gap_items").all()).toEqual([{ gap_id: "into" }]);
     expect(saved.gapId).toBe("into");
+    db.close();
+  });
+});
+
+describe("reading a drill once its gap merged", () => {
+  const setup = () => {
+    const db = fixture();
+    db.prepare("INSERT INTO gaps (id, plan_id, topic_id, opened_at) VALUES ('into', 'plan', 'topic', ?)").run(NOW + 2);
+    const itemId = saveQuiz(db, "plan", [{ id: "q", stem: "Motion", grade: { kind: "tf", picked: false, correct: true } }]);
+    const { attemptId } = startAttempt(db, "plan", itemId);
+    db.prepare("INSERT INTO jobs (id, kind, state, params_json, created_at, updated_at) VALUES ('drill', 'gap-drill', 'succeeded', ?, ?, ?)").run(
+      JSON.stringify({ planId: "plan", topicId: "topic", gapId: "gap", itemId, attemptId }),
+      NOW + 100,
+      NOW + 100,
+    );
+    return { db, attemptId };
+  };
+
+  it("still finds the drill when asked for the gap that merged, by following it to the survivor", () => {
+    const { db, attemptId } = setup();
+    mergeGap(db, "gap", "into", NOW + 300);
+    // A page that started this drill for "gap" keeps asking for "gap": it is the survivor's drill now.
+    expect(readGapDrill(db, "plan", "topic", "gap")).toEqual({ jobId: "drill", state: "succeeded", attemptId });
+    db.close();
+  });
+
+  it("reads a drill by its job, whatever has happened to its gap", () => {
+    const { db, attemptId } = setup();
+    mergeGap(db, "gap", "into", NOW + 300);
+    expect(readGapDrillJob(db, "plan", "drill")).toEqual({ jobId: "drill", state: "succeeded", attemptId });
+    db.prepare("UPDATE gaps SET closed_at = ? WHERE id = 'into'").run(NOW + 400);
+    expect(readGapDrillJob(db, "plan", "drill")).toEqual({ jobId: "drill", state: "succeeded", attemptId });
+    db.prepare("UPDATE jobs SET state = 'running', params_json = ? WHERE id = 'drill'").run(JSON.stringify({ planId: "plan", topicId: "topic", gapId: "gap" }));
+    expect(readGapDrillJob(db, "plan", "drill")).toEqual({ jobId: "drill", state: "running", attemptId: null });
+    db.close();
+  });
+
+  it("finds nothing for a job that is not a drill of this exam", () => {
+    const { db } = setup();
+    expect(readGapDrillJob(db, "plan", "nope")).toBeNull();
+    expect(readGapDrillJob(db, "other-plan", "drill")).toBeNull();
+    db.prepare("INSERT INTO jobs (id, kind, state, params_json, created_at, updated_at) VALUES ('other', 'lesson-part', 'running', '{}', 1, 1)").run();
+    expect(readGapDrillJob(db, "plan", "other")).toBeNull();
     db.close();
   });
 });

@@ -85,6 +85,7 @@ export function ResultsScreen({
   review,
   extra,
   after,
+  gapEnd,
   items,
   listNote,
 }: {
@@ -115,6 +116,8 @@ export function ResultsScreen({
   extra?: ReactNode;
   /** A line under the actions. */
   after?: ReactNode;
+  /** What a drill on a gap did to the gap, in the summary above the new step. */
+  gapEnd?: ReactNode;
   items: ResultItem[];
   /** Beside the list's heading while grading runs: who is grading. */
   listNote?: ReactNode;
@@ -195,6 +198,7 @@ export function ResultsScreen({
             {notes}
           </div>
         ) : null}
+        {graded ? gapEnd : null}
         {!graded ? (
           <section className="px-res-changes" aria-labelledby={`${titleId}-changes`}>
             <h3 id={`${titleId}-changes`} className="px-res-changes-title">

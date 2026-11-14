@@ -457,12 +457,13 @@ test("a gap drill whose read fails says so and offers to read it again, instead 
   // the read fails while the job waits, the job finishes while the page is not reading, and only then does the read work.
   const release = join(userData, "release-drill");
   app = await launch(userData, { explanation: { explanation: EXPLANATION }, quizQuestions: { ...drillReply(), hold: release } });
-  // Reading a drill looks at the gaps; while that table is away the read fails, and it works again when it is back.
-  // The job needs the same table to save its questions, so it must not run its last step while the table is away.
+  // Once the page knows the job it started it reads the drill by that job, which is a read of the jobs; while that table is
+  // away the read fails, and it works again when it is back. The job needs the same table to save its progress, so it must
+  // not run its last step while the table is away.
   const gaps = (away: boolean) => {
     const db = new DatabaseSync(dbPath(userData), { timeout: 10000 });
     try {
-      db.exec(away ? "ALTER TABLE gaps RENAME TO gaps_away" : "ALTER TABLE gaps_away RENAME TO gaps");
+      db.exec(away ? "ALTER TABLE jobs RENAME TO jobs_away" : "ALTER TABLE jobs_away RENAME TO jobs");
     } finally {
       db.close();
     }

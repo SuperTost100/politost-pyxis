@@ -1,4 +1,5 @@
 import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, skipSpent, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
+import { canTakeFocus } from "./focusable";
 
 /**
  * Keeps the trail (`trail.ts`) beside the window's history: the router reports every navigation it finishes, and the
@@ -129,9 +130,7 @@ function returnFocus(opener: string | undefined) {
   stopWaiting?.();
   const stale = new Set(document.querySelectorAll("a, button, h1, [id], [role=button], [data-focus-key]"));
   const usable = (element: HTMLElement, late: boolean) =>
-    element.isConnected &&
-    !element.closest("[inert]") &&
-    !element.matches(":disabled") &&
+    canTakeFocus(element) &&
     (late || !stale.has(element) || element.closest(".px-side") !== null);
   const place = (element: HTMLElement) => {
     finish();
