@@ -35,6 +35,8 @@ export function DialogGallery() {
   const { t } = useTranslation();
   const confirm = useConfirm();
   const [answer, setAnswer] = useState<ConfirmAnswer | null>(null);
+  // How many times the confirmation with work started it: a question answered once starts it once at most.
+  const [runs, setRuns] = useState(0);
   const [form, setForm] = useState(false);
   const [info, setInfo] = useState(false);
   const [subject, setSubject] = useState(SUBJECTS[0]!);
@@ -65,6 +67,22 @@ export function DialogGallery() {
         >
           {t("gallery.dialogs.confirmOpen")}
         </Button>
+        <Button
+          variant="secondary"
+          onClick={async () =>
+            setAnswer(
+              await confirm({
+                title: t("gallery.dialogs.deleteTitle"),
+                body: t("gallery.dialogs.deleteBody"),
+                confirm: t("gallery.dialogs.deleteConfirm"),
+                tone: "danger",
+                run: async () => setRuns((count) => count + 1),
+              }),
+            )
+          }
+        >
+          {t("gallery.dialogs.runOpen")}
+        </Button>
         <Button variant="secondary" onClick={() => setForm(true)}>
           {t("gallery.dialogs.formOpen")}
         </Button>
@@ -73,6 +91,9 @@ export function DialogGallery() {
         </Button>
         <p className="small" role="status">
           {answer ? t("gallery.dialogs.answer", { answer: t(`gallery.dialogs.answers.${answer}`) }) : null}
+        </p>
+        <p className="small" role="status">
+          {t("gallery.dialogs.runs", { count: runs })}
         </p>
       </div>
 

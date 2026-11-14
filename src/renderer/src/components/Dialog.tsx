@@ -118,8 +118,8 @@ export function Dialog({
   // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
-  const latest = useRef({ onClose, onClosed, busy, initialFocus, returnFocus, origin });
-  latest.current = { onClose, onClosed, busy, initialFocus, returnFocus, origin };
+  const latest = useRef({ open, onClose, onClosed, busy, initialFocus, returnFocus, origin });
+  latest.current = { open, onClose, onClosed, busy, initialFocus, returnFocus, origin };
 
   useLayoutEffect(() => {
     const dialog = node.current;
@@ -189,8 +189,10 @@ export function Dialog({
   if (!mounted) return null;
   const start = actions.filter((action) => action.side === "start");
   const end = actions.filter((action) => action.side !== "start");
+  // Shrinking away, it is already answered: its buttons stay disabled and nothing closes it again.
+  const answered = !open;
   const close = () => {
-    if (!latest.current.busy) latest.current.onClose();
+    if (!latest.current.busy && latest.current.open) latest.current.onClose();
   };
   const button = (action: DialogAction) => (
     <span
@@ -200,7 +202,7 @@ export function Dialog({
     >
       <Button
         variant={action.tone === "danger" ? "danger-solid" : (action.tone ?? "primary")}
-        disabled={busy || action.disabled}
+        disabled={busy || answered || action.disabled}
         onClick={() => void action.onClick()}
       >
         {action.working ? <Logo size={16} working decorative /> : null}
@@ -282,7 +284,7 @@ export function Dialog({
               {start.length ? <div className="px-dialog-start">{start.map(button)}</div> : null}
               {cancel !== false ? (
                 <span className="px-dialog-button" data-dialog-role="cancel">
-                  <Button variant="ghost" disabled={busy} onClick={close}>
+                  <Button variant="ghost" disabled={busy || answered} onClick={close}>
                     {cancel ?? t("dialog.cancel")}
                   </Button>
                 </span>
@@ -348,12 +350,17 @@ export function useConfirm(): (options: ConfirmOptions) => Promise<ConfirmAnswer
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [asks, setAsks] = useState<Ask[]>([]);
   const showing = useRef<Ask | null>(null);
+  // The question whose work is running: only the end of that work answers it, and its button does nothing meanwhile.
+  const running = useRef<number | null>(null);
   const counter = useRef(0);
 
-  const settle = useCallback((ask: Ask, answer: ConfirmAnswer | { error: unknown }) => {
-    if (showing.current !== ask) return;
+  // Answers the question `id` if it is still the one showing. A click that comes later, while it shrinks away or after
+  // another answer, does nothing.
+  const settle = useCallback((id: number, answer: ConfirmAnswer | { error: unknown }, byItsWork = false) => {
+    const ask = showing.current;
+    if (!ask || ask.id !== id || (running.current === id && !byItsWork)) return;
     showing.current = null;
-    setAsks((list) => list.map((item) => (item.id === ask.id ? { ...item, open: false, busy: false } : item)));
+    setAsks((list) => list.map((item) => (item.id === id ? { ...item, open: false, busy: false } : item)));
     if (typeof answer === "string") ask.resolve(answer);
     else ask.reject(answer.error);
   }, []);
@@ -365,21 +372,27 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         const ask: Ask = { id: ++counter.current, options, open: true, busy: false, resolve, reject };
         showing.current = ask;
         setAsks((list) => [...list, ask]);
-        options.signal?.addEventListener("abort", () => settle(ask, "cancel"), { once: true });
+        options.signal?.addEventListener("abort", () => settle(ask.id, "cancel"), { once: true });
       });
     },
     [settle],
   );
 
-  async function confirmed(ask: Ask) {
+  async function confirmed(id: number) {
+    // Checked before the work starts: a second quick click, or one after Annulla, starts nothing.
+    const ask = showing.current;
+    if (!ask || ask.id !== id || running.current === id) return;
     const run = ask.options.run;
-    if (!run) return settle(ask, "confirm");
-    setAsks((list) => list.map((item) => (item.id === ask.id ? { ...item, busy: true } : item)));
+    if (!run) return settle(id, "confirm");
+    running.current = id;
+    setAsks((list) => list.map((item) => (item.id === id ? { ...item, busy: true } : item)));
     try {
       await run();
-      settle(ask, "confirm");
+      settle(id, "confirm", true);
     } catch (error) {
-      settle(ask, { error });
+      settle(id, { error }, true);
+    } finally {
+      if (running.current === id) running.current = null;
     }
   }
 
@@ -390,13 +403,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         const { options } = ask;
         const actions: DialogAction[] = [
           ...(options.extra
-            ? [{ label: options.extra, tone: "secondary" as const, side: "start" as const, onClick: () => settle(ask, "extra") }]
+            ? [{ label: options.extra, tone: "secondary" as const, side: "start" as const, onClick: () => settle(ask.id, "extra") }]
             : []),
           {
             label: options.confirm,
             tone: options.tone ?? "primary",
             working: ask.busy,
-            onClick: () => void confirmed(ask),
+            onClick: () => void confirmed(ask.id),
           },
         ];
         return (
@@ -411,7 +424,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             busy={ask.busy}
             origin={{ current: options.origin ?? null }}
             returnFocus={{ current: options.returnFocus ?? null }}
-            onClose={() => settle(ask, "cancel")}
+            onClose={() => settle(ask.id, "cancel")}
             onClosed={() => setAsks((list) => list.filter((item) => item.id !== ask.id))}
           />
         );

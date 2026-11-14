@@ -181,6 +181,31 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
     await expect(info).toHaveCount(0);
     await expect(infoOpener).toBeFocused();
 
+    // A confirmation whose work ends at once starts it once: a second quick click, and a click on the confirming button
+    // right after Annulla, do nothing while the dialog shrinks away.
+    const runs = page.getByRole("status").filter({ hasText: /^Lavori avviati: / });
+    await expect(runs).toHaveText("Lavori avviati: 0");
+    const runOpener = page.getByRole("button", { name: "Conferma con un lavoro" });
+    await runOpener.click();
+    const twice = page.getByRole("dialog", { name: "Eliminare Fisica 1?" });
+    await twice.getByRole("button", { name: "Elimina l'esame" }).evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    await expect(answer).toHaveText("Ultima risposta: conferma");
+    await expect(twice).toHaveCount(0);
+    await expect(runs).toHaveText("Lavori avviati: 1");
+    await runOpener.click();
+    await expect(twice.getByRole("button", { name: "Annulla" })).toBeFocused();
+    await twice.evaluate((dialog) => {
+      const buttons = [...dialog.querySelectorAll("button")];
+      buttons.find((button) => button.textContent === "Annulla")!.click();
+      buttons.find((button) => button.textContent === "Elimina l'esame")!.click();
+    });
+    await expect(answer).toHaveText("Ultima risposta: annulla");
+    await expect(twice).toHaveCount(0);
+    await expect(runs).toHaveText("Lavori avviati: 1");
+
     // Under reduced motion it only fades, in 120 ms.
     await page.emulateMedia({ reducedMotion: "reduce" });
     await opener.click();

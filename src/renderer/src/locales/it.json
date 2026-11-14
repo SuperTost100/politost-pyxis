@@ -2696,6 +2696,9 @@
       "confirmOpen": "Conferma che elimina",
       "formOpen": "Modulo",
       "infoOpen": "Solo informa",
+      "runOpen": "Conferma con un lavoro",
+      "runs_one": "Lavori avviati: {{count}}",
+      "runs_other": "Lavori avviati: {{count}}",
       "answer": "Ultima risposta: {{answer}}",
       "answers": {
         "confirm": "conferma",

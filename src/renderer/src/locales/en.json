@@ -2696,6 +2696,9 @@
       "confirmOpen": "Confirmation that deletes",
       "formOpen": "Form",
       "infoOpen": "Only informs",
+      "runOpen": "Confirmation with work",
+      "runs_one": "Work started: {{count}}",
+      "runs_other": "Work started: {{count}}",
       "answer": "Last answer: {{answer}}",
       "answers": {
         "confirm": "confirm",
