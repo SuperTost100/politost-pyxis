@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { goPages, pageCommands, reportProblemUrl } from "@shared/menu";
-import { registeredBack, watchBack } from "./back-slot";
+import { registeredBack, routerAt, watchBack, whenArrived } from "./back-slot";
 import { readTrail, watchTrail } from "./history";
 import { menuCommandAllowed } from "./menu-guard";
 import { isMenuLocked, readMenuContext, watchMenuLocks } from "./menu-state";
@@ -12,12 +12,23 @@ import { canForward } from "./trail";
 import { checkUpdatesNow } from "../features/settings/UpdatesPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 
-/** Indietro runs the page's own back control; Avanti goes one entry forward. Either may be refused, as any command. */
+/**
+ * Indietro runs the back control of the page at the router's entry; Avanti goes one entry forward. Either may be
+ * refused, as any command. A page that is still arriving (the router has moved to it, its back control is not registered
+ * yet) gets the press once it registers, and the menu's state is read then, from that page.
+ */
 function step(command: "back" | "forward") {
-  const { pathname, key } = router.state.location;
-  if (!menuCommandAllowed(command, readMenuContext(pathname))) return;
-  if (command === "back") registeredBack()?.go();
-  else if (canForward(readTrail(), key)) void router.navigate(1);
+  const { key } = router.state.location;
+  if (command === "forward") {
+    if (menuCommandAllowed(command, readMenuContext(router.state.location.pathname)) && canForward(readTrail(), key))
+      void router.navigate(1);
+    return;
+  }
+  whenArrived(key, (target) => {
+    const now = router.state.location;
+    if (now.key !== key || !menuCommandAllowed(command, readMenuContext(now.pathname))) return;
+    target?.go();
+  });
 }
 
 /**
@@ -47,6 +58,9 @@ export function MenuCommands() {
     // Without the call the items stay as main last had them, which only leaves a key that does nothing.
     window.pyxis.setNavState({ back, forward }).catch(() => undefined);
   }, [back, forward]);
+
+  // A back press waiting for an arriving page ends when the router moves on from that page's entry.
+  useEffect(() => router.subscribe((state) => routerAt(state.location.key)), []);
 
   useEffect(
     () =>

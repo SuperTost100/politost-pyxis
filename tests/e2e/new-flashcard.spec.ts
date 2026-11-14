@@ -188,6 +188,49 @@ const card = (n: number, front: string) => ({
   passageId: "{{passage:0}}",
 });
 
+test("text typed before the subjects arrive stays in Fronte, and so does the focus", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-early-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await toFlashcards(page);
+    const newButton = page.getByRole("button", { name: "Nuova flashcard", exact: true });
+    await expect(newButton).toBeVisible();
+    // A student who clicks into Fronte and types the moment the dialog opens, before its subjects are read: here the
+    // text goes in as soon as the field exists. With no subject yet, the dialog then offers the new subject's name.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          const observer = new MutationObserver(() => {
+            const field = document.getElementById("nc-front") as HTMLTextAreaElement | null;
+            if (!field) return;
+            observer.disconnect();
+            field.focus();
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Che cos'è");
+            field.dispatchEvent(new Event("input", { bubbles: true }));
+            resolve();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          [...document.querySelectorAll("button")].find((button) => button.textContent === "Nuova flashcard")!.click();
+        }),
+    );
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    // The subjects have arrived once the new subject's name is offered; the dialog places its focus a frame after that.
+    await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toBeVisible();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(front).toBeFocused();
+    await page.keyboard.type(" la velocità?");
+    await expect(front).toHaveValue("Che cos'è la velocità?");
+    await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toHaveValue("");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Pyxis writes a subject's flashcards to check before saving, and another page opens the dialog on a subject", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-pyxis-"));
