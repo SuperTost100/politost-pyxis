@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, type NavigateFunction } from "react-router";
+import { UNSAFE_DataRouterContext, useLocation, useNavigate, type NavigateFunction } from "react-router";
 import { changed, registerBack } from "./back-slot";
 import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
 import { placeOf } from "./places";
@@ -47,6 +47,7 @@ export function usePlace(input: {
   const navigate = useNavigate();
   const trail = useSyncExternalStore(watchTrail, readTrail);
   const [busy, setBusy] = useState(false);
+  const router = useContext(UNSAFE_DataRouterContext)?.router;
   const { key } = location;
   const name = input.name ? JSON.stringify(input.name) : null;
   useEffect(() => {
@@ -76,6 +77,9 @@ export function usePlace(input: {
       go: () => {
         if (busy) return;
         const leave = () => {
+          // The student has already started a move of their own (to a page whose code is still loading, while this page
+          // finished a delete or a save): that move wins, since a step back is counted from where the window is now.
+          if (router && router.state.navigation.state !== "idle") return;
           // Read when leaving, which can come after `beforeLeave`: by then the student may be on another page, which
           // this page's way back must not move.
           const step = wayBack(readTrail(), key, parent !== null);

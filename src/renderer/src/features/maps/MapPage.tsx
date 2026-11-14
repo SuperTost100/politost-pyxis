@@ -1396,20 +1396,13 @@ export function MapPage() {
     settle: () => moves.current.catch(() => undefined),
     exportView: writingJob ? undefined : () => void exportPng(),
     onRename: () => setRenaming(true),
-    // A stored map leaves from its tile on Mappe, which shrinks away where it was: the way back leads there and hands
-    // the delete over. Opened from anywhere else, the map is deleted here and the way back follows.
-    onDelete:
-      writingJob || !back || pageOf(back.to) !== "/maps"
-        ? undefined
-        : () => {
-            forgetMap(activeId);
-            noteForArrival({ removeMap: { ...address, mapId: activeId, title, subjectId: scope.data?.subjectId ?? null } });
-            back.go();
-          },
+    // The map is deleted here, so the delete never depends on a page the student may leave first. The way back then
+    // leads on, and when it leads to Mappe it hands over a note so the tile shrinks where it was.
     onDeleted: () => {
       forgetMap(undefined);
-      if (back) back.go();
-      else navigate(backTo);
+      if (!back) return void navigate(backTo);
+      if (!writingJob && pageOf(back.to) === "/maps") noteForArrival({ shrinkMap: activeId });
+      back.go();
     },
   });
   // A right-click on the empty canvas opens the same menu at the pointer.

@@ -23,8 +23,8 @@ import { focusAfterRemoval } from "./mapMenu";
 
 /** What a link to a map deleted since hands over: Mappe says so. */
 type Handover = { gone?: boolean };
-/** What the map page leaves for Mappe when the student deletes the map they were looking at: it leaves from its tile here. */
-type Removal = { removeMap?: { mapId: string; title: string; subjectId?: string | null; planId?: string; topicId?: string } };
+/** What the map page leaves for Mappe after it deleted the map the student was looking at: its tile shrinks away here. */
+type Removal = { shrinkMap?: string };
 /** The scope a tile's map belongs to: a topic of an exam, or a whole subject. */
 function addressOf(map: Pick<MapEntry, "subjectId" | "planId" | "topicId">): MapAddress {
   return map.topicId ? { topicId: map.topicId, ...(map.planId ? { planId: map.planId } : {}) } : { subjectId: map.subjectId ?? "" };
@@ -87,13 +87,16 @@ export function MapsHome() {
   const note = useRef<Removal | null | undefined>(undefined);
 
   const tiles = () => [...(page.current?.querySelectorAll<HTMLElement>("[data-map-id]") ?? [])];
-  async function removeMap(map: { id: string; title: string } & Pick<MapEntry, "subjectId" | "planId" | "topicId">) {
+  /** Deletes a map and shrinks its tile away. `deleted`: the map page deleted it already, so only the tile goes. */
+  async function removeMap(map: { id: string; title: string } & Pick<MapEntry, "subjectId" | "planId" | "topicId">, deleted = false) {
     setFailed(undefined);
-    try {
-      await invoke("maps.delete", { ...addressOf(map), mapId: map.id });
-    } catch {
-      setFailed(map.id);
-      return;
+    if (!deleted) {
+      try {
+        await invoke("maps.delete", { ...addressOf(map), mapId: map.id });
+      } catch {
+        setFailed(map.id);
+        return;
+      }
     }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const order = tiles().map((tile) => tile.dataset.mapId!);
@@ -129,10 +132,10 @@ export function MapsHome() {
   }, [removed]);
 
   const data = maps.data?.filter((map) => !removed.has(map.id));
-  // The map page hands over the map the student deleted there, once its tile is on screen.
+  // The map page hands over the map it deleted, once its tile is on screen.
   useEffect(() => {
     if (note.current === undefined) note.current = takeArrivalNote<Removal>() ?? null;
-    const asked = note.current?.removeMap;
+    const asked = note.current?.shrinkMap;
     // A replacement lands on the router's current entry: once the student is leaving, it would stop that move. The
     // handoff stays in this entry's state, so coming back to it carries on.
     if (arrival?.gone && !asked && !handed.current) {
@@ -143,16 +146,9 @@ export function MapsHome() {
     }
     if (!asked || handed.current || !data || !stillHere()) return;
     handed.current = true;
-    const shown = data.find((map) => map.id === asked.mapId);
-    void removeMap(
-      shown ?? {
-        id: asked.mapId,
-        title: asked.title,
-        subjectId: asked.subjectId ?? null,
-        planId: asked.planId ?? null,
-        topicId: asked.topicId ?? null,
-      },
-    );
+    // The map is gone already; its tile shrinks only if the list still shows it, and the list is read again meanwhile.
+    const shown = data.find((map) => map.id === asked);
+    if (shown) void removeMap(shown, true);
   }, [data]);
   const dialog = (
     <NewMapDialog
