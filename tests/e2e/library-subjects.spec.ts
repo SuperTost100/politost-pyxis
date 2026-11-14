@@ -733,6 +733,102 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
   }
 });
 
+test("A menu stays open when the page gets shorter under a student who has scrolled to its end, which scrolls the page back without their hand", async () => {
+  test.setTimeout(240000);
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
+  try {
+    await trackEvents(page);
+    await page.setViewportSize({ width: 960, height: 900 });
+    for (const [subject, titles] of [
+      ["Analisi 1", ["Limiti", "Derivate", "Integrali", "Serie", "Successioni", "Funzioni"]],
+      ["Fisica 2", ["Dinamica", "Cinematica", "Circuiti", "Ottica", "Onde", "Termologia"]],
+    ] as const)
+      for (const title of titles) await fileUnder(page, title, subject);
+    for (const title of ["Appunti sciolti", "Esercizi sciolti", "Lezione sciolta"]) await pasteLoose(page, title);
+    await expect(cover(page, "Fisica 2", "Termologia")).toBeVisible();
+    await animationsSettled(page);
+    // Something taller than the window under the last shelf, as a row of files still being read is, so the page scrolls.
+    await page.evaluate(() => {
+      const below = document.createElement("div");
+      below.id = "e2e-below";
+      below.style.height = "400px";
+      document.querySelector(".px-shelves")!.append(below);
+    });
+    /** How far the page that holds the shelves is scrolled, and how far it can go. */
+    const place = () =>
+      page.evaluate(() => {
+        let scroller: Element = document.scrollingElement!;
+        for (let el = document.querySelector(".px-shelves")?.parentElement; el; el = el.parentElement)
+          if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== "visible") {
+            scroller = el;
+            break;
+          }
+        return { top: Math.round(scroller.scrollTop), end: Math.round(scroller.scrollHeight - scroller.clientHeight) };
+      });
+    const hovered = () =>
+      page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>(".px-cover")]
+          .filter((el) => getComputedStyle(el.querySelector(".px-cover-open")!).backgroundColor !== "rgba(0, 0, 0, 0)")
+          .map((el) => el.dataset["sourceId"]),
+      );
+    const fileMenu = openMenu(page, "Dettagli della fonte");
+
+    for (const way of ["dots", "right-click"] as const) {
+      // The student scrolls to the end of the page with the wheel.
+      await page.mouse.move(930, 450);
+      await expect
+        .poll(async () => {
+          await page.mouse.wheel(0, 600);
+          const { top, end } = await place();
+          return end > 0 && top === end;
+        })
+        .toBe(true);
+      const file = cover(page, "Fisica 2", "Termologia");
+      await atRest(file);
+      const owner = (await file.getAttribute("data-source-id"))!;
+      if (way === "dots") {
+        await file.hover();
+        await page.getByRole("button", { name: "Azioni per Termologia" }).click();
+      } else {
+        const box = (await file.boundingBox())!;
+        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
+      }
+      await expect(fileMenu, `${way} menu at the end of the page`).toBeVisible();
+      await animationsSettled(page);
+      await page.mouse.move(930, 450);
+      const before = (await fileMenu.boundingBox())!;
+      const scrollBefore = await place();
+
+      // The page gets shorter below the file, so the browser scrolls it back by itself and the file moves down.
+      await page.evaluate(() => document.getElementById("e2e-below")!.remove());
+      await expect.poll(async () => (await place()).top, "the page scrolled back").toBeLessThan(scrollBefore.top);
+      await animationsSettled(page);
+      await withTrail(page, () => expect(fileMenu, `${way} menu after the page got shorter`).toBeVisible());
+      if (way === "dots") {
+        await expect
+          .poll(() => hangsFrom(fileMenu, page.getByRole("button", { name: "Azioni per Termologia" })), "follows its dots")
+          .toEqual(HANGS);
+      } else expect(await fileMenu.boundingBox()).toEqual(before);
+      await expect.poll(hovered).toEqual([owner]);
+
+      // A scroll of the student's still ends it, from where the file is now.
+      await page.mouse.wheel(0, -200);
+      await expect(fileMenu, `${way} menu after a scroll`).toHaveCount(0);
+
+      // The same page again for the other way.
+      await page.evaluate(() => {
+        const below = document.createElement("div");
+        below.id = "e2e-below";
+        below.style.height = "400px";
+        document.querySelector(".px-shelves")!.append(below);
+      });
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 /** Gives a file a subject by name, without the page's own menus. */
 async function fileUnder(page: Page, title: string, subject: string): Promise<string> {
   const id = await pasteLoose(page, title);
