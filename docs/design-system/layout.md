@@ -16,7 +16,7 @@ Items the student opens sit as rows in one card: a name, a line under it, and a 
 
 ## The sidebar shell
 
-One sidebar for the whole app: Cerca, the sections, the recent chats and the profile at the foot. The current section sits on a white card. Folded, it is a column of icons with each name on hover. The study pages (the lesson, the quiz, the flashcards, the exercises, the introduction, Ripasso and the simulation) are full-screen, without it.
+One sidebar for the whole app: Cerca, the sections, the recent chats and the profile at the foot. The current section sits on a white card. Folded, it is a column of icons with each name on hover. The study pages (the lesson, the quiz, the flashcards, the exercises, the introduction, Ripasso, the simulation and Colma una lacuna) are full-screen, without it.
 
 ## Going back
 
@@ -67,6 +67,7 @@ The bar draws the page's `progress` as a thin line along its bottom edge. A page
 | Ripasso, before it starts    | the exam                                                        | "Ripasso · the subject"                                                                                                    | none                              | none                                                           |
 | Simulation, running          | "Simulazione · the exam"                                        | "Non puoi uscire: si esce consegnando o allo scadere del tempo"                                                            | the clock                         | none                                                           |
 | Simulation, before and after | "Simulazione"                                                   | the exam's subject and title                                                                                               | none                              | Esporta, on the results                                        |
+| Colma una lacuna             | the gap's topic                                                 | "Colma una lacuna · circa 6 minuti", also on the drill's questions, which open in the page's own history entry             | none                              | none                                                           |
 
 The new exam, the guided exam and the tools (Lavagna, Grafico, Python) keep their own top bar until they move onto this one.
 

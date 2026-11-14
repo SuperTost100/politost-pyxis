@@ -71,6 +71,18 @@ export const scheduleQuery = (planId: string) =>
     queryFn: () => invoke("plans.schedule", { planId }),
   });
 
+/**
+ * The exam's open gaps, most serious first. A drill closes gaps while the student is on other pages, so the read is made
+ * again each time a page that shows it opens, however recently it was made. Its key starts with "plans", so everything
+ * that refreshes the exam refreshes it too.
+ */
+export const openGapsQuery = (planId: string) =>
+  queryOptions({
+    queryKey: ["plans", "openGaps", planId],
+    queryFn: () => invoke("plans.openGaps", { planId }),
+    refetchOnMount: "always",
+  });
+
 /** The three rings of every built exam (Preparazione, Percorso, Oggi), its next step and its due cards. */
 export const ringsQuery = queryOptions({
   queryKey: ["plans", "rings"],

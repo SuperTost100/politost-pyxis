@@ -8,34 +8,35 @@ The doc comment at the top of each file says what it does and why; this page is 
 
 The settings controls are rows in a white card, one look per kind of choice. [Controls and buttons](controls.md) says which one fits which choice.
 
-| Component                            | What it's for                                                                                            |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `Button`                             | Every text button: `primary`, `secondary`, `ghost`, `danger` and a dialog's `danger-solid`               |
-| `IconButton`                         | An icon-only button with its label for screen readers; can keep focus in the field being typed in        |
-| `ControlGroup`, `ControlList`        | A titled group of settings and the white card of rows under it                                           |
-| `ControlRow`, `TextRow`, `SwitchRow` | A row with any control on its right, a short text field, an on or off switch                             |
-| `Segmented`                          | 2 or 3 short options side by side, such as Italiano and English                                          |
-| `RadioRows`                          | 2 to 6 options that each need a line of explanation                                                      |
-| `PreviewTiles`                       | A choice judged by looking, such as the theme: a small picture per option, the chosen one ringed         |
-| `Stepper` (`Controls.tsx`)           | A whole number with − and +                                                                              |
-| `TagsField`                          | A free list of words, each a tag                                                                         |
-| `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                             |
-| `Popover`                            | A panel that grows from its button, such as the Library's linked folders, and scrolls inside itself      |
-| `Dialog`                             | The one dialog for a confirmation, a form or a notice; the rules are in controls.md, Dialogs             |
-| `useConfirm` (`Dialog.tsx`)          | Asks a question in `Dialog` and answers with the button chosen, one question at a time                   |
-| `useLeaveGuard` (`app/`)             | Asks "Uscire senza salvare?" before a move away from a page with work it does not save                   |
-| `Chip`                               | A small rounded choice or filter                                                                         |
-| `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                    |
-| `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
-| `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |
-| `BackControl`                        | The way back: an arrow and the name of the place it leads to, from `usePlace`, above a title or in a bar |
-| `ListToolbar`                        | The bar above a list: search, filters and the one primary action, always in that order                   |
-| `ChoiceMenu` (`ListToolbar.tsx`)     | A labelled choice with a chevron, such as "Scegli altro"; a page's menu is the dots in its head          |
-| `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
-| `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
-| `Composer`                           | The message box in Chiedi: the plus (a file or a formula), the whiteboard, the graph and Invia           |
-| `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
-| `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                             |
+| Component                            | What it's for                                                                                                                       |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`                             | Every text button: `primary`, `secondary`, `ghost`, `danger` and a dialog's `danger-solid`                                          |
+| `IconButton`                         | An icon-only button with its label for screen readers; can keep focus in the field being typed in                                   |
+| `ControlGroup`, `ControlList`        | A titled group of settings and the white card of rows under it                                                                      |
+| `ControlRow`, `TextRow`, `SwitchRow` | A row with any control on its right, a short text field, an on or off switch                                                        |
+| `Segmented`                          | 2 or 3 short options side by side, such as Italiano and English                                                                     |
+| `RadioRows`                          | 2 to 6 options that each need a line of explanation                                                                                 |
+| `PreviewTiles`                       | A choice judged by looking, such as the theme: a small picture per option, the chosen one ringed                                    |
+| `Stepper` (`Controls.tsx`)           | A whole number with − and +                                                                                                         |
+| `TagsField`                          | A free list of words, each a tag                                                                                                    |
+| `Reveal`                             | Content that grows out of the control that opened it, such as a confirmation                                                        |
+| `Popover`                            | A panel that grows from its button, such as the Library's linked folders, and scrolls inside itself                                 |
+| `Dialog`                             | The one dialog for a confirmation, a form or a notice; the rules are in controls.md, Dialogs                                        |
+| `useConfirm` (`Dialog.tsx`)          | Asks a question in `Dialog` and answers with the button chosen, one question at a time                                              |
+| `useLeaveGuard` (`app/`)             | Asks "Uscire senza salvare?" before a move away from a page with work it does not save                                              |
+| `Chip`                               | A small rounded choice or filter                                                                                                    |
+| `ToggleChips` (`Controls.tsx`)       | A few kinds to keep or leave out, each a pressed or unpressed chip, at least one kept                                               |
+| `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                                               |
+| `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus                             |
+| `BackControl`                        | The way back: an arrow and the name of the place it leads to, from `usePlace`, above a title or in a bar                            |
+| `GapsSection` (`GapsList`)           | The exam page's open gaps, each a sentence, its level as a word and its topic, with Colma; the first three show and the rest unfold |
+| `ListToolbar`                        | The bar above a list: search, filters and the one primary action, always in that order                                              |
+| `ChoiceMenu` (`ListToolbar.tsx`)     | A labelled choice with a chevron, such as "Scegli altro"; a page's menu is the dots in its head                                     |
+| `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                                                 |
+| `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                                                |
+| `Composer`                           | The message box in Chiedi: the plus (a file or a formula), the whiteboard, the graph and Invia                                      |
+| `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                                                    |
+| `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                                                        |
 
 A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right-click open the same `menu`, so both show the same items ([item menus](layout.md#item-menus) has the rules). A page's own menu is the dots in its head, built the same way ([the page's menu](layout.md#the-pages-menu)). Wire `useItemMenu` or `MenuItemArea` rather than building another dropdown for a row. Chats are the exception: their menu is the system's own, through `window.pyxis.contextMenu` (see `features/ask/chatActions.tsx`), in the sidebar and in the search, which is a modal dialog that a menu drawn in the page would sit behind. Text fields and anything marked `data-native-menu` keep the system's menu for copy, paste and spelling.
 

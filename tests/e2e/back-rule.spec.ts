@@ -42,6 +42,8 @@ type Row = {
   menu?: "greyed";
   /** A study page, with the study bar: one way back, and Attività last at the far right. */
   study?: boolean;
+  /** Undoes what `reach` added to the workspace, once the row is walked, so the rows after it find the exam as it was. */
+  cleanup?: () => void;
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -178,6 +180,30 @@ const rows: Row[] = [
     leadsTo: exam,
     focus: "Rifai la domanda",
     study: true,
+  },
+  {
+    page: "/plans/:planId/gap/:gapId",
+    how: "Colma from the exam's open gaps",
+    reach: async (walk) => {
+      // The gap is there only while this row is walked: an open gap changes what the exam suggests and opens its path.
+      withWorkspace((db) => {
+        db.prepare("INSERT OR IGNORE INTO gaps(id,plan_id,topic_id,opened_at,misconception,severity) VALUES('g-fun','p-an2','t-fun',?,?,'severe')").run(
+          Date.now() - 2 * 86_400_000,
+          "Confondi i punti di frontiera di un insieme con quelli che gli appartengono.",
+        );
+        db.prepare("INSERT OR IGNORE INTO gap_answers(gap_id,attempt_id,question_id) VALUES('g-fun','a-fun','q-open')").run();
+      });
+      await fromExam(async (page) => {
+        await side(page).getByRole("button", { name: /^Colma: Confondi i punti di frontiera/ }).click();
+        await expect(page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
+      })(walk);
+    },
+    label: EXAM,
+    lit: null,
+    leadsTo: exam,
+    focus: /^Colma: Confondi i punti di frontiera/,
+    study: true,
+    cleanup: () => withWorkspace((db) => db.exec("DELETE FROM gaps WHERE id = 'g-fun'")),
   },
   {
     page: "/cards/due",
@@ -506,6 +532,7 @@ const rows: Row[] = [
     ["/plans/:planId/quiz/:topicId", `${exam}/quiz/t-fun`],
     ["/plans/:planId/diagnostic", `${exam}/diagnostic`],
     ["/plans/:planId/cards/:topicId", `${exam}/cards/t-fun`],
+    ["/plans/:planId/gap/:gapId", `${exam}/gap/g-fun`],
     ["/plans/:planId/review", `${exam}/review`],
     ["/plans/:planId/simulation", `${exam}/simulation`],
   ].map(
@@ -627,6 +654,15 @@ const backControl = (page: Page) => page.getByRole("button", { name: /^Torna a /
 let walk: Walk;
 let userData: string;
 
+function withWorkspace(use: (db: DatabaseSync) => void) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  try {
+    use(db);
+  } finally {
+    db.close();
+  }
+}
+
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
@@ -650,48 +686,56 @@ test.afterAll(async () => {
   removeTestFolder(userData);
 });
 
+async function walkRow(row: Row) {
+  const { page, app } = walk;
+  await row.reach(walk);
+  const reached = page.url();
+  await expect(backControl(page)).toHaveAccessibleName(`Torna a ${row.label}`);
+  await expect(backControl(page)).toHaveText(row.label);
+  // The sidebar lights the section the page was opened from, not the one its address belongs to.
+  if (row.lit === null) await expect(lit(page)).toHaveCount(0);
+  else await expect(lit(page)).toHaveAccessibleName(row.lit);
+  if (row.study) {
+    // One way back: the bar's. The foot has no second button that does the same, and Attività is the last thing at the
+    // bar's right end.
+    await expect(
+      page.getByRole("button", { name: /^(Torna al percorso|Torna al ripasso|Torna al quaderno|Indietro)$/ }),
+    ).toHaveCount(0);
+    await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
+  }
+  // Escape never leaves a page.
+  await page.locator("body").press("Escape");
+  expect(page.url()).toBe(reached);
+  await backControl(page).click();
+  await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
+  await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
+  // Vai > Indietro goes where the control goes, and Vai > Avanti returns to the page.
+  await row.reach(walk);
+  if (row.menu === "greyed") {
+    // Setup holds the menu: Indietro is greyed, and the control on the page is the way out.
+    await expect
+      .poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.enabled))
+      .toBe(false);
+    return;
+  }
+  // A page that opens a session of its own (Rifai gli errori) has a new address each time.
+  const again = page.url();
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
+  await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
+  await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
+  if (row.parent) return;
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click());
+  await expect(page).toHaveURL(again);
+}
+
 for (const row of rows) {
   test(`${row.page}: ${row.how}`, async () => {
     test.setTimeout(90_000);
-    const { page, app } = walk;
-    await row.reach(walk);
-    const reached = page.url();
-    await expect(backControl(page)).toHaveAccessibleName(`Torna a ${row.label}`);
-    await expect(backControl(page)).toHaveText(row.label);
-    // The sidebar lights the section the page was opened from, not the one its address belongs to.
-    if (row.lit === null) await expect(lit(page)).toHaveCount(0);
-    else await expect(lit(page)).toHaveAccessibleName(row.lit);
-    if (row.study) {
-      // One way back: the bar's. The foot has no second button that does the same, and Attività is the last thing at the
-      // bar's right end.
-      await expect(
-        page.getByRole("button", { name: /^(Torna al percorso|Torna al ripasso|Torna al quaderno|Indietro)$/ }),
-      ).toHaveCount(0);
-      await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
+    try {
+      await walkRow(row);
+    } finally {
+      row.cleanup?.();
     }
-    // Escape never leaves a page.
-    await page.locator("body").press("Escape");
-    expect(page.url()).toBe(reached);
-    await backControl(page).click();
-    await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
-    await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
-    // Vai > Indietro goes where the control goes, and Vai > Avanti returns to the page.
-    await row.reach(walk);
-    if (row.menu === "greyed") {
-      // Setup holds the menu: Indietro is greyed, and the control on the page is the way out.
-      await expect
-        .poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.enabled))
-        .toBe(false);
-      return;
-    }
-    // A page that opens a session of its own (Rifai gli errori) has a new address each time.
-    const again = page.url();
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
-    await expect(page).toHaveURL(new RegExp(`#${row.leadsTo.replace(/[?]/g, "\\?")}(\\?.*)?$`));
-    await expect(page.locator(":focus")).toHaveAccessibleName(row.focus);
-    if (row.parent) return;
-    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click());
-    await expect(page).toHaveURL(again);
   });
 }
 

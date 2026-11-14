@@ -1,0 +1,76 @@
+/* Open gaps in the exam page's side column: each a sentence, its level and topic, and Colma. */
+.px-gaps {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.px-gap {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.px-gap:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.px-exam-asec .px-gap-text {
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.px-exam-asec .px-gap-text.is-unwritten {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-muted);
+}
+/* The working mark comes first, so the words wrap beside it, and it keeps the first line's height. */
+.px-gap-reading {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: calc(19px * var(--text-scale, 1));
+}
+.px-exam-asec .px-gap-meta {
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: calc(17px * var(--text-scale, 1));
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
+}
+.px-gap-meta b {
+  font-weight: 650;
+  color: var(--ink);
+}
+/* The rows after the third grow out of the end of the list: the row's height goes from 0 to its content. */
+.px-gaps-more {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-small) var(--ease-out),
+    visibility 0s linear var(--duration-small);
+}
+.px-gaps-more.is-open {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--duration-small) var(--ease-out),
+    visibility 0s;
+}
+.px-gaps-rest {
+  min-height: 0;
+  overflow: clip;
+  /* Room for the focus ring of a button at the edge. */
+  overflow-clip-margin: 6px;
+}
+.px-gaps-rest > .px-gap:first-child {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-gaps-more,
+  .px-gaps-more.is-open {
+    transition: none;
+  }
+}

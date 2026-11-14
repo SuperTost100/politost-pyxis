@@ -1,0 +1,46 @@
+/* The end of a drill on a gap: closed in the soft green of mastery, or one line on what closes it. */
+.px-gap-end {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+}
+.px-gap-end.is-closed {
+  background: var(--ok-soft);
+}
+.px-gap-end p {
+  margin: 0;
+  color: var(--ink-muted);
+  font: 400 calc(14px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+}
+.px-gap-end.is-open {
+  padding: 0;
+  color: var(--ink-muted);
+  font: 400 calc(14px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+}
+.px-gap-end-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--mastery-text);
+  font: 650 calc(15px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.px-gap-end-wait {
+  gap: 6px;
+}
+.px-gap-end-wait .px-skeleton-bar {
+  height: var(--control-md);
+  border-radius: var(--radius-md);
+}
+/* The next gap's topic can be long: the button wraps its words and keeps the box's width. */
+.px-gap-end .ant-btn {
+  height: auto;
+  min-height: var(--control-md);
+  padding-block: 6px;
+  white-space: normal;
+  line-height: 1.3;
+  text-align: left;
+}

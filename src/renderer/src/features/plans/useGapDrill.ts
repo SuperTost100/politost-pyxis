@@ -3,14 +3,16 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { useStillHere } from "../../lib/useStillHere";
-import { readDrillRequest, stoppedTopic } from "./gapDrillRequest";
+import { drillQuizPath, readDrillRequest, stoppedTopic } from "./gapDrillRequest";
 
 /**
  * Ripasso mirato: a targeted drill on a topic's gaps, built by a durable job. The page watches the job and opens the
  * quiz once it is ready. `?drill=<topicId>` in the address starts one, as a step on the path asks for it; the request
- * is spent once read, so Back from the drill's quiz does not start another.
+ * is spent once read, so Back from the drill's quiz does not start another. The exam page uses it for the path's rows
+ * and opens the quiz as a new page; a gap's own page (`GapPage`) starts the drill of one gap and, with `replace`, opens
+ * the quiz in place of itself, so the history keeps one entry and Back goes where the gap's page would have gone.
  */
-export function useGapDrill(planId: string) {
+export function useGapDrill(planId: string, { replace = false }: { replace?: boolean } = {}) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -23,6 +25,8 @@ export function useGapDrill(planId: string) {
   } | null>(null);
   // The topic of a drill that could not be started: there is no job to read, so Retry needs it kept here.
   const [failedTopic, setFailedTopic] = useState<string | null>(null);
+  // The gap of the last drill asked for, which Retry asks for again; the path's drills name a topic only.
+  const lastGap = useRef<string | undefined>(undefined);
   const drillRead = useQuery({
     queryKey: ["gap-drill", planId, drill?.topicId, drill?.gapId],
     enabled: Boolean(drill),
@@ -55,12 +59,13 @@ export function useGapDrill(planId: string) {
   useEffect(() => {
     if (!drill || !readyAttempt || !stillHere()) return;
     setDrill(null);
-    navigate(`/plans/${planId}/quiz/${drill.topicId}?attempt=${readyAttempt}`);
+    navigate(drillQuizPath(planId, drill.topicId, readyAttempt, drill.gapId), { replace });
   }, [drill, readyAttempt, planId, stillHere]);
 
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
     setFailedTopic(null);
+    lastGap.current = gapId;
     setDrill({ topicId, gapId });
     try {
       await invoke("study.gapDrillStart", {
@@ -110,7 +115,7 @@ export function useGapDrill(planId: string) {
       }
       setFailedTopic(null);
       setDrill(null);
-      if (stopped) void start(stopped);
+      if (stopped) void start(stopped, lastGap.current);
     },
     dismiss: () => {
       setFailedTopic(null);

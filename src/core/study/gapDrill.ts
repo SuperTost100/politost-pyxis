@@ -9,18 +9,17 @@ import { aboutPlan } from "./jobAbout";
 import { generateQuiz, prepareQuiz, saveQuizSnapshot, type QuizSnapshot } from "./configuredQuiz";
 import { gapEvidence } from "./gapInsight";
 import { startAttempt } from "./attempt";
+import { GAP_DRILL_QUESTIONS } from "../../shared/gap-drill";
 
 const TEMPLATE = "gap.drill";
 /** A mixed review left alone this long is not resumed (LES-13); its adopted drill questions are free to be adopted again. */
 export const REVIEW_SESSION_TTL = 24 * 3_600_000;
 const ACTIVE = "('queued', 'running', 'interrupted')";
-/** LES-03: a short explanation and five targeted questions. */
-const DRILL_QUESTIONS = 5;
 // Closed-form types only: the drill is graded locally and gives feedback after every question.
 const drillInput = (planId: string, topicId: string) => ({
   planId,
   topicId,
-  count: DRILL_QUESTIONS,
+  count: GAP_DRILL_QUESTIONS,
   drill: true,
   types: ["mcq", "tf", "completion"] as Array<"mcq" | "tf" | "completion">,
 });

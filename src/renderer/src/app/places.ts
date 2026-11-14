@@ -61,6 +61,7 @@ const rows: Row[] = [
   { path: "/plans/:planId/intro", place: underExam(key("plans.intro")) },
   { path: "/plans/:planId/diagnostic", place: underExam(key("quiz.diagnosticTitle")) },
   { path: "/plans/:planId/quiz/:topicId", place: underExam(key("quiz.title")) },
+  { path: "/plans/:planId/gap/:gapId", place: underExam(key("gaps.label")) },
   { path: "/plans/:planId/redo", place: underExam(key("mistakes.redoTitle")) },
   { path: "/plans/:planId/past", place: underExam(key("pastPapers.title")) },
   { path: "/plans/:planId/cards/:topicId", place: underExam(key("cards.title")) },
