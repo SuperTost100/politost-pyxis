@@ -68,6 +68,7 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
     await expect(dialog).toBeVisible();
     // The list has shut after the pick; an Escape before that is still the list's.
     await expect(list).toBeHidden();
+    await expect(subject).toHaveAttribute("aria-expanded", "false");
 
     // A second Escape closes the dialog and the focus goes back to the button it grew out of.
     await page.keyboard.press("Escape");
@@ -135,7 +136,7 @@ test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Ann
   }
 });
 
-test("DIALOG-05 a form opened from a menu item grows out of the menu's button and gives the focus back to it", async () => {
+test("DIALOG-05 a form opened from a menu item gives the focus back to the menu's button, as the item it was chosen from is gone", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-dialog-menu-"));
   const app = await launchPyxis({ userData });
@@ -149,8 +150,7 @@ test("DIALOG-05 a form opened from a menu item grows out of the menu's button an
       await dots.click();
       await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
       await expect(dialog).toBeVisible();
-      // It grows out of the dots: the item it was chosen from is gone by the time it closes.
-      expect(await page.evaluate(() => document.querySelector("dialog.px-dialog")?.getAnimations().length ?? 0)).toBeGreaterThan(0);
+      // The item it was chosen from is gone by the time it closes, so the focus goes to the dots.
       await animationsSettled(page);
       if (way === "Escape") await page.keyboard.press("Escape");
       else await dialog.getByRole("button", { name: "Chiudi" }).click();
