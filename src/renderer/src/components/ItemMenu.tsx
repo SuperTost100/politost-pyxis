@@ -1,7 +1,7 @@
 import { Button as AntButton, Dropdown, type MenuProps } from "antd";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { menuTrigger, movedBy, type MenuPoint } from "../lib/itemMenu";
+import { clampedBy, menuTrigger, movedBy, type MenuPoint } from "../lib/itemMenu";
 import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 import "./ItemMenu.css";
@@ -199,7 +199,8 @@ const FOCUSABLE = 'a[href], button:not([disabled]), select:not([disabled]), inpu
  * `anchor`), and when the window is resized, unless `followsResize` says the menu is drawn from a button that the
  * dropdown re-aligns to. A menu is not closed because the page around it changed: a file finishing its read or a shelf
  * growing moves the item, and the student's hand is already on the menu. With `followsResize`, the menu also follows the
- * button when the layout shifts it (see `follow`).
+ * button when the layout shifts it (see `follow`). A page that gets shorter while it is scrolled to its end is moved back
+ * by the browser, which sends a scroll; that is a layout shift too, and does not close the menu (see `clampedBy`).
  *
  * When the item leaves the page while its menu is open (the component unmounts with the menu in it), focus that was
  * inside the menu goes to the item's neighbour instead of to the page.
@@ -230,13 +231,24 @@ export function useMenuLifetime(
           home: row.parentElement.closest("section, [role=region]"),
         }
       : null;
-    const start = element.getBoundingClientRect();
+    let start = element.getBoundingClientRect();
+    // Where each scroller around the item was at its last scroll, to tell a page that gave way from a student's scroll.
+    const scrolledTo = new Map<Element, { top: number; left: number }>();
+    for (const scroller of [document.scrollingElement, ...ancestorsOf(element)])
+      if (scroller) scrolledTo.set(scroller, { top: scroller.scrollTop, left: scroller.scrollLeft });
     // A scroll event is delivered a frame after the scroll, so one caused by what happened before the menu opened (a
-    // focus that scrolled its item into view) can arrive after it. Only a scroll that moved the item counts.
+    // focus that scrolled its item into view) can arrive after it. Only a scroll that moved the item counts, and not one
+    // the page made by itself: when the content under a scrolled page gets shorter (a file's read ending, a notice going
+    // away), the browser moves the page back to its new end and the item moves with it. That is a layout shift, which
+    // the menu outlives, so the item's place now is the place to scroll from, and `follow` brings the menu to it.
     const onScroll = (event: Event) => {
-      const scroller = event.target;
-      if (scroller !== document && !(scroller instanceof Node && scroller.contains(element))) return;
-      if (movedBy(start, element.getBoundingClientRect())) latest.current.close();
+      const scroller = event.target === document ? document.scrollingElement : event.target;
+      if (!(scroller instanceof Element) || !(event.target === document || scroller.contains(element))) return;
+      const before = scrolledTo.get(scroller) ?? { top: 0, left: 0 };
+      scrolledTo.set(scroller, { top: scroller.scrollTop, left: scroller.scrollLeft });
+      const now = element.getBoundingClientRect();
+      if (clampedBy(before, scroller)) start = now;
+      else if (movedBy(start, now)) latest.current.close();
     };
     // `scroll` does not bubble, so one listener in the capture phase hears every scroller.
     document.addEventListener("scroll", onScroll, true);
@@ -280,6 +292,13 @@ export function useMenuLifetime(
     },
     [],
   );
+}
+
+/** `element`'s ancestors, nearest first. */
+function ancestorsOf(element: Element): Element[] {
+  const found: Element[] = [];
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) found.push(parent);
+  return found;
 }
 
 /**
