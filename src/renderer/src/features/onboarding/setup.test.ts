@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  answersDiffer,
   firstAnswers,
   levels,
   savedProfile,
@@ -106,5 +107,33 @@ describe("what finishing setup saves", () => {
       interestsOn: stored.interestsOn,
       crashReports: stored.crashReports,
     });
+  });
+});
+
+describe("setup again's changes", () => {
+  const stored: StoredProfile = {
+    displayName: "Ada",
+    educationLevel: "upper-secondary",
+    year: "3",
+    school: "Liceo Volta",
+    course: "",
+    contentLanguage: "it",
+    crashReports: true,
+    interests: ["calcio", "chitarra"],
+    interestsOn: true,
+  };
+
+  it("sees nothing changed in the answers it started from, or in spaces around them", () => {
+    expect(answersDiffer(firstAnswers(stored), firstAnswers(stored))).toBe(false);
+    expect(answersDiffer({ ...firstAnswers(stored), name: "  Ada " }, firstAnswers(stored))).toBe(false);
+  });
+
+  it("sees every answer that changed, an interest removed or reordered included", () => {
+    const saved = firstAnswers(stored);
+    expect(answersDiffer({ ...saved, name: "Ada L." }, saved)).toBe(true);
+    expect(answersDiffer({ ...saved, level: "technical" }, saved)).toBe(true);
+    expect(answersDiffer({ ...saved, crashReports: false }, saved)).toBe(true);
+    expect(answersDiffer({ ...saved, interests: ["calcio"] }, saved)).toBe(true);
+    expect(answersDiffer({ ...saved, interests: ["chitarra", "calcio"] }, saved)).toBe(true);
   });
 });

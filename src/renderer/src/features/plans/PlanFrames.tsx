@@ -17,6 +17,8 @@ import { useGradeScale } from "../../lib/useGradeScale";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
 import { useMenuLock } from "../../app/menu-state";
+import { usePlace } from "../../app/usePlace";
+import { BackControl } from "../../components/BackControl";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
 import { takePlanText } from "./openedPlan";
@@ -304,6 +306,7 @@ export function SharedPlanPage() {
   const [review, setReview] = useState<PlanFile | null>(null);
   const pending = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const back = usePlace({});
 
   function take(): boolean {
     if (pending.current) return false;
@@ -342,6 +345,7 @@ export function SharedPlanPage() {
 
   return (
     <div>
+      <BackControl target={back} variant="page" />
       <h1 className="title-1">{t("shared.title")}</h1>
       <p className="body ink-muted">{t("shared.body")}</p>
       <input

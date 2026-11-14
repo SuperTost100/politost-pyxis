@@ -146,7 +146,7 @@ test("Setup links the study folder in place, finds its subjects, and the Library
     // Another folder can be added, and Back keeps what was corrected.
     await button(page, "Aggiungi un'altra cartella").click();
     await expect(title(page)).toHaveText("Dov'è la cartella con tutto lo studio?");
-    await button(page, "Indietro").click();
+    await button(page, "Passo precedente").click();
     await expect(name("Fisica 1")).toHaveValue("Fisica");
     await button(page, "Inizia a studiare").click();
     await expect(page).toHaveURL(/#\/ask$/);
