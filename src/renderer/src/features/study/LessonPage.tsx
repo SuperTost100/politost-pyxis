@@ -10,7 +10,7 @@ import { useStillHere } from "../../lib/useStillHere";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { LegacyLessonPage } from "./LegacyLessonPage";
 import { PartLoading, PartPage, partKey, usePartQuery } from "./PartPage";
-import { addressPart, freshRead, oldLessonView, stoppedTone, type PartData } from "./partPage";
+import { addressPart, freshRead, oldLessonView, stoppedTone, type PartData } from "./partView";
 
 /**
  * A topic's lesson: in parts (`PartPage`) for a topic planned in parts, never read, or with an unfinished lesson written
