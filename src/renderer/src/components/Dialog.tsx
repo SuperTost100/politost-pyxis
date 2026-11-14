@@ -115,6 +115,9 @@ export function Dialog({
   const grownFrom = useRef<HTMLElement | null>(null);
   const before = useRef<HTMLElement | null>(null);
   const motion = useRef<Animation | null>(null);
+  // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
+  const body = useRef<HTMLDivElement>(null);
+  const [scrolls, setScrolls] = useState(false);
   const latest = useRef({ onClose, onClosed, busy, initialFocus, returnFocus, origin });
   latest.current = { onClose, onClosed, busy, initialFocus, returnFocus, origin };
 
@@ -154,6 +157,17 @@ export function Dialog({
       latest.current.onClosed?.();
     });
   }, [open, mounted]);
+
+  useLayoutEffect(() => {
+    const box = body.current;
+    if (!box) return;
+    const measure = () => setScrolls(box.scrollHeight > box.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    for (const child of box.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [mounted, children, description]);
 
   // Taken off the page while open (its page went away): the top layer lets it go at once.
   useLayoutEffect(() => {
@@ -255,7 +269,7 @@ export function Dialog({
               </span>
             ) : null}
           </div>
-          <div className="px-dialog-body">
+          <div ref={body} className="px-dialog-body" tabIndex={scrolls ? 0 : undefined}>
             {description ? (
               <div id={descriptionId} className="px-dialog-description body">
                 {description}
