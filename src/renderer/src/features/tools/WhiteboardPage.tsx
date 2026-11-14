@@ -153,6 +153,8 @@ export function WhiteboardPage() {
     try {
       if (attach) {
         const staged = await invoke("tools.stagePng", { dataUrl: url });
+        // Left meanwhile: the staged file is not handed on, or the next chat would attach it.
+        if (left.current) return;
         sessionStorage.setItem("pyxis-board-file", staged.path);
       } else {
         const saved = await window.pyxis.saveArtifact({
