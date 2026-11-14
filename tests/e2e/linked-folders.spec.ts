@@ -338,7 +338,7 @@ test("Setup again opens on the linked folders, renames a subject in place, adds 
     await expect(title(page)).toHaveText("Ho trovato 4 materie", { timeout: 60000 });
     await expect(name("Fisica 1")).toHaveValue("Fisica");
     await expect(name("Chimica")).toHaveValue("Chimica");
-    await button(page, "Salva e torna alle impostazioni").click();
+    await button(page, "Salva e torna a Impostazioni").click();
     await expect(page).toHaveURL(/#\/settings\/profile$/);
 
     // The renamed subject is the same subject, so its exams and plans stay with it. No folder was linked twice.
@@ -382,11 +382,17 @@ test("The empty Library's Collega una cartella runs setup's folder step, links t
     await button(page, "Collega una cartella").click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=library$/);
     await expect(title(page)).toHaveText("Come tieni il materiale per studiare?");
+    // Leaving without linking goes back to the page that opened it, by the control that names it.
+    await button(page, "Torna a Libreria").click();
+    await expect(page).toHaveURL(/#\/exams\/library$/);
+    await expect(page.locator(".px-empty")).toBeVisible();
+    await button(page, "Collega una cartella").click();
     await button(page, "Una cartella con tutto lo studio").click();
     await answerPicker(app, [root]);
     await button(page, "Scegli la cartella").click();
     await expect(title(page)).toHaveText("Ho trovato 3 materie", { timeout: 60000 });
-    await button(page, "Salva e torna alle impostazioni").click();
+    // The last button names the place it returns to.
+    await button(page, "Salva e torna a Libreria").click();
     await expect(page).toHaveURL(/#\/exams\/library$/);
     // The folder is linked, not copied: setup's step records it, and its files are read from where they are.
     expect(await page.evaluate(() => window.pyxis.invoke("sources.linkedFolders", {}))).toHaveLength(1);

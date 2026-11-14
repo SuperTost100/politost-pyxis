@@ -55,12 +55,15 @@ function withBold(text: string, folder: string): ReactNode {
 export function MaterialStep({
   heading,
   again,
+  place,
   onBack,
   onLeave,
 }: {
   heading: RefObject<HTMLHeadingElement | null>;
-  /** Setup again, which ends back in Settings. */
+  /** Setup again, which ends back where it was opened from. */
   again: boolean;
+  /** The name of that place, as the page's way back names it: Impostazioni, Mappe or Libreria. */
+  place: string;
   /** Back to the AI step. */
   onBack: () => void;
   /** Ends setup: on Chiedi, or in Settings on setup again. */
@@ -503,7 +506,7 @@ export function MaterialStep({
             loading={busy === "confirming"}
             onClick={() => void confirm()}
           >
-            {t(again ? "onboarding.again.done" : "onboarding.done")}
+            {again ? t("onboarding.again.done", { place }) : t("onboarding.done")}
           </Button>
         </span>
       </>

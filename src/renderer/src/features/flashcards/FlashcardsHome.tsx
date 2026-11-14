@@ -174,6 +174,18 @@ export function FlashcardsHome() {
     );
 
   const hasCards = data !== undefined && data.subjects.length > 0;
+  // The first flashcard replaces the empty page and its button, which the dialog gives the focus back to: once both have
+  // happened, a focus that fell to the page goes to the head's "Nuova flashcard".
+  const wasEmpty = useRef(false);
+  useEffect(() => {
+    if (data && !hasCards) wasEmpty.current = true;
+    else if (hasCards && wasEmpty.current && dialog === null) {
+      wasEmpty.current = false;
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) newButton.current?.querySelector("button")?.focus();
+      });
+    }
+  }, [data, hasCards, dialog]);
   return (
     <div className="px-fc">
       <MenuItemArea as="div" className="px-fc-head" menu={menu} region={t("cardBrowser.more")} disabled={!data}>

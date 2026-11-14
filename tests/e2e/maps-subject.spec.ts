@@ -76,6 +76,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.getByRole("button", { name: "Collega una cartella" }).click();
     await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=maps$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Come tieni il materiale per studiare?");
+    await expect(page.getByRole("button", { name: "Torna a Mappe" })).toBeVisible();
     await page.getByRole("button", { name: "Lo faccio dopo" }).click();
     await expect(page).toHaveURL(/#\/maps$/);
 

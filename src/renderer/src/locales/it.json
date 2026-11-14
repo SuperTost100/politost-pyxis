@@ -110,7 +110,7 @@
     "previous": "Passo precedente",
     "leaveBody": "Le modifiche al profilo andranno perse.",
     "again": {
-      "done": "Salva e torna alle impostazioni"
+      "done": "Salva e torna a {{place}}"
     },
     "done": "Inizia a studiare",
     "contentLanguage": "Italian",

@@ -127,6 +127,18 @@ export function CardBrowser({
   );
   // No flashcard at all, and nothing filtering: the page is empty, not a search with no result.
   const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0);
+  // The first card replaces the empty page and its button, which the dialog gives the focus back to: once both have
+  // happened, a focus that fell to the page goes to the list's summary line.
+  const wasEmpty = useRef(false);
+  useEffect(() => {
+    if (emptyPage) wasEmpty.current = true;
+    else if (wasEmpty.current && data && !newCard) {
+      wasEmpty.current = false;
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) summary.current?.focus();
+      });
+    }
+  }, [emptyPage, data, newCard]);
 
   // A page that emptied after a delete steps back instead of showing nothing.
   useEffect(() => {
@@ -714,13 +726,7 @@ export function CardBrowser({
         open={newCard}
         side="hand"
         origin={() => newButton.current?.querySelector("button") ?? null}
-        onClose={() => {
-          setNewCard(false);
-          // The first card replaces the empty page and its button, which the dialog would give the focus back to.
-          requestAnimationFrame(() => {
-            if (document.activeElement === document.body) summary.current?.focus();
-          });
-        }}
+        onClose={() => setNewCard(false)}
         onSaved={({ name, count, closing }) => {
           if (closing) setDone(t("flashcards.new.savedTo", { count, subject: name }));
         }}

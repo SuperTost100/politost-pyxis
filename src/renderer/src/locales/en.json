@@ -110,7 +110,7 @@
     "previous": "Previous step",
     "leaveBody": "Your profile changes will be lost.",
     "again": {
-      "done": "Save and back to Settings"
+      "done": "Save and back to {{place}}"
     },
     "done": "Start studying",
     "contentLanguage": "English",
