@@ -18,6 +18,21 @@ Items the student opens sit as rows in one card: a name, a line under it, and a 
 
 One sidebar for the whole app: Cerca, the sections, the recent chats and the profile at the foot. The current section sits on a white card. Folded, it is a column of icons with each name on hover. The lesson, the quiz and the flashcards are full-screen, without it.
 
+## Going back
+
+A page opened from another page has one way back, at its top left: an arrow and the name of the place it returns to, such as "← Analisi Matematica 2". It leads to where the student came from. With nothing behind it (the first page of a window, a page opened by a reminder or a file, a trail that was lost), it leads to the page's parent and takes the page's place in history, so the parent then shows its own way back. The sidebar sections have none.
+
+| Part           | Rule                                                                                                                                                                                                                                                                                                                                        |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Control        | `BackControl` in `components/BackControl.tsx`: `variant="page"` above a shell page's title, `variant="bar"` at the left end of the study bar, before its thin separator. A ghost button in `--ink-muted`, the fill on hover, the focus ring from the keyboard, 0.98 when pressed and 45% while the page records what it must before leaving |
+| Label          | The place's name, in the app's language: an exam's title, a topic, a map's name, or a section such as Mappe. A name longer than 24 characters is cut with "…", and the whole one is in the control's title. A screen reader hears "Torna a {{place}}" / "Back to {{place}}"                                                                 |
+| Where it leads | Where the student came from, by moving back in the window's history, so history keeps one entry per page. A move inside a page (a lesson's parts, Settings' sections, a filter) replaces the entry instead of adding one                                                                                                                    |
+| Parent         | A page under an exam goes to the exam, the exam to Esami, a map to Mappe at its subject, a review of the day's flashcards to Flashcard, the Quaderno and Tutte le flashcard to the exam they were narrowed to or to Esami. `app/places.ts` holds the whole table                                                                            |
+| Focus          | Back on the page it left, the focus returns to what opened it (a step of the path, a tile, a row), or to its row when the step is folded away, or to the page's main heading. The page does not scroll unless that element is out of sight, and a page that places the focus itself on arrival keeps it there                               |
+| Escape         | Never leaves a page                                                                                                                                                                                                                                                                                                                         |
+
+A page takes its place with `usePlace` (`app/usePlace.ts`): it writes its own name for the controls that lead to it, and gets back its way back. A button that names the place it returns to, such as "Torna al percorso", goes back the same way when the back control leads there (`returnTo`).
+
 ## The study bar
 
 Over the lesson, the quiz and the flashcards. The way back is a ghost button that names where it goes, the title and the count sit in the middle, and the tools are ghost buttons on the right. There is no close button: the way back is the way out.
