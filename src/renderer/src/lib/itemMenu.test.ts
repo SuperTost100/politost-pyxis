@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isMenuKey, keepsSystemMenu, menuTrigger, movedBy, pointBelow } from "./itemMenu";
+import { clampedBy, isMenuKey, keepsSystemMenu, menuTrigger, movedBy, pointBelow } from "./itemMenu";
 
 const plain = { closest: () => null };
 const field = { closest: (selector: string) => (selector.includes("textarea") ? {} : null) };
@@ -249,5 +249,42 @@ describe("whether a scroll moved an item", () => {
   it("leaves an item that grew or shrank in place, which the page did not scroll", () => {
     expect(movedBy(box(40, 100, 300, 60), box(40, 100, 300, 120))).toBe(false);
     expect(movedBy(box(40, 100, 300, 60), box(40, 100, 500, 60))).toBe(false);
+  });
+});
+
+describe("whether the page, and not the student, scrolled", () => {
+  const scroller = (scrollTop: number, scrollHeight: number, clientHeight = 900) => ({
+    scrollTop,
+    scrollLeft: 0,
+    scrollHeight,
+    scrollWidth: 960,
+    clientHeight,
+    clientWidth: 960,
+  });
+  const was = (top: number, left = 0) => ({ top, left });
+
+  it("counts a page that was scrolled to its end and got shorter, so the browser moved it back to the new end", () => {
+    expect(clampedBy(was(500), scroller(380, 1280))).toBe(true);
+    // The content under it went away until the page no longer scrolls.
+    expect(clampedBy(was(500), scroller(0, 900))).toBe(true);
+    // A fraction of a pixel short of the end, as at a fractional zoom.
+    expect(clampedBy(was(500), scroller(379.6, 1280))).toBe(true);
+  });
+
+  it("leaves a scroll of the student's: down, up from the end, or up to anywhere", () => {
+    expect(clampedBy(was(300), scroller(500, 1400))).toBe(false);
+    expect(clampedBy(was(500), scroller(300, 1400))).toBe(false);
+    // A page that is not at its end after moving back, such as one that scroll anchoring moved.
+    expect(clampedBy(was(500), scroller(470, 1400))).toBe(false);
+  });
+
+  it("leaves a scroll that did not move, or a page that grew", () => {
+    expect(clampedBy(was(500), scroller(500, 1400))).toBe(false);
+    expect(clampedBy(was(500), scroller(500, 2000))).toBe(false);
+  });
+
+  it("reads the horizontal position the same way", () => {
+    expect(clampedBy(was(0, 200), { ...scroller(0, 900), scrollLeft: 40, scrollWidth: 1000 })).toBe(true);
+    expect(clampedBy(was(0, 200), { ...scroller(0, 900), scrollLeft: 100, scrollWidth: 1300 })).toBe(false);
   });
 });
