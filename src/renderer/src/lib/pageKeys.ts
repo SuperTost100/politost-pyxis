@@ -4,7 +4,7 @@
  * nothing there, so a key pressed in a panel never acts on the page under it.
  */
 const OPEN_SURFACE =
-  "[role=dialog], [role=menu], .px-item-menu, .px-jobs, .ant-modal-root, .ant-drawer, .ant-dropdown, .ant-select-dropdown";
+  "[role=dialog], [role=alertdialog], [role=menu], .px-item-menu, .px-jobs, .ant-modal-root, .ant-drawer, .ant-dropdown, .ant-select-dropdown";
 
 /** An element, or what a test stands in for one with: only `closest` is read. */
 type Target = { closest(selector: string): unknown } | null | undefined;

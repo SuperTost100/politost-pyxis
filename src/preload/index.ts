@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import { isMenuCommand, type MenuLanguage } from "../shared/menu";
+import { isMenuCommand, type MenuLanguage, type NavState } from "../shared/menu";
 import { isOpenablePath } from "../shared/reminder";
 import {
   mainChannels,
@@ -351,6 +351,7 @@ const bridge: PyxisBridge = {
     ipcRenderer.invoke(mainChannels.updatesCheck, force === true),
   setMenuLanguage: (language: MenuLanguage) =>
     ipcRenderer.invoke(mainChannels.menuLanguage, language),
+  setNavState: (state: NavState) => ipcRenderer.invoke(mainChannels.navState, state),
   onMenuCommand: (cb) => {
     const listener = (_event: unknown, command: unknown) => {
       if (isMenuCommand(command)) cb(command);

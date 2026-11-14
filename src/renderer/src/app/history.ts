@@ -1,4 +1,4 @@
-import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, type Navigation, type PlaceName, type Trail } from "./trail";
+import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
 
 /**
  * Keeps the trail (`trail.ts`) beside the window's history: the router reports every navigation it finishes, and the
@@ -6,11 +6,9 @@ import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, ty
  * read or written means no history: every page then goes back to its parent.
  */
 
-const STORE = "pyxis.trail";
-
 function load(): Trail {
   try {
-    return parseTrail(sessionStorage.getItem(STORE));
+    return parseTrail(sessionStorage.getItem(TRAIL_STORE));
   } catch {
     return emptyTrail;
   }
@@ -23,7 +21,7 @@ function update(next: Trail) {
   if (next === trail) return;
   trail = next;
   try {
-    sessionStorage.setItem(STORE, JSON.stringify(trail));
+    sessionStorage.setItem(TRAIL_STORE, JSON.stringify(trail));
   } catch {
     // Without storage the trail still holds for this page's life; a reload then starts without one.
   }
@@ -154,7 +152,7 @@ type RouterState = {
   location: { key: string; pathname: string; search: string; state: unknown };
 };
 
-function viaOf(state: unknown): Navigation["via"] {
+export function viaOf(state: unknown): Navigation["via"] {
   const via = (state as { via?: unknown } | null)?.via;
   return via === "sidebar" || via === "outside" ? via : undefined;
 }

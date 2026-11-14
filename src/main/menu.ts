@@ -1,5 +1,5 @@
 import type { BaseWindow, ContextMenuParams, MenuItemConstructorOptions, PopupOptions } from "electron";
-import { goPages, type MenuCommand, type MenuLanguage } from "../shared/menu";
+import { goPages, type MenuCommand, type MenuLanguage, type NavState } from "../shared/menu";
 
 const appName = "PoliTost Pyxis";
 
@@ -49,6 +49,7 @@ const words: Record<MenuLanguage, Words> = {
       library: "Library",
       flashcards: "Flashcards",
       back: "Back",
+      forward: "Forward",
       shortcuts: "Keyboard shortcuts",
       "check-updates": "Check for updates",
       "report-problem": "Report a problem",
@@ -95,6 +96,7 @@ const words: Record<MenuLanguage, Words> = {
       library: "Libreria",
       flashcards: "Flashcard",
       back: "Indietro",
+      forward: "Avanti",
       shortcuts: "Scorciatoie da tastiera",
       "check-updates": "Cerca aggiornamenti",
       "report-problem": "Segnala un problema",
@@ -138,6 +140,8 @@ export type MenuOptions = {
   /** Packaged builds leave out reload and developer tools. */
   packaged: boolean;
   send: (command: MenuCommand) => void;
+  /** Which of Indietro and Avanti can do something now, as the renderer last said; both are off until it does. */
+  nav?: NavState;
 };
 
 /**
@@ -148,7 +152,7 @@ export type MenuOptions = {
 export function buildMenuTemplate(
   options: MenuOptions,
 ): MenuItemConstructorOptions[] {
-  const { platform, language, packaged, send } = options;
+  const { platform, language, packaged, send, nav = { back: false, forward: false } } = options;
   const mac = platform === "darwin";
   const w = words[language];
   const command = (
@@ -227,7 +231,8 @@ export function buildMenuTemplate(
     submenu: [
       ...goPages.map((page) => command(page.command, page.accelerator)),
       { type: "separator" },
-      command("back", mac ? "Cmd+[" : "Alt+Left"),
+      { ...command("back", mac ? "Cmd+[" : "Alt+Left"), enabled: nav.back },
+      { ...command("forward", mac ? "Cmd+]" : "Alt+Right"), enabled: nav.forward },
     ],
   };
 

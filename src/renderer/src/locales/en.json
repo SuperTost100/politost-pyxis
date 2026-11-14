@@ -49,6 +49,7 @@
       "goLibrary": "Go to Library",
       "goFlashcards": "Go to Flashcards",
       "back": "Back",
+      "forward": "Forward",
       "pageMenu": "Open the page's menu",
       "shortcuts": "Keyboard shortcuts",
       "zoomIn": "Zoom in",
@@ -87,9 +88,11 @@
       "cmd": "Command",
       "option": "Option",
       "left": "Left arrow",
+      "right": "Right arrow",
       "comma": "Comma",
       "slash": "Slash",
       "bracket": "Left bracket",
+      "rbracket": "Right bracket",
       "plus": "Plus",
       "minus": "Minus",
       "delete": "Delete",
@@ -911,7 +914,7 @@
       "added_other": "You added the other {{count}} files in the Library yourself."
     },
     "shelf": {
-    "more": "More for the Library",
+      "more": "More for the Library",
       "addFiles": "Add files",
       "linkFolder": "Link a folder",
       "linkAnother": "Link another folder",

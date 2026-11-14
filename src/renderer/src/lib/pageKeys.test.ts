@@ -6,7 +6,7 @@ const inside = (surface: string) => ({ closest: (selector: string) => (selector.
 
 describe("keys of a study page while a surface has the focus", () => {
   it("belong to the open surface: a dialog, a menu, the Attività list, a dropdown", () => {
-    for (const surface of ["[role=dialog]", ".px-item-menu", ".px-jobs", ".ant-select-dropdown", ".ant-drawer"])
+    for (const surface of ["[role=dialog]", "[role=alertdialog]", ".px-item-menu", ".px-jobs", ".ant-select-dropdown", ".ant-drawer"])
       expect(focusInOpenSurface(inside(surface)), surface).toBe(true);
   });
 

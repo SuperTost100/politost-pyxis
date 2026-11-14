@@ -5,7 +5,8 @@ import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { useChatActions } from "../../features/ask/chatActions";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
-import { isExamPagePath, isMapPath } from "../doors";
+import { isExamPagePath, isMapPath } from "../paths";
+import { useSection } from "../useSection";
 import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
 import { useMenuLock } from "../menu-state";
@@ -20,6 +21,7 @@ export function Shell() {
   // A page loads on its first visit, and the previous one stays until it has. The column and the highlighted door
   // follow the page being opened from the start, so they never depend on how long that takes.
   const target = useNavigation().location ?? location;
+  const section = useSection(target);
   const client = useQueryClient();
   const actions = useChatActions();
   const [finder, setFinder] = useState<FinderScope | null>(null);
@@ -145,7 +147,7 @@ export function Shell() {
         </header>
       ) : (
         <Sidebar
-          pathname={target.pathname}
+          section={section}
           simulation={simulation}
           onSearch={setFinder}
           actions={actions}
