@@ -35,6 +35,7 @@ export type MenuCommand =
   | GoCommand
   | keyof typeof pageCommands
   | "back"
+  | "forward"
   | "shortcuts"
   | "report-problem";
 
@@ -42,6 +43,7 @@ const commands: ReadonlySet<string> = new Set<MenuCommand>([
   ...goPages.map((page) => page.command),
   ...(Object.keys(pageCommands) as Array<keyof typeof pageCommands>),
   "back",
+  "forward",
   "shortcuts",
   "report-problem",
 ]);
@@ -49,6 +51,17 @@ const commands: ReadonlySet<string> = new Set<MenuCommand>([
 /** Main sends a command and the preload checks it, so nothing outside this list reaches the renderer's router. */
 export function isMenuCommand(value: unknown): value is MenuCommand {
   return typeof value === "string" && commands.has(value);
+}
+
+/** Which of Vai's Indietro and Avanti can do something now. The renderer knows; the menu only shows it. */
+export type NavState = { back: boolean; forward: boolean };
+
+/** Main takes the state from the renderer, so anything that is not exactly the two booleans is refused. */
+export function isNavState(value: unknown): value is NavState {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  const { back, forward } = value as Record<string, unknown>;
+  return keys.length === 2 && typeof back === "boolean" && typeof forward === "boolean";
 }
 
 export function isMenuLanguage(value: unknown): value is MenuLanguage {
