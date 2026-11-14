@@ -1,4 +1,4 @@
-import { arrive, currentVisit, emptyTrail, forget, named, parseTrail, type Navigation, type PlaceName, type Trail } from "./trail";
+import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, type Navigation, type PlaceName, type Trail } from "./trail";
 
 /**
  * Keeps the trail (`trail.ts`) beside the window's history: the router reports every navigation it finishes, and the
@@ -86,11 +86,12 @@ function findByFocusKey(key: string, nearest: boolean): HTMLElement[] {
 
 let stopWaiting: (() => void) | null = null;
 /** A back control is about to replace its page with the page's parent, which is also going back. */
-let backToParent = false;
+let backToParent: string | null = null;
 
 /** Called by a back control right before it opens the page's parent in place of the page. */
-export function goingBackToParent(): void {
-  backToParent = true;
+export function goingBackToParent(to: string): void {
+  // Kept by page, so a move the leave guard stops does not make a later rewrite of an address count as going back.
+  backToParent = pageOf(to);
 }
 
 /**
@@ -193,9 +194,9 @@ export function trackHistory(router: { state: RouterState; subscribe: (fn: (stat
         opener: action === "PUSH" ? openerKey() : undefined,
       }),
     );
-    if ((action === "POP" && !first) || (action === "REPLACE" && backToParent)) returnFocus(currentVisit(trail)?.opener);
+    if ((action === "POP" && !first) || (action === "REPLACE" && backToParent === pageOf(location.pathname))) returnFocus(currentVisit(trail)?.opener);
     else if (action !== "POP") stopWaiting?.();
-    backToParent = false;
+    backToParent = null;
   };
   see(router.state, true);
   router.subscribe((state) => see(state, false));

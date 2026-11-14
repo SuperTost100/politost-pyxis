@@ -68,7 +68,7 @@ export function usePlace(input: {
         const here = now.visits.find((visit) => visit.key === key);
         if (behind && here) void navigate(behind.idx - here.idx);
         else if (parent) {
-          goingBackToParent();
+          goingBackToParent(parent.to);
           void navigate(parent.to, { replace: true });
         }
       };
