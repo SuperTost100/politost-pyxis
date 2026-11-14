@@ -26,14 +26,15 @@ The settings controls are rows in a white card, one look per kind of choice. [Co
 | `SegmentedTabs`                      | Tabs inside a page, such as Esami · Fonti · Flashcard                                                    |
 | `ItemMenu`                           | `useItemMenu`, `MenuItemArea` and `MenuButton`: the dots and a right-click open one menu, with submenus  |
 | `BackControl`                        | The way back: an arrow and the name of the place it leads to, from `usePlace`, above a title or in a bar |
-| `ListToolbar`                        | The bar above a list: search, filters, a secondary menu and the one primary action, always in that order |
+| `ListToolbar`                        | The bar above a list: search, filters and the one primary action, always in that order                   |
+| `ChoiceMenu` (`ListToolbar.tsx`)     | A labelled choice with a chevron, such as "Scegli altro"; a page's menu is the dots in its head          |
 | `Stepper` (`Stepper.tsx`)            | Where the student is in a short flow of named steps, such as setup and the new exam                      |
 | `MathInput`                          | A written answer with formulas: `$` or the sigma button opens a formula at the caret                     |
 | `Composer`                           | The message box in Chiedi: the plus (a file or a formula), the whiteboard, the graph and Invia           |
 | `CrashReportsSwitch`                 | The crash-report choice as a labelled switch row, the same in setup and Settings                         |
 | `EngineUseChoice`                    | Automatic, or the AI tools the student ticks                                                             |
 
-A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right-click open the same `menu`, so both show the same items ([item menus](layout.md#item-menus) has the rules). Wire `useItemMenu` or `MenuItemArea` rather than building another dropdown for a row. Chats are the exception: their menu is the system's own, through `window.pyxis.contextMenu` (see `features/ask/chatActions.tsx`), in the sidebar and in the search, which is a modal dialog that a menu drawn in the page would sit behind. Text fields and anything marked `data-native-menu` keep the system's menu for copy, paste and spelling.
+A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right-click open the same `menu`, so both show the same items ([item menus](layout.md#item-menus) has the rules). A page's own menu is the dots in its head, built the same way ([the page's menu](layout.md#the-pages-menu)). Wire `useItemMenu` or `MenuItemArea` rather than building another dropdown for a row. Chats are the exception: their menu is the system's own, through `window.pyxis.contextMenu` (see `features/ask/chatActions.tsx`), in the sidebar and in the search, which is a modal dialog that a menu drawn in the page would sit behind. Text fields and anything marked `data-native-menu` keep the system's menu for copy, paste and spelling.
 
 ## Status and feedback
 

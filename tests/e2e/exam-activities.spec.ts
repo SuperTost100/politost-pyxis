@@ -148,11 +148,11 @@ async function openExam(page: Page, planId: string) {
 const dialogOf = (page: Page) =>
   page.getByRole("dialog", { name: "Crea un'attività" });
 
-/** Opens "Crea un'attività" from the exam page's Altro menu. */
+/** Opens "Crea un'attività" from the exam page's menu (the dots in its head). */
 async function fromAltro(page: Page) {
   await page
     .locator(".px-exam-head")
-    .getByRole("button", { name: "Altro", exact: true })
+    .getByRole("button", { name: "Altro sull'esame", exact: true })
     .click();
   await page.getByRole("menuitem", { name: "Crea un'attività" }).click();
   const dialog = dialogOf(page);
@@ -186,10 +186,10 @@ test("Crea un'attività starts every kind in one step, from Altro and from a top
     await openExam(page, planId);
     const [limiti, derivate] = topics;
 
-    // From Altro: the dialog opens on a quiz, on the topic the path is on, with the focus on the chosen kind.
+    // From the exam's menu: the dialog opens on a quiz, on the topic the path is on, with the focus on the chosen kind.
     const altro = page
       .locator(".px-exam-head")
-      .getByRole("button", { name: "Altro", exact: true });
+      .getByRole("button", { name: "Altro sull'esame", exact: true });
     let dialog = await fromAltro(page);
     await expect(kind(dialog, "Quiz")).toBeFocused();
     await expect(kind(dialog, "Quiz")).toHaveAttribute("aria-checked", "true");

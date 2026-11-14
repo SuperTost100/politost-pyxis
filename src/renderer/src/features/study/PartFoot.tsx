@@ -3,7 +3,7 @@ import type { ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../components/Button";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
-import { ToolbarMenu } from "../../components/ListToolbar";
+import { ChoiceMenu } from "../../components/ListToolbar";
 
 export type OtherChoice = "practice" | "cards" | "reread";
 
@@ -115,7 +115,7 @@ export function PartFoot({
           </Button>
         </div>
         <div className="px-part-foot-other">
-          <ToolbarMenu label={t("lesson.chooseOther")} items={items} onSelect={(key) => onOther(key as OtherChoice)} />
+          <ChoiceMenu label={t("lesson.chooseOther")} items={items} onSelect={(key) => onOther(key as OtherChoice)} />
         </div>
         <Button variant="ghost" className="px-part-enough" onClick={onEnough}>
           {t("lesson.enough")}

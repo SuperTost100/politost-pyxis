@@ -12,8 +12,7 @@ import { emptyRings, ExamRings, RingLegend } from "../../components/ExamRings";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
 import { MathText } from "../../components/math/MathText";
-import { MenuButton } from "../../components/ItemMenu";
-import { ToolbarMenu } from "../../components/ListToolbar";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -217,46 +216,44 @@ function ExamPage({ planId }: { planId: string }) {
   if (!plan.data) return <ExamSkeleton label={t("components.loading")} />;
   const data = plan.data;
   const upcoming = nextUpcomingDay(draftsFromSessions(data.sessions)) !== null;
-  const menu = (
-    <ToolbarMenu
-      label={t("listToolbar.more")}
-      items={[
-        { key: "review", label: t("cards.reviewTitle") },
-        {
-          key: "create",
-          label: t("examPage.create"),
-          disabled: !data.topics.length,
-        },
-        { type: "divider" },
-        // Only an exam with a session today or later has anything to put in a calendar.
-        ...(upcoming
-          ? [
-              {
-                key: "calendar",
-                label: t("calendar.add"),
-                disabled: calendar.busy,
-              },
-            ]
-          : []),
-        { key: "share", label: t("examPage.share") },
-      ]}
-      onSelect={(key) => {
-        if (key === "review") navigate(`/plans/${planId}/review`);
-        if (key === "create") {
-          // The menu gave the focus back to its button before this runs.
-          createOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          setCreateTopic(undefined);
-          setCreateOpen(true);
-        }
-        if (key === "calendar") void calendar.save();
-        if (key === "share") setExportOpen(true);
-      }}
-    />
-  );
+  // The exam's menu: the dots beside the settings and a right-click on the head.
+  const menu: MenuProps = {
+    items: [
+      { key: "review", label: t("cards.reviewTitle") },
+      {
+        key: "create",
+        label: t("examPage.create"),
+        disabled: !data.topics.length,
+      },
+      { type: "divider" },
+      // Only an exam with a session today or later has anything to put in a calendar.
+      ...(upcoming
+        ? [
+            {
+              key: "calendar",
+              label: t("calendar.add"),
+              disabled: calendar.busy,
+            },
+          ]
+        : []),
+      { key: "share", label: t("examPage.share") },
+    ],
+    onClick: ({ key }) => {
+      if (key === "review") navigate(`/plans/${planId}/review`);
+      if (key === "create") {
+        // The menu gave the focus back to where it opened before this runs.
+        createOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        setCreateTopic(undefined);
+        setCreateOpen(true);
+      }
+      if (key === "calendar") void calendar.save();
+      if (key === "share") setExportOpen(true);
+    },
+  };
 
   return (
     <div className="px-exam">
-      <header className="px-exam-head">
+      <MenuItemArea as="header" className="px-exam-head" menu={menu} region={t("examPage.more")}>
         <div className="px-exam-name">
           <h1 className="title-1">{data.title}</h1>
           <p className="px-exam-date">
@@ -282,9 +279,9 @@ function ExamPage({ planId }: { planId: string }) {
           >
             {t("planOverview.settings")}
           </Button>
-          {menu}
+          <MenuButton rightClick menu={menu} label={t("examPage.more")} />
         </span>
-      </header>
+      </MenuItemArea>
       {rings.isError ? (
         <Notice
           tone="danger"
