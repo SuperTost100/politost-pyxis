@@ -914,7 +914,7 @@
       "added_other": "You added the other {{count}} files in the Library yourself."
     },
     "shelf": {
-    "more": "More for the Library",
+      "more": "More for the Library",
       "addFiles": "Add files",
       "linkFolder": "Link a folder",
       "linkAnother": "Link another folder",

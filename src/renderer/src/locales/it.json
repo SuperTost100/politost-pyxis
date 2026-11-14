@@ -914,7 +914,7 @@
       "added_other": "Gli altri {{count}} file della Libreria li hai aggiunti tu."
     },
     "shelf": {
-    "more": "Altro sulla Libreria",
+      "more": "Altro sulla Libreria",
       "addFiles": "Aggiungi file",
       "linkFolder": "Collega una cartella",
       "linkAnother": "Collega un'altra cartella",
