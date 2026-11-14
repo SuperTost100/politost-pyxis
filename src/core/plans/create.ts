@@ -9,7 +9,7 @@ import { pathNext, topicSuggestion, type Stage, type Suggestion, type TopicStatu
 import { finishedLessons, gradedActivities, readSteps } from "./steps";
 import { nextPart, outlineProgress, type NextPart } from "../study/partProgress";
 import { countDueCards } from "../study/cards";
-import { gapSeverity, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
+import { gapSeverity, OPEN_GAPS_WHERE, planMastery, syncGaps, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { smartbookChapters } from "../sources/smartbook";
 import { latestDocument } from "../sources/documents";
 import { sectionCount } from "../sources/details";
@@ -413,10 +413,8 @@ export function pathState(
   syncGaps(db, planId, now);
   const steps = readSteps(db, planId);
   const gaps = db
-    .prepare(
-      `SELECT topic_id, severity FROM gaps WHERE plan_id = ? AND closed_at IS NULL`,
-    )
-    .all(planId) as Array<{ topic_id: string | null; severity: "severe" | "minor" | null }>;
+    .prepare(`SELECT g.topic_id, g.severity FROM gaps g WHERE ${OPEN_GAPS_WHERE}`)
+    .all({ plan: planId }) as Array<{ topic_id: string; severity: "severe" | "minor" | null }>;
   // Gap rows are written by the app itself (syncs, flags, merges), so they say nothing about when the topic was studied.
   const lastStudied = new Map(
     (

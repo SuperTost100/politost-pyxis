@@ -142,6 +142,8 @@ Gap rows follow the answers. Reading the exam's path or the recommendation syncs
 
 **Merging.** The older gap keeps its id. The absorbed gap closes with `merged_into` pointing at the survivor, its wrong answers and drill items move to the survivor, and a severe reading stays severe. A merge is not a learning close. It writes a `gap_closed` event with reason `merged`, and a drill built for the absorbed gap is offered for the survivor.
 
+**Levels.** The exam page tells open gaps apart in three levels, from the two severities Pyxis stores (`gapLevel` in `src/core/study/openGaps.ts`). A gap is serious when it is severe by the rule above. A minor gap is moderate while its topic is under the plan's target (the target the topic can reach, so a full-mark goal counts as 0.99), and minor once the topic has reached it. The list puts serious gaps first, then moderate, then minor; inside a level, the gap with the most linked wrong answers first, then the oldest, then the lowest id. A gap on a topic removed from the exam, a closed gap, and a gap with no topic are not listed or counted. Two gaps on one topic are two rows until the analysis merges them, even when their sentences are identical.
+
 `plans.series` marks a below-target topic idle after 21 days without study. The standalone `idleTopics()` helper defaults to seven days.
 
 ## Recommendation score
