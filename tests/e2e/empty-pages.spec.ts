@@ -236,6 +236,45 @@ test("All flashcards with no flashcard says what will appear, keeps Import from 
   }
 });
 
+for (const [hash, name] of [
+  ["/flashcards", "Flashcard"],
+  ["/flashcards/all", "All flashcards"],
+] as const)
+  test(`${name} with no flashcard: its button opens the dialog, which asks before closing with text, keeps it on Resta qui and saves the card`, async () => {
+    const { page, finish } = await start(`dialog-${name.toLowerCase().replace(/\W+/g, "-")}`);
+    try {
+      await show(page, looks[0], hash);
+      await page.getByRole("main").getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+      await expect(dialog).toBeVisible();
+      // With no subject the dialog starts on a new one, its name field focused.
+      const subject = dialog.getByRole("textbox", { name: "Nome della nuova materia" });
+      await expect(subject).toBeFocused();
+      await subject.fill("Chimica organica");
+      await dialog.getByRole("textbox", { name: "Fronte" }).fill("Formula del metano?");
+      await dialog.getByRole("textbox", { name: "Retro" }).fill("CH4");
+
+      // Escape with text typed asks first; "Resta qui" keeps the dialog and the text.
+      await page.keyboard.press("Escape");
+      const question = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+      await expect(question.getByRole("button", { name: "Resta qui" })).toBeFocused();
+      await question.getByRole("button", { name: "Resta qui" }).click();
+      await expect(question).toHaveCount(0);
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("textbox", { name: "Fronte" })).toHaveValue("Formula del metano?");
+
+      // Saving closes the dialog, and the empty page gives way to the card.
+      await dialog.getByRole("button", { name: "Salva", exact: true }).click();
+      await expect(dialog).toBeHidden();
+      await expect(page.locator(".px-empty")).toHaveCount(0);
+      // The button the dialog grew out of is gone with the empty page: the focus does not fall to the body.
+      await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
+      await expect(page.getByRole("main").getByText(/Formula del metano\?|Chimica organica/).first()).toBeVisible();
+    } finally {
+      await finish();
+    }
+  });
+
 test("The Library with no file says what will appear, keeps the free books in its dots and has one Link a folder, which opens Add sources on Folder", async () => {
   const { page, open, finish } = await start("library");
   try {

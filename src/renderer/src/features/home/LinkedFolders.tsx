@@ -120,8 +120,13 @@ export function LinkedFolders({
     void client.invalidateQueries({ queryKey: ["sources"] });
   };
   // The anchor holds the control in every state, so the focus has somewhere to go after the last folder is unlinked.
+  // The confirmation's `afterClose` runs after the Library has re-rendered, so it reads the latest `elsewhere`.
+  const elsewhereNow = useRef(elsewhere);
+  elsewhereNow.current = elsewhere;
   const focusControl = () =>
-    (anchor.current?.querySelector("button") ?? elsewhere?.()?.querySelector("button"))?.focus({ preventScroll: true });
+    (anchor.current?.querySelector("button") ?? elsewhereNow.current?.()?.querySelector("button"))?.focus({
+      preventScroll: true,
+    });
 
   async function reread(folder: LinkedFolder) {
     setProblem(null);

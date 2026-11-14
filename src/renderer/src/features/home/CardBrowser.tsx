@@ -714,7 +714,13 @@ export function CardBrowser({
         open={newCard}
         side="hand"
         origin={() => newButton.current?.querySelector("button") ?? null}
-        onClose={() => setNewCard(false)}
+        onClose={() => {
+          setNewCard(false);
+          // The first card replaces the empty page and its button, which the dialog would give the focus back to.
+          requestAnimationFrame(() => {
+            if (document.activeElement === document.body) summary.current?.focus();
+          });
+        }}
         onSaved={({ name, count, closing }) => {
           if (closing) setDone(t("flashcards.new.savedTo", { count, subject: name }));
         }}
