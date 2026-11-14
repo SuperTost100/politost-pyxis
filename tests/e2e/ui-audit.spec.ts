@@ -55,7 +55,7 @@ const routes = [
   // The page's menu, opened from the dots in the head of the exam page, the Library and the flashcard browser.
   ["plan-menu", "/plans/audit-plan"],
   ["library-menu", "/exams/library"],
-  ["cards-browser-menu", "/exams/cards"],
+  ["cards-browser-menu", "/flashcards/all"],
   // An archived exam under the open Archiviati toggle.
   ["exams-archived", "/exams"],
   ["library", "/exams/library"],
@@ -64,11 +64,13 @@ const routes = [
   // Passage search: the same field with the Content scope, its results and the local model offer.
   ["library-search", "/exams/library"],
   // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
-  ["cards-browser", "/exams/cards"],
-  ["cards-browser-empty", "/exams/cards"],
-  ["cards-browser-none", "/exams/cards"],
-  ["cards-browser-edit", "/exams/cards"],
-  ["cards-browser-delete", "/exams/cards"],
+  ["cards-browser", "/flashcards/all"],
+  ["cards-browser-empty", "/flashcards/all"],
+  ["cards-browser-none", "/flashcards/all"],
+  ["cards-browser-edit", "/flashcards/all"],
+  ["cards-browser-delete", "/flashcards/all"],
+  // The same list opened from the exam's page: Esami stays lit and the back control names the exam.
+  ["cards-browser-from-exam", "/plans/audit-chem-plan"],
   ["flashcards", "/flashcards"],
   ["flashcards-empty", "/flashcards"],
   ["flashcards-none-due", "/flashcards"],
@@ -3978,6 +3980,12 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
       await expect(page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") })).toBeVisible();
       break;
+    case "cards-browser-from-exam":
+      await page.locator(".px-exam-aside").getByRole("button", { name: both("Sfoglia tutte", "Browse all") }).click();
+      await expect(page.getByRole("heading", { level: 1, name: both("Tutte le flashcard", "All flashcards") })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^(Torna a|Back to) Chimica generale$/ })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: both("Sezioni", "Sections") }).getByRole("link", { name: both("Esami", "Exams"), exact: true })).toHaveAttribute("aria-current", "page");
+      break;
     case "cards-browser-menu":
       await page.getByRole("button", { name: both("Altro sulle flashcard", "More for flashcards") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
@@ -4329,9 +4337,12 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
       await expect(page.getByRole("heading", { level: 3, name: "Chimica generale" })).toBeVisible();
       await expect(page.getByRole("heading", { level: 2, name: both("Nessuna materia", "No subject") })).toBeVisible();
+      // The band under the head holds the day's review, and the head holds the browser and a new flashcard.
+      await expect(page.locator(".px-fc-band").getByText(/^(Oggi ne hai \d+ da ripassare|You have \d+ flashcards? to review today)/)).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /^(Ripassa le \d+ di oggi|Review today's \d+)$/ }),
+        page.locator(".px-fc-band").getByRole("button", { name: /^(Ripassa le \d+ di oggi|Review today's \d+)$/ }),
       ).toBeVisible();
+      await expect(page.locator(".px-fc-head").getByRole("button", { name: both("Sfoglia tutte", "Browse all") })).toBeVisible();
       break;
     case "flashcards-empty":
       // One line on what will appear and the one button that writes the first flashcard.
@@ -4374,7 +4385,9 @@ async function openState(page: Page, name: string) {
     }
     case "flashcards-none-due":
       await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
-      await expect(page.locator(".px-fc-head").getByText(both("Niente da ripassare oggi", "Nothing to review today"))).toBeVisible();
+      // No band, and "Nuova flashcard" is the head's one primary button.
+      await expect(page.locator(".px-fc-band")).toBeHidden();
+      await expect(page.locator(".px-fc-head").getByRole("button", { name: both("Nuova flashcard", "New flashcard") })).toBeVisible();
       break;
     case "cards-browser-empty":
       await expect(

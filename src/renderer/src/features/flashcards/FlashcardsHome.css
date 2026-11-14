@@ -3,11 +3,11 @@
 .px-fc-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3) var(--space-4);
 }
-.px-fc-head > div {
+.px-fc-head-text {
   flex: 1 1 280px;
   min-width: 0;
 }
@@ -27,13 +27,68 @@
   color: var(--ink-subtle);
   font-variant-numeric: tabular-nums;
 }
-.px-fc-head > .px-fc-none {
-  padding-bottom: 8px;
+/* The head's bottom margin and the gap above the subjects add up to the 26px under the head when no band shows; with it,
+   the band's own 12px puts it 26px under the head and 12px above the subjects. */
+.px-fc-head {
+  margin-bottom: 14px;
 }
 .px-fc-subjects {
   display: grid;
   gap: 18px;
-  margin-top: 26px;
+  margin-top: 12px;
+}
+/* Today's review: a band under the head. It stays in the page and closes when nothing is due, so the subjects slide up
+   instead of jumping, and the count changing inside it moves nothing (motion.md, "A row that expands"). A band whose
+   counts arrive after the page opened grows out of the head. */
+.px-fc-band {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--duration-small) var(--ease-out),
+    opacity var(--duration-small) var(--ease-out),
+    visibility 0s;
+}
+.px-fc-band[data-open="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--duration-small) var(--ease-in-out),
+    opacity 120ms var(--ease-out),
+    visibility 0s var(--duration-small);
+}
+@starting-style {
+  .px-fc-band[data-waited][data-open="true"] {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+.px-fc-band-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+.px-fc-band-pad {
+  padding-top: 12px;
+}
+.px-fc-band-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: 8px 8px 8px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.px-fc-band-bar p {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: calc(14.5px * var(--text-scale, 1));
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
 }
 /* Rows sit 6px inside the card, so their corners are the card's less that padding (foundations.md, corners). */
 .px-fc-subject {
@@ -140,16 +195,17 @@
   color: var(--ink-subtle);
 }
 
-/* "Nuova flashcard" beside the review, or alone when nothing is due. */
+/* The dots, "Sfoglia tutte" and "Nuova flashcard". */
 .px-fc-head > .px-fc-actions {
   display: flex;
   flex: none;
   flex-wrap: wrap;
   align-items: center;
+  /* As tall as the title's line and below the title's own top margin (0.67em of 36px), so the buttons sit level with the
+     title and not with the line under it. */
+  min-height: calc(40px * var(--text-scale, 1));
+  margin-top: calc(24px * var(--text-scale, 1));
   gap: var(--space-2) var(--space-3);
-}
-.px-fc-actions > .px-fc-none {
-  padding: 0 4px 0 0;
 }
 .px-fc-new {
   display: inline-flex;

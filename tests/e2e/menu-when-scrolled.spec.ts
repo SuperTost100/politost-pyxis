@@ -394,7 +394,7 @@ test("a source row, a flashcard row and a row of Da finire open and stay open on
     await staysOpen(page, "a Da finire row", unfinishedDots, rowWays(page, unfinished, unfinished.locator(".px-unf-open")), unfinished.locator(".px-unf-open"));
 
     // The flashcard browser.
-    await go(page, "/exams/cards");
+    await go(page, "/flashcards/all");
     const row = page.locator(".px-cardbrowser-row").last();
     await expect(row).toBeVisible();
     const cardDots = row.getByRole("button", { name: /^Altre azioni/ });

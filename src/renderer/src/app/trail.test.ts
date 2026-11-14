@@ -36,7 +36,7 @@ describe("pageOf", () => {
   it("is the pathname, with the query and a trailing slash left out and Settings as one page", () => {
     expect(pageOf("/plans/p/lesson/t?part=3")).toBe("/plans/p/lesson/t");
     expect(pageOf("/plans/p/")).toBe("/plans/p");
-    expect(pageOf("/exams/cards?exam=p")).toBe("/exams/cards");
+    expect(pageOf("/flashcards/all?exam=p")).toBe("/flashcards/all");
     expect(pageOf("/settings")).toBe("/settings");
     expect(pageOf("/settings/engines")).toBe("/settings");
     expect(pageOf("/settingsx")).toBe("/settingsx");
@@ -284,6 +284,11 @@ describe("the lit section of a visit", () => {
     const map = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/maps/s1/t1"));
     expect(section(map)).toBe("exams");
     expect(section(arrive(map, push("d", 3, "/settings/profile")))).toBe("exams");
+  });
+
+  it("lights Flashcard for every flashcard opened from the section, and Esami for those opened from an exam", () => {
+    expect(section(walk(pop("a", 0, "/flashcards"), push("b", 1, "/flashcards/all")))).toBe("flashcards");
+    expect(section(walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/flashcards/all?exam=p")))).toBe("exams");
   });
 
   it("is the chat's own row for a chat, and a chat's row stays lit for the exam page opened from it", () => {

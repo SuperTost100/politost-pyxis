@@ -158,7 +158,20 @@ const rows: Row[] = [
     study: true,
   },
   {
-    page: "/exams/cards",
+    page: "/flashcards/all",
+    how: "Sfoglia tutte from the Flashcard section",
+    reach: async ({ page }) => {
+      await start(page, "#/flashcards", "Flashcard");
+      await page.getByRole("button", { name: "Sfoglia tutte", exact: true }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Tutte le flashcard" })).toBeVisible();
+    },
+    label: "Flashcard",
+    lit: "Flashcard",
+    leadsTo: "/flashcards",
+    focus: "Sfoglia tutte",
+  },
+  {
+    page: "/flashcards/all",
     how: "Sfoglia tutte from the exam",
     reach: fromExam(async (page) => {
       await side(page).getByRole("button", { name: "Sfoglia tutte" }).click();
@@ -553,7 +566,18 @@ test("every page with a back control has a row", () => {
     "/onboarding",
     "/ask/:chatId?",
   ]);
-  const none = new Set(["/exams", "/exams/library", "/maps", "/flashcards", "/exams/planner", "/settings/subjects", "/dev/gallery", "*"]);
+  const none = new Set([
+    "/exams",
+    "/exams/library",
+    "/maps",
+    "/flashcards",
+    // The old addresses redirect: the row of the page they lead to covers them.
+    "/exams/cards",
+    "/exams/planner",
+    "/settings/subjects",
+    "/dev/gallery",
+    "*",
+  ]);
   const walked = new Set(rows.map((row) => row.page));
   // Study pages that open only on a session of their own (a review in progress, a handed-in simulation, past papers)
   // share the bar's control with the rows above.

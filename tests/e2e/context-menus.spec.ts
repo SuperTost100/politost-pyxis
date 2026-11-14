@@ -488,13 +488,13 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
   }
 });
 
-/** The four pages whose head holds the page's menu, with the head, the dots' name and the menu's items. */
+/** The five pages whose head holds the page's menu, with the head, the dots' name and the menu's items. */
 const pageHeads: Array<{ hash: string; head: string; dots: string; items: string[] }> = [
   {
     hash: "/exams",
     head: ".px-exams-head",
     dots: "Altro su Esami",
-    items: ["Importa da un file .pyxis", "Importa da un link", "Tutte le flashcard", "Quaderno degli errori", "Gestisci materie"],
+    items: ["Importa da un file .pyxis", "Importa da un link", "Quaderno degli errori", "Gestisci materie"],
   },
   {
     hash: "/plans/p1",
@@ -502,11 +502,12 @@ const pageHeads: Array<{ hash: string; head: string; dots: string; items: string
     dots: "Altro sull'esame",
     items: ["Ripasso", "Crea un'attività", "Condividi l'esame"],
   },
-  { hash: "/exams/cards", head: ".px-subpage-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
+  { hash: "/flashcards", head: ".px-fc-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
+  { hash: "/flashcards/all", head: ".px-subpage-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
   { hash: "/exams/library", head: ".px-library-head", dots: "Altro sulla Libreria", items: ["Libri PoliTost gratuiti"] },
 ];
 
-test("the head of Esami, an exam, the flashcard list and the Library has the dots, and a right-click on it or on the dots opens the same menu at the pointer", async () => {
+test("the head of Esami, an exam, the Flashcard section, the flashcard list and the Library has the dots, and a right-click on it or on the dots opens the same menu at the pointer", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-page-menus-"));
   const app = await launchPyxis({ userData });

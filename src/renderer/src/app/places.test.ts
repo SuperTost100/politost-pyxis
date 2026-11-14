@@ -34,7 +34,9 @@ describe("places", () => {
   it("follows `?exam=` to the exam a page was narrowed to", () => {
     expect(placeOf("/exams/mistakes").parent?.to).toBe("/exams");
     expect(placeOf("/exams/mistakes?exam=p1").parent?.to).toBe("/plans/p1");
+    expect(placeOf("/flashcards/all?exam=p1").parent?.to).toBe("/plans/p1");
     expect(placeOf("/exams/cards?exam=p1").parent?.to).toBe("/plans/p1");
+    expect(placeOf("/flashcards/all").parent).toEqual({ to: "/flashcards", name: { key: "flashcards.title" } });
     expect(placeOf("/cards/due").parent?.to).toBe("/flashcards");
     expect(placeOf("/cards/due?exam=p1&topic=none").parent?.to).toBe("/plans/p1");
     expect(placeOf("/cards/due?subject=s&exam=none").parent?.to).toBe("/flashcards");
