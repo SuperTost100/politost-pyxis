@@ -77,7 +77,7 @@ test("CAL-01 one exam's date exports to an .ics file from the plan header and fr
     // The exam page's head: its settings button and its menu, where the calendar is saved.
     const header = page.locator(".px-exam-head");
     const openMenu = async () => {
-      await header.getByRole("button", { name: /^(Altro|More)$/ }).click();
+      await header.getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
     };
     const menuItem = () => page.getByRole("menuitem", { name: calendarName });

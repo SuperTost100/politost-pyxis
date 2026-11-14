@@ -27,6 +27,7 @@ function groups(mac: boolean): Group[] {
           keys: ["mod", page.accelerator.split("+").at(-1)!],
         })),
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
+        { id: "pageMenu", keys: ["shift", "F10"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },
         { id: "zoomOut", keys: ["mod", "minus"] },

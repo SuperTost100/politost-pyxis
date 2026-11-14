@@ -73,7 +73,7 @@ async function expectContent(page: Page, label: string, content: Locator) {
 }
 
 async function pickFromMenu(page: Page, item: string) {
-  await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
+  await page.locator(".px-exam-head").getByRole("button", { name: "More for this exam", exact: true }).click();
   await page.getByRole("menuitem", { name: item, exact: true }).click();
 }
 
@@ -278,7 +278,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(create).toContainText("Lesson");
     await create.getByRole("button", { name: "Cancel" }).click();
     await expect(create).toBeHidden();
-    await page.locator(".px-exam-head").getByRole("button", { name: "More", exact: true }).click();
+    await page.locator(".px-exam-head").getByRole("button", { name: "More for this exam", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Add to calendar" })).toBeVisible();
     await page.keyboard.press("Escape");
     await pickFromMenu(page, "Share the exam");
