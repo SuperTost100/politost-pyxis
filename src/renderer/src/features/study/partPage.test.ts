@@ -9,6 +9,7 @@ import {
   partStateWord,
   startsOnOpen,
   stoppedTone,
+  withAnswer,
   workingCopy,
   type PartData,
 } from "./partPage";
@@ -206,5 +207,26 @@ describe("the tone of a write that did not end in text", () => {
     expect(stoppedTone(null)).toBe("warning");
     expect(stoppedTone("")).toBe("warning");
     expect(stoppedTone("engines.errors.engine-missing")).toBe("warning");
+  });
+});
+
+describe("an answer saved into a part's read", () => {
+  const withLesson = (itemId: string, answers: Record<string, number>) =>
+    ({ mode: "parts", position: 1, lesson: { itemId, answers } }) as unknown as PartData;
+
+  it("is added to the read of the text that was answered", () => {
+    const next = withAnswer(withLesson("i1", { a: 0 }), "i1", "b", 2);
+    expect(next?.lesson?.answers).toEqual({ a: 0, b: 2 });
+  });
+
+  it("is never written into another part's text, even when both ask the same question", () => {
+    const other = withLesson("i2", {});
+    expect(withAnswer(other, "i1", "b", 2)).toBe(other);
+  });
+
+  it("leaves a read with no lesson yet, and no read, as they are", () => {
+    const planning = { mode: "parts", position: 2, lesson: null } as unknown as PartData;
+    expect(withAnswer(planning, "i1", "b", 2)).toBe(planning);
+    expect(withAnswer(undefined, "i1", "b", 2)).toBeUndefined();
   });
 });

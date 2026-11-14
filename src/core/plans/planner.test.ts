@@ -709,7 +709,7 @@ describe("exam rings", () => {
       expect(ringOf(db, "a").todayMinutes).toEqual({ done: 5, target: 51 });
       expect(ringOf(db, "a").today).toBeCloseTo(5 / ((6 * 60) / 7));
       done(db, 3, day(0, 9));
-      // The recap is the last part: it records the lesson step, which adds nothing to the parts' 5 + 7 + 4.
+      // The recap is the last part missing: it records the lesson step, which adds nothing to the parts' 5 + 7 + 4.
       expect(done(db, 4, day(0, 9))).toEqual({ partDone: true, finished: true });
       expect(ringOf(db, "a")).toMatchObject({ todayMinutes: { done: 16, target: 51 } });
       expect(ringOf(db, "a").today).toBeLessThan(1);
@@ -718,6 +718,22 @@ describe("exam rings", () => {
         minutesLeft: 35,
         done: [{ activity: "lesson", topicId: "a-t0", topicTitle: "Topic 0 of a" }],
       });
+      db.close();
+    });
+
+    it("adds nothing for the lesson step when the parts were read recap first and the last one a day later", () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 64 });
+      withParts(db);
+      savePlannerHours(db, { hours: 6 }, now);
+      // Yesterday: the recap, then parts 2 and 3. No lesson step yet, so nothing but the parts' own minutes counts.
+      for (const position of [4, 2, 3]) expect(done(db, position, day(-1, 9))).toEqual({ partDone: true, finished: false });
+      expect(readSteps(db, "a").filter((step) => step.activity === "lesson")).toEqual([]);
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 0, target: 51 });
+      // Today: part 1 is the last one missing. It records the step, which adds nothing to its 6 minutes.
+      expect(done(db, 1, day(0, 9))).toEqual({ partDone: true, finished: true });
+      expect(readSteps(db, "a").filter((step) => step.activity === "lesson")).toHaveLength(1);
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 6, target: 51 });
       db.close();
     });
 
