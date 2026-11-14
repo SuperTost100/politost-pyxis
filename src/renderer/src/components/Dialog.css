@@ -1,0 +1,124 @@
+/* The one dialog (docs/design-system/controls.md, "Dialogs"): a card in the middle of the window, the serif title, the
+   body that scrolls on its own, and the buttons at the bottom right, always in reach. */
+.px-dialog {
+  --px-dialog-width: 460px;
+  width: min(var(--px-dialog-width), calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  color: var(--ink);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+.px-dialog.is-md {
+  --px-dialog-width: 560px;
+}
+.px-dialog.is-lg {
+  --px-dialog-width: 720px;
+}
+.px-dialog[open] {
+  display: flex;
+}
+.px-dialog:focus-visible {
+  outline: none;
+}
+.px-dialog::backdrop {
+  background: var(--scrim);
+  animation: px-dialog-scrim var(--duration-large) var(--ease-out);
+}
+.px-dialog.is-closing::backdrop {
+  opacity: 0;
+  animation: px-dialog-scrim-out 220ms var(--ease-out);
+}
+@keyframes px-dialog-scrim {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes px-dialog-scrim-out {
+  from {
+    opacity: 1;
+  }
+}
+.px-dialog-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  padding: 22px 24px 20px;
+}
+.px-dialog-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  gap: 12px;
+}
+/* The serif of .title-2 at 24px, the size of the page dialogs it replaces. */
+.px-dialog-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: calc(24px * var(--text-scale, 1));
+  line-height: 1.15;
+  color: var(--ink);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+/* The X lines up with the title's first line and sits in the card's corner. */
+.px-dialog-close {
+  flex: none;
+  margin: -1px -8px 0 0;
+}
+.px-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 8px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.px-dialog-body:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.px-dialog-description {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.px-dialog-description > * {
+  margin: 0;
+}
+.px-dialog-description > * + * {
+  margin-top: 10px;
+}
+.px-dialog-foot {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+.px-dialog-start {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+.px-dialog-button {
+  display: contents;
+}
+/* A long label, as in English with large text, wraps inside its button instead of leaving the card. */
+.px-dialog-foot .px-btn {
+  max-width: 100%;
+  height: auto;
+  min-height: var(--control-md);
+  padding-block: 7px;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}

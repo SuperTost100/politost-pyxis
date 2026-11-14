@@ -296,35 +296,6 @@ select.px-nc-field {
   background: var(--surface-raised);
   color: var(--ink-muted);
 }
-/* Asking before something is lost takes the buttons' place. */
-/* The question before the dialog closes, as a confirmation: the sentence, then its two buttons together on one line
-   at the right, the safe one first. */
-.px-nc-leave {
-  display: grid;
-  flex: 1;
-  gap: var(--space-3);
-}
-.px-nc-leave p {
-  margin: 0;
-  color: var(--ink);
-}
-.px-nc-leave-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-@media (prefers-reduced-motion: no-preference) {
-  .px-nc-leave {
-    animation: px-nc-leave var(--duration-small) var(--ease-out);
-  }
-}
-@keyframes px-nc-leave {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-}
-
 /* A field that is there only sometimes folds in and out of the one above it. */
 .px-nc-fold {
   display: grid;

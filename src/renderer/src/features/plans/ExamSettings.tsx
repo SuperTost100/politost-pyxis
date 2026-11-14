@@ -17,10 +17,11 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useBlocker, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { Tag } from "../../components/Tag";
@@ -126,7 +127,6 @@ export function ExamSettingsPage() {
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const leaving = useRef(false);
   const footprint = useQuery({
     queryKey: ["plan-footprint", planId],
     queryFn: () => invoke("plans.footprint", { planId }),
@@ -186,10 +186,7 @@ export function ExamSettingsPage() {
     (document.activeElement.closest(".px-set-group") ?? document.activeElement).scrollIntoView({ block: "nearest" });
   }, [dirty]);
 
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      dirty && !leaving.current && currentLocation.pathname !== nextLocation.pathname,
-  );
+  const { release } = useLeaveGuard({ dirty, body: t("examSettings.leaveBody", { changes: changeList }) });
 
   function discard() {
     setTitle(null);
@@ -244,7 +241,7 @@ export function ExamSettingsPage() {
   function remove() {
     void action(async () => {
       await invoke("plans.delete", { planId });
-      leaving.current = true;
+      release();
       await client.invalidateQueries({ queryKey: ["plans"] });
       navigate("/exams");
     });
@@ -657,31 +654,6 @@ export function ExamSettingsPage() {
             ? t("examSettings.deleteKeep")
             : `${t("examSettings.deleteKeep")} ${t("examSettings.deleteArchiveHint")}`}
         </p>
-      </Modal>
-
-      <Modal
-        open={blocker.state === "blocked"}
-        title={t("examSettings.leaveTitle")}
-        onCancel={() => blocker.state === "blocked" && blocker.reset()}
-        footer={[
-          <Button key="stay" shape="round" onClick={() => blocker.state === "blocked" && blocker.reset()}>
-            {t("examSettings.stay")}
-          </Button>,
-          <Button
-            key="leave"
-            shape="round"
-            danger
-            onClick={() => {
-              if (blocker.state !== "blocked") return;
-              leaving.current = true;
-              blocker.proceed();
-            }}
-          >
-            {t("examSettings.leave")}
-          </Button>,
-        ]}
-      >
-        <p className="body">{t("examSettings.leaveBody", { changes: changeList })}</p>
       </Modal>
     </div>
   );

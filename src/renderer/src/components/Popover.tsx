@@ -8,7 +8,7 @@ import "./Popover.css";
  * What a popover leaves alone when it is clicked or takes the focus: a menu or a dialog that something inside the
  * popover opened, which the page draws in the document's body.
  */
-const OPENED_FROM_INSIDE = ".px-item-menu, .ant-modal-root, .ant-dropdown";
+const OPENED_FROM_INSIDE = ".px-item-menu, .ant-modal-root, .ant-dropdown, .px-dialog";
 /**
  * Where an Escape belongs to something opened from inside rather than to the popover: that menu or dialog, or a button
  * whose menu is open. The menu closes on any Escape while it is open, and on a slow computer the key can come before the

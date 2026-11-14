@@ -1152,6 +1152,15 @@
   "listToolbar": {
     "clearSearch": "Cancella la ricerca"
   },
+  "dialog": {
+    "cancel": "Annulla",
+    "close": "Chiudi"
+  },
+  "leave": {
+    "title": "Uscire senza salvare?",
+    "stay": "Resta qui",
+    "go": "Esci senza salvare"
+  },
   "mistakes": {
     "title": "Quaderno degli errori",
     "emptyTitle": "Nessun errore da rivedere",
@@ -2698,7 +2707,35 @@
       "progress": "Progressi"
     },
     "lessonQuiz": "Quiz",
-    "trueFalse": "Vero / falso"
+    "trueFalse": "Vero / falso",
+    "dialogs": {
+      "hint": "Una conferma che elimina, un modulo con un menu e un dialogo che informa soltanto.",
+      "confirmOpen": "Conferma che elimina",
+      "formOpen": "Modulo",
+      "infoOpen": "Solo informa",
+      "runOpen": "Conferma con un lavoro",
+      "runs_one": "Lavori avviati: {{count}}",
+      "runs_other": "Lavori avviati: {{count}}",
+      "answer": "Ultima risposta: {{answer}}",
+      "answers": {
+        "confirm": "conferma",
+        "extra": "l'azione in più",
+        "cancel": "annulla"
+      },
+      "deleteTitle": "Eliminare Fisica 1?",
+      "deleteBody": "Con l'esame cancelli quello che Pyxis ha preparato e quello che hai fatto. Non si può annullare.",
+      "deleteConfirm": "Elimina l'esame",
+      "archiveInstead": "Archivia invece",
+      "formTitle": "Nuova mappa",
+      "subject": "Materia",
+      "subjectChoose": "Materia: {{subject}}",
+      "topic": "Argomento",
+      "how": "Come la vuoi?",
+      "optional": "facoltativo",
+      "howPlaceholder": "Per esempio «solo i teoremi, con le ipotesi»",
+      "formConfirm": "Crea la mappa",
+      "infoTitle": "Scorciatoie da tastiera"
+    }
   },
   "components": {
     "numberInput": {
@@ -3251,11 +3288,8 @@
     "whiteboardTitle": "Lavagna",
     "penWidth": "Spessore della penna {{size}}",
     "boardTools": "Strumenti di disegno",
-    "unsavedTitle": "Vuoi lasciare questo disegno?",
-    "unsavedBody": "Le modifiche dopo l'ultimo salvataggio verranno eliminate.",
-    "keepDrawing": "Continua a disegnare",
-    "discardDrawing": "Elimina le modifiche",
-    "boardFailed": "Il disegno non è stato salvato o allegato. Riprova."
+    "boardFailed": "Il disegno non è stato salvato o allegato. Riprova.",
+    "leaveBody": "Il disegno dopo l'ultimo salvataggio andrà perso."
   },
   "updates": {
     "title": "Aggiornamenti",
@@ -3375,10 +3409,7 @@
       "hours": "le ore a settimana"
     },
     "discard": "Annulla le modifiche",
-    "leaveTitle": "Uscire senza salvare?",
     "leaveBody": "Hai cambiato {{changes}}. Se esci adesso, le modifiche vanno perse.",
-    "stay": "Resta qui",
-    "leave": "Esci senza salvare",
     "deleteTitle": "Eliminare {{title}}?",
     "deleteIntro": "Insieme all'esame cancelli quello che Pyxis ha preparato e quello che hai fatto:",
     "lose": {
@@ -3895,15 +3926,12 @@
         "nothingMatched": "Nel materiale non ho trovato niente su quello che hai chiesto. Prova con altre parole, o lascia vuoto «Su cosa?»."
       },
       "leave": {
-        "typed": "Butti via quello che hai scritto?",
-        "keep": "Continua a scrivere",
-        "discard": "Butta via",
+        "typed": "La flashcard che hai scritto andrà persa.",
         "working": "Pyxis sta ancora scrivendo. Se chiudi, si ferma e non salvo niente.",
         "wait": "Continua",
         "stop": "Ferma e chiudi",
         "review": "Non hai salvato le flashcard proposte. Se chiudi, le perdi.",
-        "back": "Torna alle flashcard",
-        "close": "Chiudi senza salvare"
+        "stopTitle": "Fermare Pyxis?"
       }
     },
     "emptyBody": "Qui compariranno le tue flashcard, divise per materia: le scrivi tu, oppure le fa Pyxis dal materiale che hai in Libreria.",
