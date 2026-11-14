@@ -25,7 +25,7 @@ import { stepPath } from "../plans/reopen";
 import { ExportButton } from "../share/ExportButton";
 import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
-import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, stoppedTone, workingCopy, type PartData } from "./partPage";
+import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, stoppedTone, withAnswer, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
@@ -210,11 +210,7 @@ export function PartPage({
     if (!itemId) return;
     const before = document.activeElement;
     const result = await invoke("study.lessonAnswer", { planId, itemId, blockId, pick });
-    client.setQueryData<PartData>(queryKey, (current) =>
-      current?.lesson
-        ? { ...current, lesson: { ...current.lesson, answers: { ...current.lesson.answers, [blockId]: result.pick } } }
-        : current,
-    );
+    client.setQueryData<PartData>(queryKey, (current) => withAnswer(current, itemId, blockId, result.pick));
     void client.invalidateQueries({ queryKey: ["series", planId] });
     if (result.partDone || result.finished) {
       await refreshPlan(client, planId);
@@ -549,7 +545,7 @@ export function PartPage({
               <SmartText
                 figures={lesson.figures}
                 answers={lesson.answers}
-                onAnswer={written && lesson.itemId && !rewriting ? answer : undefined}
+                onAnswer={written && lesson.itemId && !rewriting && !query.isPlaceholderData ? answer : undefined}
                 final={written ? { label: t("lesson.finalCheck"), keys: true } : undefined}
                 onCitationClick={(number) => {
                   const passageId = lesson.passageIds[number - 1];

@@ -112,6 +112,16 @@ export function addressPart(
   return read.position;
 }
 
+/**
+ * A part's read with the answer just saved, or the read untouched when it is no read of the text that was answered: the
+ * cache entry of an address can hold another part's text than the one on screen when the answer was sent, and an
+ * answer belongs to its own text only (an item id), so it is never written into another part's lesson.
+ */
+export function withAnswer(current: PartData | undefined, itemId: string, blockId: string, pick: number): PartData | undefined {
+  if (!current?.lesson || current.lesson.itemId !== itemId) return current;
+  return { ...current, lesson: { ...current.lesson, answers: { ...current.lesson.answers, [blockId]: pick } } };
+}
+
 /** What changed on the part page: another part opened, the part waited for arrived, a rewrite of it started or ended. */
 export type PageChange = "opened" | "arrived" | "rewriteStarted" | "rewriteEnded";
 

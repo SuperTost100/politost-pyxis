@@ -57,7 +57,9 @@ export function LessonPage() {
   if (query.data?.mode === "parts" && !choosing)
     return <PartPage planId={planId} topicId={topicId} data={query.data} query={query} queryKey={key} back={back} />;
   if ((query.data?.mode === "legacy" && !choosing) || query.isError)
-    return <LegacyLessonPage old={query.data?.mode === "legacy" ? query.data.old : undefined} back={back} />;
+    // The reader notes the lesson it was opened on when it mounts, so another item of the topic is a reader of its own.
+    // The page's place on the trail and its way back stay with LessonPage, which a new reader does not remount.
+    return <LegacyLessonPage key={itemId ?? ""} old={query.data?.mode === "legacy" ? query.data.old : undefined} back={back} />;
   return <PartLoading planId={planId} topicId={topicId} back={back} />;
 }
 
@@ -95,6 +97,7 @@ function RewriteFallback({
   const engine = key && key.startsWith("engines.errors.") ? describeEngineError(key, jobErrorEngine(error)) : undefined;
   return (
     <LegacyLessonPage
+      key={data.replaces!.itemId}
       back={back}
       itemId={data.replaces!.itemId}
       notice={{
