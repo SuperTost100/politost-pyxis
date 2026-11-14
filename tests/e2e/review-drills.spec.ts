@@ -148,7 +148,7 @@ test("LES-13 a Review of only gap drills waits, offers retry, adopts the questio
     await goto(page, `/plans/${planId}/review`);
     // No flashcard is due, so the Review offers none.
     await expect(page.getByText(/Oggi non hai flashcard da ripassare/)).toBeVisible();
-    await expect(page.getByRole("group", { name: "Flashcard in questo ripasso" })).toHaveCount(0);
+    await expect(page.getByRole("radiogroup", { name: "Flashcard in questo ripasso" })).toHaveCount(0);
     await page.getByRole("button", { name: "Inizia il ripasso" }).click();
     await expect(page.getByText(/Non sono riuscito a preparare le domande su/)).toHaveCount(2, { timeout: 60000 });
   } finally {

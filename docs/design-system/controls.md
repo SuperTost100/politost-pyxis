@@ -9,6 +9,7 @@ One look per kind of choice, so the same kind of question always looks the same.
 | The choice                                          | Use                        | Never                                                   |
 | --------------------------------------------------- | -------------------------- | ------------------------------------------------------- |
 | 2 or 3 short options                                | `Segmented`                | Radio rows or a dropdown for two words                  |
+| A scope, a length or a count before starting        | `ActivityChoice`           | Outlined pills                                          |
 | 2 to 6 options that each need a line of explanation | `RadioRows`                | A grid of big buttons, one of them filled               |
 | A long list, 7 or more, or one that grows           | A native `select` in a row | Radio rows that push the page down, a grid of buttons   |
 | On or off                                           | `SwitchRow`                | Two buttons "Sì" and "No", a segmented On and Off       |
@@ -21,7 +22,13 @@ One look per kind of choice, so the same kind of question always looks the same.
 
 Every control sits in a row of a white card (`ControlList`): the name on the left, one line on what it does, the control on the right. Preview tiles, tags and checkboxes take the full width of the card under their row.
 
-`Segmented`, `RadioRows` and `PreviewTiles` are radio groups: one tab stop, the arrow keys move the choice, and the chosen item shows the focus ring when it came from the keyboard. `PreviewTiles` with `variant="icons"` is the small form for a choice of kinds, as in "Crea un'attività": an icon over its name on a soft tile, the chosen one tinted and ringed, six in a row or two rows of three when the window is narrow or the text is large.
+`Segmented`, `RadioRows` and `PreviewTiles` are radio groups: one tab stop, the arrow keys move the choice, and the chosen item shows the focus ring when it came from the keyboard. `PreviewTiles` with `variant="icons"` is the small form for a choice of kinds, as in "Crea un'attività": an icon over its name on a soft tile, six in a row or two rows of three when the window is narrow or the text is large. The chosen tile is filled with `--primary-soft`, its name in `--primary-text` and bold, with no ring, so the ring is left for the keyboard focus.
+
+### Choices before starting an activity
+
+The first screen of a quiz, a simulation and a review draws each choice with `ActivityChoice`: the label on the left and the control filling the rest of the row. Up to three options are a `Segmented`, a radio group with one tab stop where the arrow keys move the choice. More than three options, such as the simulation's lengths, which grow with the exam's own length, are a native `select` in the same row, because a growing row of segments would not fit at 960px with large text. The page keeps its own value type: a number stays a number.
+
+The kinds of question in a quiz are `ToggleChips` under their label, with the same hint as "Crea un'attività": at least one kind stays chosen.
 
 ### Toggle chips
 

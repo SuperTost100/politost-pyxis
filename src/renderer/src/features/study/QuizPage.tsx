@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, InputNumber, Select } from "antd";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
 import { spokenText } from "@shared/spoken-math";
+import { ToggleChips } from "../../components/Controls";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { QuizOption, type QuizOptionState } from "../../components/QuizOption";
@@ -166,6 +167,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const restoredAttempt = useRef<string | null>(null);
   const [hydratedAttempt, setHydratedAttempt] = useState<string | null>(null);
   const [types, setTypes] = useState<Kind[]>([...KINDS]);
+  const typesLabel = useId();
   const [scope, setScope] = useState<Scope>("topic");
   const [pageSource, setPageSource] = useState<string>();
   const [page, setPage] = useState<number | null>(1);
@@ -1300,7 +1302,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           startLabel={t(answeredBefore ? "quiz.continueAttempt" : "quiz.start")}
           starting={start.isPending}
           startingLabel={t("quiz.preparing")}
-          disabled={past ? !pastCount : !diagnostic && (!types.length || !pageReady || !timerReady)}
+          disabled={past ? !pastCount : !diagnostic && (!pageReady || !timerReady)}
           onStart={() => start.mutate()}
           folded
           options={
@@ -1344,29 +1346,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                     </label>
                   </div>
                 ) : null}
-                <fieldset className="px-intro-field">
-                  <legend className="body-strong">{t("quiz.types")}</legend>
-                  <div className="px-intro-pills">
-                    {KINDS.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        className={
-                          types.includes(item) ? "choice is-selected" : "choice"
-                        }
-                        aria-pressed={types.includes(item)}
-                        disabled={start.isPending}
-                        onClick={() =>
-                          setTypes((current) =>
-                            current.includes(item)
-                              ? current.filter((value) => value !== item)
-                              : [...current, item],
-                          )
-                        }
-                      >
-                        {t(`quiz.kinds.${item}`)}
-                      </button>
-                    ))}
+                <div className="px-intro-types">
+                  <div className="px-intro-types-head">
+                    <span id={typesLabel} className="body-strong">
+                      {t("quiz.types")}
+                    </span>
                     <Button
                       type="text"
                       shape="round"
@@ -1377,7 +1361,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                       {t("quiz.tfOnly")}
                     </Button>
                   </div>
-                </fieldset>
+                  <ToggleChips
+                    label={typesLabel}
+                    value={types}
+                    disabled={start.isPending}
+                    keepHint={t("examPage.createDialog.keepOne")}
+                    onChange={setTypes}
+                    options={KINDS.map((item) => ({ value: item, label: t(`quiz.kinds.${item}`) }))}
+                  />
+                </div>
                 <div className="px-quiz-timer-setup">
                   <label className="px-quiz-toggle">
                     <input
