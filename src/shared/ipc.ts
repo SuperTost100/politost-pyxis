@@ -987,7 +987,7 @@ export const requests = {
     }),
     output: z.object({
       partDone: z.literal(true),
-      /** True when this was the last part, so the topic's lesson is done. */
+      /** True when every part of the topic's outline is now done, so the topic's lesson is done. */
       finished: z.boolean(),
     }),
   },

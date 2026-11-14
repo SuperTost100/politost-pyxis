@@ -355,15 +355,41 @@ describe("a rewrite keeps everything the student made", () => {
     expect(outline.parts.every((part) => part.doneAt === null)).toBe(true);
     expect(oldLesson(db, "p", "t")).toEqual({ itemId: "old", finished: true });
     expect(kept(db, "old")).toEqual(before);
-    // Every part read to the end: the parts are done, the topic keeps its one step, named by the old lesson.
+    // Every part read to the end, the recap first: the topic keeps its one step, named by the old lesson, and the
+    // parts left open still show as the parts to read.
+    const finishing = [...outline.parts].reverse();
+    finishPart(db, { partId: finishing[0]!.id, outlineId: outline.id }, 10);
+    expect(lessonSteps(db).map((step) => step.itemId)).toEqual(["old"]);
+    expect(nextPart(db, "t")).toMatchObject({ position: 1 });
     db.transaction(() => {
-      for (const part of outline.parts) finishPart(db, { partId: part.id, outlineId: outline.id, position: part.position }, 10);
+      for (const part of finishing.slice(1)) finishPart(db, { partId: part.id, outlineId: outline.id }, 10);
     })();
     expect(lessonSteps(db).map((step) => step.itemId)).toEqual(["old"]);
+    expect(nextPart(db, "t")).toBeNull();
     // The part item's answers are its own: a part item is no old lesson.
     const first = liveOutline(db, "t")!.parts[0]!.itemId!;
     expect(partOfText(db, first)).not.toBeNull();
     expect(oldLesson(db, "p", "t")?.itemId).toBe("old");
+  });
+
+  it("of an unfinished lesson: the parts read recap first leave the lesson unread until the last one, which records one step", async () => {
+    const { db, runner } = setUp();
+    saveOld(db, { id: "old" });
+    answer(db, "old", 0);
+    openPart(db, runner, { planId: "p", topicId: "t", write: true });
+    await settle(db);
+    const outline = liveOutline(db, "t")!;
+    const finishing = [...outline.parts].reverse();
+    for (const part of finishing.slice(0, -1)) {
+      finishPart(db, { partId: part.id, outlineId: outline.id }, 10);
+      expect(lessonSteps(db)).toEqual([]);
+      expect(planGuide(db, "p")?.topics.find((topic) => topic.topicId === "t")?.read).toBe(false);
+    }
+    expect(nextPart(db, "t")).toMatchObject({ position: 1 });
+    expect(finishPart(db, { partId: finishing.at(-1)!.id, outlineId: outline.id }, 11)).toBe(true);
+    expect(lessonSteps(db).map((step) => step.itemId)).toEqual([outline.parts[0]!.itemId]);
+    expect(nextPart(db, "t")).toBeNull();
+    expect(planGuide(db, "p")?.topics.find((topic) => topic.topicId === "t")?.read).toBe(true);
   });
 
   it("counts today's minutes once: a finished lesson's 30 and its parts read again, or only the parts of an unfinished one", async () => {
@@ -379,8 +405,7 @@ describe("a rewrite keeps everything the student made", () => {
     const readAll = (db: Db) => {
       const outline = liveOutline(db, "t")!;
       db.transaction(() => {
-        for (const part of outline.parts)
-          finishPart(db, { partId: part.id, outlineId: outline.id, position: part.position }, Date.now());
+        for (const part of [...outline.parts].reverse()) finishPart(db, { partId: part.id, outlineId: outline.id }, Date.now());
       })();
       return outline.parts.reduce((sum, part) => sum + part.minutes, 0);
     };

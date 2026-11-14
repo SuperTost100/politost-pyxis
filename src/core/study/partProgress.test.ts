@@ -7,7 +7,7 @@ import { readSteps } from "../plans/steps";
 import { parseSmartText, smartQuestions } from "../../shared/smart-text";
 import { studyHandlers } from "./handlers";
 import { mistakesNotebook } from "./notebook";
-import { markPartDone } from "./partProgress";
+import { markPartDone, nextPart } from "./partProgress";
 import { partOfText } from "./partText";
 import { answerSmartCheck } from "./smartText";
 import { checkBlock, partMarkdown, recapMarkdown, seedOutline, writeSeedPart } from "./test-parts";
@@ -100,7 +100,7 @@ describe("a part is done", () => {
     expect(doneAt(db, p1!.id)).toBe(now);
     expect(answer(db, p2!.itemId!, { right: false, at: now + 1 })).toMatchObject({ correct: false, finished: false, partDone: true });
     expect(doneAt(db, p2!.id)).toBe(now + 1);
-    // Reading a part records no lesson step; only the last part does.
+    // Reading a part records no lesson step; the last part missing does.
     expect(lessonSteps(db, "t1")).toEqual([]);
     db.close();
   });
@@ -131,35 +131,76 @@ describe("a part is done", () => {
     db.close();
   });
 
-  it("finishes the topic's lesson with the recap's three answers, once, with part 1's item on the step", () => {
+  it("finishes the topic's lesson with the recap's three answers once every part before it is done, once, with part 1's item on the step", () => {
     const { db, seeded } = workspace(true);
-    const recap = seeded!.parts[3]!;
-    expect(answer(db, recap.itemId!, { to: 2 })).toMatchObject({ partDone: false, finished: false });
+    const [p1, p2, p3, recap] = seeded!.parts;
+    answer(db, p1!.itemId!, { at: now - 3 });
+    answer(db, p2!.itemId!, { at: now - 2 });
+    markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now - 1);
+    expect(answer(db, recap!.itemId!, { to: 2 })).toMatchObject({ partDone: false, finished: false });
     expect(lessonSteps(db, "t1")).toEqual([]);
-    expect(answer(db, recap.itemId!, { from: 2, at: now + 5 })).toMatchObject({ partDone: true, finished: true });
+    expect(answer(db, recap!.itemId!, { from: 2, at: now + 5 })).toMatchObject({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ itemId: seeded!.parts[0]!.itemId, at: now + 5 })]);
+    expect(doneAt(db, p3!.id)).toBe(now - 1);
     // Answering the recap again keeps one step, as a lesson's recap did.
-    expect(answer(db, recap.itemId!, { at: now + 9 })).toMatchObject({ partDone: true, finished: true });
+    expect(answer(db, recap!.itemId!, { at: now + 9 })).toMatchObject({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toHaveLength(1);
     db.close();
   });
 
-  it("finishes the lesson with the last part also when the parts are read out of order, and never again", () => {
+  it("finishes the lesson with whichever part is the last one missing, in any order, and never again", () => {
     const { db, seeded } = workspace(true);
     const [p1, p2, , recap] = seeded!.parts;
     answer(db, p2!.itemId!);
     expect(lessonSteps(db, "t1")).toEqual([]);
-    expect(answer(db, recap!.itemId!)).toMatchObject({ finished: true });
-    expect(answer(db, p1!.itemId!, { at: now + 1 })).toMatchObject({ partDone: true, finished: false });
-    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now + 2)).toEqual({ partDone: true, finished: false });
+    // The recap first of the rest does not read the lesson: part 1 and part 3 are still open.
+    expect(answer(db, recap!.itemId!, { at: now + 1 })).toMatchObject({ partDone: true, finished: false });
+    expect(lessonSteps(db, "t1")).toEqual([]);
+    expect(answer(db, p1!.itemId!, { at: now + 2 })).toMatchObject({ partDone: true, finished: false });
+    expect(lessonSteps(db, "t1")).toEqual([]);
+    // Part 3 is the last one missing, though it is neither the first nor the last in position.
+    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now + 3)).toEqual({ partDone: true, finished: true });
+    expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ itemId: p1!.itemId, at: now + 3 })]);
+    // Each part again, by its question or by Fatto: the same answer, and still one step.
+    expect(answer(db, p1!.itemId!, { at: now + 4 })).toMatchObject({ partDone: true, finished: true });
+    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now + 5)).toEqual({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toHaveLength(1);
+    db.close();
+  });
+
+  it("leaves the lesson unread when the recap is read first and while any part is open, also on the last day", () => {
+    const { db, seeded } = workspace(true);
+    const [p1, p2, , recap] = seeded!.parts;
+    answer(db, recap!.itemId!);
+    answer(db, p1!.itemId!, { at: now + 1 });
+    answer(db, p2!.itemId!, { at: now + 2 });
+    // Part 3 is not written and not done: the lesson is not read, and the part is the one the page names next.
+    expect(lessonSteps(db, "t1")).toEqual([]);
+    expect(nextPart(db, "t1", now + 3)).toMatchObject({ position: 3, written: false });
+    // Read a day later, the last missing part records the step at that time.
+    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, at(1, 9))).toEqual({ partDone: true, finished: true });
+    expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ at: at(1, 9) })]);
+    expect(nextPart(db, "t1", at(1, 9))).toBeNull();
+    db.close();
+  });
+
+  it("does not count a part whose write failed as done, so it keeps the lesson unread", () => {
+    const { db, seeded } = workspace(true);
+    const [p1, p2, p3, recap] = seeded!.parts;
+    db.prepare("UPDATE lesson_parts SET write_failed_at = ? WHERE id = ?").run(now, p3!.id);
+    for (const part of [p1!, p2!, recap!]) expect(answer(db, part.itemId!, { at: now + 1 })).toMatchObject({ partDone: true, finished: false });
+    expect(doneAt(db, p3!.id)).toBeNull();
+    expect(lessonSteps(db, "t1")).toEqual([]);
     db.close();
   });
 
   it("records no second lesson step after a later rewrite of a part or of the whole lesson", () => {
     const { db, seeded } = workspace(true);
     const recap = seeded!.parts[3]!;
+    for (const part of seeded!.parts.slice(0, 3).filter((entry) => entry.itemId)) answer(db, part.itemId!, { at: now - 1 });
+    markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now - 1);
     answer(db, recap.itemId!);
+    expect(lessonSteps(db, "t1")).toHaveLength(1);
     // "Riscrivi questa parte": new text with a new question in the same item. The part stays done at its first time.
     db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(
       JSON.stringify({ cacheKey: "again", markdown: recapMarkdown("Di nuovo"), passageIds: [] }),
@@ -170,7 +211,8 @@ describe("a part is done", () => {
     // A new outline in place of the first one: its last part done adds no step either.
     db.prepare("UPDATE lesson_outlines SET retired_at = ? WHERE topic_id = 't1'").run(now + 2);
     const again = seedOutline(db, { planId: "p", topicId: "t1", id: "again", parts: [{ markdown: partMarkdown("Uno") }, { markdown: partMarkdown("Due") }] });
-    expect(answer(db, again.parts[1]!.itemId!, { at: now + 3 })).toMatchObject({ partDone: true, finished: true });
+    expect(answer(db, again.parts[1]!.itemId!, { at: now + 3 })).toMatchObject({ partDone: true, finished: false });
+    expect(answer(db, again.parts[0]!.itemId!, { at: now + 4 })).toMatchObject({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toHaveLength(1);
     db.close();
   });
@@ -183,6 +225,8 @@ describe("a part is done", () => {
     writeSeedPart(db, { planId: "p", topicId: "t1", partId: recap!.id, markdown: recapMarkdown("Ripasso semplice"), wording: "simple" });
     expect(answer(db, p2!.itemId!)).toMatchObject({ partDone: true, finished: false });
     expect(doneAt(db, p2!.id)).toBe(now);
+    answer(db, seeded!.parts[0]!.itemId!, { at: now });
+    markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now);
     expect(answer(db, recap!.itemId!, { at: now + 1 })).toMatchObject({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ itemId: seeded!.parts[0]!.itemId })]);
     db.close();
@@ -191,8 +235,11 @@ describe("a part is done", () => {
   it("keeps a part done on an archived topic, with no step to add", () => {
     const { db, seeded } = workspace(true);
     db.prepare("UPDATE topics SET archived_at = 1 WHERE id = 't1'").run();
-    expect(answer(db, seeded!.parts[3]!.itemId!)).toMatchObject({ partDone: true, finished: true });
+    expect(answer(db, seeded!.parts[3]!.itemId!)).toMatchObject({ partDone: true, finished: false });
+    for (const part of seeded!.parts.slice(0, 2)) answer(db, part.itemId!);
+    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, now)).toEqual({ partDone: true, finished: true });
     expect(doneAt(db, seeded!.parts[3]!.id)).toBe(now);
+    expect(readSteps(db, "p")).toEqual([]);
     db.close();
   });
 
@@ -260,7 +307,11 @@ describe("Fatto on a part", () => {
     expect(handlers.partDone({ planId: "p", topicId: "t1", position: 3 })).toEqual({ partDone: true, finished: false });
     expect(doneAt(db, seeded!.parts[2]!.id)).not.toBeNull();
     writeSeedPart(db, { planId: "p", topicId: "t1", partId: seeded!.parts[3]!.id, markdown: "## Ripasso\n\nNessuna domanda.", wording: "simple" });
-    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 4 }, now)).toEqual({ partDone: true, finished: true });
+    // The recap done on its own does not finish the lesson: parts 1 and 2 are open.
+    expect(markPartDone(db, { planId: "p", topicId: "t1", position: 4 }, now)).toEqual({ partDone: true, finished: false });
+    expect(lessonSteps(db, "t1")).toEqual([]);
+    answer(db, seeded!.parts[0]!.itemId!);
+    expect(answer(db, seeded!.parts[1]!.itemId!, { at: now })).toMatchObject({ partDone: true, finished: true });
     expect(lessonSteps(db, "t1")).toEqual([expect.objectContaining({ itemId: seeded!.parts[0]!.itemId, at: now })]);
     db.close();
   });
@@ -303,6 +354,22 @@ describe("mastery of a lesson in parts", () => {
     answer(db, recap!.itemId!, { at: now + 2 });
     expect(mastery(db, "t1")).toBeCloseTo(2.5 / 5.5);
     db.close();
+  });
+
+  it("is the same in whatever order the parts are read, with no lesson step behind it", () => {
+    const values = [[3, 1, 0], [0, 1, 3]].map((order) => {
+      const { db, seeded } = workspace(true);
+      order.forEach((index, turn) => answer(db, seeded!.parts[index]!.itemId!, { at: now + turn }));
+      const value = { mastery: mastery(db, "t1"), steps: lessonSteps(db, "t1").length };
+      db.close();
+      return value;
+    });
+    // The answers' times differ by a few milliseconds, so the decay does too.
+    expect(values[1]!.mastery).toBeCloseTo(values[0]!.mastery, 6);
+    expect(values[1]!.steps).toBe(values[0]!.steps);
+    // Part 3 is not read, so neither order has finished the lesson.
+    expect(values[0]!.steps).toBe(0);
+    expect(values[0]!.mastery).toBeCloseTo(2.5 / 5.5);
   });
 
   it("counts a part read at two levels once, from the text answered last, and keeps the other parts meanwhile", () => {
@@ -429,6 +496,30 @@ describe("the suggestion names the part", () => {
     const outline = seedOutline(db, { planId: "p", topicId: "t3", parts: [{ markdown: partMarkdown("Taylor") }, {}] });
     answer(db, outline.parts[0]!.itemId!, { at: at(-1) });
     expect(next(db)).toMatchObject({ activity: "lesson", topicId: "t3", part: { position: 2, written: false } });
+    db.close();
+  });
+
+  it("keeps naming the unread parts, and stays on the topic, when the recap was read first", () => {
+    const { db, seeded } = workspace(true);
+    const [p1, p2, , recap] = seeded!.parts;
+    db.prepare(
+      `INSERT INTO learning_events (id, kind, plan_id, topic_id, payload_json, created_at)
+       VALUES ('e', 'answer_given', 'p', 't3', '{"score":1,"evidenceKind":"quiz"}', ?)`,
+    ).run(at(-3));
+    answer(db, recap!.itemId!, { at: at(0, 8) });
+    // The lesson is not read: the card names part 1, and the path prefers this topic over the unread ones.
+    expect(lessonSteps(db, "t1")).toEqual([]);
+    expect(next(db)).toMatchObject({ activity: "lesson", topicId: "t1", part: { position: 1, count: 3, written: true } });
+    expect(planGuide(db, "p", now)!.topics.find((topic) => topic.topicId === "t1")!.read).toBe(false);
+    answer(db, p1!.itemId!, { at: at(0, 9) });
+    answer(db, p2!.itemId!, { at: at(0, 9) });
+    expect(next(db)!.part).toMatchObject({ position: 3, written: false });
+    markPartDone(db, { planId: "p", topicId: "t1", position: 3 }, at(0, 9));
+    // Every part done: the lesson is read, and the path now stays on the topic with its exercises, with no part.
+    expect(lessonSteps(db, "t1")).toHaveLength(1);
+    expect(planGuide(db, "p", now)!.topics.find((topic) => topic.topicId === "t1")!.read).toBe(true);
+    expect(next(db)).toMatchObject({ activity: "practice", topicId: "t1" });
+    expect(next(db)!.part).toBeUndefined();
     db.close();
   });
 

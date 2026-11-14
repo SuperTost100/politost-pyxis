@@ -312,6 +312,70 @@ test("a suggestion that is not a lesson reads as before under Consigliato adesso
   }
 });
 
+test("a recap read before the parts leaves the lesson unread on the exam page until the last missing part is done", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-exam-parts-recap-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    withDb(userData, (db) => seed(db, Date.now() - 60_000));
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
+    await page.reload();
+    const lessonStep = async () =>
+      (
+        (await page.evaluate(() => window.pyxis.invoke("plans.read", { planId: "p-an2" }))) as {
+          steps: Array<{ activity: string; topicId: string | null }>;
+        }
+      ).steps.filter((step) => step.activity === "lesson" && step.topicId === "t-fun").length;
+    const done = (position: number) =>
+      page.evaluate((position) => window.pyxis.invoke("study.partDone", { planId: "p-an2", topicId: "t-fun", position }), position);
+
+    // Parts 1 and 2 are read; the recap, which has no question here, is finished with Fatto before parts 3 to 8.
+    expect(await done(9)).toEqual({ partDone: true, finished: false });
+    expect(await lessonStep()).toBe(0);
+    await openExam(page);
+    const now = page.locator(".px-exam-now");
+    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Insiemi aperti e chiusi");
+    const topic = page.locator(".px-xpath-row.is-open");
+    await expect(topic.locator(".px-xpath-head .px-xpath-sub")).toHaveText("2 parti su 8 lette · circa 39 minuti alla fine");
+    await expect(page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ })).toHaveCount(0);
+    await expect(page.getByText("Lezione in 8 parti e un ripasso")).toBeVisible();
+
+    // The recap's own page ends with Continua going back to the path, because the lesson is still the suggestion there,
+    // not on to the exercises as it would be if the recap had read the lesson.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-an2/lesson/t-fun?part=9";
+    });
+    await expect(page.locator(".px-part-continue button")).toHaveText("Torna al percorso");
+
+    // Every part but one: the card still names it and the lesson is not read. Part 3 is written with its question, which
+    // only answering finishes, so it is marked done as that does.
+    withDb(userData, (db) => {
+      db.prepare("UPDATE lesson_parts SET done_at = ? WHERE outline_id = 'outline-t-fun' AND position = 3").run(Date.now());
+    });
+    for (const position of [4, 5, 6, 7]) await done(position);
+    expect(await lessonStep()).toBe(0);
+    await page.reload();
+    await openExam(page);
+    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Derivate seconde e matrice hessiana");
+
+    // The last one missing finishes the lesson: one step, the parts' line gone, the card on to the topic's exercises.
+    expect(await done(8)).toEqual({ partDone: true, finished: true });
+    expect(await lessonStep()).toBe(1);
+    await page.reload();
+    await openExam(page);
+    await expect(now.getByRole("heading", { level: 2 })).toHaveText(/: Funzioni di più variabili$/);
+    await expect(page.locator(".px-xpath-row.is-open .px-xpath-sub")).not.toContainText("lette");
+    await expect(page.getByText("Lezione in 8 parti e un ripasso")).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 /** About 24,000 characters in eight passages, which Pyxis plans in 3 to 5 parts; Taylor is small enough for one part. */
 const walkPassages = Array.from({ length: 8 }, (_, i) => ({
   id: `pw-${i + 1}`,
@@ -468,7 +532,7 @@ test("the exam page and the part page meet: Continua, Per oggi basta, a part row
     await page.reload();
     await openExam(page, "p-walk");
     await expect(now.locator(".px-exam-kicker")).toHaveText("Riprendi da");
-    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Parte 3 · Insiemi aperti e chiusi");
+    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Insiemi aperti e chiusi");
     await expect(now.locator("p")).toHaveText(/ · ieri hai finito la parte 2$/);
     await now.getByRole("button", { name: "Riprendi", exact: true }).click();
     await expect(page).toHaveURL(/#\/plans\/p-walk\/lesson\/t-fun\?part=3$/);
