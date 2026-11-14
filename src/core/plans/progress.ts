@@ -165,6 +165,104 @@ export function gapSeverity(
   return proposed === "severe" || mastery < target / 2 ? "severe" : "minor";
 }
 
+/**
+ * The gaps that count as open: not closed, on a topic that still belongs to the exam. Bind `{ plan }`. Every count and
+ * every list of open gaps reads through this, so the number on the path and the length of the list cannot differ.
+ */
+export const OPEN_GAPS_WHERE = `g.plan_id = @plan AND g.closed_at IS NULL
+  AND g.topic_id IN (SELECT id FROM topics WHERE plan_id = @plan AND archived_at IS NULL)`;
+
+/** The exam's target; a plan that is not stored reads as the default. */
+export function planTarget(db: Database.Database, planId: string): number {
+  const plan = db.prepare("SELECT target FROM plans WHERE id=?").get(planId) as { target: number } | undefined;
+  return plan?.target ?? 0.8;
+}
+
+/** What counts as studied for a gap's wrong-answer fallback: the plan's graded events, active time left out. */
+export function studiedEvents(events: SeriesEvent[]) {
+  return events.filter((event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } => event.kind !== "active");
+}
+
+/** `studiedEvents` of everything the plan's graded events say, with a replaced self-rating left out. */
+export function planStudied(db: Database.Database, planId: string) {
+  return studiedEvents(withoutReplacedRatings(planEvidence(db, planId).series));
+}
+
+export type OpenGapRow = {
+  gapId: string;
+  topicId: string;
+  openedAt: number;
+  misconception: string | null;
+  severity: "severe" | "minor";
+  /** True while the misconception could not be compared with the topic's other gaps. */
+  unchecked: boolean;
+  /** PRO-02: the number of wrong answers linked to this gap. Gaps written before links existed count the topic's misses since they opened. */
+  wrongAnswers: number;
+  /** The topic's mastery now. */
+  mastery: number;
+};
+
+/**
+ * The open gaps of a plan with their severity and wrong answers, ranked: by `rank` (severe before minor unless the
+ * caller refines it), then most linked wrong answers, then the oldest, then id. `planSeries` and the exam page's list
+ * both rank here. The caller syncs the gaps first and reads the topics' mastery.
+ */
+export function rankedOpenGaps(
+  db: Database.Database,
+  planId: string,
+  read: { topics: ReadonlyArray<{ id: string; mastery: number }>; target: number; studied: ReadonlyArray<SeriesEvent> },
+  rank: (gap: { severity: "severe" | "minor"; mastery: number }) => number = ({ severity }) => (severity === "severe" ? 0 : 1),
+): OpenGapRow[] {
+  const rows = db
+    .prepare(
+      `SELECT g.id AS gapId, g.topic_id AS topicId, g.opened_at AS openedAt, g.misconception, g.severity, g.comparison,
+         (SELECT count(*) FROM gap_answers ga WHERE ga.gap_id = g.id) AS linked
+       FROM gaps g
+       WHERE ${OPEN_GAPS_WHERE}`,
+    )
+    .all({ plan: planId }) as Array<{
+    gapId: string;
+    topicId: string;
+    openedAt: number;
+    misconception: string | null;
+    severity: "severe" | "minor" | null;
+    comparison: "unchecked" | null;
+    linked: number;
+  }>;
+  const mastery = new Map(read.topics.map((topic) => [topic.id, topic.mastery]));
+  return rows
+    .map(({ linked, comparison, severity: proposed, ...gap }) => {
+      const topicMastery = mastery.get(gap.topicId) ?? 0;
+      return {
+        ...gap,
+        unchecked: comparison === "unchecked",
+        severity: gapSeverity(proposed, topicMastery, read.target),
+        mastery: topicMastery,
+        wrongAnswers:
+          linked ||
+          read.studied
+            .filter(
+              (event) =>
+                event.kind === "quiz" &&
+                !isLightEvidence(event) &&
+                event.topicId === gap.topicId &&
+                event.at >= gap.openedAt,
+            )
+            .reduce(
+              (sum, event) => sum + (event.scores ?? [event.score]).filter((score) => score < 1).length,
+              0,
+            ),
+      };
+    })
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        b.wrongAnswers - a.wrongAnswers ||
+        a.openedAt - b.openedAt ||
+        (a.gapId < b.gapId ? -1 : a.gapId > b.gapId ? 1 : 0),
+    );
+}
+
 /** Each topic of the plan with its number of passages, the weight weightedPlanMastery gives it. */
 export function topicPassageCounts(db: Database.Database, planId: string): Map<string, number> {
   return new Map(
@@ -420,13 +518,8 @@ export function planSeries(
   const topics = planMastery(db, planId, now);
   const evidence = planEvidence(db, planId);
   const events = withoutReplacedRatings(evidence.series);
-  const studied = events.filter(
-    (event): event is SeriesEvent & { kind: "quiz" | "card" | "lesson" } =>
-      event.kind !== "active",
-  );
-  const plan = db.prepare("SELECT target FROM plans WHERE id=?").get(planId) as
-    { target: number } | undefined;
-  const target = plan?.target ?? 0.8;
+  const studied = studiedEvents(events);
+  const target = planTarget(db, planId);
   const reached = reachableTarget(target);
   const passageCounts = topicPassageCounts(db, planId);
   const preparation = weightedPlanMastery(topics, passageCounts);
@@ -488,60 +581,16 @@ export function planSeries(
     topics.map((topic) => topic.id),
     now,
   );
-  const gaps = db
-    .prepare(
-      `SELECT g.id AS gapId, g.topic_id AS topicId, g.opened_at AS openedAt, g.misconception, g.severity, g.comparison,
-         (SELECT count(*) FROM gap_answers ga WHERE ga.gap_id = g.id) AS linked
-       FROM gaps g
-       WHERE g.plan_id = ? AND g.closed_at IS NULL AND g.topic_id IN (SELECT id FROM topics WHERE archived_at IS NULL)`,
-    )
-    .all(planId) as Array<{
-    gapId: string;
-    topicId: string;
-    openedAt: number;
-    misconception: string | null;
-    severity: "severe" | "minor" | null;
-    comparison: "unchecked" | null;
-    linked: number;
-  }>;
-  const rankedGaps = gaps
-    .map(({ linked, comparison, ...gap }) => ({
+  const rankedGaps = rankedOpenGaps(db, planId, { topics, target, studied }).map(
+    ({ unchecked, mastery: _mastery, ...gap }) => ({
       ...gap,
       // True while this misconception could not be compared with the topic's other gaps, so it may repeat one of them.
-      unmerged: comparison === "unchecked",
+      unmerged: unchecked,
       misses: gapMisses(db, gap.gapId, 2).map(
         ({ passageIds: _passageIds, answer: _answer, ...miss }) => miss,
       ),
-      severity: gapSeverity(
-        gap.severity,
-        topics.find((topic) => topic.id === gap.topicId)?.mastery ?? 0,
-        target,
-      ),
-      // PRO-02: the number of wrong answers linked to this gap. Gaps written before links existed count the topic's misses since they opened.
-      wrongAnswers:
-        linked ||
-        studied
-          .filter(
-            (event) =>
-              event.kind === "quiz" &&
-              !isLightEvidence(event) &&
-              event.topicId === gap.topicId &&
-              event.at >= gap.openedAt,
-          )
-          .reduce(
-            (sum, event) =>
-              sum +
-              (event.scores ?? [event.score]).filter((score) => score < 1)
-                .length,
-            0,
-          ),
-    }))
-    .sort(
-      (a, b) =>
-        (a.severity === b.severity ? 0 : a.severity === "severe" ? -1 : 1) ||
-        b.wrongAnswers - a.wrongAnswers ||
-        a.openedAt - b.openedAt,
-    );
+    }),
+  );
   const start = new Date(startOfWeek(now));
   const weekdaySeconds = Array<number>(7).fill(0);
   for (const bar of activity.bars)

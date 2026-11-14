@@ -2446,6 +2446,25 @@ export const requests = {
       }),
     ),
   },
+  "plans.openGaps": {
+    // The exam's open gaps for its page, most serious first. `total` counts them all; `gaps` stops at 100.
+    input: z.object({ planId: z.string() }),
+    output: z.object({
+      total: z.number().int(),
+      gaps: z.array(
+        z.object({
+          gapId: z.string(),
+          topicId: z.string(),
+          topicTitle: z.string(),
+          level: z.enum(["serious", "moderate", "minor"]),
+          // The student's own gap, as stored; null until the analysis writes one.
+          sentence: z.string().nullable(),
+          wrongAnswers: z.number().int(),
+          openedAt: z.number(),
+        }),
+      ),
+    }),
+  },
   "plans.series": {
     input: z.object({ planId: z.string() }),
     output: z.object({
