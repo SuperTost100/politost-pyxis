@@ -344,12 +344,20 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
-    // So does a row of the sidebar.
-    await sections.getByRole("link", { name: /^Esami$/ }).click();
-    question = await expectLeaveQuestion(page, drawingBody);
-    await question.getByRole("button", { name: "Resta qui" }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
+    // So do the swipe and the mouse's side button.
+    const swipe = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]!.emit("swipe", {}, "left");
+      });
+    const sideButton = () =>
+      page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true })));
+    for (const way of [swipe, sideButton]) {
+      await way();
+      question = await expectLeaveQuestion(page, drawingBody);
+      await question.getByRole("button", { name: "Resta qui" }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
+    }
     expect(await strokes()).toBe(1);
     await backBoard.click();
     question = await expectLeaveQuestion(page, drawingBody);

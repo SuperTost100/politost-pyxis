@@ -786,6 +786,22 @@ for (const row of rows) {
   });
 }
 
+test("a drawing attached from the whiteboard lands in the chat it was opened from", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  await fromChat("Lavagna", "Lavagna")(walk);
+  const canvas = page.locator(".px-whiteboard canvas");
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + 100, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 250, box.y + 300, { steps: 8 });
+  await page.mouse.up();
+  await page.getByRole("banner").getByRole("button", { name: "Allega alla chat" }).click();
+  // The way back moves one step in the window's history, so the picture arrives in the chat itself.
+  await expect(page).toHaveURL(/#\/ask\/c-bayes$/);
+  await expect(page.getByAltText("Lavagna")).toBeVisible();
+});
+
 test("a chat made from a lesson keeps its way back through a reload", async () => {
   test.setTimeout(90_000);
   const { page } = walk;

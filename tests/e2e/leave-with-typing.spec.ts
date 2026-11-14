@@ -122,3 +122,119 @@ test("an answer typed on the exercises page is asked about by every way out, and
     removeTestFolder(userData);
   }
 });
+
+/**
+ * The new exam and the guided exam hold answers that live only in the window: every way out asks before dropping them,
+ * and asks nothing while they are empty. The guided exam hands its answers back to the new exam, and the wait while an
+ * exam builds asks nothing, since the build goes on in Attività.
+ */
+test("a half-filled new exam and a guided exam are asked about by every way out, and the build wait is not", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-leave-wizard-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page: Page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedPlan(db, { id: "p-build", title: "Chimica", language: "it", target: 0.75, sourceIds: [], topics: [] });
+    } finally {
+      db.close();
+    }
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Esami" })).toBeVisible();
+
+    const swipe = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()[0]!.emit("swipe", {}, "left");
+      });
+    const mouse = () =>
+      page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true })));
+    const leave = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    const name = page.getByRole("textbox", { name: "Nome dell'esame", exact: true });
+    const control = (place: string) => page.getByRole("button", { name: `Torna a ${place}` });
+    const open = async () => {
+      await page.getByRole("button", { name: "Nuovo esame" }).click();
+      await expect(name).toBeVisible();
+    };
+
+    // Nothing typed: leaving asks nothing, and the first step has no foot button for the way back.
+    await open();
+    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Chiudi", exact: true })).toHaveCount(0);
+    await control("Esami").click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(leave).toHaveCount(0);
+
+    // A name typed: the menu's Indietro, the swipe, the mouse's side button and the control all ask, once.
+    await open();
+    await name.fill("Fisica generale");
+    for (const way of [() => pick(app, "back"), swipe, mouse, () => control("Esami").click()]) {
+      await way();
+      await expect(leave).toBeVisible();
+      await expect(leave).toContainText("Il nome, la materia e la data che hai scritto andranno persi.");
+      await leave.getByRole("button", { name: "Resta qui" }).click();
+      await expect(leave).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/plans\/new$/);
+      await expect(name).toHaveValue("Fisica generale");
+    }
+    await control("Esami").click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+
+    // The guided exam: the exam step and the material step with nothing picked lead to it.
+    await open();
+    await name.fill("Fisica generale");
+    await page.getByRole("button", { name: "Non ho ancora la data" }).click();
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
+    await expect(name).toHaveValue("Fisica generale");
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
+    await expect(page.getByText("Passo 1 di 4 · Periodo")).toBeVisible();
+    // Step 1 has no foot button for the way back. Moving to the new exam and forward again asks nothing.
+    await expect(page.getByRole("button", { name: "Passo precedente" })).toHaveCount(0);
+    await control("Nuovo esame").click();
+    await expect(page).toHaveURL(/#\/plans\/new$/);
+    await expect(leave).toHaveCount(0);
+    await pick(app, "forward");
+    await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
+    await expect(leave).toHaveCount(0);
+
+    // An answer given: every way out asks, and leaving returns to the new exam with its answers.
+    await page.getByRole("group", { name: "Periodo" }).getByRole("button").first().click();
+    for (const way of [() => pick(app, "back"), swipe, mouse, () => control("Nuovo esame").click()]) {
+      await way();
+      await expect(leave).toBeVisible();
+      await expect(leave).toContainText("Le risposte che hai dato andranno perse.");
+      await leave.getByRole("button", { name: "Resta qui" }).click();
+      await expect(leave).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
+    }
+    await control("Nuovo esame").click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/plans\/new$/);
+    await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
+    await expect(name).toHaveValue("Fisica generale");
+    await control("Esami").click();
+    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+
+    // The wait while an exam builds holds nothing: its build goes on in Attività, so leaving asks nothing.
+    await page.evaluate(() => {
+      location.hash = "/plans/new?build=p-build";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Nuovo esame" })).toBeVisible();
+    await expect(page.getByText("Chimica", { exact: true }).first()).toBeVisible();
+    // The seeded plan has no build, so the page also offers its own way to Esami: the bar's is the one asked for.
+    await page.getByRole("banner").getByRole("button", { name: "Torna a Esami" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await expect(leave).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

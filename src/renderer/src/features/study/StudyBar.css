@@ -180,6 +180,8 @@ html[data-platform="darwin"] .px-studybar {
 .focus-main.is-stage {
   display: flex;
   flex-direction: column;
+  /* The bar's 56px and the margin under the surface. */
+  min-height: calc(100vh - 56px - var(--space-4));
   padding: 0;
   margin: 0 var(--space-4) var(--space-4);
   border-radius: var(--radius-lg);
