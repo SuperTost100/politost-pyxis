@@ -250,6 +250,8 @@ export function ExamSettingsPage() {
     });
   }
 
+  // Before the returns below: a hook after them would run on some renders and not others.
+  const back = usePlace({ parent: data ? { name: { text: data.title } } : undefined });
   if (plan.isError || (plan.isSuccess && !data)) {
     const toExams = { label: t("nav.toExams"), onClick: () => navigate("/exams") };
     return plan.isError ? (
@@ -279,7 +281,6 @@ export function ExamSettingsPage() {
   const archived = data?.archivedAt != null;
   const counts = footprint.data;
 
-  const back = usePlace({ parent: data ? { name: { text: data.title } } : undefined });
   return (
     <div className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
       <BackControl target={back} variant="page" />
