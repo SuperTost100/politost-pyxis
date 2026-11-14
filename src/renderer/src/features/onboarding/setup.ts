@@ -97,3 +97,18 @@ export function savedProfile(
     crashReports: answers.crashReports,
   };
 }
+
+/** Whether the screens now hold something other than `saved`, as saving would write it (text trimmed). */
+export function answersDiffer(now: Answers, saved: Answers): boolean {
+  const same = (a: string, b: string) => a.trim() === b.trim();
+  return (
+    !same(now.name, saved.name) ||
+    now.level !== saved.level ||
+    !same(now.year, saved.year) ||
+    !same(now.school, saved.school) ||
+    !same(now.course, saved.course) ||
+    now.interests.length !== saved.interests.length ||
+    now.interests.some((interest, at) => interest !== saved.interests[at]) ||
+    now.crashReports !== saved.crashReports
+  );
+}

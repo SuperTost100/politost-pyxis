@@ -298,7 +298,7 @@ export function MaterialStep({
       <>
         <span>
           <Button shape="round" onClick={onBack}>
-            {t("nav.back")}
+            {t("onboarding.previous")}
           </Button>
         </span>
         <span className="px-onboarding-primary">
@@ -385,7 +385,7 @@ export function MaterialStep({
     footer = (
       <span>
         <Button shape="round" disabled={linking} onClick={() => go(folders.length ? "found" : "choice")}>
-          {t("nav.back")}
+          {t("onboarding.previous")}
         </Button>
       </span>
     );
@@ -482,7 +482,7 @@ export function MaterialStep({
           {/* Setup again reads the folders afresh when it comes back here. A first setup has no way back once linked. */}
           {again ? (
             <Button shape="round" disabled={busy !== null} onClick={onBack}>
-              {t("nav.back")}
+              {t("onboarding.previous")}
             </Button>
           ) : null}
         </span>

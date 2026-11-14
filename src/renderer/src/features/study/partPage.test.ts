@@ -3,6 +3,7 @@ import {
   addressPart,
   focusFollowsAnswer,
   freshRead,
+  lessonLine,
   pageMove,
   sectionFailedKey,
   partMark,
@@ -228,5 +229,32 @@ describe("an answer saved into a part's read", () => {
     const planning = { mode: "parts", position: 2, lesson: null } as unknown as PartData;
     expect(withAnswer(planning, "i1", "b", 2)).toBe(planning);
     expect(withAnswer(undefined, "i1", "b", 2)).toBeUndefined();
+  });
+});
+
+// A translation that shows the key and its values, so a test reads what the line is made of.
+const key = (name: string, values?: Record<string, unknown>) => (values ? `${name}${JSON.stringify(values)}` : name);
+
+describe("the bar's line on a lesson", () => {
+  it("names the part, the parts there are and the minutes of a lesson in parts", () => {
+    expect(lessonLine(key, { many: true, recap: false, position: 3, parts: 5, minutes: 6 })).toBe(
+      'lesson.title \u00b7 lesson.partOf{"n":3,"count":5} \u00b7 lesson.barMinutes{"count":6}',
+    );
+  });
+
+  it("names the recap instead of a part number", () => {
+    expect(lessonLine(key, { many: true, recap: true, position: 6, parts: 5, minutes: 4 })).toBe(
+      'lesson.title \u00b7 lesson.recapTitle \u00b7 lesson.barMinutes{"count":4}',
+    );
+  });
+
+  it("has no part for a lesson of one part, and no length while the part is written", () => {
+    expect(lessonLine(key, { many: false, recap: false, position: 1, parts: 1, minutes: 8 })).toBe(
+      'lesson.title \u00b7 lesson.barMinutes{"count":8}',
+    );
+    expect(lessonLine(key, { many: true, recap: false, position: 2, parts: 4, minutes: null })).toBe(
+      'lesson.title \u00b7 lesson.partOf{"n":2,"count":4}',
+    );
+    expect(lessonLine(key, { many: false, recap: false, position: 1, parts: 1, minutes: 0 })).toBe("lesson.title");
   });
 });

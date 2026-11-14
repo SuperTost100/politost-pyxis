@@ -135,7 +135,7 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     // First open: the chapter is planned in place, with no column yet, and the way back takes the focus.
     await open(page, "t-funzioni");
     await expect(working(page, "Sto dividendo il capitolo in parti")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeFocused();
+    await expect(page.locator(".px-part-working-status > p")).toBeFocused();
     await expect(parts(page)).toHaveCount(0);
     await saveShot(page, "lesson-parts/planning-it-light.png");
     // The plan is saved: the column fills in with every part, and the block says which part is written.
@@ -220,7 +220,7 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await expect(working(page, "Sto scrivendo la parte 3")).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
     await expect(parts(page).getByRole("link", { name: /Insiemi aperti e chiusi.*in scrittura/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeFocused();
+    await expect(page.locator(".px-part-working-status > p")).toBeFocused();
     await expectNoAxeViolations(page);
     await saveShot(page, "lesson-parts/part-3-writing-it-light.png");
     const jobs = (await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))) as Array<{
@@ -231,9 +231,10 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     expect(jobs.find((job) => job.kind === "lesson-part" && job.state === "running")?.title).toBe(
       "Parte 3 · Insiemi aperti e chiusi",
     );
-    // Torna al percorso leaves the job running. The lesson opened with nothing behind it, so the exam takes its place in
-    // history; opened again from the path, the part arrives in place and the title takes the focus.
-    await page.getByRole("button", { name: "Torna al percorso" }).click();
+    // The bar's back control leaves the job running. The lesson opened with nothing behind it, so the exam takes its place
+    // in history; opened again from the path, the part arrives in place and the title takes the focus.
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Torna a / }).click();
     await expect(page).toHaveURL(/#\/plans\/p-an2$/);
     await page.getByRole("link", { name: /^Parte 3 · Insiemi aperti e chiusi/ }).click();
     await expect(working(page, "Sto scrivendo la parte 3")).toBeVisible();
@@ -472,7 +473,7 @@ test("a topic of one part has no column and no planning call, and a part without
     await expect(page.getByRole("heading", { level: 1, name: "Formula di Taylor" })).toBeVisible();
     await expect(parts(page)).toHaveCount(0);
     await expect(page.locator(".px-studybar-title")).not.toContainText("Parte 1");
-    await expect(page.locator(".px-studybar-title")).toContainText("Analisi 2 · Analisi Matematica 2");
+    await expect(page.locator(".px-studybar-title p")).toHaveText(/^Lezione · circa \d+ minut[io]$/);
     await expect(page.getByText("Fine della lezione")).toBeVisible();
     // A narrow window has no list to open either.
     await page.setViewportSize({ width: 960, height: 640 });

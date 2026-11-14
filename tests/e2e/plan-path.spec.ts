@@ -424,7 +424,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page).toHaveURL(new RegExp(`quiz/${topic.id}\\?attempt=${quiz.attemptId}$`));
     await expect(page.locator(".px-res-headline")).toContainText("6 punti su 10.");
     await expect(page.getByText(/^Le tue risposte del /)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
+    // The bar's back control is the one way back: the foot has no second button for it.
+    await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await expectNoAxeViolations(page);
     for (const [lang, theme] of [
@@ -467,14 +469,15 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
       await page.locator(".px-qz-nav .px-btn-primary").click();
     }
     await expect(page.locator(".px-res-headline")).toContainText("10 punti su 10.");
-    // A quiz just handed in is not a review: it continues the path and offers no Redo.
-    await expect(page.getByRole("button", { name: "Continua" })).toBeVisible();
+    // A quiz just handed in is not a review: it offers no Redo, and the bar's control is its one way back to the path.
+    await expect(page.getByRole("button", { name: "Continua" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rifai", exact: true })).toHaveCount(0);
     const after = (await read()).steps;
     expect(after.slice(0, 3)).toEqual(before);
     expect(after.slice(3)).toMatchObject([{ activity: "quiz", topicId: topic.id }]);
     expect(after[3]!.attemptId).not.toBe(quiz.attemptId);
-    await page.getByRole("button", { name: "Continua" }).click();
+    await page.getByRole("button", { name: /^Torna a / }).click();
 
     // Finished exercises open without "Mark as done"; going back records nothing.
     await topicSteps(page, topic.title);
@@ -485,7 +488,8 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByRole("button", { name: "Segna come fatto" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     await shoot(page, `plan-path/practice-review-it-light.png`);
-    await page.getByRole("button", { name: "Torna al percorso" }).click();
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Torna a / }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
     expect((await read()).steps).toEqual(after);
 
@@ -536,7 +540,9 @@ test("plan path: a finished lesson, quiz or exercise opens for review, and only 
     await expect(page.getByText("Le risposte di questo tentativo non erano incluse nell'esame condiviso.")).toBeVisible();
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
     await expect(page.locator(".px-res")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Torna al percorso" })).toBeVisible();
+    // The bar's back control is the one way back: the foot has no second button for it.
+    await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Torna al percorso" })).toHaveCount(0);
     await expectNoAxeViolations(page);
     for (const [lang, theme] of [
       ["it", "light"],

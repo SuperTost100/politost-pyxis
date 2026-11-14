@@ -217,7 +217,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(page.locator(".px-cardbrowser-summary")).toContainText("2 flashcard");
     await physics.getByRole("button", { name: "Ripassa le flashcard senza esame di Fisica I" }).click();
     await expect(page).toHaveURL(/#\/cards\/subject\/phys$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Flashcard · Fisica I");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Fisica I");
     await expect(card).toContainText("Accelerazione");
     await page.getByRole("button", { name: /^Gira/ }).click();
     await page.getByRole("button", { name: /^La sapevo/ }).click();

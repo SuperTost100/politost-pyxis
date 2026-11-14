@@ -1,7 +1,7 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Modal, type MenuProps } from "antd";
-import { MessageCircleQuestion, Pencil, Undo2 } from "lucide-react";
+import { Download, MessageCircleQuestion, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,8 +24,10 @@ import { usePlan, useSubjects } from "../../lib/queries";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { CardFaceFields } from "../../components/CardFaceFields";
 import { NewCardButton } from "./NewCardButton";
-import { StudyLayout } from "./StudyBar";
+import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
+import { focusInOpenSurface } from "../../lib/pageKeys";
+import { cardsLine } from "./barLines";
 import { Working } from "../../components/Working";
 
 const RATINGS = ["again", "hard", "good", "easy"] as const;
@@ -138,6 +140,7 @@ export function CardsPage() {
   const [draftBack, setDraftBack] = useState("");
   // The bar's New flashcard form; while it is open the card's keys are the form's.
   const [adding, setAdding] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const cards = useQuery({
     queryKey: ["cards", planId, topicId],
     enabled: Boolean(planId) && !reviewing,
@@ -551,12 +554,7 @@ export function CardsPage() {
       )
         return;
       const target = event.target as HTMLElement;
-      if (
-        target.closest(
-          "input, textarea, select, button, [contenteditable=true], [role=dialog]",
-        )
-      )
-        return;
+      if (target.closest("input, textarea, select, button, [contenteditable=true]") || focusInOpenSurface(target)) return;
       const letter = event.key.toLowerCase();
       if (letter === "u" && lastAction) {
         event.preventDefault();
@@ -654,19 +652,13 @@ export function CardsPage() {
               .filter(Boolean)
               .join(" \u00b7 ")
           : bySubject
-            ? [t("cards.title"), subjectName].filter(Boolean).join(" \u00b7 ")
+            ? (subjectName ?? t("cards.title"))
             : reviewing
-            ? t("cards.reviewTitle")
-            : [t("cards.title"), topicTitle].filter(Boolean).join(" \u00b7 ")
+              ? t("cards.reviewTitle")
+              : (topicTitle ?? t("cards.title"))
       }
-      subtitle={
-        sessionTotal > 0
-          ? [cardPlace, t("cards.sessionProgress", { done: sessionAt, total: sessionTotal })]
-              .filter(Boolean)
-              .join(" \u00b7 ")
-          : cardPlace
-      }
-      actions={
+      subtitle={cardsLine(t, { place: cardPlace, at: sessionAt, total: sessionTotal })}
+      tools={
         <>
           {reviewing || everywhere ? null : (
             <NewCardButton
@@ -681,27 +673,26 @@ export function CardsPage() {
               }}
             />
           )}
-          <Button
-            type="text"
-            className="px-studybar-action"
+          <BarTool
             icon={<Undo2 size={16} strokeWidth={1.75} aria-hidden />}
+            label={t("cards.undoLast")}
             disabled={!lastAction || adding || ratingPending}
             aria-keyshortcuts="U"
             onClick={() => void undo()}
-          >
-            {t("cards.undoLast")}
-          </Button>
-          <Button
-            type="text"
-            className="px-studybar-action"
-            icon={<Pencil size={16} strokeWidth={1.75} aria-hidden />}
-            disabled={!card || editing || adding || ratingPending}
-            aria-keyshortcuts={MENU_KEYS.edit.toUpperCase()}
-            onClick={startEdit}
-          >
-            {t("cards.edit")}
-          </Button>
+          />
         </>
+      }
+      menu={
+        reviewing || everywhere || bySubject ? undefined : (
+          <MenuButton
+            rightClick
+            menu={{
+              items: [{ key: "export", icon: <Download size={16} aria-hidden />, label: t("export.title"), disabled: noCards }],
+              onClick: () => setExportOpen(true),
+            }}
+            label={t("cards.moreOnCards")}
+          />
+        )
       }
     >
       {modalContext}
@@ -759,14 +750,13 @@ export function CardsPage() {
             </p>
           ) : null}
           {reviewing || everywhere || bySubject ? null : (
-            <div className="px-cards-toolbar-actions">
-              <ExportButton
-                planId={planId ?? ""}
-                topicId={topicId}
-                kind="cards"
-                disabled={noCards}
-              />
-            </div>
+            <ExportButton
+              planId={planId ?? ""}
+              topicId={topicId}
+              kind="cards"
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+            />
           )}
         </div>
         {finishFailed ? (
@@ -838,7 +828,7 @@ export function CardsPage() {
               data-turn={phase ?? undefined}
             >
               <div className="px-card-top">
-                <MenuButton menu={cardMenu} label={t("cards.more")} disabled={ratingPending || editing} />
+                <MenuButton menu={cardMenu} label={t("cards.more")} disabled={ratingPending || editing || adding} />
               </div>
               {editing ? (
                 <div className="px-card-edit">

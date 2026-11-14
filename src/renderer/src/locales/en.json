@@ -107,6 +107,8 @@
     "course": "Course",
     "continue": "Continue",
     "skip": "Skip",
+    "previous": "Previous step",
+    "leaveBody": "Your profile changes will be lost.",
     "again": {
       "done": "Save and back to Settings"
     },
@@ -991,7 +993,6 @@
     "generateAgain": "Try again",
     "reviewTitle": "Review",
     "reviewIntro": "One session with the flashcards that are due, questions on topics where you slipped, and a few new items from your book.",
-    "reviewBack": "Back to the review",
     "reviewIntroNoCards": "Questions on topics where you slipped, and a few new items from your book. No flashcards are due today.",
     "reviewIntroMistakes": "Start from the questions you got wrong in the quiz. If there is room, a few more on topics where you still have gaps.",
     "reviewStart": "Start review",
@@ -1030,6 +1031,7 @@
     "suspended": "Flashcard suspended.",
     "deleted": "Flashcard removed.",
     "more": "Flashcard actions",
+    "moreOnCards": "More on the flashcards",
     "card": "Flashcard",
     "askTutor": "Ask the tutor",
     "askSource": "Source: {{section}}",
@@ -1183,7 +1185,6 @@
     "redoTopic_other": "Redo {{count}} questions",
     "redoFailed": "The questions could not be opened again. Try once more.",
     "redoTitle": "Redo mistakes",
-    "back": "Back to the notebook",
     "summary_one": "{{count}} question to redo from quizzes, quick checks and simulations",
     "summary_other": "{{count}} questions to redo from quizzes, quick checks and simulations"
   },
@@ -1398,6 +1399,8 @@
     "recapMeta_other": "About {{count}} minutes · three questions at the end",
     "partMinutes_one": "About 1 minute",
     "partMinutes_other": "About {{count}} minutes",
+    "barMinutes_one": "about {{count}} minute",
+    "barMinutes_other": "about {{count}} minutes",
     "minutesShort": "{{count}} min",
     "finalCheck": "Check",
     "partEnd": "End of part {{n}}",
@@ -1549,6 +1552,8 @@
     }
   },
   "simulation": {
+    "more": "More on the simulation",
+    "noWayOut": "You can't leave: the exam ends when you hand it in or when time runs out",
     "title": "Simulation",
     "resume": "Resume the exam",
     "start": "Start",
@@ -1662,6 +1667,10 @@
     "stoppedHeadline": "Grading stopped"
   },
   "quiz": {
+    "more": "More on the quiz",
+    "keptLine": "Your answers are kept, so you can pick up later",
+    "barPosition": "question {{current}} of {{total}}",
+    "previous": "Previous question",
     "title": "Quiz",
     "actionFailed": "This action failed. Try again.",
     "start": "Start",
@@ -1776,7 +1785,6 @@
     },
     "questions": "Questions",
     "noAnswer": "No answer",
-    "continue": "Continue",
     "redo": "Redo",
     "answeredOn": "Your answers from {{date}}",
     "answersNotShared": "The answers of this attempt weren't included in the shared exam.",
@@ -1819,6 +1827,12 @@
     }
   },
   "practice": {
+    "leaveBody": "The answer you wrote will be lost.",
+    "doQuiz": "Take the quiz",
+    "barCount_one": "{{count}} exercise",
+    "barCount_other": "{{count}} exercises",
+    "barBook": "from the book",
+    "barAi": "written by Pyxis",
     "title": "Book exercises",
     "empty": "This topic has no exercises in the book.",
     "reveal": "Show the solution",
@@ -2318,7 +2332,6 @@
     "runSetup": "Redo the setup",
     "runSetupHint": "Go through the steps again with your answers filled in. Your profile is saved at the end.",
     "enginesTitle": "AI tools",
-    "back": "Back to settings",
     "saveFailed": "The setting could not be saved. Try again.",
     "readingSample": "Velocity tells us how displacement changes over time. Read this paragraph while choosing the size and spacing that suit you.",
     "crashWhy": "Pyxis runs on your computer, so the person who makes it can't see the errors that happen to you: these reports are the only way to find and fix them. They don't slow Pyxis down, and a report goes only after an error.",
@@ -3761,7 +3774,7 @@
     "skipped_other": "{{count}} were already there."
   },
   "oggi": {
-    "cardsTitle": "Due flashcards"
+    "cardsTitle": "Today's flashcards"
   },
   "planner": {
     "needed": "To reach every target on time you need about {{hours}} h a week.",

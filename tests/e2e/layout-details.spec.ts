@@ -349,7 +349,7 @@ test("LAYOUT-04 setup offers the kinds of school, and the profile picks the leve
   }
 });
 
-test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list says what to do next", async () => {
+test("LAYOUT-05 a reading page keeps the jobs entry, also with no job to show, and an empty Exams list says what to do next", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-details-"));
   const app = await launchPyxis({ userData });
@@ -403,14 +403,15 @@ test("LAYOUT-05 a reading page keeps the jobs entry, and an empty Exams list say
           await expect(page.locator(".px-jobs")).toBeHidden();
         }
 
-    // No job left: the entry leaves the bar. It is there, with its list open, once the jobs queries have loaded; clearing
-    // the finished job then empties them, and the assertion waits for the button to go instead of for a fixed time.
+    // No job left: the entry stays at the bar's right end, as on every study page, and says that nothing has run. It is
+    // there, with its list open, once the jobs queries have loaded; clearing the finished job then empties them, and the
+    // assertion waits for the name to change instead of for a fixed time.
     await expect(page).toHaveURL(/#\/plans\/plan-a\/intro$/);
     const bar = page.locator(".px-reader-bar");
     const entry = bar.getByRole("button", { name: /^(Attività|Background tasks)/ });
     await entry.click();
     await page.getByRole("button", { name: /^(Chiudi le finite|Clear finished)$/ }).click();
-    await expect(entry).toHaveCount(0);
+    await expect(entry).toHaveAccessibleName(/(Nessuna attività oggi|Nothing has run today)/);
     await expect(bar).toBeVisible();
   } finally {
     await app.close();

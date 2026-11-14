@@ -84,6 +84,8 @@ const routes = [
   // The mistakes notebook, which lives only under Exams.
   ["mistakes", "/exams/mistakes"],
   ["mistakes-empty", "/exams/mistakes"],
+  // The same page opened from an exam, which its way back names.
+  ["mistakes-from-exam", "/plans/audit-plan"],
   // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
@@ -327,6 +329,8 @@ const routes = [
   ["library-flagged-details", "/exams/library"],
   ["selection-source", "/exams/library"],
   ["selection-lesson", "/plans/audit-plan/lesson/audit-topic"],
+  // A chat made from a lesson's selection: its header has the way back to the lesson.
+  ["ask-from-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["reading-large-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["reading-large-exam", "/plans/audit-plan"],
   // Local OCR data: consent, progress and recovery in Settings, in the jobs list and where a read was refused.
@@ -1296,6 +1300,7 @@ const FINISHED_OLD_LESSON_STATES = new Set([
   "lesson-rewrite-parts",
   "export-lesson",
   "selection-lesson",
+  "ask-from-lesson",
   "reading-large-lesson",
 ]);
 const OLD_LESSON_JOBS: Record<string, { state: string; error: string | null }> = {
@@ -3106,6 +3111,22 @@ async function openState(page: Page, name: string) {
     case "selection-lesson":
       await selectText(page, ".passage .px-markdown p");
       break;
+    case "ask-from-lesson":
+      await selectText(page, ".passage .px-markdown p");
+      await page
+        .getByRole("group", { name: both("Chiedi al tutor", "Ask the tutor") })
+        .getByRole("button", { name: both("Chiedi al tutor", "Ask the tutor") })
+        .click();
+      await expect(page.locator(".ask-bar-name")).toBeVisible();
+      await expect(page.getByRole("button", { name: /^(Torna a|Back to) / })).toBeVisible();
+      break;
+    case "mistakes-from-exam":
+      await page
+        .locator(".px-exam-aside")
+        .getByRole("button", { name: both("Quaderno degli errori", "Mistakes notebook") })
+        .click();
+      await expect(page.getByRole("button", { name: /^(Torna a|Back to) / })).toBeVisible();
+      break;
     case "lesson-rewrite":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -3703,11 +3724,13 @@ async function openState(page: Page, name: string) {
       await expect(page.locator(".px-res-working .px-logo-working")).toBeVisible();
       await expect(page.locator(".px-res-changes")).toContainText(/Lo vedi a correzione finita|once grading is done/);
       await expect(page.locator(".px-res-fallback")).toContainText("ChatGPT");
-      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+      // While it grades there is no primary action: the bar's control is the way back.
+      await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(0);
       break;
     case "simulation-grading-failed":
-      // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
-      // and the exercise not graded yet says so in words. The study bar goes back to the exam by name.
+      // The results screen while grading is stopped: retry is the one primary action, the study bar's control is the
+      // one way back (the foot has none), and the exercise not graded yet says so in words. The bar goes back to the
+      // exam by name.
       await expect(
         page.getByRole("banner").getByRole("button", { name: /^(Torna a|Back to) / }),
       ).toBeVisible();
@@ -3720,7 +3743,7 @@ async function openState(page: Page, name: string) {
         page.getByRole("button", {
           name: /^(Torna al percorso|Back to the path)$/,
         }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await expect(
         page.locator(".px-res-q.is-ungraded").getByText(/^(Da correggere|Not graded yet)$/),
       ).toBeVisible();

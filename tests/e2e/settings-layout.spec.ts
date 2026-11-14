@@ -17,7 +17,10 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     // Skipping setup opens Exams; a route set before that lands is replaced by it.
     await fromChiediToExams(page);
     const sidebar = page.getByRole("navigation", { name: "Impostazioni" });
-    const back = page.getByRole("button", { name: "Torna alle impostazioni" });
+    // One way back above "Impostazioni", to where the student was. Narrow, with a section open, it reads "Impostazioni"
+    // and closes the section instead, so the page never has two.
+    const back = page.getByRole("button", { name: "Torna a Impostazioni", exact: true });
+    const leave = page.getByRole("button", { name: "Torna a Chiedi", exact: true });
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.evaluate(() => {
@@ -39,6 +42,9 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     const above = (await pages.nth(4).boundingBox())!;
     expect(foot.y - (above.y + above.height)).toBeGreaterThan(100);
     await expect(back).toHaveCount(0);
+    // Wide, the page's own way back sits above both panes, on every section.
+    await expect(leave).toBeVisible();
+    await expect(leave).toHaveText("Chiedi");
 
     await sidebar.getByRole("button", { name: "Aspetto e lingua" }).click();
     await expect(page).toHaveURL(/#\/settings\/appearance$/);
@@ -49,6 +55,7 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await expect(page.getByRole("heading", { level: 2, name: "Tema" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "Italiano" })).toBeChecked();
     await expect(back).toHaveCount(0);
+    await expect(leave).toBeVisible();
 
     // A link to one section opens the page that holds it, at that section.
     await page.evaluate(() => {
@@ -166,12 +173,26 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await page.setViewportSize({ width: 800, height: 800 });
     await expect(sidebar).toHaveCount(0);
     await expect(back).toBeVisible();
+    await expect(back).toHaveText("Impostazioni");
+    await expect(leave).toHaveCount(0);
     await back.click();
     await expect(page).toHaveURL(/#\/settings$/);
     await expect(page.getByRole("button", { name: /^Studio/ })).toBeVisible();
+    // The list has the page's own way back, and the section's is gone.
+    await expect(back).toHaveCount(0);
+    await expect(leave).toBeVisible();
     await page.getByRole("button", { name: /^Aspetto/ }).click();
     await expect(page).toHaveURL(/#\/settings\/appearance$/);
     await expect(back).toBeVisible();
+    await expect(leave).toHaveCount(0);
+    // Vai > Indietro does what the control does: it closes the section.
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click());
+    await expect(page).toHaveURL(/#\/settings$/);
+    // A section is a move inside Settings: one more press leaves it.
+    await page.getByRole("button", { name: /^Aspetto/ }).click();
+    await back.click();
+    await leave.click();
+    await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await app.close();
     removeTestFolder(userData);

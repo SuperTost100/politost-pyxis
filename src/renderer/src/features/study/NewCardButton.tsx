@@ -93,7 +93,7 @@ export function NewCardButton({
           onOpenChange(!open);
         }}
       >
-        {t("cards.new")}
+        <span className="px-studybar-label">{t("cards.new")}</span>
       </Button>
       {open ? (
         <div

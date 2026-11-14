@@ -149,7 +149,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
     await expect(vero).toHaveAttribute("aria-pressed", "true");
     await expect(falso).toHaveAttribute("aria-pressed", "false");
     // On the first question there is nothing to go back to.
-    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Domanda precedente", exact: true })).toHaveCount(0);
     // Enter goes on: no correction until Consegna.
     await page.keyboard.press("Enter");
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
@@ -168,8 +168,8 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
     await expect(page.getByText("Domanda 2 di 10", { exact: true })).toBeVisible();
     await page.clock.resume();
     await falso.click();
-    // Back and Avanti sit on one row under the card, Back on the left; the previous answer can still change.
-    const back = page.getByRole("button", { name: "Indietro", exact: true });
+    // The previous question and Avanti sit on one row under the card, the previous on the left; its answer can still change.
+    const back = page.getByRole("button", { name: "Domanda precedente", exact: true });
     const next = page.getByRole("button", { name: "Avanti", exact: true });
     const [backBox, nextBox] = [await back.boundingBox(), await next.boundingBox()];
     expect(Math.abs(backBox!.y + backBox!.height / 2 - (nextBox!.y + nextBox!.height / 2))).toBeLessThan(2);
@@ -250,7 +250,7 @@ test("LES-11 LES-12 topic quiz: calm intro, ten questions answered then handed i
     await expect(card(page)).toBeVisible();
     // The time left sits in the bar, and the line under the title says how long the quiz is.
     await expect(page.getByRole("timer", { name: "Tempo rimasto" })).toBeVisible();
-    await expect(page.locator(".px-studybar-title p")).toHaveText("Fisica 1 · limite di 1 minuto");
+    await expect(page.locator(".px-studybar-title p")).toHaveText(/^Quiz · domanda 1 di \d+, limite di 1 minuto$/);
     await expect.poll(async () => (await read()).deadlineAt).toBeGreaterThan(0);
     const deadline = (await read()).deadlineAt;
     await page.reload();
@@ -443,11 +443,10 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
     await expect(page.getByRole("heading", { name: "Test diagnostico", level: 2 })).toBeVisible();
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
-    // Back and Start sit side by side; the focus bar's X is the only exit, so the intro has no Close of its own.
-    const back = page.locator(".px-intro-actions").getByRole("button", { name: "Indietro" });
+    // The bar's back control is the only exit: the intro's foot has Start alone, with no Back and no Close.
     const begin = page.getByRole("button", { name: "Inizia", exact: true });
-    expect(Math.abs((await back.boundingBox())!.y - (await begin.boundingBox())!.y)).toBeLessThan(2);
-    await expect(page.locator(".px-intro-actions").getByRole("button", { name: "Chiudi" })).toHaveCount(0);
+    await expect(page.locator(".px-intro-actions").getByRole("button")).toHaveText(["Inizia"]);
+    await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
     // The bar says what the page is, not "Quiz".
@@ -503,7 +502,8 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
         { timeout: 20000 },
       )
       .toContain("Domanda di ricambio sul moto");
-    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Continua", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: /^Torna a / }).click();
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}$`));
   } finally {
     await done();

@@ -12,7 +12,17 @@ import { useFinishedJobs, useJobs } from "./queries";
  * the list that opens under it. `keep` shows it even before anything has run today, as the app's pages do; during setup
  * it stays out of the way until a job has run.
  */
-export function JobsButton({ keep = false }: { keep?: boolean }) {
+export function JobsButton({
+  keep = false,
+  leave,
+  blocked,
+}: {
+  keep?: boolean;
+  /** A page's own rule for being left (`usePlace`): a link in the list that goes to another page waits for it. */
+  leave?: (then: () => void) => void;
+  /** Why the page cannot be left: the list's links that go elsewhere are off, with this as the reason. */
+  blocked?: string;
+}) {
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
   const { data: done = [], refetch } = useFinishedJobs();
@@ -78,6 +88,8 @@ export function JobsButton({ keep = false }: { keep?: boolean }) {
           <JobsPanel
             ref={panel}
             groups={groups}
+            leave={leave}
+            blocked={blocked}
             onUnlock={(job) =>
               setUnlocking({ jobId: job.id, title: job.title ?? "" })
             }

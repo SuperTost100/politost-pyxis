@@ -7,6 +7,11 @@ export type BackTarget = {
   /** The path it leads to. */
   to: string;
   go: () => void;
+  /**
+   * Runs `then` once the page may be left, after `beforeLeave` agrees: for a link elsewhere on the page that leaves it,
+   * such as the Attività list's way to Settings. A page that must be kept stays on it when `beforeLeave` says no.
+   */
+  leave: (then: () => void) => void;
   /** True while `beforeLeave` runs. */
   busy: boolean;
   /** The page saves what it holds in `beforeLeave`, so leaving by this way loses nothing the student typed. */
