@@ -21,17 +21,29 @@ describe("insightRunning", () => {
 });
 
 describe("gapEnd", () => {
-  it("is not closed while the exam still lists the gap", () => {
-    expect(gapEnd({ total: 2, gaps: [gap("g1"), gap("g2")] }, "g1")).toEqual({ closed: false });
+  const list = (...ids: string[]) => ({ total: ids.length, gaps: ids.map((id) => gap(id)) });
+
+  it("is not closed while the gap is open, whether or not the exam still lists it", () => {
+    expect(gapEnd({ gapId: "g1", merged: false, closed: false }, list("g1", "g2"))).toEqual({ closed: false });
+    expect(gapEnd({ gapId: "g1", merged: false, closed: false }, list("g2"))).toEqual({ closed: false });
   });
 
-  it("is closed when the exam no longer lists it, with the most serious gap left as the next one", () => {
+  it("is closed when the gap says so, with the most serious gap that remains as the next one", () => {
     const next = gap("g2", "Serie");
-    expect(gapEnd({ total: 1, gaps: [next] }, "g1")).toEqual({ closed: true, next });
-    expect(gapEnd({ total: 0, gaps: [] }, "g1")).toEqual({ closed: true, next: null });
+    expect(gapEnd({ gapId: "g1", merged: false, closed: true }, { total: 1, gaps: [next] })).toEqual({ closed: true, next });
+    expect(gapEnd({ gapId: "g1", merged: false, closed: true }, list())).toEqual({ closed: true, next: null });
   });
 
-  it("does not call a gap closed when the list was cut before it", () => {
-    expect(gapEnd({ total: 120, gaps: [gap("g2")] }, "g1")).toEqual({ closed: false });
+  it("does not call a gap closed that merged into one that is still open", () => {
+    // The merged gap is gone from the list, and the one it merged into is the open one: nothing was closed by learning.
+    expect(gapEnd({ gapId: "g2", merged: true, closed: false }, list("g2", "g3"))).toEqual({ closed: false });
+  });
+
+  it("does not offer the gap that was just closed as the next one", () => {
+    expect(gapEnd({ gapId: "g2", merged: true, closed: true }, list("g2", "g3"))).toEqual({ closed: true, next: gap("g3") });
+  });
+
+  it("says nothing is closed when the gap's state could not be found", () => {
+    expect(gapEnd(null, list("g2"))).toEqual({ closed: false });
   });
 });

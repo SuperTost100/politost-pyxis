@@ -42,3 +42,19 @@ export function readGapStart(
 export function drillQuizPath(planId: string, topicId: string, attemptId: string, gapId?: string): string {
   return `/plans/${planId}/quiz/${topicId}?attempt=${attemptId}${gapId ? `&gap=${encodeURIComponent(gapId)}` : ""}`;
 }
+
+/**
+ * What a drill read says. `read` is `study.gapDrillRead`'s answer (undefined until it came). Before the page knows the job
+ * it started, the read is by gap and says nothing for a gap with no drill yet, which is a drill still to come. Once the
+ * job is known the read is by job: nothing found then, or a job that finished with no attempt, means no quiz will come,
+ * and the page must say that and not keep its working mark for work that is over.
+ */
+export function drillStatus(
+  read: { state: string; attemptId: string | null } | null | undefined,
+  jobKnown: boolean,
+): { state: string; attemptId: string | null } {
+  if (read === undefined) return { state: "queued", attemptId: null };
+  if (read === null) return { state: jobKnown ? "failed" : "queued", attemptId: null };
+  if (read.state === "succeeded" && !read.attemptId) return { state: "failed", attemptId: null };
+  return { state: read.state, attemptId: read.attemptId };
+}

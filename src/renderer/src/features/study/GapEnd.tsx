@@ -3,21 +3,22 @@ import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Button } from "../../components/Button";
-import { openGapsQuery } from "../../lib/queries";
+import { gapStateQuery, openGapsQuery } from "../../lib/queries";
 import { gapEnd } from "../plans/gapList";
 import "./GapEnd.css";
 
 /**
- * The end of a drill on a gap, in the results' summary: "Lacuna colmata", or what closes it. Wrong answers are told by the
+ * The end of a drill on a gap, in the results' summary: "Lacuna colmata" when the gap is closed, or what closes it. Wrong answers are told by the
  * results' own "what changes" block, so this says something only for a drill answered right.
  */
 export function GapEnd({ planId, gapId, rightAnswers }: { planId: string; gapId: string; rightAnswers: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const gaps = useQuery({ ...openGapsQuery(planId), enabled: Boolean(planId) });
-  // Read again as this opens, so the list shown is not the one from before the answers: until it is in, nothing is said.
-  if (gaps.isError) return null;
-  if (!gaps.isSuccess || gaps.isFetching)
+  const state = useQuery({ ...gapStateQuery(gapId), enabled: Boolean(gapId) });
+  // Both are read again as this opens, so what is said is not from before the answers: until they are in, nothing is said.
+  if (gaps.isError || state.isError) return null;
+  if (!gaps.isSuccess || !state.isSuccess || gaps.isFetching || state.isFetching)
     return (
       <div className="px-skeleton px-gap-end-wait" role="status">
         <span className="visually-hidden">{t("components.loading")}</span>
@@ -25,7 +26,7 @@ export function GapEnd({ planId, gapId, rightAnswers }: { planId: string; gapId:
         <i className="px-skeleton-bar" aria-hidden />
       </div>
     );
-  const end = gapEnd(gaps.data, gapId);
+  const end = gapEnd(state.data, gaps.data);
   if (end.closed)
     return (
       <section className="px-gap-end is-closed" aria-labelledby="gap-end-title">

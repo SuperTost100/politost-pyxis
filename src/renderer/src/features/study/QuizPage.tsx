@@ -60,7 +60,7 @@ import {
   type QuizAnswer,
 } from "./quizText";
 import "./QuizPage.css";
-import { openGapsQuery, pastPapersQuery, usePlan, useSources } from "../../lib/queries";
+import { gapStateQuery, openGapsQuery, pastPapersQuery, usePlan, useSources } from "../../lib/queries";
 import { Logo } from "../../components/Logo";
 import { Working } from "../../components/Working";
 
@@ -175,7 +175,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const [timerMinutes, setTimerMinutes] = useState<number | null>(20);
   const plan = usePlan(planId);
   const gaps = useQuery({ ...openGapsQuery(planId ?? ""), enabled: Boolean(gapId && planId) });
-  const gap = gapId ? gaps.data?.gaps.find((row) => row.gapId === gapId) : undefined;
+  // A gap that merged into another while its drill was written is shown as the gap it became.
+  const gapNow = useQuery({ ...gapStateQuery(gapId ?? ""), enabled: Boolean(gapId) });
+  const gap = gapId ? gaps.data?.gaps.find((row) => row.gapId === (gapNow.data?.gapId ?? gapId)) : undefined;
   const preview = useQuery({
     queryKey: ["diagnostic-preview", planId],
     enabled: diagnostic && !savedAttempt && Boolean(planId),

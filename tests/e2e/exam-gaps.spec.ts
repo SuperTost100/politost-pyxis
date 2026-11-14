@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
+import { drawSlowly } from "./slow-window";
 
 /**
  * Open gaps on the exam page and the page "Colma" opens. The gaps are written straight into the workspace the way the
@@ -129,6 +130,8 @@ async function start(extra: object = {}): Promise<Run> {
   };
   db(seed);
   await page.reload();
+  // PYXIS_E2E_SLOW_FPS=5 runs the spec in a window that draws that many frames a second, as a busy runner's does.
+  if (process.env.PYXIS_E2E_SLOW_FPS) await drawSlowly(page, Number(process.env.PYXIS_E2E_SLOW_FPS));
   return { app, page, userData, release, db };
 }
 
@@ -297,6 +300,28 @@ test.describe("the block of open gaps in the exam's side column", () => {
     await expect(rows(page)).toHaveCount(2);
     await expect(block(page)).not.toContainText("Non riesco a caricarlo.");
   });
+
+  test("going back from a row after the third brings the list back unfolded, with the focus on that row's button", async () => {
+    const { page, db } = run;
+    db((handle) => setGaps(handle, EIGHT));
+    await openExam(page);
+    await block(page).getByRole("button", { name: "Altre 5 lacune", exact: true }).click();
+    const sixth = block(page).getByRole("button", { name: /^Colma: Nel passaggio a coordinate polari/ });
+    await sixth.click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2\/gap\/g8$/);
+    await page.getByRole("button", { name: `Torna a ${EXAM}`, exact: true }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+    // The row it was left from is there, and has the focus: a folded row could not have taken it.
+    await expect(block(page).getByRole("button", { name: "Mostra meno", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(block(page).getByRole("button", { name: /^Colma: Nel passaggio a coordinate polari/ })).toBeFocused();
+    // Folded on purpose, and left from a row among the first three, it comes back folded.
+    await block(page).getByRole("button", { name: "Mostra meno", exact: true }).click();
+    await block(page).getByRole("button", { name: /^Colma: Confondi/ }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2\/gap\/g1$/);
+    await page.getByRole("button", { name: `Torna a ${EXAM}`, exact: true }).click();
+    await expect(block(page).getByRole("button", { name: "Altre 5 lacune", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await expect(block(page).getByRole("button", { name: /^Colma: Confondi/ })).toBeFocused();
+  });
 });
 
 /** Answers the five drill questions right, in the order the recorded reply asks them (a multiple-choice question shuffles its options). */
@@ -433,6 +458,55 @@ test.describe("Colma, with an earlier day of right answers", () => {
     });
     await expect(page.getByRole("status").filter({ hasText: "Questa lacuna non è più aperta" })).toBeVisible();
     await expect(page.locator(".px-gp-working")).toHaveCount(0);
+  });
+});
+
+test.describe("Colma, when the drill's gap changes while it is written", () => {
+  let run: Run;
+  test.beforeEach(async () => {
+    run = await start();
+    // Two gaps on one topic, the second of which the first can merge into.
+    run.db((handle) => setGaps(handle, [EIGHT[0]!, EIGHT[1]!]));
+  });
+  test.afterEach(async () => stop(run));
+
+  test("a gap that merged into another is followed: the drill opens, and the end does not call the gap closed", async () => {
+    test.setTimeout(120_000);
+    const { page, db } = run;
+    await openExam(page);
+    await rows(page).first().getByRole("button", { name: /^Colma: Confondi/ }).click();
+    await expect(page.locator(".px-gp-sheet").getByRole("status")).toContainText("Preparo una spiegazione breve");
+    // The analysis finds the two gaps are the same idea while the questions are written.
+    db((handle) => {
+      const at = Date.now();
+      handle.prepare("UPDATE gaps SET closed_at = ?, merged_into = 'g2' WHERE id = 'g1'").run(at);
+    });
+    writeFileSync(run.release, "");
+    // The page follows the job it started, not the gap it started it for: the drill opens and shows the gap it became.
+    await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-fun\?attempt=[^&]+&gap=g1$/);
+    await expect(page.locator(".px-qz-sheet .px-gap-sentence")).toHaveText(EIGHT[1]!.sentence!);
+    expect(drillJobs(run)).toBe(1);
+    await answerDrill(page);
+    await expect(page.locator(".px-res-title")).toHaveText("Hai preso 30/30");
+    // One day of right answers does not close a gap, and the gap that absorbed this one is open: nothing is closed.
+    await expect(page.locator(".px-gap-end")).toHaveText("Risposte giuste. La lacuna si chiude se rispondi giusto anche in un altro giorno.");
+    await expect(page.getByText("Lacuna colmata")).toHaveCount(0);
+    expect(db((handle) => handle.prepare("SELECT closed_at FROM gaps WHERE id = 'g2'").get())).toEqual({ closed_at: null });
+    await saveShot(page, "gap-drill-done-merged-it.png", { animations: "disabled" });
+  });
+
+  test("a drill whose job is gone ends in the notice with Riprova instead of staying prepared", async () => {
+    test.setTimeout(120_000);
+    const { page, db } = run;
+    await openExam(page);
+    await rows(page).first().getByRole("button", { name: /^Colma: Confondi/ }).click();
+    const sheet = page.locator(".px-gp-sheet");
+    await expect(sheet.getByRole("status")).toContainText("Preparo una spiegazione breve");
+    // Nothing is held against the page now: the job it waits for no longer exists.
+    db((handle) => handle.exec("DELETE FROM jobs WHERE kind = 'gap-drill'"));
+    await expect(sheet.getByRole("alert")).toContainText("Non sono riuscito a preparare la spiegazione e le domande.");
+    await expect(sheet.locator(".px-gp-working")).toHaveCount(0);
+    await expect(sheet.getByRole("alert").getByRole("button", { name: "Riprova", exact: true })).toBeVisible();
   });
 });
 

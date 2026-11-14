@@ -83,6 +83,17 @@ export const openGapsQuery = (planId: string) =>
     refetchOnMount: "always",
   });
 
+/**
+ * What is true of one gap: open or closed, and the gap it merged into if it did. It is read again as the page that shows
+ * it opens, since answers close a gap while the student is elsewhere. Its key starts with "plans" like the list's.
+ */
+export const gapStateQuery = (gapId: string) =>
+  queryOptions({
+    queryKey: ["plans", "gapState", gapId],
+    queryFn: () => invoke("plans.gapState", { gapId }),
+    refetchOnMount: "always",
+  });
+
 /** The three rings of every built exam (Preparazione, Percorso, Oggi), its next step and its due cards. */
 export const ringsQuery = queryOptions({
   queryKey: ["plans", "rings"],

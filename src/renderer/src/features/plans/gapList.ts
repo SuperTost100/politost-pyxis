@@ -13,13 +13,14 @@ export function insightRunning(jobs: ReadonlyArray<JobView>, exam: string, topic
   );
 }
 
+type State = RequestOutput<"plans.gapState">;
+
 /**
- * What a finished drill did to its gap. The core closes a gap when the exam's gaps are read, and `plans.openGaps` is
- * that read, so the gap is closed when the exam no longer lists it. A list cut at its limit cannot say that a gap beyond
- * it is gone, so it says it is not closed then. `next` is the most serious gap that remains.
+ * What a finished drill did to its gap, from the gap's own state (`plans.gapState`), never from its absence in the
+ * exam's list: a gap that merged into another leaves the list without being closed. `state.gapId` is the gap that counts
+ * (the drill's, or the one it merged into). `next` is the most serious gap still open, other than that one.
  */
-export function gapEnd(gaps: Gaps, gapId: string): { closed: false } | { closed: true; next: Gaps["gaps"][number] | null } {
-  const listed = gaps.gaps.some((gap) => gap.gapId === gapId);
-  if (listed || gaps.gaps.length < gaps.total) return { closed: false };
-  return { closed: true, next: gaps.gaps[0] ?? null };
+export function gapEnd(state: State, gaps: Gaps): { closed: false } | { closed: true; next: Gaps["gaps"][number] | null } {
+  if (!state?.closed) return { closed: false };
+  return { closed: true, next: gaps.gaps.find((gap) => gap.gapId !== state.gapId) ?? null };
 }

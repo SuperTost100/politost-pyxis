@@ -414,6 +414,7 @@ const routes = {
   "plans.import": ["plans", "import"],
   "plans.series": ["plans", "series"],
   "plans.openGaps": ["plans", "openGaps"],
+  "plans.gapState": ["plans", "gapState"],
   "plans.planner": ["plans", "planner", "bare"],
   "plans.rings": ["plans", "rings", "bare"],
   "plans.examlessDue": ["plans", "examlessDue", "bare"],

@@ -15,6 +15,13 @@ type Gap = RequestOutput<"plans.openGaps">["gaps"][number];
 /** How many gaps show before the rest fold behind "Altre N lacune". */
 const SHOWN = 3;
 
+/**
+ * The gap each exam's list was last left from, by "Colma". The list is the component's own state and folds when the page
+ * is left, but a student who goes back from a row after the third expects that row where they left it, with the focus on
+ * its button, which a folded row cannot take. So the list comes back unfolded when it was left from a folded row.
+ */
+const leftFrom = new Map<string, string>();
+
 function GapRow({ planId, gap, reading }: { planId: string; gap: Gap; reading: boolean }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -46,7 +53,10 @@ function GapRow({ planId, gap, reading }: { planId: string; gap: Gap; reading: b
               ? t("gaps.fillLabel", { sentence: gap.sentence })
               : t("gaps.fillTopicLabel", { topic: gap.topicTitle })
           }
-          onClick={() => navigate(`/plans/${planId}/gap/${gap.gapId}`)}
+          onClick={() => {
+            leftFrom.set(planId, gap.gapId);
+            navigate(`/plans/${planId}/gap/${gap.gapId}`);
+          }}
         >
           {t("gaps.fill")}
         </Button>
@@ -63,12 +73,12 @@ function GapRow({ planId, gap, reading }: { planId: string; gap: Gap; reading: b
  */
 export function GapsList({ planId, exam, gaps }: { planId: string; exam: string; gaps: Gap[] }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const first = gaps.slice(0, SHOWN);
+  const rest = gaps.slice(SHOWN);
+  const [open, setOpen] = useState(() => rest.some((gap) => gap.gapId === leftFrom.get(planId)));
   const regionId = useId();
   const jobs = useJobs();
   const reading = (gap: Gap) => insightRunning(jobs.data ?? [], exam, gap.topicTitle);
-  const first = gaps.slice(0, SHOWN);
-  const rest = gaps.slice(SHOWN);
   const row = (gap: Gap) => <GapRow key={gap.gapId} planId={planId} gap={gap} reading={!gap.sentence && reading(gap)} />;
   return (
     <>
@@ -82,7 +92,11 @@ export function GapsList({ planId, exam, gaps }: { planId: string; exam: string;
             </ul>
           </div>
           <div className="px-exam-arow">
-            <Button variant="ghost" size="sm" expanded={open} controls={regionId} onClick={() => setOpen((value) => !value)}>
+            <Button variant="ghost" size="sm" expanded={open} controls={regionId} onClick={() => {
+                // Folded on purpose: the list is not left unfolded by a gap that was opened before.
+                if (open) leftFrom.delete(planId);
+                setOpen((value) => !value);
+              }}>
               {open ? t("gaps.less") : t("gaps.more", { count: rest.length })}
             </Button>
           </div>

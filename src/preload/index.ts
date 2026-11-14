@@ -69,6 +69,7 @@ const replayable = new Set([
   "plans.masteryBreakdown",
   "plans.series",
   "plans.openGaps",
+  "plans.gapState",
   "plans.simulations",
   "plans.recommend",
   "plans.today",
