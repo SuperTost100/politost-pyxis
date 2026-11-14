@@ -253,9 +253,7 @@ test("the flashcard browser says when there are no cards", async () => {
       location.hash = "#/flashcards/all";
     });
     await page.reload();
-    await expect(
-      page.getByRole("heading", { name: "No flashcards yet" }),
-    ).toBeVisible();
+    await expect(page.getByText(/^All your flashcards will appear here/)).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

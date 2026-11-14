@@ -110,7 +110,7 @@
     "previous": "Passo precedente",
     "leaveBody": "Le modifiche al profilo andranno perse.",
     "again": {
-      "done": "Salva e torna alle impostazioni"
+      "done": "Salva e torna a {{place}}"
     },
     "done": "Inizia a studiare",
     "contentLanguage": "Italian",
@@ -398,12 +398,10 @@
     "more": "Altro su Esami",
     "plans": "Esami",
     "sources": "Fonti",
-    "emptyTitle": "Crea un esame per iniziare",
-    "emptyBody": "Aggiungi il materiale del corso e Pyxis costruisce un percorso di lezioni e quiz fino all'esame. La data è facoltativa.",
+    "emptyBody": "Qui compariranno i tuoi esami, ognuno con un percorso di lezioni e quiz fino alla data. Ti basta il nome e il materiale del corso.",
     "newPlan": "Nuovo esame",
     "importFileItem": "Importa da un file .pyxis",
     "importLinkItem": "Importa da un link",
-    "sourcesEmptyTitle": "Nessuna fonte ancora",
     "sourcesEmptyBody": "PDF, appunti e smartbook restano qui. Poi li colleghi a un esame.",
     "addSources": "Aggiungi fonti",
     "days_one": "{{count}} giorno",
@@ -420,7 +418,6 @@
     "ringsFailed": "Non riesco a calcolare gli anelli degli esami.",
     "listLabel": "I tuoi esami",
     "archivedLabel": "Esami archiviati",
-    "allArchivedTitle": "Tutti i tuoi esami sono archiviati",
     "allArchivedBody": "Li trovi sotto Archiviati. Per prepararne uno nuovo, scegli Nuovo esame.",
     "due_one": "Oggi hai {{count}} flashcard da ripassare",
     "due_other": "Oggi hai {{count}} flashcard da ripassare",
@@ -920,7 +917,7 @@
       "addFiles": "Aggiungi file",
       "linkFolder": "Collega una cartella",
       "linkAnother": "Collega un'altra cartella",
-      "emptyBody": "PDF, appunti, slide e libri restano qui, divisi per materia. Aggiungi un file o collega la cartella dove tieni il materiale.",
+      "emptyBody": "Qui compariranno i tuoi file, divisi per materia. Collega la cartella dove tieni il materiale e Pyxis li legge da lì.",
       "count_one": "{{count}} file",
       "count_other": "{{count}} file",
       "countNone": "nessun file",
@@ -1128,8 +1125,7 @@
     "restore": "Ripristina",
     "action": "{{action}}: {{card}}",
     "moreActions": "Altre azioni",
-    "emptyTitle": "Ancora nessuna flashcard",
-    "emptyBody": "Le flashcard che scrivi e quelle che Pyxis prepara per un argomento compaiono qui, divise per materia.",
+    "emptyBody": "Qui compariranno tutte le tue flashcard, da cercare e modificare. Le scrivi tu, oppure le fa Pyxis dal tuo materiale.",
     "noMatch": "Nessuna flashcard corrisponde.",
     "clear": "Cancella i filtri",
     "loadFailed": "Non sono riuscito a caricare le flashcard.",
@@ -1165,7 +1161,6 @@
   },
   "mistakes": {
     "title": "Quaderno degli errori",
-    "emptyTitle": "Nessun errore da rivedere",
     "emptyBody": "Qui si raccolgono le domande che sbagli nei quiz, nelle simulazioni, nel test diagnostico e nelle verifiche rapide delle lezioni. Ognuna esce quando rispondi giusto.",
     "loadFailed": "Non sono riuscito a caricare il quaderno.",
     "retry": "Riprova",
@@ -1309,11 +1304,9 @@
     "concepts_one": "{{count}} concetto",
     "concepts_other": "{{count}} concetti",
     "general": "conoscenza generale",
-    "emptyTitle": "Ancora nessuna mappa",
-    "emptyBody": "Una mappa mostra una materia, o un suo argomento, come concetti e collegamenti. Scegli la materia e Pyxis crea la mappa dal suo materiale.",
-    "emptyNoSubjects": "Le mappe nascono dal materiale di una materia. Collega la cartella dove studi, aggiungi i file in Libreria oppure crea un esame.",
+    "emptyBody": "Qui compariranno le mappe che crei, divise per materia. Ne fai una da un argomento.",
+    "emptyNoSubjects": "Qui compariranno le mappe che crei, divise per materia. Prima serve il materiale: collega la cartella dove lo tieni.",
     "linkFolder": "Collega una cartella",
-    "openLibrary": "Apri la Libreria",
     "loadFailed": "Non riesco a caricare le mappe.",
     "retry": "Riprova",
     "subject": "Materia",
@@ -3941,7 +3934,7 @@
         "stopTitle": "Fermare Pyxis?"
       }
     },
-    "emptyBody": "Qui compariranno le tue flashcard, divise per materia: le scrivi tu, oppure le fa Pyxis dal materiale che hai in Libreria.",
+    "emptyBody": "Qui compariranno le tue flashcard, divise per materia. Le scrivi tu, oppure le fa Pyxis dal tuo materiale.",
     "loadFailed": "Non riesco a caricare le flashcard."
   }
 }

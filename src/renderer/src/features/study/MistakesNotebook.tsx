@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { EmptyState } from "../../components/EmptyState";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
@@ -91,12 +91,7 @@ export function MistakesNotebook() {
       </Notice>
     );
   if (data && data.entries.length === 0)
-    return (
-      <EmptyState
-        title={t("mistakes.emptyTitle")}
-        body={t("mistakes.emptyBody")}
-      />
-    );
+    return <EmptyState body={t("mistakes.emptyBody")} />;
 
   // The topic's questions in the whole list, so "Redo" on a topic does not stop at the page edge.
   const topicKeys = new Map<string, string[]>();

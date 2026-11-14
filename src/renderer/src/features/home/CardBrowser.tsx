@@ -11,12 +11,12 @@ import {
   Select,
   Skeleton,
 } from "antd";
-import { Upload } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { EmptyState } from "../../app/layouts/TaskLayouts";
+import { Button as PxButton } from "../../components/Button";
+import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -30,6 +30,7 @@ import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 import { invoke } from "../../lib/ipc";
 import { usePlans } from "../../lib/queries";
 import { i18n } from "../../locales/i18n";
+import { NewCardDialog } from "../flashcards/NewCardDialog";
 import { AnkiModal } from "./AnkiModal";
 import "./CardBrowser.css";
 import { CardFaceFields } from "../../components/CardFaceFields";
@@ -95,6 +96,9 @@ export function CardBrowser({
   const [actionFailed, setActionFailed] = useState(false);
   const [done, setDone] = useState("");
   const [anki, setAnki] = useState<"import" | "export" | null>(null);
+  // "Nuova flashcard", the empty page's one action: its dialog grows out of the button.
+  const [newCard, setNewCard] = useState(false);
+  const newButton = useRef<HTMLSpanElement>(null);
   const summary = useRef<HTMLParagraphElement>(null);
 
   // The search waits for a pause in typing, then goes back to the first page.
@@ -121,6 +125,20 @@ export function CardBrowser({
   const filtered = Boolean(
     query.trim() || planId || topicId || status !== "all",
   );
+  // No flashcard at all, and nothing filtering: the page is empty, not a search with no result.
+  const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0);
+  // The first card replaces the empty page and its button, which the dialog gives the focus back to: once both have
+  // happened, a focus that fell to the page goes to the list's summary line.
+  const wasEmpty = useRef(false);
+  useEffect(() => {
+    if (emptyPage) wasEmpty.current = true;
+    else if (wasEmpty.current && data && !newCard) {
+      wasEmpty.current = false;
+      requestAnimationFrame(() => {
+        if (document.activeElement === document.body) summary.current?.focus();
+      });
+    }
+  }, [emptyPage, data, newCard]);
 
   // A page that emptied after a delete steps back instead of showing nothing.
   useEffect(() => {
@@ -156,11 +174,11 @@ export function CardBrowser({
       ].map((key) => client.invalidateQueries({ queryKey: [key] })),
     );
 
-  /** Import and export sit in the page's menu, and import alone in the empty state when the student has exams but no cards yet. */
+  /** Import and export sit in the page's menu; with no flashcard to export, import alone. */
   const ankiMenu: MenuProps = {
     items: [
       { key: "import", label: t("cardImport.open") },
-      { key: "export", label: t("cardExport.open") },
+      ...(emptyPage ? [] : [{ key: "export", label: t("cardExport.open") }]),
     ],
     onClick: ({ key }) => setAnki(key === "export" ? "export" : "import"),
   };
@@ -283,7 +301,7 @@ export function CardBrowser({
       setDone("");
     };
 
-  // Where the list failed to load or holds nothing, the head has no menu: there is nothing to import into or export.
+  // Where the list failed to load, the head has no menu.
   const plainHead = (
     <>
       {back}
@@ -304,36 +322,6 @@ export function CardBrowser({
         >
           {t("cardBrowser.loadFailed")}
         </Notice>
-      </>
-    );
-
-  if (data && data.total === 0 && !filtered && data.plans.length === 0)
-    return (
-      <>
-        {plainHead}
-        {ankiModal}
-        <EmptyState
-          title={t("cardBrowser.emptyTitle")}
-          body={t("cardBrowser.emptyBody")}
-          action={
-            <Button
-              type="primary"
-              shape="round"
-              onClick={() => navigate("/plans/new")}
-            >
-              {t("exams.newPlan")}
-            </Button>
-          }
-          secondary={
-            <Button
-              shape="round"
-              icon={<Upload size={16} aria-hidden />}
-              onClick={() => setAnki("import")}
-            >
-              {t("cardImport.open")}
-            </Button>
-          }
-        />
       </>
     );
 
@@ -522,174 +510,189 @@ export function CardBrowser({
       </div>
       {modalContext}
       {ankiModal}
-      <ListToolbar
-        search={
-          <ToolbarSearch
-            id="card-search"
-            label={t("cardBrowser.search")}
-            placeholder={t("cardBrowser.searchPlaceholder")}
-            value={text}
-            onChange={setText}
-          />
-        }
-        filters={
-          <>
-            <Select
-              id="card-exam"
-              aria-label={t("cardBrowser.exam")}
-              value={planId}
-              popupMatchSelectWidth={false}
-              onChange={(value) => {
-                filter(setPlanId)(value);
-                setTopicId("");
-              }}
-              options={[
-                { value: "", label: t("cardBrowser.allExams") },
-                ...planGroups,
-                ...(data?.examless ? [{ value: NO_EXAM, label: t("cardBrowser.noExam") }] : []),
-              ]}
-            />
-            <Select
-              id="card-topic"
-              aria-label={t("cardBrowser.topic")}
-              value={topicId}
-              disabled={!planId || planId === NO_EXAM}
-              popupMatchSelectWidth={false}
-              onChange={filter(setTopicId)}
-              options={[
-                { value: "", label: t("cardBrowser.allTopics") },
-                ...topics.map((topic) => ({
-                  value: topic.id,
-                  label: topic.title,
-                })),
-              ]}
-            />
-            <Select<Status>
-              id="card-status"
-              aria-label={t("cardBrowser.show")}
-              value={status}
-              popupMatchSelectWidth={false}
-              onChange={filter(setStatus)}
-              options={(["all", "due", "leech", "suspended", "removed"] as const).map(
-                (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
-              )}
-            />
-          </>
-        }
-      />
-
-      <div className="px-cardbrowser-summary">
-        <p className="small" role="status" tabIndex={-1} ref={summary}>
-          {done ||
-            (data
-              ? t(
-                  data.total === 0
-                    ? "cardBrowser.noMatch"
-                    : "cardBrowser.count",
-                  { count: data.total },
-                )
-              : "\u00a0")}
-        </p>
-        {filtered ? (
-          <Button
-            type="text"
-            shape="round"
-            size="small"
-            className="linkish"
-            onClick={reset}
-          >
-            {t("cardBrowser.clear")}
-          </Button>
-        ) : null}
-      </div>
-      {actionFailed ? (
-        <Notice tone="danger">{t("cards.actionFailed")}</Notice>
-      ) : null}
-
-      {!data ? (
-        <ul className="px-list-surface" aria-hidden>
-          {[0, 1, 2].map((key) => (
-            <li key={key} className="px-cardbrowser-row">
-              <Skeleton active title={false} paragraph={{ rows: 2 }} />
-            </li>
-          ))}
-        </ul>
-      ) : data.total === 0 ? null : (
+      {emptyPage ? (
+        <EmptyState
+          body={t("cardBrowser.emptyBody")}
+          action={
+            <span ref={newButton}>
+              <PxButton icon="plus" onClick={() => setNewCard(true)}>
+                {t("flashcards.new.action")}
+              </PxButton>
+            </span>
+          }
+        />
+      ) : (
         <>
-          {sections.map((section) => (
-            <section
-              key={section.subjectId ?? "none"}
-              className="px-cardbrowser-subject"
-              aria-labelledby={`card-subject-${section.subjectId ?? "none"}`}
-            >
-              <header>
-                <h2
-                  className="title-3"
-                  id={`card-subject-${section.subjectId ?? "none"}`}
-                >
-                  {section.subjectName ?? t("cardBrowser.noSubject")}
-                </h2>
-                <span className="small">
-                  {t("cardBrowser.count", {
-                    count: groupCount.get(section.subjectId) ?? 0,
-                  })}
-                </span>
-              </header>
-              {section.runs.map((run) => (
-                <div key={run.key} className="px-cardbrowser-run">
-                  {run.planTitle == null ? (
-                    // A subject's cards with no exam can be reviewed on their own.
-                    <div className="px-cardbrowser-runhead">
-                      <h3
-                        className="small px-cardbrowser-topic"
-                        id={`card-run-${run.key}`}
-                      >
-                        {t("cardBrowser.noExam")}
-                      </h3>
-                      {section.subjectId ? (
-                        <Button
-                          size="small"
-                          shape="round"
-                          type="text"
-                          aria-label={t("cardBrowser.reviewSubject", {
-                            subject: section.subjectName ?? "",
-                          })}
-                          onClick={() => navigate(`/cards/subject/${section.subjectId}`)}
-                        >
-                          {t("cardBrowser.review")}
-                        </Button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <h3
-                      className="small px-cardbrowser-topic"
-                      id={`card-run-${run.key}`}
-                    >
-                      {run.planTitle} ·{" "}
-                      {run.topicTitle ?? t("cardBrowser.noTopic")}
-                    </h3>
+          <ListToolbar
+            search={
+              <ToolbarSearch
+                id="card-search"
+                label={t("cardBrowser.search")}
+                placeholder={t("cardBrowser.searchPlaceholder")}
+                value={text}
+                onChange={setText}
+              />
+            }
+            filters={
+              <>
+                <Select
+                  id="card-exam"
+                  aria-label={t("cardBrowser.exam")}
+                  value={planId}
+                  popupMatchSelectWidth={false}
+                  onChange={(value) => {
+                    filter(setPlanId)(value);
+                    setTopicId("");
+                  }}
+                  options={[
+                    { value: "", label: t("cardBrowser.allExams") },
+                    ...planGroups,
+                    ...(data?.examless ? [{ value: NO_EXAM, label: t("cardBrowser.noExam") }] : []),
+                  ]}
+                />
+                <Select
+                  id="card-topic"
+                  aria-label={t("cardBrowser.topic")}
+                  value={topicId}
+                  disabled={!planId || planId === NO_EXAM}
+                  popupMatchSelectWidth={false}
+                  onChange={filter(setTopicId)}
+                  options={[
+                    { value: "", label: t("cardBrowser.allTopics") },
+                    ...topics.map((topic) => ({
+                      value: topic.id,
+                      label: topic.title,
+                    })),
+                  ]}
+                />
+                <Select<Status>
+                  id="card-status"
+                  aria-label={t("cardBrowser.show")}
+                  value={status}
+                  popupMatchSelectWidth={false}
+                  onChange={filter(setStatus)}
+                  options={(["all", "due", "leech", "suspended", "removed"] as const).map(
+                    (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
                   )}
-                  <ul aria-labelledby={`card-run-${run.key}`}>
-                    {run.cards.map((card) => renderCard(card))}
-                  </ul>
-                </div>
-              ))}
-            </section>
-          ))}
-          {data.total > PAGE_SIZE ? (
-            <Pagination
-              className="px-cardbrowser-pages"
-              align="center"
-              current={page}
-              total={data.total}
-              pageSize={PAGE_SIZE}
-              showSizeChanger={false}
-              onChange={(next) => {
-                setPage(next);
-                summary.current?.scrollIntoView({ block: "start" });
-              }}
-            />
+                />
+              </>
+            }
+          />
+
+          <div className="px-cardbrowser-summary">
+            <p className="small" role="status" tabIndex={-1} ref={summary}>
+              {done ||
+                (data
+                  ? t(
+                      data.total === 0
+                        ? "cardBrowser.noMatch"
+                        : "cardBrowser.count",
+                      { count: data.total },
+                    )
+                  : "\u00a0")}
+            </p>
+            {filtered ? (
+              <Button
+                type="text"
+                shape="round"
+                size="small"
+                className="linkish"
+                onClick={reset}
+              >
+                {t("cardBrowser.clear")}
+              </Button>
+            ) : null}
+          </div>
+          {actionFailed ? (
+            <Notice tone="danger">{t("cards.actionFailed")}</Notice>
           ) : null}
+
+          {!data ? (
+            <ul className="px-list-surface" aria-hidden>
+              {[0, 1, 2].map((key) => (
+                <li key={key} className="px-cardbrowser-row">
+                  <Skeleton active title={false} paragraph={{ rows: 2 }} />
+                </li>
+              ))}
+            </ul>
+          ) : data.total === 0 ? null : (
+            <>
+              {sections.map((section) => (
+                <section
+                  key={section.subjectId ?? "none"}
+                  className="px-cardbrowser-subject"
+                  aria-labelledby={`card-subject-${section.subjectId ?? "none"}`}
+                >
+                  <header>
+                    <h2
+                      className="title-3"
+                      id={`card-subject-${section.subjectId ?? "none"}`}
+                    >
+                      {section.subjectName ?? t("cardBrowser.noSubject")}
+                    </h2>
+                    <span className="small">
+                      {t("cardBrowser.count", {
+                        count: groupCount.get(section.subjectId) ?? 0,
+                      })}
+                    </span>
+                  </header>
+                  {section.runs.map((run) => (
+                    <div key={run.key} className="px-cardbrowser-run">
+                      {run.planTitle == null ? (
+                        // A subject's cards with no exam can be reviewed on their own.
+                        <div className="px-cardbrowser-runhead">
+                          <h3
+                            className="small px-cardbrowser-topic"
+                            id={`card-run-${run.key}`}
+                          >
+                            {t("cardBrowser.noExam")}
+                          </h3>
+                          {section.subjectId ? (
+                            <Button
+                              size="small"
+                              shape="round"
+                              type="text"
+                              aria-label={t("cardBrowser.reviewSubject", {
+                                subject: section.subjectName ?? "",
+                              })}
+                              onClick={() => navigate(`/cards/subject/${section.subjectId}`)}
+                            >
+                              {t("cardBrowser.review")}
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <h3
+                          className="small px-cardbrowser-topic"
+                          id={`card-run-${run.key}`}
+                        >
+                          {run.planTitle} ·{" "}
+                          {run.topicTitle ?? t("cardBrowser.noTopic")}
+                        </h3>
+                      )}
+                      <ul aria-labelledby={`card-run-${run.key}`}>
+                        {run.cards.map((card) => renderCard(card))}
+                      </ul>
+                    </div>
+                  ))}
+                </section>
+              ))}
+              {data.total > PAGE_SIZE ? (
+                <Pagination
+                  className="px-cardbrowser-pages"
+                  align="center"
+                  current={page}
+                  total={data.total}
+                  pageSize={PAGE_SIZE}
+                  showSizeChanger={false}
+                  onChange={(next) => {
+                    setPage(next);
+                    summary.current?.scrollIntoView({ block: "start" });
+                  }}
+                />
+              ) : null}
+            </>
+          )}
         </>
       )}
 
@@ -719,6 +722,15 @@ export function CardBrowser({
           ) : null}
         </div>
       </Modal>
+      <NewCardDialog
+        open={newCard}
+        side="hand"
+        origin={() => newButton.current?.querySelector("button") ?? null}
+        onClose={() => setNewCard(false)}
+        onSaved={({ name, count, closing }) => {
+          if (closing) setDone(t("flashcards.new.savedTo", { count, subject: name }));
+        }}
+      />
     </div>
   );
 }

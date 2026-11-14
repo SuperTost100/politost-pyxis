@@ -135,21 +135,12 @@ a.px-exams-row:hover {
   color: var(--ink-subtle);
 }
 
-.px-exams-empty {
-  display: grid;
-  gap: var(--space-2);
-  padding: var(--space-6) 22px;
-}
-.px-exams-empty h2 {
-  margin: 0;
-}
-.px-exams-empty p {
-  margin: 0;
-  max-width: 60ch;
-}
-
 .px-exams-archbtn.px-btn {
   margin: 14px 0 0 var(--space-1);
+}
+/* As the empty page's own button it sits where that button would. */
+.px-empty-action .px-exams-archbtn.px-btn {
+  margin: 0;
 }
 .px-exams-archlabel {
   display: inline-flex;
