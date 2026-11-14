@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
  * Saves answers while the student works. `schedule` keeps the newest draft and saves it once changes pause for
  * `delay` ms; `flush` saves it at once; `cancel` drops it. Saves run one after another and a draft is never sent after
  * a newer one: when a queued save's turn comes it sends the newest draft there is, so a draft that was overtaken is
- * dropped. A failed save calls `onError` without stopping the next.
+ * dropped. A failed save calls `onError` without stopping the next, and its draft waits for the next `flush` unless a
+ * newer one took its place. `flush` resolves to whether the newest draft is saved, so a page can keep the student
+ * there when it is not.
  *
  * `flush(true)` is for a page that is going away: the newest draft is sent now instead of after a save still on its
  * way, which the page may not live to see come back (a reload), and before the read of the page opened next. Core
@@ -20,7 +22,7 @@ export function draftSaver<T>(
   let pending: { draft: T } | null = null;
   let queued: { draft: T } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let saving: Promise<unknown> = Promise.resolve();
+  let saving: Promise<boolean> = Promise.resolve(true);
   /** Takes the newest unsent draft, so the turn that sends it is the only one that can. */
   function take() {
     const next = pending ?? queued;
@@ -28,24 +30,32 @@ export function draftSaver<T>(
     queued = null;
     return next;
   }
-  function flush(leaving = false): Promise<unknown> {
+  /** Saves one draft; when that fails, the draft stays for the next flush unless a newer one took its place. */
+  function send(next: { draft: T }): Promise<boolean> {
+    return save(next.draft).then(
+      () => true,
+      () => {
+        if (!pending && !queued) pending = next;
+        onError();
+        return false;
+      },
+    );
+  }
+  function flush(leaving = false): Promise<boolean> {
     clearTimeout(timer);
     if (leaving) {
       const next = take();
       if (next) {
-        const sent = save(next.draft).catch(onError);
-        saving = Promise.all([saving.catch(() => undefined), sent]);
+        const sent = send(next);
+        saving = Promise.all([saving, sent]).then(([, saved]) => saved);
       }
     } else if (pending) {
       queued = pending;
       pending = null;
-      saving = saving
-        .catch(() => undefined)
-        .then(() => {
-          const next = take();
-          return next ? save(next.draft) : undefined;
-        })
-        .catch(onError);
+      saving = saving.then(() => {
+        const next = take();
+        return next ? send(next) : true;
+      });
     }
     return saving;
   }
