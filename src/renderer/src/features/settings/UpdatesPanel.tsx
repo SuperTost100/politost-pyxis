@@ -5,9 +5,10 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { App, Button, Progress } from "antd";
+import { Button, Progress } from "antd";
 import { useTranslation } from "react-i18next";
 import type { UpdateInstallView } from "@shared/updates";
+import { useConfirm } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { formatBytes } from "@shared/format-bytes";
@@ -59,7 +60,7 @@ function useUpdateInstall(): UpdateInstallView {
  */
 function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
   const { t, i18n } = useTranslation();
-  const { modal } = App.useApp();
+  const confirm = useConfirm();
   const view = useUpdateInstall();
   const [problem, setProblem] = useState<
     "workspaceBusy" | "finishFailed" | null
@@ -84,12 +85,13 @@ function UpdateInstall({ releaseUrl }: { releaseUrl: string }) {
       const result = await window.pyxis.finishUpdate({ activeJobs, confirmed });
       if (result === "workspace-busy") setProblem("workspaceBusy");
       if (result === "jobs-running")
-        modal.confirm({
+        // `finish` keeps its own failure handling, so the dialog stays, busy, until it has answered.
+        await confirm({
           title: t("updates.install.jobsTitle"),
-          content: t("updates.install.jobsBody", { count: activeJobs }),
-          okText: t("updates.install.jobsConfirm"),
-          cancelText: t("updates.install.jobsWait"),
-          onOk: () => finish(true),
+          body: t("updates.install.jobsBody", { count: activeJobs }),
+          confirm: t("updates.install.jobsConfirm"),
+          cancel: t("updates.install.jobsWait"),
+          run: () => finish(true),
         });
     } catch {
       setProblem("finishFailed");

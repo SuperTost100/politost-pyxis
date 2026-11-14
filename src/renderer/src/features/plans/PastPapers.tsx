@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { useConfirm } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { invoke } from "../../lib/ipc";
@@ -35,7 +36,7 @@ export function PastPapers({ planId }: { planId: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const [adding, setAdding] = useState(false);
   const [several, setSeveral] = useState<string[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -94,7 +95,6 @@ export function PastPapers({ planId }: { planId: string }) {
   }
   return (
     <section className="px-papers" aria-labelledby="px-papers-title">
-      {modalContext}
       <header className="px-papers-head">
         <div>
           <h2 id="px-papers-title" className="title-3">
@@ -175,11 +175,13 @@ export function PastPapers({ planId }: { planId: string }) {
                   shape="round"
                   type="text"
                   onClick={() =>
-                    modal.confirm({
+                    void confirm({
                       title: t("pastPapers.removeTitle"),
-                      content: t("pastPapers.removeBody", { title: paper.title }),
-                      okText: t("pastPapers.remove"),
-                      onOk: () => remove.mutateAsync(paper.sourceId),
+                      body: t("pastPapers.removeBody", { title: paper.title }),
+                      // The file stays in the Library, so the button keeps its own verb.
+                      confirm: t("pastPapers.removeConfirm"),
+                      // The dialog stays, busy, until the paper is out; a failure is said above the list.
+                      run: () => remove.mutateAsync(paper.sourceId).catch(() => setProblem("pastPapers.removeFailed")),
                     })
                   }
                 >

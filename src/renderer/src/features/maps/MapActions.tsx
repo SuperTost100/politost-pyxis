@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { App, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MapAddress } from "@shared/concept-map";
+import { useConfirm } from "../../components/Dialog";
 import { invoke } from "../../lib/ipc";
 import { Icon } from "../../components/Icon";
 import { useMapExport } from "./MapExport";
@@ -20,7 +21,7 @@ export function forgetMaps(client: ReturnType<typeof useQueryClient>) {
 
 /**
  * One map's actions for its menu, the same on the map page and on its tile: rename, export and delete. Renaming happens
- * in place, so `onRename` hands it to the place that shows the name. Deleting asks once, in a dialog where only the
+ * in place, so `onRename` hands it to the place that shows the name. Deleting asks once, in the one dialog, where only the
  * confirming button is solid red and Annulla has the focus; there is no undo. A map still being written is named by its
  * build (`jobId`), and deleting it stops the build. `exportView` saves the part on screen, on the map page only.
  * `deleting` and `failed` follow a delete made here.
@@ -40,12 +41,12 @@ export function useMapActions(props: {
    * Takes the confirmed delete over, as the map page does to let the map leave from its tile on Mappe. Without it the
    * map is deleted here and `onDeleted` follows.
    */
-  onDelete?: () => void;
+  onDelete?: () => Promise<void>;
   /** After the map is gone, before the queries that showed it are read again. */
   onDeleted?: () => void;
 }) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
+  const confirm = useConfirm();
   const client = useQueryClient();
   const [deleting, setDeleting] = useState(false);
   // A delete that failed says so next to the map, until the next try.
@@ -74,19 +75,16 @@ export function useMapActions(props: {
   }
   function confirmDelete() {
     setFailed(false);
-    void modal.confirm({
+    void confirm({
       title: t("map.deleteTitle", { title: props.title }),
-      content: t(props.state.writing ? "map.deleteWritingBody" : "map.deleteBody"),
-      icon: null,
-      className: "px-map-confirm",
-      width: 520,
-      okText: t("map.deleteConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("map.cancel"),
-      cancelButtonProps: { type: "text", className: "px-btn px-btn-ghost" },
-      // Something that cannot be undone never has the focus first.
-      autoFocusButton: "cancel",
-      onOk: () => (props.onDelete ? props.onDelete() : void remove()),
+      body: t(props.state.writing ? "map.deleteWritingBody" : "map.deleteBody"),
+      confirm: t("map.deleteConfirm"),
+      tone: "danger",
+      // A failed delete is said next to the map by `failed`, so the dialog closes on it as on a delete.
+      run: async () => {
+        if (props.onDelete) await props.onDelete();
+        else await remove();
+      },
     });
   }
 

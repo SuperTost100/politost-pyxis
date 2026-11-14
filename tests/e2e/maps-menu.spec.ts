@@ -348,6 +348,8 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("heading", { level: 1, name: "Teoremi sui limiti" })).toBeVisible();
+    // The focus is back on the dots that opened the menu.
+    await expect(dots).toBeFocused();
     // Confirming leads back to Mappe, where the tile goes and the other map of the topic stays.
     dialog = await askDelete();
     const position = () => page.evaluate(() => (history.state as { idx: number }).idx);

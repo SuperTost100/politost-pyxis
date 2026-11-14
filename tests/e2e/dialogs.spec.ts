@@ -307,7 +307,7 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await page.locator("a.px-exams-row", { hasText: "Fisica 1" }).click();
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
     await name.fill("Fisica generale");
-    await page.getByRole("button", { name: "Elimina", exact: true }).click();
+    await page.getByRole("button", { name: "Elimina l'esame…", exact: true }).click();
     await page.getByRole("dialog", { name: "Eliminare Fisica 1?" }).getByRole("button", { name: "Elimina l'esame" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("dialog", { name: "Uscire senza salvare?" })).toHaveCount(0);

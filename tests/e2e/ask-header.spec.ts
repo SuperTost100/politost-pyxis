@@ -177,7 +177,7 @@ test("Ask: recent chats show each subject, All chats groups them by date and sea
     await finder.getByRole("combobox", { name: "Cerca" }).fill("");
     await expect(finder.getByRole("option")).toHaveCount(7);
     // Deleting from the search closes it first, so the confirmation can be reached.
-    await answerNextMenu(app, "Elimina");
+    await answerNextMenu(app, "Elimina la chat…");
     await finder.getByRole("option", { name: /^Vettori/ }).click({ button: "right" });
     await expect(finder).toBeHidden();
     const confirm = page.getByRole("dialog", { name: "Eliminare questa chat?" });

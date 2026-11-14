@@ -164,14 +164,3 @@
   gap: 6px;
   margin-left: -8px;
 }
-
-.px-folders-confirm p {
-  margin: 0;
-}
-.px-folders-confirm ul {
-  display: grid;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding-left: 18px;
-  color: var(--ink-muted);
-}

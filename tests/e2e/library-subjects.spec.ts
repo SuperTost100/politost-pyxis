@@ -174,8 +174,10 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await animationsSettled(page);
     await expectNoAxeViolations(page);
     await saveShot(page, "library-subjects/2-delete.png");
-    await confirm.getByRole("button", { name: "Elimina", exact: true }).click();
+    await confirm.getByRole("button", { name: "Elimina la materia", exact: true }).click();
     await expect(shelf(page, "Fisica 2")).toHaveCount(0);
+    // The page behind the dialog is inert until it has closed.
+    await expect(confirm).toHaveCount(0);
     expect(await subjectNames(page)).toEqual(["Analisi 1", "Analisi matematica", "Probabilità"]);
 
     // Search narrows the shelves to the files that match, and says when nothing does.
@@ -467,9 +469,9 @@ test("A subject offers its delete as soon as its last file is removed", async ()
     await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toHaveCount(0);
     await page.keyboard.press("Escape");
     // The file goes; the page is not reopened, and the delete is there.
-    page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Azioni per Dinamica" }).click();
-    await page.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Eliminare «Dinamica»?" }).getByRole("button", { name: "Elimina il file", exact: true }).click();
     await expect(shelf(page, "Fisica 2")).toContainText("nessun file");
     await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
     await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toBeVisible();
@@ -1092,7 +1094,7 @@ test("A menu from the dots is drawn like the right-click menu of the same file, 
           const style = getComputedStyle(item);
           return { height: item.getBoundingClientRect().height, font: style.fontSize, colour: style.color };
         };
-        return { shared: el.classList.contains("px-item-menu"), details: row("Dettagli della fonte"), remove: row("Rimuovi") };
+        return { shared: el.classList.contains("px-item-menu"), details: row("Dettagli della fonte"), remove: row("Elimina il file…") };
       });
     };
     const box = (await file.boundingBox())!;
@@ -1180,10 +1182,17 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
       await expect(shelf(page, name).locator(".px-shelf-subject-none")).toHaveText("Ancora niente.");
     }
     await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
-    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    const subjectDots = shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" });
+    await subjectDots.click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina", exact: true }).click();
+    // Annulla gives the focus back to the subject's dots.
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(subjectDots).toBeFocused();
+    await subjectDots.click();
+    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }).click();
     await expect(shelf(page, "Fisica 2")).toHaveCount(0);
     await expect(shelf(page, "Analisi 1")).toBeVisible();
     await expect(empty).toBeVisible();
@@ -1196,7 +1205,7 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
     // With the last subject gone, no card is left: today's empty page.
     await shelf(page, "Analisi uno").getByRole("button", { name: "Azioni sulla materia Analisi uno" }).click();
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }).click();
     await expect(page.locator(".px-shelf-subject")).toHaveCount(0);
     await expect(empty).toBeVisible();
     await expect(page.locator(".px-shelves")).toHaveCount(0);

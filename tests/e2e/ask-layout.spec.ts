@@ -134,7 +134,7 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     await list.getByRole("link", { name: /^Mi spieghi/ }).click({ button: "right" });
     await expect
       .poll(() => lastMenuLabels(app))
-      .toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
+      .toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina la chat…"]);
     const field = page.getByRole("textbox", { name: "Nome della chat" });
     await field.fill("Scartato");
     await field.press("Escape");
@@ -146,11 +146,12 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     await expect(list.getByRole("link", { name: "Teorema fondamentale", exact: true })).toBeVisible();
 
     // Delete asks first.
-    await answerNextMenu(app, "Elimina");
+    await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(list.getByRole("link", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    await expect(list.getByRole("button", { name: "Azioni per Teorema fondamentale" })).toBeFocused();
     // The cancelled dialog is still closing; wait so the next click lands on the row.
     await expect(dialog).toHaveCount(0);
     await animationsSettled(page);
@@ -158,9 +159,9 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     await answerNextMenu(app, null);
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
     await expect(dialog).toHaveCount(0);
-    await answerNextMenu(app, "Elimina");
+    await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
-    await page.getByRole("button", { name: "Elimina per sempre" }).click();
+    await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
     await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
@@ -227,9 +228,9 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     await expect(finder).toBeHidden();
 
     // Deleting a chat leaves exactly as many as the sidebar lists, and the link goes without a reload.
-    await answerNextMenu(app, "Elimina");
+    await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Argomento 20" }).click();
-    await page.getByRole("button", { name: "Elimina per sempre" }).click();
+    await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
     await expect(list.getByRole("link", { name: "Argomento 01" })).toBeVisible();
     await expect(list.getByRole("listitem")).toHaveCount(20);
     await expect(allChats).toHaveCount(0);
@@ -240,7 +241,7 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     await page.keyboard.press("Escape");
     await answerNextMenu(app, null);
     await list.getByRole("button", { name: "Azioni per Argomento 01" }).click();
-    expect(await lastMenuLabels(app)).toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
+    expect(await lastMenuLabels(app)).toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina la chat…"]);
 
     // In English the link is named the same way and follows the same rule.
     seedChats(21, 21);

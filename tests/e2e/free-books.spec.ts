@@ -143,9 +143,12 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
 
     // Removed from the Library, the book can be added again: the dialog no longer calls it in the library.
     await again.getByRole("button", { name: /Close|Chiudi/ }).click();
-    page.on("dialog", (prompt) => void prompt.accept());
     await button(page, "Azioni per Fisica di prova").click();
-    await page.getByRole("menuitem", { name: "Rimuovi" }).click();
+    await page.getByRole("menuitem", { name: "Elimina il file…" }).click();
+    await page
+      .getByRole("dialog", { name: "Eliminare «Fisica di prova»?" })
+      .getByRole("button", { name: "Elimina il file", exact: true })
+      .click();
     await expect.poll(async () => (await imported()).length).toBe(0);
     await openBooksFromMenu(page);
     await expect(

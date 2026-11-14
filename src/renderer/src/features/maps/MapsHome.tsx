@@ -259,7 +259,7 @@ export function MapsHome() {
                   <MapCard
                     map={map}
                     failed={failed === map.id}
-                    onDelete={() => void removeMap(map)}
+                    onDelete={() => removeMap(map)}
                     onRenamed={(title) => setSaid(t("map.renamed", { title }))}
                   />
                 </li>
@@ -318,7 +318,7 @@ function MapCard({
 }: {
   map: MapEntry;
   failed: boolean;
-  onDelete: () => void;
+  onDelete: () => Promise<void>;
   onRenamed: (title: string) => void;
 }) {
   const { t } = useTranslation();

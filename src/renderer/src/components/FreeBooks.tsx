@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { invoke } from "../lib/ipc";
+import { useConfirm } from "./Dialog";
 import { Notice } from "./Notice";
 import "./FreeBooks.css";
 import { formatBytes } from "@shared/format-bytes";
@@ -41,6 +42,7 @@ export function useFreeBooks(enabled: boolean) {
 export function useBookUpdate() {
   const { t } = useTranslation();
   const client = useQueryClient();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
   async function update(sourceId: string): Promise<string | null> {
     setBusy(sourceId);
@@ -50,12 +52,20 @@ export function useBookUpdate() {
         confirmed: false,
       });
       if (!result.started && result.inUse > 0) {
-        if (!window.confirm(t("books.updateInUse", { count: result.inUse })))
-          return null;
-        result = await invoke("sources.updateBook", {
-          sourceId,
-          confirmed: true,
+        const inUse = result.inUse;
+        const answer = await confirm({
+          title: t("books.updateTitle"),
+          body: t("books.updateInUse", { count: inUse }),
+          confirm: t("books.updateConfirm"),
+          // The dialog stays, busy, until the update has started.
+          run: async () => {
+            result = await invoke("sources.updateBook", {
+              sourceId,
+              confirmed: true,
+            });
+          },
         });
+        if (answer !== "confirm") return null;
       }
       void client.invalidateQueries({ queryKey: ["sources"] });
       return result.started ? (result.version ?? null) : null;

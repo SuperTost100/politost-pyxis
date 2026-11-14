@@ -170,7 +170,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Fisica 1");
 
     // Delete asks first, lists what would go from the real counts, and offers to archive instead.
-    await settingsPage.getByRole("button", { name: "Delete", exact: true }).click();
+    await settingsPage.getByRole("button", { name: "Delete the exam…", exact: true }).click();
     const confirm = page.getByRole("dialog", { name: "Delete Fisica 1?" });
     await expect(confirm.getByRole("listitem")).toHaveText([
       "1 topic and the path",

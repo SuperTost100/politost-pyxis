@@ -34,6 +34,7 @@ import {
   useBookUpdate,
   useFreeBooks,
 } from "../../components/FreeBooks";
+import { useConfirm } from "../../components/Dialog";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
 import {
   MAX_DROPPED_FILES,
@@ -454,6 +455,7 @@ export function LibraryPanel({
     ),
   );
   const bookUpdate = useBookUpdate();
+  const confirm = useConfirm();
   async function updateBook(source: LibrarySource) {
     setInfo(null);
     setError(null);
@@ -480,7 +482,11 @@ export function LibraryPanel({
       // Items made from the old file keep their citations but go out of date, so a source that plans use asks first.
       if (
         used > 0 &&
-        !window.confirm(t("sources.replaceInUse", { count: used }))
+        (await confirm({
+          title: t("sources.replaceTitle"),
+          body: t("sources.replaceInUse", { count: used }),
+          confirm: t("sources.replace"),
+        })) !== "confirm"
       )
         return;
       const picked = await window.pyxis.showOpenDialog({
@@ -524,9 +530,14 @@ export function LibraryPanel({
       });
     }
     if (!result.started && result.inUse > 0) {
-      if (!window.confirm(t("sources.reextractInUse", { count: result.inUse })))
-        return;
-      return reextract(source, true);
+      // The dialog stays, busy, until the reading has started; a failure of it goes to the caller, as for any other.
+      await confirm({
+        title: t("sources.reextractTitle"),
+        body: t("sources.reextractInUse", { count: result.inUse }),
+        confirm: t("sources.reextract"),
+        run: () => reextract(source, true),
+      });
+      return;
     }
     if (result.started)
       setInfo(t("sources.reextractStarted", { title: source.title }));
@@ -548,9 +559,13 @@ export function LibraryPanel({
       setRefreshing(null);
     }
     if (!result.started && result.inUse > 0 && !result.unchanged) {
-      if (!window.confirm(t("sources.refreshInUse", { count: result.inUse })))
-        return;
-      return refresh(source, true);
+      await confirm({
+        title: t("sources.refreshTitle"),
+        body: t("sources.refreshInUse", { count: result.inUse }),
+        confirm: t("sources.refreshConfirm"),
+        run: () => refresh(source, true),
+      });
+      return;
     }
     setInfo(
       t(result.unchanged ? "sources.refreshUnchanged" : "sources.refreshStarted", {
@@ -560,19 +575,62 @@ export function LibraryPanel({
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
   async function remove(source: LibrarySource) {
-    if (!window.confirm(t("sources.removeTitle", { title: source.title }))) return;
-    const result = await invoke("sources.remove", {
-      sourceId: source.id,
-      confirmed: false,
+    // Both questions grow out of the element that opened the menu, and the focus goes back to it. What has the focus
+    // now can be the menu's own item, which leaves the page when the menu closes: then the file's dots, or its cover.
+    const active = document.activeElement;
+    const file = document.querySelector(`[data-source-id="${CSS.escape(source.id)}"]`);
+    const origin =
+      active instanceof HTMLElement && active !== document.body && !active.closest(".px-item-menu, .ant-dropdown")
+        ? active
+        : (file?.querySelector<HTMLElement>(`button[aria-label="${CSS.escape(t("sources.actionsFor", { title: source.title }))}"]`) ??
+          file?.querySelector<HTMLElement>("[data-source-open]") ??
+          null);
+    const taken: { result?: { removed: boolean; inUse: boolean }; done: boolean; asking: boolean } = {
+      done: false,
+      asking: false,
+    };
+    // The lists are read again once the last dialog has closed and given the focus back to the file's menu: the shelf
+    // then moves the focus on from there when the file's cover goes.
+    const finish = () => {
+      if (!taken.done || taken.asking) return;
+      if (sourceId === source.id) setSourceId(null);
+      // A subject whose last file this was is no longer in use, so its card can offer the delete.
+      void client.invalidateQueries({ queryKey: ["sources"] });
+      void client.invalidateQueries({ queryKey: ["subjects"] });
+    };
+    // The dialog stays, busy, while the file is taken out; a failure of it goes to the caller, which shows it.
+    const first = await confirm({
+      title: t("sources.removeTitle", { title: source.title }),
+      body: t(source.linked ? "sources.removeBodyLinked" : "sources.removeBody"),
+      confirm: t("sources.removeConfirm"),
+      tone: "danger",
+      origin,
+      run: async () => {
+        taken.result = await invoke("sources.remove", { sourceId: source.id, confirmed: false });
+        taken.done = taken.result.removed;
+      },
+      onClosed: finish,
     });
-    if (!result.removed && result.inUse) {
-      if (!window.confirm(t("sources.inUse"))) return;
-      await invoke("sources.remove", { sourceId: source.id, confirmed: true });
+    if (first !== "confirm") return;
+    if (taken.result && !taken.result.removed && taken.result.inUse) {
+      taken.asking = true;
+      const second = await confirm({
+        title: t("sources.inUseTitle"),
+        body: t("sources.inUse"),
+        confirm: t("sources.removeConfirm"),
+        tone: "danger",
+        origin,
+        run: async () => {
+          await invoke("sources.remove", { sourceId: source.id, confirmed: true });
+          taken.done = true;
+        },
+        onClosed: () => {
+          taken.asking = false;
+          finish();
+        },
+      });
+      if (second !== "confirm") taken.asking = false;
     }
-    if (sourceId === source.id) setSourceId(null);
-    // A subject whose last file this was is no longer in use, so its card can offer the delete.
-    void client.invalidateQueries({ queryKey: ["sources"] });
-    void client.invalidateQueries({ queryKey: ["subjects"] });
   }
   // The Content scope asks once typing pauses; Enter asks at once.
   useEffect(() => {

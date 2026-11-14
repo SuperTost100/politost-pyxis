@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Reveal } from "../../components/Controls";
+import { useConfirm } from "../../components/Dialog";
 import { Icon, type IconName } from "../../components/Icon";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
@@ -51,7 +52,7 @@ export function UnfinishedSection({ planId }: { planId: string }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { modal } = App.useApp();
+  const confirm = useConfirm();
   const list = useQuery(unfinishedQuery(planId));
   const [all, setAll] = useState(false);
   const [leaving, setLeaving] = useState<string | null>(null);
@@ -86,8 +87,8 @@ export function UnfinishedSection({ planId }: { planId: string }) {
   const unreadable = list.isError && !list.data;
   if (!entries.length && !failed && !unreadable) return status;
 
-  async function remove(entry: UnfinishedEntry) {
-    const title = unfinishedTitle(entry, t);
+  /** Deletes the activity; false when it failed, and the row stays. */
+  async function remove(entry: UnfinishedEntry): Promise<boolean> {
     setFailed(null);
     try {
       await invoke("plans.deleteUnfinished", { planId, id: entry.id });
@@ -97,9 +98,14 @@ export function UnfinishedSection({ planId }: { planId: string }) {
         setFailed(entry);
         // The row may be stale: read the list again.
         void client.invalidateQueries({ queryKey: ["unfinished", planId] });
-        return;
+        return false;
       }
     }
+    return true;
+  }
+  /** The row folds away in place, then the list is read again; the focus moves on to the row that takes its place. */
+  async function fold(entry: UnfinishedEntry) {
+    const title = unfinishedTitle(entry, t);
     focusAt.current = entries.findIndex((item) => item.id === entry.id);
     setSaid(t("examPage.unfinished.deleted", { title }));
     // The row folds away in place, then the list is read again; under reduced motion at once.
@@ -114,20 +120,22 @@ export function UnfinishedSection({ planId }: { planId: string }) {
     setLeaving(null);
   }
   function confirmDelete(entry: UnfinishedEntry) {
-    void modal.confirm({
+    let gone = false;
+    void confirm({
       title: t("examPage.unfinished.deleteTitle", {
         title: unfinishedTitle(entry, t),
       }),
-      content: deleteBody(entry, t),
-      icon: null,
-      width: 480,
-      okText: t("examPage.unfinished.deleteConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("examPage.createDialog.cancel"),
-      cancelButtonProps: { type: "text", className: "px-btn px-btn-ghost" },
-      // Something that cannot be undone never has the focus first.
-      autoFocusButton: "cancel",
-      onOk: () => void remove(entry),
+      body: deleteBody(entry, t),
+      confirm: t("examPage.unfinished.deleteConfirm"),
+      tone: "danger",
+      // The dialog stays, busy, until the activity is deleted; a failure is said above the list and the row stays.
+      run: async () => {
+        gone = await remove(entry);
+      },
+      // The row folds away and the focus moves on after the dialog has closed, so the page is not inert for it.
+      onClosed: () => {
+        if (gone) void fold(entry);
+      },
     });
   }
   const menuOf = (entry: UnfinishedEntry): MenuProps => ({

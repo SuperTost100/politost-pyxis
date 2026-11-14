@@ -364,6 +364,13 @@ test("The focus stays in the page when the file that held it is renamed out of a
       }
     };
 
+    /** Deletes a file from its menu and answers the question the menu leads to; the dialog has closed when this returns. */
+    const remove = async (title: string) => {
+      await choose(title, "Elimina il file…");
+      await page.getByRole("dialog").getByRole("button", { name: "Elimina il file", exact: true }).click();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+    };
+
     // Moved off its shelf while a search shows it: the file is still drawn, on the other subject's shelf.
     await search.fill("Fotogrammi di Quarto");
     await expect(page.getByRole("button", { name: "Fotogrammi di Quarto potere", exact: true })).toBeVisible();
@@ -374,9 +381,21 @@ test("The focus stays in the page when the file that held it is renamed out of a
     await expect(shelf(page, "Linguaggio cinematografico e storia del cinema").getByRole("button", moved)).toHaveCount(0);
     await expect(page.getByRole("button", moved)).toBeFocused();
 
+    // Annulla on the delete question gives the focus back to what opened the menu: the file's dots, or its cover when the
+    // menu came from the keyboard on the cover. The file stays.
+    const dots = page.getByRole("button", { name: "Azioni per Fotogrammi di Quarto potere", exact: true });
+    await dots.click();
+    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dots).toBeFocused();
+    await choose("Fotogrammi di Quarto potere", "Elimina il file…");
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", moved)).toBeFocused();
+
     // Removed while it is the last match: the message takes the list's place and the search field has the focus.
-    page.once("dialog", (dialog) => void dialog.accept());
-    await choose("Fotogrammi di Quarto potere", "Rimuovi");
+    await remove("Fotogrammi di Quarto potere");
     await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();
     expect(await focused(page)).not.toBe("body");
     await expect(search).toBeFocused();
@@ -394,21 +413,18 @@ test("The focus stays in the page when the file that held it is renamed out of a
 
     // The last file of a subject's shelf removed, with no filter: the focus goes to the subject's dots.
     await search.fill("");
-    page.once("dialog", (dialog) => void dialog.accept());
-    await choose("Sociologia dei media", "Rimuovi");
+    await remove("Sociologia dei media");
     await expect(shelf(page, "Sociologia dei media")).toContainText(/nessun file/);
     await expect(shelf(page, "Sociologia dei media").getByRole("button", { name: "Azioni sulla materia Sociologia dei media" })).toBeFocused();
 
     // A file removed from the middle of a shelf: the focus goes to the next cover.
     await page.getByRole("button", { name: "Azioni sulla materia Sociologia dei media" }).waitFor();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await choose("Rondolino Tomasi - Manuale del film", "Rimuovi");
+    await remove("Rondolino Tomasi - Manuale del film");
     await expect(page.getByRole("button", { name: "Rondolino Tomasi - Manuale del film", exact: true })).toHaveCount(0);
     expect(await focused(page)).not.toBe("body");
 
     // A row of "Da sistemare" removed: the focus goes to the next row.
-    page.once("dialog", (dialog) => void dialog.accept());
-    await choose("IMG_2077", "Rimuovi");
+    await remove("IMG_2077");
     await expect(page.getByRole("button", { name: "IMG_2077", exact: true })).toHaveCount(0);
     expect(await focused(page)).not.toBe("body");
 
@@ -419,8 +435,7 @@ test("The focus stays in the page when the file that held it is renamed out of a
       for (const subject of await window.pyxis.invoke("subjects.list", {})) await window.pyxis.invoke("subjects.remove", { id: subject.id, onlyEmpty: true });
     }, "u-ex");
     await page.reload();
-    page.once("dialog", (dialog) => void dialog.accept());
-    await choose("Esercizi misti", "Rimuovi");
+    await remove("Esercizi misti");
     await expect(page.getByText(/^Qui compariranno i tuoi file/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
   } finally {

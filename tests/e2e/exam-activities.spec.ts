@@ -428,9 +428,9 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
       .click();
     await expect(page.getByRole("menuitem")).toHaveText([
       "Riprendi",
-      "Elimina…",
+      "Elimina l'attività…",
     ]);
-    await page.getByRole("menuitem", { name: "Elimina…" }).click();
+    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
     const confirm = page.getByRole("dialog", {
       name: "Eliminare «Quiz su Limiti»?",
     });
@@ -440,7 +440,7 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
     await expect(
       confirm.getByRole("button", { name: "Annulla" }),
     ).toBeFocused();
-    await confirm.getByRole("button", { name: "Elimina", exact: true }).click();
+    await confirm.getByRole("button", { name: "Elimina l'attività", exact: true }).click();
     await expect(
       block.getByRole("button", { name: /^Riprendi: Quiz su Limiti/ }),
     ).toHaveCount(0);
@@ -461,22 +461,22 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
     ).toEqual({ n: 0 });
     db.close();
 
-    // Elimina from a right-click on the row: the same menu, at the pointer. Once nothing is left, the block goes.
+    // Elimina l'attività… from a right-click on the row: the same menu, at the pointer. Once nothing is left, the block goes.
     const row = block.locator(".px-unf-item").first();
     await atRest(row);
     await row.click({ button: "right" });
     await expect(page.getByRole("menuitem")).toHaveText([
       "Riprendi",
-      "Elimina…",
+      "Elimina l'attività…",
     ]);
-    await page.getByRole("menuitem", { name: "Elimina…" }).click();
+    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
     const again = page.getByRole("dialog", {
       name: "Eliminare «Quiz su Derivate»?",
     });
     await expect(again).toContainText(
       "Non hai ancora risposto a nessuna domanda.",
     );
-    await again.getByRole("button", { name: "Elimina", exact: true }).click();
+    await again.getByRole("button", { name: "Elimina l'attività", exact: true }).click();
     await expect(page.locator(".px-unf")).toHaveCount(0);
     await expect(
       page
@@ -553,10 +553,10 @@ test("Elimina on a row whose activity is already gone drops the row, with no fai
     db.prepare("DELETE FROM attempts WHERE id = ?").run(attemptId);
     db.close();
     await block.getByRole("button", { name: "Azioni su Quiz su Limiti" }).click();
-    await page.getByRole("menuitem", { name: "Elimina…" }).click();
+    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
     await page
       .getByRole("dialog", { name: "Eliminare «Quiz su Limiti»?" })
-      .getByRole("button", { name: "Elimina", exact: true })
+      .getByRole("button", { name: "Elimina l'attività", exact: true })
       .click();
     await expect(page.locator(".px-unf")).toHaveCount(0);
     await expect(page.getByText("Non riesco a eliminare")).toHaveCount(0);

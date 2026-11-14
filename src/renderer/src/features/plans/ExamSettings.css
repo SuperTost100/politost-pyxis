@@ -194,35 +194,6 @@ html:has(.px-savebar) {
   margin-left: auto;
 }
 
-/* The delete confirmation. */
-.px-delete-lose {
-  list-style: none;
-  margin: var(--space-3) 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.px-delete-lose li {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: var(--space-3);
-  align-items: start;
-}
-.px-delete-lose svg {
-  margin-top: 2px;
-  color: var(--danger);
-}
-.px-delete-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-.px-delete-footer-gap {
-  flex: 1;
-}
-
 @media (max-width: 720px) {
   .px-set-group {
     grid-template-columns: minmax(0, 1fr);

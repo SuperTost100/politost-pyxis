@@ -501,7 +501,7 @@ test("Delete all data deletes the automatic backups when ticked, keeps them when
       `Pyxis non è riuscito a cancellare le copie automatiche in ${unplugged}.`,
     );
     await animationsSettled(page);
-    await dialog.getByRole("button", { name: "OK" }).click();
+    await dialog.getByRole("button", { name: "Ho capito", exact: true }).click();
     await expect(page.getByRole("button", { name: "Salta" })).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => window.pyxis.invoke("profile.get", {})))

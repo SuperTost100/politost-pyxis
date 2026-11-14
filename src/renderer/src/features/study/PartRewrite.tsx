@@ -4,6 +4,7 @@ import { ChevronDown, PencilLine, RefreshCw, SlidersHorizontal } from "lucide-re
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { smartSections } from "@shared/smart-text";
+import { useConfirm } from "../../components/Dialog";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Notice } from "../../components/Notice";
 import { useEngineError } from "../../lib/engineError";
@@ -99,7 +100,7 @@ export function usePartRewrites({
 }) {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const describeEngineError = useEngineError();
   const [sectionOpen, setSectionOpen] = useState(false);
   const [section, setSection] = useState(0);
@@ -186,13 +187,12 @@ export function usePartRewrites({
   /** Runs a menu item of this block; false for any other key. */
   const onMenu = (key: string): boolean => {
     if (key === "rewrite-part") {
-      void modal.confirm({
-        icon: null,
+      void confirm({
         title: t(`lesson.rewriteConfirm.${noun}`),
-        content: t("lesson.rewritePartNote"),
-        okText: t("lesson.regenerate"),
-        cancelText: t("jobs.cancel"),
-        onOk: () => choose.mutate({ regenerate: true }),
+        body: t("lesson.rewritePartNote"),
+        confirm: t("lesson.regenerate"),
+        // The dialog stays, busy, until core has taken the request; a refusal shows through `choose`, as before.
+        run: () => choose.mutateAsync({ regenerate: true }).catch(() => undefined),
       });
       return true;
     }
@@ -267,7 +267,6 @@ export function usePartRewrites({
 
   const dialogs = (
     <>
-      {modalContext}
       <Modal
         open={sectionOpen}
         title={t("lesson.rewriteSectionTitle")}

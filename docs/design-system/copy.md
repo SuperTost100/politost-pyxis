@@ -21,6 +21,8 @@ No emoji in the interface.
 ## Leaving and deleting
 
 - A confirmation's title is a question in the infinitive: "Eliminare Fisica 1?", "Scollegare «Analisi 2»?". Its button repeats the action and names the thing: "Elimina l'esame", not "OK" or "Elimina per sempre".
+- In a menu, a destructive item is "Elimina" plus the thing, with "…" when a confirmation follows: "Elimina la chat…", and the confirmation's button repeats it without the dots. When nothing is deleted because the thing stays elsewhere, the action keeps its own verb: "Scollega…", "Rimuovi dall'esame". In English: "Delete the chat…" and "Delete the chat".
+- The body says what is lost and what stays: "Le fonti restano nella Libreria." A confirmation that only informs has one button, "Ho capito", and the X.
 - Leaving with work that would be lost is always asked in the same words: "Uscire senza salvare?", one sentence on what would be lost ("Il disegno dopo l'ultimo salvataggio andrà perso."), "Resta qui" and "Esci senza salvare". In English: "Leave without saving?", "Stay here" and "Leave without saving".
 - A button that discards changes without leaving keeps its own words, such as "Annulla le modifiche" on a save bar.
 

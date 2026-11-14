@@ -301,6 +301,24 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(hours).toBeFocused();
     await expect(hours).toBeInViewport();
 
+    // Taking a file out of the exam asks first and says what stays; the file stays in the Library, so the button keeps its own verb.
+    await page.evaluate(() => {
+      location.hash = "/plans/p-fis/sources";
+    });
+    await page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" }).click();
+    await page.getByRole("menuitem", { name: "Remove from exam" }).click();
+    const removal = page.getByRole("dialog", { name: "Remove “Fisica I, Mazzoldi” from the exam?" });
+    await expect(removal).toContainText("the source stays in the Library");
+    await expect(removal.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await removal.getByRole("button", { name: "Cancel" }).click();
+    await expect(removal).toHaveCount(0);
+    await expect(page.getByText("Fisica I, Mazzoldi").first()).toBeVisible();
+    await page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" }).click();
+    await page.getByRole("menuitem", { name: "Remove from exam" }).click();
+    await page.getByRole("dialog", { name: "Remove “Fisica I, Mazzoldi” from the exam?" }).getByRole("button", { name: "Remove from exam", exact: true }).click();
+    await expect(removal).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" })).toHaveCount(0);
+
     // Old addresses of the removed tabs open the page.
     await page.evaluate(() => {
       location.hash = "/plans/p-fis/progress";

@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -287,6 +287,43 @@ test("The Library lists its linked folders, reads one again, finds one that move
   }
 });
 
+test("Deleting a file of a linked folder says it stays in the folder, and the next look at the folder does not bring it back", async () => {
+  test.setTimeout(180000);
+  const { userData, app, page } = await start();
+  const folders = courses();
+  try {
+    await link(app, page, [folders.fisica]);
+    await allRead(page, 3);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
+    await page.getByRole("button", { name: "Azioni per Temi d'esame", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: "Eliminare «Temi d'esame»?" });
+    await expect(confirm).toContainText("Il file esce dalla Libreria.");
+    await expect(confirm).toContainText("Nella cartella collegata il file resta, ma Pyxis non lo legge più.");
+    await expect(confirm.getByRole("button", { name: "Annulla" })).toBeFocused();
+    await confirm.getByRole("button", { name: "Elimina il file", exact: true }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Temi d'esame", exact: true })).toHaveCount(0);
+
+    // The folder is looked at again: the file is still there and is not read again.
+    const folder = () => page.evaluate(async () => (await window.pyxis.invoke("sources.linkedFolders", {}))[0]!);
+    const before = (await folder()).checkedAt;
+    await page.evaluate(async () => {
+      const [one] = await window.pyxis.invoke("sources.linkedFolders", {});
+      await window.pyxis.invoke("sources.rereadFolder", { folderId: one!.id });
+    });
+    await expect.poll(async () => (await folder()).checkedAt, { timeout: 30000 }).not.toBe(before);
+    expect((await listed(page)).map((source) => source.title).sort()).toEqual(["Campo elettrico", "Legge di Gauss"]);
+    expect(existsSync(join(folders.fisica, "Temi d'esame.txt"))).toBe(true);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dirname(folders.base), { recursive: true, force: true });
+  }
+});
+
 test("An unlink that fails changes nothing and says so in the list; one during a reading stops it and leaves nothing in Attività", async () => {
   test.setTimeout(180000);
   const { userData, app, page } = await start();
@@ -309,6 +346,9 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     await dots(page, folders.analisi).click();
     await page.getByRole("menuitem", { name: "Scollega…" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
+    // The confirmation closes, then the list opens again on the folder.
+    await expect(page.getByRole("dialog", { name: /^Scollegare/ })).toHaveCount(0);
+    await expect(list(page)).toBeVisible();
     await expect(row(page, folders.analisi)).toContainText(
       `Non sono riuscito a scollegare ${label(folders.analisi)}, e non ho cambiato niente. Riprova.`,
     );

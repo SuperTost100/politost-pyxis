@@ -168,7 +168,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     );
     const open = page.locator(".px-item-menu:not(.ant-dropdown-hidden)");
 
-    // A flashcard's row: its last item, Elimina, asks to confirm.
+    // A flashcard's row: its last item, Elimina la flashcard…, asks to confirm.
     await page.evaluate(() => {
       location.hash = "#/flashcards/all";
     });
@@ -185,7 +185,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    // A Library cover: its last item, Rimuovi, asks to confirm.
+    // A Library cover: its last item, Elimina il file…, asks to confirm.
     await page.evaluate(() => {
       location.hash = "#/exams/library";
     });
@@ -196,15 +196,13 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     const last = { index: await coverInCorner(page, covers) };
     await rightClickInCorner(page, covers.nth(last.index));
     await expectMenuInWindow(page, open);
-    const confirmed = page.waitForEvent("dialog").then(async (dialog) => {
-      const message = dialog.message();
-      await dialog.dismiss();
-      return message;
-    });
     // The menu's own last item, by name: "Sposta in" draws its submenu inside the menu, and where the pointer comes to
     // rest on it after the right-click (the macOS layout), the last item counted would be the submenu's.
-    await open.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
-    expect(await confirmed).toMatch(/^Rimuovere «Dispensa \d\d»\?$/);
+    await open.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: /^Eliminare «Dispensa \d\d»\?$/ });
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // The same cover's dots open the menu inside the window. "Sposta in", taller than the window, opens inside it too and
     // scrolls inside itself, and the menu it grows from stays where it was.
