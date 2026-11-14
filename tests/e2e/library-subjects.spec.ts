@@ -1142,6 +1142,39 @@ test("A menu from the dots is drawn like the right-click menu of the same file, 
   }
 });
 
+/**
+ * The tooltip of a cover, with what the page knew when it did not come: the macOS run of 2026-11-14 found none after a
+ * hover and its report held only the page's accessibility tree, which cannot tell a tooltip that never opened from one
+ * that closed, or a title the cover did not cut from a pointer that was not over the cover.
+ */
+async function expectTip(page: Page, button: Locator, title: string) {
+  const tip = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)");
+  try {
+    await expect(tip).toHaveText(title);
+  } catch (error) {
+    const known = await button.evaluate((node) => {
+      const text = node.querySelector<HTMLElement>(".px-cover-title");
+      const box = node.getBoundingClientRect();
+      return {
+        hovered: node.matches(":hover"),
+        buttonBox: [box.x, box.y, box.width, box.height].map(Math.round),
+        pointerOver: (() => {
+          const over = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return over ? `${over.tagName.toLowerCase()}.${over.getAttribute("class") ?? ""}` : null;
+        })(),
+        titleScroll: text?.scrollHeight ?? null,
+        titleClient: text?.clientHeight ?? null,
+        titleFont: text ? getComputedStyle(text).fontFamily : null,
+        tooltips: [...document.querySelectorAll(".ant-tooltip")].map((el) => `${el.className}: ${el.textContent}`),
+        focused: document.hasFocus(),
+        visibility: document.visibilityState,
+        pixelRatio: window.devicePixelRatio,
+      };
+    });
+    throw new Error(`${(error as Error).message}\nThe page knew: ${JSON.stringify(known, null, 2)}`);
+  }
+}
+
 test("A cover's full title shows on hover and on keyboard focus, and its state is still described", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
@@ -1158,14 +1191,14 @@ test("A cover's full title shows on hover and on keyboard focus, and its state i
     await expect(open(second)).toBeVisible();
     // A title the cover cuts shows whole on hover...
     await open(first).hover();
-    await expect(tip).toHaveText(first);
+    await expectTip(page, open(first), first);
     await page.mouse.move(5, 5);
     await expect(tip).toHaveCount(0);
     // ...and on keyboard focus.
     await open(second).focus();
-    await expect(tip).toHaveText(second);
+    await expectTip(page, open(second), second);
     await open(first).focus();
-    await expect(tip).toHaveText(first);
+    await expectTip(page, open(first), first);
     await page.keyboard.press("Escape");
     await expect(tip).toHaveCount(0);
     // A title that fits says nothing more.
