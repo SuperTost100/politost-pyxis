@@ -13,7 +13,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { SHOTS, saveShot } from "./shots";
-import { fromChiediToExams, fromExamsMenu } from "./doors";
+import { fromChiediToExams, toAllFlashcards } from "./doors";
 
 
 const DAY = 86_400_000;
@@ -110,7 +110,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
         ('c-old','p-phys','t-kin','Velocità media?','Spazio diviso tempo.',1);
     `);
     await page.reload();
-    await fromExamsMenu(page, "All flashcards");
+    await toAllFlashcards(page);
     await expect(page.getByRole("status")).toHaveText("1 flashcard");
 
     // A file that is not a package says so.

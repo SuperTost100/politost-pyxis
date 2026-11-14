@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { MenuProps } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -6,6 +7,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { EmptyState } from "../../app/layouts/TaskLayouts";
 import { Button } from "../../components/Button";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { LoadError } from "../../components/LoadError";
 import { SkeletonRows } from "../../components/Skeleton";
 import { errorDetails } from "../../lib/errorDetails";
@@ -13,6 +15,7 @@ import { claimOnce } from "../../lib/claimOnce";
 import { cardSectionsQuery } from "../../lib/queries";
 import { useStillHere } from "../../lib/useStillHere";
 import { stepPath } from "../plans/reopen";
+import { AnkiModal } from "../home/AnkiModal";
 import { NewCardDialog, type NewCardSide } from "./NewCardDialog";
 import "./FlashcardsHome.css";
 
@@ -51,8 +54,9 @@ function sessionOf(): Storage | undefined {
 const headingId = (subjectId: string | null) => `px-fc-${subjectId ?? "none"}`;
 
 /**
- * The Flashcard section: every subject's flashcards, by exam and topic, with those with no exam last, and one action
- * to review everything due today. The counts come from core in one read and match what each review shows.
+ * The Flashcard section: every subject's flashcards, by exam and topic, with those with no exam last. The head holds
+ * the page's menu (Anki), "Sfoglia tutte" and "Nuova flashcard"; while cards are due, a band under it offers the review
+ * of everything due today. The counts come from core in one read and match what each review shows.
  */
 export function FlashcardsHome() {
   const { t } = useTranslation();
@@ -61,6 +65,28 @@ export function FlashcardsHome() {
   const sections = useQuery(cardSectionsQuery);
   const data = sections.data;
   const go = (path: string) => navigate(path);
+  const client = useQueryClient();
+
+  // Import and export Anki packages: the page's menu, in the dots of the head and on a right-click on it.
+  const [anki, setAnki] = useState<"import" | "export" | null>(null);
+  const menu: MenuProps = {
+    items: [
+      { key: "import", label: t("cardImport.open") },
+      { key: "export", label: t("cardExport.open") },
+    ],
+    onClick: ({ key }) => setAnki(key === "export" ? "export" : "import"),
+  };
+
+  // The band under the head. It stays mounted once the counts are in and closes when nothing is due, so a review that
+  // finishes the day's cards closes it in place instead of removing it from under the page, and it keeps the last
+  // counts it showed while it closes.
+  const due = data?.due ?? 0;
+  const dueSubjects = data ? data.subjects.filter((subject) => subject.due > 0).length : 0;
+  const [shown, setShown] = useState({ due, subjects: dueSubjects });
+  if (due > 0 && (shown.due !== due || shown.subjects !== dueSubjects)) setShown({ due, subjects: dueSubjects });
+  // A page that opens with its counts already known (a return to it) shows the band as it was; one that waits for them
+  // opens it out of the head (FlashcardsHome.css).
+  const [waited] = useState(!data);
 
   // "Nuova flashcard": the page's button opens it; another page opens it with `newCardPath` (`?new=…&subject=…`).
   const [params, setParams] = useSearchParams();
@@ -149,34 +175,62 @@ export function FlashcardsHome() {
       </div>
     );
 
+  const hasCards = data !== undefined && data.subjects.length > 0;
   return (
     <div className="px-fc">
-      <div className="px-fc-head">
-        <div>
+      <MenuItemArea as="div" className="px-fc-head" menu={menu} region={t("cardBrowser.more")} disabled={!data}>
+        <div className="px-fc-head-text">
           <h1 className="title-1">{t("flashcards.title")}</h1>
           <p className="px-fc-lead">{t("flashcards.lead")}</p>
         </div>
-        {data && data.subjects.length > 0 ? (
-          // One primary button: the review while something is due, else the new flashcard.
+        {data ? (
           <div className="px-fc-actions">
-            {data.due > 0 ? (
+            <MenuButton rightClick menu={menu} label={t("cardBrowser.more")} />
+            {hasCards ? (
               <>
-                {newCard("secondary")}
-                <Button onClick={() => go("/cards/due")}>{t("flashcards.reviewToday", { count: data.due })}</Button>
+                <Button variant="secondary" focusKey="flashcards:all" onClick={() => go("/flashcards/all")}>
+                  {t("flashcards.browseAll")}
+                </Button>
+                {/* One primary button in the head: the new flashcard, while the band holds the review. */}
+                {newCard(due > 0 ? "secondary" : "primary")}
               </>
-            ) : (
-              <>
-                <p className="small px-fc-none">{t("flashcards.noneDue")}</p>
-                {newCard("primary")}
-              </>
-            )}
+            ) : null}
           </div>
         ) : null}
-      </div>
+      </MenuItemArea>
+      {data ? (
+        <div className="px-fc-band" data-open={due > 0} data-waited={waited || undefined} inert={due === 0}>
+          <div className="px-fc-band-clip">
+            <div className="px-fc-band-pad">
+              <div className="px-fc-band-bar">
+                <p>
+                  {t("flashcards.todayLine", {
+                    count: shown.due,
+                    subjects: t("flashcards.todaySubjects", { count: shown.subjects }),
+                  })}
+                </p>
+                <Button onClick={() => go("/cards/due")}>{t("flashcards.reviewToday", { count: shown.due })}</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {body}
       <p className="visually-hidden" role="status">
         {said}
       </p>
+      <AnkiModal
+        mode={anki ?? "import"}
+        open={anki !== null}
+        onClose={() => setAnki(null)}
+        onImported={() =>
+          void Promise.all(
+            ["card-sections", "card-browse", "cards", "card-queue", "card-suspended", "review-session"].map((key) =>
+              client.invalidateQueries({ queryKey: [key] }),
+            ),
+          )
+        }
+      />
       <NewCardDialog
         open={dialog !== null}
         side={dialog?.side ?? "hand"}

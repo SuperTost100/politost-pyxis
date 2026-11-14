@@ -170,7 +170,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
 
     // A flashcard's row: its last item, Elimina, asks to confirm.
     await page.evaluate(() => {
-      location.hash = "#/exams/cards";
+      location.hash = "#/flashcards/all";
     });
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-text", "lg");

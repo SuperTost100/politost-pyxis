@@ -73,12 +73,17 @@ describe("isReminderTime", () => {
 });
 
 describe("isOpenablePath", () => {
-  it("lets main open a plan page or the Flashcards page and nothing else", () => {
+  it("lets main open a plan page, the list of every flashcard or the daily review, and nothing else", () => {
     expect(isOpenablePath("/plans/0198-ab_C")).toBe(true);
+    expect(isOpenablePath("/flashcards/all")).toBe(true);
+    expect(isOpenablePath("/cards/due")).toBe(true);
+    // The list's old address redirects to the new one, so a request that still names it opens the list.
     expect(isOpenablePath("/exams/cards")).toBe(true);
     for (const bad of [
       "/plans/",
       "/plans/a/b",
+      "/flashcards/all/../../settings",
+      "/flashcards/other",
       "/plans/../settings",
       "/settings/data",
       "https://example.com",
