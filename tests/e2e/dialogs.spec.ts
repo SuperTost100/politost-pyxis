@@ -230,8 +230,8 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await expect(name).toHaveValue("Fisica generale");
     await expect(name).toBeFocused();
 
-    // The page's own link back, answered with Escape.
-    await page.getByRole("link", { name: "Fisica 1" }).click();
+    // The page's back control, answered with Escape.
+    await page.getByRole("button", { name: "Torna a Fisica 1" }).click();
     question = await expectLeaveQuestion(page, body);
     await page.keyboard.press("Escape");
     await expect(question).toHaveCount(0);

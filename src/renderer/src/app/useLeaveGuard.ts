@@ -43,7 +43,7 @@ export function useLeaveGuard({
   const current = useRef(blocker);
   current.current = blocker;
 
-  // What had the focus before the one that has it now: a click on a link takes the focus before the page asks.
+  // What had the focus before the one that has it now: a click on a link or a button takes it before the page asks.
   const focus = useRef<{ now: HTMLElement | null; before: HTMLElement | null }>({ now: null, before: null });
   useEffect(() => {
     const note = (event: FocusEvent) => {
@@ -59,8 +59,8 @@ export function useLeaveGuard({
     const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body
       ? document.activeElement
       : null;
-    const clickedLink =
-      document.documentElement.dataset.focusSource === "pointer" && Boolean(active?.matches("a[href]"));
+    const clicked =
+      document.documentElement.dataset.focusSource === "pointer" && Boolean(active?.matches("a[href], button"));
     const before = focus.current.before?.isConnected ? focus.current.before : null;
     void confirm({
       title: t("leave.title"),
@@ -69,7 +69,7 @@ export function useLeaveGuard({
       confirm: t("leave.go"),
       tone: "danger",
       origin: active,
-      returnFocus: stayingFocus(active, before, clickedLink),
+      returnFocus: stayingFocus(active, before, clicked),
     }).then((answer) => {
       const now = current.current;
       if (now.state !== "blocked") return;

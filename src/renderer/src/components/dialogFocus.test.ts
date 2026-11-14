@@ -74,8 +74,9 @@ describe("outsideClickCloses", () => {
 });
 
 describe("stayingFocus", () => {
-  it("goes back to the field the student was in before clicking a link", () => {
+  it("goes back to the field the student was in before clicking a link or a button", () => {
     expect(stayingFocus("sidebar link", "title field", true)).toBe("title field");
+    expect(stayingFocus("back control", "title field", true)).toBe("title field");
   });
 
   it("stays where it is from the keyboard or with nothing before", () => {

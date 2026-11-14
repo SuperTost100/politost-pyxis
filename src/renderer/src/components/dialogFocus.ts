@@ -53,10 +53,10 @@ export function outsideClickCloses(typed: string[], busy: boolean): boolean {
 }
 
 /**
- * Where the focus goes when the student stays on a page they tried to leave. A click on a link moves the focus onto the
- * link before the page asks, so then it goes back to what had it before the click; from the keyboard, or with anything
- * other than a link, it stays where it is.
+ * Where the focus goes when the student stays on a page they tried to leave. A click on a link or a button (the sidebar,
+ * the back control) moves the focus onto it before the page asks, so then it goes back to what had it before the click;
+ * from the keyboard it stays where it is.
  */
-export function stayingFocus<T>(active: T | null, previous: T | null, clickedLink: boolean): T | null {
-  return clickedLink && previous !== null ? previous : active;
+export function stayingFocus<T>(active: T | null, previous: T | null, clicked: boolean): T | null {
+  return clicked && previous !== null ? previous : active;
 }
