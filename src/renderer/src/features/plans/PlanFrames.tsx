@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./PlanPage.css";
 import { Button, Input, Progress } from "antd";
 import "./PlanWizard.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { ErrorState } from "../../components/ErrorState";
@@ -15,6 +15,7 @@ import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
+import { readTrail, skipSpentForms, watchTrail } from "../../app/history";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
 import { StudyLayout } from "../study/StudyBar";
@@ -85,7 +86,8 @@ function Wizard() {
         ) : (
           <MaterialPrimary
             draft={draft}
-            onCreated={(planId) => setParams({ build: planId })}
+            // The wait takes the form's place in the history: once the exam exists, nothing leads back to the form.
+            onCreated={(planId) => setParams({ build: planId }, { replace: true })}
           />
         )
       }
@@ -115,6 +117,9 @@ function Wizard() {
   );
 }
 
+/** The new exam's form and the guided flow, not its build wait. */
+const isNewExamForm = (path: string) => path.startsWith("/plans/new") && !path.includes("build=");
+
 const SETTLED = ["succeeded", "failed", "cancelled", "interrupted"];
 
 /**
@@ -126,6 +131,11 @@ function BuildScreen({ planId }: { planId: string }) {
   const navigate = useNavigate();
   // Leaving never stops the build, which goes on in Attività, so this page asks nothing.
   const back = usePlace({});
+  // The guided flow replaced its own page with this one, and the new exam's form is behind that: once the exam exists
+  // they are not a place to go back to, so the way back leads to where the new exam was started.
+  const { key } = useLocation();
+  const trail = useSyncExternalStore(watchTrail, readTrail);
+  useEffect(() => skipSpentForms(key, isNewExamForm), [key, trail]);
   const build = useQuery({
     queryKey: ["plan-build", planId],
     queryFn: () => invoke("plans.build", { planId }),

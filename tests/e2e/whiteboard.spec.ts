@@ -109,7 +109,10 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         };
         await expect.poll(readPng, { timeout: 20000 }).not.toBeNull();
         const png = readPng()!;
-        expect([png.width, png.height]).toEqual([1200, 700]);
+        // The picture is the board as drawn: the canvas's own size.
+        expect([png.width, png.height]).toEqual(
+          await page.locator(".px-whiteboard canvas").evaluate((canvas) => [(canvas as HTMLCanvasElement).width, (canvas as HTMLCanvasElement).height]),
+        );
         expect(Array.from(png.data.subarray(0, 4))).toEqual(rgba);
         // Save writes a file only. It must not leave an image for Ask to preview.
         expect(
@@ -233,6 +236,123 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     await page.getByRole("button", { name: "Torna a Chiedi" }).click();
     await page.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+const SIZES = [
+  { width: 960, height: 640 },
+  { width: 1280, height: 720 },
+  { width: 1280, height: 1000 },
+] as const;
+
+type Box = { x: number; y: number; width: number; height: number };
+const boxOf = async (page: Page, selector: string): Promise<Box> => {
+  const box = await page.locator(selector).first().boundingBox();
+  if (!box) throw new Error(`${selector} has no box`);
+  return box;
+};
+function expectSame(inner: Box, outer: Box, what: string, edge = 1) {
+  for (const key of ["x", "y", "width", "height"] as const)
+    expect(Math.abs(inner[key] - outer[key]), `${what}: ${key} ${inner[key]} against ${outer[key]}`).toBeLessThanOrEqual(edge);
+}
+
+test("the board fills its window at every size, and a drawing is neither cut nor stretched when the window changes", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-size-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.evaluate(() => {
+        sessionStorage.removeItem("pyxis-board");
+        location.hash = "/tools/whiteboard";
+      });
+      await page.reload();
+      await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
+      // The canvas is the whole board, with no strip where drawing does nothing, and nothing runs below the window.
+      const board = await boxOf(page, ".px-whiteboard");
+      expectSame(await boxOf(page, ".px-whiteboard canvas"), board, `${size.width}x${size.height}`);
+      expect(board.y + board.height, `${size.width}x${size.height}: the board ends inside the window`).toBeLessThanOrEqual(size.height + 1);
+      expect(board.height, `${size.width}x${size.height}: the board is most of the window`).toBeGreaterThan(size.height - 140);
+    }
+    // A stroke drawn at one size is where it was drawn after the window changes and changes back.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    await page.reload();
+    await draw(page);
+    const stored = () => page.evaluate(() => sessionStorage.getItem("pyxis-board"));
+    const drawn = await stored();
+    const start = await page.evaluate(() => {
+      const first = (JSON.parse(sessionStorage.getItem("pyxis-board") ?? "[]") as Array<{ points: Array<{ x: number; y: number }> }>)[0]!.points[0]!;
+      return first;
+    });
+    const inkAtStart = () =>
+      page.evaluate(({ x, y }) => {
+        const canvas = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+        const ratio = canvas.width / canvas.getBoundingClientRect().width;
+        const [r, g, b] = canvas.getContext("2d")!.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data;
+        const surface = getComputedStyle(document.documentElement).getPropertyValue("--surface").trim();
+        const probe = document.createElement("canvas").getContext("2d")!;
+        probe.fillStyle = surface;
+        probe.fillRect(0, 0, 1, 1);
+        const [sr, sg, sb] = probe.getImageData(0, 0, 1, 1).data;
+        return Math.abs(r! - sr!) + Math.abs(g! - sg!) + Math.abs(b! - sb!) > 60;
+      }, start);
+    await expect.poll(inkAtStart).toBe(true);
+    for (const size of [{ width: 960, height: 640 }, { width: 1280, height: 1000 }, { width: 1280, height: 800 }]) {
+      await page.setViewportSize(size);
+      await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
+      expect(await stored()).toBe(drawn);
+    }
+    await expect.poll(inkAtStart).toBe(true);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the graph and Python fill their window at every size", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-tools-size-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.evaluate(() => {
+        location.hash = "/tools/graph";
+      });
+      await page.reload();
+      await expect(page.locator(".px-graph")).toBeVisible();
+      const stage = await boxOf(page, ".focus-main.is-stage");
+      // The stage's border is one pixel on each side.
+      expectSame(await boxOf(page, ".px-graph"), stage, `graph ${size.width}x${size.height}`, 2);
+      expect(stage.y + stage.height, `graph ${size.width}x${size.height}: the stage ends inside the window`).toBeLessThanOrEqual(size.height + 1);
+      expect(stage.height).toBeGreaterThan(size.height - 140);
+      await page.evaluate(() => {
+        location.hash = "/tools/python";
+      });
+      await page.reload();
+      await expect(page.getByRole("textbox", { name: "Codice" })).toBeVisible();
+      // The editor sits inside the window's width, with nothing pushing the page sideways.
+      const editor = await boxOf(page, "textarea");
+      expect(editor.x).toBeGreaterThanOrEqual(0);
+      expect(editor.x + editor.width).toBeLessThanOrEqual(size.width);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
   } finally {
     await app.close();
     removeTestFolder(userData);
