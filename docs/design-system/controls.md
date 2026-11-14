@@ -87,7 +87,7 @@ All three use `--radius-field`.
 
 ## Dialogs
 
-Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with buttons is asked through `useConfirm`, so a confirmation, a form and a notice look and behave the same. The browser's own boxes (`window.confirm`) and Ant Design's `Modal` and `modal.confirm` are on their way out.
+Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with buttons is asked through `useConfirm`, so a confirmation, a form and a notice look and behave the same. The browser's own boxes (`window.confirm`) and Ant Design's `modal.confirm` and `modal.warning` are gone; Ant Design's `Modal` forms are on their way out.
 
 | Rule           | What it does                                                                                                                                                                                                                                                    |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -104,6 +104,21 @@ Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with butt
 | Layer          | A native modal `<dialog>`, in the top layer above the source panel, popovers and menus. Menus opened inside it are drawn inside it                                                                                                                              |
 
 One question at a time: asked while another is open, `useConfirm` answers "cancel" at once and nothing opens.
+
+### Naming a destructive action
+
+A menu names what it deletes, and the confirmation repeats the words on its button.
+
+| Where                    | Rule                                                                                         | Example                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| A menu item              | "Elimina" plus the thing, with "…" when a confirmation follows, in soft red after a hairline | "Elimina la chat…", "Elimina il file…", "Elimina la flashcard…"      |
+| The confirming button    | The same words without "…", as `danger-solid`, never "Elimina" alone or "Elimina per sempre" | "Elimina la chat", "Elimina l'esame"                                 |
+| The title                | A question that names the thing                                                              | "Eliminare «Fisica 1»?"                                              |
+| The body                 | What is lost and what stays                                                                  | "Le fonti restano nella Libreria."                                   |
+| Nothing is deleted       | The action keeps its own verb, as the thing stays elsewhere                                  | "Scollega…", "Rimuovi dall'esame"                                    |
+| An item with no question | No "…": an action Pyxis can undo runs at once                                                | "Elimina la flashcard" on a card Pyxis wrote, which Undo brings back |
+
+A confirmation that starts work passes it as `run`, so the dialog stays, busy, until it ends and cannot start it twice. When the work removes what the dialog grew out of, the focus is placed once the dialog has closed (`onClosed`), because the page behind it is inert until then.
 
 ### Leaving without saving
 

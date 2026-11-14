@@ -1,10 +1,11 @@
-import { Button, Modal } from "antd";
+import { Button } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
+import { useConfirm } from "../../components/Dialog";
 import { ErrorState } from "../../components/ErrorState";
 import { Notice } from "../../components/Notice";
 import { SkeletonRows } from "../../components/Skeleton";
@@ -38,7 +39,7 @@ export function PlanSources({ planId }: { planId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const busyRef = useRef(false);
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const refresh = () => refreshPlan(client, planId);
   async function action(run: () => Promise<unknown>) {
     if (busyRef.current) return;
@@ -76,7 +77,6 @@ export function PlanSources({ planId }: { planId: string }) {
   }
   return (
     <div className="px-exam-sub">
-      {modalContext}
       <BackControl target={back} variant="page" />
       <h1 className="title-1">{t("examPage.material")}</h1>
       {error ? <Notice tone="danger">{error}</Notice> : null}
@@ -100,12 +100,15 @@ export function PlanSources({ planId }: { planId: string }) {
               {plan.data.sources.map((source) => {
                 const removeItem = { key: "remove", label: t("planOverview.removeSource"), danger: true };
                 const askRemove = () =>
-                  modal.confirm({
-                    title: t("planOverview.removeSource"),
-                    content: t("planOverview.removeSourceHelp", {
+                  void confirm({
+                    title: t("planOverview.removeSourceTitle", {
                       title: source.title,
                     }),
-                    onOk: () =>
+                    body: t("planOverview.removeSourceHelp"),
+                    // The file stays in the Library, so the button keeps its own verb.
+                    confirm: t("planOverview.removeSource"),
+                    // The dialog stays, busy, until the source is out; a failure is said above the list.
+                    run: () =>
                       action(async () => {
                         await invoke("plans.removeSource", {
                           planId,

@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button as PxButton } from "../../components/Button";
+import { useConfirm } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -81,7 +82,7 @@ export function CardBrowser({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [planId, setPlanId] = useState(initialPlanId);
@@ -208,9 +209,9 @@ export function CardBrowser({
   }
 
   function ask(card: Card) {
-    modal.confirm({
+    void confirm({
       title: t("cardBrowser.deleteTitle"),
-      content: (
+      body: (
         <>
           <p>{cardName(card)}</p>
           <p>
@@ -222,20 +223,19 @@ export function CardBrowser({
           </p>
         </>
       ),
-      okText: t(card.handMade ? "cards.deleteConfirm" : "cards.delete"),
-      okButtonProps: { danger: true },
-      cancelText: t("cardBrowser.cancel"),
-      onOk: async () => {
-        await change(
+      confirm: t("cards.deleteConfirm"),
+      tone: "danger",
+      run: () =>
+        change(
           invoke("study.remove", { cardId: card.id }),
           t(
             card.handMade
               ? "cardBrowser.deletedForever"
               : "cardBrowser.deleted",
           ),
-        );
-        summary.current?.focus();
-      },
+        ),
+      // The card's row is gone, so the focus goes to the list's summary line once the dialog has closed.
+      onClosed: () => summary.current?.focus(),
     });
   }
 
@@ -508,7 +508,6 @@ export function CardBrowser({
           <MenuButton rightClick menu={ankiMenu} label={t("cardBrowser.more")} />
         </MenuItemArea>
       </div>
-      {modalContext}
       {ankiModal}
       {emptyPage ? (
         <EmptyState

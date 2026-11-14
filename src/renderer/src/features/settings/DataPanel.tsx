@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Checkbox } from "antd";
+import { Button, Checkbox } from "antd";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatBytes } from "@shared/format-bytes";
 import { ControlGroup, ControlList, ControlRow, Reveal } from "../../components/Controls";
 import { CrashReportsSwitch } from "../../components/CrashReportsSwitch";
+import { useConfirm } from "../../components/Dialog";
 import { OcrDataRow } from "../../components/OcrData";
 import { invoke } from "../../lib/ipc";
 import { BackupsGroup, useAutoBackups, type Archiving } from "./AutoBackups";
@@ -23,7 +24,7 @@ export function DataPanel({
 }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
-  const { modal } = App.useApp();
+  const confirm = useConfirm();
   const ids = { folder: useId(), space: useId(), wipe: useId() };
   const [moving, setMoving] = useState(false);
   const [archiving, setArchiving] = useState<Archiving>(null);
@@ -105,11 +106,13 @@ export function DataPanel({
           return;
         }
         // The reload lands on setup, so say what was left before it.
-        modal.warning({
+        // The X and the button both close it, and either way the app reloads.
+        void confirm({
           title: t("settings.wipeBackupsLeftTitle"),
-          content: t("settings.wipeBackupsLeft", { folder: backupFolder ?? "" }),
-          afterClose: () => window.location.reload(),
-        });
+          body: t("settings.wipeBackupsLeft", { folder: backupFolder ?? "" }),
+          confirm: t("settings.wipeBackupsLeftConfirm"),
+          cancel: false,
+        }).then(() => window.location.reload());
       })
       .catch((error: unknown) => {
         setWiping(false);

@@ -26,6 +26,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { createAnswerQueue } from "./answerQueue";
+import { useConfirm } from "../../components/Dialog";
 import { ErrorState } from "../../components/ErrorState";
 import { MenuButton } from "../../components/ItemMenu";
 import { Notice } from "../../components/Notice";
@@ -78,7 +79,7 @@ export function LegacyLessonPage({
   useActiveTime(planId, topicId || null);
   const navigate = useNavigate();
   const client = useQueryClient();
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const [live, setLive] = useState("");
   const [livePassages, setLivePassages] = useState<string[]>([]);
   const [liveCitations, setLiveCitations] = useState<string[]>([]);
@@ -358,16 +359,14 @@ export function LegacyLessonPage({
             setPartsOpen(true);
           }
           if (action === "regenerate")
-            void modal.confirm({
-              icon: null,
+            void confirm({
               title: t("lesson.regenerateConfirm"),
-              content: t("lesson.regenerateNote"),
-              okText: t("lesson.regenerate"),
-              cancelText: t("jobs.cancel"),
-              onOk: () => {
-                regenerate.current = true;
-                void lesson.refetch();
-              },
+              body: t("lesson.regenerateNote"),
+              confirm: t("lesson.regenerate"),
+            }).then((answer) => {
+              if (answer !== "confirm") return;
+              regenerate.current = true;
+              void lesson.refetch();
             });
           if (action === "section") {
             setSection(0);
@@ -403,7 +402,6 @@ export function LegacyLessonPage({
       tools={fixed ? null : levelMenu}
       menu={moreMenu}
     >
-      {modalContext}
       {notice ? (
         <div className="px-reader-note">
           <Notice tone={notice.tone} action={notice.action} secondary={notice.secondary} details={notice.details}>

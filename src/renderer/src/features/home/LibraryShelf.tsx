@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Modal, Tooltip, type MenuProps } from "antd";
+import { Tooltip, type MenuProps } from "antd";
 import { AlertCircle, Check, FileQuestionMark, Lock } from "lucide-react";
 import {
   memo,
@@ -17,6 +17,7 @@ import { FILE_KINDS, isFileKind, type FileKind } from "@shared/file-kind";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
 import { Button } from "../../components/Button";
+import { useConfirm } from "../../components/Dialog";
 import { FileCover } from "../../components/FileCover";
 import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
@@ -100,7 +101,7 @@ export function LibraryShelf({
   const { t } = useTranslation();
   const client = useQueryClient();
   const navigate = useNavigate();
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const [naming, setNaming] = useState<LibrarySource | null>(null);
   const [said, setSaid] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -347,14 +348,16 @@ export function LibraryShelf({
     }
   }
   function remove(subject: Subject, index: number) {
-    void modal.confirm({
+    // After the delete the focus goes to the neighbouring card's dots, or to the add button when none is left. A failed
+    // delete leaves it on the dots the dialog grew out of.
+    let landing: (() => HTMLElement | null) | null = null;
+    void confirm({
       title: t("sources.shelf.deleteTitle", { name: subject.name }),
-      content: t("sources.shelf.deleteBody"),
-      okText: t("sources.shelf.deleteConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("sources.sort.cancel"),
-      autoFocusButton: "cancel",
-      onOk: async () => {
+      body: t("sources.shelf.deleteBody"),
+      confirm: t("sources.shelf.deleteConfirm"),
+      tone: "danger",
+      onClosed: () => landing?.()?.focus(),
+      run: async () => {
         try {
           await invoke("subjects.remove", { id: subject.id, onlyEmpty: true });
         } catch (err) {
@@ -363,9 +366,13 @@ export function LibraryShelf({
         }
         setSaid(t("sources.shelf.deleted", { name: subject.name }));
         const neighbour = subjects[index + 1] ?? subjects[index - 1];
-        if (neighbour) pendingFocus.current = `[data-subject-id="${CSS.escape(neighbour.id)}"] .px-shelf-subject-dots`;
+        landing = neighbour
+          ? () =>
+              root.current?.querySelector<HTMLElement>(
+                `[data-subject-id="${CSS.escape(neighbour.id)}"] .px-shelf-subject-dots`,
+              ) ?? null
+          : () => addButton.current?.querySelector("button") ?? addButton.current;
         await refreshSubjects(client);
-        if (!neighbour) (addButton.current?.querySelector("button") ?? addButton.current)?.focus();
       },
     });
   }
@@ -377,7 +384,6 @@ export function LibraryShelf({
     : [];
   return (
     <div className="px-shelves" ref={root}>
-      {modalContext}
       <p className="visually-hidden" role="status">
         {said}
       </p>

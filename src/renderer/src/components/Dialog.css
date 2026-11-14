@@ -95,6 +95,12 @@
 .px-dialog-description > * + * {
   margin-top: 10px;
 }
+/* A list in the body, as what a deletion takes with it and what stays. */
+.px-dialog-description ul {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+}
 .px-dialog-foot {
   display: flex;
   flex: none;

@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { Reveal } from "../../components/Controls";
+import { useConfirm } from "../../components/Dialog";
 import { Icon, type IconName } from "../../components/Icon";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
@@ -51,7 +52,7 @@ export function UnfinishedSection({ planId }: { planId: string }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { modal } = App.useApp();
+  const confirm = useConfirm();
   const list = useQuery(unfinishedQuery(planId));
   const [all, setAll] = useState(false);
   const [leaving, setLeaving] = useState<string | null>(null);
@@ -114,20 +115,16 @@ export function UnfinishedSection({ planId }: { planId: string }) {
     setLeaving(null);
   }
   function confirmDelete(entry: UnfinishedEntry) {
-    void modal.confirm({
+    void confirm({
       title: t("examPage.unfinished.deleteTitle", {
         title: unfinishedTitle(entry, t),
       }),
-      content: deleteBody(entry, t),
-      icon: null,
-      width: 480,
-      okText: t("examPage.unfinished.deleteConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("examPage.createDialog.cancel"),
-      cancelButtonProps: { type: "text", className: "px-btn px-btn-ghost" },
-      // Something that cannot be undone never has the focus first.
-      autoFocusButton: "cancel",
-      onOk: () => void remove(entry),
+      body: deleteBody(entry, t),
+      confirm: t("examPage.unfinished.deleteConfirm"),
+      tone: "danger",
+    }).then((answer) => {
+      // The row folds away and the focus moves on after the dialog has closed, so the page is not inert for it.
+      if (answer === "confirm") void remove(entry);
     });
   }
   const menuOf = (entry: UnfinishedEntry): MenuProps => ({

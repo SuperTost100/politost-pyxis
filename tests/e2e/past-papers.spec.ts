@@ -215,7 +215,7 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     }, plan.planId);
     for (const title of ["Appello di settembre (scansione)", "Analisi 1, appello di giugno"]) {
       await page.locator(".px-paper", { hasText: title }).getByRole("button", { name: "Remove" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Remove" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Remove from the exam", exact: true }).click();
       await expect(page.getByText(title)).toHaveCount(0);
     }
     await expect(page.getByText("No past exams yet")).toBeVisible();

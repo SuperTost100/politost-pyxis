@@ -1,25 +1,21 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Button, Input, InputNumber, Modal, Slider } from "antd";
+import { App, Button, Input, InputNumber, Slider } from "antd";
 import {
   Archive,
   ArchiveRestore,
   BookMarked,
-  BookOpen,
-  Clock,
   FileText,
-  Layers,
-  ListChecks,
   Plus,
   RefreshCw,
-  Repeat,
-  Target,
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { RequestOutput } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
+import { useConfirm } from "../../components/Dialog";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { ErrorState } from "../../components/ErrorState";
@@ -126,12 +122,8 @@ export function ExamSettingsPage() {
   const [error, setError] = useState(false);
   const [rebuildOpen, setRebuildOpen] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const footprint = useQuery({
-    queryKey: ["plan-footprint", planId],
-    queryFn: () => invoke("plans.footprint", { planId }),
-    enabled: deleteOpen && !!planId,
-  });
+  const confirm = useConfirm();
+  const asking = useRef(false);
 
   // "Set the hours" on the exam's page opens this page at the weekly hours, with the focus in the field once it can take
   // it (it waits for the planner).
@@ -234,17 +226,39 @@ export function ExamSettingsPage() {
   function archive(archived: boolean) {
     void action(async () => {
       await setPlanArchived(client, planId, archived);
-      setDeleteOpen(false);
       navigate(`/plans/${planId}`);
     });
   }
   function remove() {
-    void action(async () => {
+    return action(async () => {
       await invoke("plans.delete", { planId });
       release();
       await client.invalidateQueries({ queryKey: ["plans"] });
       navigate("/exams");
     });
+  }
+  /** Says what goes with the exam, then deletes it while the dialog stays, busy. A failure is said on the page. */
+  async function askDelete() {
+    if (asking.current || !data) return;
+    asking.current = true;
+    setError(false);
+    try {
+      // Read now so the question can count what goes; without the counts it says what goes in general terms.
+      const counts = await client
+        .fetchQuery({ queryKey: ["plan-footprint", planId], queryFn: () => invoke("plans.footprint", { planId }), staleTime: 0 })
+        .catch(() => null);
+      const answer = await confirm({
+        title: t("examSettings.deleteTitle", { title: data.title }),
+        body: <DeleteBody counts={counts} archived={data.archivedAt != null} />,
+        confirm: t("plans.delete"),
+        tone: "danger",
+        extra: data.archivedAt != null ? undefined : t("examSettings.archiveInstead"),
+        run: remove,
+      });
+      if (answer === "extra") archive(true);
+    } finally {
+      asking.current = false;
+    }
   }
 
   // Before the returns below: a hook after them would run on some renders and not others.
@@ -276,7 +290,6 @@ export function ExamSettingsPage() {
   const thisWeek = planner.data?.weeks[0]?.plans.find((item) => item.planId === planId)?.minutes ?? 0;
   const language = data?.contentLanguage;
   const archived = data?.archivedAt != null;
-  const counts = footprint.data;
 
   return (
     <div className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
@@ -500,8 +513,8 @@ export function ExamSettingsPage() {
           </Group>
 
           <Group id="end" title={t("examSettings.endHeading")}>
-            {/* Only archiving fails here: saving reports in the bar, deleting in its dialog. */}
-            {error && !dirty && !deleteOpen ? <Notice tone="danger">{t("planOverview.failed")}</Notice> : null}
+            {/* Saving reports in the bar; archiving and deleting report here. */}
+            {error && !dirty ? <Notice tone="danger">{t("planOverview.failed")}</Notice> : null}
             <ActionRow
               title={archived ? t("planOverview.restore") : t("planOverview.archive")}
               help={archived ? t("planOverview.restoreHelp") : t("planOverview.archiveHelp")}
@@ -521,10 +534,7 @@ export function ExamSettingsPage() {
                 danger
                 icon={<Trash2 size={16} aria-hidden />}
                 disabled={busy}
-                onClick={() => {
-                  setError(false);
-                  setDeleteOpen(true);
-                }}
+                onClick={() => void askDelete()}
               >
                 {t("examSettings.delete")}
               </Button>
@@ -574,87 +584,31 @@ export function ExamSettingsPage() {
           />
         </>
       ) : null}
-
-      <Modal
-        open={deleteOpen}
-        width={520}
-        title={t("examSettings.deleteTitle", { title: data?.title ?? "" })}
-        onCancel={() => !busy && setDeleteOpen(false)}
-        footer={
-          <div className="px-delete-footer">
-            {archived ? null : (
-              <Button shape="round" icon={<Archive size={16} aria-hidden />} disabled={busy} onClick={() => archive(true)}>
-                {t("examSettings.archiveInstead")}
-              </Button>
-            )}
-            <span className="px-delete-footer-gap" />
-            <Button shape="round" disabled={busy} onClick={() => setDeleteOpen(false)}>
-              {t("wizard.cancel")}
-            </Button>
-            <Button shape="round" type="primary" danger loading={busy} onClick={remove}>
-              {t("plans.delete")}
-            </Button>
-          </div>
-        }
-      >
-        {error ? <Notice tone="danger">{t("planOverview.failed")}</Notice> : null}
-        <p className="body">{t("examSettings.deleteIntro")}</p>
-        {counts ? (
-          <ul className="px-delete-lose">
-            {counts.topics > 0 ? (
-              <li>
-                <Layers size={18} strokeWidth={1.75} aria-hidden />
-                {t("examSettings.lose.topics", { count: counts.topics })}
-              </li>
-            ) : null}
-            {counts.lessons > 0 ? (
-              <li>
-                <BookOpen size={18} strokeWidth={1.75} aria-hidden />
-                {t("examSettings.lose.lessons", { count: counts.lessons })}
-              </li>
-            ) : null}
-            {counts.quizzes > 0 ? (
-              <li>
-                <ListChecks size={18} strokeWidth={1.75} aria-hidden />
-                {t("examSettings.lose.quizzes", { count: counts.quizzes })}
-              </li>
-            ) : null}
-            {counts.simulations > 0 ? (
-              <li>
-                <Clock size={18} strokeWidth={1.75} aria-hidden />
-                {t("examSettings.lose.simulations", { count: counts.simulations })}
-              </li>
-            ) : null}
-            {counts.cards > 0 ? (
-              <li>
-                <Repeat size={18} strokeWidth={1.75} aria-hidden />
-                {t("examSettings.lose.cards", { count: counts.cards })}
-              </li>
-            ) : null}
-            <li>
-              <Target size={18} strokeWidth={1.75} aria-hidden />
-              {t("examSettings.lose.mastery")}
-            </li>
-          </ul>
-        ) : footprint.isError ? (
-          // Without the counts the list still says what goes, in general terms.
-          <ul className="px-delete-lose">
-            <li>
-              <Layers size={18} strokeWidth={1.75} aria-hidden />
-              {t("examSettings.lose.all")}
-            </li>
-            <li>
-              <Target size={18} strokeWidth={1.75} aria-hidden />
-              {t("examSettings.lose.mastery")}
-            </li>
-          </ul>
-        ) : null}
-        <p className="small ink-muted">
-          {archived
-            ? t("examSettings.deleteKeep")
-            : `${t("examSettings.deleteKeep")} ${t("examSettings.deleteArchiveHint")}`}
-        </p>
-      </Modal>
     </div>
+  );
+}
+
+/** What deleting the exam takes with it, as the dialog's body: its counts, or in general terms without them. */
+function DeleteBody({ counts, archived }: { counts: RequestOutput<"plans.footprint"> | null; archived: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <p>{t("examSettings.deleteIntro")}</p>
+      <ul>
+        {counts ? (
+          <>
+            {counts.topics > 0 ? <li>{t("examSettings.lose.topics", { count: counts.topics })}</li> : null}
+            {counts.lessons > 0 ? <li>{t("examSettings.lose.lessons", { count: counts.lessons })}</li> : null}
+            {counts.quizzes > 0 ? <li>{t("examSettings.lose.quizzes", { count: counts.quizzes })}</li> : null}
+            {counts.simulations > 0 ? <li>{t("examSettings.lose.simulations", { count: counts.simulations })}</li> : null}
+            {counts.cards > 0 ? <li>{t("examSettings.lose.cards", { count: counts.cards })}</li> : null}
+          </>
+        ) : (
+          <li>{t("examSettings.lose.all")}</li>
+        )}
+        <li>{t("examSettings.lose.mastery")}</li>
+      </ul>
+      <p>{archived ? t("examSettings.deleteKeep") : `${t("examSettings.deleteKeep")} ${t("examSettings.deleteArchiveHint")}`}</p>
+    </>
   );
 }

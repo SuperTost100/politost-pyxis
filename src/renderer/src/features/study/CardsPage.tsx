@@ -1,12 +1,13 @@
 import { openSourceViewer } from "../../components/SourceViewer";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal, type MenuProps } from "antd";
+import { Button, type MenuProps } from "antd";
 import { Download, MessageCircleQuestion, Undo2 } from "lucide-react";
 import "./CardsPage.css";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
+import { useConfirm } from "../../components/Dialog";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { MarkdownView } from "../../components/MarkdownView";
@@ -130,7 +131,7 @@ export function CardsPage() {
   const [lastAction, setLastAction] = useState<Undoable | null>(null);
   // A card brought back by Undo shows next, wherever the deck would sort it.
   const [pinned, setPinned] = useState<string | null>(null);
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
   // Cards rated into a short learning step come back in this session instead of ending it.
   const [learning, setLearning] = useState<LearningCards>({});
@@ -479,13 +480,13 @@ export function CardsPage() {
         void refresh();
       });
     if (!card.handMade) return run();
-    void modal.confirm({
+    void confirm({
       title: t("cardBrowser.deleteTitle"),
-      content: t("cardBrowser.deleteHandMade"),
-      okText: t("cards.deleteConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("cardBrowser.cancel"),
-      onOk: run,
+      body: t("cardBrowser.deleteHandMade"),
+      confirm: t("cards.deleteConfirm"),
+      tone: "danger",
+    }).then((answer) => {
+      if (answer === "confirm") run();
     });
   }
 
@@ -635,7 +636,8 @@ export function CardsPage() {
     items: [
       { key: "edit", label: t("cards.edit") },
       { key: "suspend", label: t("cards.suspend") },
-      { key: "delete", label: t("cards.delete"), danger: true },
+      // A hand-made card asks first; one Pyxis wrote goes to Removed and Undo brings it back.
+      { key: "delete", label: t(card?.handMade ? "cards.delete" : "cards.deleteNow"), danger: true },
     ],
     onClick: ({ key }) => (key === "edit" ? startEdit() : key === "suspend" ? suspend() : remove()),
   };
@@ -695,7 +697,6 @@ export function CardsPage() {
         )
       }
     >
-      {modalContext}
       <section className="px-cards">
         {looking && !recorded ? <Notice tone="info">{t("cards.reviewing")}</Notice> : null}
         {ratingError ? (

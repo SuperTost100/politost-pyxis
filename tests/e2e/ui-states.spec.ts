@@ -201,9 +201,9 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
     await pickScope("Titoli");
     // The typed words filter titles in this scope, so the field is emptied to list the source again.
     await page.getByRole("textbox", { name: "Cerca una fonte per titolo" }).fill("");
-    page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Azioni per Fisica" }).click();
-    await page.getByRole("menuitem", { name: "Rimuovi", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await page.getByRole("dialog", { name: /^Eliminare «.*»\?$/ }).getByRole("button", { name: "Elimina il file", exact: true }).click();
     await expect(page.getByRole("button", { name: "Azioni per Fisica" })).toHaveCount(0);
     await pickScope("Contenuto");
     await query.fill("moto rettilineo");

@@ -319,6 +319,11 @@ export type ConfirmOptions = {
   origin?: HTMLElement | null;
   /** Where the focus goes when it closes, when not back to what had it before. */
   returnFocus?: HTMLElement | null;
+  /**
+   * Called once it has shrunk away and given the focus back. For work that ran inside it (`run`) and left its opener
+   * gone: the page behind is inert while the dialog is open, so the focus can only be placed after it has closed.
+   */
+  onClosed?: () => void;
   /** Takes the question back while it is open: it closes and answers "cancel". */
   signal?: AbortSignal;
 };
@@ -425,7 +430,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             origin={{ current: options.origin ?? null }}
             returnFocus={{ current: options.returnFocus ?? null }}
             onClose={() => settle(ask.id, "cancel")}
-            onClosed={() => setAsks((list) => list.filter((item) => item.id !== ask.id))}
+            onClosed={() => {
+              setAsks((list) => list.filter((item) => item.id !== ask.id));
+              options.onClosed?.();
+            }}
           />
         );
       })}

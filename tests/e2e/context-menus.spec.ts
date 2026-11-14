@@ -191,7 +191,7 @@ test("a right-click opens the same menu as the three dots, at the pointer, and s
     await answerNextMenu(app, null);
     await chats.getByRole("button", { name: "Azioni per Termodinamica" }).click();
     const chatDots = await lastMenuLabels(app);
-    expect(chatDots).toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina"]);
+    expect(chatDots).toEqual(["Rinomina", "Esporta come Markdown", "Esporta come PDF", "-", "Elimina la chat…"]);
     expect(await lastMenuAt(app)).toBeUndefined();
 
     await answerNextMenu(app, null);

@@ -1,10 +1,11 @@
 import type { RequestOutput } from "@shared/ipc";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Modal, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { ChevronDown, Folder, FolderPlus, FolderX } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../components/Button";
+import { useConfirm } from "../../components/Dialog";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import { Popover } from "../../components/Popover";
@@ -96,7 +97,7 @@ export function LinkedFolders({
   const [said, setSaid] = useState("");
   const [problem, setProblem] = useState<{ folderId: string; text: string; relink?: string } | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [modal, modalContext] = Modal.useModal();
+  const confirm = useConfirm();
   const folders = useQuery({
     queryKey: ["linked-folders"],
     queryFn: () => invoke("sources.linkedFolders", {}),
@@ -120,7 +121,7 @@ export function LinkedFolders({
     void client.invalidateQueries({ queryKey: ["sources"] });
   };
   // The anchor holds the control in every state, so the focus has somewhere to go after the last folder is unlinked.
-  // The confirmation's `afterClose` runs after the Library has re-rendered, so it reads the latest `elsewhere`.
+  // The confirmation's `onClosed` runs after the Library has re-rendered, so it reads the latest `elsewhere`.
   const elsewhereNow = useRef(elsewhere);
   elsewhereNow.current = elsewhere;
   const focusControl = () =>
@@ -203,29 +204,26 @@ export function LinkedFolders({
     // Where the focus goes once the confirmation has closed: the control, or the list again after a failure. The
     // dialog gives the focus back to where it was opened from once its exit ends, which is gone, so this runs after.
     let failed = false;
-    void modal.confirm({
+    void confirm({
       title: t("sources.folders.unlinkTitle", { name }),
-      icon: null,
-      width: 520,
-      content: (
-        <div className="px-folders-confirm">
+      body: (
+        <>
           <p>{t("sources.folders.unlinkLead", { count: leaving })}</p>
           <ul>
             {kept ? <li>{t("sources.folders.unlinkKept", { count: kept })}</li> : null}
             <li>{t("sources.folders.unlinkMade")}</li>
             <li>{t("sources.folders.unlinkCited")}</li>
           </ul>
-        </div>
+        </>
       ),
-      okText: t("sources.folders.unlinkConfirm"),
-      okButtonProps: { danger: true },
-      cancelText: t("sources.sort.cancel"),
-      autoFocusButton: "cancel",
-      afterClose: () => {
+      confirm: t("sources.folders.unlinkConfirm"),
+      tone: "danger",
+      origin: anchor.current?.querySelector("button"),
+      onClosed: () => {
         if (failed) setOpen(true);
         else focusControl();
       },
-      onOk: async () => {
+      run: async () => {
         setProblem(null);
         try {
           await closeUpShelves(
@@ -292,7 +290,6 @@ export function LinkedFolders({
 
   return (
     <>
-      {modalContext}
       <p className="visually-hidden" role="status">
         {said}
       </p>

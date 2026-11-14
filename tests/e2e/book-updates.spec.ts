@@ -221,18 +221,14 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await expect(dialog).toBeHidden();
 
     // A plan uses the book, so Update asks first. Declining starts nothing.
-    const asked: string[] = [];
-    let answer: "accept" | "dismiss" = "dismiss";
-    page.on("dialog", (prompt) => {
-      asked.push(prompt.message());
-      void (answer === "accept" ? prompt.accept() : prompt.dismiss());
-    });
     const update = page.getByRole("button", {
       name: "Aggiorna Fisica di prova",
     });
+    const question = page.getByRole("dialog", { name: "Aggiornare il libro?" });
     await update.click();
-    await expect.poll(() => asked.length).toBe(1);
-    expect(asked[0]).toMatch(/1 esame usa questo libro/);
+    await expect(question).toContainText(/1 esame usa questo libro/);
+    await question.getByRole("button", { name: "Annulla" }).click();
+    await expect(question).toHaveCount(0);
     // Declining must start nothing. A job that never starts has no signal to wait for, so this is a fixed wait.
     await page.waitForTimeout(500);
     const versions = () =>
@@ -244,8 +240,8 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     expect(versions()).toEqual([1]);
     await noAxeViolations(page);
 
-    answer = "accept";
     await update.click();
+    await question.getByRole("button", { name: "Aggiorna il libro", exact: true }).click();
     await expect(
       page.getByText(
         "Fisica di prova si sta aggiornando alla versione 1.1.0.",

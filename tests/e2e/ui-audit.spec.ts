@@ -137,6 +137,12 @@ const routes = [
   // "Da finire" with seven activities: one being written, one on a very long topic, a prepared simulation; and its menu.
   ["plan-unfinished", "/plans/audit-plan"],
   ["plan-unfinished-menu", "/plans/audit-plan"],
+  // The confirmations behind the other destructive items: an unfinished activity, a subject, a file taken out of an exam.
+  ["plan-unfinished-delete", "/plans/audit-plan"],
+  // The same, for an activity whose long name has to wrap inside the dialog.
+  ["plan-unfinished-delete-long", "/plans/audit-plan"],
+  ["library-subject-delete", "/exams/library"],
+  ["plan-sources-remove", "/plans/audit-plan/sources"],
   // An exam whose lesson on one topic is in parts: Consigliato adesso names the next part and the path lists the parts,
   // Riprendi da on a later day, and Scegli altro open.
   ["plan-now-part", "/plans/audit-exam-parts-plan"],
@@ -175,6 +181,11 @@ const routes = [
   ["library-folders-open", "/exams/library"],
   ["library-folders-missing", "/exams/library"],
   ["library-folders-unlink", "/exams/library"],
+  // A file's menu, and the confirmation behind its "Elimina il file…".
+  ["library-remove", "/exams/library"],
+  ["library-remove-in-use", "/exams/library"],
+  // A file an exam uses asks before it is replaced.
+  ["library-replace-in-use", "/exams/library"],
   ["library-link", "/exams/library"],
   ["library-text", "/exams/library"],
   ["library-text-ready", "/exams/library"],
@@ -3015,7 +3026,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(/^(Non ho trovato niente su questa domanda|I found nothing on this)/)).toBeVisible();
       break;
     case "ask-delete":
-      await answerNextMenu(auditApp!, ["Elimina", "Delete"]);
+      await answerNextMenu(auditApp!, ["Elimina la chat…", "Delete the chat…"]);
       // The chat's "…" button in the sidebar, or a right-click on it in the search where the sidebar is folded.
       if (!(await sidebarFolded(page)))
         await page
@@ -3038,7 +3049,7 @@ async function openState(page: Page, name: string) {
         .getByRole("button", { name: both("Azioni sulla flashcard", "Flashcard actions") })
         .click();
       await page
-        .getByRole("menuitem", { name: /^(Elimina|Delete)( D)?$/ })
+        .getByRole("menuitem", { name: /^(Elimina la flashcard…|Delete the flashcard…)( D)?$/ })
         .click();
       await expect(dialog).toBeVisible();
       break;
@@ -3965,7 +3976,7 @@ async function openState(page: Page, name: string) {
         await expect(page.getByRole("textbox", { name: both("Nome della mappa", "Map name") })).toBeFocused();
       }
       if (name === "map-delete") {
-        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete map…") }).click();
+        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }).click();
         await expect(dialog).toBeVisible();
       }
       break;
@@ -3980,7 +3991,7 @@ async function openState(page: Page, name: string) {
       await tile.locator(".px-maps-thumb").click({ button: "right" });
       await expect(page.getByRole("menuitem", { name: both("Apri", "Open") })).toBeVisible();
       if (name === "maps-delete") {
-        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete map…") }).click();
+        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }).click();
         await expect(dialog).toBeVisible();
       }
       break;
@@ -4070,7 +4081,49 @@ async function openState(page: Page, name: string) {
       break;
     case "plan-unfinished-menu":
       await page.locator(".px-unf-dots").first().click();
-      await expect(page.getByRole("menuitem", { name: both("Elimina…", "Delete…") })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: both("Elimina l'attività…", "Delete the activity…") })).toBeVisible();
+      break;
+    case "library-remove":
+      await page
+        .getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ })
+        .click();
+      await page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }).click();
+      await expect(
+        page.getByRole("dialog", { name: /^(Eliminare|Delete) [«“]Appunti di fisica[»”]\?$/ }),
+      ).toBeVisible();
+      break;
+    case "library-remove-in-use":
+      // An exam still uses the file, so the first answer leads to a second question and nothing is removed yet.
+      await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
+      await page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }).click();
+      await page
+        .getByRole("dialog", { name: /^(Eliminare|Delete) [«“]Appunti di fisica[»”]\?$/ })
+        .getByRole("button", { name: both("Elimina il file", "Delete the file"), exact: true })
+        .click();
+      await expect(
+        page.getByRole("dialog", { name: both("Eliminare il file anche se un esame lo usa\\?", "Delete the file even though an exam uses it\\?") }),
+      ).toBeVisible();
+      break;
+    case "library-replace-in-use":
+      await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
+      await page.getByRole("menuitem", { name: both("Sostituisci il file", "Replace file") }).click();
+      await expect(page.getByRole("dialog", { name: both("Sostituire il file\\?", "Replace the file\\?") })).toBeVisible();
+      break;
+    case "plan-unfinished-delete":
+    case "plan-unfinished-delete-long":
+      await page.locator(".px-unf-dots").nth(name === "plan-unfinished-delete" ? 0 : 2).click();
+      await page.getByRole("menuitem", { name: both("Elimina l'attività…", "Delete the activity…") }).click();
+      await expect(page.getByRole("dialog", { name: /^(Eliminare|Delete) [«“]/ })).toBeVisible();
+      break;
+    case "library-subject-delete":
+      await page.getByRole("heading", { name: "Probabilità e statistica", exact: true }).click({ button: "right" });
+      await page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") }).click();
+      await expect(page.getByRole("dialog", { name: /^(Eliminare la materia|Delete the subject) / })).toBeVisible();
+      break;
+    case "plan-sources-remove":
+      await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
+      await page.getByRole("menuitem", { name: both("Rimuovi dall'esame", "Remove from exam") }).click();
+      await expect(page.getByRole("dialog", { name: /^(Rimuovere|Remove) .* (dall'esame|from the exam)\?$/ })).toBeVisible();
       break;
     case "library-row-menu":
       await page
@@ -4107,7 +4160,7 @@ async function openState(page: Page, name: string) {
       ).toBeVisible();
       // Replace, read again and remove live in the row menu only.
       await expect(
-        dialog.getByRole("button", { name: both("Rimuovi", "Remove") }),
+        dialog.getByRole("button", { name: both("Elimina il file", "Delete the file") }),
       ).toHaveCount(0);
       break;
     case "library-panel-pdf":
@@ -4439,7 +4492,7 @@ async function openState(page: Page, name: string) {
         })
         .click();
       await page
-        .getByRole("menuitem", { name: both("Elimina", "Delete") })
+        .getByRole("menuitem", { name: both("Elimina la flashcard…", "Delete the flashcard…") })
         .click();
       await expect(dialog).toBeVisible();
       break;
@@ -4506,7 +4559,7 @@ async function openState(page: Page, name: string) {
     }
     case "plan-settings-delete":
       await page
-        .getByRole("button", { name: both("Elimina", "Delete") })
+        .getByRole("button", { name: both("Elimina l'esame…", "Delete the exam…") })
         .click();
       await expect(dialog.getByRole("listitem").first()).toBeVisible();
       break;

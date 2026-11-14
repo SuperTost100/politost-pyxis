@@ -188,7 +188,6 @@ export function Shell() {
       </main>
       </div>
       <Finder scope={finder} onClose={() => setFinder(null)} actions={actions} />
-      {actions.dialog}
     </div>
   );
 }

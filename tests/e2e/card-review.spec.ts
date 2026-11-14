@@ -155,9 +155,10 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     const pointer = { x: cardBox.x + 60, y: cardBox.y + 60 };
     await page.mouse.click(pointer.x, pointer.y, { button: "right" });
     await expect(open).toHaveCount(1);
-    for (const item of [/^Edit/, /^Suspend/, /^Delete/]) await expect(open.getByRole("menuitem", { name: item })).toBeVisible();
+    // A card Pyxis wrote is removed at once, and Undo brings it back, so its item has no "…".
+    for (const item of [/^Edit/, /^Suspend/, /^Delete the flashcard$/]) await expect(open.getByRole("menuitem", { name: item })).toBeVisible();
     // The menu holds the actions and nothing else: their keys live in Help's shortcuts dialog.
-    await expect(open.getByRole("menuitem")).toHaveText(["Edit", "Suspend", "Delete"]);
+    await expect(open.getByRole("menuitem")).toHaveText(["Edit", "Suspend", "Delete the flashcard"]);
     await expect(open.locator("kbd")).toHaveCount(0);
     // The stage turns the card in perspective, which must not move the menu: its corner is at the pointer.
     await expect
@@ -263,6 +264,11 @@ test("card review: the study bar, ratings only under the card, undo, the card me
       location.hash = "#/plans/p/cards/t";
     });
     await expect(front).toHaveText("Mia carta");
+    // Its menu says a confirmation follows.
+    await page.mouse.click(pointer.x, pointer.y, { button: "right" });
+    await expect(open.getByRole("menuitem", { name: "Delete the flashcard…" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(open).toHaveCount(0);
     await page.keyboard.press("d");
     const confirm = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(confirm).toBeVisible();

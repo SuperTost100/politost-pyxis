@@ -23,19 +23,18 @@ function rows<T>(userData: string, sql: string, ...args: string[]): T[] {
 }
 
 async function readAgain(page: Page, title: string, answer: "accept" | "dismiss") {
-  const asked: string[] = [];
-  page.once("dialog", (dialog) => {
-    asked.push(dialog.message());
-    void (answer === "accept" ? dialog.accept() : dialog.dismiss());
-  });
   await page.getByRole("button", { name: `Azioni per ${title}` }).click();
   const item = page.getByRole("menuitem", { name: "Leggi di nuovo" });
   await expect(item).toBeVisible();
   // The menu fades and slides in. On a slow runner a click that lands while it moves is lost and no confirmation follows.
   await animationsSettled(page);
   await item.click();
-  await expect.poll(() => asked.length).toBe(1);
-  return asked[0]!;
+  const question = page.getByRole("dialog", { name: "Leggere di nuovo il file?" });
+  await expect(question).toBeVisible();
+  const asked = (await question.textContent()) ?? "";
+  await question.getByRole("button", { name: answer === "accept" ? "Leggi di nuovo" : "Annulla", exact: true }).click();
+  await expect(question).toHaveCount(0);
+  return asked;
 }
 
 test("SRC-12 reading a source again asks first, keeps the old reading and its citations, and survives an empty result", async () => {

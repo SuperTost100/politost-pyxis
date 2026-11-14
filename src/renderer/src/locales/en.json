@@ -277,7 +277,6 @@
     "renameLabel": "Chat name",
     "deleteTitle": "Delete this chat?",
     "deleteBody": "“{{title}}” and its messages will be deleted. This cannot be undone.",
-    "cancel": "Cancel",
     "placeholder": "Write a question",
     "used": {
       "subject_one": "I used 1 source from {{subject}}",
@@ -344,8 +343,8 @@
     "history": "Chats",
     "untitled": "Untitled",
     "rename": "Rename",
-    "delete": "Delete",
-    "deleteConfirm": "Delete forever",
+    "delete": "Delete the chat…",
+    "deleteConfirm": "Delete the chat",
     "renameFailed": "This chat couldn't be renamed. Try again.",
     "deleteFailed": "This chat couldn't be deleted. Try again.",
     "new": "New chat",
@@ -539,9 +538,9 @@
     "importDone": "Done",
     "rename": "Rename",
     "replace": "Replace file",
-    "remove": "Remove",
-    "removeTitle": "Remove “{{title}}”?",
-    "inUse": "An exam still uses this source. Remove it anyway?",
+    "remove": "Delete the file…",
+    "removeTitle": "Delete “{{title}}”?",
+    "inUse": "An exam still uses this file and would lose it as a source. Lessons, quizzes and progress already made stay.",
     "titleEmpty": "The title cannot be empty.",
     "embedAsk": "Search now finds the words you type. With the local search model it also finds passages that say the same thing in other words. The model stays on this computer.",
     "embedDownload": "Download the model (120 MB)",
@@ -629,17 +628,17 @@
     "busy": "This source has an unfinished job. Resume or dismiss it before replacing the file.",
     "reextract": "Read again",
     "reextractStarted": "{{title}} is being read again. Follow it in the background tasks.",
-    "reextractInUse_one": "{{count}} exam uses this source. Reading it again keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Read it again?",
-    "reextractInUse_other": "{{count}} exams use this source. Reading it again keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Read it again?",
-    "replaceInUse_one": "{{count}} exam uses this source. Replacing the file keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Replace it?",
-    "replaceInUse_other": "{{count}} exams use this source. Replacing the file keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Replace it?",
+    "reextractInUse_one": "{{count}} exam uses this source. Reading it again keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
+    "reextractInUse_other": "{{count}} exams use this source. Reading it again keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
+    "replaceInUse_one": "{{count}} exam uses this source. Replacing the file keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
+    "replaceInUse_other": "{{count}} exams use this source. Replacing the file keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
     "reextractUnavailable": "This source has no stored file to read again.",
     "reextractNoText": "Reading the file again found no text, so the earlier reading was kept.",
     "refresh": "Check for a new version",
     "refreshStarted": "{{title}} has changed online. The new version is being read. Follow it in the background tasks.",
     "refreshUnchanged": "{{title}} has not changed since you saved it.",
-    "refreshInUse_one": "{{count}} exam uses this source. If the page has changed, the new version keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Check it?",
-    "refreshInUse_other": "{{count}} exams use this source. If the page has changed, the new version keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them. Check it?",
+    "refreshInUse_one": "{{count}} exam uses this source. If the page has changed, the new version keeps the old text for the citations in that exam, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
+    "refreshInUse_other": "{{count}} exams use this source. If the page has changed, the new version keeps the old text for the citations in those exams, and marks lessons, quizzes and flashcards made from it as out of date until you regenerate them.",
     "refreshUnavailable": "This source didn't come from a link, so there is no page to check.",
     "savedFrom": "Saved from {{host}} on {{date}}.",
     "pdfPassword": {
@@ -928,7 +927,7 @@
       "delete": "Delete the subject…",
       "deleteTitle": "Delete the subject {{name}}?",
       "deleteBody": "It has no files, exams, maps, flashcards or chats, so deleting it removes nothing else.",
-      "deleteConfirm": "Delete",
+      "deleteConfirm": "Delete the subject",
       "deleted": "Deleted the subject {{name}}.",
       "moved": "Moved to {{name}}.",
       "renamed": "Renamed the subject to {{name}}.",
@@ -946,7 +945,15 @@
       "subjectNotEmpty": "This subject still has files, exams, maps, flashcards or chats, so I won't delete it.",
       "kindMenu": "Kind",
       "kindSet": "{{title}} is now {{kind}}."
-    }
+    },
+    "removeConfirm": "Delete the file",
+    "removeBody": "The file leaves the Library. Lessons, flashcards and maps made from it stay, and citations keep their text. The original file on your computer is not touched.",
+    "removeBodyLinked": "The file leaves the Library. Lessons, flashcards and maps made from it stay, and citations keep their text. The file stays in the linked folder, but Pyxis no longer reads it.",
+    "inUseTitle": "Delete the file even though an exam uses it?",
+    "replaceTitle": "Replace the file?",
+    "reextractTitle": "Read the file again?",
+    "refreshTitle": "Check for a new version?",
+    "refreshConfirm": "Check the page"
   },
   "cards": {
     "reviewing": "You already did these flashcards. Looking at them again adds no step to your path unless you rate a flashcard.",
@@ -978,8 +985,8 @@
     "undoLast": "Undo last",
     "save": "Save",
     "edit": "Edit",
-    "delete": "Delete",
-    "deleteConfirm": "Delete forever",
+    "delete": "Delete the flashcard…",
+    "deleteConfirm": "Delete the flashcard",
     "suspend": "Suspend",
     "resume": "Resume",
     "nextLearning": "Next review during learning",
@@ -1045,7 +1052,8 @@
     "rateHint": "How well did you know it? Your answer decides whether the flashcard comes back sooner or later.",
     "flipHint": "Or press the space bar.",
     "changeLimit": "Change",
-    "writingFirst": "Writing the first flashcard…"
+    "writingFirst": "Writing the first flashcard…",
+    "deleteNow": "Delete the flashcard"
   },
   "cardImport": {
     "open": "Import from Anki",
@@ -1263,11 +1271,11 @@
     "editing": "Changing the map…",
     "open": "Open",
     "renameMap": "Rename",
-    "deleteMap": "Delete map…",
+    "deleteMap": "Delete the map…",
     "deleteTitle": "Delete the map “{{title}}”?",
     "deleteBody": "The map leaves Maps, with the changes you made to it. The flashcards you made from this map stay with your flashcards.",
     "deleteWritingBody": "Pyxis stops writing it and the map is not made. Your other maps stay as they are.",
-    "deleteConfirm": "Delete map",
+    "deleteConfirm": "Delete the map",
     "deleteFailed": "The map could not be deleted. Try again.",
     "deleted": "Deleted the map “{{title}}”.",
     "gone": "That map is no longer here: it was deleted.",
@@ -1549,7 +1557,9 @@
       "empty": "Pyxis found no exam questions in this file. Check the text in your Library.",
       "noText": "Pyxis found no text in this file. Try a clearer scan or photo.",
       "needsText": "This file has no text yet. Read it in your Library, then try again."
-    }
+    },
+    "removeConfirm": "Remove from the exam",
+    "removeFailed": "Pyxis could not remove this past exam. Try again."
   },
   "simulation": {
     "more": "More on the simulation",
@@ -2421,7 +2431,8 @@
       "download": "Download ({{size}})",
       "downloadAgain": "Download again ({{size}})",
       "more": "What it downloads"
-    }
+    },
+    "wipeBackupsLeftConfirm": "Got it"
   },
   "jobs": {
     "topicsMore_one": "{{first}} and one more topic",
@@ -2813,7 +2824,7 @@
       "continue": "Continue",
       "newPlan": "New exam",
       "cancel": "Cancel",
-      "deletePlan": "Delete exam",
+      "deletePlan": "Delete the exam",
       "generatePath": "Generate path",
       "disabled": "Disabled"
     },
@@ -3391,8 +3402,8 @@
     "endHeading": "Archive or delete",
     "archive": "Archive",
     "restore": "Restore",
-    "deleteHelp": "Deletes this exam's lessons, quizzes and progress. Sources stay in Exams › Sources.",
-    "delete": "Delete",
+    "deleteHelp": "Deletes this exam's lessons, quizzes and progress. Sources stay in the Library.",
+    "delete": "Delete the exam…",
     "changed": "Not saved",
     "saveBar": "Changes to save",
     "changes_one": "1 change to save:",
@@ -3421,7 +3432,7 @@
       "all": "The path, lessons, quizzes and flashcards of this exam",
       "mastery": "The mastery of each topic and the gaps found"
     },
-    "deleteKeep": "Sources stay in Exams › Sources.",
+    "deleteKeep": "Sources stay in the Library.",
     "deleteArchiveHint": "If the exam is over and you only want it out of the way, archive it instead and you lose nothing.",
     "archiveInstead": "Archive instead"
   },
@@ -3449,7 +3460,7 @@
     "rebuildWorking": "I'm reading your sources again to compare the topics",
     "removeSource": "Remove from exam",
     "noSources": "This exam does not use any sources yet.",
-    "removeSourceHelp": "Remove {{title}} from this exam? Your existing lessons and progress stay, and the source stays in the library.",
+    "removeSourceHelp": "Your existing lessons and progress stay, and the source stays in the Library.",
     "addSources": "Add sources",
     "attachSources": "Attach selected sources",
     "pickerHelp": "Choose sources from your library. Sources still being prepared will become available when indexing finishes.",
@@ -3483,7 +3494,8 @@
     "archiveHelp": "Set a finished exam aside. It leaves your review queues, counts and recommendations. Lessons and progress stay, and you can restore it at any time.",
     "restore": "Restore exam",
     "restoreHelp": "Bring this exam back into your review queues and recommendations.",
-    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
+    "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations.",
+    "removeSourceTitle": "Remove “{{title}}” from the exam?"
   },
   "examPage": {
     "more": "More for this exam",
@@ -3599,10 +3611,10 @@
       "today": "today at {{time}}",
       "yesterday": "yesterday at {{time}}",
       "resume": "Resume",
-      "delete": "Delete…",
+      "delete": "Delete the activity…",
       "actions": "Actions on {{title}}",
       "deleteTitle": "Delete “{{title}}”?",
-      "deleteConfirm": "Delete",
+      "deleteConfirm": "Delete the activity",
       "lostAnswers_one": "The answer you gave is lost.",
       "lostAnswers_other": "The {{count}} answers you gave are lost.",
       "lostNothing": "You haven't answered any question yet.",
@@ -3729,9 +3741,11 @@
     "newVersion": "New version available",
     "newVersionNamed": "New version available: {{version}}",
     "updateStarted": "{{title}} is being updated to version {{version}}. Follow it in the background tasks.",
-    "updateInUse_one": "{{count}} exam uses this book. Updating keeps the old text for that exam's citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in the exam to pick up new chapters. Update it?",
-    "updateInUse_other": "{{count}} exams use this book. Updating keeps the old text for those exams' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each exam to pick up new chapters. Update it?",
-    "retry": "Try again"
+    "updateInUse_one": "{{count}} exam uses this book. Updating keeps the old text for that exam's citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in the exam to pick up new chapters.",
+    "updateInUse_other": "{{count}} exams use this book. Updating keeps the old text for those exams' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each exam to pick up new chapters.",
+    "retry": "Try again",
+    "updateTitle": "Update the book?",
+    "updateConfirm": "Update the book"
   },
   "makeCards": {
     "title": "Make flashcards",

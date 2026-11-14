@@ -277,7 +277,6 @@
     "renameLabel": "Nome della chat",
     "deleteTitle": "Eliminare questa chat?",
     "deleteBody": "«{{title}}» e i suoi messaggi saranno cancellati. Non si può annullare.",
-    "cancel": "Annulla",
     "placeholder": "Scrivi una domanda",
     "used": {
       "subject_one": "Ho usato 1 fonte di {{subject}}",
@@ -344,8 +343,8 @@
     "history": "Chat",
     "untitled": "Senza titolo",
     "rename": "Rinomina",
-    "delete": "Elimina",
-    "deleteConfirm": "Elimina per sempre",
+    "delete": "Elimina la chat…",
+    "deleteConfirm": "Elimina la chat",
     "renameFailed": "Non è stato possibile rinominare la chat. Riprova.",
     "deleteFailed": "Non è stato possibile eliminare la chat. Riprova.",
     "new": "Nuova chat",
@@ -539,9 +538,9 @@
     "importDone": "Fatto",
     "rename": "Rinomina",
     "replace": "Sostituisci il file",
-    "remove": "Rimuovi",
-    "removeTitle": "Rimuovere «{{title}}»?",
-    "inUse": "Un esame usa ancora questa fonte. Rimuoverla lo stesso?",
+    "remove": "Elimina il file…",
+    "removeTitle": "Eliminare «{{title}}»?",
+    "inUse": "Un esame usa ancora questo file e lo perderebbe tra le sue fonti. Lezioni, quiz e progressi già fatti restano.",
     "titleEmpty": "Il titolo non può essere vuoto.",
     "embedAsk": "Ora la ricerca trova le parole che scrivi. Con il modello di ricerca locale trova anche i brani che dicono la stessa cosa con altre parole. Il modello resta su questo computer.",
     "embedDownload": "Scarica il modello (120 MB)",
@@ -629,17 +628,17 @@
     "busy": "Questa fonte ha un lavoro in sospeso. Riprendilo o chiudilo prima di sostituire il file.",
     "reextract": "Leggi di nuovo",
     "reextractStarted": "{{title}} viene riletta. Seguila nelle attività.",
-    "reextractInUse_one": "{{count}} esame usa questa fonte. Rileggerla conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi rileggerla?",
-    "reextractInUse_other": "{{count}} esami usano questa fonte. Rileggerla conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi rileggerla?",
-    "replaceInUse_one": "{{count}} esame usa questa fonte. Sostituire il file conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi sostituirlo?",
-    "replaceInUse_other": "{{count}} esami usano questa fonte. Sostituire il file conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi sostituirlo?",
+    "reextractInUse_one": "{{count}} esame usa questa fonte. Rileggerla conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
+    "reextractInUse_other": "{{count}} esami usano questa fonte. Rileggerla conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
+    "replaceInUse_one": "{{count}} esame usa questa fonte. Sostituire il file conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
+    "replaceInUse_other": "{{count}} esami usano questa fonte. Sostituire il file conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
     "reextractUnavailable": "Di questa fonte non c'è un file salvato da rileggere.",
     "reextractNoText": "Rileggendo il file non è uscito testo, quindi è rimasta la lettura precedente.",
     "refresh": "Controlla se c'è una nuova versione",
     "refreshStarted": "{{title}} è cambiata online. Sto leggendo la nuova versione: seguila nelle attività.",
     "refreshUnchanged": "{{title}} non è cambiata da quando l'hai salvata.",
-    "refreshInUse_one": "{{count}} esame usa questa fonte. Se la pagina è cambiata, la nuova versione conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi controllarla?",
-    "refreshInUse_other": "{{count}} esami usano questa fonte. Se la pagina è cambiata, la nuova versione conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri. Vuoi controllarla?",
+    "refreshInUse_one": "{{count}} esame usa questa fonte. Se la pagina è cambiata, la nuova versione conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
+    "refreshInUse_other": "{{count}} esami usano questa fonte. Se la pagina è cambiata, la nuova versione conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni, quiz e flashcard creati da essa, finché non li rigeneri.",
     "refreshUnavailable": "Questa fonte non viene da un link, quindi non c'è una pagina da controllare.",
     "savedFrom": "Salvata da {{host}} il {{date}}.",
     "pdfPassword": {
@@ -928,7 +927,7 @@
       "delete": "Elimina la materia…",
       "deleteTitle": "Eliminare la materia {{name}}?",
       "deleteBody": "Non ha file, esami, mappe, flashcard né chat, quindi eliminarla non toglie nient'altro.",
-      "deleteConfirm": "Elimina",
+      "deleteConfirm": "Elimina la materia",
       "deleted": "Materia {{name}} eliminata.",
       "moved": "Spostato in {{name}}.",
       "renamed": "Materia rinominata in {{name}}.",
@@ -946,7 +945,15 @@
       "subjectNotEmpty": "Questa materia ha ancora file, esami, mappe, flashcard o chat, quindi non la elimino.",
       "kindMenu": "Tipo",
       "kindSet": "{{title}}: ora è {{kind}}."
-    }
+    },
+    "removeConfirm": "Elimina il file",
+    "removeBody": "Il file esce dalla Libreria. Lezioni, flashcard e mappe fatte da questo file restano, e le citazioni tengono il loro testo. Il file originale sul computer non viene toccato.",
+    "removeBodyLinked": "Il file esce dalla Libreria. Lezioni, flashcard e mappe fatte da questo file restano, e le citazioni tengono il loro testo. Nella cartella collegata il file resta, ma Pyxis non lo legge più.",
+    "inUseTitle": "Eliminare il file anche se un esame lo usa?",
+    "replaceTitle": "Sostituire il file?",
+    "reextractTitle": "Leggere di nuovo il file?",
+    "refreshTitle": "Controllare se c'è una nuova versione?",
+    "refreshConfirm": "Controlla la pagina"
   },
   "cards": {
     "reviewing": "Hai già fatto queste flashcard. Rivederle non aggiunge un passo al percorso, a meno che tu non valuti una flashcard.",
@@ -978,8 +985,8 @@
     "undoLast": "Annulla l'ultima",
     "save": "Salva",
     "edit": "Modifica",
-    "delete": "Elimina",
-    "deleteConfirm": "Elimina per sempre",
+    "delete": "Elimina la flashcard…",
+    "deleteConfirm": "Elimina la flashcard",
     "suspend": "Sospendi",
     "resume": "Riprendi",
     "nextLearning": "Prossimo ripasso durante l’apprendimento",
@@ -1045,7 +1052,8 @@
     "rateHint": "Quanto la sapevi? In base alla risposta, la flashcard torna prima o più avanti.",
     "flipHint": "Oppure premi la barra spaziatrice.",
     "changeLimit": "Cambia",
-    "writingFirst": "Sto scrivendo la prima flashcard…"
+    "writingFirst": "Sto scrivendo la prima flashcard…",
+    "deleteNow": "Elimina la flashcard"
   },
   "cardImport": {
     "open": "Importa da Anki",
@@ -1549,7 +1557,9 @@
       "empty": "Pyxis non ha trovato domande d'esame in questo file. Controlla il testo nella tua Libreria.",
       "noText": "Pyxis non ha trovato testo in questo file. Prova con una scansione o una foto più nitida.",
       "needsText": "Questo file non ha ancora testo. Leggilo nella tua Libreria, poi riprova."
-    }
+    },
+    "removeConfirm": "Rimuovi dall'esame",
+    "removeFailed": "Pyxis non è riuscito a togliere questo appello. Riprova."
   },
   "simulation": {
     "more": "Altro sulla simulazione",
@@ -2421,7 +2431,8 @@
       "download": "Scarica ({{size}})",
       "downloadAgain": "Scarica di nuovo ({{size}})",
       "more": "Cosa scarica"
-    }
+    },
+    "wipeBackupsLeftConfirm": "Ho capito"
   },
   "jobs": {
     "topicsMore_one": "{{first}} e un altro argomento",
@@ -2813,7 +2824,7 @@
       "continue": "Continua",
       "newPlan": "Nuovo esame",
       "cancel": "Annulla",
-      "deletePlan": "Elimina esame",
+      "deletePlan": "Elimina l'esame",
       "generatePath": "Genera percorso",
       "disabled": "Disattivato"
     },
@@ -3391,8 +3402,8 @@
     "endHeading": "Archivia o elimina",
     "archive": "Archivia",
     "restore": "Ripristina",
-    "deleteHelp": "Cancella lezioni, quiz e progressi di questo esame. Le fonti restano in Esami › Fonti.",
-    "delete": "Elimina",
+    "deleteHelp": "Cancella lezioni, quiz e progressi di questo esame. Le fonti restano nella Libreria.",
+    "delete": "Elimina l'esame…",
     "changed": "Da salvare",
     "saveBar": "Modifiche da salvare",
     "changes_one": "1 modifica da salvare:",
@@ -3421,7 +3432,7 @@
       "all": "Il percorso, le lezioni, i quiz e le flashcard di questo esame",
       "mastery": "La padronanza di ogni argomento e le lacune trovate"
     },
-    "deleteKeep": "Le fonti restano in Esami › Fonti.",
+    "deleteKeep": "Le fonti restano nella Libreria.",
     "deleteArchiveHint": "Se l'esame è finito e vuoi solo toglierlo di mezzo, archivialo: non perdi niente.",
     "archiveInstead": "Archivia invece"
   },
@@ -3449,7 +3460,7 @@
     "rebuildWorking": "Sto rileggendo le fonti per confrontare gli argomenti",
     "removeSource": "Rimuovi dall'esame",
     "noSources": "Questo esame non usa ancora fonti.",
-    "removeSourceHelp": "Rimuovere {{title}} da questo esame? Lezioni e progressi esistenti vengono conservati e la fonte resta nella libreria.",
+    "removeSourceHelp": "Lezioni e progressi esistenti restano e la fonte resta nella Libreria.",
     "addSources": "Aggiungi fonti",
     "attachSources": "Collega le fonti selezionate",
     "pickerHelp": "Scegli le fonti dalla libreria. Quelle in preparazione saranno disponibili al termine dell’indicizzazione.",
@@ -3483,7 +3494,8 @@
     "archiveHelp": "Metti da parte un esame finito. Esce dalle code di ripasso, dai conteggi e dai consigli. Lezioni e progressi restano e puoi ripristinarlo quando vuoi.",
     "restore": "Ripristina l'esame",
     "restoreHelp": "Riporta questo esame nelle code di ripasso e nei consigli.",
-    "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli."
+    "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli.",
+    "removeSourceTitle": "Rimuovere «{{title}}» dall'esame?"
   },
   "examPage": {
     "more": "Altro sull'esame",
@@ -3599,10 +3611,10 @@
       "today": "oggi alle {{time}}",
       "yesterday": "ieri alle {{time}}",
       "resume": "Riprendi",
-      "delete": "Elimina…",
+      "delete": "Elimina l'attività…",
       "actions": "Azioni su {{title}}",
       "deleteTitle": "Eliminare «{{title}}»?",
-      "deleteConfirm": "Elimina",
+      "deleteConfirm": "Elimina l'attività",
       "lostAnswers_one": "La risposta che hai già dato si perde.",
       "lostAnswers_other": "Le {{count}} risposte che hai già dato si perdono.",
       "lostNothing": "Non hai ancora risposto a nessuna domanda.",
@@ -3729,9 +3741,11 @@
     "newVersion": "Nuova versione disponibile",
     "newVersionNamed": "Nuova versione disponibile: {{version}}",
     "updateStarted": "{{title}} si sta aggiornando alla versione {{version}}. Seguilo nelle attività.",
-    "updateInUse_one": "{{count}} esame usa questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti nell'esame per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
-    "updateInUse_other": "{{count}} esami usano questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti in ogni esame per aggiungere i nuovi capitoli. Vuoi aggiornarlo?",
-    "retry": "Riprova"
+    "updateInUse_one": "{{count}} esame usa questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quell'esame e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti nell'esame per aggiungere i nuovi capitoli.",
+    "updateInUse_other": "{{count}} esami usano questo libro. L'aggiornamento conserva il vecchio testo per le citazioni di quegli esami e segna come non aggiornati lezioni e quiz che citano testo cambiato. Poi usa Ricostruisci gli argomenti in ogni esame per aggiungere i nuovi capitoli.",
+    "retry": "Riprova",
+    "updateTitle": "Aggiornare il libro?",
+    "updateConfirm": "Aggiorna il libro"
   },
   "makeCards": {
     "title": "Crea flashcard",
