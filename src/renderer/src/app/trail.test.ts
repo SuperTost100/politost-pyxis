@@ -329,6 +329,14 @@ describe("sectionFor", () => {
 });
 
 describe("canForward", () => {
+  it("is false after an address typed into the window, which is a new last entry with nothing ahead", () => {
+    const back = arrive(walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/plans/p/lesson/t")), pop("b", 1, "/plans/p"));
+    expect(canForward(back, "b")).toBe(true);
+    const typed = arrive(back, pop("default", 0, "/maps"));
+    expect(canForward(typed, "default")).toBe(false);
+    expect(typed.visits.map((visit) => visit.key)).toEqual(["default"]);
+  });
+
   it("is true only after going back, and until a new push drops what was ahead", () => {
     const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/plans/p/lesson/t"));
     expect(canForward(trail, "c")).toBe(false);

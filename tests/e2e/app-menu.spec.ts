@@ -552,7 +552,7 @@ test("a menu pick leaves a dialog, unsaved text and a running simulation alone, 
     await expect(page.locator(".px-qz-sheet")).toBeVisible();
     // Its answers save themselves, so a quiz holds nothing: Indietro is on and leaves for the exam, and so does any other
     // command.
-    await expect.poll(async () => (await navEnabled(app)).back).toBe(true);
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
     await pick(app, "back");
     await expect(page).toHaveURL(/#\/plans\/menu-plan$/);
     await page.evaluate(() => {

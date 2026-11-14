@@ -135,7 +135,10 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
         visits: trail.visits.map((visit) => (visit === known ? { ...visit, idx: nav.idx, path: nav.path, page } : visit)),
         current: nav.key,
       };
-    const others = trail.visits.filter((visit) => visit.idx !== nav.idx && visit.key !== nav.key);
+    // An address typed into the window arrives with the key "default" and no position of its own: it is a new last
+    // entry, so nothing is ahead of it, whatever the trail still holds above position 0.
+    const typed = nav.key === "default";
+    const others = trail.visits.filter((visit) => visit.idx !== nav.idx && visit.key !== nav.key && !(typed && visit.idx > nav.idx));
     return {
       visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, section: sectionOf(nav.path), from: null }], nav.key),
       current: nav.key,
