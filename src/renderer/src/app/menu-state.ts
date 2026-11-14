@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { registeredBack } from "./back-slot";
 import type { MenuContext } from "./menu-guard";
 
 /**
@@ -75,5 +76,6 @@ export function readMenuContext(pathname: string): MenuContext {
     locked: isMenuLocked(),
     modalOpen: modalOpen(),
     draftAtRisk: draftAtRisk(document.activeElement),
+    backSaves: registeredBack()?.saves ?? false,
   };
 }

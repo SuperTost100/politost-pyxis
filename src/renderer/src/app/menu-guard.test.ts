@@ -7,6 +7,7 @@ const free: MenuContext = {
   locked: false,
   modalOpen: false,
   draftAtRisk: false,
+  backSaves: false,
 };
 
 const navigation: MenuCommand[] = [
@@ -52,21 +53,27 @@ describe("menu command guard", () => {
 
   it("blocks navigation while text would be lost, but still lists the shortcuts", () => {
     const typing = { ...free, draftAtRisk: true };
-    for (const command of navigation.filter((command) => !stepping.includes(command)))
+    for (const command of navigation)
       expect(menuCommandAllowed(command, typing), command).toBe(false);
     expect(menuCommandAllowed("shortcuts", typing)).toBe(true);
   });
 
-  it("lets Indietro and Avanti through with text in a field, since a page with typed work asks before it lets go", () => {
-    const typing = { ...free, draftAtRisk: true };
-    for (const command of stepping) expect(menuCommandAllowed(command, typing), command).toBe(true);
+  it("refuses Indietro with text in a field, since the page behind it would drop what was typed", () => {
+    expect(menuCommandAllowed("back", { ...free, draftAtRisk: true })).toBe(false);
   });
 
-  it("still refuses Indietro and Avanti with a dialog open, during setup and under a lock, even with text at risk", () => {
+  it("lets Indietro through with text in a field when the page saves before it leaves, and never Avanti", () => {
+    const typing = { ...free, draftAtRisk: true, backSaves: true };
+    expect(menuCommandAllowed("back", typing)).toBe(true);
+    // Avanti leaves through the router at once, so the page's own saving does not run.
+    expect(menuCommandAllowed("forward", typing)).toBe(false);
+  });
+
+  it("still refuses Indietro and Avanti with a dialog open, during setup and under a lock, even where the page saves", () => {
     for (const command of stepping) {
-      expect(menuCommandAllowed(command, { ...free, modalOpen: true, draftAtRisk: true }), command).toBe(false);
-      expect(menuCommandAllowed(command, { ...free, pathname: "/onboarding", draftAtRisk: true }), command).toBe(false);
-      expect(menuCommandAllowed(command, { ...free, locked: true, draftAtRisk: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, modalOpen: true, draftAtRisk: true, backSaves: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, pathname: "/onboarding", draftAtRisk: true, backSaves: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, locked: true, draftAtRisk: true, backSaves: true }), command).toBe(false);
     }
   });
 });

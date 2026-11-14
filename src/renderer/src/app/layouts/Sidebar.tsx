@@ -17,13 +17,14 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import type { ThemeSource } from "@shared/bridge";
 import { goPages, type GoCommand } from "@shared/menu";
 import { RenameField, type ChatActions } from "../../features/ask/chatActions";
 import { menuTrigger } from "../../lib/itemMenu";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
+import { sectionNavigation } from "../sections";
 import type { Section } from "../trail";
 import "./Sidebar.css";
 
@@ -59,9 +60,6 @@ export function keyLabel(accelerator: string): string {
   return mods.map((part) => glyph[part] ?? part).join("") + parts[parts.length - 1];
 }
 
-/** A row of the sidebar starts a new trail: the page it opens has no page behind it to go back to (`history.ts`). */
-const fromSidebar = { via: "sidebar" } as const;
-
 const isChatRow = (section: Section, id: string) => section !== null && typeof section === "object" && section.chat === id;
 
 type Item = { key: string; to: string; icon: LucideIcon; label: string; accelerator: string; current: boolean };
@@ -89,6 +87,9 @@ export function Sidebar({
   const narrow = useSyncExternalStore(subscribeNarrow, () => NARROW.matches);
   const folded = chosen || narrow;
   const chats = useChats();
+  const here = useLocation();
+  // Every row opens its section's page the way Vai > its section does (`sections.ts`).
+  const open = (to: string) => ({ to, ...sectionNavigation(to, here) });
 
   // Each section's row, which opens the section's main page; Chiedi has no row of its own, since the sidebar starts a new
   // chat and lists the recent ones. The row lit is the page's section, so a map opened from an exam keeps Esami lit.
@@ -181,7 +182,7 @@ export function Sidebar({
         <span>Pyxis</span>
       </span>
     ) : (
-      <Link className="px-side-brand" to="/ask" state={fromSidebar} aria-label="Pyxis">
+      <Link className="px-side-brand" {...open("/ask")} aria-label="Pyxis">
         <PyxisMark />
         <span>Pyxis</span>
       </Link>
@@ -223,8 +224,7 @@ export function Sidebar({
         {items.map((item) => (
           <Link
             key={item.key}
-            to={item.to}
-            state={fromSidebar}
+            {...open(item.to)}
             data-tip={item.label}
             aria-current={item.current ? "page" : undefined}
           >
@@ -256,8 +256,7 @@ export function Sidebar({
                     ) : (
                       <>
                         <Link
-                          to={`/ask/${chat.id}`}
-                          state={fromSidebar}
+                          {...open(`/ask/${chat.id}`)}
                           aria-current={isChatRow(section, chat.id) ? "page" : undefined}
                         >
                           <span className="px-side-chat-title">{title}</span>

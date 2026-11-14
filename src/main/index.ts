@@ -723,7 +723,10 @@ function createWindow(route?: string): void {
     clearTimeout(boundsTimer);
     boundsTimer = setTimeout(saveBounds, 500);
   };
-  // macOS's two-finger swipe between pages does what Indietro and Avanti do; the renderer decides whether it may.
+  // Electron's `swipe` is the old three-finger swipe event, which its documentation says macOS sends only when the
+  // trackpad's "Swipe between pages" is set to "Swipe with two or three fingers", and which most trackpads no longer are.
+  // Electron documents no event for the two-finger gesture. It does what Indietro and Avanti do; the renderer decides
+  // whether it may.
   mainWindow.on("swipe", (_event, direction) => {
     if (direction === "left") sendMenuCommand("back");
     else if (direction === "right") sendMenuCommand("forward");

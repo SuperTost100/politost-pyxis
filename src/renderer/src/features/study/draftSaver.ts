@@ -8,6 +8,10 @@ import { useEffect, useRef, useState } from "react";
  * newer one took its place. `flush` resolves to whether the newest draft is saved, so a page can keep the student
  * there when it is not.
  *
+ * `unsaved` says whether the newest answers are not saved yet: a save is on its way, or one failed and its draft still
+ * waits. A draft that only waits for its pause is not counted, since leaving the page sends it. `watch` calls back when
+ * that changes, so a page can hold the menu while it is true.
+ *
  * `flush(true)` is for a page that is going away: the newest draft is sent now instead of after a save still on its
  * way, which the page may not live to see come back (a reload), and before the read of the page opened next. Core
  * answers requests in the order they arrive, so it lands after the save already sent. Older drafts still queued are
@@ -23,6 +27,16 @@ export function draftSaver<T>(
   let queued: { draft: T } | null = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let saving: Promise<boolean> = Promise.resolve(true);
+  let inFlight = 0;
+  let failed = false;
+  const watchers = new Set<() => void>();
+  const unsaved = () => inFlight > 0 || failed;
+  /** Runs `change`, and tells the watchers if it moved `unsaved`. */
+  function track(change: () => void) {
+    const before = unsaved();
+    change();
+    if (unsaved() !== before) for (const watcher of watchers) watcher();
+  }
   /** Takes the newest unsent draft, so the turn that sends it is the only one that can. */
   function take() {
     const next = pending ?? queued;
@@ -32,10 +46,22 @@ export function draftSaver<T>(
   }
   /** Saves one draft; when that fails, the draft stays for the next flush unless a newer one took its place. */
   function send(next: { draft: T }): Promise<boolean> {
+    track(() => (inFlight += 1));
     return save(next.draft).then(
-      () => true,
+      () => {
+        track(() => {
+          inFlight -= 1;
+          // A newer draft that is still to be sent is not a failed one.
+          failed = false;
+        });
+        return true;
+      },
       () => {
         if (!pending && !queued) pending = next;
+        track(() => {
+          inFlight -= 1;
+          failed = true;
+        });
         onError();
         return false;
       },
@@ -68,8 +94,14 @@ export function draftSaver<T>(
     cancel() {
       clearTimeout(timer);
       pending = null;
+      track(() => (failed = false));
     },
     flush,
+    unsaved,
+    watch(watcher: () => void) {
+      watchers.add(watcher);
+      return () => void watchers.delete(watcher);
+    },
   };
 }
 

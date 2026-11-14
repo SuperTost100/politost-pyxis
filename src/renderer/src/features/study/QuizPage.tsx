@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { App, Button, InputNumber, Select } from "antd";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { QUIZ_MAX_QUESTIONS, quizMinutes } from "@shared/quiz";
@@ -27,6 +27,7 @@ import { useReviewSession } from "./ReviewProgress";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
+import { useMenuLock } from "../../app/menu-state";
 import { returnTo, usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
 import { Button as PxButton } from "../../components/Button";
@@ -416,6 +417,10 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     },
     () => setActionError(true),
   );
+  // The answers save themselves, so a quiz does not hold the menu while it is answered. It holds it only while the
+  // newest answers are not saved (a save on its way, or one that failed): every menu command then waits for the save or
+  // is refused, instead of closing the page over answers that were never stored.
+  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved));
   useEffect(() => {
     if (
       attemptId &&

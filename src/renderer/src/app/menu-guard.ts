@@ -12,13 +12,16 @@ export type MenuContext = {
   modalOpen: boolean;
   /** Focus is in a text field with text that the app does not keep by itself. */
   draftAtRisk: boolean;
+  /** The page's way back saves what it holds before it leaves (a `beforeLeave`), so going back loses nothing typed. */
+  backSaves: boolean;
 };
 
 /**
  * Onboarding and open dialogs block every command. The shortcuts list changes nothing on screen behind it, so it also
- * opens during a quiz or a simulation, where its keys are worth looking up. Indietro and Avanti need no lock held and
- * ignore the text in a field: a page with work typed into it asks before it lets go (see its leave guard), and the
- * mouse's buttons and the swipe reach them with the focus anywhere. Everything else needs no lock and no text at risk.
+ * opens during a quiz or a simulation, where its keys are worth looking up. Everything else needs no lock and no text
+ * at risk. The one exception is Indietro, which runs the page's own back control: a page that saves in its
+ * `beforeLeave` (a quiz, a flashcard session) keeps what is typed, so the text in a field does not stop it. Avanti
+ * goes through the router at once, so it never gets that exception.
  */
 export function menuCommandAllowed(
   command: MenuCommand,
@@ -27,6 +30,6 @@ export function menuCommandAllowed(
   if (context.pathname.startsWith("/onboarding") || context.modalOpen)
     return false;
   if (command === "shortcuts") return true;
-  if (command === "back" || command === "forward") return !context.locked;
-  return !context.locked && !context.draftAtRisk;
+  if (context.locked) return false;
+  return !context.draftAtRisk || (command === "back" && context.backSaves);
 }

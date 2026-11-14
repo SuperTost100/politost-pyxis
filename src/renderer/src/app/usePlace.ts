@@ -17,6 +17,8 @@ export type BackTarget = {
   go: () => void;
   /** True while `beforeLeave` runs. */
   busy: boolean;
+  /** The page saves what it holds in `beforeLeave`, so leaving by this way loses nothing the student typed. */
+  saves: boolean;
 };
 
 /**
@@ -29,7 +31,7 @@ export type BackTarget = {
  *   passes null and is called by its kind meanwhile.
  * - `parent`: the parent's own name or address when the page knows better than the table, such as the exam's title.
  * - `back: "none"`: the page has no way back of its own (a sidebar section, a running simulation).
- * - `beforeLeave`: runs before the page is left this way; false keeps the student here.
+ * - `beforeLeave`: saves what the page holds, and runs before the page is left this way; false keeps the student here.
  */
 export function usePlace(input: {
   name?: PlaceName | null;
@@ -62,6 +64,7 @@ export function usePlace(input: {
       label: t("places.backTo", { place: text }),
       to: from ? from.path : parent!.to,
       busy,
+      saves: input.beforeLeave !== undefined,
       go: () => {
         if (busy) return;
         const leave = () => {

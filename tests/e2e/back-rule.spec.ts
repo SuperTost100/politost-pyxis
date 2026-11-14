@@ -472,6 +472,24 @@ test("the sidebar lights the section the page came from, and every row opens its
   await expect(backControl(page)).toHaveCount(0);
 });
 
+test("Vai > Mappe does what the sidebar's row does, also on Mappe opened from an exam", async () => {
+  test.setTimeout(90_000);
+  const { page, app } = walk;
+  await fromExam(async () => undefined)(walk);
+  await side(page).getByRole("link", { name: "Tutte le mappe" }).click();
+  await expect(page).toHaveURL(/#\/maps\?subject=s-an$/);
+  // Mappe keeps the section of the exam it was opened from.
+  await expect(lit(page)).toHaveAccessibleName("Esami");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  await expect(page).toHaveURL(/#\/maps$/);
+  // Again, from the page the row opened: nothing is added to the history, and the row stays lit.
+  const length = await page.evaluate(() => history.length);
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+  await expect(lit(page)).toHaveAccessibleName("Mappe");
+  expect(await page.evaluate(() => history.length)).toBe(length);
+});
+
 test("the label follows the app's language, also after a reload", async () => {
   test.setTimeout(90_000);
   const { page } = walk;

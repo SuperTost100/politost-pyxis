@@ -7,6 +7,7 @@ import { readTrail, watchTrail } from "./history";
 import { menuCommandAllowed } from "./menu-guard";
 import { isMenuLocked, readMenuContext, watchMenuLocks } from "./menu-state";
 import { router } from "./router";
+import { sectionNavigation } from "./sections";
 import { canForward } from "./trail";
 import { checkUpdatesNow } from "../features/settings/UpdatesPanel";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -60,14 +61,15 @@ export function MenuCommands() {
             .catch(() => undefined);
           return;
         }
-        // A section goes straight to its main page, and the page it opens has nothing behind it to go back to.
+        // A section goes straight to its main page, as the sidebar's row does.
         const section = goPages.find((page) => page.command === command);
-        const path =
-          section?.path ??
-          pageCommands[command as keyof typeof pageCommands];
-        const starts = section !== undefined || command === "new-chat";
-        if (path !== pathname)
-          void router.navigate(path, starts ? { state: { via: "sidebar" } } : undefined);
+        if (section || command === "new-chat") {
+          const to = section?.path ?? pageCommands["new-chat"];
+          void router.navigate(to, sectionNavigation(to, router.state.location));
+          return;
+        }
+        const path = pageCommands[command as keyof typeof pageCommands];
+        if (path !== pathname) void router.navigate(path);
         // The Updates page shows the check, so it starts there.
         if (command === "check-updates") void checkUpdatesNow(client);
       }),
