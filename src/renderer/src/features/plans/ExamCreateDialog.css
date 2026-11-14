@@ -1,51 +1,8 @@
-/* "Crea un'attività": a card near the top of the window, its title, the choices in a body that scrolls on its own, and
-   Annulla and Crea together at the bottom right, always in reach at any text size and zoom. */
-.px-acd {
-  width: min(600px, calc(100vw - 32px));
-  max-width: none;
+/* "Crea un'attività", on the one dialog. Its height changes with the kind chosen, so it stays where it is, near the top of
+   the window, instead of re-centring each time. */
+.px-dialog.px-acd {
+  margin-top: 64px;
   max-height: calc(100dvh - 88px);
-  margin: 64px auto auto;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: var(--surface-overlay);
-  color: var(--ink);
-  box-shadow: var(--shadow-overlay);
-  overflow: hidden;
-}
-.px-acd[open] {
-  display: flex;
-}
-.px-acd::backdrop {
-  background: var(--scrim);
-  animation: px-acd-scrim var(--duration-large) var(--ease-out);
-}
-@keyframes px-acd-scrim {
-  from {
-    opacity: 0;
-  }
-}
-.px-acd-card {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-height: 0;
-  padding: 22px 24px 20px;
-}
-.px-acd-title {
-  flex: none;
-  margin: 0;
-  font: 400 calc(24px * var(--text-scale, 1)) / 1.15 var(--font-display);
-  letter-spacing: -0.005em;
-}
-/* Only the choices scroll; the scrollbar's gutter is part of the right padding, so the fields line up with the title. */
-.px-acd-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0 -24px;
-  padding: 0 14px 4px 24px;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 .px-acd-block {
   padding-top: 18px;
@@ -179,18 +136,4 @@
 
 .px-acd-error {
   padding-top: 16px;
-}
-.px-acd-actions {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 22px;
-}
-.px-acd-working {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }

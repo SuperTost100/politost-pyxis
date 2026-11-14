@@ -5,8 +5,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select, type GetRef, type MenuProps } from "antd";
+import { Button, Input, Progress, Select, type GetRef, type MenuProps } from "antd";
 import { FileText, CheckCircle2 } from "lucide-react";
+import { Dialog } from "../../components/Dialog";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
@@ -727,16 +728,14 @@ export function LibraryPanel({
   ) : error ? (
     <Notice tone="danger">{t(error, { max: MAX_DROPPED_FILES })}</Notice>
   ) : null;
-  const addModal = (
-    <Modal
+  const addDialog = (
+    <Dialog
       open={addOpen}
-      width={640}
+      width="md"
       title={t("exams.addSources")}
-      footer={null}
-      // A button that was loading when the dialog closed would keep its hidden "loading" icon, and with it a
-      // wrong accessible name, until the dialog was read again. A fresh dialog each time avoids that.
-      destroyOnHidden
-      onCancel={closeAdd}
+      // Each tab starts its own work in its own button, so the dialog has none of its own, only a way out.
+      cancel={t("dialog.close")}
+      onClose={closeAdd}
       className="px-library-add"
     >
       <details
@@ -1085,9 +1084,9 @@ export function LibraryPanel({
           </Button>
         </form>
       ) : null}
-    </Modal>
+    </Dialog>
   );
-  if (importOnly) return addModal;
+  if (importOnly) return addDialog;
   const loadFailed = list.isError && !list.data;
   const empty = list.isSuccess && sources.length === 0;
   // The subjects that exist are on the page even before the first file, and a failed read of them is said, not hidden.
@@ -1128,7 +1127,7 @@ export function LibraryPanel({
   };
   return (
     <div className="px-library">
-      {addModal}
+      {addDialog}
       <FreeBooks open={booksOpen} onClose={() => setBooksOpen(false)} />
       <PdfPasswordDialog
         target={unlocking}

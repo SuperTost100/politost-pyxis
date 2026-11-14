@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal, Table } from "antd";
+import { Button, Table } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialog } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import { pastPapersQuery, sourcesQuery } from "../../lib/queries";
@@ -36,11 +37,6 @@ export function AttachSourcesDialog({
   const offered = attachableSources(library.data, attached, pastPapers.data);
   // A source that stops being offered (attached meanwhile, or made a past paper) drops out of the selection.
   const picked = selected.filter((id) => offered.some((source) => source.id === id));
-  const close = () => {
-    setSelected([]);
-    setError(false);
-    onClose();
-  };
   async function attach() {
     if (busy) return;
     setBusy(true);
@@ -48,7 +44,7 @@ export function AttachSourcesDialog({
     try {
       await invoke("plans.attachSources", { planId, sourceIds: picked });
       await refreshPlan(client, planId);
-      close();
+      onClose();
     } catch {
       setError(true);
     } finally {
@@ -57,15 +53,20 @@ export function AttachSourcesDialog({
   }
   return (
     <>
-      <Modal
-        width={720}
-        title={t("planOverview.addSources")}
+      <Dialog
         open={open}
-        onCancel={() => !busy && close()}
-        confirmLoading={busy}
-        okText={t("planOverview.attachSources")}
-        okButtonProps={{ disabled: !picked.length }}
-        onOk={() => void attach()}
+        width="lg"
+        title={t("planOverview.addSources")}
+        busy={busy}
+        onClose={onClose}
+        // The picks and the error go once it has shrunk away.
+        onClosed={() => {
+          setSelected([]);
+          setError(false);
+        }}
+        actions={[
+          { label: t("planOverview.attachSources"), disabled: !picked.length, working: busy, onClick: () => void attach() },
+        ]}
       >
         {error ? <Notice tone="danger">{t("planOverview.failed")}</Notice> : null}
         {/* Without both lists nothing is offered, so an empty table must not pass for "nothing to add". */}
@@ -115,15 +116,8 @@ export function AttachSourcesDialog({
           ]}
         />
         <Button onClick={() => setImportOpen(true)}>{t("planOverview.importSource")}</Button>
-      </Modal>
-      <Modal
-        width={720}
-        open={importOpen}
-        title={t("planOverview.importSource")}
-        onCancel={() => setImportOpen(false)}
-        footer={null}
-        destroyOnHidden
-      >
+      </Dialog>
+      {importOpen ? (
         <LibraryPanel
           importOnly
           onClose={() => {
@@ -131,7 +125,7 @@ export function AttachSourcesDialog({
             void library.refetch();
           }}
         />
-      </Modal>
+      ) : null}
     </>
   );
 }

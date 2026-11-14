@@ -255,6 +255,15 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       "Elimina ramo",
     ])
       await expect(tools.getByRole("button", { name: tool })).toBeEnabled();
+    // Enter in the rename dialog's one field does what its confirming button does, and the name goes back the same way.
+    for (const name of ["Regola del prodotto, riscritta", "Regola del prodotto"]) {
+      await tools.getByRole("button", { name: "Rinomina nodo" }).click();
+      const rename = page.getByRole("dialog", { name: "Rinomina nodo" });
+      await rename.getByRole("textbox", { name: "Testo del nodo" }).fill(name);
+      await page.keyboard.press("Enter");
+      await expect(rename).toHaveCount(0);
+      await expect(foot.locator(".px-map-node-label")).toHaveText(name);
+    }
     await saveShot(page, "m10-map-selected.png");
     // The source opens beside the map on that passage, without leaving the map; Esc closes it and focus goes back.
     const mapUrl = page.url();

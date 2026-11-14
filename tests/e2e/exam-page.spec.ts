@@ -284,7 +284,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await pickFromMenu(page, "Share the exam");
     const share = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Save file" }) });
     await expect(share).toBeVisible();
-    await share.getByRole("button", { name: "Close" }).click();
+    await share.getByRole("button", { name: "Cancel" }).click();
     await expect(share).toBeHidden();
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);

@@ -1,8 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "../../lib/ipc";
+import { Dialog, type DialogAction } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { Working } from "../../components/Working";
@@ -73,75 +73,51 @@ export function RebuildDialog({
   const running = job && ["queued", "running"].includes(job.state);
   const stopped =
     job && ["failed", "cancelled", "interrupted"].includes(job.state);
-  const footer = !state.isSuccess ? null : !job ? (
-    <>
-      <Button onClick={onClose}>{t("wizard.cancel")}</Button>
-      <Button type="primary" loading={busy} onClick={() => void start()}>
-        {t("planOverview.rebuildStart")}
-      </Button>
-    </>
-  ) : running ? (
-    <>
-      <Button onClick={onClose}>{t("planOverview.rebuildBackground")}</Button>
-      <Button
-        onClick={() =>
-          void act(() => invoke("jobs.cancel", { jobId: job.jobId }))
-        }
-      >
-        {t("planOverview.rebuildStop")}
-      </Button>
-    </>
-  ) : stopped ? (
-    <>
-      <Button disabled={busy} onClick={() => void discard()}>
-        {t("planOverview.rebuildDiscard")}
-      </Button>
-      <Button
-        type="primary"
-        loading={busy}
-        onClick={() =>
-          void act(() =>
-            invoke(
-              job.state === "interrupted" ? "jobs.resume" : "jobs.retry",
-              { jobId: job.jobId },
-            ),
-          )
-        }
-      >
-        {t(
-          job.state === "interrupted"
-            ? "planOverview.rebuildResume"
-            : "planOverview.rebuildRetry",
-        )}
-      </Button>
-    </>
-  ) : review?.stale ? (
-    <>
-      <Button disabled={busy} onClick={() => void discard()}>
-        {t("planOverview.rebuildDiscard")}
-      </Button>
-      <Button type="primary" loading={busy} onClick={() => void restart()}>
-        {t("planOverview.rebuildAgain")}
-      </Button>
-    </>
-  ) : (
-    <>
-      <Button disabled={busy} onClick={() => void discard()}>
-        {t("planOverview.rebuildDiscard")}
-      </Button>
-      <Button type="primary" loading={busy} onClick={() => void apply()}>
-        {t("planOverview.rebuildApply")}
-      </Button>
-    </>
-  );
+  // Annulla closes the dialog and leaves the job as it is; Scarta is the extra action on the left that drops it.
+  const rebuildCancel = running ? t("planOverview.rebuildBackground") : undefined;
+  const discardAction: DialogAction = {
+    label: t("planOverview.rebuildDiscard"),
+    tone: "secondary",
+    side: "start",
+    onClick: () => void discard(),
+  };
+  const actions: DialogAction[] = !state.isSuccess
+    ? []
+    : !job
+      ? [{ label: t("planOverview.rebuildStart"), working: busy, onClick: () => void start() }]
+      : running
+        ? [
+            {
+              label: t("planOverview.rebuildStop"),
+              tone: "secondary",
+              onClick: () => void act(() => invoke("jobs.cancel", { jobId: job.jobId })),
+            },
+          ]
+        : stopped
+          ? [
+              discardAction,
+              {
+                label: t(job.state === "interrupted" ? "planOverview.rebuildResume" : "planOverview.rebuildRetry"),
+                working: busy,
+                onClick: () =>
+                  void act(() =>
+                    invoke(job.state === "interrupted" ? "jobs.resume" : "jobs.retry", { jobId: job.jobId }),
+                  ),
+              },
+            ]
+          : review?.stale
+            ? [discardAction, { label: t("planOverview.rebuildAgain"), working: busy, onClick: () => void restart() }]
+            : [discardAction, { label: t("planOverview.rebuildApply"), working: busy, onClick: () => void apply() }];
 
   return (
-    <Modal
+    <Dialog
       open={open}
+      width="lg"
       title={t("plans.rebuild")}
-      onCancel={onClose}
-      footer={footer}
-      destroyOnHidden
+      cancel={rebuildCancel}
+      busy={busy}
+      onClose={onClose}
+      actions={actions}
     >
       {failed || state.isError ? (
         <Notice tone="danger">{t("planOverview.failed")}</Notice>
@@ -180,8 +156,7 @@ export function RebuildDialog({
           ) : null}
         </div>
       ) : review ? (
-        // The list scrolls inside the dialog, so the keyboard needs a way in.
-        <div className="px-rebuild-diff" role="region" aria-label={t("plans.rebuild")} tabIndex={0}>
+        <div className="px-rebuild-diff" role="region" aria-label={t("plans.rebuild")}>
           {review.stale ? (
             <Notice tone="warning">{t("planOverview.rebuildStale")}</Notice>
           ) : null}
@@ -264,6 +239,6 @@ export function RebuildDialog({
           </p>
         </div>
       ) : null}
-    </Modal>
+    </Dialog>
   );
 }

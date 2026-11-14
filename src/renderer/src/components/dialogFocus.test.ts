@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closingFocus, openingFocus, outsideClickCloses, stayingFocus, wrapTab } from "./dialogFocus";
+import { closingFocus, enterAction, openingFocus, outsideClickCloses, stayingFocus, wrapTab } from "./dialogFocus";
 
 describe("openingFocus", () => {
   const all = [
@@ -82,5 +82,40 @@ describe("stayingFocus", () => {
   it("stays where it is from the keyboard or with nothing before", () => {
     expect(stayingFocus("title field", "goal slider", false)).toBe("title field");
     expect(stayingFocus("sidebar link", null, true)).toBe("sidebar link");
+  });
+});
+
+describe("enterAction", () => {
+  const field = { tag: "input", type: "text", inCombobox: false, formHasSubmit: false };
+  const save = { label: "Salva", disabled: false };
+  const more = { label: "Salva e scrivine un'altra", tone: "secondary" as const };
+  const none = { busy: false, open: true };
+
+  it("runs the confirming action for Enter in a single-line field, as the browser would submit its form", () => {
+    expect(enterAction(field, [more, save], none)).toEqual({ action: save });
+    expect(enterAction({ ...field, type: "password" }, [save], none)).toEqual({ action: save });
+    expect(enterAction({ ...field, type: "number" }, [save], none)).toEqual({ action: save });
+  });
+
+  it("leaves Enter to the browser anywhere else", () => {
+    expect(enterAction({ ...field, tag: "textarea", type: "" }, [save], none)).toBeNull();
+    expect(enterAction({ ...field, type: "checkbox" }, [save], none)).toBeNull();
+    expect(enterAction({ ...field, type: "search" }, [save], none)).toBeNull();
+    expect(enterAction({ ...field, tag: "button", type: "" }, [save], none)).toBeNull();
+    expect(enterAction({ ...field, inCombobox: true }, [save], none)).toBeNull();
+    // A form with a submit button of its own answers its own Enter.
+    expect(enterAction({ ...field, formHasSubmit: true }, [save], none)).toBeNull();
+  });
+
+  it("does nothing when there is no action that only confirms", () => {
+    expect(enterAction(field, [], none)).toBeNull();
+    expect(enterAction(field, [more], none)).toBeNull();
+    expect(enterAction(field, [{ label: "Elimina", tone: "danger" as const }], none)).toBeNull();
+  });
+
+  it("swallows Enter while the action is off, the dialog is busy or it is already answered", () => {
+    expect(enterAction(field, [{ ...save, disabled: true }], none)).toEqual({ action: null });
+    expect(enterAction(field, [save], { busy: true, open: true })).toEqual({ action: null });
+    expect(enterAction(field, [save], { busy: false, open: false })).toEqual({ action: null });
   });
 });

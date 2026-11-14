@@ -3,6 +3,7 @@ import { Button } from "antd";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PlanFile, PlanFilePart, PlanFileReason } from "@shared/plan-file";
+import { Dialog } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
 import {
@@ -27,15 +28,16 @@ const COUNTS = [
   "exercises",
 ] as const;
 
-/** Shows what a validated plan file holds and how each missing original is handled. Nothing is written until Import. */
-export function ImportReview({
+/**
+ * What a validated plan file holds and how each missing original is handled: the plan's title, the review itself, and
+ * the import button's state. Nothing is written until Import. The page and the dialog draw the parts their own way.
+ */
+function useImportReview({
   file,
   onImport,
-  onCancel,
 }: {
   file: PlanFile;
   onImport: (request: ImportRequest) => Promise<void>;
-  onCancel: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const library = useSources();
@@ -103,11 +105,8 @@ export function ImportReview({
     { value: "skip", label: t("shared.review.skip") },
   ];
 
-  return (
-    <section className="px-import-review" aria-labelledby="import-review-title">
-      <h2 id="import-review-title" className="title-2">
-        {preview.title}
-      </h2>
+  const content = (
+    <>
       {preview.author || preview.createdAt ? (
         <p className="small ink-muted">
           {[
@@ -251,20 +250,84 @@ export function ImportReview({
       ) : failed ? (
         <Notice tone="danger">{t("shared.importFailed")}</Notice>
       ) : null}
+    </>
+  );
+  return {
+    title: preview.title,
+    content,
+    busy,
+    unresolved,
+    confirm: t(earlier.data ? "shared.review.importCopy" : "shared.review.import"),
+    submit: () => void submit(),
+  };
+}
+
+/** The review as a page: its title, what it holds, and Importa with Annulla. */
+export function ImportReview({
+  file,
+  onImport,
+  onCancel,
+}: {
+  file: PlanFile;
+  onImport: (request: ImportRequest) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const review = useImportReview({ file, onImport });
+  return (
+    <section className="px-import-review" aria-labelledby="import-review-title">
+      <h2 id="import-review-title" className="title-2">
+        {review.title}
+      </h2>
+      {review.content}
       <div className="px-import-actions">
-        <Button
-          type="primary"
-          shape="round"
-          loading={busy}
-          disabled={unresolved}
-          onClick={() => void submit()}
-        >
-          {t(earlier.data ? "shared.review.importCopy" : "shared.review.import")}
+        <Button type="primary" shape="round" loading={review.busy} disabled={review.unresolved} onClick={review.submit}>
+          {review.confirm}
         </Button>
-        <Button type="text" shape="round" disabled={busy} onClick={onCancel}>
+        <Button type="text" shape="round" disabled={review.busy} onClick={onCancel}>
           {t("shared.review.cancel")}
         </Button>
       </div>
     </section>
+  );
+}
+
+/** The review as a dialog over the page that picked the file: the buttons are the dialog's own. */
+export function ImportReviewDialog({
+  open,
+  file,
+  onImport,
+  onClose,
+  onClosed,
+}: {
+  open: boolean;
+  file: PlanFile;
+  onImport: (request: ImportRequest) => Promise<void>;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
+  const { t } = useTranslation();
+  const review = useImportReview({ file, onImport });
+  return (
+    <Dialog
+      open={open}
+      width="lg"
+      title={t("shared.review.title")}
+      busy={review.busy}
+      // The choices made for each missing original would be lost by a stray click.
+      outside="none"
+      onClose={onClose}
+      onClosed={onClosed}
+      actions={[
+        { label: review.confirm, disabled: review.unresolved, working: review.busy, onClick: review.submit },
+      ]}
+    >
+      <section className="px-import-review" aria-labelledby="import-review-title">
+        <h3 id="import-review-title" className="title-3">
+          {review.title}
+        </h3>
+        {review.content}
+      </section>
+    </Dialog>
   );
 }

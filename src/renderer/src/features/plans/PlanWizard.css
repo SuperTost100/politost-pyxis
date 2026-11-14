@@ -183,19 +183,17 @@
   flex-shrink: 0;
   color: var(--ink-muted);
 }
-.px-wizard-picker .ant-modal-body {
+.px-wizard-picker .px-dialog-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
+/* The body scrolls when the dialog is short, so its parts keep their height instead of shrinking into each other. */
+.px-wizard-picker .px-dialog-body > * {
+  flex: none;
+}
 .px-wizard-picker-list {
   padding: 2px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-.px-wizard-picker-actions {
-  display: flex;
-  justify-content: flex-end;
 }
 @media (max-width: 640px) {
   .px-wizard-row,

@@ -1,10 +1,11 @@
-import { App, Button, Checkbox, Modal, Select } from "antd";
+import { App, Button, Checkbox, Select } from "antd";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
+import { Dialog } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { invoke } from "../../lib/ipc";
-import "./AnkiModal.css";
+import "./AnkiDialog.css";
 import { usePlan, usePlans } from "../../lib/queries";
 
 type Preview = RequestOutput<"study.ankiPreview">;
@@ -17,7 +18,7 @@ const messageKeyOf = (err: unknown): string =>
     : "cardImport.failed";
 
 /** Import from or export to an Anki package (.apkg), from the card browser. */
-export function AnkiModal({
+export function AnkiDialog({
   mode,
   open,
   onClose,
@@ -175,32 +176,32 @@ export function AnkiModal({
   );
 
   return (
-    <Modal
+    <Dialog
       open={open}
+      width="md"
       title={t(importing ? "cardImport.title" : "cardExport.title")}
-      onCancel={() => {
-        if (!busy) onClose();
-      }}
-      closable={!busy}
-      maskClosable={false}
-      keyboard={!busy}
-      destroyOnHidden
-      className="px-anki-modal"
-      cancelText={t(result ? "cardImport.done" : "cardBrowser.cancel")}
-      cancelButtonProps={{ disabled: busy }}
-      okText={
-        !importing
-          ? t("cardExport.run")
-          : preview
-            ? t("cardImport.run", { count: preview.cards })
-            : t("cardImport.runPlain")
+      busy={busy}
+      // A stray click would drop the file and the choices made.
+      outside="none"
+      onClose={onClose}
+      // With the result shown there is nothing left to confirm, so the way out says it is done.
+      cancel={result ? t("cardImport.done") : undefined}
+      actions={
+        result
+          ? []
+          : [
+              {
+                label: !importing
+                  ? t("cardExport.run")
+                  : preview
+                    ? t("cardImport.run", { count: preview.cards })
+                    : t("cardImport.runPlain"),
+                disabled: !ready,
+                working: busy,
+                onClick: () => void run(),
+              },
+            ]
       }
-      okButtonProps={{
-        disabled: !ready,
-        style: result ? { display: "none" } : undefined,
-      }}
-      confirmLoading={busy}
-      onOk={() => void run()}
     >
       <div className="px-anki-body">
         {!plans.isPending && planOptions.length === 0 ? (
@@ -293,6 +294,6 @@ export function AnkiModal({
           </>
         )}
       </div>
-    </Modal>
+    </Dialog>
   );
 }

@@ -1,51 +1,11 @@
-/* "Nuova flashcard": a card near the top of the window, its title, the switch, the fields in a body that scrolls on
-   its own, and the buttons at the bottom right, always in reach. */
-.px-nc {
-  width: min(520px, calc(100vw - 32px));
-  max-width: none;
+/* "Nuova flashcard", on the one dialog. Its height changes with the side and the step, so it stays near the top of the
+   window instead of re-centring each time. */
+.px-dialog.px-nc {
+  margin-top: 64px;
   max-height: calc(100dvh - 88px);
-  margin: 64px auto auto;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: var(--surface-overlay);
-  color: var(--ink);
-  box-shadow: var(--shadow-overlay);
-  overflow: hidden;
-}
-.px-nc.is-wide {
-  width: min(580px, calc(100vw - 32px));
-}
-.px-nc[open] {
-  display: flex;
-}
-.px-nc::backdrop {
-  background: var(--scrim);
-  animation: px-nc-scrim var(--duration-large) var(--ease-out);
-}
-@keyframes px-nc-scrim {
-  from {
-    opacity: 0;
-  }
-}
-.px-nc-card {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-height: 0;
-  padding: 22px 24px 20px;
-}
-.px-nc-head {
-  flex: none;
-}
-.px-nc-title {
-  margin: 0;
-  font: 400 calc(24px * var(--text-scale, 1)) / 1.15 var(--font-display);
-  letter-spacing: -0.005em;
-  text-wrap: balance;
 }
 .px-nc-summary {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--ink-muted);
   font-size: calc(13.5px * var(--text-scale, 1));
   line-height: 1.45;
@@ -57,7 +17,7 @@
 }
 /* The switch takes the card's width, two halves. */
 .px-nc-switch {
-  margin-top: 16px;
+  margin-top: 8px;
 }
 .px-nc-switch .px-ctl-seg,
 .px-nc-switch .px-ctl-seg:has(> :nth-child(2):last-child) {
@@ -73,16 +33,6 @@
 .px-nc-switch .px-ctl-seg > button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-}
-/* Only the fields scroll, so the title and the buttons stay in view at any text size and zoom. */
-.px-nc-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0 -24px;
-  /* The scrollbar's 10px gutter is part of the right padding, so the fields line up with the title and the buttons. */
-  padding: 0 14px 4px 24px;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 .px-nc-pane[hidden] {
   display: none;
@@ -260,19 +210,6 @@ select.px-nc-field {
   margin-top: 12px;
 }
 
-/* The buttons, bottom right, the primary last. They wrap rather than leave the card. */
-.px-nc-actions {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 20px;
-}
-.px-nc-actions .px-btn {
-  white-space: nowrap;
-}
 /* "Aggiunta" takes the place of the label for a moment; both sit in one cell, so the button keeps its width. */
 .px-nc-swap {
   display: inline-grid;
@@ -289,12 +226,6 @@ select.px-nc-field {
 }
 .px-nc-swap svg {
   color: var(--ok);
-}
-.px-nc-busy.px-btn:disabled {
-  gap: 8px;
-  opacity: 1;
-  background: var(--surface-raised);
-  color: var(--ink-muted);
 }
 /* A field that is there only sometimes folds in and out of the one above it. */
 .px-nc-fold {
@@ -322,19 +253,6 @@ select.px-nc-field {
     visibility 0s linear var(--duration-small);
 }
 
-@media (max-width: 560px) {
-  .px-nc {
-    margin-top: 24px;
-    max-height: calc(100dvh - 48px);
-  }
-  .px-nc-card {
-    padding: 18px 16px 16px;
-  }
-  .px-nc-body {
-    margin: 0 -16px;
-    padding: 0 6px 4px 16px;
-  }
-}
 /* The proposals' own line sits right under the title, where the switch was. */
 .px-nc-pane > .px-nc-lead:first-child {
   margin-top: 6px;

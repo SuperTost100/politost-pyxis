@@ -1,5 +1,13 @@
 /* The one dialog (docs/design-system/controls.md, "Dialogs"): a card in the middle of the window, the serif title, the
    body that scrolls on its own, and the buttons at the bottom right, always in reach. */
+/* The dialog is drawn in the document's body, outside `.px-app`, so it asks for the border-box sizing the pages are laid
+   out for. */
+.px-dialog,
+.px-dialog *,
+.px-dialog *::before,
+.px-dialog *::after {
+  box-sizing: border-box;
+}
 .px-dialog {
   --px-dialog-width: 460px;
   width: min(var(--px-dialog-width), calc(100vw - 32px));
@@ -12,7 +20,9 @@
   background: var(--surface-overlay);
   color: var(--ink);
   box-shadow: var(--shadow-overlay);
-  overflow: hidden;
+  /* Not clipped: a select's list or a menu opened inside is drawn in the dialog and may reach past its card. The body
+     scrolls on its own, so nothing else needs clipping. */
+  overflow: visible;
 }
 .px-dialog.is-md {
   --px-dialog-width: 560px;
@@ -73,17 +83,20 @@
   flex: none;
   margin: -1px -8px 0 0;
 }
+/* The body scrolls, and what scrolls is clipped at its edge, so it has room for the focus ring and outline of what sits
+   at its edges (a selected tile, a ghost button pulled out by its margin): 8px beside and 4px above and below, taken back by the negative margin. */
 .px-dialog-body {
   flex: 1 1 auto;
   min-height: 0;
-  margin-top: 8px;
+  margin: 4px -8px 0;
+  padding: 4px 8px;
   overflow: auto;
   overflow-wrap: anywhere;
 }
 .px-dialog-body:focus-visible {
   outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  outline-offset: -2px;
+  border-radius: var(--radius-md);
 }
 .px-dialog-description {
   margin: 0;

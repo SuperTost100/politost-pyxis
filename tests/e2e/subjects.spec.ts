@@ -42,6 +42,11 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await page.getByRole("textbox", { name: "Nome della materia" }).fill("Analisi 1");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "Riordina Analisi 1" })).toBeVisible();
+    // An Escape in the rename field cancels the rename, which is its own, and leaves the dialog open.
+    await page.getByRole("button", { name: "Rinomina Analisi 1" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("textbox", { name: "Nome della materia" })).toHaveCount(0);
+    await expect(page.getByRole("dialog", { name: "Gestisci materie" })).toBeVisible();
     await page.getByRole("button", { name: "Rinomina Analisi 1" }).click();
     await page.getByRole("textbox", { name: "Nome della materia" }).fill("Analisi");
     await page.getByRole("button", { name: "Salva", exact: true }).click();
@@ -49,6 +54,15 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     const handle = page.getByRole("button", { name: "Riordina Analisi", exact: true });
     await expect(handle).toBeEnabled();
     await handle.focus();
+    // An Escape during a keyboard reorder cancels the reorder, which is its own, and leaves the dialog open.
+    await page.keyboard.press("Space");
+    await expect(handle).toHaveAttribute("aria-pressed", "true");
+    // The sensor listens for keys a tick after the press, so an Escape that comes too early is repeated.
+    await expect(async () => {
+      await page.keyboard.press("Escape");
+      await expect(handle).not.toHaveAttribute("aria-pressed", "true", { timeout: 1000 });
+    }).toPass({ timeout: 15000 });
+    await expect(page.getByRole("dialog", { name: "Gestisci materie" })).toBeVisible();
     await page.keyboard.press("Space");
     await expect(handle).toHaveAttribute("aria-pressed", "true");
     // The keyboard sensor measures droppable positions on the next frame.

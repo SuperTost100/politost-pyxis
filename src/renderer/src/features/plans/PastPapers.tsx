@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Modal } from "antd";
-import { useState } from "react";
+import { Button } from "antd";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
-import { useConfirm } from "../../components/Dialog";
+import { Dialog, useConfirm } from "../../components/Dialog";
 import { Notice } from "../../components/Notice";
 import { StepLines } from "../../components/StepLines";
 import { invoke } from "../../lib/ipc";
@@ -39,6 +39,9 @@ export function PastPapers({ planId }: { planId: string }) {
   const confirm = useConfirm();
   const [adding, setAdding] = useState(false);
   const [several, setSeveral] = useState<string[] | null>(null);
+  // The files stay in the question while the dialog shrinks away.
+  const lastSeveral = useRef(several);
+  if (several) lastSeveral.current = several;
   const [problem, setProblem] = useState<string | null>(null);
   const papers = useQuery({
     ...pastPapersQuery(planId),
@@ -194,36 +197,30 @@ export function PastPapers({ planId }: { planId: string }) {
       ) : null}
       {styleFacts ? <p className="small ink-muted">{t("pastPapers.style", { facts: styleFacts })}</p> : null}
       {adding ? <LibraryPanel importOnly onClose={() => setAdding(false)} onImported={imported} /> : null}
-      <Modal
+      <Dialog
         open={several != null}
         title={t("pastPapers.add")}
-        onCancel={() => setSeveral(null)}
-        footer={null}
-        width={480}
-      >
-        <p>{t("pastPapers.oneOrMany", { count: several?.length ?? 0 })}</p>
-        <div className="px-papers-choice">
-          <Button
-            shape="round"
-            onClick={() => {
+        description={t("pastPapers.oneOrMany", { count: (several ?? lastSeveral.current ?? []).length })}
+        onClose={() => setSeveral(null)}
+        // Both answers add the files; they differ in how many papers the files make.
+        actions={[
+          {
+            label: t("pastPapers.separatePapers"),
+            tone: "secondary",
+            onClick: () => {
               if (several) add.mutate(several.map((id) => [id]));
               setSeveral(null);
-            }}
-          >
-            {t("pastPapers.separatePapers")}
-          </Button>
-          <Button
-            type="primary"
-            shape="round"
-            onClick={() => {
+            },
+          },
+          {
+            label: t("pastPapers.onePaper"),
+            onClick: () => {
               if (several) add.mutate([several]);
               setSeveral(null);
-            }}
-          >
-            {t("pastPapers.onePaper")}
-          </Button>
-        </div>
-      </Modal>
+            },
+          },
+        ]}
+      />
     </section>
   );
 }

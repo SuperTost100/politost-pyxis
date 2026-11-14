@@ -45,10 +45,14 @@
   flex: 1 1 280px;
   margin: 0;
 }
-.px-library-add .ant-modal-body {
+.px-library-add .px-dialog-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+/* The body scrolls when the dialog is short, so its parts keep their height instead of shrinking into each other. */
+.px-library-add .px-dialog-body > * {
+  flex: none;
 }
 .px-library-quality {
   border-bottom: 1px solid var(--border);
@@ -273,12 +277,6 @@ select.px-ctl-field.px-library-picker {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-.px-library-newsubject-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
 }
 
 /* The Library page is wider than the usual column, so short shelves sit side by side (Shell.tsx sets the class). */

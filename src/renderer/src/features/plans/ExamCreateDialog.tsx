@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { MAP_INSTRUCTION_MAX } from "@shared/concept-map";
 import { QUIZ_MAX_QUESTIONS } from "@shared/quiz";
-import { Button } from "../../components/Button";
 import {
   PreviewTiles,
   RadioRows,
@@ -13,11 +12,10 @@ import {
   Stepper,
   ToggleChips,
 } from "../../components/Controls";
+import { Dialog } from "../../components/Dialog";
 import { Icon, type IconName } from "../../components/Icon";
-import { Logo } from "../../components/Logo";
 import { Notice } from "../../components/Notice";
 import { errorProvider, useEngineError } from "../../lib/engineError";
-import { grow } from "../../lib/grow";
 import { invoke } from "../../lib/ipc";
 import { pastPapersQuery } from "../../lib/queries";
 import type { MadeActivity } from "./making";
@@ -83,8 +81,28 @@ export function ExamCreateDialog({
   const navigate = useNavigate();
   const describeEngineError = useEngineError(navigate);
   const ids = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const form = useRef<HTMLFormElement>(null);
   const options = useRef<HTMLDivElement>(null);
+  // What the dialog grows out of and gives the focus back to, asked each time it opens or closes.
+  const originNow = useRef(origin);
+  originNow.current = origin;
+  const grownFrom = useMemo(
+    () => ({
+      get current() {
+        return originNow.current();
+      },
+    }),
+    [],
+  );
+  // The focus goes to the first control: the kind that is chosen.
+  const firstControl = useMemo(
+    () => ({
+      get current() {
+        return form.current?.querySelector<HTMLElement>('[role="radiogroup"] [aria-checked="true"]') ?? null;
+      },
+    }),
+    [],
+  );
   const papers = useQuery({
     ...pastPapersQuery(planId),
     enabled: Boolean(planId) && open,
@@ -108,7 +126,6 @@ export function ExamCreateDialog({
     text: string;
     action?: { label: string; onClick: () => void };
   } | null>(null);
-  const [closing, setClosing] = useState(false);
   // Each opening of the dialog has a number, and a request acts only while its opening is still the current one: closing
   // the dialog, or leaving it for a page, moves the number on, so a reply that comes after cannot touch the next opening.
   const opening = useRef(0);
@@ -132,37 +149,16 @@ export function ExamCreateDialog({
       setInstruction("");
       setError(null);
       setBusy(false);
-      setClosing(false);
     }
   }
 
-  useLayoutEffect(() => {
-    const node = dialog.current;
-    if (!node || !open || node.open) return;
-    node.showModal();
-    grow(node, origin(), "in");
-    // The focus goes to the first control: the kind that is chosen.
-    node
-      .querySelector<HTMLElement>('[role="radiogroup"] [aria-checked="true"]')
-      ?.focus();
-  }, [open]);
-
   function close() {
-    const node = dialog.current;
-    if (!node?.open || closing) return;
     opening.current += 1;
-    setClosing(true);
-    const back = origin();
-    grow(node, back, "out", () => {
-      node.close();
-      onClose();
-      if (back?.isConnected) back.focus();
-    });
+    onClose();
   }
-  /** Leaves for the page of what was made: no shrinking back, the page changes under it. */
+  /** Leaves for the page of what was made: the page changes under the dialog. */
   function leave(to: string, state?: unknown) {
     opening.current += 1;
-    dialog.current?.close();
     onClose();
     navigate(to, state ? { state } : undefined);
   }
@@ -286,35 +282,32 @@ export function ExamCreateDialog({
   const label = (id: string) => `${ids}-${id}`;
 
   return (
-    <dialog
-      ref={dialog}
+    <Dialog
+      open={open}
+      width="md"
       className="px-acd"
-      aria-labelledby={label("title")}
-      onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented) return;
-        event.preventDefault();
-        close();
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
-      onMouseDown={(event) => {
-        if (event.target === dialog.current) close();
-      }}
+      title={t("examPage.create")}
+      origin={grownFrom}
+      initialFocus={firstControl}
+      onClose={close}
+      // Closing it while the work runs is allowed: what was started stays in "Da finire".
+      actions={[
+        {
+          label: busy ? t("examPage.createDialog.creating") : t("examPage.createDialog.create"),
+          working: busy,
+          disabled: blocked || busy,
+          onClick: () => void create(),
+        },
+      ]}
     >
-      {open ? (
-        <form
-          className="px-acd-card"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void create();
-          }}
-        >
-          <h2 className="px-acd-title" id={label("title")}>
-            {t("examPage.create")}
-          </h2>
-          <div className="px-acd-body">
+      <form
+        ref={form}
+        className="px-acd-body"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void create();
+        }}
+      >
             <div className="px-acd-block">
               <span className="label" id={label("kind")}>
                 {t("examPage.createDialog.what")}
@@ -513,31 +506,10 @@ export function ExamCreateDialog({
                 </Notice>
               </div>
             ) : null}
-          </div>
-          <div className="px-acd-actions">
-            <Button variant="ghost" disabled={closing} onClick={close}>
-              {t("examPage.createDialog.cancel")}
-            </Button>
-            <Button
-              type="submit"
-              disabled={blocked || closing}
-              className={busy ? "is-working" : undefined}
-            >
-              {busy ? (
-                <span className="px-acd-working">
-                  <Logo working decorative size={16} />
-                  {t("examPage.createDialog.creating")}
-                </span>
-              ) : (
-                t("examPage.createDialog.create")
-              )}
-            </Button>
-          </div>
-          <p className="visually-hidden" role="status">
-            {busy ? t("examPage.createDialog.creating") : ""}
-          </p>
-        </form>
-      ) : null}
-    </dialog>
+        <p className="visually-hidden" role="status">
+          {busy ? t("examPage.createDialog.creating") : ""}
+        </p>
+      </form>
+    </Dialog>
   );
 }

@@ -3,8 +3,6 @@
   flex-direction: column;
   gap: var(--space-4);
   padding-block: var(--space-3);
-  max-height: min(64vh, 640px);
-  overflow-y: auto;
 }
 .px-mc-source {
   margin: 0;
@@ -54,9 +52,6 @@
 /* The working mark in the slot where the cards will appear: 44px, centred, with its line under it. */
 .px-mc-working {
   min-height: 180px;
-}
-.px-makecards .ant-modal-footer .ant-btn {
-  white-space: nowrap;
 }
 @media (max-width: 560px) {
   .px-mc-where {

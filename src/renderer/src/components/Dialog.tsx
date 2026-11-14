@@ -17,13 +17,14 @@ import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { menuTakesEscape } from "./ItemMenu";
 import { Logo } from "./Logo";
-import { closingFocus, openingFocus, outsideClickCloses, wrapTab, type FocusRole } from "./dialogFocus";
+import { closingFocus, enterAction, openingFocus, outsideClickCloses, wrapTab, type FocusRole } from "./dialogFocus";
 import "./Dialog.css";
 
 export type DialogWidth = "sm" | "md" | "lg";
 
 export type DialogAction = {
-  label: string;
+  /** Its name; markup when the label changes while the button stays, as Nuova flashcard's "Aggiunta". */
+  label: ReactNode;
   onClick: () => unknown;
   /** `danger` for an action that destroys something: the only solid red button. `secondary` for an extra action. */
   tone?: "primary" | "danger" | "secondary";
@@ -32,6 +33,8 @@ export type DialogAction = {
   disabled?: boolean;
   /** The work it started is running: the button shows the working mark and stays where it is. */
   working?: boolean;
+  /** Lets the page find the button to move the focus to it (`data-focus-key`), as after the last card is dropped. */
+  focusKey?: string;
 };
 
 /**
@@ -39,7 +42,8 @@ export type DialogAction = {
  * select's list, or a button or field whose list is open. That one closes first.
  */
 const OPENED_INSIDE = ".px-item-menu, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown";
-const ESCAPE_NOT_MINE = `${OPENED_INSIDE}, [aria-haspopup][aria-expanded="true"], [role=combobox][aria-expanded="true"]`;
+// A list being dragged by the keyboard (`@dnd-kit` marks its handle pressed) cancels the drag on Escape.
+const ESCAPE_NOT_MINE = `${OPENED_INSIDE}, [aria-haspopup][aria-expanded="true"], [role=combobox][aria-expanded="true"], [aria-roledescription="sortable"][aria-pressed="true"]`;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 const FIELDS = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"]';
@@ -79,6 +83,8 @@ export function Dialog({
   onClose,
   width = "sm",
   busy = false,
+  enterConfirms = true,
+  outside = "auto",
   origin,
   initialFocus,
   returnFocus,
@@ -98,6 +104,17 @@ export function Dialog({
   /** 460px for a confirmation, 560 for a form, 720 for a preview. */
   width?: DialogWidth;
   busy?: boolean;
+  /**
+   * Whether Enter in a single-line field runs the confirming action, as the browser's own rule would submit a form
+   * (`enterAction`). False where Enter in a field means something else, as in a search that filters a list.
+   */
+  enterConfirms?: boolean;
+  /**
+   * What a click outside does. `auto` closes it like Annulla unless it is busy or a text field holds typed text; `close`
+   * always asks `onClose`, for a dialog that asks before it drops typed work; `none` leaves it open, for one whose work a
+   * stray click would throw away.
+   */
+  outside?: "auto" | "close" | "none";
   origin?: RefObject<HTMLElement | null>;
   initialFocus?: RefObject<HTMLElement | null>;
   returnFocus?: RefObject<HTMLElement | null>;
@@ -115,11 +132,13 @@ export function Dialog({
   const grownFrom = useRef<HTMLElement | null>(null);
   const before = useRef<HTMLElement | null>(null);
   const motion = useRef<Animation | null>(null);
+  // The Escape being delivered, and whether it got as far as this dialog's own key handler.
+  const escape = useRef<{ reached: boolean } | null>(null);
   // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
-  const latest = useRef({ open, onClose, onClosed, busy, initialFocus, returnFocus, origin });
-  latest.current = { open, onClose, onClosed, busy, initialFocus, returnFocus, origin };
+  const latest = useRef({ open, onClose, onClosed, busy, outside, enterConfirms, initialFocus, returnFocus, origin });
+  latest.current = { open, onClose, onClosed, busy, outside, enterConfirms, initialFocus, returnFocus, origin };
 
   useLayoutEffect(() => {
     const dialog = node.current;
@@ -132,7 +151,8 @@ export function Dialog({
         return;
       }
       const active = document.activeElement;
-      before.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      // A form opened from a menu item grows out of the menu's opener, which is what will still be there when it closes.
+      before.current = menuOpener() ?? (active instanceof HTMLElement && active !== document.body ? active : null);
       grownFrom.current = latest.current.origin?.current ?? before.current;
       dialog.showModal();
       focusOnOpen(dialog);
@@ -194,15 +214,16 @@ export function Dialog({
   const close = () => {
     if (!latest.current.busy && latest.current.open) latest.current.onClose();
   };
-  const button = (action: DialogAction) => (
+  const button = (action: DialogAction, index: number) => (
     <span
-      key={action.label}
+      key={typeof action.label === "string" ? action.label : index}
       className="px-dialog-button"
       data-dialog-role={action.tone === "danger" ? "danger" : "action"}
     >
       <Button
         variant={action.tone === "danger" ? "danger-solid" : (action.tone ?? "primary")}
         disabled={busy || answered || action.disabled}
+        focusKey={action.focusKey}
         onClick={() => void action.onClick()}
       >
         {action.working ? <Logo size={16} working decorative /> : null}
@@ -221,10 +242,22 @@ export function Dialog({
       aria-busy={busy || undefined}
       tabIndex={-1}
       className={["px-dialog", `is-${width}`, className].filter(Boolean).join(" ")}
+      onKeyDownCapture={(event) => {
+        // A field or list inside may use an Escape and stop it there (a select closing its list, a rename field
+        // cancelling), so it never reaches `onKeyDown`, and the browser would close the dialog with it. Noted here, and
+        // `onCancel` lets that one go.
+        if (event.key !== "Escape") return;
+        const seen = { reached: false };
+        escape.current = seen;
+        setTimeout(() => {
+          if (escape.current === seen) escape.current = null;
+        });
+      }}
       onKeyDown={(event) => {
         const dialog = node.current;
         if (!dialog) return;
         if (event.key === "Escape") {
+          if (escape.current) escape.current.reached = true;
           if (event.defaultPrevented) return;
           // Always: Chromium closes a modal dialog by itself on a second Escape, which would skip `busy` and the page's
           // own question before losing work.
@@ -238,6 +271,27 @@ export function Dialog({
           close();
           return;
         }
+        if (event.key === "Enter" && latest.current.enterConfirms && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+          const target = event.target;
+          if (target instanceof HTMLInputElement) {
+            const run = enterAction(
+              {
+                tag: "input",
+                type: target.type,
+                inCombobox: target.closest("[role=combobox]") !== null,
+                formHasSubmit: target.form?.querySelector('button[type="submit"], input[type="submit"]') != null,
+              },
+              end,
+              { busy: latest.current.busy, open: latest.current.open },
+            );
+            if (run) {
+              // The form's own submit would run the same work a second time, and a busy dialog starts nothing.
+              event.preventDefault();
+              if (run.action) void run.action.onClick();
+              return;
+            }
+          }
+        }
         if (event.key !== "Tab" || (event.target instanceof Element && event.target.closest(OPENED_INSIDE))) return;
         const stops = focusables(dialog);
         const next = wrapTab(stops.length, stops.indexOf(document.activeElement as HTMLElement), event.shiftKey);
@@ -246,8 +300,10 @@ export function Dialog({
         stops[next]!.focus();
       }}
       onCancel={(event) => {
-        // Any other request to close, such as the system's back gesture, goes the same way as Escape.
         event.preventDefault();
+        // An Escape that never reached `onKeyDown` was answered inside, and closes nothing here.
+        if (escape.current && !escape.current.reached) return;
+        // Any other request to close, such as the system's back gesture, goes the same way as Escape.
         close();
       }}
       onMouseDown={(event) => {
@@ -255,7 +311,8 @@ export function Dialog({
         if (!dialog || event.target !== dialog) return;
         // A click outside leaves the focus where it is, so a dialog that stays keeps it in its field.
         event.preventDefault();
-        if (outsideClickCloses(typedText(dialog), latest.current.busy)) close();
+        const way = latest.current.outside;
+        if (way === "close" || (way === "auto" && outsideClickCloses(typedText(dialog), latest.current.busy))) close();
       }}
     >
       {/* Menus and lists opened inside are drawn inside, so they sit above it and are not inert behind it. */}
@@ -339,9 +396,10 @@ type Ask = {
 
 /**
  * What a menu was opened from, when the focus is on one of its items. The item leaves the page as the menu closes, so a
- * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to.
+ * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to. `Dialog`
+ * and `useConfirm` both use it.
  */
-function menuOpener(): HTMLElement | null {
+export function menuOpener(): HTMLElement | null {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || !active.closest(".px-item-menu, .ant-dropdown")) return null;
   return document.querySelector<HTMLElement>('[aria-haspopup="menu"][aria-expanded="true"]');

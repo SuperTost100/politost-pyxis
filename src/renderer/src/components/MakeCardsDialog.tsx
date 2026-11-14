@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { App, Button, Modal, Select } from "antd";
+import { App, Select } from "antd";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
 import { errorProvider, useEngineError } from "../lib/engineError";
 import { invoke } from "../lib/ipc";
+import { Dialog, type DialogAction } from "./Dialog";
 import { Notice } from "./Notice";
 import { ProposedCards, type ProposedRow } from "./ProposedCards";
 import "./MakeCardsDialog.css";
@@ -54,6 +55,10 @@ export function MakeCardsDialog() {
   const describeEngineError = useEngineError();
   const client = useQueryClient();
   const [source, setSource] = useState<CardSource | null>(null);
+  // The source stays while the dialog shrinks away, when `source` is already null.
+  const lastSource = useRef(source);
+  if (source) lastSource.current = source;
+  const shown = lastSource.current;
   const [places, setPlaces] = useState<Places | null>(null);
   // The cards belong to a subject; an exam and one of its topics are optional.
   const [subjectId, setSubjectId] = useState<string | null>(null);
@@ -132,7 +137,7 @@ export function MakeCardsDialog() {
   const topic = plan?.topics.find((item) => item.id === topicId);
   const subject = places?.subjects.find((item) => item.id === subjectId);
   // A map's subject is fixed; elsewhere the student picks it. Without one, every exam is offered.
-  const subjectFixed = Boolean(source?.subjectId);
+  const subjectFixed = Boolean(shown?.subjectId);
   const exams = (places?.plans ?? []).filter((item) => !subjectId || item.subjectId === subjectId);
   // Somewhere to file the cards: an exam's topic, or the subject alone.
   const placed = planId ? Boolean(topicId) : Boolean(subjectId);
@@ -219,77 +224,52 @@ export function MakeCardsDialog() {
   }
 
   const working = step === "working";
-  const footer =
-    step === "review" ? (
-      <>
-        <Button shape="round" onClick={close} disabled={saving}>
-          {t("makeCards.cancel")}
-        </Button>
-        <Button
-          id="mc-again"
-          shape="round"
-          onClick={() => void make()}
-          disabled={saving || !placed}
-        >
-          {t("makeCards.again")}
-        </Button>
-        <Button
-          type="primary"
-          shape="round"
-          loading={saving}
-          disabled={!rows.length || incomplete || !placed}
-          onClick={() => void save()}
-        >
-          {t("makeCards.save", { count: rows.length })}
-        </Button>
-      </>
-    ) : (
-      <>
-        <Button shape="round" onClick={close}>
-          {t("makeCards.cancel")}
-        </Button>
-        <Button
-          type="primary"
-          shape="round"
-          loading={working}
-          disabled={!placed}
-          onClick={() => void make()}
-        >
-          {t("makeCards.make")}
-        </Button>
-      </>
-    );
+  const actions: DialogAction[] =
+    step === "review"
+      ? [
+          {
+            label: t("makeCards.again"),
+            tone: "secondary",
+            side: "start",
+            focusKey: "mc-again",
+            disabled: saving || !placed,
+            onClick: () => void make(),
+          },
+          {
+            label: t("makeCards.save", { count: rows.length }),
+            working: saving,
+            disabled: !rows.length || incomplete || !placed,
+            onClick: () => void save(),
+          },
+        ]
+      : [{ label: t("makeCards.make"), working, disabled: !placed || working, onClick: () => void make() }];
 
   return (
-    <Modal
-      title={t("makeCards.title")}
+    <Dialog
       open={source !== null}
-      onCancel={() => {
-        if (!saving) close();
-      }}
-      closable={!saving}
-      maskClosable={!saving && !working}
-      keyboard={!saving}
-      footer={footer}
-      width={640}
-      className="px-makecards"
-      destroyOnHidden
+      width="lg"
+      title={t("makeCards.title")}
+      busy={saving}
+      // A stray click would stop the answer being written.
+      outside={working ? "none" : "auto"}
+      onClose={close}
+      actions={actions}
     >
-      {source ? (
+      {shown ? (
         <div className="px-mc-body">
           <figure className="px-mc-source">
             <figcaption className="label">
               {t(
-                source.origin === "reply"
+                shown.origin === "reply"
                   ? "makeCards.fromReply"
-                  : source.origin === "map"
+                  : shown.origin === "map"
                     ? "makeCards.fromMap"
                     : "makeCards.fromSelection",
               )}
             </figcaption>
             <p>
-              <Suspense fallback={source.text}>
-                <MathText text={source.text} />
+              <Suspense fallback={shown.text}>
+                <MathText text={shown.text} />
               </Suspense>
             </p>
           </figure>
@@ -297,7 +277,7 @@ export function MakeCardsDialog() {
             <p className="body px-mc-lead">
               <Trans
                 i18nKey={exams.length ? "makeCards.goesTo" : "makeCards.goesToNoExam"}
-                values={{ subject: subject?.name ?? source.subject ?? "" }}
+                values={{ subject: subject?.name ?? shown.subject ?? "" }}
                 components={{ b: <b /> }}
               />
             </p>
@@ -411,13 +391,13 @@ export function MakeCardsDialog() {
                 onChange={update}
                 onDrop={(key) => setRows((current) => current.filter((item) => item.key !== key))}
                 // With no card left, "Make again" is the way on, and it is enabled; the focus goes there.
-                onEmptied={() => document.getElementById("mc-again")?.focus()}
+                onEmptied={() => document.querySelector<HTMLElement>('[data-focus-key="mc-again"]')?.focus()}
               />
               {rows.length ? null : <p className="small px-mc-hint">{t("makeCards.allDropped")}</p>}
             </>
           ) : null}
         </div>
       ) : null}
-    </Modal>
+    </Dialog>
   );
 }

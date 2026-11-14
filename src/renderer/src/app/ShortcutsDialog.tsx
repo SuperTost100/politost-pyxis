@@ -1,7 +1,7 @@
-import { Modal } from "antd";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { goPages } from "@shared/menu";
+import { Dialog } from "../components/Dialog";
 import { MAP_KEYS } from "../features/maps/mapKeys";
 import "./ShortcutsDialog.css";
 
@@ -164,22 +164,9 @@ export function ShortcutsDialog({
   const { t } = useTranslation();
   const mac = window.pyxis.platform === "darwin";
   return (
-    <Modal
-      open={open}
-      onCancel={onClose}
-      title={t("shortcuts.title")}
-      footer={null}
-      width={560}
-      className="px-shortcuts"
-      destroyOnHidden
-    >
-      {/* The list can be taller than the window, so keyboard users need a stop that scrolls it. */}
-      <div
-        className="px-shortcuts-body"
-        tabIndex={0}
-        role="region"
-        aria-label={t("shortcuts.title")}
-      >
+    // It only informs, so it has no Annulla and an X instead. The dialog's body scrolls and takes a Tab stop for it.
+    <Dialog open={open} cancel={false} width="md" title={t("shortcuts.title")} onClose={onClose} className="px-shortcuts">
+      <div className="px-shortcuts-body">
         <p className="small px-shortcuts-lead">
           {t("shortcuts.lead")} {mac ? null : t("shortcuts.altHint")}
         </p>
@@ -201,6 +188,6 @@ export function ShortcutsDialog({
           </section>
         ))}
       </div>
-    </Modal>
+    </Dialog>
   );
 }

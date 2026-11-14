@@ -2,7 +2,6 @@ import {
   Button,
   Drawer,
   Input,
-  Modal,
   Popconfirm,
   Select,
   Switch,
@@ -14,7 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useStillHere } from "../../lib/useStillHere";
 import { useTranslation } from "react-i18next";
@@ -24,10 +23,11 @@ import type { RequestOutput } from "@shared/ipc";
 import { engineProviders as providers } from "@shared/limits";
 import { TOOL_PROGRAMS } from "@shared/tool-names";
 import {
-  EngineNoticeModal,
+  EngineNoticeDialog,
   unacknowledged,
   type NoticeEngine,
 } from "../../components/EngineNotice";
+import { Dialog } from "../../components/Dialog";
 import { EngineRow } from "../../components/EngineRow";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { LocalModelCard, localQueryKey } from "../../components/LocalModel";
@@ -249,6 +249,10 @@ export function EnginesPanel() {
   const stillHere = useStillHere();
   const signInParam = searchParams.get("signIn");
   const [setupFor, setSetupFor] = useState<InstallableProvider | null>(null);
+  // What the setup dialog shows stays while it shrinks away, when `setupFor` is already null.
+  const lastSetup = useRef(setupFor);
+  if (setupFor) lastSetup.current = setupFor;
+  const shownSetup = lastSetup.current;
   useEffect(() => {
     if (!signInParam) return;
     if (isInstallable(signInParam)) setSetupFor(signInParam);
@@ -423,8 +427,8 @@ export function EnginesPanel() {
     setDrawer(null);
     if (isInstallable(provider)) setSetupFor(provider);
   }
-  async function saveKey(event: React.FormEvent) {
-    event.preventDefault();
+  async function saveKey(event?: React.FormEvent) {
+    event?.preventDefault();
     if (keyBusy || !keyValue.trim()) return;
     setKeyBusy(true);
     try {
@@ -1048,14 +1052,30 @@ export function EnginesPanel() {
           </div>
         )}
       </Drawer>
-      <Modal
-        title={t("engines.add")}
+      <Dialog
         open={adding}
-        footer={null}
-        onCancel={() => {
+        width="lg"
+        title={t("engines.add")}
+        // Each engine in the first tab has its own button, so the dialog only closes there; the key's tab saves from the
+        // footer.
+        cancel={addPath === "api" && keys.data?.canSave ? undefined : t("dialog.close")}
+        busy={keyBusy}
+        onClose={() => {
           setAdding(false);
           setKeyValue("");
         }}
+        actions={
+          addPath === "api" && keys.data?.canSave
+            ? [
+                {
+                  label: t("engines.saveAndTest"),
+                  disabled: !keyValue.trim() || keyBusy || test.isPending,
+                  working: keyBusy || test.isPending,
+                  onClick: () => void saveKey(),
+                },
+              ]
+            : []
+        }
       >
         <Tabs
           activeKey={addPath}
@@ -1105,47 +1125,33 @@ export function EnginesPanel() {
                     value={keyValue}
                     onChange={(event) => setKeyValue(event.target.value)}
                   />
-                  <Button
-                    type="primary"
-                    shape="round"
-                    htmlType="submit"
-                    loading={keyBusy || test.isPending}
-                    disabled={!keyValue.trim()}
-                  >
-                    {t("engines.saveAndTest")}
-                  </Button>
                 </form>
               ),
             },
           ]}
         />
         {feedback}
-      </Modal>
-      <Modal
+      </Dialog>
+      <Dialog
         open={setupFor !== null}
-        title={
-          setupFor
-            ? t("setup.title", {
-                name:
-                  overview.data?.find((row) => row.id === setupFor)?.name ??
-                  setupFor,
-              })
-            : null
-        }
-        footer={null}
-        onCancel={() => setSetupFor(null)}
-        destroyOnHidden
+        width="md"
+        title={t("setup.title", {
+          name: overview.data?.find((row) => row.id === shownSetup)?.name ?? shownSetup ?? "",
+        })}
+        // Installing and signing in start from the buttons inside, so the dialog only closes.
+        cancel={t("dialog.close")}
+        onClose={() => setSetupFor(null)}
       >
-        {setupFor ? (
+        {shownSetup ? (
           <ProviderSetup
-            provider={setupFor}
-            row={overview.data?.find((row) => row.id === setupFor)}
+            provider={shownSetup}
+            row={overview.data?.find((row) => row.id === shownSetup)}
             onChanged={refresh}
             titled={false}
           />
         ) : null}
-      </Modal>
-      <EngineNoticeModal
+      </Dialog>
+      <EngineNoticeDialog
         engines={notice?.engines ?? []}
         onDone={() => {
           const then = notice?.then;

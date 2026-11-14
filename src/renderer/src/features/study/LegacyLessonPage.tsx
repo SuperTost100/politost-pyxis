@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Dropdown, Input, Modal, Radio } from "antd";
+import { Button, Dropdown, Input, Radio } from "antd";
 import {
   ChevronDown,
   Download,
@@ -26,7 +26,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { createAnswerQueue } from "./answerQueue";
-import { useConfirm } from "../../components/Dialog";
+import { Dialog, useConfirm } from "../../components/Dialog";
 import { ErrorState } from "../../components/ErrorState";
 import { MenuButton } from "../../components/ItemMenu";
 import { Notice } from "../../components/Notice";
@@ -527,32 +527,30 @@ export function LegacyLessonPage({
         open={exportOpen}
         onOpenChange={setExportOpen}
       />
-      <Modal
+      <Dialog
         open={partsOpen}
+        width="md"
         title={t("lesson.rewriteInPartsTitle")}
-        okText={t("lesson.rewriteInParts")}
-        cancelText={t("jobs.cancel")}
-        confirmLoading={toParts.isPending}
-        onOk={() => toParts.mutate()}
-        onCancel={() => !toParts.isPending && setPartsOpen(false)}
-        closable={!toParts.isPending}
-        maskClosable={!toParts.isPending}
+        busy={toParts.isPending}
+        onClose={() => setPartsOpen(false)}
+        actions={[
+          { label: t("lesson.rewriteInParts"), working: toParts.isPending, onClick: () => toParts.mutate() },
+        ]}
       >
         <div className="px-reader-section">
           <p>{t("lesson.rewriteInPartsNote")}</p>
           {toParts.isError ? <Notice tone="danger">{t("lesson.rewriteInPartsFailed")}</Notice> : null}
         </div>
-      </Modal>
-      <Modal
+      </Dialog>
+      <Dialog
         open={sectionOpen}
+        width="md"
         title={t("lesson.rewriteSectionTitle")}
-        okText={t("lesson.regenerate")}
-        cancelText={t("jobs.cancel")}
-        confirmLoading={rewriteSection.isPending}
-        onOk={() => rewriteSection.mutate()}
-        onCancel={() => !rewriteSection.isPending && setSectionOpen(false)}
-        closable={!rewriteSection.isPending}
-        maskClosable={!rewriteSection.isPending}
+        busy={rewriteSection.isPending}
+        onClose={() => setSectionOpen(false)}
+        actions={[
+          { label: t("lesson.regenerate"), working: rewriteSection.isPending, onClick: () => rewriteSection.mutate() },
+        ]}
       >
         <div className="px-reader-section">
           <p className="small ink-muted">{t("lesson.rewriteSectionHint")}</p>
@@ -581,7 +579,7 @@ export function LegacyLessonPage({
             <Notice tone="danger">{t(sectionFailedKey(rewriteSection.error, "lesson"))}</Notice>
           ) : null}
         </div>
-      </Modal>
+      </Dialog>
     </ReaderLayout>
   );
 }

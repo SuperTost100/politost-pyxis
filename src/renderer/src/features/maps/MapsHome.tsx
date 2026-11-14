@@ -1,11 +1,12 @@
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Modal, Select } from "antd";
+import { Button, Input, Select } from "antd";
 import { Search } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapAddress, type MapEntry } from "@shared/concept-map";
 import { takeArrivalNote } from "../../app/history";
+import { Dialog } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -495,23 +496,26 @@ function NewMapDialog(props: {
   const asked = instruction.trim();
 
   return (
-    <Modal
+    <Dialog
       open={props.open}
+      width="md"
       title={t("maps.new")}
-      onCancel={props.onClose}
-      okText={t("maps.create")}
-      cancelText={t("maps.cancel")}
-      okButtonProps={{ disabled: !subjectId || topicsFailed }}
-      onOk={() => {
-        if (!subjectId) return;
-        props.onClose();
-        // A subject or topic that is mapped already opens its map, unless the student asked for a different one; the
-        // page checks again before it builds.
-        navigate(mapPath({ subjectId, topicId }), {
-          state: asked || !counts.get(topicId ?? subjectId) ? { build: true, instruction: asked } : null,
-        });
-      }}
-      destroyOnHidden
+      onClose={props.onClose}
+      actions={[
+        {
+          label: t("maps.create"),
+          disabled: !subjectId || topicsFailed,
+          onClick: () => {
+            if (!subjectId) return;
+            props.onClose();
+            // A subject or topic that is mapped already opens its map, unless the student asked for a different one; the
+            // page checks again before it builds.
+            navigate(mapPath({ subjectId, topicId }), {
+              state: asked || !counts.get(topicId ?? subjectId) ? { build: true, instruction: asked } : null,
+            });
+          },
+        },
+      ]}
     >
       <div className="px-maps-new-fields">
         <div className="px-maps-new-block px-form-field">
@@ -570,6 +574,6 @@ function NewMapDialog(props: {
           />
         </div>
       </div>
-    </Modal>
+    </Dialog>
   );
 }

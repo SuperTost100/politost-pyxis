@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { Button, Dropdown, Input, Modal, Radio, type MenuProps } from "antd";
+import { Button, Dropdown, Input, Radio, type MenuProps } from "antd";
 import { ChevronDown, PencilLine, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { smartSections } from "@shared/smart-text";
-import { useConfirm } from "../../components/Dialog";
+import { Dialog, useConfirm } from "../../components/Dialog";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Notice } from "../../components/Notice";
 import { useEngineError } from "../../lib/engineError";
@@ -267,16 +267,15 @@ export function usePartRewrites({
 
   const dialogs = (
     <>
-      <Modal
+      <Dialog
         open={sectionOpen}
+        width="md"
         title={t("lesson.rewriteSectionTitle")}
-        okText={t("lesson.regenerate")}
-        cancelText={t("jobs.cancel")}
-        confirmLoading={rewriteSection.isPending}
-        onOk={() => rewriteSection.mutate()}
-        onCancel={() => !rewriteSection.isPending && setSectionOpen(false)}
-        closable={!rewriteSection.isPending}
-        maskClosable={!rewriteSection.isPending}
+        busy={rewriteSection.isPending}
+        onClose={() => setSectionOpen(false)}
+        actions={[
+          { label: t("lesson.regenerate"), working: rewriteSection.isPending, onClick: () => rewriteSection.mutate() },
+        ]}
       >
         <div className="px-reader-section">
           <p className="small ink-muted">
@@ -307,7 +306,7 @@ export function usePartRewrites({
             <Notice tone="danger">{t(sectionFailedKey(rewriteSection.error, noun === "lesson" ? "lesson" : "part"))}</Notice>
           ) : null}
         </div>
-      </Modal>
+      </Dialog>
     </>
   );
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Modal, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
@@ -9,6 +9,7 @@ import { BackControl } from "../../components/BackControl";
 import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { Button } from "../../components/Button";
+import { Dialog } from "../../components/Dialog";
 import { emptyRings, ExamRings, RingLegend } from "../../components/ExamRings";
 import { ErrorState } from "../../components/ErrorState";
 import { Icon } from "../../components/Icon";
@@ -118,8 +119,10 @@ function ExamPage({ planId }: { planId: string }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The item stays until its dialog has shrunk away; `previewOpen` says whether the dialog is open.
   const [itemPreview, setItemPreview] =
     useState<RequestOutput<"plans.item"> | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const ring = rings.data?.find((entry) => entry.planId === planId);
 
   async function action(run: () => Promise<unknown>) {
@@ -151,8 +154,10 @@ function ExamPage({ planId }: { planId: string }) {
         navigate(
           `/plans/${planId}/quiz/${topicId}?attempt=${attempt.attemptId}`,
         );
-      } else
+      } else {
         setItemPreview(await invoke("plans.item", { planId, itemId: item.id }));
+        setPreviewOpen(true);
+      }
     });
   }
   function topicAction(kind: TopicAction, topic: Plan["topics"][number]) {
@@ -388,8 +393,11 @@ function ExamPage({ planId }: { planId: string }) {
         open={exportOpen}
         onOpenChange={setExportOpen}
       />
-      <Modal
-        width={720}
+      <Dialog
+        open={previewOpen}
+        width="lg"
+        // It only informs, so it has no Annulla and an X instead.
+        cancel={false}
         title={
           itemPreview
             ? t(
@@ -399,9 +407,8 @@ function ExamPage({ planId }: { planId: string }) {
               )
             : ""
         }
-        open={!!itemPreview}
-        footer={null}
-        onCancel={() => setItemPreview(null)}
+        onClose={() => setPreviewOpen(false)}
+        onClosed={() => setItemPreview(null)}
       >
         <MarkdownView
           onCitationClick={(number) => {
@@ -426,7 +433,7 @@ function ExamPage({ planId }: { planId: string }) {
             )}
           </section>
         ))}
-      </Modal>
+      </Dialog>
     </div>
   );
 }

@@ -1,13 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
-import { Modal, type MenuProps } from "antd";
+import { type MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
 import { Notice } from "../../components/Notice";
 import type { PlanFile } from "@shared/plan-file";
-import { ImportReview } from "../plans/ImportReview";
+import { ImportReviewDialog } from "../plans/ImportReview";
 import { parsePlanText } from "../plans/importPreview";
 import { ExamsList } from "./ExamsList";
 import "./HomePages.css";
@@ -21,9 +21,9 @@ const MistakesNotebook = lazy(() =>
   })),
 );
 // The subject list's drag and drop loads the first time the student opens it.
-const SubjectManagerModal = lazy(() =>
+const SubjectManagerDialog = lazy(() =>
   import("../ask/SubjectPicker").then((module) => ({
-    default: module.SubjectManagerModal,
+    default: module.SubjectManagerDialog,
   })),
 );
 
@@ -72,7 +72,7 @@ function ExamsListPage() {
     <>
       {managerOpened ? (
         <Suspense fallback={null}>
-          <SubjectManagerModal
+          <SubjectManagerDialog
             open={managing}
             onClose={() => setManaging(false)}
             value=""
@@ -133,10 +133,11 @@ function usePlanImport(
   onImported: () => void,
 ) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  // The file under review stays until its dialog has shrunk away; `reviewOpen` says whether the dialog is open.
   const [review, setReview] = useState<PlanFile | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const element = (
     <>
       <input
@@ -150,40 +151,36 @@ function usePlanImport(
           event.currentTarget.value = "";
           if (!file) return;
           onFailed(false);
+          setReviewOpen(false);
           setReview(null);
           setBusy(true);
           void file
             .text()
             .then((text) => {
               const parsed = parsePlanText(text);
-              if (parsed) setReview(parsed);
+              if (parsed) {
+                setReview(parsed);
+                setReviewOpen(true);
+              }
               else onFailed(true);
             })
             .catch(() => onFailed(true))
             .finally(() => setBusy(false));
         }}
       />
-      <Modal
-        open={review !== null}
-        footer={null}
-        width={720}
-        maskClosable={false}
-        destroyOnHidden
-        title={t("shared.review.title")}
-        onCancel={() => setReview(null)}
-      >
-        {review ? (
-          <ImportReview
-            file={review}
-            onImport={async (request) => {
-              await invoke("plans.import", request);
-              setReview(null);
-              onImported();
-            }}
-            onCancel={() => setReview(null)}
-          />
-        ) : null}
-      </Modal>
+      {review ? (
+        <ImportReviewDialog
+          open={reviewOpen}
+          file={review}
+          onImport={async (request) => {
+            await invoke("plans.import", request);
+            setReviewOpen(false);
+            onImported();
+          }}
+          onClose={() => setReviewOpen(false)}
+          onClosed={() => setReview(null)}
+        />
+      ) : null}
     </>
   );
   return {

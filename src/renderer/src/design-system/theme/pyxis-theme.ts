@@ -209,12 +209,6 @@ export function pyxisTheme(
         headerFontSize: 17,
         bodyPadding: 24,
       },
-      Modal: {
-        borderRadiusLG: 16,
-        contentBg: c.surfaceOverlay,
-        headerBg: c.surfaceOverlay,
-        titleFontSize: 22,
-      },
       Progress: {
         defaultColor: c.mastery,
         remainingColor: c.surfaceRaised,
