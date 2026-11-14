@@ -109,11 +109,20 @@ test("LES-20 through LES-23 exam timer restart, auto-submit and named grading mo
       page.getByRole("button", { name: "Inizia", exact: true }),
     ).toBeEnabled();
     await saveShot(page, "m11-setup-it-dark.png");
+    // Before it starts the bar has its way back, and the foot has no second one.
+    await expect(page.locator(".px-back")).toBeVisible();
+    await expect(page.locator(".px-intro-actions").getByRole("button")).toHaveText(["Inizia"]);
     await expectNoAxeViolations(page);
     await page.getByRole("button", { name: "Inizia", exact: true }).click();
     await expect(
       page.getByRole("textbox", { name: "La tua risposta" }),
     ).toBeVisible();
+    // A running exam has no way out: no back control, and the line under the title says why. Attività is last at the right.
+    await expect(page.locator(".px-back")).toHaveCount(0);
+    await expect(page.locator(".px-studybar-title p")).toHaveText(
+      "Non puoi uscire: si esce consegnando o allo scadere del tempo",
+    );
+    await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
     expect(
       await page.getByRole("link", { name: "Nuova chat", exact: true }).count(),
     ).toBe(0);
@@ -358,6 +367,55 @@ test("a failure that is not a missing AI tool is red with no Settings action, ev
     await expect(failed).toBeVisible();
     await expect(failed).toHaveClass(/\bis-danger\b/);
     await expect(settings).toHaveCount(0);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a running exam keeps the student in: the Attività list offers no link that leaves it", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-simulation-jobs-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [{ id: "s-fis", name: "Fisica" }]);
+    seedPlan(db, { id: "p-sim", subjectId: "s-fis", title: "Fisica 1", language: "it", target: 0.75, topics: [{ id: "t1", title: "Dinamica" }] });
+    db.prepare("INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('run-exam','p-sim','t1','simulation',?,'fixture','sources',?)").run(
+      JSON.stringify({
+        minutes: 60,
+        questions: [{ id: "run-1", topicId: "t1", stem: "Calcola la forza con $m=2$ e $a=3$.", answer: { kind: "completion", accepted: [["6 N"]] } }],
+      }),
+      Date.now(),
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('run-attempt','p-sim','run-exam',?)").run(Date.now());
+    // A job that failed for want of an AI tool: its card in Attività leads to Settings.
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-fail','lesson-part',?,'failed',0,'engines.errors.engine-missing',?,?)",
+    ).run(JSON.stringify({ planId: "p-sim", topicId: "t1", position: 1 }), Date.now(), Date.now());
+    await page.evaluate(() => {
+      location.hash = "/plans/p-sim/exam/run-attempt";
+    });
+    await page.reload();
+    await expect(page.getByRole("textbox", { name: "La tua risposta" })).toBeVisible();
+    const reached = page.url();
+    await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
+    // Nothing leaves a running exam, so the link to Settings is there but off, and says why.
+    const toTools = page.getByRole("button", { name: "Vai agli strumenti AI" });
+    await expect(toTools).toBeDisabled();
+    await expect(toTools).toHaveAttribute("title", "Non puoi uscire: si esce consegnando o allo scadere del tempo");
+    await toTools.click({ force: true });
+    expect(page.url()).toBe(reached);
+    // No back target is registered while the exam runs, so the menu's Indietro and Avanti are greyed too.
+    await page.keyboard.press("Escape");
+    for (const id of ["back", "forward"])
+      await expect
+        .poll(() => app.evaluate(({ Menu }, id) => Menu.getApplicationMenu()?.getMenuItemById(id)?.enabled, id))
+        .toBe(false);
     db.close();
   } finally {
     await app.close();

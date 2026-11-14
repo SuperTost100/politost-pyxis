@@ -128,7 +128,11 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       );
       await page.reload();
       await page.setViewportSize({ width, height: 800 });
-      await page.getByRole("button", { name: /^(Esporta|Export)$/ }).click();
+      // Esporta is in the bar's dots on a topic's flashcards.
+      await page
+        .getByRole("button", { name: /^(Altro sulle flashcard|More on the flashcards)$/ })
+        .click();
+      await page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }).click();
       await expect(modal).toBeVisible();
       const pdfRadio = modal.getByRole("radio", { name: "PDF", exact: true });
       await pdfRadio.focus();

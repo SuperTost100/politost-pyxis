@@ -25,7 +25,7 @@ import { stepPath } from "../plans/reopen";
 import { ExportButton } from "../share/ExportButton";
 import { useActiveTime } from "./activeTime";
 import { PartFoot, type OtherChoice } from "./PartFoot";
-import { focusFollowsAnswer, oldLessonView, pageMove, startsOnOpen, stoppedTone, withAnswer, workingCopy, type PartData } from "./partPage";
+import { focusFollowsAnswer, lessonLine, oldLessonView, pageMove, startsOnOpen, stoppedTone, withAnswer, workingCopy, type PartData } from "./partPage";
 import { PartsList } from "./PartsList";
 import { usePartRewrites, useRewriteArrival } from "./PartRewrite";
 import { ReaderEnd, ReaderLayout, ReaderLoading, SourcesFooter, useOpenNext } from "./Reader";
@@ -133,7 +133,6 @@ export function PartPage({
   const topicTitle = topic?.title ?? t("lesson.title");
   const lesson = data.lesson;
   const written = data.state === "written" && lesson !== null;
-  const examLine = [plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined;
   const href = (position: number) => `/plans/${planId}/lesson/${topicId}?part=${position}`;
   // "Torna al percorso" goes back the way the bar does when the bar leads to the exam, and opens the exam otherwise.
   const toPath = () => returnTo(back, `/plans/${planId}`, navigate);
@@ -387,7 +386,13 @@ export function PartPage({
             : t("lesson.partMeta", { count: minutes })}
       </p>
     ) : null;
-  const barSubtitle = !outline || !many ? examLine : recap ? t("lesson.recapTitle") : t("lesson.partOf", { n: data.position, count: outline.teaching });
+  const barSubtitle = lessonLine(t, {
+    many,
+    recap,
+    position: data.position,
+    parts: outline?.teaching ?? 0,
+    minutes: written || data.state === "book" ? minutes : null,
+  });
   const footHeading = !many ? t("lesson.lessonEnd") : recap ? t("lesson.chapterEnd") : t("lesson.partEnd", { n: data.position });
 
   const working = data.state === "planning" || data.state === "writing" || retry.isPending;
@@ -409,7 +414,6 @@ export function PartPage({
               many,
             })
       }
-      onBack={toPath}
       onEarlier={rewritingOld ? readEarlier : undefined}
     />
   ) : arriving?.position === data.position ? (
@@ -419,12 +423,11 @@ export function PartPage({
           ? rewritingCopy
           : workingCopy({ state: arriving.state, position: data.position, kind: part?.kind ?? null, many })
       }
-      onBack={toPath}
       onEarlier={arriving.rewriting ? readEarlier : undefined}
       still
     />
   ) : rewriting || rewriteArrived ? (
-    <WorkingBlock copy={rewrites.copy} onBack={toPath} still={!rewriting} />
+    <WorkingBlock copy={rewrites.copy} still={!rewriting} />
   ) : null;
 
   const error = data.error ?? "";
@@ -458,12 +461,8 @@ export function PartPage({
           : undefined
       }
       side={outline && many ? <PartsList outline={outline} current={data.position} href={href} /> : undefined}
-      actions={
-        <>
-          {rewrites.levelMenu}
-          <MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />
-        </>
-      }
+      tools={rewrites.levelMenu}
+      menu={<MenuButton rightClick menu={menu} label={t("lesson.more")} region={t("lesson.more")} />}
       sheetClassName="px-part-sheet"
     >
       {headMenu.popup}
@@ -508,7 +507,7 @@ export function PartPage({
             <Notice
               tone={stoppedTone(error)}
               action={{ label: t("lesson.partRetry"), onClick: () => retry.mutate() }}
-              secondary={engineError?.action ?? { label: t("lesson.backToPath"), onClick: toPath }}
+              secondary={engineError?.action}
               details={error.trim() ? error.trim().slice(0, 2000) : undefined}
             >
               {failedText}
@@ -586,7 +585,6 @@ export function PartPage({
                 failed={markRead.isError}
                 onDone={() => markRead.mutate("done")}
                 onContinue={() => markRead.mutate("continue")}
-                onBack={toPath}
               />
             )}
             <SourcesFooter sources={lesson.sources} />
@@ -606,39 +604,34 @@ export function PartPage({
 
 /**
  * Pyxis at work on the part, in the sheet where its text will appear: the working mark, what it is doing and a line on
- * why, and a way back to the path that takes the focus as the block appears. `still` draws it as it closes, after the
- * part arrived, with nothing to announce or focus.
+ * why. The way out is the bar's back control, so the block's line takes the focus as the block appears. `still` draws
+ * it as it closes, after the part arrived, with nothing to announce or focus.
  */
 function WorkingBlock({
   copy,
-  onBack,
   onEarlier,
   still = false,
 }: {
   copy: ReturnType<typeof workingCopy>;
-  onBack: () => void;
   /** Old lessons in parts: opens the version the rewrite replaces, in place of the note on where the part will be. */
   onEarlier?: () => void;
   still?: boolean;
 }) {
   const { t } = useTranslation();
-  const back = useRef<HTMLDivElement>(null);
+  const line = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
-    if (!still) back.current?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+    if (!still) line.current?.focus({ preventScroll: true });
   }, [still]);
   return (
     <section className="px-part-working" aria-label={t(copy.title[0], copy.title[1])}>
       <div className="px-part-working-status" role={still ? undefined : "status"}>
         <Logo size={36} working decorative />
-        <p>
+        <p ref={line} tabIndex={-1}>
           <span className="px-part-working-title">{t(copy.title[0], copy.title[1])}</span>
           {copy.line ? <span className="px-part-working-line">{t(copy.line[0], copy.line[1])}</span> : null}
         </p>
       </div>
-      <div className="px-part-working-actions" ref={back}>
-        <Button variant="secondary" size="sm" onClick={onBack} disabled={still}>
-          {t("lesson.backToPath")}
-        </Button>
+      <div className="px-part-working-actions">
         {onEarlier ? (
           <Button variant="ghost" size="sm" onClick={onEarlier} disabled={still}>
             {t("lesson.readEarlier")}

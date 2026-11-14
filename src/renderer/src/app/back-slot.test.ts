@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { backOf, registerBack, registeredBack, routerAt, whenArrived, type BackTarget } from "./back-slot";
 
-const target = (to: string): BackTarget => ({ name: to, label: to, to, go: () => undefined, busy: false, saves: false });
+const target = (to: string): BackTarget => ({ name: to, label: to, to, go: () => undefined, leave: (then) => then(), busy: false, saves: false });
 const cleanups: Array<() => void> = [];
 const register = (key: string, back: BackTarget | null) => cleanups.push(registerBack(key, () => back));
 

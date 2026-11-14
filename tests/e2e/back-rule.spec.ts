@@ -36,6 +36,8 @@ type Row = {
   lit: string | null;
   /** Nothing is behind the page, so Back opens its parent in the page's place and Avanti has nothing to return to. */
   parent?: boolean;
+  /** A study page, with the study bar: one way back, and Attività last at the far right. */
+  study?: boolean;
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -76,6 +78,7 @@ const rows: Row[] = [
     // The topic's row folds again on the exam page, since the diagnostic is still what the path is on: the focus goes
     // to the row that held the part.
     focus: /^Funzioni di più variabili/,
+    study: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -125,6 +128,7 @@ const rows: Row[] = [
     lit: null,
     leadsTo: exam,
     focus: "Rifai la domanda",
+    study: true,
   },
   {
     page: "/cards/due",
@@ -137,6 +141,7 @@ const rows: Row[] = [
     lit: null,
     leadsTo: exam,
     focus: /^Ripassa/,
+    study: true,
   },
   {
     page: "/cards/due",
@@ -150,6 +155,7 @@ const rows: Row[] = [
     lit: null,
     leadsTo: "/flashcards",
     focus: /^Ripassa le 2 di oggi$/,
+    study: true,
   },
   {
     page: "/flashcards/all",
@@ -276,6 +282,7 @@ const rows: Row[] = [
       parent: true,
       leadsTo: exam,
       focus: EXAM,
+      study: true,
     }),
   ),
   {
@@ -287,6 +294,7 @@ const rows: Row[] = [
     parent: true,
     leadsTo: "/flashcards",
     focus: "Flashcard",
+    study: true,
   },
 ];
 
@@ -410,6 +418,14 @@ for (const row of rows) {
     // The sidebar lights the section the page was opened from, not the one its address belongs to.
     if (row.lit === null) await expect(lit(page)).toHaveCount(0);
     else await expect(lit(page)).toHaveAccessibleName(row.lit);
+    if (row.study) {
+      // One way back: the bar's. The foot has no second button that does the same, and Attività is the last thing at the
+      // bar's right end.
+      await expect(
+        page.getByRole("button", { name: /^(Torna al percorso|Torna al ripasso|Torna al quaderno|Indietro)$/ }),
+      ).toHaveCount(0);
+      await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
+    }
     // Escape never leaves a page.
     await page.locator("body").press("Escape");
     expect(page.url()).toBe(reached);

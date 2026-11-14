@@ -121,7 +121,8 @@ test("results list every question in order, right ones folded in green, the othe
     await page.setViewportSize({ width: 1280, height: 800 });
     await open(page);
     // The grade is the title, in words; the tally, the topic that moved and what changes in the path follow.
-    await expect(page.locator(".px-studybar-title")).toContainText("Risultati · Quiz · Cinematica");
+    await expect(page.locator(".px-studybar-title b, .px-studybar-title h1")).toHaveText("Cinematica");
+    await expect(page.locator(".px-studybar-title p")).toHaveText("Quiz · Risultati");
     // The attempt is over, so the bar has no progress line under it.
     await expect(page.locator(".px-studybar-progress")).toHaveCount(0);
     await expect(page.locator(".px-res-title")).toHaveText(/^Hai preso \d+(,\d)?\/30$/);
@@ -297,7 +298,7 @@ test("the exam page's cleanup of `?drill=` never lands on the page opened right 
   }
 });
 
-test("a redo with an open gap offers the Ripasso mirato its summary announces, next to the way back", async () => {
+test("a redo with an open gap offers the Ripasso mirato its summary announces, and the foot has no second way back", async () => {
   test.setTimeout(120_000);
   const { page, done } = await launch();
   try {
@@ -309,8 +310,9 @@ test("a redo with an open gap offers the Ripasso mirato its summary announces, n
     await expect(page.locator(".px-res-title")).toBeVisible();
     await expect(page.locator(".px-res-changes")).toContainText("Nuovo passo: ripasso mirato");
     await expect(page.getByRole("button", { name: /^Rifai solo le \d+ da rivedere$/ })).toHaveCount(0);
-    // The announced step has its button, and the way back stays the one primary action.
-    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(1);
+    // The announced step has its button, and the bar's control is the only way back: the foot has no primary action.
+    await expect(page.locator(".px-res .ant-btn-primary")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Continua", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Ripasso mirato", exact: true }).click();
     // The exam page takes the request (`?drill=`) out of the address as it starts the drill.
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);

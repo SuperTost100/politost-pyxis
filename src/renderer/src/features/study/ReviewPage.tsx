@@ -8,6 +8,7 @@ import { invoke } from "../../lib/ipc";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { cardOffer } from "./reviewOffer";
+import { barLine } from "./barLines";
 import { StudyLayout } from "./StudyBar";
 import { usePlan, useRecommend } from "../../lib/queries";
 import { usePlace } from "../../app/usePlace";
@@ -121,8 +122,8 @@ export function ReviewPage() {
   return (
     <StudyLayout
       back={back}
-      title={t("cards.reviewTitle")}
-      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
+      title={plan.data?.title ?? t("cards.reviewTitle")}
+      subtitle={barLine([t("cards.reviewTitle"), plan.data?.subject])}
     >
       <ActivityIntro
         eyebrow={plan.data?.title ?? t("cards.reviewTitle")}
@@ -151,7 +152,6 @@ export function ReviewPage() {
         starting={start.isPending}
         disabled={active?.next === "waiting"}
         onStart={() => (active ? go(active) : start.mutate())}
-        onBack={() => back?.go()}
       >
         {start.isError ? <Notice tone="danger">{t("cards.reviewFailed")}</Notice> : null}
         {empty ? <Notice tone="info">{t("cards.reviewEmpty")}</Notice> : null}

@@ -8,7 +8,6 @@ import type { RequestOutput } from "@shared/ipc";
 import { Working } from "../../components/Working";
 import { CitationChip } from "../../components/CitationChip";
 import { openSourceViewer } from "../../components/SourceViewer";
-import { JobsButton } from "../jobs/JobsButton";
 import { stepPath } from "../plans/reopen";
 import "./Reader.css";
 import { StudyBar, type StudyTitleMenu } from "./StudyBar";
@@ -66,7 +65,8 @@ export function ReaderLayout({
   back,
   barTitle,
   barSubtitle,
-  actions,
+  tools,
+  menu,
   outline = false,
   side,
   barMenu,
@@ -81,10 +81,13 @@ export function ReaderLayout({
   title: ReactNode;
   /** The page's way back (`usePlace`). */
   back: BackTarget | null;
-  /** The page's name in the bar, over `barSubtitle`. */
+  /** The page's title in the bar, over `barSubtitle`. */
   barTitle: string;
-  barSubtitle?: string;
-  actions?: ReactNode;
+  /** The bar's line. A function gets the minutes the whole sheet takes to read, once its sections are known. */
+  barSubtitle?: string | ((minutes: number) => string | undefined);
+  /** The page's tools in the bar, then its dots (`StudyBar`). */
+  tools?: ReactNode;
+  menu?: ReactNode;
   outline?: boolean;
   /** Drawn in the outline's column, which hides under 1,100 px, such as a lesson's parts. */
   side?: ReactNode;
@@ -177,6 +180,7 @@ export function ReaderLayout({
     };
   }, [parts]);
   const minutes = Math.ceil(parts.slice(current).reduce((sum, part) => sum + part.words, 0) / WORDS_PER_MINUTE);
+  const totalMinutes = Math.max(1, Math.ceil(parts.reduce((sum, part) => sum + part.words, 0) / WORDS_PER_MINUTE));
   const showOutline = !side && outline && parts.length > 1;
   return (
     <div className="px-reader">
@@ -185,15 +189,10 @@ export function ReaderLayout({
         heading={false}
         back={back}
         title={barTitle}
-        subtitle={barSubtitle}
+        subtitle={typeof barSubtitle === "function" ? barSubtitle(parts.length > 0 ? totalMinutes : 0) : barSubtitle}
         titleMenu={barMenu}
-        actions={
-          <>
-            {/* The shell's jobs entry, so work running while a student reads stays in sight. It shows only once a job has run today. */}
-            <JobsButton />
-            {actions}
-          </>
-        }
+        tools={tools}
+        menu={menu}
       />
       <main className={showOutline || side ? "px-reader-main has-outline" : "px-reader-main"}>
         {side ? <div className="px-reader-side">{side}</div> : null}
@@ -337,7 +336,6 @@ export function ReaderEnd({
   pendingHint,
   onDone,
   onContinue,
-  onBack,
   busy,
   failed,
 }: {
@@ -349,7 +347,6 @@ export function ReaderEnd({
   onDone: () => void;
   /** Marks the page done if it is not yet, then opens the next step. */
   onContinue: () => void;
-  onBack: () => void;
   /** Which action is running. */
   busy?: "done" | "continue";
   failed?: boolean;
@@ -364,14 +361,12 @@ export function ReaderEnd({
         {done ? doneLabel : (pendingHint ?? t("lesson.finishPrompt"))}
       </p>
       <div className="px-reader-end-actions">
-        <Button
-          shape="round"
-          loading={busy === "done"}
-          disabled={busy === "continue"}
-          onClick={done ? onBack : onDone}
-        >
-          {t(done ? "lesson.backToPath" : "lesson.done")}
-        </Button>
+        {/* A page already done has no button for the way back: the bar's back control is that. */}
+        {done ? null : (
+          <Button shape="round" loading={busy === "done"} disabled={busy === "continue"} onClick={onDone}>
+            {t("lesson.done")}
+          </Button>
+        )}
         <Button
           type="primary"
           shape="round"

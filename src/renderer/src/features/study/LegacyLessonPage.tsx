@@ -7,6 +7,7 @@ import {
   Network,
   PencilLine,
   RefreshCw,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -41,7 +42,7 @@ import {
   useOpenNext,
 } from "./Reader";
 import { showsLiveText } from "./lessonLive";
-import { sectionFailedKey } from "./partPage";
+import { lessonLine, sectionFailedKey } from "./partPage";
 import { usePlan } from "../../lib/queries";
 import { returnTo, type BackTarget } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";
@@ -292,7 +293,7 @@ export function LegacyLessonPage({
           onClick: ({ key: value }) => setChosen(value as Wording),
         }}
       >
-        <Button shape="round" aria-describedby={levelHintId}>
+        <Button type="text" className="px-studybar-action" icon={<SlidersHorizontal size={16} strokeWidth={1.75} aria-hidden />} aria-describedby={levelHintId}>
           <span className="px-reader-level">
             <span className="ink-muted">{t("lesson.level")}</span>
             {t(`lesson.wording.${wording}`)}
@@ -396,15 +397,11 @@ export function LegacyLessonPage({
       eyebrow={sourceLine}
       title={topic?.title ?? t("lesson.title")}
       back={back}
-      barTitle={[t("lesson.title"), topic?.title].filter(Boolean).join(" · ")}
-      barSubtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" · ") || undefined}
+      barTitle={topic?.title ?? t("lesson.title")}
+      barSubtitle={(minutes) => lessonLine(t, { many: false, recap: false, position: 1, parts: 1, minutes })}
       outline
-      actions={
-        <>
-          {fixed ? null : levelMenu}
-          {moreMenu}
-        </>
-      }
+      tools={fixed ? null : levelMenu}
+      menu={moreMenu}
     >
       {modalContext}
       {notice ? (
@@ -520,7 +517,6 @@ export function LegacyLessonPage({
             failed={markDone.isError}
             onDone={() => markDone.mutate("done")}
             onContinue={() => markDone.mutate("continue")}
-            onBack={() => returnTo(back, `/plans/${planId}`, navigate)}
           />}
           <SourcesFooter sources={data.sources} />
         </>

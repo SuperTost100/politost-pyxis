@@ -8,7 +8,6 @@ import { origin, pageOf, wayBack, type PlaceName } from "./trail";
 
 export type { BackTarget };
 
-
 /**
  * The one hook a page calls to take its place on the trail: it writes the page's name on its history entry, so a back
  * control elsewhere can call it that, and returns the page's own way back. That leads to where the student came from,
@@ -47,15 +46,29 @@ export function usePlace(input: {
     if (!from && !parent) return null;
     const place = from ? (from.name ?? placeOf(from.path).name ?? { key: "nav.back" }) : parent!.name;
     const text = "key" in place ? t(place.key, place.values) : place.text;
+    const guarded = (then: () => void) => {
+      if (busy) return;
+      if (!input.beforeLeave) return then();
+      setBusy(true);
+      input
+        .beforeLeave()
+        .catch(() => false)
+        .then((ok) => {
+          setBusy(false);
+          if (ok) then();
+        });
+    };
     return {
       name: text,
       label: t("places.backTo", { place: text }),
       to: from ? from.path : parent!.to,
       busy,
       saves: input.beforeLeave !== undefined,
-      go: () => {
-        if (busy) return;
-        const leave = () => {
+      // One guarded path for every way out: the control, the menu's Indietro, the mouse button and the swipe (which run
+      // `go`), and a link elsewhere on the page that leaves it (`leave`).
+      leave: guarded,
+      go: () =>
+        guarded(() => {
           // Read when leaving, which can come after `beforeLeave`: by then the student may be on another page, which
           // this page's way back must not move.
           const step = wayBack(readTrail(), key, parent !== null);
@@ -63,17 +76,7 @@ export function usePlace(input: {
             goingBackToParent(parent.to);
             void navigate(parent.to, { replace: true });
           } else if (step && step !== "parent") void navigate(step.delta);
-        };
-        if (!input.beforeLeave) return leave();
-        setBusy(true);
-        input
-          .beforeLeave()
-          .catch(() => false)
-          .then((ok) => {
-            setBusy(false);
-            if (ok) leave();
-          });
-      },
+        }),
     };
   }
 
