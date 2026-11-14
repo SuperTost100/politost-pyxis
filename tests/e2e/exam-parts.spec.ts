@@ -532,7 +532,7 @@ test("the exam page and the part page meet: Continua, Per oggi basta, a part row
     await page.reload();
     await openExam(page, "p-walk");
     await expect(now.locator(".px-exam-kicker")).toHaveText("Riprendi da");
-    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Insiemi aperti e chiusi");
+    await expect(now.getByRole("heading", { level: 2 })).toHaveText("Parte 3 · Insiemi aperti e chiusi");
     await expect(now.locator("p")).toHaveText(/ · ieri hai finito la parte 2$/);
     await now.getByRole("button", { name: "Riprendi", exact: true }).click();
     await expect(page).toHaveURL(/#\/plans\/p-walk\/lesson\/t-fun\?part=3$/);
