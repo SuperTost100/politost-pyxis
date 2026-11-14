@@ -53,18 +53,21 @@ export function ActivityMaking({
           (quiz.data.questions.length > 0 || SETTLED.includes(quiz.data.state)),
         )
       : simulationSettled(made.jobId, build);
-  // It opens only while the exam page is the one the router shows: the read can come back after the student has left.
   useEffect(() => {
-    if (!ready) return;
-    onDone();
-    void client.invalidateQueries({ queryKey: ["unfinished", planId] });
-    if (stillHere())
-      navigate(
-        made.kind === "quiz"
-          ? `/plans/${planId}/quiz/${made.topicId}?attempt=${encodeURIComponent(made.attemptId)}`
-          : `/plans/${planId}/simulation`,
-      );
+    if (ready) void client.invalidateQueries({ queryKey: ["unfinished", planId] });
   }, [ready]);
+  // It opens only while the exam page is the one the router shows: the read can come back after the student has left.
+  // Until then the card stays, because the answer can also be no while the page has not yet been drawn at a newer entry
+  // of its own. The effect asks again once it has.
+  useEffect(() => {
+    if (!ready || !stillHere()) return;
+    onDone();
+    navigate(
+      made.kind === "quiz"
+        ? `/plans/${planId}/quiz/${made.topicId}?attempt=${encodeURIComponent(made.attemptId)}`
+        : `/plans/${planId}/simulation`,
+    );
+  }, [ready, stillHere]);
   // The card's content changes in place, from the dialog that just shrank back into the page.
   useEffect(() => {
     if (

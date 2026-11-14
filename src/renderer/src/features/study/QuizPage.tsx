@@ -440,15 +440,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     canFinish,
     session.data?.submittedAt,
   ]);
-  // The page goes by its topic elsewhere. Leaving it never loses work: the answers are saved first.
+  // The page goes by its topic elsewhere. Leaving it never loses work: the answers are saved first, and a save that
+  // fails keeps the student here, under the page's notice that saving failed.
   const topicName = topicId ? plan.data?.topics.find((row) => row.id === topicId)?.title : undefined;
   const back = usePlace({
     name: topicName ? { text: topicName } : null,
     parent: plan.data && !reviewRoute ? { name: { text: plan.data.title } } : undefined,
-    beforeLeave: async () => {
-      await drafts.flush();
-      return true;
-    },
+    beforeLeave: () => drafts.flush(),
   });
   // An answer corrected one by one before 0.5 stays as it was checked: core keeps the checked pick at Consegna.
   const result = question ? checked[question.id] : undefined;
@@ -950,7 +948,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
                   tone="info"
                   action={{
                     label: t("quiz.drillOwedOpen"),
-                    onClick: () => void drafts.flush().then(() => navigate(`/plans/${planId ?? ""}/review`)),
+                    onClick: () => void drafts.flush().then((saved) => saved && navigate(`/plans/${planId ?? ""}/review`)),
                   }}
                 >
                   {t("quiz.drillOwed", { count: owed })}
@@ -1245,7 +1243,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           action={{
             label: t("quiz.drillOwedOpen"),
             onClick: () =>
-              void drafts.flush().then(() => navigate(`/plans/${planId ?? ""}/review`)),
+              void drafts.flush().then((saved) => saved && navigate(`/plans/${planId ?? ""}/review`)),
           }}
         >
           {t("quiz.drillOwed", { count: owed })}
