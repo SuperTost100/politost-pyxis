@@ -49,6 +49,7 @@ import {
 import { dueEverywhere, examRings, examlessDue, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
+import { openGaps } from "../study/openGaps";
 import { deleteUnfinished, unfinishedActivities } from "./unfinished";
 import { AUTHOR_MAX, type PlanFile, type PlanFilePart } from "../../shared/plan-file";
 import { IpcError } from "../../shared/ipc";
@@ -310,6 +311,9 @@ export function planHandlers(
     },
     series(input: { planId: string }) {
       return planSeries(db, input.planId);
+    },
+    openGaps(input: { planId: string }) {
+      return openGaps(db, input.planId);
     },
     simulations(input: { planId: string }) {
       return listSimulations(db, input.planId);

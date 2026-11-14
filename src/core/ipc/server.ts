@@ -413,6 +413,7 @@ const routes = {
   "plans.export": ["plans", "export"],
   "plans.import": ["plans", "import"],
   "plans.series": ["plans", "series"],
+  "plans.openGaps": ["plans", "openGaps"],
   "plans.planner": ["plans", "planner", "bare"],
   "plans.rings": ["plans", "rings", "bare"],
   "plans.examlessDue": ["plans", "examlessDue", "bare"],
