@@ -1001,18 +1001,14 @@ async function openAdvancedEngines(page: Page) {
     await toggle.click();
 }
 
-/** Opens "Aggiungi fonti" from the head's "Aggiungi file", or from the empty Library's "Collega una cartella", then picks a tab (File by default). */
 async function openAddSources(page: Page, tab?: RegExp) {
-  const head = page.getByRole("button", { name: both("Aggiungi file", "Add files") });
-  const empty = page.locator(".px-empty").getByRole("button", { name: both("Collega una cartella", "Link a folder") });
-  await expect(head.or(empty)).toBeVisible();
-  const fromEmpty = await empty.isVisible();
-  await (fromEmpty ? empty : head).click();
+  await page
+    .getByRole("button", { name: both("Aggiungi file", "Add files") })
+    .click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   // Segmented renders radios; the hidden native input is the accessible control.
-  const wanted = tab ?? (fromEmpty ? both("File", "File") : undefined);
-  if (wanted) await dialog.getByRole("radio", { name: wanted }).locator("..").click();
+  if (tab) await dialog.getByRole("radio", { name: tab }).locator("..").click();
   return dialog;
 }
 
@@ -4913,8 +4909,14 @@ test("M14 every application route in both languages, themes and supported widths
               if (name.startsWith("wizard-"))
                 await openWizard(page, Number(name.split("-")[1]));
               if (name === "library-import") {
+                await page
+                  .getByRole("button", {
+                    name: /Aggiungi file|Add files/,
+                    exact: true,
+                  })
+                  .click();
                 // The dialog mounts a frame after the click; the keyboard check needs it there.
-                await openAddSources(page);
+                await expect(page.getByRole("dialog")).toBeVisible();
               }
               if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.

@@ -20,7 +20,7 @@ import { launchPyxis } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams, openAddFiles } from "./doors";
+import { fromChiediToExams } from "./doors";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -152,7 +152,7 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
     ).toMatchObject([{ state: "succeeded" }]);
 
     // A HEIC photo is read with the data straight away, with no question first.
-    await openAddFiles(page);
+    await page.getByRole("button", { name: "Aggiungi file" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await animationsSettled(page);

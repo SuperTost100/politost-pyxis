@@ -22,23 +22,6 @@ export async function toLibrary(page: Page): Promise<void> {
   await expect(page).toHaveURL(/#\/exams\/library$/);
 }
 
-/**
- * Opens "Aggiungi fonti" on its File tab, the way a student does: from "Aggiungi file" in the Library's head or, while
- * the Library holds no file and the head has no such button, from the empty page's "Collega una cartella" and its File
- * tab. Waits for the dialog.
- */
-export async function openAddFiles(page: Page): Promise<void> {
-  const head = page.getByRole("button", { name: /^(Aggiungi file|Add files)$/ });
-  const empty = page.locator(".px-empty").getByRole("button", { name: /^(Collega una cartella|Link a folder)$/ });
-  await expect(head.or(empty)).toBeVisible();
-  const fromEmpty = await empty.isVisible();
-  await (fromEmpty ? empty : head).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  // Segmented renders radios; the hidden native input is the accessible control.
-  if (fromEmpty) await dialog.getByRole("radio", { name: "File", exact: true }).locator("..").click();
-}
-
 /** Opens every flashcard the way a student does: the Flashcard section in the sidebar, then "Sfoglia tutte" in its head. */
 export async function toAllFlashcards(page: Page): Promise<void> {
   await page

@@ -18,7 +18,7 @@ import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams, openAddFiles, toLibrary } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 
 async function clean(page: Page) {
   await expectNoAxeViolations(page);
@@ -287,7 +287,9 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       page.getByRole("heading", { name: "Esami", exact: true }),
     ).toBeVisible();
     await toLibrary(page);
-    await openAddFiles(page);
+    await page
+      .getByRole("button", { name: "Aggiungi file", exact: true })
+      .click();
     await animationsSettled(page);
     await page
       .getByRole("dialog")

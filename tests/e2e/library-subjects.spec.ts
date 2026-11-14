@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams, openAddFiles, toLibrary } from "./doors";
+import { fromChiediToExams, toLibrary } from "./doors";
 import { openBox, trackEvents, withTrail } from "./event-trail";
 import { animationsSettled, atRest } from "./settled";
 import { saveShot } from "./shots";
@@ -58,7 +58,7 @@ async function start(env: Record<string, string | undefined>) {
 /** Adds files through the Library's file picker and closes the result. */
 async function addFiles(app: ElectronApplication, page: Page, paths: string[]) {
   await answerPicker(app, paths);
-  await openAddFiles(page);
+  await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
   if (paths.length > 1) {
@@ -260,7 +260,7 @@ async function withFailingSort(
   const { app, page, userData, files } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined, PYXIS_E2E_SORT_FAILS: "1" });
   try {
     const open = async (tab?: string) => {
-      await openAddFiles(page);
+      await page.getByRole("button", { name: "Aggiungi file", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
       await animationsSettled(page);
@@ -1083,9 +1083,7 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
     for (const name of ["Analisi 1", "Fisica 2"]) {
       await expect(shelf(page, name).locator(".px-shelf-subject-none")).toHaveText("Ancora niente.");
     }
-    // The head's "Aggiungi file" waits for the first file; the page's own button opens the same dialog.
-    await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
     await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();

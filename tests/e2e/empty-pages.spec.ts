@@ -275,7 +275,7 @@ for (const [hash, name] of [
     }
   });
 
-test("The Library with no file says what will appear, keeps the free books in its dots and has one Link a folder, which opens Add sources on Folder", async () => {
+test("The Library with no file says what will appear, keeps the free books in its dots and has one Link a folder, which starts setup's folder step, and keeps Add files in its head", async () => {
   const { page, open, finish } = await start("library");
   try {
     await toLibrary(page);
@@ -292,8 +292,9 @@ test("The Library with no file says what will appear, keeps the free books in it
       await show(page, look, "/exams/library");
       await expectEmptyPage(page, { line: lines[language], action: names[language][1] });
       await saveShot(page, `empty-pages/library-${look.key}.png`);
-      // The head holds the dots alone: neither "Aggiungi file" nor the folders control, and the books are offered once.
-      await headButtons(page, ".px-library-head").toEqual([names[language][0]]);
+      // The head holds the dots and "Aggiungi file", which adds loose files, a different action from the page's own;
+      // not the folders control, and the books are offered once.
+      await headButtons(page, ".px-library-head").toEqual([names[language][0], names[language][2]]);
       await expect(page.getByRole("button", { name: /Libri PoliTost gratuiti|Free PoliTost books/ })).toHaveCount(0);
     }
     const empty = await headBox(page.locator(".px-library-head"));
@@ -301,12 +302,21 @@ test("The Library with no file says what will appear, keeps the free books in it
     await expect(page.getByRole("menuitem")).toHaveText(["Free PoliTost books"]);
     await page.keyboard.press("Escape");
 
-    await page.getByRole("main").getByRole("button", { name: "Link a folder", exact: true }).click();
+    // "Add files" opens the dialog that adds loose files, on its File tab.
+    await page.getByRole("button", { name: "Add files", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Add sources" });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole("radio", { name: "Folder" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "File" })).toBeChecked();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+
+    // "Link a folder" starts setup's folder step, which links the folder where it is; the Folder tab of that dialog
+    // copies the files once, so it is not what the button opens. `linked-folders.spec.ts` links a folder from here.
+    await page.getByRole("main").getByRole("button", { name: "Link a folder", exact: true }).click();
+    await expect(page).toHaveURL(/#\/onboarding\?again=1&step=material&from=library$/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
 
     // The first file takes the page's place, and the head's "Aggiungi file" comes back where the head was.
     const db = open();
