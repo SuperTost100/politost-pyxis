@@ -231,10 +231,11 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     expect(jobs.find((job) => job.kind === "lesson-part" && job.state === "running")?.title).toBe(
       "Parte 3 · Insiemi aperti e chiusi",
     );
-    // Torna al percorso leaves the job running; back on the part, it arrives in place and the title takes the focus.
+    // Torna al percorso leaves the job running. The lesson opened with nothing behind it, so the exam takes its place in
+    // history; opened again from the path, the part arrives in place and the title takes the focus.
     await page.getByRole("button", { name: "Torna al percorso" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-an2$/);
-    await page.goBack();
+    await page.getByRole("link", { name: /^Parte 3 · Insiemi aperti e chiusi/ }).click();
     await expect(working(page, "Sto scrivendo la parte 3")).toBeVisible();
     writeFileSync(hold, "");
     await expect(page.getByText("Aperti e chiusi: l'idea")).toBeVisible({ timeout: 20_000 });
@@ -268,20 +269,20 @@ test("a topic never read: Pyxis plans its parts, writes part 1 and one part ahea
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Per oggi basta" })).toBeFocused();
 
-    // A part picked in the column, from far down this one, opens at its title, which takes the focus. Back returns to
-    // where the student was in the part before, as on every page.
+    // A part picked in the column, from far down this one, opens at its title, which takes the focus. The part takes the
+    // place of the one before in history, so Back leaves the lesson for the exam page that opened it.
     const toBottom = () => page.evaluate(() => window.scrollTo({ top: document.documentElement.scrollHeight }));
     await toBottom();
     await atRest(parts(page));
-    const left = await page.evaluate(() => window.scrollY);
-    expect(left).toBeGreaterThan(500);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
     await parts(page).getByRole("link", { name: /Intorni e distanza/ }).click();
     const firstTitle = page.getByRole("heading", { level: 1, name: /Intorni e distanza/ });
     await expect(firstTitle).toBeFocused();
     await expect(firstTitle).toBeInViewport();
     await page.goBack();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+    await page.getByRole("link", { name: /^Parte 3 · Insiemi aperti e chiusi/ }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Insiemi aperti e chiusi" })).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(left);
 
     // The narrow window: the column goes, and the bar's title opens the same list in a popover.
     // Part 4, written ahead, is ready to open from the popover.
@@ -532,7 +533,7 @@ test("leaving a lesson before core has chosen its part does not pull the student
     });
     await open(page, "t-funzioni");
     await expect(page.getByText("Apertura…")).toBeVisible();
-    await page.getByRole("button", { name: /^Torna all'esame/ }).click();
+    await page.getByRole("button", { name: /^Torna a / }).click();
     // The read comes back while the way to the exam page is still loading: the lesson, still on screen, shows the part
     // it chose. Its address must stay as it was, or the student is taken back into the lesson.
     await expect(working(page, "Sto dividendo il capitolo in parti")).toBeVisible({ timeout: 20_000 });

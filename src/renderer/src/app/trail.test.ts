@@ -109,12 +109,22 @@ describe("arrive", () => {
     const trail = walk(pop("a", 0, "/plans/p"), push("b", 1, "/plans/p/lesson/t", { opener: "key:step-t" }));
     expect(trail.visits.find((visit) => visit.key === "a")?.opener).toBe("key:step-t");
     expect(trail.visits.find((visit) => visit.key === "b")?.opener).toBeUndefined();
+    const again = arrive(arrive(trail, pop("a", 0, "/plans/p")), push("c", 1, "/exams/mistakes"));
+    expect(again.visits.find((visit) => visit.key === "a")?.opener).toBeUndefined();
   });
 
   it("starts a visit the trail does not know on a pop with no origin, in place of a stale one at that position", () => {
     const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), pop("x", 1, "/maps"));
     expect(trail.visits.map((visit) => visit.key)).toEqual(["a", "x"]);
     expect(origin(trail, "x")).toBeNull();
+  });
+
+  it("starts anew a recorded entry that comes back with another page, as an address set by hand does", () => {
+    let trail = walk(pop("default", 0, "/plans/p"));
+    trail = named(trail, "default", { text: "Analisi Matematica 2" });
+    trail = arrive(trail, pop("default", 0, "/maps"));
+    expect(currentVisit(trail)).toEqual({ key: "default", idx: 0, path: "/maps", page: "/maps", from: null });
+    expect(trail.visits).toHaveLength(1);
   });
 
   it(`keeps the ${TRAIL_CAP} newest visits`, () => {

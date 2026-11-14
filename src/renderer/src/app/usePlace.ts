@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router";
-import { nameVisit, readTrail, watchTrail } from "./history";
+import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
 import { placeOf } from "./places";
 import { origin, pageOf, type PlaceName } from "./trail";
 
@@ -67,7 +67,10 @@ export function usePlace(input: {
         const behind = origin(now, key);
         const here = now.visits.find((visit) => visit.key === key);
         if (behind && here) void navigate(behind.idx - here.idx);
-        else if (parent) void navigate(parent.to, { replace: true });
+        else if (parent) {
+          goingBackToParent();
+          void navigate(parent.to, { replace: true });
+        }
       };
       if (!input.beforeLeave) return leave();
       setBusy(true);

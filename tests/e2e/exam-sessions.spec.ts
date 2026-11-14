@@ -117,14 +117,14 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     expect(plan!.examAt).toBe(written.getTime());
     // The untouched goal is saved back exactly as stored.
     expect(plan!.target).toBe(0.77);
-    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    await settingsPage.getByRole("button", { name: "Back to Fisica 1" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a$/);
     // No weekly hours yet, so the path has no expected dates and says how to get them.
     const hoursHint = page.getByText("With a study goal, in hours a week, you see when you will study each topic.");
     await expect(hoursHint).toBeVisible();
     await page.locator(".px-xpath").getByRole("button", { name: "Set a study goal" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
-    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    await settingsPage.getByRole("button", { name: "Back to Fisica 1" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a$/);
     // The header lists them, and the calendar file has one timed event each with the place as its location.
     const list = page.getByRole("list", { name: "Exam sessions" });
@@ -159,7 +159,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await snap("plan-settings-changes", "en", "dark");
     await expectNoAxeViolations(page);
     // Leaving with unsaved changes asks first.
-    await settingsPage.getByRole("link", { name: "Fisica 1" }).click();
+    await settingsPage.getByRole("button", { name: "Back to Fisica 1" }).click();
     const leave = page.getByRole("dialog", { name: "Leave without saving?" });
     await expect(leave).toContainText("You changed the name, the sessions and the goal.");
     await leave.getByRole("button", { name: "Stay here" }).click();
@@ -206,7 +206,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     await expect(settingsPage.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
     await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Analisi 2 bis");
     await saveBar.getByRole("button", { name: "Discard changes" }).click();
-    await settingsPage.getByRole("link", { name: "Analisi 2" }).click();
+    await settingsPage.getByRole("button", { name: "Back to Analisi 2" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-b$/);
     await expect(page.getByText("This exam is archived.")).toBeVisible();
     await snap("plan-archived", "en", "dark");

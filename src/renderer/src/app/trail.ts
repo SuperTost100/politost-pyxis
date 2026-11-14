@@ -73,13 +73,14 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
   const showing = find(trail, trail.current);
   const page = pageOf(nav.path);
   if (nav.action === "POP") {
+    // An entry that now shows another page (an address typed into the window keeps the key "default") is a new visit.
     const known = find(trail, nav.key);
-    if (known)
+    if (known && known.page === page)
       return {
         visits: trail.visits.map((visit) => (visit === known ? { ...visit, idx: nav.idx, path: nav.path, page } : visit)),
         current: nav.key,
       };
-    const others = trail.visits.filter((visit) => visit.idx !== nav.idx);
+    const others = trail.visits.filter((visit) => visit.idx !== nav.idx && visit.key !== nav.key);
     return { visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, from: null }]), current: nav.key };
   }
   if (nav.action === "REPLACE") {
@@ -100,7 +101,11 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
   const from = nav.via || !showing ? null : showing.page === page ? showing.from : showing.key;
   const behind = trail.visits
     .filter((visit) => visit.idx < nav.idx && visit.key !== nav.key)
-    .map((visit) => (visit === showing && nav.opener !== undefined ? { ...visit, opener: nav.opener } : visit));
+    .map((visit) => {
+      if (visit !== showing) return visit;
+      const { opener: _left, ...rest } = visit;
+      return nav.opener === undefined ? rest : { ...rest, opener: nav.opener };
+    });
   return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, from }]), current: nav.key };
 }
 

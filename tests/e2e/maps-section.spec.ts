@@ -192,12 +192,12 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
 
     const mapsDoor = page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ });
     await expect(mapsDoor).toHaveAttribute("aria-current", "page");
-    // The page has its own way back, named for the section, which leads to Mappe at this map's subject.
-    const back = page.locator(".px-map-page").getByRole("link", { name: "Mappe", exact: true });
+    // The page has its own way back, named for the page it came from, Mappe, where the map's tile takes the focus again.
+    const back = page.locator(".px-map-page").getByRole("button", { name: "Torna a Mappe" });
     await expect(back).toBeVisible();
     await back.click();
-    await expect(page).toHaveURL(/#\/maps\?subject=phys$/);
-    await expect(page.getByRole("heading", { level: 2, name: "Fisica" })).toBeFocused();
+    await expect(page).toHaveURL(/#\/maps$/);
+    await expect(tile).toBeFocused();
     await mapsDoor.click();
     await expect(page).toHaveURL(/#\/maps$/);
 

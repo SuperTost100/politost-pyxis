@@ -65,10 +65,16 @@ export function focusKeyOf(element: Element | null): string | undefined {
   return undefined;
 }
 
-function findByFocusKey(key: string): HTMLElement[] {
+function findByFocusKey(key: string, nearest: boolean): HTMLElement[] {
   const [kind, ...rest] = key.split(":");
   const value = rest.join(":");
-  if (kind === "key") return [...document.querySelectorAll<HTMLElement>(`[data-focus-key="${CSS.escape(value)}"]`)];
+  // A key names its place from the outside in ("path:topic:part:2"), so a step that is folded away falls back to the
+  // nearest of its rows still on screen.
+  if (kind === "key")
+    for (let key = value; key; key = nearest && key.includes(":") ? key.slice(0, key.lastIndexOf(":")) : "") {
+      const found = [...document.querySelectorAll<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`)];
+      if (found.length) return found;
+    }
   if (kind === "id") return [...document.querySelectorAll<HTMLElement>(`[id="${CSS.escape(value)}"]`)];
   if (kind === "href") return [...document.querySelectorAll<HTMLElement>(`a[href="${CSS.escape(value)}"]`)];
   if (kind === "name")
@@ -79,6 +85,13 @@ function findByFocusKey(key: string): HTMLElement[] {
 }
 
 let stopWaiting: (() => void) | null = null;
+/** A back control is about to replace its page with the page's parent, which is also going back. */
+let backToParent = false;
+
+/** Called by a back control right before it opens the page's parent in place of the page. */
+export function goingBackToParent(): void {
+  backToParent = true;
+}
 
 /**
  * After going back: the focus returns to what opened the page left behind (the path's step, the map's tile, the row),
@@ -86,7 +99,8 @@ let stopWaiting: (() => void) | null = null;
  * of sight. A click or a key of the student's own meanwhile ends the wait.
  *
  * The page being left is still on screen for a moment, and it may have a button of the same name, so what is there now
- * counts only once the wait is over, except the sidebar, which stays.
+ * counts only once the wait is over, except the sidebar, which stays. A page still reading its data may draw the
+ * element late, so a folded step falls back to its row only after a moment. A page that moves the focus itself wins.
  */
 function returnFocus(opener: string | undefined) {
   stopWaiting?.();
@@ -102,8 +116,13 @@ function returnFocus(opener: string | undefined) {
     element.focus({ preventScroll: true });
     element.scrollIntoView({ block: "nearest" });
   };
+  const started = performance.now();
   const look = (late: boolean) => {
-    const found = opener ? findByFocusKey(opener).find((element) => usable(element, late)) : undefined;
+    // A page that places the focus itself on arrival, as a quiz does on its question, keeps it there.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== document.body && !stale.has(active)) return finish();
+    const nearest = late || performance.now() - started > 500;
+    const found = opener ? findByFocusKey(opener, nearest).find((element) => usable(element, late)) : undefined;
     if (found) return place(found);
     if (!opener || late) {
       const heading = [...document.querySelectorAll<HTMLElement>("main h1, h1")].find((element) => usable(element, late));
@@ -112,10 +131,12 @@ function returnFocus(opener: string | undefined) {
     if (late) finish();
   };
   const observer = new MutationObserver(() => look(false));
+  const settle = window.setTimeout(() => look(false), 600);
   const timer = window.setTimeout(() => look(true), 2000);
   const cancel = () => finish();
   function finish() {
     observer.disconnect();
+    window.clearTimeout(settle);
     window.clearTimeout(timer);
     document.removeEventListener("pointerdown", cancel, true);
     document.removeEventListener("keydown", cancel, true);
@@ -140,10 +161,26 @@ function viaOf(state: unknown): Navigation["via"] {
 /** Records every navigation the router finishes, from the page the window opens on. */
 export function trackHistory(router: { state: RouterState; subscribe: (fn: (state: RouterState) => void) => unknown }): void {
   let seen: string | null = null;
+  // A button that turns busy while it opens a page loses the focus before the page opens, so the last element that had
+  // the focus stands in for it.
+  // Its key is read as it takes the focus, before a busy button changes its words.
+  let lastFocus: Element | null = null;
+  const keyAtFocus = new WeakMap<Element, string | undefined>();
+  document.addEventListener("focusin", (event) => {
+    lastFocus = event.target instanceof Element ? event.target : null;
+    if (lastFocus) keyAtFocus.set(lastFocus, focusKeyOf(lastFocus));
+  });
+  const openerKey = () => {
+    const active = document.activeElement;
+    const element = active && active !== document.body ? active : lastFocus;
+    return element ? (keyAtFocus.has(element) ? keyAtFocus.get(element) : focusKeyOf(element)) : undefined;
+  };
   const see = (state: RouterState, first: boolean) => {
     const { location } = state;
-    if (location.key === seen) return;
-    seen = location.key;
+    // The router reports every change of its state; a navigation is a new entry or another address.
+    const at = `${location.key} ${location.pathname}${location.search}`;
+    if (at === seen) return;
+    seen = at;
     const idx = (window.history.state as { idx?: unknown } | null)?.idx;
     const action = state.historyAction;
     update(
@@ -153,11 +190,12 @@ export function trackHistory(router: { state: RouterState; subscribe: (fn: (stat
         idx: typeof idx === "number" ? idx : 0,
         path: location.pathname + location.search,
         via: viaOf(location.state),
-        opener: action === "PUSH" ? focusKeyOf(document.activeElement) : undefined,
+        opener: action === "PUSH" ? openerKey() : undefined,
       }),
     );
-    if (action === "POP" && !first) returnFocus(currentVisit(trail)?.opener);
+    if ((action === "POP" && !first) || (action === "REPLACE" && backToParent)) returnFocus(currentVisit(trail)?.opener);
     else if (action !== "POP") stopWaiting?.();
+    backToParent = false;
   };
   see(router.state, true);
   router.subscribe((state) => see(state, false));

@@ -3691,7 +3691,7 @@ async function openState(page: Page, name: string) {
       // The results screen while grading is stopped: retry is the one primary action, the way back sits under it,
       // and the exercise not graded yet says so in words. The study bar goes back to the exam by name.
       await expect(
-        page.getByRole("banner").getByRole("button", { name: /^(Torna all'esame|Back to the exam): / }),
+        page.getByRole("banner").getByRole("button", { name: /^(Torna a|Back to) / }),
       ).toBeVisible();
       await expect(
         page.getByRole("button", {

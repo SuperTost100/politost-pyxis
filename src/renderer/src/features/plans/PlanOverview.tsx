@@ -4,6 +4,7 @@ import { Modal, type MenuProps } from "antd";
 import dayjs from "dayjs";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router";
+import { usePlace } from "../../app/usePlace";
 import type { RequestOutput } from "@shared/ipc";
 import { smartLabels, smartTextToMarkdown } from "@shared/smart-text";
 import { Button } from "../../components/Button";
@@ -96,6 +97,8 @@ function ExamPage({ planId }: { planId: string }) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const plan = usePlan(planId);
+  // A back control elsewhere calls the exam by its title.
+  usePlace({ name: plan.data ? { text: plan.data.title } : null, back: "none" });
   const recommended = useRecommend(planId);
   const schedule = useQuery({ ...scheduleQuery(planId), enabled: !!planId });
   const rings = useQuery(ringsQuery);
@@ -813,6 +816,7 @@ function ExamAside({
                   <Button
                     variant="secondary"
                     size="sm"
+                    focusKey="exam:cards-due"
                     onClick={() => navigate(`/cards/due?exam=${encodeURIComponent(planId)}`)}
                   >
                     {t("examPage.cardsReview", { count: due })}
@@ -821,6 +825,7 @@ function ExamAside({
                 <Button
                   variant="ghost"
                   size="sm"
+                  focusKey="exam:cards-all"
                   onClick={() => navigate(`/exams/cards?exam=${encodeURIComponent(planId)}`)}
                 >
                   {t("examPage.browseCards")}
@@ -861,6 +866,7 @@ function ExamAside({
                     variant="secondary"
                     size="sm"
                     disabled={redoing}
+                    focusKey="exam:redo"
                     onClick={() => void redo()}
                   >
                     {redoing ? (
@@ -877,6 +883,7 @@ function ExamAside({
                   <Button
                     variant="ghost"
                     size="sm"
+                    focusKey="exam:mistakes"
                     onClick={() =>
                       navigate(
                         `/exams/mistakes?exam=${encodeURIComponent(planId)}`,
