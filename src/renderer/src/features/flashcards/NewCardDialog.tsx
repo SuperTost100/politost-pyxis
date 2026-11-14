@@ -550,6 +550,9 @@ export function NewCardDialog({
       title={t("flashcards.new.title")}
       // A click outside asks like Annulla does, even with text typed: the leave question is how it is answered.
       outside="close"
+      // Enter in its one-line fields (the new subject's name, the number of flashcards) never saves or writes: the
+      // buttons do, so a card is not saved or written by accident.
+      enterConfirms={false}
       // While a card is being saved the dialog stays.
       busy={saving || savingProposed}
       origin={grownFrom}

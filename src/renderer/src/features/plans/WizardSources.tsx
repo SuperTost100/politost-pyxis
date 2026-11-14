@@ -211,6 +211,8 @@ function LibraryPicker({
       width="md"
       title={t("wizard.pickerTitle")}
       className="px-wizard-picker"
+      // Enter in the search field filters, it does not add what is ticked.
+      enterConfirms={false}
       onClose={onClose}
       // What was typed and ticked goes once it has shrunk away.
       onClosed={reset}

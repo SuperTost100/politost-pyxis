@@ -105,7 +105,9 @@ Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with butt
 
 One question at a time: asked while another is open, `useConfirm` answers "cancel" at once and nothing opens.
 
-A select, a date picker or a menu opened inside a dialog is drawn inside it (`getPopupContainer`), because anything Ant Design puts in the document's body would sit under the native dialog. The dialog does not clip it, so a long list can reach past the card. An Escape that a field or list uses (a select closing its list, a rename field cancelling) belongs to that one and does not close the dialog. A source opened from a citation inside a dialog is drawn inside that dialog and closes with it.
+A select, a date picker or a menu opened inside a dialog is drawn inside it (`getPopupContainer`), because anything Ant Design puts in the document's body would sit under the native dialog. The dialog does not clip it, so a long list can reach past the card. An Escape that a field or list uses (a select closing its list, a rename field cancelling) belongs to that one and does not close the dialog. A source opened from a citation inside a dialog is drawn inside that dialog and closes with it. An Escape that cancels a keyboard reorder belongs to the reorder.
+
+Enter in a single-line field runs the dialog's confirming action, as the browser would submit a form with its own submit button, when that action is on and the dialog is not busy; a busy dialog does nothing. It does not in a text area, a search, a select's list or a form that has a submit button of its own, and a dialog that opts out (`enterConfirms={false}`) leaves it to its fields: Nuova flashcard, where Enter must never save or write by accident, and the picker of a new exam, where Enter filters.
 
 ### The dialogs
 

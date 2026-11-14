@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -41,14 +41,16 @@ const CARDS = [
   },
 ];
 
-function seed(userData: string) {
+/** `kind` "pptx" gives the source panel a page row (slides), where the page number can be typed over. */
+function seed(userData: string, kind?: "pptx") {
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
   seedSubjects(db, [{ id: "s-mat", name: "Analisi" }]);
   seedSource(db, {
     id: "src-an",
     title: "Appunti di analisi",
+    ...(kind ? { kind } : {}),
     document: { id: "d-an" },
-    passages: [{ id: "pa1", text: PASSAGE, locator: { chapter: 1, paragraph: "p1" }, section: "1. Integrali" }],
+    passages: [{ id: "pa1", text: PASSAGE, locator: { chapter: 1, paragraph: "p1", ...(kind ? { slide: 1 } : {}) }, section: "1. Integrali" }],
   });
   seedPlan(db, {
     id: "p-an",
@@ -243,7 +245,7 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
     await fromChiediToExams(page);
-    seed(userData);
+    seed(userData, "pptx");
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
       location.hash = "/ask";
@@ -287,6 +289,17 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
       "the panel is on top of the dialog",
     ).toBe(true);
     await expect(panel.getByRole("heading", { name: "Appunti di analisi" })).toBeFocused();
+    // An Escape that drops a page-number edit in the panel is the field's: the panel and the dialog stay.
+    const pageField = panel.locator(".source-nav-field");
+    await expect(pageField).toBeVisible();
+    await pageField.fill("7");
+    await expect(pageField).toHaveValue("7");
+    await page.keyboard.press("Escape");
+    await expect(pageField).not.toHaveValue("7");
+    await expect(panel).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await expect(cards).toHaveCount(3);
+    await panel.getByRole("heading", { name: "Appunti di analisi" }).focus();
     await page.keyboard.press("Escape");
     await expect(panel).toHaveCount(0);
     await expect(dialog).toBeVisible();
@@ -384,6 +397,45 @@ test("in the make-flashcards dialog a proposed face with a formula shows its pre
     // Taller than a one-line face: the long one runs on several lines.
     const short = (await cards.nth(1).getByRole("textbox", { name: "Retro" }).boundingBox())!;
     expect(box.height).toBeGreaterThan(short.height + 10);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("while the flashcards are being written the dialog's action is off, and Annulla stops the writing", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-make-cards-hold-"));
+  const hold = join(userData, "release");
+  const env = { PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ cards: { hold, cards: CARDS } }) };
+  const app = await launchPyxis({ userData, env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    seed(userData);
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "en");
+      location.hash = "/ask";
+    });
+    await page.reload();
+    await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "Make flashcards" });
+    const cards = dialog.getByRole("list", { name: "Proposed flashcards" }).getByRole("listitem");
+    await page.evaluate(() =>
+      window.dispatchEvent(
+        new CustomEvent("pyxis:make-cards", {
+          detail: { text: "L'integrale per parti", origin: "selection", planId: "p-an", topicId: "t-int", passageIds: ["pa1"] },
+        }),
+      ),
+    );
+    const make = dialog.getByRole("button", { name: "Make flashcards" });
+    await make.click();
+    // The writing runs: a second activation would stop it and start another, so the action is off.
+    await expect(make).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    writeFileSync(hold, "go");
+    await expect(cards).toHaveCount(3);
   } finally {
     await app.close();
     removeTestFolder(userData);

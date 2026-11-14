@@ -147,8 +147,14 @@ test("DIALOG-05 a form opened from a menu item gives the focus back to the menu'
     const dots = page.getByRole("button", { name: "Altro su Esami", exact: true });
     const dialog = page.getByRole("dialog", { name: "Gestisci materie" });
     for (const way of ["Chiudi", "Escape"] as const) {
-      await dots.click();
-      await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
+      // The item is chosen by the keyboard, so it still holds the focus as the dialog opens.
+      await dots.focus();
+      await page.keyboard.press("Enter");
+      const item = page.getByRole("menuitem", { name: "Gestisci materie" });
+      await expect(item).toBeVisible();
+      await item.focus();
+      await expect(item).toBeFocused();
+      await page.keyboard.press("Enter");
       await expect(dialog).toBeVisible();
       // The item it was chosen from is gone by the time it closes, so the focus goes to the dots.
       await animationsSettled(page);

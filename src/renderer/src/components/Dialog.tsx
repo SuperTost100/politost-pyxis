@@ -17,7 +17,7 @@ import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { menuTakesEscape } from "./ItemMenu";
 import { Logo } from "./Logo";
-import { closingFocus, openingFocus, outsideClickCloses, wrapTab, type FocusRole } from "./dialogFocus";
+import { closingFocus, enterAction, openingFocus, outsideClickCloses, wrapTab, type FocusRole } from "./dialogFocus";
 import "./Dialog.css";
 
 export type DialogWidth = "sm" | "md" | "lg";
@@ -42,7 +42,8 @@ export type DialogAction = {
  * select's list, or a button or field whose list is open. That one closes first.
  */
 const OPENED_INSIDE = ".px-item-menu, .ant-dropdown, .ant-select-dropdown, .ant-picker-dropdown";
-const ESCAPE_NOT_MINE = `${OPENED_INSIDE}, [aria-haspopup][aria-expanded="true"], [role=combobox][aria-expanded="true"]`;
+// A list being dragged by the keyboard (`@dnd-kit` marks its handle pressed) cancels the drag on Escape.
+const ESCAPE_NOT_MINE = `${OPENED_INSIDE}, [aria-haspopup][aria-expanded="true"], [role=combobox][aria-expanded="true"], [aria-roledescription="sortable"][aria-pressed="true"]`;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 const FIELDS = 'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"]';
@@ -82,6 +83,7 @@ export function Dialog({
   onClose,
   width = "sm",
   busy = false,
+  enterConfirms = true,
   outside = "auto",
   origin,
   initialFocus,
@@ -102,6 +104,11 @@ export function Dialog({
   /** 460px for a confirmation, 560 for a form, 720 for a preview. */
   width?: DialogWidth;
   busy?: boolean;
+  /**
+   * Whether Enter in a single-line field runs the confirming action, as the browser's own rule would submit a form
+   * (`enterAction`). False where Enter in a field means something else, as in a search that filters a list.
+   */
+  enterConfirms?: boolean;
   /**
    * What a click outside does. `auto` closes it like Annulla unless it is busy or a text field holds typed text; `close`
    * always asks `onClose`, for a dialog that asks before it drops typed work; `none` leaves it open, for one whose work a
@@ -130,8 +137,8 @@ export function Dialog({
   // A body taller than its room scrolls, and takes a Tab stop so the keyboard can scroll it too.
   const body = useRef<HTMLDivElement>(null);
   const [scrolls, setScrolls] = useState(false);
-  const latest = useRef({ open, onClose, onClosed, busy, outside, initialFocus, returnFocus, origin });
-  latest.current = { open, onClose, onClosed, busy, outside, initialFocus, returnFocus, origin };
+  const latest = useRef({ open, onClose, onClosed, busy, outside, enterConfirms, initialFocus, returnFocus, origin });
+  latest.current = { open, onClose, onClosed, busy, outside, enterConfirms, initialFocus, returnFocus, origin };
 
   useLayoutEffect(() => {
     const dialog = node.current;
@@ -263,6 +270,27 @@ export function Dialog({
           event.stopPropagation();
           close();
           return;
+        }
+        if (event.key === "Enter" && latest.current.enterConfirms && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+          const target = event.target;
+          if (target instanceof HTMLInputElement) {
+            const run = enterAction(
+              {
+                tag: "input",
+                type: target.type,
+                inCombobox: target.closest("[role=combobox]") !== null,
+                formHasSubmit: target.form?.querySelector('button[type="submit"], input[type="submit"]') != null,
+              },
+              end,
+              { busy: latest.current.busy, open: latest.current.open },
+            );
+            if (run) {
+              // The form's own submit would run the same work a second time, and a busy dialog starts nothing.
+              event.preventDefault();
+              if (run.action) void run.action.onClick();
+              return;
+            }
+          }
         }
         if (event.key !== "Tab" || (event.target instanceof Element && event.target.closest(OPENED_INSIDE))) return;
         const stops = focusables(dialog);

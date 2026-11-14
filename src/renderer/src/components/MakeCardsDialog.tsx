@@ -242,7 +242,7 @@ export function MakeCardsDialog() {
             onClick: () => void save(),
           },
         ]
-      : [{ label: t("makeCards.make"), working, disabled: !placed, onClick: () => void make() }];
+      : [{ label: t("makeCards.make"), working, disabled: !placed || working, onClick: () => void make() }];
 
   return (
     <Dialog

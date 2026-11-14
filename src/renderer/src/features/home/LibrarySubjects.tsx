@@ -115,7 +115,7 @@ export function NewSubjectDialog({
   const [saving, setSaving] = useState(false);
   const fieldId = useId();
   const save = async () => {
-    if (!source || !name.trim()) return;
+    if (!source || !name.trim() || saving) return;
     setSaving(true);
     setError(null);
     try {

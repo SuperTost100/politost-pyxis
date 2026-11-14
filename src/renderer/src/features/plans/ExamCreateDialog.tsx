@@ -295,7 +295,7 @@ export function ExamCreateDialog({
         {
           label: busy ? t("examPage.createDialog.creating") : t("examPage.createDialog.create"),
           working: busy,
-          disabled: blocked,
+          disabled: blocked || busy,
           onClick: () => void create(),
         },
       ]}

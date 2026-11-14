@@ -1069,7 +1069,7 @@ export function EnginesPanel() {
             ? [
                 {
                   label: t("engines.saveAndTest"),
-                  disabled: !keyValue.trim(),
+                  disabled: !keyValue.trim() || keyBusy || test.isPending,
                   working: keyBusy || test.isPending,
                   onClick: () => void saveKey(),
                 },

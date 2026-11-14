@@ -60,3 +60,27 @@ export function outsideClickCloses(typed: string[], busy: boolean): boolean {
 export function stayingFocus<T>(active: T | null, previous: T | null, clicked: boolean): T | null {
   return clicked && previous !== null ? previous : active;
 }
+
+/** What an Enter was pressed on, as far as the rule below cares. */
+export type EnterTarget = { tag: string; type: string; inCombobox: boolean; formHasSubmit: boolean };
+
+const SINGLE_LINE = new Set(["text", "password", "email", "url", "number", "tel"]);
+
+/**
+ * What Enter does in a dialog's field: the browser submits a form from a single-line field with the form's own submit
+ * button, and a dialog's buttons are outside its form, so the dialog does it. `null` leaves the key to the browser (a
+ * text area, a checkbox, a search, a select's list, a form that has a submit button of its own, a dialog with no action
+ * that only confirms). `{ action }` runs that action, and `{ action: null }` swallows the key, because the action is off or
+ * the dialog is busy or already answered, so a second Enter starts nothing. Only a primary action confirms: never a
+ * destructive one, and never an extra such as "Salva e scrivine un'altra".
+ */
+export function enterAction<A extends { tone?: string; disabled?: boolean }>(
+  target: EnterTarget,
+  actions: readonly A[],
+  state: { busy: boolean; open: boolean },
+): { action: A | null } | null {
+  if (target.tag !== "input" || !SINGLE_LINE.has(target.type) || target.inCombobox || target.formHasSubmit) return null;
+  const confirming = [...actions].reverse().find((action) => (action.tone ?? "primary") === "primary");
+  if (!confirming) return null;
+  return { action: state.busy || !state.open || confirming.disabled ? null : confirming };
+}
