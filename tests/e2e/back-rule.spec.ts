@@ -40,6 +40,8 @@ type Row = {
   parent?: boolean;
   /** Setup holds the menu's commands, so Indietro is greyed there while the page's own control works. */
   menu?: "greyed";
+  /** A study page, with the study bar: one way back, and Attività last at the far right. */
+  study?: boolean;
 };
 
 /** Opens a starting page the way a link from outside the app would. */
@@ -112,6 +114,7 @@ const rows: Row[] = [
     // The topic's row folds again on the exam page, since the diagnostic is still what the path is on: the focus goes
     // to the row that held the part.
     focus: /^Funzioni di più variabili/,
+    study: true,
   },
   {
     page: "/maps/:subjectId/:topicId?",
@@ -174,6 +177,7 @@ const rows: Row[] = [
     lit: null,
     leadsTo: exam,
     focus: "Rifai la domanda",
+    study: true,
   },
   {
     page: "/cards/due",
@@ -186,6 +190,7 @@ const rows: Row[] = [
     lit: null,
     leadsTo: exam,
     focus: /^Ripassa/,
+    study: true,
   },
   {
     page: "/cards/due",
@@ -199,9 +204,23 @@ const rows: Row[] = [
     lit: null,
     leadsTo: "/flashcards",
     focus: /^Ripassa le 2 di oggi$/,
+    study: true,
   },
   {
-    page: "/exams/cards",
+    page: "/flashcards/all",
+    how: "Sfoglia tutte from the Flashcard section",
+    reach: async ({ page }) => {
+      await start(page, "#/flashcards", "Flashcard");
+      await page.getByRole("button", { name: "Sfoglia tutte", exact: true }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Tutte le flashcard" })).toBeVisible();
+    },
+    label: "Flashcard",
+    lit: "Flashcard",
+    leadsTo: "/flashcards",
+    focus: "Sfoglia tutte",
+  },
+  {
+    page: "/flashcards/all",
     how: "Sfoglia tutte from the exam",
     reach: fromExam(async (page) => {
       await side(page).getByRole("button", { name: "Sfoglia tutte" }).click();
@@ -499,6 +518,7 @@ const rows: Row[] = [
       parent: true,
       leadsTo: exam,
       focus: EXAM,
+      study: true,
     }),
   ),
   {
@@ -510,6 +530,7 @@ const rows: Row[] = [
     parent: true,
     leadsTo: "/flashcards",
     focus: "Flashcard",
+    study: true,
   },
 ];
 
@@ -640,6 +661,14 @@ for (const row of rows) {
     // The sidebar lights the section the page was opened from, not the one its address belongs to.
     if (row.lit === null) await expect(lit(page)).toHaveCount(0);
     else await expect(lit(page)).toHaveAccessibleName(row.lit);
+    if (row.study) {
+      // One way back: the bar's. The foot has no second button that does the same, and Attività is the last thing at the
+      // bar's right end.
+      await expect(
+        page.getByRole("button", { name: /^(Torna al percorso|Torna al ripasso|Torna al quaderno|Indietro)$/ }),
+      ).toHaveCount(0);
+      await expect(page.locator(".px-studybar-actions > :last-child")).toHaveClass(/px-jobs-button/);
+    }
     // Escape never leaves a page.
     await page.locator("body").press("Escape");
     expect(page.url()).toBe(reached);
@@ -794,7 +823,18 @@ test("every page with a back control has a row", () => {
     "/tools/graph",
     "/tools/python",
   ]);
-  const none = new Set(["/exams", "/exams/library", "/maps", "/flashcards", "/exams/planner", "/settings/subjects", "/dev/gallery", "*"]);
+  const none = new Set([
+    "/exams",
+    "/exams/library",
+    "/maps",
+    "/flashcards",
+    // The old addresses redirect: the row of the page they lead to covers them.
+    "/exams/cards",
+    "/exams/planner",
+    "/settings/subjects",
+    "/dev/gallery",
+    "*",
+  ]);
   const walked = new Set(rows.map((row) => row.page));
   // Study pages that open only on a session of their own (a review in progress, a handed-in simulation, past papers)
   // share the bar's control with the rows above.

@@ -141,6 +141,23 @@ html[data-platform="darwin"] .px-studybar {
   color: var(--ink-subtle);
 }
 
+/* Under 1,100 px a tool is its icon; the word stays for screen readers, so the bar keeps one row. */
+@media (max-width: 1099px) {
+  .px-studybar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .px-studybar .px-studybar-actions .px-studybar-action.ant-btn {
+    padding: 0 9px;
+  }
+}
+
 /* The progress line sits under the bar, inside it so it belongs to the banner. */
 .px-studybar:has(.px-studybar-progress) {
   margin-bottom: 2px;

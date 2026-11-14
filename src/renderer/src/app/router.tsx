@@ -1,4 +1,10 @@
-import { createHashRouter, isRouteErrorResponse, replace, useNavigate, useRouteError } from "react-router";
+import {
+  createHashRouter,
+  isRouteErrorResponse,
+  replace,
+  useNavigate,
+  useRouteError,
+} from "react-router";
 import { useTranslation } from "react-i18next";
 import { useEffect, type ComponentType } from "react";
 import { AskPage } from "../features/ask/AskPage";
@@ -6,6 +12,7 @@ import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { reportError } from "../lib/errorReports";
 import { trackHistory } from "./history";
+import { allCardsRedirect } from "./redirects";
 import { Shell } from "./layouts/Shell";
 
 /**
@@ -80,13 +87,15 @@ export const router = createHashRouter([
       { path: "ask/:chatId?", element: <AskPage /> },
       { path: "exams", lazy: examsHome },
       { path: "exams/library", lazy: examsHome },
-      { path: "exams/cards", lazy: examsHome },
+      // The browser of every flashcard moved to /flashcards/all; its old address redirects (redirects.ts).
+      { path: "exams/cards", loader: allCardsRedirect },
       { path: "exams/mistakes", lazy: examsHome },
       // The session planner's page is gone: the exam rings show the plan, and weekly hours live in exam settings.
       { path: "exams/planner", loader: () => replace("/exams") },
       { path: "exams/get", lazy: page(plans, "SharedPlanPage") },
       { path: "maps", lazy: page(() => import("../features/maps/MapsHome"), "MapsHome") },
       { path: "flashcards", lazy: page(() => import("../features/flashcards/FlashcardsHome"), "FlashcardsHome") },
+      { path: "flashcards/all", lazy: page(() => import("../features/flashcards/AllCards"), "CardsHome") },
       { path: "plans/:planId/settings", lazy: page(plans, "ExamSettingsPage") },
       // A map belongs to Maps and opens inside the shell, by its subject and, for a topic's map, the topic. The exam's
       // address still opens a topic's map, for older links and for an exam that has no subject.

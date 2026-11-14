@@ -66,12 +66,16 @@ export function reminderText(
 }
 
 /**
- * Pages main may ask the renderer to open: a plan's page, the Flashcards page or the daily review. The preload checks it, so a message
- * from anywhere else cannot send the router to an arbitrary path.
+ * Pages main may ask the renderer to open: a plan's page, the list of every flashcard or the daily review. The preload
+ * checks it, so a message from anywhere else cannot send the router to an arbitrary path. The list's old address
+ * `/exams/cards` still passes: the router redirects it to `/flashcards/all`.
  */
 export function isOpenablePath(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    (value === "/exams/cards" || value === "/cards/due" || /^\/plans\/[A-Za-z0-9_-]{1,64}$/.test(value))
+    (value === "/flashcards/all" ||
+      value === "/exams/cards" ||
+      value === "/cards/due" ||
+      /^\/plans\/[A-Za-z0-9_-]{1,64}$/.test(value))
   );
 }

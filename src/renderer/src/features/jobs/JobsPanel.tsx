@@ -115,18 +115,21 @@ function ProblemCard({
   act,
   onUnlock,
   onNavigate,
+  blocked,
 }: {
   problem: Problem;
   act: Act;
   onUnlock: (job: JobView) => void;
   onNavigate: (to: string, state?: object) => void;
+  /** Why the page cannot be left: what leads elsewhere is off, and says so. */
+  blocked?: string;
 }) {
   const { t } = useTranslation();
   const nameOf = useJobName();
   const [open, setOpen] = useState(false);
   const listId = useId();
   const { jobs, kind, messageKey, engine } = problem;
-  if (kind === "nothing-found") return <RequestCard job={jobs[0]!} messageKey={messageKey} act={act} onNavigate={onNavigate} />;
+  if (kind === "nothing-found") return <RequestCard job={jobs[0]!} messageKey={messageKey} act={act} onNavigate={onNavigate} blocked={blocked} />;
   // A refused sign-in names its engine, and its sign-in replaces the general way to the engines page.
   const describeEngineError = useEngineError(onNavigate);
   const engineFailure = describeEngineError(messageKey, engine, {
@@ -188,6 +191,8 @@ function ProblemCard({
           <Button
             size="sm"
             variant="secondary"
+            disabled={Boolean(blocked)}
+            title={blocked}
             onClick={
               engineFailure.action?.onClick ??
               (() => onNavigate("/settings/engines"))
@@ -261,11 +266,13 @@ function RequestCard({
   messageKey,
   act,
   onNavigate,
+  blocked,
 }: {
   job: JobView;
   messageKey: string;
   act: Act;
   onNavigate: (to: string, state?: object) => void;
+  blocked?: string;
 }) {
   const { t } = useTranslation();
   const target = requestPath(job);
@@ -278,7 +285,7 @@ function RequestCard({
       {where ? <p className="px-jobs-why">{where}</p> : null}
       <div className="px-jobs-acts">
         {target ? (
-          <Button size="sm" variant="secondary" onClick={() => onNavigate(target.to, target.state)}>
+          <Button size="sm" variant="secondary" disabled={Boolean(blocked)} title={blocked} onClick={() => onNavigate(target.to, target.state)}>
             {t("jobs.changeRequest")}
           </Button>
         ) : null}
@@ -499,8 +506,12 @@ export const JobsPanel = forwardRef<
     /** Closes the list, after it sent the student to another page. */
     onClose: () => void;
     onEscape: () => void;
+    /** A page's own rule for being left: a link that goes to another page waits for it. */
+    leave?: (then: () => void) => void;
+    /** Why the page cannot be left, when nothing leaves it: those links are off. */
+    blocked?: string;
   }
->(function JobsPanel({ groups, onUnlock, onClose, onEscape }, ref) {
+>(function JobsPanel({ groups, onUnlock, onClose, onEscape, leave, blocked }, ref) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const client = useQueryClient();
@@ -556,9 +567,12 @@ export const JobsPanel = forwardRef<
               problem={problem}
               act={act}
               onUnlock={onUnlock}
+              blocked={blocked}
               onNavigate={(to, state) => {
                 onClose();
-                void navigate(to, state ? { state } : undefined);
+                const go = () => void navigate(to, state ? { state } : undefined);
+                if (leave) leave(go);
+                else go();
               }}
             />
           ))}

@@ -10,7 +10,7 @@ import { seedPlan, seedSource } from "./seed";
 
 /**
  * An answer typed into the exercises page lives only in the window, so every way out of the page asks "Uscire senza
- * salvare?" before it drops it: the page's own back control and its foot's Indietro, the menu's Indietro, the mouse's
+ * salvare?" before it drops it: the bar's back control and its Fai il quiz tool, a link in the Attività panel, the menu's Indietro, the mouse's
  * side button and the swipe. Without an answer typed, they leave at once.
  */
 
@@ -46,6 +46,10 @@ test("an answer typed on the exercises page is asked about by every way out, and
         INSERT INTO smartbooks(id,source_id,meta_json,created_at) VALUES('b-ex','src-ex','{"title":"Fisica","chapters":[]}',1);
         INSERT INTO exercises(id,smartbook_id,passage_id,prompt,answer,locator_json,grounding,created_at)
           VALUES('x-ex','b-ex','ps-ex','Calcola la forza per m=2 kg e a=3 m/s2.','F=ma=6 N','{"chapter":1,"kind":"esame"}','sources',1);`);
+      // A job that failed for want of an AI tool: its card in Attività has a link that leaves the page.
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-fail','lesson-part',?,'failed',0,'engines.errors.engine-missing',?,?)",
+      ).run(JSON.stringify({ planId: "p-ex", topicId: "t-ex", position: 1 }), Date.now(), Date.now());
     } finally {
       db.close();
     }
@@ -77,8 +81,16 @@ test("an answer typed on the exercises page is asked about by every way out, and
       swipe,
       mouse,
       () => control().click(),
-      () => page.getByRole("button", { name: "Indietro", exact: true }).click(),
+      // The bar's own tool, and a link in the Attività panel: both leave the page like the back control.
+      () => page.getByRole("banner").getByRole("button", { name: "Fai il quiz" }).click(),
+      async () => {
+        await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
+        await page.getByRole("button", { name: "Vai agli strumenti AI" }).click();
+      },
     ];
+    // The foot's Indietro and Torna al percorso are gone: the bar's control is the one way back.
+    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Torna al percorso", exact: true })).toHaveCount(0);
     for (const way of ways) {
       await way();
       // The question comes with what would be lost, and staying keeps the page and the answer as they were.

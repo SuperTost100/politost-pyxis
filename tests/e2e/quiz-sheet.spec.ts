@@ -188,7 +188,7 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
     await expect(page.locator(".px-qz-kicker")).toHaveText("Scelta multipla");
     // The way back names the exam; the line under the title says the quiz has no time limit.
     await expect(page.locator(".px-back")).toHaveAccessibleName("Torna a Fisica I");
-    await expect(page.locator(".px-studybar-title p")).toHaveText("Fisica I · senza limite di tempo");
+    await expect(page.locator(".px-studybar-title p")).toHaveText("Quiz · domanda 1 di 8, senza limite di tempo");
     await expect(sheet(page).locator(".px-qz-count")).toHaveText("0 di 8 date");
     // A new question takes focus, so a screen reader hears its position and its text.
     const card = page.locator(".px-qz-sheet");
@@ -197,12 +197,12 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
     await expect(page.getByText("Tasti 1-4 per scegliere, Invio per andare avanti")).toBeVisible();
     await expectNoAxeViolations(page);
 
-    // Number keys pick and change the pick freely; Indietro is not there on the first question.
+    // Number keys pick and change the pick freely; "Domanda precedente" is not there on the first question.
     await page.keyboard.press("3");
     await page.keyboard.press("2");
     await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: /^C 50 m/ })).toHaveAttribute("aria-pressed", "false");
-    await expect(page.getByRole("button", { name: "Indietro", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Domanda precedente", exact: true })).toHaveCount(0);
     await expect(tile(page, "Domanda 1, risposta data")).toHaveAttribute("aria-current", "step");
     await expect(sheet(page).locator(".px-qz-count")).toHaveText("1 di 8 data");
     await shoot(page, "mcq");
@@ -273,6 +273,36 @@ test("the quiz answers in one column: keys, the Domande card, Non lo so, Segna p
     // Blank answers count as "Non lo so": two right answers of eight.
     await expect(page.locator(".px-res-headline")).toContainText("2 punti su 8.");
     await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
+  } finally {
+    await done();
+  }
+});
+
+test("the number keys pick nothing while the Attività list has the focus", async () => {
+  test.setTimeout(120_000);
+  const { page, done, userData } = await launch();
+  try {
+    // A finished job, so the list has something in it to take the focus.
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('j-done','lesson-part',?,'succeeded',1,?,?)",
+    ).run(JSON.stringify({ planId: "p-fis", topicId: "t-kin", position: 1 }), Date.now(), Date.now());
+    db.close();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await go(page, "/plans/p-fis/quiz/t-kin?attempt=a-quiz");
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
+    await expect(page.locator(".px-jobs")).toBeFocused();
+    await page.keyboard.press("3");
+    await page.keyboard.press("2");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "false");
+    await expect(sheet(page).locator(".px-qz-count")).toHaveText("0 di 8 date");
+    // Closed again, the keys are the quiz's.
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".px-jobs")).toBeHidden();
+    await page.locator(".px-qz-sheet").focus();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
   } finally {
     await done();
   }
@@ -379,7 +409,7 @@ test("Avanti and Segna per dopo pressed back to back, then leaving at once, reop
       await expect.poll(stored, { message: where }).toEqual(["e-2", ["e-2"]]);
       // Back to the first question with nothing marked, saved, for the next round.
       await mark.click();
-      await page.getByRole("button", { name: "Indietro" }).click();
+      await page.getByRole("button", { name: "Domanda precedente" }).click();
       await expect(heading(page)).toHaveText("Domanda 1 di 3");
       await expect.poll(stored, { message: where }).toEqual(["e-1", []]);
     }
@@ -440,7 +470,7 @@ test("the quiz too reopens on the question after Avanti and Segna per dopo press
       await expect(mark, where).toHaveAttribute("aria-pressed", "true");
       await expect.poll(stored, { message: where }).toEqual([1, 1]);
       await mark.click();
-      await page.getByRole("button", { name: "Indietro" }).click();
+      await page.getByRole("button", { name: "Domanda precedente" }).click();
       await expect(heading(page)).toHaveText("Domanda 1 di 8");
       await expect.poll(stored, { message: where }).toEqual([0, 0]);
     }

@@ -47,7 +47,7 @@ export function usePlace(input: {
     if (input.inner) {
       const { name: place, go } = input.inner;
       const text = "key" in place ? t(place.key, place.values) : place.text;
-      return { name: text, label: t("places.backTo", { place: text }), to: location.pathname + location.search, busy: false, saves: false, go };
+      return { name: text, label: t("places.backTo", { place: text }), to: location.pathname + location.search, busy: false, saves: false, leave: (then) => then(), go };
     }
     const from = origin(trail, key);
     const table = placeOf(location.pathname + location.search).parent;
@@ -55,17 +55,32 @@ export function usePlace(input: {
     if (!from && !parent) return null;
     const place = from ? (from.name ?? placeOf(from.path).name ?? { key: "nav.back" }) : parent!.name;
     const text = "key" in place ? t(place.key, place.values) : place.text;
+    const guarded = (then: () => void) => {
+      if (busy) return;
+      if (!input.beforeLeave) return then();
+      setBusy(true);
+      input
+        .beforeLeave()
+        .catch(() => false)
+        .then((ok) => {
+          setBusy(false);
+          if (ok) then();
+        });
+    };
     return {
       name: text,
       label: t("places.backTo", { place: text }),
       to: from ? from.path : parent!.to,
       busy,
       saves: input.beforeLeave !== undefined,
-      go: () => {
-        if (busy) return;
-        const leave = () => {
+      // One guarded path for every way out: the control, the menu's Indietro, the mouse button and the swipe (which run
+      // `go`), and a link elsewhere on the page that leaves it (`leave`).
+      leave: guarded,
+      go: () =>
+        guarded(() => {
           // The student has already started a move of their own (to a page whose code is still loading, while this page
           // finished a delete or a save): that move wins, since a step back is counted from where the window is now.
+          // Only this step is held: `leave(then)` runs a move the student asks for now, which is theirs to make.
           if (router && router.state.navigation.state !== "idle") return;
           // Read when leaving, which can come after `beforeLeave`: by then the student may be on another page, which
           // this page's way back must not move.
@@ -74,17 +89,7 @@ export function usePlace(input: {
             goingBackToParent(parent.to);
             void navigate(parent.to, { replace: true });
           } else if (step && step !== "parent") void navigate(step.delta);
-        };
-        if (!input.beforeLeave) return leave();
-        setBusy(true);
-        input
-          .beforeLeave()
-          .catch(() => false)
-          .then((ok) => {
-            setBusy(false);
-            if (ok) leave();
-          });
-      },
+        }),
     };
   }
 

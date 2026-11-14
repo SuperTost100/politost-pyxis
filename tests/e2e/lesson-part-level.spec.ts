@@ -177,7 +177,7 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     await expect(page.getByRole("heading", { level: 1, name: "Intorni e distanza" })).toBeFocused();
     await parts(page).getByRole("link", { name: /^Interno, esterno, frontiera/ }).click();
     await expect(working(page, "Sto riscrivendo la parte 2")).toBeVisible();
-    await expect(page.locator(".px-part-working").getByRole("button", { name: "Torna al percorso" })).toBeFocused();
+    await expect(page.locator(".px-part-working-status > p")).toBeFocused();
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
     writeFileSync(simpleHold, "");
     await expect(page.getByText("Frontiera semplice: l'idea")).toBeVisible({ timeout: 30_000 });

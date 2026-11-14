@@ -16,7 +16,7 @@ Items the student opens sit as rows in one card: a name, a line under it, and a 
 
 ## The sidebar shell
 
-One sidebar for the whole app: Cerca, the sections, the recent chats and the profile at the foot. The current section sits on a white card. Folded, it is a column of icons with each name on hover. The lesson, the quiz and the flashcards are full-screen, without it.
+One sidebar for the whole app: Cerca, the sections, the recent chats and the profile at the foot. The current section sits on a white card. Folded, it is a column of icons with each name on hover. The study pages (the lesson, the quiz, the flashcards, the exercises, the introduction, Ripasso and the simulation) are full-screen, without it.
 
 ## Going back
 
@@ -27,7 +27,7 @@ A page opened from another page has one way back, at its top left: an arrow and 
 | Control        | `BackControl` in `components/BackControl.tsx`: `variant="page"` above a shell page's title, `variant="bar"` at the left end of the study bar, before its thin separator. A ghost button in `--ink-muted`, the fill on hover, the focus ring from the keyboard, 0.98 when pressed and 45% while the page records what it must before leaving |
 | Label          | The place's name, in the app's language: an exam's title, a topic, a map's name, or a section such as Mappe. A name longer than 24 characters is cut with "…", and the whole one is in the control's title. A screen reader hears "Torna a {{place}}" / "Back to {{place}}"                                                                 |
 | Where it leads | Where the student came from, by moving back in the window's history, so history keeps one entry per page. A move inside a page (a lesson's parts, Settings' sections, a filter) replaces the entry instead of adding one                                                                                                                    |
-| Parent         | A page under an exam goes to the exam, the exam to Esami, a map to Mappe at its subject, a review of the day's flashcards to Flashcard, the Quaderno and Tutte le flashcard to the exam they were narrowed to or to Esami. `app/places.ts` holds the whole table                                                                            |
+| Parent         | A page under an exam goes to the exam, the exam to Esami, a map to Mappe at its subject, a review of the day's flashcards to Flashcard, Tutte le flashcard to Flashcard or to the exam it was narrowed to (`?exam=`), the Quaderno to that exam or to Esami. `app/places.ts` holds the whole table                                          |
 | Focus          | Back on the page it left, the focus returns to what opened it (a step of the path, a tile, a row), or to its row when the step is folded away, or to the page's main heading. The page does not scroll unless that element is out of sight, and a page that places the focus itself on arrival keeps it there                               |
 | Escape         | Never leaves a page                                                                                                                                                                                                                                                                                                                         |
 
@@ -42,7 +42,33 @@ A few places differ from the rule:
 
 ## The study bar
 
-Over the lesson, the quiz and the flashcards. The way back is a ghost button that names where it goes, the title and the count sit in the middle, and the tools are ghost buttons on the right. There is no close button: the way back is the way out.
+`StudyBar` is the bar over every study page. It is 56 px high, it is the window's drag strip, and from left to right it holds:
+
+1. The back control (`BackControl variant="bar"`), or nothing on a running simulation.
+2. A thin separator, only after a back control.
+3. The title block: the topic or the thing as the title, and one line under it that says what the student is doing and where they are in it. The title sits beside the back control, not in the middle. Under 1,100 px a lesson's title opens the parts in a popover (`titleMenu`).
+4. A flexible space.
+5. The page's tools (`BarTool`): ghost buttons with an icon and a word. Under 1,100 px the word is kept for screen readers only.
+6. The page's dots (`MenuButton`), when the page has a menu. They hold actions only, and a right-click on them opens the same menu.
+7. Attività (`JobsButton keep`), always last at the far right.
+
+A link in the Attività list that leaves the page (a failed job's "Vai agli strumenti AI") leaves it the way the back control does: it waits for the page's `beforeLeave` (`BackTarget.leave`) and stays when that says no. On a running simulation, where nothing leaves, those links are off and give the reason. A page's own shortcuts (the flashcards' Space and ratings, a quiz's number keys) do nothing while the focus is inside an open dialog, menu or the Attività list (`lib/pageKeys.ts`).
+
+The bar draws the page's `progress` as a thin line along its bottom edge. A page has no foot button for the way back, since the bar's control is that: no "Indietro", no "Torna al percorso". The questions of a quiz and a simulation have "Domanda precedente" for the previous question.
+
+| Page                         | Title                                                           | Line                                                                                                                       | Tools                             | Dots                                                           |
+| ---------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------- |
+| Lesson part                  | the topic                                                       | "Lezione · Parte 3 di 5 · circa 6 minuti"                                                                                  | Livello                           | the part's menu                                                |
+| Older lesson                 | the topic                                                       | "Lezione · circa 8 minuti"                                                                                                 | Livello                           | the lesson's menu                                              |
+| Quiz                         | the topic, or "Test diagnostico", "Rifai gli errori", "Ripasso" | "Quiz · domanda 3 di 10, senza limite di tempo"; on a diagnostic and a Ripasso "Le risposte restano: riprendi quando vuoi" | the clock of a timed quiz         | Esporta, on the results                                        |
+| Flashcards                   | the topic, the subject, "Flashcard di oggi" or "Ripasso"        | "Flashcard · 4 di 12"                                                                                                      | Nuova flashcard, Annulla l'ultima | Esporta, on a topic's deck. Modifica is in the card's own menu |
+| Exercises                    | the topic                                                       | "Esercizi · 6 esercizi, dal libro"                                                                                         | Fai il quiz                       | none                                                           |
+| Introduction                 | the exam                                                        | "Introduzione"                                                                                                             | none                              | none                                                           |
+| Ripasso, before it starts    | the exam                                                        | "Ripasso · the subject"                                                                                                    | none                              | none                                                           |
+| Simulation, running          | "Simulazione · the exam"                                        | "Non puoi uscire: si esce consegnando o allo scadere del tempo"                                                            | the clock                         | none                                                           |
+| Simulation, before and after | "Simulazione"                                                   | the exam's subject and title                                                                                               | none                              | Esporta, on the results                                        |
+
+The new exam, the guided exam and the tools (Lavagna, Grafico, Python) keep their own top bar until they move onto this one.
 
 ## Side panels
 

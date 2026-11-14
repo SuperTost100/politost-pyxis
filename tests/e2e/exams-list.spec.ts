@@ -202,12 +202,13 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     await expect(page.getByRole("heading", { name: "Crea un esame per iniziare" })).toBeVisible();
     await expect(page.getByRole("list", { name: "I tuoi esami" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiviati" })).toHaveCount(0);
-    // The Esami menu holds importing, every flashcard and the mistakes notebook.
+    // The Esami menu holds importing and the mistakes notebook; every flashcard lives under Flashcard.
     await page.getByRole("button", { name: "Altro su Esami" }).click();
     await expect(page.getByRole("menuitem", { name: "Importa da un file .pyxis" })).toBeVisible();
-    await page.getByRole("menuitem", { name: "Tutte le flashcard" }).click();
-    await expect(page).toHaveURL(/#\/exams\/cards$/);
-    await expect(page.getByRole("heading", { name: "Tutte le flashcard" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Tutte le flashcard" })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Quaderno degli errori" }).click();
+    await expect(page).toHaveURL(/#\/exams\/mistakes$/);
+    await expect(page.getByRole("heading", { name: "Quaderno degli errori" })).toBeVisible();
     await page.getByRole("main").getByRole("button", { name: "Torna a Esami" }).click();
     await page.getByRole("button", { name: "Nuovo esame" }).click();
     await expect(page).toHaveURL(/#\/plans\/new$/);

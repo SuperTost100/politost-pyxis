@@ -27,18 +27,23 @@ const examOr = (fallback: Place["parent"], search: URLSearchParams) => {
   return planId && planId !== "none" ? exam(planId) : fallback;
 };
 
+/** Every flashcard: back to the Flashcard section, or to the exam it was narrowed to. */
+const allCards = (search: URLSearchParams): Place => ({ name: key("exams.allCards"), parent: examOr(flashcards, search) });
+
 /** In the router's order of matching: a fixed segment comes before a parameter in the same place. */
 const rows: Row[] = [
   { path: "/onboarding", place: (_, search) => ({ name: null, parent: search.get("again") ? { to: "/settings/profile", name: key("settings.title") } : null }) },
   { path: "/ask/:chatId?", place: (params) => ({ name: params.chatId ? key("places.chat") : key("doors.ask"), parent: null }) },
   { path: "/exams", place: () => ({ name: key("doors.exams"), parent: null }) },
   { path: "/exams/library", place: () => ({ name: key("nav.library"), parent: null }) },
-  { path: "/exams/cards", place: (_, search) => ({ name: key("exams.allCards"), parent: examOr(exams, search) }) },
+  // The old address redirects to /flashcards/all and keeps its row, for a visit recorded before the move.
+  { path: "/exams/cards", place: (_, search) => allCards(search) },
   { path: "/exams/mistakes", place: (_, search) => ({ name: key("mistakes.title"), parent: examOr(exams, search) }) },
   { path: "/exams/planner", place: () => ({ name: key("doors.exams"), parent: null }) },
   { path: "/exams/get", place: () => ({ name: key("shared.title"), parent: exams }) },
   { path: "/maps", place: () => ({ name: key("doors.maps"), parent: null }) },
   { path: "/flashcards", place: () => ({ name: key("flashcards.title"), parent: null }) },
+  { path: "/flashcards/all", place: (_, search) => allCards(search) },
   { path: "/plans/new", place: () => ({ name: key("wizard.title"), parent: exams }) },
   { path: "/plans/new/guided", place: () => ({ name: key("wizard.title"), parent: exams }) },
   { path: "/plans/:planId/settings", place: underExam(key("planOverview.settings")) },

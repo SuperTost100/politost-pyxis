@@ -1,5 +1,6 @@
 import type { RequestOutput } from "../../../../shared/ipc";
 import { errorDetails } from "../../lib/errorDetails";
+import { barLine, type BarT } from "./barLines";
 
 // The rules of the part page that do not need the page: how a part is marked in the parts list, what the working block
 // says, and whether the focus may move to Continua. Kept here so a unit test checks them.
@@ -23,6 +24,29 @@ export function partStateWord(part: Pick<Part, "state" | "done">): "writing" | "
   if (part.state === "writing") return "writing";
   if (part.done) return "read";
   return part.state === "written" ? null : "unwritten";
+}
+
+/**
+ * The line under the bar's title on a lesson: "Lezione", where the student is in it when it has parts, and about how
+ * long it takes. A length not known yet, as while the part is written, is left out.
+ */
+export function lessonLine(
+  t: BarT,
+  input: {
+    /** The topic has more than one part. */
+    many: boolean;
+    recap: boolean;
+    position: number;
+    /** How many parts teach, the recap not counted. */
+    parts: number;
+    minutes: number | null | undefined;
+  },
+): string {
+  return barLine([
+    t("lesson.title"),
+    input.many ? (input.recap ? t("lesson.recapTitle") : t("lesson.partOf", { n: input.position, count: input.parts })) : null,
+    input.minutes && input.minutes > 0 ? t("lesson.barMinutes", { count: input.minutes }) : null,
+  ]);
 }
 
 /** What the working block says while a part is planned or written: its heading key and values, and its line. */

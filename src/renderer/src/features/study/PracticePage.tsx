@@ -12,7 +12,8 @@ import { Tag } from "../../components/Tag";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import "./PracticePage.css";
-import { StudyLayout } from "./StudyBar";
+import { practiceLine } from "./barLines";
+import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlan } from "../../lib/queries";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { returnTo, usePlace } from "../../app/usePlace";
@@ -239,32 +240,18 @@ export function PracticePage() {
   return (
     <StudyLayout
       back={back}
-      title={[t("practice.title"), topic]
-        .filter(Boolean)
-        .join(" \u00b7 ")}
-      subtitle={[plan.data?.subject, plan.data?.title].filter(Boolean).join(" \u00b7 ") || undefined}
-      actions={
-        <Button
-          type="text"
-          className="px-studybar-action"
+      title={topic ?? t("practice.title")}
+      subtitle={practiceLine(t, list)}
+      tools={
+        <BarTool
           icon={<ListChecks size={16} strokeWidth={1.75} aria-hidden />}
+          label={t("practice.doQuiz")}
           onClick={() => navigate(`/plans/${planId ?? ""}/quiz/${topicId ?? ""}`)}
-        >
-          {t("quiz.title")}
-        </Button>
-      }
-      secondary={
-        <Button type="text" shape="round" onClick={() => (back ? back.go() : navigate(`/plans/${planId ?? ""}`))}>
-          {t("nav.back")}
-        </Button>
+        />
       }
       primary={
-        reviewing ? (
-          <Button type="primary" shape="round" onClick={toPath}>
-            {t("lesson.backToPath")}
-          </Button>
-        ) : // Done comes after the exercises, as at the end of a lesson.
-        list.length > 0 && plan.data ? (
+        // Done comes after the exercises, as at the end of a lesson. A set opened again from the path has nothing to record.
+        !reviewing && list.length > 0 && plan.data ? (
           <Button
             type="primary"
             shape="round"

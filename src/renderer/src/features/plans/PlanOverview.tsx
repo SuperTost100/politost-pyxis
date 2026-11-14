@@ -826,7 +826,7 @@ function ExamAside({
                   variant="ghost"
                   size="sm"
                   focusKey="exam:cards-all"
-                  onClick={() => navigate(`/exams/cards?exam=${encodeURIComponent(planId)}`)}
+                  onClick={() => navigate(`/flashcards/all?exam=${encodeURIComponent(planId)}`)}
                 >
                   {t("examPage.browseCards")}
                 </Button>
