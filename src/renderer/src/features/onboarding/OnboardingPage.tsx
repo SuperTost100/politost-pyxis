@@ -252,6 +252,7 @@ function Setup({
         <MaterialStep
           heading={heading}
           again={again}
+          place={t(LEAVE_NAME[leaveTo] ?? "settings.title")}
           onBack={back}
           onLeave={again ? backToSettings : () => navigate("/ask")}
         />

@@ -458,28 +458,6 @@ html[data-focus-source="keyboard"] .ant-picker-focused:has(:focus-visible) {
   margin: var(--space-8) 0 var(--space-3);
 }
 
-.empty {
-  padding-top: var(--space-12);
-}
-
-.empty h1,
-.empty h2 {
-  margin: 0 0 var(--space-2);
-}
-
-.empty p {
-  margin: 0 0 var(--space-6);
-  color: var(--ink-muted);
-  max-width: 42em;
-}
-
-.empty-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  align-items: center;
-}
-
 .composer {
   background: var(--surface);
   border: 1px solid var(--border);

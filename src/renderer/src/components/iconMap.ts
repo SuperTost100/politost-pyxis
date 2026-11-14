@@ -26,6 +26,7 @@ import {
   Cpu,
   FilePen,
   FilePlus,
+  FolderPlus,
   Flag,
   GraduationCap,
   HardDrive,
@@ -93,6 +94,7 @@ export type IconName =
   | "repeat"
   | "file-pen"
   | "file-plus"
+  | "folder-plus"
   | "paperclip"
   | "image"
   | "signature"
@@ -170,6 +172,7 @@ export const ICON_MAP: Record<IconName, LucideIcon> = {
   repeat: Repeat,
   "file-pen": FilePen,
   "file-plus": FilePlus,
+  "folder-plus": FolderPlus,
   paperclip: Paperclip,
   image: Image,
   signature: Signature,
