@@ -43,3 +43,13 @@ export async function openBox(menu: Locator, page: Page, what: string) {
   }
   return (await menu.boundingBox())!;
 }
+
+/** Runs a check and, when it fails, adds what the page did in its last moments to the error. */
+export async function withTrail(page: Page, check: () => Promise<void>) {
+  try {
+    await check();
+  } catch (error) {
+    const trail = await page.evaluate(() => (window as unknown as { __eventTrail?: () => string }).__eventTrail?.() ?? "No event trail.");
+    throw new Error(`${error instanceof Error ? error.message : String(error)}\n${trail}`, { cause: error });
+  }
+}

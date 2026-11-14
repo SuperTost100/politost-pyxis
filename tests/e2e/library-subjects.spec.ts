@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { openBox, trackEvents } from "./event-trail";
+import { openBox, trackEvents, withTrail } from "./event-trail";
 import { animationsSettled, atRest } from "./settled";
 import { saveShot } from "./shots";
 import { seedSource, seedSubjects } from "./seed";
@@ -559,7 +559,7 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
       );
     /** Fails when the menu is off the window or far from where it was asked, or when a cover but the owner looks hovered. */
     const expectMenuAt = async (menu: Locator, at: { x: number; y: number }, owner: string | null, shot: string) => {
-      await expect(menu).toBeVisible();
+      await withTrail(page, () => expect(menu).toBeVisible());
       await animationsSettled(page);
       const box = (await menu.boundingBox())!;
       const view = page.viewportSize()!;
