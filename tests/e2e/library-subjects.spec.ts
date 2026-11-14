@@ -548,6 +548,10 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
           }),
         )
         .toBeGreaterThan(100);
+      // The wheel scrolls smoothly over several frames, and the poll can pass part of the way. The next
+      // scrollIntoViewIfNeeded then cancels what is left of the scroll and every position after it moves (a page left at
+      // 150 px ends the wheel-up below at the top, where the next wheel-up has nowhere to go).
+      await atRest(page.locator(".px-shelves").first());
       await animationsSettled(page);
     };
     await scrolled();
@@ -681,9 +685,15 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
         await animationsSettled(page);
       };
       await open();
-      await page.mouse.move(480, 450);
+      // A wheel over the shelves, away from the menu, on a page that is not at its top: only then can it scroll.
+      const wheelAt = { x: 480, y: 450 };
+      const menuBox = (await fileMenu.boundingBox())!;
+      expect(gap(menuBox, wheelAt), `${way} menu ${JSON.stringify(menuBox)} is under the wheel`).toBeGreaterThan(0);
+      const top = await page.evaluate(() => document.scrollingElement!.scrollTop);
+      expect(top, `${way}: the page is at its top, so a wheel up cannot scroll it`).toBeGreaterThan(0);
+      await page.mouse.move(wheelAt.x, wheelAt.y);
       await page.mouse.wheel(0, -200);
-      await expect(fileMenu, `${way} menu after a scroll`).toHaveCount(0);
+      await withTrail(page, () => expect(fileMenu, `${way} menu after a scroll`).toHaveCount(0));
       await rest();
 
       await open();
