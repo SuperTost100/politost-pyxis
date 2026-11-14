@@ -1,4 +1,5 @@
-import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
+import { arrive, currentVisit, emptyTrail, forget, named, pageOf, parseTrail, skipSpent, TRAIL_STORE, type Navigation, type PlaceName, type Trail } from "./trail";
+import { canTakeFocus } from "./focusable";
 
 /**
  * Keeps the trail (`trail.ts`) beside the window's history: the router reports every navigation it finishes, and the
@@ -59,6 +60,11 @@ export function takeArrivalNote<T>(): T | undefined {
 /** Writes the name a page gives itself on its history entry. */
 export function nameVisit(key: string, name: PlaceName): void {
   update(named(trail, key, name));
+}
+
+/** Once an exam exists: its build wait goes back to where the forms were opened, and the forms are left behind. */
+export function skipSpentForms(key: string, spent: (path: string) => boolean): void {
+  update(skipSpent(trail, key, spent));
 }
 
 /** After a delete: the entries that showed it are no longer a place to go back to. */
@@ -124,9 +130,7 @@ function returnFocus(opener: string | undefined) {
   stopWaiting?.();
   const stale = new Set(document.querySelectorAll("a, button, h1, [id], [role=button], [data-focus-key]"));
   const usable = (element: HTMLElement, late: boolean) =>
-    element.isConnected &&
-    !element.closest("[inert]") &&
-    !element.matches(":disabled") &&
+    canTakeFocus(element) &&
     (late || !stale.has(element) || element.closest(".px-side") !== null);
   const place = (element: HTMLElement) => {
     finish();

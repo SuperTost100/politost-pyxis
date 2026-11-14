@@ -41,7 +41,7 @@ export function useMapActions(props: {
    * Takes the confirmed delete over, as the map page does to let the map leave from its tile on Mappe. Without it the
    * map is deleted here and `onDeleted` follows.
    */
-  onDelete?: () => void;
+  onDelete?: () => Promise<void>;
   /** After the map is gone, before the queries that showed it are read again. */
   onDeleted?: () => void;
 }) {
@@ -82,7 +82,7 @@ export function useMapActions(props: {
       tone: "danger",
       // A failed delete is said next to the map by `failed`, so the dialog closes on it as on a delete.
       run: async () => {
-        if (props.onDelete) props.onDelete();
+        if (props.onDelete) await props.onDelete();
         else await remove();
       },
     });

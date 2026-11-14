@@ -87,8 +87,8 @@ export function UnfinishedSection({ planId }: { planId: string }) {
   const unreadable = list.isError && !list.data;
   if (!entries.length && !failed && !unreadable) return status;
 
-  async function remove(entry: UnfinishedEntry) {
-    const title = unfinishedTitle(entry, t);
+  /** Deletes the activity; false when it failed, and the row stays. */
+  async function remove(entry: UnfinishedEntry): Promise<boolean> {
     setFailed(null);
     try {
       await invoke("plans.deleteUnfinished", { planId, id: entry.id });
@@ -98,9 +98,14 @@ export function UnfinishedSection({ planId }: { planId: string }) {
         setFailed(entry);
         // The row may be stale: read the list again.
         void client.invalidateQueries({ queryKey: ["unfinished", planId] });
-        return;
+        return false;
       }
     }
+    return true;
+  }
+  /** The row folds away in place, then the list is read again; the focus moves on to the row that takes its place. */
+  async function fold(entry: UnfinishedEntry) {
+    const title = unfinishedTitle(entry, t);
     focusAt.current = entries.findIndex((item) => item.id === entry.id);
     setSaid(t("examPage.unfinished.deleted", { title }));
     // The row folds away in place, then the list is read again; under reduced motion at once.
@@ -115,6 +120,7 @@ export function UnfinishedSection({ planId }: { planId: string }) {
     setLeaving(null);
   }
   function confirmDelete(entry: UnfinishedEntry) {
+    let gone = false;
     void confirm({
       title: t("examPage.unfinished.deleteTitle", {
         title: unfinishedTitle(entry, t),
@@ -122,9 +128,14 @@ export function UnfinishedSection({ planId }: { planId: string }) {
       body: deleteBody(entry, t),
       confirm: t("examPage.unfinished.deleteConfirm"),
       tone: "danger",
-    }).then((answer) => {
+      // The dialog stays, busy, until the activity is deleted; a failure is said above the list and the row stays.
+      run: async () => {
+        gone = await remove(entry);
+      },
       // The row folds away and the focus moves on after the dialog has closed, so the page is not inert for it.
-      if (answer === "confirm") void remove(entry);
+      onClosed: () => {
+        if (gone) void fold(entry);
+      },
     });
   }
   const menuOf = (entry: UnfinishedEntry): MenuProps => ({

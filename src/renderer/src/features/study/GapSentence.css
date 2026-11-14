@@ -1,0 +1,13 @@
+/* The student's own mistake, in a soft box; the same box sits above the explanation in the drill's quiz. */
+.px-gap-sentence {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  color: var(--ink);
+  font: 400 calc(15px * var(--text-scale, 1)) / 1.5 var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.px-gap-sentence.is-unwritten {
+  color: var(--ink-muted);
+}

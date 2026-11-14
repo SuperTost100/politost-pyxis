@@ -13,6 +13,7 @@ import {
   parseTrail,
   sectionFor,
   sectionOf,
+  skipSpent,
   type Navigation,
   type Trail,
   wayBack,
@@ -377,5 +378,25 @@ describe("parseTrail of an older trail", () => {
   it("refuses a section it does not know", () => {
     const stored = { visits: [{ key: "a", idx: 0, path: "/", page: "/", from: null, section: "elsewhere" }], current: "a" };
     expect(parseTrail(JSON.stringify(stored))).toEqual(emptyTrail);
+  });
+});
+
+describe("skipSpent", () => {
+  const form = (path: string) => path.startsWith("/plans/new") && !path.includes("build=");
+
+  it("takes the build wait's origin past the forms that made the exam, and no longer offers them", () => {
+    // Esami, the new exam, the guided exam, which the build wait replaced.
+    let trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/new"), push("c", 2, "/plans/new/guided"), replace("d", 2, "/plans/new?build=p"));
+    expect(origin(trail, "d")).toMatchObject({ key: "b" });
+    trail = skipSpent(trail, "d", form);
+    expect(origin(trail, "d")).toMatchObject({ key: "a" });
+    expect(wayBack(trail, "d", true)).toEqual({ delta: -2 });
+    // Avanti from Esami has no form to return to.
+    expect(canForward(arrive(trail, pop("a", 0, "/exams")), "a")).toBe(false);
+  });
+
+  it("leaves a trail with no form behind the visit as it is", () => {
+    const trail = walk(pop("a", 0, "/exams"), replace("b", 0, "/plans/new?build=p"));
+    expect(skipSpent(trail, "b", form)).toBe(trail);
   });
 });

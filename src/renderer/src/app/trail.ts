@@ -235,6 +235,27 @@ export function forget(trail: Trail, gone: (path: string) => boolean): Trail {
   return { ...trail, visits: trail.visits.map((visit) => (!visit.gone && gone(visit.path) ? { ...visit, gone: true } : visit)) };
 }
 
+/**
+ * After an exam exists: the visit `key` (its build wait) takes the origin of the forms that made it, and those forms are
+ * no longer a place to go back or forward to. `spent` says which paths are such forms.
+ */
+export function skipSpent(trail: Trail, key: string, spent: (path: string) => boolean): Trail {
+  const visit = find(trail, key);
+  const gone = new Set<string>();
+  let from = find(trail, visit?.from ?? null);
+  while (from && spent(from.path)) {
+    gone.add(from.key);
+    from = find(trail, from.from);
+  }
+  if (!visit || !gone.size) return trail;
+  return {
+    ...trail,
+    visits: trail.visits.map((one) =>
+      one.key === key ? { ...one, from: from?.key ?? null } : gone.has(one.key) ? { ...one, gone: true } : one,
+    ),
+  };
+}
+
 function isName(value: unknown): value is PlaceName {
   if (!value || typeof value !== "object") return false;
   const name = value as Record<string, unknown>;

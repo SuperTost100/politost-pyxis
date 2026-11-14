@@ -14,6 +14,7 @@
     "library": "Library",
     "close": "Close",
     "back": "Back",
+    "previousStep": "Previous step",
     "toExams": "Back to Exams"
   },
   "places": {
@@ -2004,6 +2005,7 @@
     "noMaterialLink": "I have no material",
     "guided": {
       "title": "Exam without material",
+      "leaveBody": "The answers you gave will be lost.",
       "steps": {
         "period": "Period",
         "modules": "Modules",
@@ -2049,6 +2051,7 @@
     "stepDiagnostic": "Preparing the diagnostic test",
     "stepReady": "Exam ready",
     "sourceNotReady": "A source needs attention. Finish its import or OCR, then retry this build.",
+    "cancelBuild": "Cancel the preparation",
     "cancelled": "Build cancelled. Retry to resume from the saved step.",
     "continueBuild": "Continue exam build",
     "continue": "Continue",
@@ -2094,6 +2097,9 @@
     "ready": "{{title}} is ready",
     "subjectHelp": "Groups the exams of the same subject.",
     "examStep": "The exam",
+    "stepLine": "Step {{n}} of {{total}} · {{name}}",
+    "materialLine": "The material",
+    "leaveBody": "What you wrote or chose for this exam will be lost.",
     "daysLeft_one": "in {{count}} day",
     "daysLeft_other": "in {{count}} days",
     "daysLeftToday": "today",
@@ -3494,6 +3500,39 @@
     "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations.",
     "removeSourceTitle": "Remove “{{title}}” from the exam?"
   },
+  "gaps": {
+    "title": "Open gaps",
+    "count_one": "1 gap",
+    "count_other": "{{count}} gaps",
+    "none": "No open gaps. Pyxis looks for them in the wrong answers of quizzes and exercises.",
+    "level": {
+      "serious": "Serious",
+      "moderate": "Moderate",
+      "minor": "Minor"
+    },
+    "fill": "Close it",
+    "fillLabel": "Close it: {{sentence}}",
+    "fillTopicLabel": "Close the gap on {{topic}}",
+    "unwritten_one": "1 wrong answer on this topic",
+    "unwritten_other": "{{count}} wrong answers on this topic",
+    "reading": "Pyxis is reading the answers",
+    "more_one": "1 more gap",
+    "more_other": "{{count}} more gaps",
+    "less": "Show less",
+    "barLine": "Close a gap · about 6 minutes",
+    "label": "The gap",
+    "preparing": "Writing a short explanation and {{count}} questions",
+    "from_one": "Starting from 1 wrong answer.",
+    "from_other": "Starting from {{count}} wrong answers.",
+    "failed": "I couldn't prepare the explanation and the questions.",
+    "readFailed": "The explanation may be ready, but I can't check.",
+    "readGapFailed": "I can't load the gap.",
+    "gone": "This gap is no longer open. Back on the exam you'll find the ones that remain.",
+    "closed": "Gap closed",
+    "closedBody": "Back on the exam you won't find it among the open gaps.",
+    "next": "Close the next one: {{topic}}",
+    "rightAnswers": "Right answers. The gap closes if you answer right on another day too."
+  },
   "examPage": {
     "more": "More for this exam",
     "noDate": "Date to be set",
@@ -3516,7 +3555,7 @@
     "simulationDone": "Last one: {{result}}",
     "create": "Create an activity",
     "share": "Share the exam",
-    "aside": "Flashcards, questions to redo, maps and material",
+    "aside": "Flashcards, questions to redo, open gaps, maps and material",
     "sectionFailed": "Pyxis couldn't load this.",
     "cardsTotal_one": "1 in all",
     "cardsTotal_other": "{{count}} in all",

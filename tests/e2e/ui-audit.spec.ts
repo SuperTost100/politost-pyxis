@@ -117,6 +117,11 @@ const routes = [
   ["gallery-dialog-form", "/dev/gallery"],
   ["gallery-dialog-info", "/dev/gallery"],
   ...[1, 2].map((step) => [`wizard-${step}`, "/plans/new"] as const),
+  ["wizard-leave", "/plans/new"],
+  // The wait while an exam builds: working, ready, and stopped by the student.
+  ["build-running", "/plans/new?build=audit-plan"],
+  ["build-done", "/plans/new?build=audit-plan"],
+  ["build-cancelled", "/plans/new?build=audit-plan"],
   ["plan", "/plans/audit-plan"],
   ["plan-dated", "/plans/audit-ready-plan"],
   // The same exam with hours set in the planner: its topic and simulation rows carry expected days.
@@ -124,6 +129,15 @@ const routes = [
   // The exam page with finished steps on its open topic, and with an open gap that offers Ripasso mirato.
   ["plan-done", "/plans/audit-plan"],
   ["plan-gaps", "/plans/audit-plan"],
+  // The block of open gaps in the side column with none, with eight folded and unfolded, and the page "Colma" opens: the
+  // drill being written, its quiz, and the end of a drill that closed the gap and one that did not.
+  ["plan-gaps-none", "/plans/audit-plan"],
+  ["plan-gaps-many", "/plans/audit-plan"],
+  ["plan-gaps-open", "/plans/audit-plan"],
+  ["gap-drill-preparing", "/plans/audit-plan/gap/audit-gap-1"],
+  ["gap-drill", "/plans/audit-plan/quiz/audit-topic?attempt=audit-gap-attempt&gap=audit-gap-1"],
+  ["gap-drill-done", "/plans/audit-plan/quiz/audit-topic?attempt=audit-gap-done-attempt&gap=audit-gap-1"],
+  ["gap-drill-done-open", "/plans/audit-plan/quiz/audit-topic?attempt=audit-gap-done-attempt&gap=audit-gap-1"],
   ["plan-sources", "/plans/audit-plan/sources"],
   ["plan-settings", "/plans/audit-plan/settings"],
   // The same page with a goal and a name changed, so the save bar lists them.
@@ -850,6 +864,95 @@ Passo 1 di 2: quale legge lega le tre grandezze?','sources','chat.socratic',2);
     );
   }
   seedResults(db, now);
+}
+
+/** The sentences of the gaps the audit's exam has, with the topic each is on, most serious first. */
+const AUDIT_GAPS = [
+  ["audit-topic", "Confonde la massa con il peso: pensa che cambi se cambia il pianeta.", "severe"],
+  ["audit-topic", "Somma le forze come numeri, senza tenere conto della direzione, e poi si stupisce che il risultato non torni.", "severe"],
+  ["audit-gap-topic-2", "Scambia il lavoro di una forza con la sua intensità.", "severe"],
+  ["audit-gap-topic-2", "Dimentica che l'energia cinetica dipende dal quadrato della velocità.", "minor"],
+  ["audit-gap-topic-3", "Calcola il momento rispetto a un punto qualsiasi senza dire quale.", "minor"],
+  ["audit-topic", "Usa l'accelerazione di gravità senza controllare l'unità di misura.", "minor"],
+  ["audit-gap-topic-2", "Ignora il segno del lavoro quando la forza si oppone allo spostamento.", "minor"],
+  ["audit-gap-topic-3", "Scrive l'equilibrio delle forze ma non quello dei momenti.", "minor"],
+] as const;
+
+/**
+ * The exam's open gaps for the block in its side column and for Colma: none, one, eight, and the drill of the first gap
+ * as it is being written, answered, and ended with the gap closed or still open. Every other state has none of it.
+ */
+function prepareGaps(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM gap_items WHERE item_id = 'audit-gap-drill';
+      DELETE FROM attempts WHERE item_id = 'audit-gap-drill';
+      DELETE FROM items WHERE id = 'audit-gap-drill';
+      DELETE FROM jobs WHERE id = 'audit-gap-drill-job';
+      DELETE FROM gaps WHERE plan_id = 'audit-plan';
+      DELETE FROM topics WHERE id IN ('audit-gap-topic-2','audit-gap-topic-3');`);
+    if (!/^(plan-gaps|gap-drill)/.test(name) || name === "plan-gaps-none") return;
+    const now = Date.now();
+    const many = name === "plan-gaps-many" || name === "plan-gaps-open";
+    const done = name === "gap-drill-done";
+    if (many || done)
+      db.exec(`INSERT INTO topics(id,plan_id,title,position,created_at) VALUES
+        ('audit-gap-topic-2','audit-plan','Lavoro ed energia',1,1), ('audit-gap-topic-3','audit-plan','Equilibrio dei corpi rigidi',2,1)`);
+    const insert = db.prepare(
+      "INSERT INTO gaps(id,plan_id,topic_id,opened_at,misconception,severity,comparison) VALUES(?,'audit-plan',?,?,?,?,NULL)",
+    );
+    const link = db.prepare("INSERT INTO gap_answers(gap_id,attempt_id,question_id) VALUES(?,'audit-quiz-done-attempt',?)");
+    // Eight for the long block, one with its reading for the single gap, and two for the end of a drill: the gap and the next.
+    const count = many ? AUDIT_GAPS.length : done ? 2 : 1;
+    AUDIT_GAPS.slice(0, count).forEach(([topic, sentence, severity], index) => {
+      insert.run(`audit-gap-${index + 1}`, topic, now - (index + 3) * 86400000, sentence, severity);
+      for (let n = 0; n < Math.max(2, 6 - index); n++) link.run(`audit-gap-${index + 1}`, `audit-gap-${index + 1}-${n}`);
+    });
+    if (done) db.prepare("UPDATE gaps SET closed_at = ? WHERE id = 'audit-gap-1'").run(now - 60_000);
+    if (!name.startsWith("gap-drill")) return;
+    const questions = Array.from({ length: 5 }, (_, i) => ({
+      id: `audit-gap-question-${i}`,
+      topicId: "audit-topic",
+      sourceIds: ["audit-passage"],
+      stem: `Un corpo di massa $${i + 1}$ kg pesa sulla Terra e sulla Luna: quale grandezza resta uguale?`,
+      options: ["La massa", "Il peso", "La forza di gravità", "L'accelerazione di gravità"],
+      explanation: "La massa è una proprietà del corpo; il peso dipende dal pianeta.",
+      answer: { kind: "mcq", correct: 0, picked: -1 },
+    }));
+    db.prepare(
+      "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES('audit-gap-drill','audit-plan','audit-topic','quiz',?,'fixture','sources',?)",
+    ).run(
+      JSON.stringify({
+        questions,
+        config: { count: 5, feedback: true, types: ["mcq"] },
+        explanation:
+          "La massa dice quanta materia c'è in un corpo e non cambia da un pianeta all'altro. Il peso è la forza con cui il pianeta attira il corpo: sulla Luna è circa un sesto di quello sulla Terra, mentre la massa resta la stessa.",
+        complete: true,
+      }),
+      now,
+    );
+    db.prepare("INSERT INTO gap_items(gap_id,item_id) VALUES('audit-gap-1','audit-gap-drill')").run();
+    if (name === "gap-drill-preparing") {
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,step_label,created_at,updated_at) VALUES('audit-gap-drill-job','gap-drill',?,'running',0.3,'jobs.gapDrill',?,?)",
+      ).run(JSON.stringify({ planId: "audit-plan", topicId: "audit-topic", gapId: "audit-gap-1" }), now, now);
+      return;
+    }
+    if (name === "gap-drill") {
+      db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('audit-gap-attempt','audit-plan','audit-gap-drill',?)").run(now);
+      return;
+    }
+    db.prepare(
+      "INSERT INTO attempts(id,plan_id,item_id,started_at,submitted_at) VALUES('audit-gap-done-attempt','audit-plan','audit-gap-drill',?,?)",
+    ).run(now - 600_000, now - 300_000);
+    db.prepare("INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-gap-done','audit-gap-done-attempt',?,?)").run(
+      JSON.stringify({
+        score: 1,
+        picks: Object.fromEntries(questions.map((question) => [question.id, "0"])),
+        results: questions.map((question) => ({ id: question.id, score: 1, expected: "La massa", explanation: question.explanation })),
+      }),
+      now - 300_000,
+    );
+  });
 }
 
 /**
@@ -2041,6 +2144,31 @@ function prepareRadialMaps(name: string) {
   });
 }
 
+/** The audit exam's build as the wait screen follows it: only the build states have one, and the others start without. */
+function prepareBuild(name: string) {
+  withDb((db) => {
+    db.exec("DELETE FROM job_steps WHERE job_id = 'audit-build'; DELETE FROM jobs WHERE id = 'audit-build'");
+    const states: Record<string, string> = { "build-running": "running", "build-done": "succeeded", "build-cancelled": "cancelled" };
+    const state = states[name];
+    if (!state) return;
+    const now = Date.now();
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-build','plan-build',?,?,?,NULL,?,?)",
+    ).run(JSON.stringify({ planId: "audit-plan" }), state, state === "succeeded" ? 1 : 0.4, now, now);
+    const steps: Array<[string, string]> = [
+      ["sources", "wizard.stepSources"],
+      ["topics", "wizard.stepTopics"],
+      ["path", "wizard.stepPath"],
+      ["diagnostic", "wizard.stepDiagnostic"],
+      ["ready", "wizard.stepReady"],
+    ];
+    const insert = db.prepare("INSERT INTO job_steps(id,job_id,name,position,label,state) VALUES(?,?,?,?,?,?)");
+    steps.forEach(([step, label], index) =>
+      insert.run(`audit-build-${step}`, "audit-build", step, index, label, state === "succeeded" || index < 1 ? "succeeded" : index === 1 && state === "running" ? "running" : "pending"),
+    );
+  });
+}
+
 function prepareState(name: string) {
   prepareLessonParts(name);
   prepareOldLessons(name);
@@ -2062,6 +2190,7 @@ function prepareState(name: string) {
   prepareBackupState(name);
   prepareUpdate(name);
   prepareGradingLive(name);
+  prepareBuild(name);
   // A rating from this visit shows as chosen on the practice page; every other state starts without one.
   if (name === "practice-rated" || auditRating)
     withDb((db) => {
@@ -2288,22 +2417,7 @@ function prepareState(name: string) {
       name.includes("book-update") || name.includes("books-update") ? 1 : 0,
     );
   });
-  // An open gap with the model's reading of the mistakes, for the exam page's Ripasso mirato.
-  withDb((db) => {
-    db.prepare("DELETE FROM gaps WHERE plan_id = 'audit-plan'").run();
-    if (name !== "plan-gaps") return;
-    const insert = db.prepare(
-      "INSERT INTO gaps(id,plan_id,topic_id,opened_at,misconception,severity,comparison) VALUES(?,'audit-plan','audit-topic',?,?,?,?)",
-    );
-    const now = Date.now();
-    insert.run(
-      "audit-gap-1",
-      now - 3 * 86400000,
-      "Confonde la massa con il peso: pensa che cambi se cambia il pianeta.",
-      "severe",
-      null,
-    );
-  });
+  prepareGaps(name);
   withDb((db) => {
     db.exec(
       `DELETE FROM attempts WHERE id = 'audit-active-attempt'; DELETE FROM items WHERE id = 'audit-active-exam'`,
@@ -2913,6 +3027,33 @@ async function openState(page: Page, name: string) {
       await expect(
         page.getByRole("button", { name: /^(Ripasso mirato|Targeted review)/ }).first(),
       ).toBeVisible();
+      await expect(page.locator(".px-exam-aside li.px-gap")).toHaveCount(1);
+      break;
+    case "plan-gaps-none":
+      await expect(page.locator(".px-exam-aside").getByText(/^(Nessuna lacuna aperta|No open gaps)/)).toBeVisible();
+      break;
+    case "plan-gaps-many":
+    case "plan-gaps-open": {
+      const more = page.locator(".px-exam-aside").getByRole("button", { name: /^(Altre 5 lacune|5 more gaps|Mostra meno|Show less)$/ });
+      await expect(more).toBeVisible();
+      if (name === "plan-gaps-open" && (await more.getAttribute("aria-expanded")) !== "true") await more.click();
+      await expect(more).toHaveAttribute("aria-expanded", name === "plan-gaps-open" ? "true" : "false");
+      await expect(page.locator(".px-exam-aside li.px-gap:visible")).toHaveCount(name === "plan-gaps-open" ? 8 : 3);
+      break;
+    }
+    case "gap-drill-preparing":
+      await expect(page.locator(".px-gp-working")).toBeVisible();
+      await expect(page.locator(".px-gp-sheet .px-gap-sentence")).toBeVisible();
+      break;
+    case "gap-drill":
+      await expect(page.locator(".px-qz-sheet .px-gap-sentence")).toBeVisible();
+      await expect(page.locator(".px-qz-sheet .px-quiz-explain")).toBeVisible();
+      break;
+    case "gap-drill-done":
+      await expect(page.locator(".px-gap-end.is-closed")).toBeVisible();
+      break;
+    case "gap-drill-done-open":
+      await expect(page.locator(".px-gap-end.is-open")).toBeVisible();
       break;
     case "review-quiz-pending":
       await expect(
@@ -4521,6 +4662,26 @@ async function openState(page: Page, name: string) {
         page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
       ).toBeVisible();
       break;
+    case "build-running":
+    case "build-done":
+    case "build-cancelled": {
+      // Cancelling is in the page in full words; the bar holds the way back, the title and line, and Attività.
+      await expect(page.getByRole("banner").getByRole("button")).toHaveCount(2);
+      const cancel = page.getByRole("button", { name: both("Annulla la preparazione", "Cancel the preparation") });
+      if (name === "build-running") await expect(cancel).toBeVisible();
+      else await expect(cancel).toHaveCount(0);
+      if (name === "build-done") await expect(page.getByRole("button", { name: both("Apri l'esame", "Open the exam") })).toBeVisible();
+      if (name === "build-cancelled") await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toBeVisible();
+      break;
+    }
+    case "wizard-leave":
+      // A name typed on the first step is lost by leaving, so the bar's way back asks first.
+      await openWizard(page, 1);
+      await page.getByRole("button", { name: /^(Torna a|Back to) / }).click();
+      await expect(
+        page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
+      ).toBeVisible();
+      break;
     case "whiteboard-leave": {
       const canvas = page.locator(".px-whiteboard canvas");
       const box = (await canvas.boundingBox())!;
@@ -4530,7 +4691,7 @@ async function openState(page: Page, name: string) {
       await page.mouse.up();
       // The page keeps the stroke; the next states open on an empty board.
       await page.evaluate(() => sessionStorage.removeItem("pyxis-board"));
-      await page.getByRole("button", { name: both("Chiudi", "Close") }).click();
+      await page.getByRole("button", { name: /^(Torna a|Back to) / }).click();
       await expect(
         page.getByRole("dialog", { name: both("Uscire senza salvare\\?", "Leave without saving\\?") }),
       ).toBeVisible();
@@ -4599,7 +4760,7 @@ async function focusRingChecks(page: Page, name: string) {
   const cases: { field: string; frame: string }[] = [];
   if (name === "ask-new")
     cases.push({ field: ".px-composer-field", frame: ".px-composer" });
-  if (name.startsWith("wizard-") && (await page.locator("#plan-date").isVisible()))
+  if (/^wizard-\d$/.test(name) && (await page.locator("#plan-date").isVisible()))
     cases.push({ field: "#plan-date", frame: ".ant-picker-focused" });
   const outline = (frame: string) =>
     page
@@ -4725,7 +4886,7 @@ async function keyboardCheck(page: Page, name: string) {
     ).toBe(true);
     await expect(code).toHaveCSS("outline-style", "solid");
   }
-  if (name === "ask-new" || name.startsWith("wizard-")) await focusRingChecks(page, name);
+  if (name === "ask-new" || /^wizard-\d$/.test(name)) await focusRingChecks(page, name);
   if (name === "quiz") {
     const first = page.locator("button[aria-keyshortcuts='1']");
     const second = page.locator("button[aria-keyshortcuts='2']");
@@ -4985,7 +5146,7 @@ test("M14 every application route in both languages, themes and supported widths
               }, route);
               await page.reload();
               await expect(page.locator("h1:visible").first()).toBeVisible();
-              if (name.startsWith("wizard-"))
+              if (/^wizard-\d$/.test(name))
                 await openWizard(page, Number(name.split("-")[1]));
               if (name === "library-import") {
                 await page

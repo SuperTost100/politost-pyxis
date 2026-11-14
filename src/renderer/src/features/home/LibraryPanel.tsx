@@ -576,8 +576,16 @@ export function LibraryPanel({
     void client.invalidateQueries({ queryKey: ["sources"] });
   }
   async function remove(source: LibrarySource) {
-    // Both questions grow out of what opened the first, which is gone from the page when the first has closed.
-    const origin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // Both questions grow out of the element that opened the menu, and the focus goes back to it. What has the focus
+    // now can be the menu's own item, which leaves the page when the menu closes: then the file's dots, or its cover.
+    const active = document.activeElement;
+    const file = document.querySelector(`[data-source-id="${CSS.escape(source.id)}"]`);
+    const origin =
+      active instanceof HTMLElement && active !== document.body && !active.closest(".px-item-menu, .ant-dropdown")
+        ? active
+        : (file?.querySelector<HTMLElement>(`button[aria-label="${CSS.escape(t("sources.actionsFor", { title: source.title }))}"]`) ??
+          file?.querySelector<HTMLElement>("[data-source-open]") ??
+          null);
     const taken: { result?: { removed: boolean; inUse: boolean }; done: boolean; asking: boolean } = {
       done: false,
       asking: false,

@@ -191,8 +191,8 @@ export function usePartRewrites({
         title: t(`lesson.rewriteConfirm.${noun}`),
         body: t("lesson.rewritePartNote"),
         confirm: t("lesson.regenerate"),
-      }).then((answer) => {
-        if (answer === "confirm") choose.mutate({ regenerate: true });
+        // The dialog stays, busy, until core has taken the request; a refusal shows through `choose`, as before.
+        run: () => choose.mutateAsync({ regenerate: true }).catch(() => undefined),
       });
       return true;
     }

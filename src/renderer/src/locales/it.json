@@ -14,6 +14,7 @@
     "library": "Libreria",
     "close": "Chiudi",
     "back": "Indietro",
+    "previousStep": "Passo precedente",
     "toExams": "Torna a Esami"
   },
   "places": {
@@ -2004,6 +2005,7 @@
     "noMaterialLink": "Non ho materiale",
     "guided": {
       "title": "Esame senza materiale",
+      "leaveBody": "Le risposte che hai dato andranno perse.",
       "steps": {
         "period": "Periodo",
         "modules": "Moduli",
@@ -2049,6 +2051,7 @@
     "stepDiagnostic": "Preparo il test diagnostico",
     "stepReady": "Esame pronto",
     "sourceNotReady": "Una fonte richiede attenzione. Completa l’importazione o l’OCR, poi riprova a costruire l’esame.",
+    "cancelBuild": "Annulla la preparazione",
     "cancelled": "Creazione annullata. Riprova per riprendere dal passaggio salvato.",
     "continueBuild": "Riprendi la creazione dell'esame",
     "continue": "Continua",
@@ -2094,6 +2097,9 @@
     "ready": "{{title}} è pronto",
     "subjectHelp": "Raggruppa gli esami della stessa materia.",
     "examStep": "L'esame",
+    "stepLine": "Passo {{n}} di {{total}} · {{name}}",
+    "materialLine": "Il materiale",
+    "leaveBody": "Quello che hai scritto o scelto per questo esame andrà perso.",
     "daysLeft_one": "tra {{count}} giorno",
     "daysLeft_other": "tra {{count}} giorni",
     "daysLeftToday": "oggi",
@@ -3494,6 +3500,39 @@
     "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli.",
     "removeSourceTitle": "Rimuovere «{{title}}» dall'esame?"
   },
+  "gaps": {
+    "title": "Lacune aperte",
+    "count_one": "1 lacuna",
+    "count_other": "{{count}} lacune",
+    "none": "Nessuna lacuna aperta. Pyxis le cerca nelle risposte sbagliate di quiz ed esercizi.",
+    "level": {
+      "serious": "Seria",
+      "moderate": "Media",
+      "minor": "Lieve"
+    },
+    "fill": "Colma",
+    "fillLabel": "Colma: {{sentence}}",
+    "fillTopicLabel": "Colma la lacuna su {{topic}}",
+    "unwritten_one": "1 risposta sbagliata su questo argomento",
+    "unwritten_other": "{{count}} risposte sbagliate su questo argomento",
+    "reading": "Pyxis sta leggendo le risposte",
+    "more_one": "Un'altra lacuna",
+    "more_other": "Altre {{count}} lacune",
+    "less": "Mostra meno",
+    "barLine": "Colma una lacuna · circa 6 minuti",
+    "label": "La lacuna",
+    "preparing": "Preparo una spiegazione breve e {{count}} domande",
+    "from_one": "Parto da 1 risposta sbagliata.",
+    "from_other": "Parto da {{count}} risposte sbagliate.",
+    "failed": "Non sono riuscito a preparare la spiegazione e le domande.",
+    "readFailed": "La spiegazione potrebbe essere pronta, ma non riesco a controllare.",
+    "readGapFailed": "Non riesco a caricare la lacuna.",
+    "gone": "Questa lacuna non è più aperta. Tornando all'esame trovi quelle che restano.",
+    "closed": "Lacuna colmata",
+    "closedBody": "Tornando all'esame non la trovi più tra le lacune aperte.",
+    "next": "Colma la prossima: {{topic}}",
+    "rightAnswers": "Risposte giuste. La lacuna si chiude se rispondi giusto anche in un altro giorno."
+  },
   "examPage": {
     "more": "Altro sull'esame",
     "noDate": "Data da scegliere",
@@ -3516,7 +3555,7 @@
     "simulationDone": "Ultima prova: {{result}}",
     "create": "Crea un'attività",
     "share": "Condividi l'esame",
-    "aside": "Flashcard, domande da rifare, mappe e materiale",
+    "aside": "Flashcard, domande da rifare, lacune aperte, mappe e materiale",
     "sectionFailed": "Non riesco a caricarlo.",
     "cardsTotal_one": "1 in tutto",
     "cardsTotal_other": "{{count}} in tutto",

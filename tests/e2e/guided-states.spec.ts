@@ -68,7 +68,7 @@ async function expectState(page: Page, state: State) {
     await expect(page.locator(".px-notice")).toContainText(/Lo strumento non ha risposto|The AI tool could not answer/);
     await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toBeVisible();
   }
-  await expect(page.getByRole("button", { name: both("Indietro", "Back") })).toBeVisible();
+  await expect(page.getByRole("button", { name: both("Passo precedente", "Previous step") })).toBeVisible();
 }
 
 /** Tab through the page and make sure every stop is a visible control, never the body. */
@@ -163,13 +163,13 @@ test("PLAN-10 a failed guided call can be retried and answers survive Back", asy
     await page.getByRole("button", { name: "Riprova" }).click();
     await expectState(page, "failed-tree");
     // Back from a failed tree returns to the style choice with the module focus still ticked.
-    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
     await expect(page.getByRole("radio", { name: /Leggere|Esercitarsi|Decidi tu/ }).first()).toBeVisible();
     await next(page).click();
     await expectState(page, "failed-tree");
     // Back twice reaches the module list, whose tick is still there.
-    await page.getByRole("button", { name: "Indietro" }).click();
-    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
     await expect(page.getByRole("checkbox").first()).toBeChecked();
   } finally {
     await app.close();
@@ -192,7 +192,7 @@ test("PLAN-10 Back while the modules load returns to the period step and the lat
     await expectState(page, "loading-modules");
     // The call is in flight, so it started before now, and the fixture holds it 10 s at most.
     const answered = Date.now() + 10_000;
-    await page.getByRole("button", { name: "Indietro" }).click();
+    await page.getByRole("button", { name: "Passo precedente" }).click();
     await expect(page.getByRole("group", { name: "Periodo" })).toBeVisible();
     // Its modules must not appear on the period step. An ignored answer has no signal, so wait until the latest moment
     // it can arrive, plus a second for the page to show it.
