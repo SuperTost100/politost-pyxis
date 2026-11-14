@@ -1,7 +1,8 @@
-import { Button, Input, Modal } from "antd";
+import { Button, Input } from "antd";
 import { FileText, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Dialog } from "../../components/Dialog";
 import { ScanNotice, scanPending } from "../../components/ScanNotice";
 import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "../home/LibraryPanel";
@@ -205,17 +206,24 @@ function LibraryPicker({
     setChosen([]);
   };
   return (
-    <Modal
+    <Dialog
       open={open}
-      width={560}
+      width="md"
       title={t("wizard.pickerTitle")}
       className="px-wizard-picker"
-      onCancel={() => {
-        reset();
-        onClose();
-      }}
-      afterClose={reset}
-      footer={null}
+      onClose={onClose}
+      // What was typed and ticked goes once it has shrunk away.
+      onClosed={reset}
+      actions={[
+        {
+          label: t("wizard.pickerAdd", { count }),
+          disabled: count === 0,
+          onClick: () => {
+            const ids = chosen.filter((id) => free.some((s) => s.id === id));
+            onAdd(ids);
+          },
+        },
+      ]}
     >
       <Input
         allowClear
@@ -259,20 +267,6 @@ function LibraryPicker({
           )}
         </p>
       )}
-      <div className="px-wizard-picker-actions">
-        <Button
-          type="primary"
-          shape="round"
-          disabled={count === 0}
-          onClick={() => {
-            const ids = chosen.filter((id) => free.some((s) => s.id === id));
-            reset();
-            onAdd(ids);
-          }}
-        >
-          {t("wizard.pickerAdd", { count })}
-        </Button>
-      </div>
-    </Modal>
+    </Dialog>
   );
 }

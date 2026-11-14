@@ -314,6 +314,8 @@ export function ImportReviewDialog({
       width="lg"
       title={t("shared.review.title")}
       busy={review.busy}
+      // The choices made for each missing original would be lost by a stray click.
+      closeOnOutside={false}
       onClose={onClose}
       onClosed={onClosed}
       actions={[

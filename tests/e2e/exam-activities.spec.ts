@@ -270,7 +270,7 @@ test("Crea un'attività starts every kind in one step, from Altro and from a top
       await expect(dialog.getByRole("button", { name, exact: true })).toBeFocused();
       if (name !== "Vero o falso") await page.keyboard.press("Space");
     }
-    await dialog.getByRole("button", { name: "Crea", exact: true }).focus();
+    await dialog.getByRole("button", { name: "Crea l'attività", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(
       new RegExp(`#/plans/${planId}/quiz/${derivate!.id}\\?attempt=`),
@@ -291,7 +291,7 @@ test("Crea un'attività starts every kind in one step, from Altro and from a top
       );
       await kind(opened.dialog, name).click();
       await opened.dialog
-        .getByRole("button", { name: "Crea", exact: true })
+        .getByRole("button", { name: "Crea l'attività", exact: true })
         .click();
       await expect(page, name).toHaveURL(
         new RegExp(`#/plans/${planId}/${path}/${derivate!.id}`),
@@ -320,7 +320,7 @@ test("Crea un'attività starts every kind in one step, from Altro and from a top
       animations: "disabled",
     });
     await expectNoAxeViolations(page);
-    await dialog.getByRole("button", { name: "Crea", exact: true }).click();
+    await dialog.getByRole("button", { name: "Crea l'attività", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(page).toHaveURL(
       new RegExp(`#/plans/${planId}/(simulation|exam/)`),
@@ -574,7 +574,7 @@ test("a quiz started in a dialog that was cancelled and reopened leaves the new 
     const lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"));
     lock.exec("BEGIN IMMEDIATE");
     let dialog = await fromAltro(page);
-    await dialog.getByRole("button", { name: "Crea", exact: true }).click();
+    await dialog.getByRole("button", { name: "Crea l'attività", exact: true }).click();
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(dialog).toBeHidden();
     // Open again and change something: a simulation, which Crea would not have started.

@@ -3582,8 +3582,7 @@
       },
       "simulationEmpty": "Questo esame non ha domande o brani da cui scrivere una simulazione.",
       "pastEmpty": "Nei temi d'esame non ci sono ancora domande pronte.",
-      "cancel": "Annulla",
-      "create": "Crea",
+      "create": "Crea l'attività",
       "creating": "Sto creando"
     },
     "making": {
