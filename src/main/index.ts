@@ -31,7 +31,7 @@ import { coreExited, stopCoreProcess, watchCoreExit } from "./core-stop";
 import type { RestoreOutcome } from "../core/share/backup";
 import packageMetadata from "../../package.json";
 import { githubRepository, releaseChecker } from "./updates";
-import { applySpellCheckerLanguages } from "./spellcheck";
+import { applySpellCheckerLanguages, seedDictionaries } from "./spellcheck";
 import { buildMenuTemplate, contextMenuAnchor, contextMenuItems, textMenuPopupOptions, textMenuTemplate } from "./menu";
 import {
   isMenuLanguage,
@@ -134,6 +134,13 @@ if (userDataOverride) app.setPath("userData", userDataOverride);
 // interrupted and run them twice, and a move or restore in one would pull the folder from under the other.
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
+// Chromium looks for the spell checker's dictionaries in the profile as soon as the session exists, and downloads a
+// missing one. The copies that ship with the app go there first (src/main/spellcheck.ts).
+if (primaryInstance)
+  seedDictionaries(
+    app.isPackaged ? join(process.resourcesPath, "dictionaries") : join(import.meta.dirname, "../../resources/dictionaries"),
+    app.getPath("sessionData"),
+  );
 // CI keeps the dumps of every test in one folder to name the faulting module (scripts/minidump-fault.mjs).
 const crashDirSeam = e2eSeam() && process.env.PYXIS_E2E === "1" && !!process.env.PYXIS_CRASH_DIR;
 if (crashDirSeam) {
@@ -1049,7 +1056,10 @@ function installMenu(): void {
   );
 }
 
-/** The spell checker follows the interface language, set on the session where Electron lets the app choose (not macOS). */
+/**
+ * The spell checker follows the interface language, with the other language the app ships second, and never downloads
+ * a dictionary. Electron lets the app choose on Windows and Linux, and macOS uses the system's checker.
+ */
 function installSpellChecker(): void {
   applySpellCheckerLanguages(session.defaultSession, menuLanguage ?? systemLanguage());
 }
@@ -1916,6 +1926,8 @@ app.on("open-file", (event, path) => {
 
 app.whenReady().then(() => {
   if (!primaryInstance) return;
+  // First, before a dialog below can run the event loop: the session may already be loading its dictionaries.
+  installSpellChecker();
   if (
     process.platform === "darwin" &&
     e2eSeam() &&
@@ -1973,7 +1985,6 @@ app.whenReady().then(() => {
   applyAppearance(readAppearanceSource());
   installCsp();
   installMenu();
-  installSpellChecker();
   installNavigationGuards();
   installPermissionHandlers();
   registerProtocols();

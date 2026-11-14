@@ -28,6 +28,7 @@ on:
       - scripts/release-sums.mjs
       - scripts/prepare-fixtures.ts
       - resources/pyodide-manifest.json
+      - resources/dictionaries/**
 
 permissions:
   contents: read
@@ -251,9 +252,10 @@ jobs:
           console.log(resolve(found[0]));
           JS
           )"
-          # The release loop, the window CSP, the GPU features, OCR, scanned and text PDFs, and e5 indexing. These load
-          # the files the packaging rules thin out, and e5 loads transformers from the packaged node_modules.
-          specs=(tests/e2e/window.spec.ts tests/e2e/ocr-data.spec.ts tests/e2e/scanned-pdf.spec.ts tests/e2e/sources.spec.ts)
+          # The release loop, the window CSP, the GPU features, the spelling dictionaries, OCR, scanned and text PDFs, e5
+          # indexing and the hosts the app contacts at start. These load the files the packaging rules thin out, and e5
+          # loads transformers from the packaged node_modules.
+          specs=(tests/e2e/window.spec.ts tests/e2e/ocr-data.spec.ts tests/e2e/scanned-pdf.spec.ts tests/e2e/sources.spec.ts tests/e2e/network.spec.ts)
           if [ "$RUNNER_OS" = Linux ]; then
             if [ -f /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
               sudo tee /etc/apparmor.d/pyxis-ci-packaged >/dev/null <<EOF

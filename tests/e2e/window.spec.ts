@@ -11,14 +11,17 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { BUNDLED_DICTIONARIES } from "../../src/main/spellcheck";
 import { animationsSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
+import { misspellingMenu, SUGGESTED } from "./spelling";
 
 async function clean(page: Page) {
   await expectNoAxeViolations(page);
@@ -625,4 +628,34 @@ test("the packaged app reports the same GPU features as Electron's build", async
   const electronBuild = await features();
   const packagedBuild = await features(packaged);
   expect(packagedBuild).toEqual(electronBuild);
+});
+
+// Windows and Linux ship the spell checker's Italian and English dictionaries next to app.asar, and main copies them
+// into the profile, so the checker never downloads one (src/main/spellcheck.ts). The Mac app uses the system's checker
+// and ships none.
+test("the packaged app carries its spelling dictionaries and flags an Italian misspelling with them", async () => {
+  const packaged = process.env.PYXIS_DIST_APP;
+  test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-dictionaries-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    const resources = await app.evaluate(() => process.resourcesPath);
+    const shipped = join(resources, "dictionaries");
+    if (process.platform === "darwin") {
+      expect(existsSync(shipped)).toBe(false);
+      return;
+    }
+    expect(readdirSync(shipped).sort()).toEqual(["en-US-10-2.bdic", "it-IT-3-0.bdic"]);
+    for (const { file, sha256 } of Object.values(BUNDLED_DICTIONARIES)) {
+      expect(createHash("sha256").update(readFileSync(join(shipped, file))).digest("hex"), file).toBe(sha256);
+      expect(readFileSync(join(userData, "Dictionaries", file)).equals(readFileSync(join(shipped, file))), file).toBe(true);
+    }
+    await page.getByRole("button", { name: /^(Salta|Skip)$/ }).click();
+    expect(await misspellingMenu(app, page)).toContain(SUGGESTED);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
 });
