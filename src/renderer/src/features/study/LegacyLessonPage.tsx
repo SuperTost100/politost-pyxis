@@ -43,7 +43,7 @@ import {
   useOpenNext,
 } from "./Reader";
 import { showsLiveText } from "./lessonLive";
-import { lessonLine, sectionFailedKey } from "./partPage";
+import { lessonLine, sectionFailedKey } from "./partView";
 import { usePlan } from "../../lib/queries";
 import { returnTo, type BackTarget } from "../../app/usePlace";
 import { refreshPlan } from "../../lib/refreshPlan";

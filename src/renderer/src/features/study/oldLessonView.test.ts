@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { oldLessonView, type PartData } from "./partPage";
+import { oldLessonView, type PartData } from "./partView";
 
 const outline = (...states: Array<"unwritten" | "writing" | "written" | "failed">): PartData["outline"] => ({
   id: "o",

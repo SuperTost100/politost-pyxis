@@ -11,7 +11,7 @@ import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { refreshPlan } from "../../lib/refreshPlan";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
-import { sectionFailedKey, stoppedTone, type PartData } from "./partPage";
+import { sectionFailedKey, stoppedTone, type PartData } from "./partView";
 import { ReaderProgress } from "./Reader";
 
 // The level of a part and its rewrites, as an old lesson has them: "Livello" in the bar, and "Riscrivi questa parte" and

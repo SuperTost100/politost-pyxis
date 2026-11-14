@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
 import { Logo } from "../../components/Logo";
-import { partMark, partStateWord, type PartMark } from "./partPage";
+import { partMark, partStateWord, type PartMark } from "./partView";
 
 type Outline = NonNullable<Extract<RequestOutput<"study.part">, { mode: "parts" }>["outline"]>;
 
