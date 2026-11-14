@@ -202,13 +202,15 @@ export function CardBrowser({
       await request;
     } catch {
       setActionFailed(true);
-      return;
+      return false;
     }
     await refresh();
     setDone(message);
+    return true;
   }
 
   function ask(card: Card) {
+    let deleted = false;
     void confirm({
       title: t("cardBrowser.deleteTitle"),
       body: (
@@ -225,17 +227,21 @@ export function CardBrowser({
       ),
       confirm: t("cards.deleteConfirm"),
       tone: "danger",
-      run: () =>
-        change(
+      run: async () => {
+        deleted = await change(
           invoke("study.remove", { cardId: card.id }),
           t(
             card.handMade
               ? "cardBrowser.deletedForever"
               : "cardBrowser.deleted",
           ),
-        ),
-      // The card's row is gone, so the focus goes to the list's summary line once the dialog has closed.
-      onClosed: () => summary.current?.focus(),
+        );
+      },
+      // The card's row is gone, so the focus goes to the list's summary line once the dialog has closed. After Annulla
+      // or a failed delete the card is still there, and the focus goes back to what opened the dialog.
+      onClosed: () => {
+        if (deleted) summary.current?.focus();
+      },
     });
   }
 

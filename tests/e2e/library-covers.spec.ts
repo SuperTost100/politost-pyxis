@@ -381,6 +381,19 @@ test("The focus stays in the page when the file that held it is renamed out of a
     await expect(shelf(page, "Linguaggio cinematografico e storia del cinema").getByRole("button", moved)).toHaveCount(0);
     await expect(page.getByRole("button", moved)).toBeFocused();
 
+    // Annulla on the delete question gives the focus back to what opened the menu: the file's dots, or its cover when the
+    // menu came from the keyboard on the cover. The file stays.
+    const dots = page.getByRole("button", { name: "Azioni per Fotogrammi di Quarto potere", exact: true });
+    await dots.click();
+    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(dots).toBeFocused();
+    await choose("Fotogrammi di Quarto potere", "Elimina il file…");
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", moved)).toBeFocused();
+
     // Removed while it is the last match: the message takes the list's place and the search field has the focus.
     await remove("Fotogrammi di Quarto potere");
     await expect(page.getByText("Nessuna fonte con questo filtro.")).toBeVisible();

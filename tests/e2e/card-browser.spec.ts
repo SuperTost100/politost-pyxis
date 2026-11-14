@@ -201,6 +201,12 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await cardAction(page, "Unità della forza\\?", "Delete the flashcard…");
     const confirm = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(confirm).toContainText("You can bring it back under Removed");
+    // Cancel leaves the card where it is and the focus on the dots that opened the dialog, not on the list's summary.
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^More actions: Unità della forza/ })).toBeFocused();
+    await expect(page.getByText("Unità della forza?")).toBeVisible();
+    await cardAction(page, "Unità della forza\\?", "Delete the flashcard…");
     await confirm.getByRole("button", { name: "Delete the flashcard", exact: true }).click();
     await expect(page.getByRole("status")).toHaveText(
       "Flashcard removed. You can restore it under Removed.",
@@ -225,7 +231,16 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await cardAction(page, "Elettroni orbitano", "Delete the flashcard…");
     const permanent = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(permanent).toContainText("deleting it is permanent");
-    await permanent.getByRole("button", { name: "Delete the flashcard", exact: true }).click();
+    // The write lock is held, so the delete waits in core: the dialog stays open and busy, and its button cannot fire twice.
+    db.exec("BEGIN IMMEDIATE");
+    const forever = permanent.getByRole("button", { name: "Delete the flashcard", exact: true });
+    await forever.click();
+    await expect(permanent).toHaveAttribute("aria-busy", "true");
+    await expect(forever).toBeDisabled();
+    await expect(permanent.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    await expect(page.getByRole("list", { name: "Chimica generale · Atomi" }).getByText("Elettroni orbitano il nucleo.")).toBeVisible();
+    db.exec("ROLLBACK");
+    await expect(permanent).toHaveCount(0);
     await expect(page.getByText("Flashcard deleted.")).toBeVisible();
     await choose(page, "Show", "Removed");
     await expect(page.getByRole("listitem")).toHaveCount(0);

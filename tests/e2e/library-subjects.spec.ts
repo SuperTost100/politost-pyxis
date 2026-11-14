@@ -1182,8 +1182,15 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
       await expect(shelf(page, name).locator(".px-shelf-subject-none")).toHaveText("Ancora niente.");
     }
     await expect(page.getByRole("button", { name: "Aggiungi file", exact: true })).toBeVisible();
-    await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
+    const subjectDots = shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" });
+    await subjectDots.click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    // Annulla gives the focus back to the subject's dots.
+    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(subjectDots).toBeFocused();
+    await subjectDots.click();
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }).click();
     await expect(shelf(page, "Fisica 2")).toHaveCount(0);

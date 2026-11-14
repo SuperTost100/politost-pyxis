@@ -337,6 +337,16 @@ type Ask = {
   reject: (error: unknown) => void;
 };
 
+/**
+ * What a menu was opened from, when the focus is on one of its items. The item leaves the page as the menu closes, so a
+ * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to.
+ */
+function menuOpener(): HTMLElement | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !active.closest(".px-item-menu, .ant-dropdown")) return null;
+  return document.querySelector<HTMLElement>('[aria-haspopup="menu"][aria-expanded="true"]');
+}
+
 const ConfirmContext = createContext<((options: ConfirmOptions) => Promise<ConfirmAnswer>) | null>(null);
 
 /**
@@ -374,7 +384,14 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     (options: ConfirmOptions) => {
       if (showing.current || options.signal?.aborted) return Promise.resolve<ConfirmAnswer>("cancel");
       return new Promise<ConfirmAnswer>((resolve, reject) => {
-        const ask: Ask = { id: ++counter.current, options, open: true, busy: false, resolve, reject };
+        const ask: Ask = {
+          id: ++counter.current,
+          options: { ...options, origin: options.origin ?? menuOpener() },
+          open: true,
+          busy: false,
+          resolve,
+          reject,
+        };
         showing.current = ask;
         setAsks((list) => [...list, ask]);
         options.signal?.addEventListener("abort", () => settle(ask.id, "cancel"), { once: true });

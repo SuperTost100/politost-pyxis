@@ -79,9 +79,9 @@ export function CardsPage() {
   const [ratingError, setRatingError] = useState(false);
   // Saving, suspending or deleting a card that fails says so instead of doing nothing.
   const [actionFailed, setActionFailed] = useState(false);
-  const act = (request: Promise<unknown>, then: () => void) => {
+  const act = (request: Promise<unknown>, then: () => unknown) => {
     setActionFailed(false);
-    request.then(then, () => setActionFailed(true));
+    return request.then(then, () => setActionFailed(true));
   };
   const [showBack, setShowBack] = useState(false);
   // The face the card shows. It follows showBack half-way through the turn, when the card is edge-on; showBack changes
@@ -477,16 +477,16 @@ export function CardsPage() {
         setShowBack(false);
         setFace(false);
         setPhase(null);
-        void refresh();
+        return refresh();
       });
-    if (!card.handMade) return run();
+    if (!card.handMade) return void run();
     void confirm({
       title: t("cardBrowser.deleteTitle"),
       body: t("cardBrowser.deleteHandMade"),
       confirm: t("cards.deleteConfirm"),
       tone: "danger",
-    }).then((answer) => {
-      if (answer === "confirm") run();
+      // The dialog stays, busy, until the card is deleted and the deck read again; a failure is said on the page.
+      run,
     });
   }
 

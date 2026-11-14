@@ -151,6 +151,7 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     const dialog = page.getByRole("dialog", { name: "Eliminare questa chat?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(list.getByRole("link", { name: "Teorema fondamentale", exact: true })).toBeVisible();
+    await expect(list.getByRole("button", { name: "Azioni per Teorema fondamentale" })).toBeFocused();
     // The cancelled dialog is still closing; wait so the next click lands on the row.
     await expect(dialog).toHaveCount(0);
     await animationsSettled(page);
