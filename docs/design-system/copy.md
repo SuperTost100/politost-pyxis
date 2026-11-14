@@ -18,6 +18,12 @@ Every word on screen is part of the design. Pyxis talks like a calm tutor who si
 
 No emoji in the interface.
 
+## Leaving and deleting
+
+- A confirmation's title is a question in the infinitive: "Eliminare Fisica 1?", "Scollegare «Analisi 2»?". Its button repeats the action and names the thing: "Elimina l'esame", not "OK" or "Elimina per sempre".
+- Leaving with work that would be lost is always asked in the same words: "Uscire senza salvare?", one sentence on what would be lost ("Il disegno dopo l'ultimo salvataggio andrà perso."), "Resta qui" and "Esci senza salvare". In English: "Leave without saving?", "Stay here" and "Leave without saving".
+- A button that discards changes without leaving keeps its own words, such as "Annulla le modifiche" on a save bar.
+
 ## The AI tools
 
 A student knows the account, not the program: the tools are Claude, ChatGPT, Cursor and Gemini in every screen and in both languages (`TOOL_NAMES` in `src/shared/tool-names.ts`), and the thing they are is a _strumento AI_ (an _AI tool_), the word of the Settings page. The program behind a tool (Claude Code, Codex, Cursor Agent, Antigravity, `TOOL_PROGRAMS`) is written once, as the detail under the tool's name in the Settings list, where the student installs it or signs in to it. Provider ids, settings keys and stored values keep their code names.

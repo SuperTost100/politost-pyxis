@@ -1152,6 +1152,15 @@
   "listToolbar": {
     "clearSearch": "Clear search"
   },
+  "dialog": {
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "leave": {
+    "title": "Leave without saving?",
+    "stay": "Stay here",
+    "go": "Leave without saving"
+  },
   "mistakes": {
     "title": "Mistakes notebook",
     "emptyTitle": "No mistakes to go over",
@@ -2687,7 +2696,35 @@
       "progress": "Progress"
     },
     "lessonQuiz": "Quiz",
-    "trueFalse": "True / false"
+    "trueFalse": "True / false",
+    "dialogs": {
+      "hint": "A confirmation that deletes, a form with a menu and a dialog that only informs.",
+      "confirmOpen": "Confirmation that deletes",
+      "formOpen": "Form",
+      "infoOpen": "Only informs",
+      "runOpen": "Confirmation with work",
+      "runs_one": "Work started: {{count}}",
+      "runs_other": "Work started: {{count}}",
+      "answer": "Last answer: {{answer}}",
+      "answers": {
+        "confirm": "confirm",
+        "extra": "the extra action",
+        "cancel": "cancel"
+      },
+      "deleteTitle": "Delete Physics 1?",
+      "deleteBody": "Deleting the exam removes what Pyxis prepared and what you did. It can't be undone.",
+      "deleteConfirm": "Delete the exam",
+      "archiveInstead": "Archive instead",
+      "formTitle": "New map",
+      "subject": "Subject",
+      "subjectChoose": "Subject: {{subject}}",
+      "topic": "Topic",
+      "how": "How do you want it?",
+      "optional": "optional",
+      "howPlaceholder": "For example “only the theorems, with their hypotheses”",
+      "formConfirm": "Create the map",
+      "infoTitle": "Keyboard shortcuts"
+    }
   },
   "components": {
     "numberInput": {
@@ -3240,11 +3277,8 @@
     "whiteboardTitle": "Whiteboard",
     "penWidth": "Pen width {{size}}",
     "boardTools": "Drawing tools",
-    "unsavedTitle": "Leave this drawing?",
-    "unsavedBody": "Changes since your last save will be discarded.",
-    "keepDrawing": "Keep drawing",
-    "discardDrawing": "Discard changes",
-    "boardFailed": "The drawing could not be saved or attached. Try again."
+    "boardFailed": "The drawing could not be saved or attached. Try again.",
+    "leaveBody": "The drawing since your last save will be lost."
   },
   "updates": {
     "title": "Updates",
@@ -3364,10 +3398,7 @@
       "hours": "the weekly hours"
     },
     "discard": "Discard changes",
-    "leaveTitle": "Leave without saving?",
     "leaveBody": "You changed {{changes}}. If you leave now, those changes are lost.",
-    "stay": "Stay here",
-    "leave": "Leave without saving",
     "deleteTitle": "Delete {{title}}?",
     "deleteIntro": "Along with the exam you delete what Pyxis prepared and what you did:",
     "lose": {
@@ -3889,15 +3920,12 @@
         "nothingMatched": "I found nothing in the material about what you asked. Try other words, or leave “About what?” empty."
       },
       "leave": {
-        "typed": "Throw away what you wrote?",
-        "keep": "Keep writing",
-        "discard": "Throw away",
+        "typed": "The flashcard you wrote will be lost.",
         "working": "Pyxis is still writing. If you close, it stops and nothing is saved.",
         "wait": "Keep going",
         "stop": "Stop and close",
         "review": "You haven’t saved the proposed flashcards. If you close, you lose them.",
-        "back": "Back to the flashcards",
-        "close": "Close without saving"
+        "stopTitle": "Stop Pyxis?"
       }
     },
     "emptyBody": "Your flashcards will appear here, by subject: you write them, or Pyxis makes them from the material in your Library.",

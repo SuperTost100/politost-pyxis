@@ -23,6 +23,7 @@ The table below gives exact times where a kind needs one; they stay within the t
 | ------------------ | ------------------------------------------------------------------------------------- | ------------------------ | ----------- | -------------------------------- |
 | Popover, menu      | Grows from its button: `transform-origin` on the button's edge, scale 0.94 to 1       | 180ms in, 120ms out      | ease-out    | Fades, 120ms                     |
 | Side panel, sheet  | Slides in from the edge it belongs to, leaves the same way                            | 320ms in, 220ms out      | ease-out    | Fades, 120ms                     |
+| Dialog             | Grows out of what opened it and shrinks back into it; the backdrop fades              | 320ms in, 220ms out      | ease-out    | Fades, 120ms                     |
 | Source panel       | Grows from the cover or citation that opened it, scale 0.94 to 1; leaves to the right | 320ms in, 220ms out      | ease-out    | Fades, 120ms                     |
 | A row that expands | Grows in place, the height first; the rows below move down                            | 200ms                    | ease-out    | Opens at once                    |
 | Map branches       | Lines draw out of their node, then each child grows at the line's end, 40ms apart     | About 300ms in all       | ease-out    | Children fade in, no lines drawn |

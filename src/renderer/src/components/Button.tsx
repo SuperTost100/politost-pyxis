@@ -3,7 +3,8 @@ import type { MouseEvent, ReactNode } from "react";
 import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+/** `danger` is the soft red of a menu or a row; `danger-solid` is only the confirming button of a dialog that destroys. */
+type Variant = "primary" | "secondary" | "ghost" | "danger" | "danger-solid";
 type Size = "sm" | "md" | "lg";
 
 export function Button({
@@ -53,7 +54,7 @@ export function Button({
   type?: "button" | "submit" | "reset";
 }) {
   const antType =
-    variant === "primary"
+    variant === "primary" || variant === "danger-solid"
       ? "primary"
       : variant === "ghost"
         ? "text"
@@ -71,7 +72,7 @@ export function Button({
       data-focus-key={focusKey}
       htmlType={type}
       type={antType}
-      danger={variant === "danger"}
+      danger={variant === "danger" || variant === "danger-solid"}
       size={antSize}
       block={block}
       disabled={disabled}

@@ -74,6 +74,30 @@ All three use `--radius-field`.
 
 - **A page:** beside the title, on the right, or at the end of the form it completes. It never floats over the content.
 - **A settings row:** on the row's right, small and secondary. One row, one action, plus a ghost "Apri" at most.
-- **A popover or dialog:** at the bottom right, the primary last and Annulla as ghost before it.
+- **A popover or dialog:** at the bottom right, the primary last and Annulla as ghost before it. A dialog follows [Dialogs](#dialogs).
 - **A study screen:** the way back on the left of the bar, tools on the right as ghost buttons, and the study action as the one large primary under the content.
 - **Something destructive:** never teal, and never the default focus in a dialog.
+
+## Dialogs
+
+Every dialog is `Dialog` (`components/Dialog.tsx`), and every question with buttons is asked through `useConfirm`, so a confirmation, a form and a notice look and behave the same. The browser's own boxes (`window.confirm`) and Ant Design's `Modal` and `modal.confirm` are on their way out.
+
+| Rule           | What it does                                                                                                                                                                                                                                                    |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title          | `.title-2` in Young Serif, sentence case, never an icon. A confirmation asks a question: "Eliminare Fisica 1?"                                                                                                                                                  |
+| Close          | An X at the top right only in a dialog that only informs (`cancel={false}`), such as the keyboard shortcuts. With Annulla there is no X                                                                                                                         |
+| Buttons        | At the bottom right: Annulla as ghost, then the one confirming button named by its action ("Crea la mappa", "Elimina l'esame"). A destructive one is `danger-solid`, any other `primary`. An extra action such as "Archivia invece" is `secondary`, on the left |
+| Focus on open  | The field the page names, else the first field, else Annulla. Never the destructive button                                                                                                                                                                      |
+| Focus inside   | Tab and Shift+Tab go round inside it; the page behind is inert                                                                                                                                                                                                  |
+| Focus on close | Back to what it grew out of, or to what had the focus before it opened                                                                                                                                                                                          |
+| Escape         | Closes it like Annulla, unless its work is running (`busy`). A menu or list opened inside it closes first                                                                                                                                                       |
+| Click outside  | Closes it like Annulla, unless it is busy or a text field in it holds typed text                                                                                                                                                                                |
+| Long content   | The body scrolls; the title and the buttons stay in view. A long label wraps inside its button                                                                                                                                                                  |
+| Width          | 460px for a confirmation, 560 for a form, 720 for a preview, never wider than the window less 16px a side                                                                                                                                                       |
+| Layer          | A native modal `<dialog>`, in the top layer above the source panel, popovers and menus. Menus opened inside it are drawn inside it                                                                                                                              |
+
+One question at a time: asked while another is open, `useConfirm` answers "cancel" at once and nothing opens.
+
+### Leaving without saving
+
+A page that holds work it does not save by itself calls `useLeaveGuard({ dirty, body })`. Whatever moves away (its back control, the sidebar, a link, the menu's Indietro) asks once, "Uscire senza salvare?", with the page's sentence on what would be lost, "Resta qui" as ghost and "Esci senza salvare" as `danger-solid`. Staying keeps the page and the focus as they were. A dialog that holds typed work asks the same question through `useConfirm` when it closes. Work that saves itself (quiz answers, lesson progress, a chat draft, settings) leaves without asking.
