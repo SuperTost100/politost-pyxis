@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   TRAIL_CAP,
   arrive,
+  canForward,
   currentVisit,
   emptyTrail,
   forget,
+  lastChat,
   named,
   origin,
   pageOf,
   parseTrail,
+  sectionFor,
+  sectionOf,
   type Navigation,
   type Trail,
 } from "./trail";
@@ -123,7 +127,7 @@ describe("arrive", () => {
     let trail = walk(pop("default", 0, "/plans/p"));
     trail = named(trail, "default", { text: "Analisi Matematica 2" });
     trail = arrive(trail, pop("default", 0, "/maps"));
-    expect(currentVisit(trail)).toEqual({ key: "default", idx: 0, path: "/maps", page: "/maps", from: null });
+    expect(currentVisit(trail)).toEqual({ key: "default", idx: 0, path: "/maps", page: "/maps", section: "maps", from: null });
     expect(trail.visits).toHaveLength(1);
   });
 
@@ -151,8 +155,8 @@ describe("origin", () => {
     expect(origin(trail, "zz")).toBeNull();
     const odd: Trail = {
       visits: [
-        { key: "a", idx: 2, path: "/exams", page: "/exams", from: null },
-        { key: "b", idx: 1, path: "/plans/p", page: "/plans/p", from: "a" },
+        { key: "a", idx: 2, path: "/exams", page: "/exams", section: "exams", from: null },
+        { key: "b", idx: 1, path: "/plans/p", page: "/plans/p", section: "exams", from: "a" },
       ],
       current: "b",
     };
@@ -192,5 +196,120 @@ describe("parseTrail", () => {
         }),
       ),
     ).toEqual(emptyTrail);
+  });
+});
+
+describe("sectionOf", () => {
+  it("is the sidebar row a path lights by itself", () => {
+    expect(sectionOf("/ask")).toBe("ask");
+    expect(sectionOf("/ask/c1")).toEqual({ chat: "c1" });
+    expect(sectionOf("/exams")).toBe("exams");
+    expect(sectionOf("/exams/mistakes?exam=p")).toBe("exams");
+    expect(sectionOf("/exams/library")).toBe("library");
+    expect(sectionOf("/plans/p")).toBe("exams");
+    expect(sectionOf("/plans/p/lesson/t")).toBe("exams");
+    expect(sectionOf("/maps")).toBe("maps");
+    expect(sectionOf("/maps/s1/t1")).toBe("maps");
+    expect(sectionOf("/plans/p/map/t")).toBe("maps");
+    expect(sectionOf("/flashcards/all")).toBe("flashcards");
+    expect(sectionOf("/cards/due")).toBe("flashcards");
+    expect(sectionOf("/settings/engines")).toBeNull();
+    expect(sectionOf("/tools/whiteboard")).toBeNull();
+  });
+});
+
+describe("the lit section of a visit", () => {
+  const section = (trail: Trail) => currentVisit(trail)?.section;
+
+  it("is the section of the page's own path where a trail starts", () => {
+    expect(section(walk(pop("a", 0, "/plans/p/lesson/t")))).toBe("exams");
+    expect(section(walk(pop("a", 0, "/ask/c1"), push("b", 1, "/maps", { via: "sidebar" })))).toBe("maps");
+    expect(section(walk(pop("a", 0, "/maps/s1"), push("b", 1, "/cards/due", { via: "outside" })))).toBe("flashcards");
+  });
+
+  it("is kept from the page that opened it: a map from an exam keeps Esami, Settings over it too", () => {
+    const map = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/maps/s1/t1"));
+    expect(section(map)).toBe("exams");
+    expect(section(arrive(map, push("d", 3, "/settings/profile")))).toBe("exams");
+  });
+
+  it("is the chat's own row for a chat, and a chat's row stays lit for the exam page opened from it", () => {
+    const fromExam = walk(pop("a", 0, "/plans/p"), push("b", 1, "/ask/c1"));
+    expect(section(fromExam)).toEqual({ chat: "c1" });
+    expect(section(arrive(fromExam, push("c", 2, "/plans/p")))).toEqual({ chat: "c1" });
+    expect(section(walk(pop("a", 0, "/plans/p"), push("b", 1, "/ask")))).toBe("ask");
+  });
+
+  it("falls back to the path's own section when the page that opened it had none", () => {
+    expect(section(walk(pop("a", 0, "/settings"), push("b", 1, "/plans/p")))).toBe("exams");
+  });
+
+  it("is kept by a move inside a page, a replace, and a return to the page", () => {
+    const base = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/maps/s1/t1"));
+    expect(section(arrive(base, replace("c2", 2, "/maps/s1/t2")))).toBe("exams");
+    expect(section(arrive(base, pop("b", 1, "/plans/p")))).toBe("exams");
+    expect(section(arrive(base, pop("a", 0, "/exams")))).toBe("exams");
+  });
+
+  it("is the chat's own row when a new chat is replaced by the chat it became", () => {
+    const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/ask", { via: "sidebar" }), replace("c", 1, "/ask/c1"));
+    expect(section(trail)).toEqual({ chat: "c1" });
+  });
+
+  it("starts over when a sidebar row replaces the page that shows it", () => {
+    const shown = walk(pop("a", 0, "/plans/p"), push("b", 1, "/maps"));
+    expect(section(shown)).toBe("exams");
+    const clicked = arrive(shown, { action: "REPLACE", key: "c", idx: 1, path: "/maps", via: "sidebar" });
+    expect(section(clicked)).toBe("maps");
+    expect(origin(clicked, "c")).toBeNull();
+  });
+});
+
+describe("sectionFor", () => {
+  it("reads a page the trail knows from its record, and a page being opened as a push", () => {
+    const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"));
+    expect(sectionFor(trail, { key: "b", path: "/plans/p" })).toBe("exams");
+    expect(sectionFor(trail, { key: "x", path: "/maps/s1/t1" })).toBe("exams");
+    expect(sectionFor(trail, { key: "x", path: "/maps", via: "sidebar" })).toBe("maps");
+    expect(sectionFor(emptyTrail, { key: "x", path: "/flashcards" })).toBe("flashcards");
+  });
+});
+
+describe("canForward", () => {
+  it("is true only after going back, and until a new push drops what was ahead", () => {
+    const trail = walk(pop("a", 0, "/exams"), push("b", 1, "/plans/p"), push("c", 2, "/plans/p/lesson/t"));
+    expect(canForward(trail, "c")).toBe(false);
+    const back = arrive(trail, pop("b", 1, "/plans/p"));
+    expect(canForward(back, "b")).toBe(true);
+    expect(canForward(arrive(back, pop("a", 0, "/exams")), "a")).toBe(true);
+    expect(canForward(arrive(back, push("d", 2, "/maps")), "d")).toBe(false);
+    expect(canForward(back, "zz")).toBe(false);
+  });
+
+  it("is false when the page ahead was deleted", () => {
+    const trail = arrive(walk(pop("a", 0, "/maps"), push("b", 1, "/maps/s1/t1")), pop("a", 0, "/maps"));
+    expect(canForward(trail, "a")).toBe(true);
+    expect(canForward(forget(trail, (path) => path.startsWith("/maps/s1")), "a")).toBe(false);
+  });
+});
+
+describe("lastChat", () => {
+  it("names the chat a page was opened from, and none for a new chat or another place", () => {
+    expect(lastChat(walk(pop("a", 0, "/ask/c1"), push("b", 1, "/tools/whiteboard")))).toBe("c1");
+    expect(lastChat(walk(pop("a", 0, "/ask/c1"), push("b", 1, "/ask", { via: "sidebar" }), push("c", 2, "/tools/graph")))).toBeUndefined();
+    expect(lastChat(walk(pop("a", 0, "/exams"), push("b", 1, "/tools/whiteboard")))).toBeUndefined();
+    expect(lastChat(emptyTrail)).toBeUndefined();
+  });
+});
+
+describe("parseTrail of an older trail", () => {
+  it("reads a visit that has no section from its path", () => {
+    const stored = { visits: [{ key: "a", idx: 0, path: "/plans/p/map/t", page: "/plans/p/map/t", from: null }], current: "a" };
+    expect(currentVisit(parseTrail(JSON.stringify(stored)))?.section).toBe("maps");
+  });
+
+  it("refuses a section it does not know", () => {
+    const stored = { visits: [{ key: "a", idx: 0, path: "/", page: "/", from: null, section: "elsewhere" }], current: "a" };
+    expect(parseTrail(JSON.stringify(stored))).toEqual(emptyTrail);
   });
 });

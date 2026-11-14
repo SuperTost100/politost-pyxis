@@ -7,6 +7,9 @@
 /** What a back control calls a place: an interface key, resolved in the app's language when drawn, or the student's own words. */
 export type PlaceName = { key: string; values?: Record<string, string> } | { text: string };
 
+/** The sidebar row a visit lights: a section, a chat's own row, or none (Settings opened first, the gallery). */
+export type Section = "ask" | "exams" | "maps" | "flashcards" | "library" | { chat: string } | null;
+
 export type Visit = {
   /** The router location's key, which `window.history.state` keeps across a reload. */
   key: string;
@@ -16,6 +19,8 @@ export type Visit = {
   path: string;
   /** `pageOf(pathname)`: moves inside one page keep it. */
   page: string;
+  /** The sidebar row lit while it shows: the section of the page that opened it, so a map opened from an exam keeps Esami lit. */
+  section: Section;
   /** The key of the visit this one was opened from, or null when it has none (the first page, a reminder, a file). */
   from: string | null;
   /** What a back control elsewhere calls this visit, written by the page once it knows it. */
@@ -40,6 +45,9 @@ export type Navigation = {
   opener?: string;
 };
 
+/** Where the window keeps its trail, in session storage. */
+export const TRAIL_STORE = "pyxis.trail";
+
 /** The most visits kept; the oldest go first. */
 export const TRAIL_CAP = 200;
 
@@ -54,12 +62,51 @@ export function pageOf(path: string): string {
   return pathname === "/settings" || pathname.startsWith("/settings/") ? "/settings" : pathname;
 }
 
+/**
+ * The section a path belongs to by itself, which a visit takes when it starts a trail, when it is a chat (a chat always
+ * lights its own row) or when the page that opened it had none.
+ */
+export function sectionOf(path: string): Section {
+  const pathname = pageOf(path);
+  const chat = /^\/ask\/([^/]+)$/.exec(pathname);
+  if (chat) return { chat: chat[1]! };
+  if (pathname === "/ask") return "ask";
+  if (pathname === "/exams/library") return "library";
+  if (/^\/maps(\/|$)/.test(pathname) || /^\/plans\/[^/]+\/map\//.test(pathname)) return "maps";
+  if (/^\/(exams|plans)(\/|$)/.test(pathname)) return "exams";
+  if (pathname === "/flashcards" || pathname.startsWith("/flashcards/") || pathname.startsWith("/cards/")) return "flashcards";
+  return null;
+}
+
+/** Chiedi lights its own row wherever it is opened from: a chat its row, a new chat "Nuova chat". */
+const isChat = (section: Section): boolean => section === "ask" || (section !== null && typeof section === "object");
+
 const find = (trail: Trail, key: string | null) =>
   key == null ? undefined : trail.visits.find((visit) => visit.key === key);
 
 function capped(visits: Visit[]): Visit[] {
   if (visits.length <= TRAIL_CAP) return visits;
   return [...visits].sort((a, b) => a.idx - b.idx).slice(visits.length - TRAIL_CAP);
+}
+
+/**
+ * The row a page opened from `showing` lights. The page that opened it lights its row for it, except where the path
+ * names its own: a sidebar row, a page from outside, a chat, or an opener with no row.
+ */
+function pushedSection(showing: Visit | undefined, path: string, via: Navigation["via"]): Section {
+  const own = via !== undefined || !showing || (showing.page !== pageOf(path) && isChat(sectionOf(path)));
+  return own ? sectionOf(path) : (showing.section ?? sectionOf(path));
+}
+
+/**
+ * The row to light for a page the window shows or is about to open, which the sidebar follows from the start of the
+ * navigation. A page the trail knows (the one showing, or an entry going back or forward) has its own record; a new
+ * one is read as a push.
+ */
+export function sectionFor(trail: Trail, target: { key: string; path: string; via?: Navigation["via"] }): Section {
+  const known = find(trail, target.key);
+  if (known && known.page === pageOf(target.path)) return known.section;
+  return pushedSection(find(trail, trail.current), target.path, target.via);
 }
 
 /**
@@ -81,16 +128,22 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
         current: nav.key,
       };
     const others = trail.visits.filter((visit) => visit.idx !== nav.idx && visit.key !== nav.key);
-    return { visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, from: null }]), current: nav.key };
+    return {
+      visits: capped([...others, { key: nav.key, idx: nav.idx, path: nav.path, page, section: sectionOf(nav.path), from: null }]),
+      current: nav.key,
+    };
   }
   if (nav.action === "REPLACE") {
     const samePage = showing?.page === page;
+    // A sidebar row clicked while its page shows replaces it, and starts the trail over. A chat lights its own row.
+    const own = nav.via !== undefined || (!samePage && isChat(sectionOf(nav.path)));
     const visit: Visit = {
       key: nav.key,
       idx: nav.idx,
       path: nav.path,
       page,
-      from: showing?.from ?? null,
+      section: own ? sectionOf(nav.path) : (showing?.section ?? sectionOf(nav.path)),
+      from: nav.via ? null : (showing?.from ?? null),
       ...(samePage && showing?.name ? { name: showing.name } : {}),
       ...(showing?.opener ? { opener: showing.opener } : {}),
     };
@@ -106,7 +159,8 @@ export function arrive(trail: Trail, nav: Navigation): Trail {
       const { opener: _left, ...rest } = visit;
       return nav.opener === undefined ? rest : { ...rest, opener: nav.opener };
     });
-  return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, from }]), current: nav.key };
+  const section = pushedSection(showing, nav.path, nav.via);
+  return { visits: capped([...behind, { key: nav.key, idx: nav.idx, path: nav.path, page, section, from }]), current: nav.key };
 }
 
 /** The visit `key` was opened from, while it is still behind it in the window's history and still exists. */
@@ -115,6 +169,25 @@ export function origin(trail: Trail, key: string): Visit | null {
   const from = find(trail, visit?.from ?? null);
   if (!visit || !from || from.gone || from.idx >= visit.idx) return null;
   return from;
+}
+
+/**
+ * Whether the window's history has a page ahead of the one showing, which Avanti goes to. A page the student deleted
+ * is not one.
+ */
+export function canForward(trail: Trail, key: string | null): boolean {
+  const here = find(trail, key);
+  const next = here && trail.visits.find((visit) => visit.idx === here.idx + 1);
+  return Boolean(next && !next.gone);
+}
+
+/**
+ * The id of the chat whose row the window's page lights: a tool opened from a chat takes that chat's section, so it can
+ * hand its work back there. None for a new chat, or a page that came from elsewhere.
+ */
+export function lastChat(trail: Trail): string | undefined {
+  const section = find(trail, trail.current)?.section;
+  return section && typeof section === "object" ? section.chat : undefined;
 }
 
 /** The visit the window shows. */
@@ -148,10 +221,18 @@ function isName(value: unknown): value is PlaceName {
   );
 }
 
+function isSection(value: unknown): value is Section {
+  if (value === null || value === "ask" || value === "exams" || value === "maps" || value === "flashcards" || value === "library")
+    return true;
+  return typeof value === "object" && typeof (value as { chat?: unknown }).chat === "string";
+}
+
 function isVisit(value: unknown): value is Visit {
   if (!value || typeof value !== "object") return false;
   const visit = value as Record<string, unknown>;
   return (
+    // A trail written before visits carried their section has none: it is read from the path.
+    (visit.section === undefined || isSection(visit.section)) &&
     typeof visit.key === "string" &&
     typeof visit.idx === "number" &&
     Number.isInteger(visit.idx) &&
@@ -173,7 +254,7 @@ export function parseTrail(raw: string | null): Trail {
     const { visits, current } = value as Record<string, unknown>;
     if (!Array.isArray(visits) || !visits.every(isVisit) || !(current === null || typeof current === "string"))
       return emptyTrail;
-    return { visits: capped(visits), current };
+    return { visits: capped(visits.map((visit) => ({ ...visit, section: visit.section === undefined ? sectionOf(visit.path) : visit.section }))), current };
   } catch {
     return emptyTrail;
   }

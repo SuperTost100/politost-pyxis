@@ -5,7 +5,6 @@ import { AskPage } from "../features/ask/AskPage";
 import { ErrorState } from "../components/ErrorState";
 import { errorDetails } from "../lib/errorDetails";
 import { reportError } from "../lib/errorReports";
-import { rememberDoorPath } from "./doors";
 import { trackHistory } from "./history";
 import { Shell } from "./layouts/Shell";
 
@@ -127,15 +126,6 @@ export const router = createHashRouter([
   children: route.children?.map((child) => ({ ...child, errorElement: <RouteError /> })),
 })));
 
-// The trail of the window's history (history.ts), before the app's own subscription, so a page drawn after a navigation
-// reads the trail that navigation made.
+// The trail of the window's history (history.ts): every navigation the router finishes, from the page the window opens
+// on, so a page's back control, the sidebar's lit row and the menu's Avanti read the same record.
 trackHistory(router);
-
-// The page the window opens on, then every page the router reaches, in order. Full-screen pages outside the shell,
-// such as a lesson or a quiz, are not where a door was left.
-function remember(state: typeof router.state) {
-  if (state.matches.some((match) => match.route.id === "shell"))
-    rememberDoorPath(state.location.pathname);
-}
-remember(router.state);
-router.subscribe(remember);

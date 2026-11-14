@@ -1,6 +1,7 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router";
+import { changed, registerBack } from "./back-slot";
 import { goingBackToParent, nameVisit, readTrail, watchTrail } from "./history";
 import { placeOf } from "./places";
 import { origin, pageOf, type PlaceName } from "./trail";
@@ -47,42 +48,56 @@ export function usePlace(input: {
     if (name) nameVisit(key, JSON.parse(name) as PlaceName);
   }, [key, name]);
 
-  if (input.back === "none") return null;
-  const from = origin(trail, key);
-  const table = placeOf(location.pathname + location.search).parent;
-  const parent = input.parent === null || !table ? null : { ...table, ...input.parent };
-  if (!from && !parent) return null;
-  const place = from ? (from.name ?? placeOf(from.path).name ?? { key: "nav.back" }) : parent!.name;
-  const text = "key" in place ? t(place.key, place.values) : place.text;
-  return {
-    name: text,
-    label: t("places.backTo", { place: text }),
-    to: from ? from.path : parent!.to,
-    busy,
-    go: () => {
-      if (busy) return;
-      const leave = () => {
-        // Read again at the press: the trail may have moved since this render.
-        const now = readTrail();
-        const behind = origin(now, key);
-        const here = now.visits.find((visit) => visit.key === key);
-        if (behind && here) void navigate(behind.idx - here.idx);
-        else if (parent) {
-          goingBackToParent(parent.to);
-          void navigate(parent.to, { replace: true });
-        }
-      };
-      if (!input.beforeLeave) return leave();
-      setBusy(true);
-      input
-        .beforeLeave()
-        .catch(() => false)
-        .then((ok) => {
-          setBusy(false);
-          if (ok) leave();
-        });
-    },
-  };
+  const target = input.back === "none" ? null : backTarget();
+
+  function backTarget(): BackTarget | null {
+    const from = origin(trail, key);
+    const table = placeOf(location.pathname + location.search).parent;
+    const parent = input.parent === null || !table ? null : { ...table, ...input.parent };
+    if (!from && !parent) return null;
+    const place = from ? (from.name ?? placeOf(from.path).name ?? { key: "nav.back" }) : parent!.name;
+    const text = "key" in place ? t(place.key, place.values) : place.text;
+    return {
+      name: text,
+      label: t("places.backTo", { place: text }),
+      to: from ? from.path : parent!.to,
+      busy,
+      go: () => {
+        if (busy) return;
+        const leave = () => {
+          // Read again at the press: the trail may have moved since this render.
+          const now = readTrail();
+          const behind = origin(now, key);
+          const here = now.visits.find((visit) => visit.key === key);
+          if (behind && here) void navigate(behind.idx - here.idx);
+          else if (parent) {
+            goingBackToParent(parent.to);
+            void navigate(parent.to, { replace: true });
+          }
+        };
+        if (!input.beforeLeave) return leave();
+        setBusy(true);
+        input
+          .beforeLeave()
+          .catch(() => false)
+          .then((ok) => {
+            setBusy(false);
+            if (ok) leave();
+          });
+      },
+    };
+  }
+
+  // The menu, the mouse's back button and the swipe run the way back this page shows now. It is registered while the
+  // page is mounted, and kept as the page's latest render left it.
+  const latest = useRef(target);
+  useEffect(() => {
+    latest.current = target;
+    changed();
+  });
+  useEffect(() => registerBack(() => latest.current), []);
+
+  return target;
 }
 
 /**

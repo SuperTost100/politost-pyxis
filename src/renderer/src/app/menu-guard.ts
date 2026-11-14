@@ -16,8 +16,9 @@ export type MenuContext = {
 
 /**
  * Onboarding and open dialogs block every command. The shortcuts list changes nothing on screen behind it, so it also
- * opens during a quiz or a simulation, where its keys are worth looking up. Everything else needs no lock and no text
- * at risk.
+ * opens during a quiz or a simulation, where its keys are worth looking up. Indietro and Avanti need no lock held and
+ * ignore the text in a field: a page with work typed into it asks before it lets go (see its leave guard), and the
+ * mouse's buttons and the swipe reach them with the focus anywhere. Everything else needs no lock and no text at risk.
  */
 export function menuCommandAllowed(
   command: MenuCommand,
@@ -26,5 +27,6 @@ export function menuCommandAllowed(
   if (context.pathname.startsWith("/onboarding") || context.modalOpen)
     return false;
   if (command === "shortcuts") return true;
+  if (command === "back" || command === "forward") return !context.locked;
   return !context.locked && !context.draftAtRisk;
 }

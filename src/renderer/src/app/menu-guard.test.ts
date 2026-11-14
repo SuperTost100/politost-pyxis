@@ -13,8 +13,12 @@ const navigation: MenuCommand[] = [
   ...goPages.map((page) => page.command),
   ...(Object.keys(pageCommands) as MenuCommand[]),
   "back",
+  "forward",
   "report-problem",
 ];
+
+/** The two commands that step through the window's history. */
+const stepping: MenuCommand[] = ["back", "forward"];
 
 describe("menu command guard", () => {
   it("lets every command through on an ordinary page", () => {
@@ -48,8 +52,21 @@ describe("menu command guard", () => {
 
   it("blocks navigation while text would be lost, but still lists the shortcuts", () => {
     const typing = { ...free, draftAtRisk: true };
-    for (const command of navigation)
+    for (const command of navigation.filter((command) => !stepping.includes(command)))
       expect(menuCommandAllowed(command, typing), command).toBe(false);
     expect(menuCommandAllowed("shortcuts", typing)).toBe(true);
+  });
+
+  it("lets Indietro and Avanti through with text in a field, since a page with typed work asks before it lets go", () => {
+    const typing = { ...free, draftAtRisk: true };
+    for (const command of stepping) expect(menuCommandAllowed(command, typing), command).toBe(true);
+  });
+
+  it("still refuses Indietro and Avanti with a dialog open, during setup and under a lock, even with text at risk", () => {
+    for (const command of stepping) {
+      expect(menuCommandAllowed(command, { ...free, modalOpen: true, draftAtRisk: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, pathname: "/onboarding", draftAtRisk: true }), command).toBe(false);
+      expect(menuCommandAllowed(command, { ...free, locked: true, draftAtRisk: true }), command).toBe(false);
+    }
   });
 });

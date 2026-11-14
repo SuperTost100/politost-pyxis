@@ -1,4 +1,5 @@
 import { DOCUMENT_EXTENSIONS, IMAGE_EXTENSIONS } from "../../../../shared/source-types";
+import { lastChat, parseTrail, TRAIL_STORE } from "../../app/trail";
 import type { NewChatSubject } from "./scope";
 
 /** Windows paths use `\`, so a `/` split alone shows the whole path. */
@@ -89,14 +90,12 @@ export function writePendingSubject(store: Pick<Storage, "setItem" | "removeItem
 }
 
 /**
- * The chat Ask last showed, from the path the shell remembers for the Ask door. The whiteboard and the graph hand their
- * image back to that chat, so the student returns to the draft and files they left there.
+ * The chat the page was opened from, read from the window's trail. The whiteboard and the graph hand their image back to
+ * that chat, so the student returns to the draft and files they left there.
  */
 export function lastAskChat(store: Pick<Storage, "getItem">): string | undefined {
   try {
-    const path = (JSON.parse(store.getItem("pyxis.lastDoorPath") ?? "{}") as { ask?: unknown }).ask;
-    const match = typeof path === "string" ? path.match(/^\/ask\/([^/?#]+)$/) : null;
-    return match?.[1];
+    return lastChat(parseTrail(store.getItem(TRAIL_STORE)));
   } catch {
     return undefined;
   }

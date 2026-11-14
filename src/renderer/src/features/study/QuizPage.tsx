@@ -24,7 +24,6 @@ import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
 import { useDraftSaver } from "./draftSaver";
 import { useReviewSession } from "./ReviewProgress";
-import { useMenuLock } from "../../app/menu-state";
 import { ActivityChoice, ActivityIntro, type ActivityFact } from "./ActivityIntro";
 import { ResultsScreen, type ResultItem, type ResultTopic } from "./ResultsScreen";
 import { StudyLayout } from "./StudyBar";
@@ -622,8 +621,6 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const keys = useRef({ primary, pick, question, locked, dontKnow, mark });
   keys.current = { primary, pick, question, locked, dontKnow, mark };
   const answering = Boolean(question) && !finalResult && !gradingStarted && !noAnswers;
-  // The menu leaves a quiz alone until it is finished.
-  useMenuLock(answering);
   useEffect(() => {
     if (!answering) return;
     const onKey = (event: KeyboardEvent) => {

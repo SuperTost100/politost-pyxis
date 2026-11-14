@@ -44,6 +44,17 @@ async function pick(app: ElectronApplication, id: string) {
   expect(found, `menu item ${id}`).toBe(true);
 }
 
+/** Whether Vai > Indietro and Vai > Avanti are on, as the menu shows them. */
+function navEnabled(app: ElectronApplication) {
+  return app.evaluate(({ Menu }) => {
+    const menu = Menu.getApplicationMenu();
+    return {
+      back: menu?.getMenuItemById("back")?.enabled,
+      forward: menu?.getMenuItemById("forward")?.enabled,
+    };
+  });
+}
+
 /**
  * Time for a command that must do nothing to have done something. A fixed wait on purpose: nothing signals that a
  * menu command was ignored.
@@ -146,7 +157,8 @@ test("menu items open their pages, the shortcuts list, the updates check and the
       await pick(app, "new-exam");
       await expect(page).toHaveURL(/#\/plans\/new$/, { timeout: 500 });
     }).toPass();
-    await pick(app, "back");
+    // A section goes straight to its main page.
+    await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
 
     await pick(app, "settings");
@@ -165,14 +177,6 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
     await pick(app, "exams");
     await expect(page).toHaveURL(/#\/exams$/);
-    // The Exams door remembers where it was left after the page renders; on a slow runner the next picks can come first.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (JSON.parse(sessionStorage.getItem("pyxis.lastDoorPath") ?? "{}") as { exams?: string }).exams,
-        ),
-      )
-      .toBe("/exams");
     await pick(app, "new-chat");
     await expect(page).toHaveURL(/#\/ask$/);
     await pick(app, "about");
@@ -205,6 +209,9 @@ test("menu items open their pages, the shortcuts list, the updates check and the
     });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText("Nuovo esame")).toBeVisible();
+    // Avanti follows Indietro, with the same kind of key.
+    const forwardRow = dialog.locator(".px-shortcuts-row").filter({ hasText: /^Avanti/ });
+    await expect(forwardRow.locator("dd")).toHaveText(mac ? /^⌘.*\]/ : /^Alt\+→/);
     await expect(dialog.getByText("Gira la flashcard")).toBeVisible();
     await expect(dialog.getByText("Annulla l'ultimo tratto")).toBeVisible();
     await expect(
@@ -281,6 +288,124 @@ test("menu items open their pages, the shortcuts list, the updates check and the
   }
 });
 
+test("Avanti exists, and Indietro and Avanti are on only where there is somewhere to go", async () => {
+  test.setTimeout(90000);
+  const { app, page, userData } = await launch({ onboarded: true });
+  try {
+    seed(userData, (db) => {
+      seedPlan(db, {
+        id: "nav-plan",
+        title: "Fisica 1",
+        language: "it",
+        target: 0.75,
+        topics: [{ id: "nav-topic", title: "Dinamica" }],
+      });
+    });
+    await page.reload();
+    expect(
+      await app.evaluate(({ Menu }) => {
+        const item = Menu.getApplicationMenu()?.getMenuItemById("forward");
+        return [item?.label, item?.accelerator];
+      }),
+    ).toEqual(["Avanti", mac ? "Cmd+]" : "Alt+Right"]);
+
+    // A section has no back control, and nothing is ahead of it.
+    await expect(page.getByRole("heading", { level: 1, name: "Esami" })).toBeVisible();
+    await expect.poll(() => navEnabled(app)).toEqual({ back: false, forward: false });
+
+    // An exam's settings have one, and Indietro leads to the exam.
+    await page.evaluate(() => {
+      location.hash = "/plans/nav-plan";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
+    await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
+    await expect(page).toHaveURL(/#\/plans\/nav-plan\/settings$/);
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
+    await pick(app, "back");
+    await expect(page).toHaveURL(/#\/plans\/nav-plan$/);
+    // Back on the exam, which has none, with a page ahead.
+    await expect.poll(() => navEnabled(app)).toEqual({ back: false, forward: true });
+    await pick(app, "forward");
+    await expect(page).toHaveURL(/#\/plans\/nav-plan\/settings$/);
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
+
+    // Main builds the menu again when the language changes, and keeps what the renderer last said about the two items.
+    await page.evaluate(() => window.pyxis.setMenuLanguage("en"));
+    await expect.poll(() => topLevel(app)).toContain("Go");
+    expect(await navEnabled(app)).toEqual({ back: true, forward: false });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the swipe and the mouse's side buttons go back and forward, as the menu does", async () => {
+  test.setTimeout(90000);
+  const { app, page, userData } = await launch({ onboarded: true });
+  try {
+    seed(userData, (db) => {
+      seedPlan(db, {
+        id: "nav-plan",
+        title: "Fisica 1",
+        language: "it",
+        target: 0.75,
+        topics: [{ id: "nav-topic", title: "Dinamica" }],
+      });
+    });
+    await page.reload();
+    await page.evaluate(() => {
+      location.hash = "/plans/nav-plan";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Fisica 1" })).toBeVisible();
+    await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
+    const settings = /#\/plans\/nav-plan\/settings$/;
+    const exam = /#\/plans\/nav-plan$/;
+    await expect(page).toHaveURL(settings);
+    // The commands are sent once the renderer listens and has reported its state.
+    await expect.poll(() => navEnabled(app)).toEqual({ back: true, forward: false });
+
+    const swipe = (direction: string) =>
+      app.evaluate(({ BrowserWindow }, direction) => {
+        BrowserWindow.getAllWindows()[0]!.emit("swipe", {}, direction);
+      }, direction);
+    // A swipe to the left goes back, to the right forward; up and down do nothing.
+    await swipe("up");
+    await settle(page);
+    await expect(page).toHaveURL(settings);
+    await swipe("left");
+    await expect(page).toHaveURL(exam);
+    await swipe("right");
+    await expect(page).toHaveURL(settings);
+
+    // Button 3 is Indietro and button 4 is Avanti; the page's default is prevented, and other buttons are left alone.
+    const press = (button: number) =>
+      page.evaluate((button) => {
+        const event = new MouseEvent("mouseup", { button, bubbles: true, cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, button);
+    expect(await press(1)).toBe(false);
+    await settle(page);
+    await expect(page).toHaveURL(settings);
+    expect(await press(3)).toBe(true);
+    await expect(page).toHaveURL(exam);
+    expect(await press(4)).toBe(true);
+    await expect(page).toHaveURL(settings);
+    // With nothing ahead, Avanti does nothing; neither does Indietro from a section.
+    expect(await press(4)).toBe(true);
+    await settle(page);
+    await expect(page).toHaveURL(settings);
+    await pick(app, "exams");
+    await expect(page).toHaveURL(/#\/exams$/);
+    await press(3);
+    await settle(page);
+    await expect(page).toHaveURL(/#\/exams$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a menu pick does nothing during setup", async () => {
   const { app, page, userData } = await launch({ onboarded: false });
   try {
@@ -305,7 +430,7 @@ test("a menu pick does nothing during setup", async () => {
   }
 });
 
-test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation alone", async () => {
+test("a menu pick leaves a dialog, unsaved text and a running simulation alone, and a quiz holds nothing", async () => {
   test.setTimeout(90000);
   const { app, page, userData } = await launch({ onboarded: true });
   try {
@@ -425,23 +550,18 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
         "/plans/menu-plan/quiz/menu-topic?attempt=menu-quiz-attempt";
     });
     await expect(page.locator(".px-qz-sheet")).toBeVisible();
-    await settle(page);
-    const quiz = page.url();
-    for (const id of [
-      "settings",
-      "ask",
-      "exams",
-      "new-exam",
-      "new-chat",
-      "library",
-      "about",
-      "back",
-    ]) {
-      await pick(app, id);
-      await settle(page);
-      expect(page.url(), id).toBe(quiz);
-    }
-    // The list of shortcuts is the one thing that opens: its quiz keys are worth looking up.
+    // Its answers save themselves, so a quiz holds nothing: Indietro is on and leaves for the exam, and so does any other
+    // command.
+    await expect.poll(async () => (await navEnabled(app)).back).toBe(true);
+    await pick(app, "back");
+    await expect(page).toHaveURL(/#\/plans\/menu-plan$/);
+    await page.evaluate(() => {
+      location.hash = "/plans/menu-plan/quiz/menu-topic?attempt=menu-quiz-attempt";
+    });
+    await expect(page.locator(".px-qz-sheet")).toBeVisible();
+    await pick(app, "settings");
+    await expect(page).toHaveURL(/#\/settings$/);
+    // The list of shortcuts opens anywhere.
     await pick(app, "shortcuts");
     await expect(
       page.getByRole("dialog", { name: "Scorciatoie da tastiera" }),
@@ -464,10 +584,13 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await page.evaluate(() => {
       location.hash = "/exams";
     });
+    // The shell reads the running exam when it opens.
+    await page.reload();
     await expect(page.getByRole("button", { name: "Riprendi" })).toBeVisible();
     await pick(app, "settings");
     await settle(page);
     await expect(page).toHaveURL(/#\/exams$/);
+    await expect.poll(() => navEnabled(app)).toEqual({ back: false, forward: false });
     // And on the exam page itself.
     await page.evaluate(() => {
       location.hash = "/plans/menu-plan/exam/menu-exam-attempt";
@@ -475,11 +598,23 @@ test("a menu pick leaves a dialog, unsaved text, a quiz and a running simulation
     await expect(page.getByRole("timer")).toBeVisible();
     await settle(page);
     const exam = page.url();
-    for (const id of ["settings", "ask", "library", "new-exam"]) {
+    for (const id of ["settings", "ask", "library", "new-exam", "back", "forward"]) {
       await pick(app, id);
       await settle(page);
       expect(page.url(), id).toBe(exam);
     }
+    // Indietro and Avanti are greyed, and the swipe and the mouse's side buttons do nothing either.
+    await expect.poll(() => navEnabled(app)).toEqual({ back: false, forward: false });
+    await app.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0]!;
+      win.emit("swipe", {}, "left");
+      win.emit("swipe", {}, "right");
+    });
+    await page.evaluate(() => {
+      for (const button of [3, 4]) window.dispatchEvent(new MouseEvent("mouseup", { button, bubbles: true, cancelable: true }));
+    });
+    await settle(page);
+    expect(page.url()).toBe(exam);
   } finally {
     await app.close();
     removeTestFolder(userData);

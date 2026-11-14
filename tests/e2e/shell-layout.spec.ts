@@ -79,14 +79,14 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await expect(page).toHaveURL(/#\/ask$/);
     await expect(selected).toHaveAccessibleName("Nuova chat");
 
-    // Settings, from the profile's menu at the foot, belongs to no section: none is highlighted and each navigates.
+    // Settings, from the profile's menu at the foot, keeps the row of the page it was opened from lit, and each navigates.
     const settings = async () => {
       await side.getByRole("button", { name: /^Profilo/ }).click();
       await page.getByRole("menuitem", { name: "Impostazioni" }).click();
       await expect(page).toHaveURL(/#\/settings$/);
     };
     await settings();
-    await expect(selected).toHaveCount(0);
+    await expect(selected).toHaveAccessibleName("Nuova chat");
     await door("Nuova chat").click();
     await expect(page).toHaveURL(/#\/ask$/);
     await settings();

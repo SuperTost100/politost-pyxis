@@ -24,7 +24,7 @@ import { RenameField, type ChatActions } from "../../features/ask/chatActions";
 import { menuTrigger } from "../../lib/itemMenu";
 import { useChats, useProfile } from "../../lib/queries";
 import { useAppState } from "../app-state";
-import { doorTarget, isMapPath } from "../doors";
+import type { Section } from "../trail";
 import "./Sidebar.css";
 
 /** How many recent chats the sidebar lists; "All chats" shows only when there are more, and opens them all in the search. */
@@ -59,6 +59,11 @@ export function keyLabel(accelerator: string): string {
   return mods.map((part) => glyph[part] ?? part).join("") + parts[parts.length - 1];
 }
 
+/** A row of the sidebar starts a new trail: the page it opens has no page behind it to go back to (`history.ts`). */
+const fromSidebar = { via: "sidebar" } as const;
+
+const isChatRow = (section: Section, id: string) => section !== null && typeof section === "object" && section.chat === id;
+
 type Item = { key: string; to: string; icon: LucideIcon; label: string; accelerator: string; current: boolean };
 
 /**
@@ -67,12 +72,13 @@ type Item = { key: string; to: string; icon: LucideIcon; label: string; accelera
  * simulation hides everything that leads to Chiedi.
  */
 export function Sidebar({
-  pathname,
+  section,
   simulation,
   onSearch,
   actions,
 }: {
-  pathname: string;
+  /** The row to light: the section of the page showing, or opening (see `trail.ts`), not its address. */
+  section: Section;
   /** True while an exam simulation runs, and while that is still being checked. */
   simulation: boolean;
   onSearch: (scope: "all" | "chats") => void;
@@ -83,34 +89,33 @@ export function Sidebar({
   const narrow = useSyncExternalStore(subscribeNarrow, () => NARROW.matches);
   const folded = chosen || narrow;
   const chats = useChats();
-  const library = pathname.startsWith("/exams/library");
-  const map = isMapPath(pathname);
 
-  // Each section's row; Chiedi has no row of its own, since the sidebar starts a new chat and lists the recent ones.
+  // Each section's row, which opens the section's main page; Chiedi has no row of its own, since the sidebar starts a new
+  // chat and lists the recent ones. The row lit is the page's section, so a map opened from an exam keeps Esami lit.
   const sections: Partial<Record<GoCommand, Omit<Item, "key" | "accelerator">>> = {
     exams: {
-      to: doorTarget("exams", pathname),
+      to: "/exams",
       icon: GraduationCap,
       label: t("doors.exams"),
-      current: simulation || (!library && !map && (pathname.startsWith("/exams") || pathname.startsWith("/plans"))),
+      current: simulation || section === "exams",
     },
     maps: {
-      to: doorTarget("maps", pathname),
+      to: "/maps",
       icon: Network,
       label: t("doors.maps"),
-      current: map || pathname.startsWith("/maps"),
+      current: section === "maps",
     },
     flashcards: {
       to: "/flashcards",
       icon: Layers,
       label: t("flashcards.title"),
-      current: pathname.startsWith("/flashcards"),
+      current: section === "flashcards",
     },
     library: {
       to: "/exams/library",
       icon: BookOpen,
       label: t("nav.library"),
-      current: library,
+      current: section === "library",
     },
   };
   const items: Item[] = [
@@ -123,7 +128,7 @@ export function Sidebar({
             icon: SquarePen,
             label: t("ask.new"),
             accelerator: "CmdOrCtrl+Shift+N",
-            current: pathname === "/ask",
+            current: section === "ask",
           },
         ]),
     // The sections in the Go menu's order, which gives each its number key.
@@ -176,7 +181,7 @@ export function Sidebar({
         <span>Pyxis</span>
       </span>
     ) : (
-      <Link className="px-side-brand" to="/ask" aria-label="Pyxis">
+      <Link className="px-side-brand" to="/ask" state={fromSidebar} aria-label="Pyxis">
         <PyxisMark />
         <span>Pyxis</span>
       </Link>
@@ -219,6 +224,7 @@ export function Sidebar({
           <Link
             key={item.key}
             to={item.to}
+            state={fromSidebar}
             data-tip={item.label}
             aria-current={item.current ? "page" : undefined}
           >
@@ -251,7 +257,8 @@ export function Sidebar({
                       <>
                         <Link
                           to={`/ask/${chat.id}`}
-                          aria-current={pathname === `/ask/${chat.id}` ? "page" : undefined}
+                          state={fromSidebar}
+                          aria-current={isChatRow(section, chat.id) ? "page" : undefined}
                         >
                           <span className="px-side-chat-title">{title}</span>
                           {chat.subject ? <span className="px-side-chat-sub">{chat.subject}</span> : null}
