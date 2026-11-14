@@ -497,6 +497,11 @@ html[data-focus-source="keyboard"] .ant-picker-focused:has(:focus-visible) {
   gap: var(--space-4);
   padding-top: var(--space-8);
 }
+/* A ghost button at the start of the row (Annulla la preparazione, Passo precedente) puts its text on the column's edge,
+   its fill reaching past by the button's own padding, as the ghost buttons of other rows do. */
+.focus-actions-bar > span:first-child > .ant-btn-variant-text {
+  margin-inline-start: -15px;
+}
 
 .focus-main .gallery-row {
   margin-bottom: var(--space-6);

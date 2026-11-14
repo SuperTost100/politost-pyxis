@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createInstance } from "i18next";
 import { describe, expect, it } from "vitest";
 
 function keys(value: unknown, prefix = ""): string[] {
@@ -36,6 +37,47 @@ describe("interface languages", () => {
     expect(italian.length).toBeGreaterThan(4);
     for (const [key, text] of italian) expect(text, key).toMatch(/^(Eliminare|Rimuovere) .*\?$/);
     for (const [key, text] of titles(read("en.json"))) expect(text, key).toMatch(/^(Delete|Remove) .*\?$/);
+  });
+
+  it("puts a name the student gave in «…» in Italian and “…” in English, in every confirmation title and the sentences about it", () => {
+    const read = (file: string) => JSON.parse(readFileSync(resolve(dir, file), "utf8")) as Record<string, unknown>;
+    const strings = (tree: Record<string, unknown>) =>
+      keys(tree).map((key): [string, string] => [
+        key,
+        String(key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown>)[part], tree)),
+      ]);
+    const italian = strings(read("it.json"));
+    const english = strings(read("en.json"));
+    const titles = (all: Array<[string, string]>) =>
+      all.filter(([key, text]) => /(deleteTitle|removeTitle|removeSourceTitle|unlinkTitle|findTitle)$/.test(key) && text.includes("{{"));
+    expect(titles(italian).length).toBeGreaterThan(5);
+    for (const [key, text] of titles(italian)) expect(text, key).toMatch(/«\{\{\w+\}\}»/);
+    for (const [key, text] of titles(english)) expect(text, key).toMatch(/“\{\{\w+\}\}”/);
+    // Never the other language's marks, and never a variable that names a thing in one language and not the other.
+    for (const [key, text] of italian) expect(text, key).not.toMatch(/[“”]\{\{|\}\}[“”]/);
+    for (const [key, text] of english) expect(text, key).not.toMatch(/[«»]/);
+  });
+
+  it("counts what is done, not what there is, in the lines that read 'X of Y'", async () => {
+    const read = (file: string) => JSON.parse(readFileSync(resolve(dir, file), "utf8")) as Record<string, unknown>;
+    const say = async (lng: "it" | "en") => {
+      const i18n = createInstance();
+      await i18n.init({
+        lng,
+        resources: { it: { translation: read("it.json") }, en: { translation: read("en.json") } },
+        interpolation: { escapeValue: false },
+      });
+      return i18n.t;
+    };
+    const it_ = await say("it");
+    expect([0, 1, 2].map((count) => it_("examPage.stepsDone", { count, total: 3 }))).toEqual([
+      "0 passi su 3 fatti",
+      "1 passo su 3 fatto",
+      "2 passi su 3 fatti",
+    ]);
+    expect([1, 2].map((count) => it_("smart.recapProgress", { count, total: 3 }))).toEqual(["1 risposta su 3", "2 risposte su 3"]);
+    const en = await say("en");
+    expect([1, 2].map((count) => en("examPage.stepsDone", { count, total: 3 }))).toEqual(["1 of 3 steps done", "2 of 3 steps done"]);
   });
 
   it('writes "ad", not "a", before a provider whose name starts with a vowel', () => {

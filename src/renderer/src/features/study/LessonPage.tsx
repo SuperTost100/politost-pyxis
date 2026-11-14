@@ -106,7 +106,7 @@ function RewriteFallback({
         action: { label: t("lesson.partRetry"), onClick: () => retry.mutate(), disabled: retry.isPending },
         secondary:
           engine?.action ??
-          (key?.startsWith("engines.errors.") ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") } : undefined),
+          (key?.startsWith("engines.errors.") ? { label: t("settings.enginesTitle"), onClick: () => navigate("/settings/engines") } : undefined),
         details: error || undefined,
       }}
     />

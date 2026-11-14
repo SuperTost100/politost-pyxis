@@ -1387,6 +1387,8 @@ export function MapPage() {
     name: list.data?.some((m) => m.id === activeId) ? { text: title } : null,
     parent: { to: backTo },
   });
+  // Opened from its exam, the back control already leads there, so the line under the title only names the exam.
+  const examIsBack = Boolean(back && planId && pageOf(back.to) === pageOf(`/plans/${planId}`));
   // A deleted map is no longer a place to go back to.
   const forgetMap = (mapId: string | undefined) => {
     const here = `${location.pathname}${location.search}`;
@@ -1545,7 +1547,13 @@ export function MapPage() {
           ) : null}
         </div>
         <p className="px-map-sub">
-          {scope.data?.planTitle ? (
+          {scope.data?.planTitle && examIsBack ? (
+            // The way back already leads to the exam, so its name is plain text here: one control per place.
+            <span className="px-map-subject">
+              <GraduationCap size={14} strokeWidth={1.75} aria-hidden />
+              <span>{scope.data.planTitle}</span>
+            </span>
+          ) : scope.data?.planTitle ? (
             <RouterLink
               to={`/plans/${planId}`}
               aria-label={t("map.openExam", { title: scope.data.planTitle })}

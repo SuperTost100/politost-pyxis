@@ -3,6 +3,7 @@ import { Check, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CardFaceFields } from "../../components/CardFaceFields";
+import { BarTool } from "./StudyBar";
 
 /**
  * "New flashcard" in the study bar (pyxis-mockups app/study.html, "s-cards-a-new"): a small form that grows out of the
@@ -80,11 +81,10 @@ export function NewCardButton({
         close();
       }}
     >
-      <Button
+      <BarTool
         ref={button}
-        type="text"
-        className="px-studybar-action"
         icon={<Plus size={16} strokeWidth={1.75} aria-hidden />}
+        label={t("cards.new")}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? "new-card" : undefined}
@@ -92,9 +92,7 @@ export function NewCardButton({
           if (!open) setOriginX((button.current?.offsetWidth ?? 0) / 2);
           onOpenChange(!open);
         }}
-      >
-        <span className="px-studybar-label">{t("cards.new")}</span>
-      </Button>
+      />
       {open ? (
         <div
           id="new-card"

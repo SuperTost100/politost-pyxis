@@ -3835,7 +3835,7 @@ async function openState(page: Page, name: string) {
       await expect(page.getByText(/^(Domanda|Question) \d+ (di|of) \d+$/)).toHaveCount(0);
       await expect(page.getByText(/\d+ su \d+ risposte? apert[ae] valutat[ae]|\d+ of \d+ open answers? graded/)).toBeVisible();
       await expect(
-        page.getByRole("button", { name: /^(Apri gli strumenti AI|Open the AI tools)$/ }),
+        page.getByRole("button", { name: /^(Strumenti AI|AI tools)$/ }),
       ).toBeVisible();
       break;
     case "simulation-ready":
@@ -4668,8 +4668,17 @@ async function openState(page: Page, name: string) {
       // Cancelling is in the page in full words; the bar holds the way back, the title and line, and Attività.
       await expect(page.getByRole("banner").getByRole("button")).toHaveCount(2);
       const cancel = page.getByRole("button", { name: both("Annulla la preparazione", "Cancel the preparation") });
-      if (name === "build-running") await expect(cancel).toBeVisible();
-      else await expect(cancel).toHaveCount(0);
+      if (name === "build-running") {
+        await expect(cancel).toBeVisible();
+        // A ghost button at the start of the column puts its text on the column's edge, where the page's text starts.
+        const written = (await page.locator(".px-build-head p").boundingBox())!;
+        const word = await cancel.evaluate((button) => {
+          const range = document.createRange();
+          range.selectNodeContents(button.querySelector("span") ?? button);
+          return range.getBoundingClientRect().left;
+        });
+        expect(Math.abs(word - written.x), "the button's text starts where the page's text starts").toBeLessThan(1);
+      } else await expect(cancel).toHaveCount(0);
       if (name === "build-done") await expect(page.getByRole("button", { name: both("Apri l'esame", "Open the exam") })).toBeVisible();
       if (name === "build-cancelled") await expect(page.getByRole("button", { name: both("Riprova", "Try again") })).toBeVisible();
       break;
@@ -4712,7 +4721,7 @@ async function openState(page: Page, name: string) {
     case "gallery-dialog-form":
     case "gallery-dialog-info": {
       const kinds: Record<string, [RegExp, RegExp]> = {
-        "gallery-dialog-confirm": [both("Conferma che elimina", "Confirmation that deletes"), both("Eliminare Fisica 1\\?", "Delete Physics 1\\?")],
+        "gallery-dialog-confirm": [both("Conferma che elimina", "Confirmation that deletes"), both("Eliminare «Fisica 1»\\?", "Delete “Physics 1”\\?")],
         "gallery-dialog-form": [both("Modulo", "Form"), both("Nuova mappa", "New map")],
         "gallery-dialog-info": [both("Solo informa", "Only informs"), both("Scorciatoie da tastiera", "Keyboard shortcuts")],
       };

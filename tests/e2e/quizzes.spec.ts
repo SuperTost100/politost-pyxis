@@ -475,6 +475,9 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
   try {
     await go(page, `/plans/${planId}/diagnostic`);
     await expect(page.getByRole("heading", { name: "Test diagnostico", level: 2 })).toBeVisible();
+    // The bar names the thing on the intro as it does under the questions, not "Quiz", over the exam's name.
+    await expect(page.locator(".px-studybar-title h1")).toHaveText("Test diagnostico");
+    await expect(page.locator(".px-studybar-title p")).not.toHaveText(/Quiz/);
     await expect(page.getByText("10 domande", { exact: true })).toBeVisible();
     await expect(page.getByText(/alla fine/)).toHaveCount(0);
     // The bar's back control is the only exit: the intro's foot has Start alone, with no Back and no Close.

@@ -20,7 +20,7 @@ No emoji in the interface.
 
 ## Leaving and deleting
 
-- A confirmation's title is a question in the infinitive: "Eliminare Fisica 1?", "Scollegare «Analisi 2»?". Its button repeats the action and names the thing: "Elimina l'esame", not "OK" or "Elimina per sempre".
+- A confirmation's title is a question in the infinitive: "Eliminare «Fisica 1»?", "Scollegare «Analisi 2»?". A name the student gave (an exam, a subject, a map, a chat, a folder, an activity, a file) is always in «…» in Italian and “…” in English, in every confirmation title and in the sentences that say what happened to it ("Materia «Fisica 2» eliminata."). Its button repeats the action and names the thing: "Elimina l'esame", not "OK" or "Elimina per sempre".
 - In a menu, a destructive item is "Elimina" plus the thing, with "…" when a confirmation follows: "Elimina la chat…", and the confirmation's button repeats it without the dots. When nothing is deleted because the thing stays elsewhere, the action keeps its own verb: "Scollega…", "Rimuovi dall'esame". In English: "Delete the chat…" and "Delete the chat".
 - The body says what is lost and what stays: "Le fonti restano nella Libreria." A confirmation that only informs has one button, "Ho capito", and the X.
 - Leaving with work that would be lost is always asked in the same words: "Uscire senza salvare?", one sentence on what would be lost ("Il disegno dopo l'ultimo salvataggio andrà perso."), "Resta qui" and "Esci senza salvare". In English: "Leave without saving?", "Stay here" and "Leave without saving".
@@ -28,7 +28,7 @@ No emoji in the interface.
 
 ## The AI tools
 
-A student knows the account, not the program: the tools are Claude, ChatGPT, Cursor and Gemini in every screen and in both languages (`TOOL_NAMES` in `src/shared/tool-names.ts`), and the thing they are is a _strumento AI_ (an _AI tool_), the word of the Settings page. The program behind a tool (Claude Code, Codex, Cursor Agent, Antigravity, `TOOL_PROGRAMS`) is written once, as the detail under the tool's name in the Settings list, where the student installs it or signs in to it. Provider ids, settings keys and stored values keep their code names.
+A student knows the account, not the program: the tools are Claude, ChatGPT, Cursor and Gemini in every screen and in both languages (`TOOL_NAMES` in `src/shared/tool-names.ts`), and the thing they are is a _strumento AI_ (an _AI tool_), the word of the Settings page. The program behind a tool (Claude Code, Codex, Cursor Agent, Antigravity, `TOOL_PROGRAMS`) is written once, as the detail under the tool's name in the Settings list, where the student installs it or signs in to it. Provider ids, settings keys and stored values keep their code names. A control that leads to that Settings page is named for it, "Strumenti AI" ("AI tools"), wherever it sits.
 
 ## Italian and English, in step
 
