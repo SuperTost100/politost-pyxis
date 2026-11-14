@@ -203,7 +203,7 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     await expect(page.getByRole("list", { name: "I tuoi esami" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiviati" })).toHaveCount(0);
     // The Esami menu holds importing, every flashcard and the mistakes notebook.
-    await page.getByRole("button", { name: "Altro" }).click();
+    await page.getByRole("button", { name: "Altro su Esami" }).click();
     await expect(page.getByRole("menuitem", { name: "Importa da un file .pyxis" })).toBeVisible();
     await page.getByRole("menuitem", { name: "Tutte le flashcard" }).click();
     await expect(page).toHaveURL(/#\/exams\/cards$/);

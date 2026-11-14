@@ -23,8 +23,8 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await expect(page.getByRole("button", { name: /Materia/ })).toHaveCount(0);
     await page.evaluate(() => { window.location.hash = "#/settings/subjects"; });
     await expect(page).toHaveURL(/#\/exams$/);
-    // With no plans yet, the subjects are in the same More menu the plan toolbar has.
-    await page.getByRole("button", { name: "Altro", exact: true }).click();
+    // With no plans yet, the subjects are in the same menu the exam list has.
+    await page.getByRole("button", { name: "Altro su Esami", exact: true }).click();
     await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
     await animationsSettled(page);
     for (const name of ["Fisica", "Analisi"]) {

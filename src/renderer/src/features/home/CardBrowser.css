@@ -153,3 +153,8 @@
   margin: 0 0 var(--space-2);
   color: var(--ink-muted);
 }
+
+/* The back control and the head sit one block above the toolbar, 24px from it as a sub-page's title is. */
+.px-cardbrowser-head {
+  margin-bottom: var(--space-2);
+}

@@ -28,6 +28,7 @@ function groups(mac: boolean): Group[] {
         })),
         { id: "back", keys: mac ? ["mod", "bracket"] : ["alt", "left"] },
         { id: "forward", keys: mac ? ["mod", "rbracket"] : ["alt", "right"] },
+        { id: "pageMenu", keys: ["shift", "F10"] },
         { id: "shortcuts", keys: ["mod", "slash"] },
         { id: "zoomIn", keys: ["mod", "plus"] },
         { id: "zoomOut", keys: ["mod", "minus"] },

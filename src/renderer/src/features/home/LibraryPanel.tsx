@@ -5,14 +5,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Button, Input, Modal, Progress, Select, type GetRef } from "antd";
+import { Button, Input, Modal, Progress, Select, type GetRef, type MenuProps } from "antd";
 import { FileText, CheckCircle2 } from "lucide-react";
 import { SegmentedTabs } from "../../components/SegmentedTabs";
 import {
   ListToolbar,
-  ToolbarMenu,
   ToolbarSearch,
 } from "../../components/ListToolbar";
+import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { sizeText } from "../../components/SourceRow";
 import { SourceDetails } from "../../components/SourceDetails";
 import "./LibraryPanel.css";
@@ -1060,6 +1060,11 @@ export function LibraryPanel({
       }
     },
   };
+  // The Library's menu, for the dots in the head and a right-click on it.
+  const pageMenu: MenuProps = {
+    items: [{ key: "books", label: t("books.open") }],
+    onClick: () => setBooksOpen(true),
+  };
   return (
     <div className="px-library">
       {addModal}
@@ -1071,7 +1076,7 @@ export function LibraryPanel({
           void client.invalidateQueries({ queryKey: ["sources"] });
         }}
       />
-      <div className="px-library-head">
+      <MenuItemArea as="div" className="px-library-head" menu={pageMenu} region={t("sources.shelf.more")}>
         <div className="px-library-head-text">
           <h1 className="title-1">{t("nav.library")}</h1>
         </div>
@@ -1082,13 +1087,14 @@ export function LibraryPanel({
               onLink={() => navigate("/onboarding?again=1&step=material&from=library")}
             />
           ) : null}
+          <MenuButton rightClick menu={pageMenu} label={t("sources.shelf.more")} />
           <div ref={addButton} className="px-library-add-button">
             <PxButton icon="file-plus" onClick={() => setAddOpen(true)}>
               {t("sources.shelf.addFiles")}
             </PxButton>
           </div>
         </div>
-      </div>
+      </MenuItemArea>
       {loadFailed ? (
         <LoadError onRetry={() => void list.refetch()}>
           {t("sources.loadFailed")}
@@ -1146,13 +1152,6 @@ export function LibraryPanel({
                   }),
                 ),
               ]}
-            />
-          }
-          menu={
-            <ToolbarMenu
-              label={t("listToolbar.more")}
-              items={[{ key: "books", label: t("books.open") }]}
-              onSelect={() => setBooksOpen(true)}
             />
           }
         />

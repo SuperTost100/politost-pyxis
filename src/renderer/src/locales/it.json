@@ -50,6 +50,7 @@
       "goFlashcards": "Vai alle Flashcard",
       "back": "Indietro",
       "forward": "Avanti",
+      "pageMenu": "Apri il menu della pagina",
       "shortcuts": "Scorciatoie da tastiera",
       "zoomIn": "Ingrandisci",
       "zoomOut": "Riduci",
@@ -392,6 +393,7 @@
     "groupOlder": "Prima"
   },
   "exams": {
+    "more": "Altro su Esami",
     "plans": "Esami",
     "sources": "Fonti",
     "emptyTitle": "Crea un esame per iniziare",
@@ -912,6 +914,7 @@
       "added_other": "Gli altri {{count}} file della Libreria li hai aggiunti tu."
     },
     "shelf": {
+    "more": "Altro sulla Libreria",
       "addFiles": "Aggiungi file",
       "linkFolder": "Collega una cartella",
       "linkAnother": "Collega un'altra cartella",
@@ -1091,6 +1094,7 @@
     "historyHint": "Anki prosegue il calendario di ogni Flashcard da dove l'ha lasciato Pyxis. Lascia disattivato per far ripartire ogni Flashcard da nuova."
   },
   "cardBrowser": {
+    "more": "Altro sulle flashcard",
     "search": "Cerca nelle flashcard",
     "searchPlaceholder": "Cerca nel fronte e nel retro",
     "exam": "Esame",
@@ -1146,8 +1150,7 @@
     "leechHintNoSource_other": "Dimenticata {{count}} volte. Riscrivila o sospendila."
   },
   "listToolbar": {
-    "clearSearch": "Cancella la ricerca",
-    "more": "Altro"
+    "clearSearch": "Cancella la ricerca"
   },
   "mistakes": {
     "title": "Quaderno degli errori",
@@ -3446,6 +3449,7 @@
     "archivedNotice": "Questo esame è archiviato. Resta fuori dalle code di ripasso e dai consigli."
   },
   "examPage": {
+    "more": "Altro sull'esame",
     "noDate": "Data da scegliere",
     "when": "{{label}} {{date}}",
     "whenToday": "{{label}} oggi",

@@ -241,7 +241,7 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       );
       await page.setViewportSize({ width, height: 800 });
       await page.reload();
-      await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+      await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
       await page.getByRole("menuitem", { name: /^(Aggiungi al calendario|Add to calendar)$/ }).click();
       const notice = page.locator(".ant-message-notice", {
         hasText: /File del calendario salvato|Calendar file saved/,

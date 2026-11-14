@@ -487,3 +487,98 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     removeTestFolder(userData);
   }
 });
+
+/** The four pages whose head holds the page's menu, with the head, the dots' name and the menu's items. */
+const pageHeads: Array<{ hash: string; head: string; dots: string; items: string[] }> = [
+  {
+    hash: "/exams",
+    head: ".px-exams-head",
+    dots: "Altro su Esami",
+    items: ["Importa da un file .pyxis", "Importa da un link", "Tutte le flashcard", "Quaderno degli errori", "Gestisci materie"],
+  },
+  {
+    hash: "/plans/p1",
+    head: ".px-exam-head",
+    dots: "Altro sull'esame",
+    items: ["Ripasso", "Crea un'attività", "Condividi l'esame"],
+  },
+  { hash: "/exams/cards", head: ".px-subpage-head", dots: "Altro sulle flashcard", items: ["Importa da Anki", "Esporta in Anki"] },
+  { hash: "/exams/library", head: ".px-library-head", dots: "Altro sulla Libreria", items: ["Libri PoliTost gratuiti"] },
+];
+
+test("the head of Esami, an exam, the flashcard list and the Library has the dots, and a right-click on it or on the dots opens the same menu at the pointer", async () => {
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-page-menus-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSource(db, {
+      id: "s1",
+      title: "Appunti di fisica",
+      document: { id: "d1" },
+      passages: [{ id: "p1", text: "Il calore si trasmette per conduzione.", locator: {}, section: "2. Termodinamica" }],
+    });
+    seedPlan(db, { id: "p1", title: "Fisica 1", topics: [{ id: "t1", title: "Termodinamica" }] });
+    db.exec(
+      "INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES('k1','p1','t1','Che cos''è il calore?','Energia in transito.',1)",
+    );
+    db.close();
+    await page.reload();
+
+    for (const { hash, head, dots, items } of pageHeads) {
+      await page.evaluate((next) => {
+        location.hash = next;
+      }, hash);
+      const area = page.locator(head);
+      const button = area.getByRole("button", { name: dots, exact: true });
+      await expect(button, hash).toBeVisible();
+      // No "Altro" text button is left in the head.
+      await expect(area.getByRole("button", { name: "Altro", exact: true }), hash).toHaveCount(0);
+      // The dots open it by a click, a right-click and the menu keys; Shift+F10 on them opens it under them.
+      expect(await opensEveryWay(page, button, dots, items), hash).toEqual(items);
+
+      // The open menu hangs from the pointer: its top is level with it and one of its sides is where it was.
+      const hangsFrom = (point: { x: number; y: number }, message: string) =>
+        expect
+          .poll(
+            async () => {
+              const at = (await page.getByRole("menu").boundingBox())!;
+              return [Math.abs(at.y - point.y) < 24, Math.abs(at.x - point.x) < 24 || Math.abs(at.x + at.width - point.x) < 24];
+            },
+            { message },
+          )
+          .toEqual([true, true]);
+
+      // A right-click on the head's title opens the same menu with its corner at the pointer, far from the dots.
+      const title = area.getByRole("heading", { level: 1 });
+      const box = (await title.boundingBox())!;
+      const point = { x: box.x + Math.min(40, box.width / 2), y: box.y + box.height / 2 };
+      await page.mouse.click(point.x, point.y, { button: "right" });
+      expect(await itemsOf(page, dots), hash).toEqual(items);
+      await hangsFrom(point, `${hash}: the title`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu"), hash).toHaveCount(0);
+
+      // A right-click on the dots themselves opens it at the pointer, not under the button, as on the head around them.
+      // A right-click elsewhere on the head, with that menu open, moves it there: one menu stays.
+      const dotsBox = (await button.boundingBox())!;
+      const onDots = { x: dotsBox.x + 3, y: dotsBox.y + 3 };
+      await page.mouse.click(onDots.x, onDots.y, { button: "right" });
+      expect(await itemsOf(page, dots), hash).toEqual(items);
+      await hangsFrom(onDots, `${hash}: the dots`);
+      await page.mouse.click(point.x, point.y, { button: "right" });
+      await expect(page.getByRole("menu"), hash).toHaveCount(1);
+      await hangsFrom(point, `${hash}: the title, with the menu open`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("menu"), hash).toHaveCount(0);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

@@ -56,9 +56,9 @@ async function launch(userData: string, books: string) {
 const button = (page: Page, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 
-/** With sources in the Library, the free books sit in the toolbar's More menu. */
+/** With sources in the Library, the free books sit in the page's menu, the dots in its head. */
 async function openBooksFromMenu(page: Page) {
-  await button(page, "Altro").click();
+  await button(page, "Altro sulla Libreria").click();
   await page
     .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
     .click();

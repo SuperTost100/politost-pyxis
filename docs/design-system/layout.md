@@ -53,6 +53,12 @@ Whatever has a three-dots menu opens the same menu on a right-click, at the poin
 
 A text field inside such an item (a name being renamed on a subject or a tile) is not part of the item's menu: a right-click there opens the system's text menu (`textMenuTemplate`), which `keepsSystemMenu` in `lib/itemMenu.ts` leaves alone. A name that renames in place from its menu also renames on a double-click when a single click does nothing else: a subject's name in the Library and a map's title on its page do, a map tile's or a file cover's name does not, since a click there opens it.
 
+## The page's menu
+
+A page's own actions (importing, exporting, the Library's free books) are the dots (`MenuButton`, `icon="ellipsis"`, `size="md"`) in the page's head, beside its main action, with an accessible name that says what the menu is for: "Altro su Esami", "Altro sull'esame", "Altro sulle flashcard", "Altro sulla Libreria". There is no "Altro" text button. The head is also an item with that menu (`MenuItemArea`), so a right-click on it opens the menu at the pointer, and the context-menu key and Shift+F10 open it under the focused element, the dots when they have the focus. A text field in the head keeps the system's menu. Build the menu once as a `MenuProps` and give it to both the dots and the head. Help's shortcuts dialog lists "Apri il menu della pagina · Maiusc F10".
+
+`ChoiceMenu` (`components/ListToolbar.tsx`) is a different thing: a round button with a label and a chevron that offers a choice, such as "Scegli altro" at the foot of a lesson part. It never holds a page's actions.
+
 ## Empty states
 
 One line on what will appear here and the action that starts it, in the place where the content will be. No illustration, no joke, no second button.

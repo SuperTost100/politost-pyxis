@@ -494,7 +494,7 @@ test("the label follows the app's language, also after a reload", async () => {
   test.setTimeout(90_000);
   const { page } = walk;
   await start(page, "#/exams", "Esami");
-  await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
+  await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
   await page.getByRole("menuitem", { name: "Quaderno degli errori" }).click();
   await expect(backControl(page)).toHaveText("Esami");
   await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));

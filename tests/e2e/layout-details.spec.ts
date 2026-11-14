@@ -94,7 +94,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
           await page.locator(".px-xpath-row.is-topic .px-xpath-head").first().click();
           // The topic's steps and the dialog that creates an activity call the lesson by the same name.
           await expect(page.locator(".px-xpath-substep").first()).toContainText(lessonName);
-          await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro|More)$/ }).click();
+          await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
           await page.getByRole("menuitem", { name: /^(Crea un'attività|Create an activity)$/ }).click();
           const create = page.getByRole("dialog", { name: /^(Crea un'attività|Create an activity)$/ });
           await expect(create).toContainText(lessonName);

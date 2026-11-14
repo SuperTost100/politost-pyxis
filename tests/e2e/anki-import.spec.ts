@@ -114,8 +114,8 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await expect(page.getByRole("status")).toHaveText("1 flashcard");
 
     // A file that is not a package says so.
-    // Import and export sit in the toolbar's More menu.
-    await page.getByRole("button", { name: "More", exact: true }).click();
+    // Import and export sit in the page's menu, the dots in its head.
+    await page.getByRole("button", { name: "More for flashcards", exact: true }).click();
     await page.getByRole("menuitem", { name: "Import from Anki" }).click();
     const dialog = page.getByRole("dialog", { name: "Import from Anki" });
     const bad = join(fixtures, "not-anki.apkg");
@@ -217,7 +217,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     ]);
 
     // Export from the same tab reaches a file with the cards.
-    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("button", { name: "More for flashcards", exact: true }).click();
     await page.getByRole("menuitem", { name: "Export to Anki" }).click();
     const exporting = page.getByRole("dialog", { name: "Export to Anki" });
     await expect(exporting.getByRole("checkbox")).not.toBeChecked();
@@ -231,7 +231,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
     await expect(exporting).toBeHidden();
     // Closing the dialog returns focus to the menu button it came from.
     await expect(
-      page.getByRole("button", { name: "More", exact: true }),
+      page.getByRole("button", { name: "More for flashcards", exact: true }),
     ).toBeFocused();
   } finally {
     await app.close();

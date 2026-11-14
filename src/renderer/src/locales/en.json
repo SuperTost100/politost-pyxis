@@ -50,6 +50,7 @@
       "goFlashcards": "Go to Flashcards",
       "back": "Back",
       "forward": "Forward",
+      "pageMenu": "Open the page's menu",
       "shortcuts": "Keyboard shortcuts",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out",
@@ -392,6 +393,7 @@
     "groupOlder": "Earlier"
   },
   "exams": {
+    "more": "More for Exams",
     "plans": "Exams",
     "sources": "Sources",
     "emptyTitle": "Create an exam to get started",
@@ -912,6 +914,7 @@
       "added_other": "You added the other {{count}} files in the Library yourself."
     },
     "shelf": {
+    "more": "More for the Library",
       "addFiles": "Add files",
       "linkFolder": "Link a folder",
       "linkAnother": "Link another folder",
@@ -1091,6 +1094,7 @@
     "historyHint": "Anki continues each flashcard's schedule where Pyxis left it. Leave this off to start every flashcard as new."
   },
   "cardBrowser": {
+    "more": "More for flashcards",
     "search": "Search flashcards",
     "searchPlaceholder": "Search the front and back",
     "exam": "Exam",
@@ -1146,8 +1150,7 @@
     "leechHintNoSource_other": "Forgotten {{count}} times. Rewrite it or suspend it."
   },
   "listToolbar": {
-    "clearSearch": "Clear search",
-    "more": "More"
+    "clearSearch": "Clear search"
   },
   "mistakes": {
     "title": "Mistakes notebook",
@@ -3446,6 +3449,7 @@
     "archivedNotice": "This exam is archived. It stays out of your review queues and recommendations."
   },
   "examPage": {
+    "more": "More for this exam",
     "noDate": "Date to be set",
     "when": "{{label}} {{date}}",
     "whenToday": "{{label}} today",
