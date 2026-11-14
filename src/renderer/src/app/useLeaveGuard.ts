@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useBlocker, useLocation } from "react-router";
 import { useConfirm } from "../components/Dialog";
 import { stayingFocus } from "../components/dialogFocus";
+import { useAsksBeforeLeaving } from "./menu-state";
 
 /**
  * Asks "Uscire senza salvare?" before the student leaves a page that holds work it does not save by itself. It stands on
@@ -29,6 +30,8 @@ export function useLeaveGuard({
   const confirm = useConfirm();
   const latest = useRef({ dirty, body, onLeave });
   latest.current = { dirty, body, onLeave };
+  // The menu lets its commands through with text in a field: this guard asks before any of them drops it.
+  useAsksBeforeLeaving();
   const released = useRef(false);
   // A page the router keeps on screen at a new address (the student came straight back to it) guards again.
   const { key } = useLocation();

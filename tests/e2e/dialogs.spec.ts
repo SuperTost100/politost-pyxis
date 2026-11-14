@@ -242,9 +242,28 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await expect(page.getByRole("heading", { name: "Fisica 1", level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
     await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
+    // A page ahead in history, so Avanti has somewhere to go: Fonti and back, with nothing changed yet.
+    await page.getByRole("link", { name: "Vai a Fonti" }).click();
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/sources$/);
+    // Indietro runs the page's back control, there once the page has drawn it.
+    await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
+    await pick(app, "back");
+    await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
     const name = page.getByLabel("Nome dell'esame");
     await name.fill("Fisica generale");
     const body = "Hai cambiato il nome. Se esci adesso, le modifiche vanno perse.";
+
+    // The menu's Indietro and Avanti with the focus in the name being typed: the page asks rather than the menu doing
+    // nothing, and staying keeps the text and the focus.
+    for (const command of ["back", "forward"]) {
+      await expect(name).toBeFocused();
+      await pick(app, command);
+      const asked = await expectLeaveQuestion(page, body);
+      await asked.getByRole("button", { name: "Resta qui" }).click();
+      await expect(asked).toHaveCount(0);
+      await expect(page).toHaveURL(/#\/plans\/plan-a\/settings$/);
+      await expect(name).toHaveValue("Fisica generale");
+    }
 
     // The sidebar: staying keeps the text and gives the focus back to the field the student was typing in.
     await sections.getByRole("link", { name: /^Esami$/ }).click();
@@ -313,12 +332,16 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await expect(question).toHaveCount(0);
     await expect(closeBoard).toBeFocused();
     expect(await strokes()).toBe(1);
-    await pick(app, "back");
+    // The board has no back control yet, only its X, so the menu's Indietro is greyed here and its X is the way out.
+    await expect
+      .poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.enabled))
+      .toBe(false);
+    await closeBoard.click();
     question = await expectLeaveQuestion(page, drawingBody);
     await page.keyboard.press("Escape");
     await expect(question).toHaveCount(0);
     await expect(page).toHaveURL(/#\/tools\/whiteboard$/);
-    await pick(app, "back");
+    await closeBoard.click();
     question = await expectLeaveQuestion(page, drawingBody);
     await question.getByRole("button", { name: "Esci senza salvare" }).click();
     await expect(page).toHaveURL(/#\/ask$/);
