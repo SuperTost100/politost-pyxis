@@ -208,7 +208,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
 
     // The card browser lists them under their subject, as "Senza esame", and reviews them on their own from there.
     await page.evaluate(() => {
-      window.location.hash = "/exams/cards";
+      window.location.hash = "/flashcards/all";
     });
     const physics = page.locator(".px-cardbrowser-subject").filter({ has: page.getByRole("heading", { name: "Fisica I" }) });
     await expect(physics.getByRole("heading", { level: 3 })).toHaveText(["Senza esame"]);

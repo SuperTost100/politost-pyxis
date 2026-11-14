@@ -2,11 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import { Modal, type MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { invoke } from "../../lib/ipc";
 import { LibraryPanel } from "./LibraryPanel";
-import { BackControl } from "../../components/BackControl";
-import { usePlace } from "../../app/usePlace";
 import { Notice } from "../../components/Notice";
 import type { PlanFile } from "@shared/plan-file";
 import { ImportReview } from "../plans/ImportReview";
@@ -14,12 +12,9 @@ import { parsePlanText } from "../plans/importPreview";
 import { ExamsList } from "./ExamsList";
 import "./HomePages.css";
 import { SkeletonRows } from "../../components/Skeleton";
-import { usePlan } from "../../lib/queries";
+import { useSubPageBack } from "./subPageBack";
 
-// Cards and mistakes render Markdown and math, which load with their tab rather than with the window.
-const CardBrowser = lazy(() =>
-  import("./CardBrowser").then((module) => ({ default: module.CardBrowser })),
-);
+// The mistakes notebook renders Markdown and math, which load with its page rather than with the window.
 const MistakesNotebook = lazy(() =>
   import("../study/MistakesNotebook").then((module) => ({
     default: module.MistakesNotebook,
@@ -34,12 +29,11 @@ const SubjectManagerModal = lazy(() =>
 
 /**
  * Esami's routes: the exam list at /exams, and the pages that were its tabs, each now a page of its own: the Library
- * (which the sidebar opens), every flashcard and the mistakes notebook (both in the Esami menu).
+ * (which the sidebar opens) and the mistakes notebook (in the Esami menu). Every flashcard lives under Flashcard.
  */
 export function ExamsHome() {
   const { pathname } = useLocation();
   if (pathname.startsWith("/exams/library")) return <LibraryHome />;
-  if (pathname.startsWith("/exams/cards")) return <CardsHome />;
   if (pathname.startsWith("/exams/mistakes")) return <MistakesHome />;
   return <ExamsListPage />;
 }
@@ -62,7 +56,6 @@ function ExamsListPage() {
       { key: "file", label: t("exams.importFileItem") },
       { key: "link", label: t("exams.importLinkItem") },
       { type: "divider" },
-      { key: "cards", label: t("exams.allCards") },
       { key: "mistakes", label: t("mistakes.title") },
       { type: "divider" },
       { key: "subjects", label: t("ask.manageSubjects") },
@@ -71,8 +64,7 @@ function ExamsListPage() {
       if (key === "subjects") {
         setManaging(true);
         setManagerOpened(true);
-      } else if (key === "cards") navigate("/exams/cards");
-      else if (key === "mistakes") navigate("/exams/mistakes");
+      } else if (key === "mistakes") navigate("/exams/mistakes");
       else planImport.choose(key);
     },
   };
@@ -104,17 +96,6 @@ function ExamsListPage() {
   );
 }
 
-/**
- * The way back of a page that was a tab of Esami: to the page that opened it or to its parent. With `?exam=<id>` the
- * parent is that exam, named by its title.
- */
-function useSubPageBack(): ReactNode {
-  const exam = useSearchParams()[0].get("exam") ?? undefined;
-  const plan = usePlan(exam);
-  const back = usePlace({ parent: plan.data ? { name: { text: plan.data.title } } : undefined });
-  return <BackControl target={back} variant="page" />;
-}
-
 /** A page that was a tab of Esami: its way back and its title. */
 function SubPage({ title, children }: { title: string; children: ReactNode }) {
   const back = useSubPageBack();
@@ -130,27 +111,6 @@ function SubPage({ title, children }: { title: string; children: ReactNode }) {
 /** The Library draws its own head: its title, the folders Pyxis reads and "Aggiungi file". */
 function LibraryHome() {
   return <LibraryPanel sortsSubjects />;
-}
-
-function CardsHome() {
-  const { t } = useTranslation();
-  // Opened from an exam's page (`?exam=<id>`): filtered to that exam.
-  const exam = useSearchParams()[0].get("exam") ?? undefined;
-  const back = useSubPageBack();
-  // The browser draws the head, which holds the page's menu; until it loads, the head shows without its dots.
-  return (
-    <Suspense
-      fallback={
-        <div>
-          {back}
-          <h1 className="title-1 px-subpage-title">{t("exams.allCards")}</h1>
-          <SkeletonRows label={t("components.loading")} />
-        </div>
-      }
-    >
-      <CardBrowser planId={exam} back={back} title={t("exams.allCards")} />
-    </Suspense>
-  );
 }
 
 function MistakesHome() {

@@ -12,7 +12,7 @@ import { seedPlan, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { animationsSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams, fromExamsMenu } from "./doors";
+import { fromChiediToExams, toAllFlashcards } from "./doors";
 
 /** Two subjects, one exam with no subject, and cards that need the folding, the math and the cloze. */
 function seed(db: DatabaseSync) {
@@ -92,13 +92,15 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     opened = db;
     seed(db);
 
-    // Reached from the Esami menu.
+    // Reached from the Flashcard section, and no longer from the Esami menu.
     await page.evaluate(() => {
       location.hash = "#/exams";
     });
     await page.reload();
-    await fromExamsMenu(page, "All flashcards");
-    await expect(page).toHaveURL(/#\/exams\/cards$/);
+    await page.getByRole("button", { name: "More for Exams", exact: true }).click();
+    await expect(page.getByRole("menuitem").filter({ hasText: /flashcards/i })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await toAllFlashcards(page);
     await expect(page.getByRole("status")).toHaveText("6 flashcards");
 
     // Subjects in their saved order, the exam with no subject last, the exam and topic as sub-headings.
@@ -248,12 +250,51 @@ test("the flashcard browser says when there are no cards", async () => {
     await fromChiediToExams(page);
     await page.evaluate(() => {
       localStorage.setItem("pyxis.lang", "en");
-      location.hash = "#/exams/cards";
+      location.hash = "#/flashcards/all";
     });
     await page.reload();
     await expect(
       page.getByRole("heading", { name: "No flashcards yet" }),
     ).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the old address of the list, from a saved address or a reminder, opens the list under Flashcard", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-browser-old-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed(db);
+    db.close();
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1, name: "Exams" })).toBeVisible();
+
+    // An address typed or saved with the old path keeps its filter on the way.
+    await page.evaluate(() => {
+      location.hash = "#/exams/cards?exam=p-phys";
+    });
+    await expect(page).toHaveURL(/#\/flashcards\/all\?exam=p-phys$/);
+    await expect(page.getByRole("heading", { level: 1, name: "All flashcards" })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveText("3 flashcards");
+
+    // A message from main that still names the old path opens the list too.
+    await page.evaluate(() => {
+      location.hash = "#/exams";
+    });
+    await expect(page.getByRole("heading", { level: 1, name: "Exams" })).toBeVisible();
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.webContents.send("app:open-path", "/exams/cards"),
+    );
+    await expect(page).toHaveURL(/#\/flashcards\/all$/);
+    await expect(page.getByRole("status")).toHaveText("6 flashcards");
   } finally {
     await app.close();
     removeTestFolder(userData);
