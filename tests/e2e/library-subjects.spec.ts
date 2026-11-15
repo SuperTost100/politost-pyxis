@@ -790,6 +790,27 @@ test("A menu stays open when the page gets shorter under a student who has scrol
           }
         return { top: Math.round(scroller.scrollTop), end: Math.round(scroller.scrollHeight - scroller.clientHeight) };
       });
+    /** Everything that decides where the page is, for the message of a failure that cannot be told from the numbers alone. */
+    const state = () =>
+      page.evaluate(async () => {
+        const scroller = document.scrollingElement!;
+        const shelves = document.querySelector(".px-shelves");
+        const active = document.activeElement;
+        const guarded: string[] = [];
+        for (let el = shelves?.parentElement; el; el = el.parentElement)
+          if (getComputedStyle(el).overflowY !== "visible") guarded.push(`${el.tagName}.${el.className} sh=${el.scrollHeight} ch=${el.clientHeight}`);
+        return {
+          document: { top: scroller.scrollTop, scrollHeight: scroller.scrollHeight, clientHeight: scroller.clientHeight },
+          below: Boolean(document.getElementById("e2e-below")),
+          shelvesChildren: shelves?.children.length ?? null,
+          unsortedRows: document.querySelectorAll(".px-unsorted-row").length,
+          covers: document.querySelectorAll(".px-cover").length,
+          menuOpen: document.querySelectorAll(".px-item-menu").length,
+          active: active ? `${active.tagName}.${active.className}|${active.getAttribute("aria-label") ?? ""}` : null,
+          overflowAncestors: guarded,
+          files: (await window.pyxis.invoke("sources.list", {})).map((source) => `${source.title}:${source.status}`),
+        };
+      });
     const hovered = () =>
       page.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>(".px-cover")]
@@ -823,10 +844,19 @@ test("A menu stays open when the page gets shorter under a student who has scrol
       await page.mouse.move(930, 450);
       const before = (await fileMenu.boundingBox())!;
       const scrollBefore = await place();
+      const stateBefore = await state();
 
       // The page gets shorter below the file, so the browser scrolls it back by itself and the file moves down.
       await page.evaluate(() => document.getElementById("e2e-below")!.remove());
-      await expect.poll(async () => (await place()).top, "the page scrolled back").toBeLessThan(scrollBefore.top);
+      try {
+        await expect.poll(async () => (await place()).top, "the page scrolled back").toBeLessThan(scrollBefore.top);
+      } catch (error) {
+        // With nothing but a number to go on, a page that was never scrolled and one that was scrolled and jumped back look alike.
+        throw new Error(
+          `${(error as Error).message}\n${way}: before ${JSON.stringify(stateBefore)}\nnow ${JSON.stringify(await state())}`,
+          { cause: error },
+        );
+      }
       await animationsSettled(page);
       await withTrail(page, () => expect(fileMenu, `${way} menu after the page got shorter`).toBeVisible());
       if (way === "dots") {
