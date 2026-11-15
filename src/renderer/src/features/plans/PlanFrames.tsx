@@ -51,6 +51,7 @@ function Wizard() {
   // "Start from a free PoliTost book" opens the wizard with the books already showing.
   const draft = useExamDraft({ seed, books: carried.books === true, scale });
   const [, setParams] = useSearchParams();
+  const stillHere = useStillHere();
   // An error belongs to the step and the attempt that raised it.
   function goTo(next: number) {
     draft.setStartError(null);
@@ -88,7 +89,10 @@ function Wizard() {
           <MaterialPrimary
             draft={draft}
             // The wait takes the form's place in the history: once the exam exists, nothing leads back to the form.
-            onCreated={(planId) => setParams({ build: planId }, { replace: true })}
+            // A student who left the form while the exam was made keeps the page they chose: the exam exists either way.
+            onCreated={(planId) => {
+              if (stillHere()) setParams({ build: planId }, { replace: true });
+            }}
           />
         )
       }

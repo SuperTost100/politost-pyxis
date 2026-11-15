@@ -79,3 +79,27 @@ test("an exam made from the guided flow after the student left it does not take 
     removeTestFolder(userData);
   }
 });
+
+test("an exam made from a book after the student left the form does not take them to its build", async () => {
+  test.setTimeout(120_000);
+  const { app, page, userData } = await start();
+  try {
+    await page.getByRole("button", { name: "Continua", exact: true }).click();
+    await page.getByRole("button", { name: "Dalla tua libreria" }).click();
+    const picker = page.getByRole("dialog");
+    await picker.getByRole("checkbox", { name: /Bramanti, Pagani, Salsa/ }).check();
+    await picker.getByRole("button", { name: "Aggiungi 1 fonte" }).click();
+    await expect(picker).toBeHidden();
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
+    // Leaves the form by its back control and answers the question.
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    await page.getByRole("dialog", { name: "Uscire senza salvare?" }).getByRole("button", { name: "Esci senza salvare" }).click();
+    await expect(page).toHaveURL(/#\/exams$/);
+    await examIsMade(page);
+    // The exam is made while the student is on Esami: the window, and its address, stay as they were.
+    await expect(page).toHaveURL(/#\/exams$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
