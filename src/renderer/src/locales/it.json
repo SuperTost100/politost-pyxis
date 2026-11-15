@@ -2117,7 +2117,7 @@
     "optionsChange": "Cambia",
     "optionsHide": "Chiudi",
     "waitTitle": "Nuovo esame",
-    "waitBody": "Puoi chiudere questa schermata: la preparazione continua e la ritrovi nelle attività, in alto a destra.",
+    "waitBody": "Puoi chiudere questa schermata: la preparazione continua. L'esame lo ritrovi tra gli esami, e l'avanzamento lo segui nelle attività, in alto a destra.",
     "buildProgress": "{{percent}}% fatto",
     "topicsFound": "Gli argomenti che ho trovato",
     "topicsFoundNote": "Ogni argomento ha già il suo posto nel percorso. Nomi e ordine li cambi dopo."

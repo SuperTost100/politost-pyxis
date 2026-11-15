@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { seedPlan, seedSubjects } from "./seed";
+import { saveShot } from "./shots";
 
 test("the Flashcard section lists each subject's flashcards and starts every review from them, with no exam at all", async () => {
   test.setTimeout(120_000);
@@ -40,6 +41,23 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     await expect(chem).toContainText("2 flashcard · 2 da ripassare oggi");
     await expect(chem.getByRole("heading", { level: 3, name: "Senza esame" })).toBeVisible();
     await expect(page.getByRole("region", { name: "Fisica 2" })).toContainText("1 flashcard · 1 da ripassare oggi");
+
+    // The Library draws file covers, whose stylesheet puts a drop shadow on its own `svg`. Once it has loaded, the
+    // Flashcard page must not pick any of that up.
+    await page.evaluate(() => (location.hash = "/exams/library"));
+    await expect(page.locator(".px-library-head")).toBeVisible();
+    await page.evaluate(() => (location.hash = "/flashcards"));
+    await expect(page.getByRole("heading", { level: 1, name: "Flashcard" })).toBeVisible();
+    const noFilter = (selector: string) =>
+      page.locator(selector).evaluate((element) => getComputedStyle(element).filter);
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate((look) => window.pyxis.setAppearance(look), theme);
+      await saveShot(page, `flashcards-section/after-library-it-${theme}.png`, { animations: "disabled" });
+      expect(await noFilter(".px-flashcards")).toBe("none");
+      expect(await noFilter(".px-flashcards h1")).toBe("none");
+      expect(await noFilter(".px-fc-head")).toBe("none");
+    }
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
 
     // The head holds the browser and a new flashcard as secondary buttons, the day's review sits in the band under it.
     const head = page.locator(".px-fc-head");
