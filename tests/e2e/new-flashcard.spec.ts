@@ -339,6 +339,41 @@ test("with nothing typed, the focus starts in Fronte and moves to the subject on
   }
 });
 
+test("a student who tabs to a button while the subjects are read keeps the focus there", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-tab-"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    } finally {
+      db.close();
+    }
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const subject = dialog.getByRole("combobox", { name: "Materia" });
+    await expect(subject).toBeDisabled();
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    await expect(front).toBeFocused();
+    // Shift+Tab leaves Fronte for the formula button above it: a student who went there chose it, whatever arrives later.
+    await page.keyboard.press("Shift+Tab");
+    const formula = dialog.getByRole("button", { name: "Inserisci formula nel fronte" });
+    await expect(formula).toBeFocused();
+    await expect(subject).toBeEnabled({ timeout: 10_000 });
+    await expect(subject).toHaveValue("ana");
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(formula).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Pyxis writes a subject's flashcards to check before saving, and another page opens the dialog on a subject", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-pyxis-"));

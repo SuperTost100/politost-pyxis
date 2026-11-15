@@ -211,7 +211,7 @@ export function NewCardDialog({
 
   // The dialog gives the focus to a field the moment it opens (`firstControl`), so a fast typist loses no keys. Once the
   // subjects are known the field it would choose may be another one: the focus moves there only while the student has
-  // neither typed nor gone to a field of their own, and never when what they typed would land in another field.
+  // pressed no key and clicked nowhere in the dialog, so neither what they typed nor where they went is taken from them.
   const focused = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -221,14 +221,8 @@ export function NewCardDialog({
     if (focused.current || !places.data || !subjectId) return;
     focused.current = true;
     requestAnimationFrame(() => {
-      const active = document.activeElement;
-      if (
-        touched.current &&
-        active instanceof HTMLElement &&
-        card.current?.contains(active) &&
-        active.matches("input, textarea, select")
-      )
-        return;
+      // A key or a click inside the dialog since it opened: wherever the focus is now, it is the student's.
+      if (touched.current) return;
       firstField()?.focus();
     });
   }, [open, places.data, subjectId]);
