@@ -22,9 +22,13 @@ export function draftSaver<T>(
   onError: () => void,
   delay: number,
 ) {
-  // `pending` waits for its timer; `queued` was flushed and waits for the save before it.
-  let pending: { draft: T } | null = null;
-  let queued: { draft: T } | null = null;
+  // `pending` waits for its timer; `queued` was flushed and waits for the save before it. Each draft has a number, one
+  // more than the one before, and `newestSent` is the highest number sent: a failed save older than that is not kept,
+  // however the saves end.
+  let pending: { draft: T; number: number } | null = null;
+  let queued: { draft: T; number: number } | null = null;
+  let count = 0;
+  let newestSent = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let saving: Promise<boolean> = Promise.resolve(true);
   let inFlight = 0;
@@ -45,22 +49,25 @@ export function draftSaver<T>(
     return next;
   }
   /** Saves one draft; when that fails, the draft stays for the next flush unless a newer one took its place. */
-  function send(next: { draft: T }): Promise<boolean> {
+  function send(next: { draft: T; number: number }): Promise<boolean> {
+    newestSent = Math.max(newestSent, next.number);
     track(() => (inFlight += 1));
     return save(next.draft).then(
       () => {
         track(() => {
           inFlight -= 1;
-          // A newer draft that is still to be sent is not a failed one.
-          failed = false;
+          // A newer draft that is still to be sent is not a failed one. One that was sent after this one decides alone.
+          if (newestSent === next.number) failed = false;
         });
         return true;
       },
       () => {
-        if (!pending && !queued) pending = next;
+        // A draft that a newer one was sent after is replaced, not failed: the newer one's own end says if it saved.
+        const replaced = newestSent > next.number;
+        if (!replaced && !pending && !queued) pending = next;
         track(() => {
           inFlight -= 1;
-          failed = true;
+          if (!replaced) failed = true;
         });
         onError();
         return false;
@@ -87,7 +94,7 @@ export function draftSaver<T>(
   }
   return {
     schedule(draft: T) {
-      pending = { draft };
+      pending = { draft, number: (count += 1) };
       clearTimeout(timer);
       timer = setTimeout(() => void flush(), delay);
     },
