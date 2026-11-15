@@ -69,12 +69,15 @@ export function FlashcardsHome() {
 
   // Import and export Anki packages: the page's menu, in the dots of the head and on a right-click on it.
   const [anki, setAnki] = useState<"import" | "export" | null>(null);
+  const hasCards = data !== undefined && data.subjects.length > 0;
   const menu: MenuProps = {
     items: [
+      // With no flashcard to list the head has no "Sfoglia tutte", and the removed ones are reached only from the browser.
+      ...(data && !hasCards ? [{ key: "browse", label: t("flashcards.browseAll") }] : []),
       { key: "import", label: t("cardImport.open") },
       { key: "export", label: t("cardExport.open") },
     ],
-    onClick: ({ key }) => setAnki(key === "export" ? "export" : "import"),
+    onClick: ({ key }) => (key === "browse" ? go("/flashcards/all") : setAnki(key === "export" ? "export" : "import")),
   };
 
   // The band under the head. It stays mounted once the counts are in and closes when nothing is due, so a review that
@@ -173,7 +176,6 @@ export function FlashcardsHome() {
       </div>
     );
 
-  const hasCards = data !== undefined && data.subjects.length > 0;
   // The first flashcard replaces the empty page and its button, which the dialog gives the focus back to: once both have
   // happened, a focus that fell to the page goes to the head's "Nuova flashcard".
   const wasEmpty = useRef(false);
