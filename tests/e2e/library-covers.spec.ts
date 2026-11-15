@@ -102,9 +102,9 @@ function seed(userData: string) {
   }
 }
 
-async function start(): Promise<{ app: ElectronApplication; page: Page; userData: string }> {
+async function start(env: Record<string, string | undefined> = {}): Promise<{ app: ElectronApplication; page: Page; userData: string }> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-library-covers-"));
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined } });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined, ...env } });
   const page = await app.firstWindow();
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Salta" }).click();
@@ -444,52 +444,50 @@ test("The focus stays in the page when the file that held it is renamed out of a
   }
 });
 
-/** Reads the Library's lists again, as the page does when a job ends or a linked folder changes, without touching the focus. */
-const readAgain = (page: Page) =>
-  page.evaluate(async () => {
-    const container = document.getElementById("root") as unknown as Record<string, unknown>;
-    const key = Object.keys(container).find((name) => name.startsWith("__reactContainer$"));
-    type Fiber = { child: Fiber | null; sibling: Fiber | null; memoizedProps: { client?: { invalidateQueries: (filter: object) => Promise<unknown> } } | null };
-    const find = (fiber: Fiber | null): Fiber["memoizedProps"] => {
-      for (let node = fiber; node; node = node.sibling) {
-        if (node.memoizedProps?.client?.invalidateQueries) return node.memoizedProps;
-        const inner = find(node.child);
-        if (inner) return inner;
-      }
-      return null;
-    };
-    const client = find(key ? (container[key] as Fiber) : null)?.client;
-    if (!client) throw new Error("The page's query client was not found");
-    await Promise.all([client.invalidateQueries({ queryKey: ["sources"] }), client.invalidateQueries({ queryKey: ["subjects"] })]);
-  });
+/** The recorded answer of the AI tool that chooses subjects, for the one file of a call: it names `subject`, or none. */
+const sortAnswer = (subject: string) => JSON.stringify({ files: { files: [{ id: "1", subject, newSubject: "" }] } });
+
+/**
+ * Makes the Library read its lists again the way the app does: a file is waiting to be sorted, and the sort job that
+ * Pyxis starts for it ends, which core tells the window about. The focus is not touched, as nothing is clicked.
+ */
+async function sortBy(page: Page, userData: string, id: string) {
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  try {
+    db.prepare("UPDATE sources SET subject_sort = 'waiting' WHERE id = ?").run(id);
+  } finally {
+    db.close();
+  }
+  await page.evaluate((sourceId) => window.pyxis.invoke("sources.sortSubjects", { sourceIds: [sourceId] }), id);
+}
+
+const CINEMA = "Linguaggio cinematografico e storia del cinema";
 
 test("When the file that holds the focus is removed after the list changed beside it, the focus goes to the cover that now follows it", async () => {
   test.setTimeout(240_000);
-  const { app, page, userData } = await start();
+  // The tool leaves the file it is asked about without a subject, so a sort job ends and the lists are read again.
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: sortAnswer("") });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
-    const covers = shelf(page, "Linguaggio cinematografico e storia del cinema").locator(".px-cover-open");
-    await expect(covers).toHaveCount(5);
-    const titles = await covers.evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
+    const ids = await shelf(page, CINEMA).locator(".px-cover").evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sourceId ?? ""));
+    expect(ids).toHaveLength(5);
+    const titles = await shelf(page, CINEMA).locator(".px-cover-open").evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
     const [, second, third, fourth] = titles;
-    const ids = await shelf(page, "Linguaggio cinematografico e storia del cinema")
-      .locator(".px-cover")
-      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sourceId ?? ""));
     const remove = (id: string) =>
       page.evaluate((sourceId) => window.pyxis.invoke("sources.remove", { sourceId, confirmed: true }), id);
     const title = (name: string | undefined) => page.getByRole("button", { name, exact: true });
 
-    // The focus is on the second cover, which has the first and the third beside it. A refresh takes the third away:
+    // The focus is on the second cover, which has the first and the third beside it. The third is removed and a sort ends:
     // the second keeps the focus, and now has the first and the fourth beside it.
     await title(second).focus();
     await remove(ids[2]!);
-    await readAgain(page);
+    await sortBy(page, userData, "u-ex");
     await expect(title(third)).toHaveCount(0);
     await expect(title(second)).toBeFocused();
 
-    // The second is taken away too: the focus goes to the fourth, the cover that took its place, not to the first.
+    // The second is removed too: the focus goes to the fourth, the cover that took its place, not to the first.
     await remove(ids[1]!);
-    await readAgain(page);
+    await sortBy(page, userData, "u-book");
     await expect(title(second)).toHaveCount(0);
     await expect(title(fourth)).toBeFocused();
   } finally {
@@ -500,17 +498,16 @@ test("When the file that holds the focus is removed after the list changed besid
 
 test("The focus stays on a file of Da sistemare when Pyxis sorts it into a subject by itself", async () => {
   test.setTimeout(240_000);
-  const { app, page, userData } = await start();
+  const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: sortAnswer(CINEMA) });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     const row = page.locator('.px-unsorted-row[data-source-id="u-photo"]');
     await row.getByRole("button", { name: "IMG_2077", exact: true }).focus();
-    // No choice of the student's: the file is given its subject, and the lists are read again.
-    await page.evaluate(() => window.pyxis.invoke("sources.move", { sourceId: "u-photo", subjectId: "cin" }));
-    await readAgain(page);
-    await expect(row).toHaveCount(0);
-    const placed = shelf(page, "Linguaggio cinematografico e storia del cinema").getByRole("button", { name: "IMG_2077", exact: true });
+    // No choice of the student's: the sort job gives the file its subject, and the lists are read again.
+    await sortBy(page, userData, "u-photo");
+    const placed = shelf(page, CINEMA).getByRole("button", { name: "IMG_2077", exact: true });
     await expect(placed).toBeVisible();
+    await expect(row).toHaveCount(0);
     expect(await focused(page)).not.toBe("body");
     await expect(placed).toBeFocused();
   } finally {
