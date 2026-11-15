@@ -75,10 +75,15 @@ function findByFocusKey(key: string, nearest: boolean): HTMLElement[] {
   const value = rest.join(":");
   // A key names its place from the outside in ("path:topic:part:2"), so a step that is folded away falls back to the
   // nearest of its rows still on screen.
+  // A step that no longer exists may have a row that took its place (`data-focus-stands-for`, as a lesson's parts stand
+  // for its one step); the exact element wins when it is there.
   if (kind === "key")
     for (let key = value; key; key = nearest && key.includes(":") ? key.slice(0, key.lastIndexOf(":")) : "") {
-      const found = [...document.querySelectorAll<HTMLElement>(`[data-focus-key="${CSS.escape(key)}"]`)];
+      const quoted = CSS.escape(key);
+      const found = [...document.querySelectorAll<HTMLElement>(`[data-focus-key="${quoted}"]`)];
       if (found.length) return found;
+      const standIn = document.querySelector<HTMLElement>(`[data-focus-stands-for~="${quoted}"]`);
+      if (standIn) return [standIn];
     }
   if (kind === "id") return [...document.querySelectorAll<HTMLElement>(`[id="${CSS.escape(value)}"]`)];
   if (kind === "href") return [...document.querySelectorAll<HTMLElement>(`a[href="${CSS.escape(value)}"]`)];
@@ -114,23 +119,31 @@ function returnFocus(opener: string | undefined) {
   const usable = (element: HTMLElement, late: boolean) =>
     canTakeFocus(element) &&
     (late || !stale.has(element) || element.closest(".px-side") !== null);
-  const place = (element: HTMLElement) => {
-    finish();
+  // What the focus was put on while the page was still being drawn: a page can draw an element and then replace it (an
+  // exam's lesson step, until its parts are read), which would leave the focus on the body.
+  let placed: HTMLElement | null = null;
+  const place = (element: HTMLElement, late: boolean) => {
+    if (late) finish();
+    else placed = element;
     if (element.tabIndex < 0 && !element.hasAttribute("tabindex")) element.setAttribute("tabindex", "-1");
     element.focus({ preventScroll: true });
     element.scrollIntoView({ block: "nearest" });
   };
   const started = performance.now();
   const look = (late: boolean) => {
+    if (placed) {
+      if (placed.isConnected) return late ? finish() : undefined;
+      placed = null;
+    }
     // A page that places the focus itself on arrival, as a quiz does on its question, keeps it there.
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && !stale.has(active)) return finish();
     const nearest = late || performance.now() - started > 500;
     const found = opener ? findByFocusKey(opener, nearest).find((element) => usable(element, late)) : undefined;
-    if (found) return place(found);
+    if (found) return place(found, late);
     if (!opener || late) {
       const heading = [...document.querySelectorAll<HTMLElement>("main h1, h1")].find((element) => usable(element, late));
-      if (heading) return place(heading);
+      if (heading) return place(heading, late);
     }
     if (late) finish();
   };

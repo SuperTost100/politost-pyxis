@@ -62,7 +62,7 @@
   gap: var(--space-3);
   margin: var(--space-3) var(--space-3) 0 0;
 }
-.px-grow {
+.px-source-panel-spacer {
   flex: 1;
 }
 

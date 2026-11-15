@@ -605,3 +605,36 @@ test("while the next part is read, the part before it stays on screen but cannot
     await close();
   }
 });
+
+test("going back from a lesson opened with the topic's Lezione step puts the focus on the topic's first part, which took the step's place", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    // A topic with no lesson started has one step, "Lezione", and it is what opens the lesson.
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    const step = page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ });
+    await step.click();
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    await page.keyboard.press(await letterOf(page, "La cosa giusta"));
+    await expect(continueButton(page)).toBeFocused();
+    await continueButton(page).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Interno, esterno, frontiera" })).toBeVisible();
+
+    // The step that opened the lesson is gone: the topic lists its parts. The focus must not fall to the page's body.
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await expect(parts(page)).toHaveCount(0);
+    await expect(page.locator(".px-xpath-parts-head")).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Parte 1 · Intorni e distanza/ })).toBeFocused();
+    await saveShot(page, "lesson-parts/back-focus-it-light.png");
+  } finally {
+    await close();
+  }
+});

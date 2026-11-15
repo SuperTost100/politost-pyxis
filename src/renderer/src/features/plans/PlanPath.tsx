@@ -625,7 +625,7 @@ function TopicParts({
     <div className="px-xpath-parts">
       <p className="px-xpath-parts-head">{partsHeading(t, outline)}</p>
       <ul className="px-xpath-substeps" aria-label={t("plans.path.lessonPartsFor", { topic })}>
-        {outline.parts.map((part) => {
+        {outline.parts.map((part, index) => {
           const mark = part.done
             ? "done"
             : part.position === suggested
@@ -648,6 +648,8 @@ function TopicParts({
               <Link
                 className={`px-xpath-substep is-${mark}`}
                 data-focus-key={`path:${topicId}:part:${part.position}`}
+                // A lesson opened with its one step comes back here: the step is gone, and the first part took its place.
+                data-focus-stands-for={index === 0 ? `path:${topicId}:lesson` : undefined}
                 to={partPath(planId, topicId, part.position)}
               >
                 {mark === "writing" ? <Logo working decorative size={16} /> : <Icon name={partIcons[mark]} size={16} />}
