@@ -270,6 +270,110 @@ test("text typed before the subjects arrive stays in Fronte, and so does the foc
   }
 });
 
+test("keys typed the moment the dialog opens go into Fronte while the subjects are still being read, and stay there", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-instant-"));
+  // The read of the subjects is held back for 3 seconds, so everything typed here is typed before they are known.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=3000" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    } finally {
+      db.close();
+    }
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await expect(dialog).toBeVisible();
+    // Typing starts the moment the dialog is there: the subject's list is still off.
+    const subject = dialog.getByRole("combobox", { name: "Materia" });
+    await expect(subject).toBeDisabled();
+    await page.keyboard.type("Che cos'è la velocità?");
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    await expect(front).toHaveValue("Che cos'è la velocità?");
+    await expect(front).toBeFocused();
+    await shot(page, "8-typed-at-once");
+    // The subjects arrive: the focus stays where the student's text is, and the subject is chosen all the same.
+    await expect(subject).toBeEnabled({ timeout: 10_000 });
+    await expect(subject).toHaveValue("ana");
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(front).toBeFocused();
+    await page.keyboard.type(" Dipende.");
+    await expect(front).toHaveValue("Che cos'è la velocità? Dipende.");
+    await expect(dialog.getByRole("textbox", { name: "Retro" })).toHaveValue("");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("with nothing typed, the focus starts in Fronte and moves to the subject once the subjects are known", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-idle-"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2000" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    } finally {
+      db.close();
+    }
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const subject = dialog.getByRole("combobox", { name: "Materia" });
+    await expect(subject).toBeDisabled();
+    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
+    await expect(subject).toBeEnabled({ timeout: 10_000 });
+    await expect(subject).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a student who tabs to a button while the subjects are read keeps the focus there", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-tab-"));
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    } finally {
+      db.close();
+    }
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const subject = dialog.getByRole("combobox", { name: "Materia" });
+    await expect(subject).toBeDisabled();
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    await expect(front).toBeFocused();
+    // Shift+Tab leaves Fronte for the formula button above it: a student who went there chose it, whatever arrives later.
+    await page.keyboard.press("Shift+Tab");
+    const formula = dialog.getByRole("button", { name: "Inserisci formula nel fronte" });
+    await expect(formula).toBeFocused();
+    await expect(subject).toBeEnabled({ timeout: 10_000 });
+    await expect(subject).toHaveValue("ana");
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(formula).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Pyxis writes a subject's flashcards to check before saving, and another page opens the dialog on a subject", async () => {
   test.setTimeout(180_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-pyxis-"));
@@ -664,7 +768,7 @@ test("a card is saved once, the dialog stays while it saves, and each save is an
     const written = (text: string) => cards(userData).filter((row) => row.front === text).length;
     // What a screen reader would be told: every time the page's status line gets words. The locator waits for the line
     // to be drawn before the observer is put on it.
-    await page.locator(".px-fc > p[role=status]").evaluate((line) => {
+    await page.locator(".px-flashcards > p[role=status]").evaluate((line) => {
       const heard: string[] = [];
       (window as unknown as { heard: string[] }).heard = heard;
       new MutationObserver(() => line.textContent && heard.push(line.textContent)).observe(line, {
@@ -751,7 +855,7 @@ test("the Flashcard page's cleanup of `?new=` never lands on the page opened rig
         push(...args);
       };
       new MutationObserver(() => {
-        if (!armed || !document.querySelector(".px-fc")) return;
+        if (!armed || !document.querySelector(".px-flashcards")) return;
         armed = false;
         history.pushState(null, "", "#/exams/library?stay=1");
         dispatchEvent(new PopStateEvent("popstate"));

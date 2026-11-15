@@ -13,6 +13,7 @@ import { FormulaPreview } from "../../components/FormulaPreview";
 import { Notice } from "../../components/Notice";
 import { ProposedCards, type ProposedRow } from "../../components/ProposedCards";
 import { errorProvider, useEngineError } from "../../lib/engineError";
+import { canTakeFocus } from "../../app/focusable";
 import { invoke } from "../../lib/ipc";
 import { saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
 import "./NewCardDialog.css";
@@ -157,10 +158,15 @@ export function NewCardDialog({
     cancel.current = null;
   }
 
+  // Whether the student has typed, pressed a key or clicked inside the dialog since it opened: the focus it was given
+  // while the subjects were still being read is theirs from then on.
+  const touched = useRef(false);
+
   // Everything starts again each time it opens, on the side and the subject it was asked for.
   useEffect(() => {
     if (!open) return;
     opening.current += 1;
+    touched.current = false;
     setSide(openSide);
     setSubjectId(openSubject ?? "");
     setPlanId("");
@@ -203,7 +209,9 @@ export function NewCardDialog({
     [],
   );
 
-  // The first field of the side on show takes the focus once its choices are there.
+  // The dialog gives the focus to a field the moment it opens (`firstControl`), so a fast typist loses no keys. Once the
+  // subjects are known the field it would choose may be another one: the focus moves there only while the student has
+  // pressed no key and clicked nowhere in the dialog, so neither what they typed nor where they went is taken from them.
   const focused = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -213,21 +221,23 @@ export function NewCardDialog({
     if (focused.current || !places.data || !subjectId) return;
     focused.current = true;
     requestAnimationFrame(() => {
-      // A student who went to a field and started typing before the subjects arrived keeps it: the rest of what they
-      // type must not land in another field.
-      const active = document.activeElement;
-      if (active instanceof HTMLElement && card.current?.contains(active) && active.matches("input, textarea, select"))
-        return;
+      // A key or a click inside the dialog since it opened: wherever the focus is now, it is the student's.
+      if (touched.current) return;
       firstField()?.focus();
     });
   }, [open, places.data, subjectId]);
 
+  /**
+   * The field the focus goes to: the first one of the side on show that can take it. While the subjects are still being
+   * read the subject's own list is off, so a card written by hand starts in Fronte, the first field a student can type
+   * in; with no subject in the workspace it is the new subject's name.
+   */
   function firstField(): HTMLElement | null {
     const pane = card.current?.querySelector(`[data-pane="${side}"]`);
     if (!pane) return null;
     if (side === "hand" && subjectId === NEW_SUBJECT && subjects.length === 0)
       return pane.querySelector<HTMLElement>("#nc-new-name");
-    return pane.querySelector<HTMLElement>("select, textarea, input");
+    return [...pane.querySelectorAll<HTMLElement>("select, textarea, input")].find(canTakeFocus) ?? null;
   }
 
   /** Closes for good: the dialog shrinks back into the button, which gets the focus again. */
@@ -531,12 +541,12 @@ export function NewCardDialog({
           : { label: t("flashcards.new.make"), disabled: !canMake, onClick: () => void make() },
     ];
 
-  // Where the focus goes as it opens: the first field of the side on show when the subjects are there, else the dialog
-  // itself, and the effect above places it once they arrive, unless the student has already gone to a field.
+  // Where the focus goes as it opens: the first field of the side on show, whether or not the subjects are known yet, and
+  // the effect above moves it once they are, unless the student has already typed or gone to a field of their own.
   const firstControl = useMemo(
     () => ({
       get current() {
-        return (places.data && subjectId ? firstField() : null) ?? card.current?.closest("dialog") ?? null;
+        return firstField() ?? card.current?.closest("dialog") ?? null;
       },
     }),
     [places.data, subjectId, side],
@@ -561,7 +571,13 @@ export function NewCardDialog({
       onClosed={onClosed}
       actions={actions}
     >
-      <div ref={card} className="px-nc-card">
+      <div
+        ref={card}
+        className="px-nc-card"
+        onKeyDownCapture={() => (touched.current = true)}
+        onPointerDownCapture={() => (touched.current = true)}
+        onInputCapture={() => (touched.current = true)}
+      >
         {reviewing ? null : working ? (
           // What Pyxis was asked, while it works; its proposals then say it in their own line.
           <p className="small px-nc-summary">

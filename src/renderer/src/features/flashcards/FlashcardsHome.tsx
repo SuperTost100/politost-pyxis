@@ -187,7 +187,7 @@ export function FlashcardsHome() {
     }
   }, [data, hasCards, dialog]);
   return (
-    <div className="px-fc">
+    <div className="px-flashcards">
       <MenuItemArea as="div" className="px-fc-head" menu={menu} region={t("cardBrowser.more")} disabled={!data}>
         <div className="px-fc-head-text">
           <h1 className="title-1">{t("flashcards.title")}</h1>
