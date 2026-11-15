@@ -393,7 +393,7 @@ export type ConfirmOptions = {
    * gone: the page behind is inert while the dialog is open, so the focus can only be placed after it has closed.
    */
   onClosed?: () => void;
-  /** Takes the question back while it is open: it closes and answers "cancel". */
+  /** Takes the question back while it is open: it closes and answers "cancel". Not for a question with `run`: while its work runs, only the end of that work answers it. */
   signal?: AbortSignal;
 };
 
