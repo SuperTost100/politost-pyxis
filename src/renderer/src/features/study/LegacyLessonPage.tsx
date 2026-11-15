@@ -430,7 +430,7 @@ export function LegacyLessonPage({
             action={{ label: t("lesson.retry"), onClick: () => void lesson.refetch() }}
             secondary={
               openError?.action ?? {
-                label: t("engines.title"),
+                label: t("settings.enginesTitle"),
                 onClick: () => navigate("/settings/engines"),
               }
             }
@@ -452,7 +452,7 @@ export function LegacyLessonPage({
                   // A refused sign-in names its engine and opens its sign-in; any other engine failure opens the engines page.
                   fallbackError?.action ??
                   ((lesson.isError && !cancelled) || data?.fallbackReason
-                    ? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }
+                    ? { label: t("settings.enginesTitle"), onClick: () => navigate("/settings/engines") }
                     : undefined)
                 }
               >

@@ -1547,7 +1547,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
               gradingStopped ? (
                 gradeState !== "cancelled" ? (
                   <Button shape="round" size="large" onClick={() => navigate("/settings/engines")}>
-                    {t("quiz.openEngines")}
+                    {t("settings.enginesTitle")}
                   </Button>
                 ) : undefined
               ) : (

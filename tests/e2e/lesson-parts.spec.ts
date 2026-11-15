@@ -535,9 +535,11 @@ test("leaving a lesson before core has chosen its part does not pull the student
     await open(page, "t-funzioni");
     await expect(page.getByText("Apertura…")).toBeVisible();
     await page.getByRole("button", { name: /^Torna a / }).click();
-    // The read comes back while the way to the exam page is still loading: the lesson, still on screen, shows the part
-    // it chose. Its address must stay as it was, or the student is taken back into the lesson.
-    await expect(working(page, "Sto dividendo il capitolo in parti")).toBeVisible({ timeout: 20_000 });
+    // The reads come back while the way to the exam page is still loading: the lesson, still on screen, shows the part
+    // it chose. Its address must stay as it was, or the student is taken back into the lesson. The planning block is not
+    // what to wait for: the page shows it only between one read's return and the next read's start (a quarter of a
+    // second here, shorter on a fast computer), and draws "Apertura…" the rest of the time. The written part stays.
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 20_000 });
     await expect(page).toHaveURL(/#\/plans\/p-an2\/lesson\/t-funzioni$/);
     await app.evaluate(() => (globalThis as unknown as { releaseExamPage: () => void }).releaseExamPage());
     await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();

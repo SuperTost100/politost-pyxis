@@ -85,7 +85,7 @@ test("an answer typed on the exercises page is asked about by every way out, and
       () => page.getByRole("banner").getByRole("button", { name: "Fai il quiz" }).click(),
       async () => {
         await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
-        await page.getByRole("button", { name: "Vai agli strumenti AI" }).click();
+        await page.getByRole("button", { name: "Strumenti AI", exact: true }).click();
       },
     ];
     // The foot's Indietro and Torna al percorso are gone: the bar's control is the one way back.

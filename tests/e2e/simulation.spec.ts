@@ -405,7 +405,7 @@ test("a running exam keeps the student in: the Attività list offers no link tha
     const reached = page.url();
     await page.getByRole("banner").getByRole("button", { name: /^Attività/ }).click();
     // Nothing leaves a running exam, so the link to Settings is there but off, and says why.
-    const toTools = page.getByRole("button", { name: "Vai agli strumenti AI" });
+    const toTools = page.getByRole("button", { name: "Strumenti AI", exact: true });
     await expect(toTools).toBeDisabled();
     await expect(toTools).toHaveAttribute("title", "Non puoi uscire: si esce consegnando o allo scadere del tempo");
     await toTools.click({ force: true });

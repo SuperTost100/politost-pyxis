@@ -93,6 +93,8 @@ export function OcrDataRow() {
   const languages = languageList(state.data.languages, i18n.language);
   const ready = state.data.state === "ready";
   const damaged = state.data.state === "integrity";
+  // The files are there, and Pyxis could not read them just now: nothing is replaced, and Try again checks them again.
+  const unreadable = state.data.state === "unreadable";
   const percent = active ? Math.round(active.progress * 100) : 0;
   const failure =
     last?.state === "failed"
@@ -108,9 +110,11 @@ export function OcrDataRow() {
           ? t(failure)
           : last
             ? t(`sources.ocrData.${last.state}`)
-            : damaged
-              ? t("sources.ocrDataIntegrity")
-              : t("sources.ocrData.title");
+            : unreadable
+              ? t("sources.ocrDataUnreadable")
+              : damaged
+                ? t("sources.ocrDataIntegrity")
+                : t("sources.ocrData.title");
   const label = active?.stepLabel ? t(active.stepLabel) : t("sources.jobs.ocrData");
   return (
     <li>
@@ -142,7 +146,7 @@ export function OcrDataRow() {
           </div>
         ) : ready ? null : (
           <Button size="small" loading={busy} onClick={() => void start()}>
-            {failure
+            {failure || unreadable
               ? t("sources.ocrData.retry")
               : t(last || damaged ? "settings.ocrRow.downloadAgain" : "settings.ocrRow.download", { size })}
           </Button>
@@ -233,6 +237,7 @@ export function OcrDataCard({
   }
 
   const damaged = state.data.state === "integrity";
+  const unreadable = state.data.state === "unreadable";
   const failure =
     last?.state === "failed"
       ? (ocrErrorKey(last.error ?? "") ?? "jobs.failedGeneral")
@@ -241,13 +246,23 @@ export function OcrDataCard({
     <div className="px-ocr" role="group" aria-labelledby={headingId}>
       <p className="body-strong" id={headingId}>
         {refusal ??
-          t(damaged ? "sources.ocrDataIntegrity" : "sources.ocrData.title")}
+          t(
+            unreadable
+              ? "sources.ocrDataUnreadable"
+              : damaged
+                ? "sources.ocrDataIntegrity"
+                : "sources.ocrData.title",
+          )}
       </p>
       <p className="small">
-        {t(damaged ? "sources.ocrData.integrityBody" : "sources.ocrData.body", {
-          size,
-          languages,
-        })}
+        {t(
+          unreadable
+            ? "sources.ocrData.unreadableBody"
+            : damaged
+              ? "sources.ocrData.integrityBody"
+              : "sources.ocrData.body",
+          { size, languages },
+        )}
       </p>
       {failure ? <Notice tone="danger">{t(failure)}</Notice> : null}
       {last && last.state !== "failed" ? (
@@ -264,8 +279,8 @@ export function OcrDataCard({
           onClick={() => void start()}
         >
           {t(
-            last || damaged
-              ? last?.state === "failed"
+            last || damaged || unreadable
+              ? last?.state === "failed" || unreadable
                 ? "sources.ocrData.retry"
                 : "sources.ocrData.downloadAgain"
               : "sources.ocrData.download",

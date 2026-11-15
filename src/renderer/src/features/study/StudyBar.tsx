@@ -1,6 +1,6 @@
 import { Button, type ButtonProps } from "antd";
 import { ChevronDown } from "lucide-react";
-import type { ReactNode, RefObject } from "react";
+import type { ReactNode, Ref, RefObject } from "react";
 import { BackControl } from "../../components/BackControl";
 import type { BackTarget } from "../../app/usePlace";
 import { JobsButton } from "../jobs/JobsButton";
@@ -17,13 +17,19 @@ export type StudyTitleMenu = {
 
 /**
  * One of a screen's tools in the bar: a ghost button with an icon and a word. Under 1,100 px the word is kept for
- * screen readers only, so the bar never grows a second row.
+ * screen readers only, so the bar never grows a second row, and it is the button's tooltip, so every tool has its name
+ * on hover. A tool of the bar is made with this, not with a bare button.
  */
 export function BarTool({
   icon,
   label,
   ...rest
-}: Omit<ButtonProps, "icon" | "children" | "type" | "className"> & { icon: ReactNode; label: string; "aria-keyshortcuts"?: string }) {
+}: Omit<ButtonProps, "icon" | "children" | "type" | "className" | "ref"> & {
+  icon: ReactNode;
+  label: string;
+  "aria-keyshortcuts"?: string;
+  ref?: Ref<HTMLButtonElement>;
+}) {
   return (
     <Button {...rest} type="text" className="px-studybar-action" icon={icon} title={label}>
       <span className="px-studybar-label">{label}</span>

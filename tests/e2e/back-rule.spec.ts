@@ -863,6 +863,9 @@ test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), "pyxis-back-rule-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies) } });
   const page = await app.firstWindow();
+  // The sidebar lists the recent chats, which the row lit by a chat is among, only above 1099 px, and a Windows runner shows
+  // 1024 px of desktop and clamps the window's 1280 px default (`app-under-test.ts`).
+  await page.setViewportSize({ width: 1280, height: 832 });
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
@@ -970,6 +973,23 @@ test("a part moved to inside the lesson is one entry: one press leaves the lesso
   await expect(backControl(page)).toHaveText(EXAM);
   await backControl(page).click();
   await expect(page).toHaveURL(new RegExp(`#${exam}$`));
+});
+
+test("a map names its exam as text when the back control leads there, and links it when the control leads elsewhere", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  const examLink = page.locator(".px-map-sub").getByRole("link", { name: /^Apri l.esame/ });
+  const examName = page.locator(".px-map-sub").getByText(EXAM, { exact: true });
+  const mapRows = rows.filter((row) => row.page === "/maps/:subjectId/:topicId?");
+  // From the exam: one control to the exam, the back control, and the line under the title is its name.
+  await mapRows.find((row) => row.how === "a map from the exam's Mappe")!.reach(walk);
+  await expect(backControl(page)).toHaveText(EXAM);
+  await expect(examName).toBeVisible();
+  await expect(examLink).toHaveCount(0);
+  // From Mappe: the back control says Mappe, and the line is the only way to the exam.
+  await mapRows.find((row) => row.how === "a map from Mappe")!.reach(walk);
+  await expect(backControl(page)).toHaveText("Mappe");
+  await expect(examLink).toBeVisible();
 });
 
 test("A, B, back to A, then C: C goes back to A", async () => {

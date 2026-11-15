@@ -5,8 +5,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapAddress, type MapEntry } from "@shared/concept-map";
-import { takeArrivalNote } from "../../app/history";
-import { Dialog } from "../../components/Dialog";
+import { takeArrivalNote } from "../../app/arrival-note";
+import { afterDialog, Dialog } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -107,12 +107,18 @@ export function MapsHome() {
       before.current = reduced ? null : new Map(tiles().map((tile) => [tile.dataset.mapId!, tile.getBoundingClientRect()]));
       setRemoved((current) => new Set(current).add(map.id));
       const next = focusAfterRemoval(order, map.id);
-      requestAnimationFrame(() => {
-        const target = next
-          ? page.current?.querySelector<HTMLElement>(`[data-map-id="${CSS.escape(next)}"] .px-maps-tile`)
-          : page.current?.querySelector<HTMLElement>("button:not([disabled]), a[href], input");
-        target?.focus({ preventScroll: true });
-      });
+      // The confirmation's dialog can still be shrinking away, and the page behind it takes no focus until it has gone.
+      requestAnimationFrame(() =>
+        afterDialog(
+          () => {
+            const target = next
+              ? page.current?.querySelector<HTMLElement>(`[data-map-id="${CSS.escape(next)}"] .px-maps-tile`)
+              : page.current?.querySelector<HTMLElement>("button:not([disabled]), a[href], input");
+            target?.focus({ preventScroll: true });
+          },
+          () => Boolean(page.current?.isConnected),
+        ),
+      );
       void forgetMaps(client);
     }, SHRINK_MS);
   }
@@ -135,7 +141,7 @@ export function MapsHome() {
   const data = maps.data?.filter((map) => !removed.has(map.id));
   // The map page hands over the map it deleted, once its tile is on screen.
   useEffect(() => {
-    if (note.current === undefined) note.current = takeArrivalNote<Removal>() ?? null;
+    if (note.current === undefined) note.current = takeArrivalNote<Removal>("/maps") ?? null;
     const asked = note.current?.shrinkMap;
     // A replacement lands on the router's current entry: once the student is leaving, it would stop that move. The
     // handoff stays in this entry's state, so coming back to it carries on.

@@ -198,7 +198,7 @@ function ProblemCard({
               (() => onNavigate("/settings/engines"))
             }
           >
-            {engineFailure.action?.label ?? t("jobs.openEngines")}
+            {engineFailure.action?.label ?? t("settings.enginesTitle")}
           </Button>
         ) : null}
         {kind === "interrupted" || kind === "stopped" ? (

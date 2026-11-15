@@ -173,7 +173,7 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
       .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')
       .click();
     const query = page.getByRole("textbox", { name: "Cerca nei brani" });
-    const none = (text: string) => page.getByText(`Nessun brano delle tue fonti corrisponde a “${text}”.`);
+    const none = (text: string) => page.getByText(`Nessun brano delle tue fonti corrisponde a «${text}».`);
 
     // An empty query asks nothing: no result section, no message.
     await query.fill("   ");

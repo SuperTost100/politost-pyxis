@@ -483,8 +483,10 @@ test("diagnostic: answered then handed in, where to start, source chips and a re
     await expect(page.getByRole("button", { name: /^Torna a / })).toBeVisible();
     await begin.click();
     await expect(page.getByText("Domanda 1 di 10", { exact: true })).toBeVisible();
-    // The bar says what the page is, not "Quiz".
-    await expect(page.locator(".px-studybar-title")).toContainText("Test diagnostico");
+    // The bar says what the page is, not "Quiz", and no heading on the page says the same name a second time.
+    await expect(page.locator(".px-studybar-title b")).toHaveText("Test diagnostico");
+    await expect(page.locator(".px-studybar-title p")).toHaveText(/^Le risposte restano/);
+    await expect(page.getByRole("heading", { name: "Test diagnostico" })).toHaveCount(0);
     // The options are shown in a shuffled order, so each answer is picked by its text.
     const option = (text: string) => page.getByRole("button", { name: new RegExp(`^[A-D] ${text}$`) });
     await expect(option("La velocità")).toBeEnabled();

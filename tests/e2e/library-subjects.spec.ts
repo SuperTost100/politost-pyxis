@@ -169,7 +169,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     // An empty one does, from a right-click on its name, and asks once with Annulla focused.
     await shelf(page, "Fisica 2").getByRole("heading", { name: "Fisica 2" }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    const confirm = page.getByRole("dialog", { name: "Eliminare la materia Fisica 2?" });
+    const confirm = page.getByRole("dialog", { name: "Eliminare la materia «Fisica 2»?" });
     await expect(confirm.getByRole("button", { name: "Annulla" })).toBeFocused();
     await animationsSettled(page);
     await expectNoAxeViolations(page);
@@ -667,6 +667,17 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // A menu ends the way a desktop menu does. Scrolling the page closes it, by the dots or by a right-click. A layout
     // shift (a group appearing above the shelves) does not: a right-click menu stays at the pointer, and the one opened
     // by the dots follows them. Resizing the window closes a right-click menu, and the dots' menu follows them.
+    /**
+     * Puts the page at `top` px, with no glide, and waits until it has stayed there. A step that wheels up needs a page
+     * that can scroll up, so each one sets its own position instead of taking what the step before left: the wheel and
+     * the scrolls into view of the steps above add up differently on each computer, and the wheel-up of the dots step took
+     * the Intel Mac's page to its top before the right-click step began.
+     */
+    const placePage = async (top: number) => {
+      await page.evaluate((top) => document.scrollingElement!.scrollTo({ top, behavior: "instant" }), top);
+      await atRest(page.locator(".px-shelves").first());
+      await expect.poll(() => page.evaluate(() => Math.round(document.scrollingElement!.scrollTop)), `the page at ${top} px`).toBe(top);
+    };
     for (const way of ["dots", "right-click"] as const) {
       /** Opens the menu of "Serie" by its dots or by a right-click at its centre. */
       const open = async () => {
@@ -684,6 +695,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
         await expect(fileMenu).toBeVisible();
         await animationsSettled(page);
       };
+      // 300 px keeps "Serie", which is 546 px down the page, in the window, and leaves the page 477 px to scroll.
+      await placePage(300);
       await open();
       // A wheel over the shelves, away from the menu, on a page that is not at its top: only then can it scroll.
       const wheelAt = { x: 480, y: 450 };
@@ -1142,6 +1155,39 @@ test("A menu from the dots is drawn like the right-click menu of the same file, 
   }
 });
 
+/**
+ * The tooltip of a cover, with what the page knew when it did not come: the macOS run of 2026-11-14 found none after a
+ * hover and its report held only the page's accessibility tree, which cannot tell a tooltip that never opened from one
+ * that closed, or a title the cover did not cut from a pointer that was not over the cover.
+ */
+async function expectTip(page: Page, button: Locator, title: string) {
+  const tip = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)");
+  try {
+    await expect(tip).toHaveText(title);
+  } catch (error) {
+    const known = await button.evaluate((node) => {
+      const text = node.querySelector<HTMLElement>(".px-cover-title");
+      const box = node.getBoundingClientRect();
+      return {
+        hovered: node.matches(":hover"),
+        buttonBox: [box.x, box.y, box.width, box.height].map(Math.round),
+        pointerOver: (() => {
+          const over = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return over ? `${over.tagName.toLowerCase()}.${over.getAttribute("class") ?? ""}` : null;
+        })(),
+        titleScroll: text?.scrollHeight ?? null,
+        titleClient: text?.clientHeight ?? null,
+        titleFont: text ? getComputedStyle(text).fontFamily : null,
+        tooltips: [...document.querySelectorAll(".ant-tooltip")].map((el) => `${el.className}: ${el.textContent}`),
+        focused: document.hasFocus(),
+        visibility: document.visibilityState,
+        pixelRatio: window.devicePixelRatio,
+      };
+    });
+    throw new Error(`${(error as Error).message}\nThe page knew: ${JSON.stringify(known, null, 2)}`);
+  }
+}
+
 test("A cover's full title shows on hover and on keyboard focus, and its state is still described", async () => {
   test.setTimeout(180000);
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: undefined });
@@ -1158,14 +1204,14 @@ test("A cover's full title shows on hover and on keyboard focus, and its state i
     await expect(open(second)).toBeVisible();
     // A title the cover cuts shows whole on hover...
     await open(first).hover();
-    await expect(tip).toHaveText(first);
+    await expectTip(page, open(first), first);
     await page.mouse.move(5, 5);
     await expect(tip).toHaveCount(0);
     // ...and on keyboard focus.
     await open(second).focus();
-    await expect(tip).toHaveText(second);
+    await expectTip(page, open(second), second);
     await open(first).focus();
-    await expect(tip).toHaveText(first);
+    await expectTip(page, open(first), first);
     await page.keyboard.press("Escape");
     await expect(tip).toHaveCount(0);
     // A title that fits says nothing more.
