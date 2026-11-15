@@ -3361,7 +3361,7 @@ export const requests = {
   "sources.ocrDataAuto": {
     input: z.object({}),
     output: z.object({
-      state: z.enum(["off", "ready", "missing"]),
+      state: z.enum(["off", "ready", "missing", "unreadable"]),
       jobId: z.string().optional(),
     }),
   },

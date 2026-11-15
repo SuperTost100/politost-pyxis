@@ -128,13 +128,17 @@ describe("SRC-04 / ASK-04 local OCR data: installed by default, job, and clear r
     expect(await handlers.ocrDataState()).toMatchObject({ state: "integrity" });
   });
 
-  it("says `unreadable` for a file that is there and cannot be read: a photo is refused with that, and the download job checks it again and downloads nothing", async () => {
+  it("says `unreadable` for a file that is there and cannot be read: a photo is refused with that, starting by itself leaves it to the screens, and Try again checks it again and downloads nothing", async () => {
     const { handlers, runner, path, fetchSpy, tess } = setup();
     // A folder where the file belongs cannot be read (EISDIR), as a file held by a scanner cannot be opened.
     for (const lang of ["eng", "ita"]) mkdirSync(join(ocrDataDir(tess), `${lang}.traineddata`), { recursive: true });
     expect(await handlers.ocrDataState()).toMatchObject({ state: "unreadable" });
     await expect(handlers.importFile({ path })).rejects.toMatchObject({ messageKey: "sources.ocrDataUnreadable" });
-    const started = await handlers.ocrDataAuto();
+    // Starting by itself leaves a lock that has not passed to the screens: no job, no row in Attività for it.
+    expect(await handlers.ocrDataAuto()).toEqual({ state: "unreadable" });
+    expect(runner.list()).toEqual([]);
+    // Try again starts the job, which checks again and downloads nothing over a file it cannot read.
+    const started = await handlers.ocrData({ consent: true });
     await expect.poll(state(runner, started.jobId!), { timeout: 10_000 }).toBe("failed");
     expect(job(runner, started.jobId!)?.error).toBe("ocr-data-unreadable");
     expect(fetchSpy).not.toHaveBeenCalled();

@@ -480,7 +480,7 @@
       "title": "The scan-reading data is not on this computer yet",
       "body": "Pyxis downloads it by itself: it is the {{languages}} data, {{size}}, from the official Tesseract project on raw.githubusercontent.com, and your files are not sent anywhere. With it, Pyxis reads photos and scans on this computer, with no connection and no AI tool.",
       "integrityBody": "Downloading it again replaces the files with the official ones, {{size}}, from raw.githubusercontent.com. Your files are not sent anywhere.",
-      "unreadableBody": "The files are there and nothing was changed or downloaded. Trying again checks them once more.",
+      "unreadableBody": "The files are there and nothing was changed or downloaded. Trying again checks them again.",
       "download": "Download {{size}}",
       "downloadAgain": "Download again, {{size}}",
       "retry": "Try again",
@@ -505,7 +505,7 @@
         "too-big": "A file was larger than expected, so Pyxis threw it away. Try again.",
         "declined": "The download was turned off. Choose Download to start it.",
         "integrity": "A downloaded file did not match its checksum, so Pyxis threw it away. Try again.",
-        "unreadable": "Pyxis could not read a file it already has, so it did not download it again. Try again in a moment."
+        "unreadable": "Pyxis still could not read the files it already has, so it downloaded nothing. Try again in a moment."
       }
     },
     "version": "version {{version}}",

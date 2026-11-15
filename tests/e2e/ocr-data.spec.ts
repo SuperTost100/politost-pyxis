@@ -6,9 +6,12 @@ import {
 } from "@playwright/test";
 import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   truncateSync,
 } from "node:fs";
@@ -22,6 +25,7 @@ import { animationsSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { saveShot } from "./shots";
 
 const HEIC = join(process.cwd(), "tests/fixtures/synthetic-note.heic");
 const totalBytes = Object.values(OCR_DATA_FILES).reduce(
@@ -216,6 +220,104 @@ test("OCR data: once setup is done Pyxis downloads the pinned files by itself, r
       files.requests.slice(2),
       `Requests: ${files.trail.join("; ")}. Download jobs finished today: ${finished.map((job) => `${job.state} at ${job.updatedAt}`).join(", ")}.`,
     ).toEqual(["/eng.traineddata"]);
+  } finally {
+    await app.close();
+    files.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("OCR data: files that are there and cannot be read are said so, nothing is downloaded over them, and Try again once they can be read finds them ready", async () => {
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-ocr-data-"));
+  const files = await tessdataServer(tessDir(userData));
+  const app = await launch(userData, { PYXIS_E2E_OCR_BASE: files.base });
+  try {
+    const first = await app.firstWindow();
+    await expect(first.getByRole("button", { name: "Salta" })).toBeVisible();
+    // A folder where a file belongs cannot be read, as a file a virus scanner holds open cannot be opened for a moment.
+    const locked = ["eng", "ita"].map((lang) => join(tessDir(userData), `${lang}.traineddata`));
+    for (const path of locked) mkdirSync(path, { recursive: true });
+    let page = await start(app, "/settings/data", true);
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "sources.ocrDataState")).state, { timeout: 30000 })
+      .toBe("unreadable");
+    // Once setup is over Pyxis starts nothing for files it cannot read: no job, no download, and the screens say so.
+    expect(await ocrJobs(page)).toHaveLength(0);
+    expect(files.requests).toEqual([]);
+    await expect(page.getByText(/non è riuscito a controllare i dati di lettura/)).toBeVisible();
+    await noAxeViolations(page);
+
+    // A photo that needs the data is refused with the same words, and the card offers the same Try again.
+    const look = async (language: "it" | "en", theme: "dark" | "light", width: number, large: boolean) => {
+      const key = `${language}-${theme}-${width}${large ? "-large" : ""}`;
+      await page.evaluate(
+        async ({ language, theme, large }) => {
+          localStorage.setItem("pyxis.lang", language);
+          await window.pyxis.setAppearance(theme);
+          await window.pyxis.invoke("profile.save", { dyslexia: false, textSize: large ? "lg" : "md" });
+        },
+        { language, theme, large },
+      );
+      await page.setViewportSize({ width, height: 800 });
+      await page.evaluate(() => {
+        location.hash = "/settings/data";
+      });
+      await page.reload();
+      await expect(page.locator("h1:visible").first()).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /(non è riuscito a controllare i dati|could not check the scan-reading data)/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^(Riprova|Try again)$/ })).toBeVisible();
+      await animationsSettled(page);
+      await saveShot(page, `ocr-unreadable/settings-row-${key}.png`);
+      await page.evaluate(() => {
+        location.hash = "/exams/library";
+      });
+      await page.reload();
+      await page.getByRole("button", { name: /^(Aggiungi file|Add files)$/ }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await animationsSettled(page);
+      await app.evaluate((_, path) => {
+        process.env.PYXIS_E2E_FILE = path;
+      }, HEIC);
+      await dialog.getByRole("button", { name: /^(Scegli i file|Choose files)$/ }).click();
+      // A check of files that cannot be read waits 1.85 s before it says so, and a photo is checked more than once.
+      await expect(dialog.getByText(/(non è riuscito a controllare|could not check)/)).toBeVisible({ timeout: 30_000 });
+      await animationsSettled(page);
+      await saveShot(page, `ocr-unreadable/photo-import-card-${key}.png`);
+      return dialog;
+    };
+    await look("en", "light", 1280, false);
+    const dialog = await look("it", "dark", 960, true);
+    await expect(dialog.getByText(/I file ci sono e non è stato cambiato né scaricato nulla/)).toBeVisible();
+    expect(await ocrJobs(page)).toHaveLength(0);
+    expect(files.requests).toEqual([]);
+
+    // Try again while the files still cannot be read checks them again and says so, still without a download.
+    await dialog.getByRole("button", { name: "Riprova" }).click();
+    await expect(dialog.getByText(/non riesce ancora a leggere i file che ha già/)).toBeVisible({ timeout: 30_000 });
+    await expect.poll(() => ocrJobs(page), { timeout: 30000 }).toMatchObject([{ state: "failed", error: "ocr-data-unreadable" }]);
+    await animationsSettled(page);
+    await saveShot(page, "ocr-unreadable/photo-import-card-try-again-still-locked-it-dark-960-large.png");
+    expect(files.requests).toEqual([]);
+
+    // The lock is gone: the files can be read. Try again checks them, finds them ready, and fetches nothing.
+    for (const path of locked) rmSync(path, { recursive: true });
+    for (const lang of Object.keys(OCR_DATA_FILES))
+      copyFileSync(
+        join(process.env.PYXIS_TESSDATA_DIR ?? join(process.cwd(), ".tmp", "tessdata-fast"), `${lang}.traineddata`),
+        join(tessDir(userData), `${lang}.traineddata`),
+      );
+    await dialog.getByRole("button", { name: "Riprova" }).click();
+    await expect(dialog.getByText("La lettura delle scansioni è pronta")).toBeVisible();
+    await animationsSettled(page);
+    await saveShot(page, "ocr-unreadable/photo-import-card-after-try-again-it-dark-960-large.png");
+    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({ state: "ready" });
+    expectPinned(userData);
+    expect(files.requests).toEqual([]);
+    page = await start(app, "/settings/data");
+    await expect(page.getByText(readyRow)).toBeVisible();
+    expect(files.requests).toEqual([]);
   } finally {
     await app.close();
     files.close();

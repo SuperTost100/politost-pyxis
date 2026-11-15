@@ -480,7 +480,7 @@
       "title": "I dati per leggere le scansioni non sono ancora su questo computer",
       "body": "Pyxis li scarica da solo: sono i dati per {{languages}}, {{size}}, del progetto ufficiale Tesseract su raw.githubusercontent.com, e i tuoi file non vengono inviati da nessuna parte. Con questi dati Pyxis legge foto e scansioni su questo computer, senza connessione e senza strumento AI.",
       "integrityBody": "Scaricarli di nuovo sostituisce i file con quelli ufficiali, {{size}}, da raw.githubusercontent.com. I tuoi file non vengono inviati da nessuna parte.",
-      "unreadableBody": "I file ci sono e non è stato cambiato né scaricato nulla. Riprovando, Pyxis li controlla ancora una volta.",
+      "unreadableBody": "I file ci sono e non è stato cambiato né scaricato nulla. Riprovando, Pyxis li controlla di nuovo.",
       "download": "Scarica {{size}}",
       "downloadAgain": "Scarica di nuovo, {{size}}",
       "retry": "Riprova",
@@ -505,7 +505,7 @@
         "too-big": "Un file era più grande del previsto, quindi Pyxis lo ha scartato. Riprova.",
         "declined": "Il download era stato disattivato. Scegli Scarica per farlo partire.",
         "integrity": "Un file scaricato non corrispondeva al suo checksum, quindi Pyxis lo ha scartato. Riprova.",
-        "unreadable": "Pyxis non è riuscito a leggere un file che ha già, quindi non l'ha scaricato di nuovo. Riprova tra un momento."
+        "unreadable": "Pyxis non riesce ancora a leggere i file che ha già, quindi non ha scaricato nulla. Riprova tra un momento."
       }
     },
     "version": "versione {{version}}",

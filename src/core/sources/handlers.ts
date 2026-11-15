@@ -747,15 +747,18 @@ export function sourceHandlers(
     /**
      * Installs the OCR data without asking: the window calls this once setup is done, and when a screen needs the data.
      * Starts the download job, or joins the one running, unless the data is ready or the student turned it off. A
-     * download that stopped earlier is dismissed first, so Attività keeps one row for it. Files that are there but could
-     * not be read count as not ready, so the job checks them again: it downloads nothing over a file it cannot read,
-     * and when it still cannot, it ends as failed with `ocr-data-unreadable`, a try away from another check.
+     * download that stopped earlier is dismissed first, so Attività keeps one row for it. Files that are there but still
+     * could not be read after the status check's tries start nothing: a download would not touch them, and a job that
+     * only fails would leave a row in Attività for a lock that passes. The screens show the state, and Try again
+     * (`ocrData`) starts the job, which checks again and ends as failed with `ocr-data-unreadable` if it still cannot.
      */
     async ocrDataAuto() {
       if (!ocrConsent(db)) return { state: "off" as const };
-      if ((await ocrDataStatus(tess)).state === "ready") return { state: "ready" as const };
+      const { state } = await ocrDataStatus(tess);
+      if (state === "ready") return { state: "ready" as const };
       const running = activeOcrDownload();
       if (running) return { state: "missing" as const, jobId: running };
+      if (state === "unreadable") return { state: "unreadable" as const };
       // End-to-end runs download only from the local server a spec names, never from GitHub.
       if (process.env.PYXIS_E2E === "1" && !e2eOcrBase()) return { state: "missing" as const };
       for (const job of runner.list())
