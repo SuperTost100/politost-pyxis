@@ -13,6 +13,7 @@ import { Notice } from "../../components/Notice";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
 import { useGradeScale } from "../../lib/useGradeScale";
+import { useStillHere } from "../../lib/useStillHere";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import type { PlanFile } from "@shared/plan-file";
 import { readTrail, skipSpentForms, watchTrail } from "../../app/history";
@@ -355,10 +356,12 @@ export function SharedPlanPage() {
     if (text !== null) openWaiting.current(text);
   }, [location.key]);
 
+  const stillHere = useStillHere();
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);
     await client.invalidateQueries({ queryKey: ["plans"] });
-    navigate(`/plans/${result.planId}`);
+    // The exam is made either way; a student who went back meanwhile is not taken to it.
+    if (stillHere()) navigate(`/plans/${result.planId}`);
   }
 
   return (
