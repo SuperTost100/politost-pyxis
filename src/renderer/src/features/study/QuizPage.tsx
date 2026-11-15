@@ -414,7 +414,9 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     autoSubmitted.current = true;
     submit.mutate();
   }, [expired, running, canFinish, hydratedAttempt, attemptId]);
-  // Answers, checks and the current question are saved as they change and when the page closes.
+  // Answers, checks and the current question are saved as they change and when the page closes. `stored` is the draft the
+  // store holds as far as this page knows: the one it opened with, then each one that saved.
+  const stored = useRef<{ attemptId: string; json: string } | null>(null);
   const drafts = useDraftSaver(
     async (draft: {
       attemptId: string;
@@ -424,15 +426,20 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       marked: string[];
     }) => {
       await invoke("study.quizDraft", draft);
+      stored.current = { attemptId: draft.attemptId, json: JSON.stringify(draft) };
       // The first save after the quiz is ready starts the timer; pick up its deadline.
       if (timed && !deadlineAt && canFinish) void session.refetch();
     },
     () => setActionError(true),
   );
-  // The answers save themselves, so a quiz does not hold the menu while it is answered. It holds it only while the
-  // newest answers are not saved (a save on its way, or one that failed): every menu command then waits for the save or
-  // is refused, instead of closing the page over answers that were never stored.
-  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved));
+  // The answers save themselves, so a quiz does not hold the menu while it is answered. It holds it only while answers
+  // that differ from the stored ones are not saved (waiting for the pause, a save on its way, or one that failed): a menu
+  // command is then refused, as under any lock, instead of closing the page over answers that were never stored. The draft
+  // a quiz opens with is the stored one, so opening it holds nothing.
+  const edited =
+    stored.current?.attemptId === attemptId &&
+    stored.current?.json !== JSON.stringify({ attemptId, planId, picks, index, marked });
+  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved) && edited);
   useEffect(() => {
     if (
       attemptId &&
@@ -441,9 +448,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       !gradingStarted &&
       !expired &&
       session.data?.submittedAt == null
-    )
-      drafts.schedule({ attemptId, planId, picks, index, marked });
-    else drafts.cancel();
+    ) {
+      const draft = { attemptId, planId, picks, index, marked };
+      if (stored.current?.attemptId !== attemptId) stored.current = { attemptId, json: JSON.stringify(draft) };
+      drafts.schedule(draft);
+    } else drafts.cancel();
   }, [
     attemptId,
     hydratedAttempt,

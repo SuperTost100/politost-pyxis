@@ -479,6 +479,35 @@ test("the quiz too reopens on the question after Avanti and Segna per dopo press
   }
 });
 
+test("a menu command chosen right after an answer does not leave the page over an answer whose save fails", async () => {
+  test.setTimeout(120_000);
+  const lose = join(tmpdir(), `pyxis-quiz-sheet-draft-${process.pid}-${Date.now()}`);
+  const { app, page, done } = await launch({ PYXIS_E2E_READ_FAIL: `study.quizDraft=${lose}` });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const quiz = "/plans/p-fis/quiz/t-kin?attempt=a-quiz";
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    // The first draft, written when the quiz opens, must be stored before the write that fails is armed.
+    await expect.poll(() => read(page, "a-quiz").then((run) => run.draft?.index)).toBe(0);
+    writeFileSync(lose, "");
+    const answer = page.getByRole("button", { name: /^B 25 m/ });
+    await answer.click();
+    await expect(answer).toHaveAttribute("aria-pressed", "true");
+    // Vai > Mappe, with the focus on a button: nothing is typed, so the menu alone would let it through. The answer is
+    // still waiting for its pause, and its save will fail.
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+    await expect.poll(() => existsSync(lose), { message: "the save of the answer was tried" }).toBe(false);
+    // The student is on the quiz still, or the answer is there when they are back: it was never lost.
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    rmSync(lose, { force: true });
+    await done();
+  }
+});
+
 test("a slow save on its way, a queued draft and a newer one sent on leaving: the newest answers are the ones stored", async () => {
   test.setTimeout(120_000);
   const { page, userData, done } = await launch();

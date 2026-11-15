@@ -193,7 +193,7 @@ describe("draftSaver", () => {
     expect(sent).toEqual(["typed on question 1", "question 2, marked"]);
   });
 
-  it("says when the newest answers are not saved: a save on its way, or one that failed, until a save lands", async () => {
+  it("says when the newest answers are not saved: from the change, through the pause and the save, or a save that failed, until a save lands", async () => {
     let fail = true;
     const releases: Array<() => void> = [];
     const saver = draftSaver(
@@ -207,9 +207,9 @@ describe("draftSaver", () => {
     const states: boolean[] = [];
     saver.watch(() => states.push(saver.unsaved()));
     expect(saver.unsaved()).toBe(false);
-    // Waiting for the pause to end is not enough to hold anything: leaving sends it.
+    // A draft that waits for its pause is already not saved: leaving then depends on a save that can fail.
     saver.schedule("a");
-    expect(saver.unsaved()).toBe(false);
+    expect(saver.unsaved()).toBe(true);
     await saver.flush();
     // The save failed: the draft waits for the next flush.
     expect(saver.unsaved()).toBe(true);
@@ -220,6 +220,38 @@ describe("draftSaver", () => {
     expect(saver.unsaved()).toBe(true);
     releases.forEach((release) => release());
     expect(await retried).toBe(true);
+    expect(saver.unsaved()).toBe(false);
+    expect(states).toEqual([true, false]);
+  });
+
+  it("counts a draft from the moment it changes until its save lands, across the pause", async () => {
+    const releases: Array<() => void> = [];
+    const saver = draftSaver((draft: string) => new Promise<void>((resolve) => releases.push(resolve)), () => undefined, 500);
+    const states: boolean[] = [];
+    saver.watch(() => states.push(saver.unsaved()));
+    saver.schedule("a");
+    await vi.advanceTimersByTimeAsync(300);
+    // A newer draft restarts the pause and changes nothing for the watchers.
+    saver.schedule("ab");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(saver.unsaved()).toBe(true);
+    await vi.advanceTimersByTimeAsync(200);
+    // The pause is over and the save is on its way.
+    expect(releases).toHaveLength(1);
+    expect(saver.unsaved()).toBe(true);
+    releases.forEach((release) => release());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saver.unsaved()).toBe(false);
+    expect(states).toEqual([true, false]);
+  });
+
+  it("holds nothing when the draft that waited for its pause is dropped", async () => {
+    const saver = draftSaver(async () => undefined, () => undefined, 500);
+    const states: boolean[] = [];
+    saver.watch(() => states.push(saver.unsaved()));
+    saver.schedule("a");
+    expect(saver.unsaved()).toBe(true);
+    saver.cancel();
     expect(saver.unsaved()).toBe(false);
     expect(states).toEqual([true, false]);
   });
