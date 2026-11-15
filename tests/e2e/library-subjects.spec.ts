@@ -1186,6 +1186,8 @@ async function expectTip(page: Page, button: Locator, title: string) {
         titleClient: text?.clientHeight ?? null,
         titleFont: text ? getComputedStyle(text).fontFamily : null,
         tooltips: [...document.querySelectorAll(".ant-tooltip")].map((el) => `${el.className}: ${el.textContent}`),
+        // Where the last mouse event of the page put the pointer, which `pointerOver` above does not say.
+        pointer: (window as unknown as { lastPointer?: number[] }).lastPointer ?? null,
         focused: document.hasFocus(),
         visibility: document.visibilityState,
         pixelRatio: window.devicePixelRatio,
@@ -1203,14 +1205,29 @@ test("A cover's full title shows on hover and on keyboard focus, and its state i
     const first = "Dispensa di analisi matematica uno: serie numeriche e criteri di convergenza";
     const second = "Dispensa di analisi matematica uno: serie di potenze e raggio di convergenza";
     for (const title of [first, second, "Limiti"]) await fileUnder(page, title, "Analisi 1");
+    // A file still being read sorts before the ones that are ready, so its cover changes places when its read ends: the
+    // files are all read before the page opens, or a cover moves from under the pointer while it is on it.
+    await expect
+      .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
+      .toBe(0);
     await page.reload();
+    await page.evaluate(() => {
+      document.addEventListener("mousemove", (event) => ((window as unknown as { lastPointer: number[] }).lastPointer = [event.clientX, event.clientY]), true);
+      return document.fonts.ready;
+    });
     const tip = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)");
     const open = (title: string) => cover(page, "Analisi 1", title).getByRole("button", { name: title, exact: true });
+    // The pointer goes to the middle of a cover, which is at rest by then, with the mouse alone.
+    const pointAt = async (title: string) => {
+      await atRest(open(title));
+      const box = (await open(title).boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    };
     // The whole title is the button's name, whatever the cover shows.
     await expect(open(first)).toBeVisible();
     await expect(open(second)).toBeVisible();
     // A title the cover cuts shows whole on hover...
-    await open(first).hover();
+    await pointAt(first);
     await expectTip(page, open(first), first);
     await page.mouse.move(5, 5);
     await expect(tip).toHaveCount(0);
@@ -1222,7 +1239,7 @@ test("A cover's full title shows on hover and on keyboard focus, and its state i
     await page.keyboard.press("Escape");
     await expect(tip).toHaveCount(0);
     // A title that fits says nothing more.
-    await open("Limiti").hover();
+    await pointAt("Limiti");
     await page.waitForTimeout(400);
     await expect(tip).toHaveCount(0);
   } finally {

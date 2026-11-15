@@ -287,7 +287,8 @@ export function enqueueGapDrill(
   runner: Runner,
   input: { planId: string; topicId: string; gapId?: string },
 ): { jobId: string } {
-  const gap = openGap(db, input.planId, input.topicId, input.gapId);
+  // As in `readGapDrill`: a page that opened for a gap that has merged since asks again for the same one, and its drill is the survivor's.
+  const gap = openGap(db, input.planId, input.topicId, input.gapId ? (successor(db, input.gapId) ?? input.gapId) : undefined);
   if (!gap) throw new Error("gap-missing");
   const current = readGapDrill(db, input.planId, input.topicId, gap.id);
   if (

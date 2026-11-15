@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { GenerateInput } from "../engine/generate";
-import { buildGapDrill, readGapDrill, readGapDrillJob } from "./gapDrill";
+import type { Runner } from "../jobs/runner";
+import { buildGapDrill, enqueueGapDrill, readGapDrill, readGapDrillJob } from "./gapDrill";
 import { saveQuiz, startAttempt } from "./attempt";
 import { gapMisses } from "./gapInsight";
 import { mergeGap } from "./gapRows";
@@ -397,6 +398,27 @@ describe("reading a drill once its gap merged", () => {
     mergeGap(db, "gap", "into", NOW + 300);
     // A page that started this drill for "gap" keeps asking for "gap": it is the survivor's drill now.
     expect(readGapDrill(db, "plan", "topic", "gap")).toEqual({ jobId: "drill", state: "succeeded", attemptId });
+    db.close();
+  });
+
+  it("starts the drill for the survivor when asked, by a page that still has the gap that merged", () => {
+    const { db } = setup();
+    mergeGap(db, "gap", "into", NOW + 300);
+    const started: Array<Record<string, unknown>> = [];
+    const runner = { start: (_kind: string, params: Record<string, unknown>) => (started.push(params), "job") } as unknown as Runner;
+    // The page asked for "gap" when it opened, and its Retry asks again: the survivor is the gap to drill.
+    expect(enqueueGapDrill(db, runner, { planId: "plan", topicId: "topic", gapId: "gap" })).toEqual({ jobId: "drill" });
+    db.close();
+  });
+
+  it("starts a new drill for the survivor when the merged gap's was taken", () => {
+    const { db, attemptId } = setup();
+    db.prepare("UPDATE attempts SET submitted_at = ? WHERE id = ?").run(NOW + 200, attemptId);
+    mergeGap(db, "gap", "into", NOW + 300);
+    const started: Array<Record<string, unknown>> = [];
+    const runner = { start: (_kind: string, params: Record<string, unknown>) => (started.push(params), "new-job") } as unknown as Runner;
+    expect(enqueueGapDrill(db, runner, { planId: "plan", topicId: "topic", gapId: "gap" })).toEqual({ jobId: "new-job" });
+    expect(started.map((params) => params["gapId"])).toEqual(["into"]);
     db.close();
   });
 
