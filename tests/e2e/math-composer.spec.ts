@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -11,14 +11,16 @@ import { fromChiediToExams } from "./doors";
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: "Ecco." } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => {
-    location.hash = "/ask";
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      location.hash = "/ask";
+    });
+    return { app, page, userData };
   });
-  return { app, page, userData };
 }
 
 const draft = (page: Page) => page.evaluate(() => sessionStorage.getItem("pyxis-draft"));

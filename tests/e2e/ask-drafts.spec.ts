@@ -2,17 +2,19 @@ import { expect, test } from "@playwright/test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-drafts-"));
   const app = await launchPyxis({ userData, env: extra });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData };
+  });
 }
 
 const PNG =

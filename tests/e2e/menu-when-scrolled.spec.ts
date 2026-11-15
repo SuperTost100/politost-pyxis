@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
@@ -152,7 +152,7 @@ async function start(seed: (db: DatabaseSync, userData: string) => void, size = 
     await app.close();
     removeTestFolder(userData);
   };
-  try {
+  return setUp(app, userData, async () => {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize(size);
@@ -165,11 +165,7 @@ async function start(seed: (db: DatabaseSync, userData: string) => void, size = 
       db.close();
     }
     return { app, page, userData, done };
-  } catch (error) {
-    // The test never gets `done`, so nobody else can close the app or remove the workspace.
-    await done().catch(() => undefined);
-    throw error;
-  }
+  });
 }
 
 const go = (page: Page, hash: string) =>

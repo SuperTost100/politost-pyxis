@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -24,8 +24,10 @@ const plan = (title: string, extra: object = {}) =>
 async function start(args: string[]) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
   const app = await launchPyxis({ userData, args });
-  const page = await app.firstWindow();
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    return { app, page, userData };
+  });
 }
 
 async function skipSetup(page: Page) {

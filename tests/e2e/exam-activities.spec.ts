@@ -9,7 +9,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { makeBook } from "./book";
 import { removeTestFolder } from "./cleanup";
@@ -85,55 +85,57 @@ async function launch() {
       PYXIS_E2E_PLAN_DELAY: "0",
     },
   });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const source = (await importPickedSource(page, app, file)) as {
-    sourceId: string;
-  };
-  await expect
-    .poll(
-      async () =>
-        (
-          await invoke<Array<{ id: string; status: string }>>(
-            page,
-            "sources.list",
-            {},
-          )
-        ).find((row) => row.id === source.sourceId)?.status,
-    )
-    .toBe("ready");
-  const { planId } = await invoke<{ planId: string }>(page, "plans.create", {
-    title: "Analisi 1",
-    sourceIds: [source.sourceId],
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const source = (await importPickedSource(page, app, file)) as {
+      sourceId: string;
+    };
+    await expect
+      .poll(
+        async () =>
+          (
+            await invoke<Array<{ id: string; status: string }>>(
+              page,
+              "sources.list",
+              {},
+            )
+          ).find((row) => row.id === source.sourceId)?.status,
+      )
+      .toBe("ready");
+    const { planId } = await invoke<{ planId: string }>(page, "plans.create", {
+      title: "Analisi 1",
+      sourceIds: [source.sourceId],
+    });
+    await expect
+      .poll(
+        async () =>
+          (await invoke<{ state: string }>(page, "plans.build", { planId }))
+            .state,
+        { timeout: 60_000 },
+      )
+      .toBe("succeeded");
+    const examDay = new Date();
+    examDay.setDate(examDay.getDate() + 30);
+    examDay.setHours(12, 0, 0, 0);
+    await invoke(page, "plans.settings", {
+      planId,
+      title: "Analisi 1",
+      target: 0.75,
+      sessions: [{ date: examDay.getTime() }],
+    });
+    const plan = await invoke<{ topics: Array<{ id: string; title: string }> }>(
+      page,
+      "plans.read",
+      { planId },
+    );
+    const done = async () => {
+      await app.close();
+      removeTestFolder(userData);
+    };
+    return { app, page, userData, planId, topics: plan.topics, done };
   });
-  await expect
-    .poll(
-      async () =>
-        (await invoke<{ state: string }>(page, "plans.build", { planId }))
-          .state,
-      { timeout: 60_000 },
-    )
-    .toBe("succeeded");
-  const examDay = new Date();
-  examDay.setDate(examDay.getDate() + 30);
-  examDay.setHours(12, 0, 0, 0);
-  await invoke(page, "plans.settings", {
-    planId,
-    title: "Analisi 1",
-    target: 0.75,
-    sessions: [{ date: examDay.getTime() }],
-  });
-  const plan = await invoke<{ topics: Array<{ id: string; title: string }> }>(
-    page,
-    "plans.read",
-    { planId },
-  );
-  const done = async () => {
-    await app.close();
-    removeTestFolder(userData);
-  };
-  return { app, page, userData, planId, topics: plan.topics, done };
 }
 
 async function openExam(page: Page, planId: string) {

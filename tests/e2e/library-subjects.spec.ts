@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
@@ -45,14 +45,16 @@ async function start(env: Record<string, string | undefined>) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-library-subjects-"));
   const files = studyFiles(userData);
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined, ...env } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  for (const name of ["Analisi 1", "Fisica 2"])
-    await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
-  await toLibrary(page);
-  return { app, page, userData, files };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    for (const name of ["Analisi 1", "Fisica 2"])
+      await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name);
+    await toLibrary(page);
+    return { app, page, userData, files };
+  });
 }
 
 /** Adds files through the Library's file picker and closes the result. */

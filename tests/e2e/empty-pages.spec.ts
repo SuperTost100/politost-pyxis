@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { expectEmptyPage, headBox } from "./empty-page";
@@ -21,17 +21,19 @@ type Look = (typeof looks)[number];
 async function start(prefix: string) {
   const userData = mkdtempSync(join(tmpdir(), `pyxis-empty-${prefix}-`));
   const app = await launchPyxis({ userData });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const open = () => new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  const finish = async () => {
-    await app.close();
-    removeTestFolder(userData);
-  };
-  return { page, open, finish };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const open = () => new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    const finish = async () => {
+      await app.close();
+      removeTestFolder(userData);
+    };
+    return { page, open, finish };
+  });
 }
 
 /** Shows a page at its address in a look, so each test checks the same page in both. */

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -44,84 +44,86 @@ const theoremsAsked = "solo i teoremi, con le dimostrazioni";
 async function startApp(env: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-menu-"));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  seedSubjects(db, [
-    { id: "an", name: "Analisi 1" },
-    { id: "fis", name: "Fisica 2" },
-    { id: "chem", name: "Chimica" },
-  ]);
-  seedPlan(db, {
-    id: "p-an",
-    subjectId: "an",
-    title: "Appello del 14 gennaio",
-    topics: [
-      { id: "t-lim", title: "Limiti" },
-      { id: "t-succ", title: "Successioni" },
-      { id: "t-real", title: "Numeri reali" },
-    ],
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [
+      { id: "an", name: "Analisi 1" },
+      { id: "fis", name: "Fisica 2" },
+      { id: "chem", name: "Chimica" },
+    ]);
+    seedPlan(db, {
+      id: "p-an",
+      subjectId: "an",
+      title: "Appello del 14 gennaio",
+      topics: [
+        { id: "t-lim", title: "Limiti" },
+        { id: "t-succ", title: "Successioni" },
+        { id: "t-real", title: "Numeri reali" },
+      ],
+    });
+    seedSource(db, {
+      id: "bramanti",
+      title: "Bramanti",
+      subjectId: "an",
+      document: { id: "bramanti-doc" },
+      passages: [
+        { id: "pa-1", text: "Un insieme limitato superiormente ha un estremo superiore.", section: "Numeri reali" },
+        { id: "pa-2", text: "I numeri reali sono un campo ordinato completo.", section: "Numeri reali" },
+      ],
+    });
+    db.exec("INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-real', id FROM passages WHERE source_id = 'bramanti'");
+    const collection = (maps: Array<{ id: string; title: string; graph: unknown; instruction?: string }>) =>
+      JSON.stringify({ version: 1, maps: maps.map((map) => ({ passageIds: [], grounding: "sources", ...map })) });
+    const topicRow = db.prepare(
+      "INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES(?,?,?,?,'sources',1)",
+    );
+    const subjectRow = db.prepare(
+      "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES(?,?,?,'sources',1)",
+    );
+    topicRow.run(
+      "row-lim",
+      "p-an",
+      "t-lim",
+      collection([
+        { id: "m-lim", title: "Limiti", graph: limits },
+        { id: "m-teo", title: "Teoremi sui limiti", graph: theorems, instruction: theoremsAsked },
+      ]),
+    );
+    topicRow.run(
+      "row-succ",
+      "p-an",
+      "t-succ",
+      collection([{ id: "m-succ", title: "Successioni", graph: graph("Successioni", [["Convergenza", ["Limitatezza"]]]) }]),
+    );
+    subjectRow.run(
+      "row-fis",
+      "fis",
+      collection([
+        { id: "m-campo", title: "Campo elettrico", graph: graph("Campo elettrico", [["Legge di Gauss", ["Flusso"]]]) },
+        {
+          id: "m-rc",
+          title: "Circuiti RC",
+          graph: graph("Circuiti RC", [["Carica", ["Costante di tempo"]]]),
+          instruction: "solo la carica e la scarica, con i grafici",
+        },
+      ]),
+    );
+    subjectRow.run(
+      "row-chem",
+      "chem",
+      collection([{ id: "m-atom", title: "Struttura dell’atomo", graph: graph("Atomo", [["Protoni", ["Carica positiva"]]]) }]),
+    );
+    db.close();
+    await page.reload();
+    return { app, page, userData, errors };
   });
-  seedSource(db, {
-    id: "bramanti",
-    title: "Bramanti",
-    subjectId: "an",
-    document: { id: "bramanti-doc" },
-    passages: [
-      { id: "pa-1", text: "Un insieme limitato superiormente ha un estremo superiore.", section: "Numeri reali" },
-      { id: "pa-2", text: "I numeri reali sono un campo ordinato completo.", section: "Numeri reali" },
-    ],
-  });
-  db.exec("INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-real', id FROM passages WHERE source_id = 'bramanti'");
-  const collection = (maps: Array<{ id: string; title: string; graph: unknown; instruction?: string }>) =>
-    JSON.stringify({ version: 1, maps: maps.map((map) => ({ passageIds: [], grounding: "sources", ...map })) });
-  const topicRow = db.prepare(
-    "INSERT INTO maps(id,plan_id,topic_id,graph_json,grounding,created_at) VALUES(?,?,?,?,'sources',1)",
-  );
-  const subjectRow = db.prepare(
-    "INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES(?,?,?,'sources',1)",
-  );
-  topicRow.run(
-    "row-lim",
-    "p-an",
-    "t-lim",
-    collection([
-      { id: "m-lim", title: "Limiti", graph: limits },
-      { id: "m-teo", title: "Teoremi sui limiti", graph: theorems, instruction: theoremsAsked },
-    ]),
-  );
-  topicRow.run(
-    "row-succ",
-    "p-an",
-    "t-succ",
-    collection([{ id: "m-succ", title: "Successioni", graph: graph("Successioni", [["Convergenza", ["Limitatezza"]]]) }]),
-  );
-  subjectRow.run(
-    "row-fis",
-    "fis",
-    collection([
-      { id: "m-campo", title: "Campo elettrico", graph: graph("Campo elettrico", [["Legge di Gauss", ["Flusso"]]]) },
-      {
-        id: "m-rc",
-        title: "Circuiti RC",
-        graph: graph("Circuiti RC", [["Carica", ["Costante di tempo"]]]),
-        instruction: "solo la carica e la scarica, con i grafici",
-      },
-    ]),
-  );
-  subjectRow.run(
-    "row-chem",
-    "chem",
-    collection([{ id: "m-atom", title: "Struttura dell’atomo", graph: graph("Atomo", [["Protoni", ["Carica positiva"]]]) }]),
-  );
-  db.close();
-  await page.reload();
-  return { app, page, userData, errors };
 }
 
 async function openMaps(page: Page) {

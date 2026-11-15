@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -107,22 +107,24 @@ function seed(db: DatabaseSync) {
 async function launch(env: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-quiz-sheet-"));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  seed(db);
-  db.close();
-  return {
-    app,
-    page,
-    userData,
-    done: async () => {
-      await app.close();
-      removeTestFolder(userData);
-    },
-  };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seed(db);
+    db.close();
+    return {
+      app,
+      page,
+      userData,
+      done: async () => {
+        await app.close();
+        removeTestFolder(userData);
+      },
+    };
+  });
 }
 
 async function go(page: Page, hash: string) {

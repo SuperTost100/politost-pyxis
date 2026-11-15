@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { seedSource } from "./seed";
@@ -270,15 +270,17 @@ async function checkSort(page: Page, subjects: Array<{ id: string; name: string 
 async function openLibrary(prefix: string, env: Record<string, string> = {}, fps?: number) {
   const userData = mkdtempSync(join(tmpdir(), prefix));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  if (fps) await drawSlowly(page, fps);
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const subjects: Array<{ id: string; name: string }> = [];
-  for (const name of ["Analisi 1", "Fisica 2"])
-    subjects.push(await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name));
-  seedLibrary(userData, subjects);
-  return { app, page, subjects, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    if (fps) await drawSlowly(page, fps);
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const subjects: Array<{ id: string; name: string }> = [];
+    for (const name of ["Analisi 1", "Fisica 2"])
+      subjects.push(await page.evaluate((name) => window.pyxis.invoke("subjects.add", { name }), name));
+    seedLibrary(userData, subjects);
+    return { app, page, subjects, userData };
+  });
 }
 
 test("A file chosen a subject in Da sistemare grows on its shelf where it lands, and its row closes where it was", async () => {

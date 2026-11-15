@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -29,13 +29,15 @@ async function launch() {
     PYXIS_E2E_REPLY: REPLY,
   };
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
-  await page.setViewportSize({ width: 1280, height: 832 });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  return { app, page, userData, db };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    return { app, page, userData, db };
+  });
 }
 
 async function finish(app: ElectronApplication, userData: string, db: DatabaseSync) {

@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
@@ -17,11 +17,13 @@ const REPLY = ["Il campo è radiale e vale λ/(2π ε₀ r) [P1].", "", "<follow
 async function launch(env: Record<string, string> = { PYXIS_E2E_REPLY: REPLY }) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ask-subject-"));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  await page.setViewportSize({ width: 1280, height: 832 });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData };
+  });
 }
 
 /** Three subjects, each with a file and its passages: only Fisica 2 talks about the field of a charged wire. */

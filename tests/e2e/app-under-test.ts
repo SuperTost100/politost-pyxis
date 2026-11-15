@@ -1,5 +1,6 @@
 import { _electron as electron, type ElectronApplication } from "@playwright/test";
 import { join } from "node:path";
+import { removeTestFolder } from "./cleanup";
 
 export type LaunchOptions = {
   /** The profile folder, passed as PYXIS_USER_DATA. */
@@ -60,6 +61,26 @@ export async function launchPyxis({
     throw error;
   }
   return app;
+}
+
+/**
+ * Runs the setup steps of a spec that come after `launchPyxis` (the window, setup, seeding). When one throws, the caller
+ * never gets the app, so nobody else can close it or remove its folder: this closes the app, removes `folder` (the
+ * profile, or the folder that holds it) and throws the setup's own error again. A cleanup that fails too is reported
+ * on the console and does not hide that error.
+ */
+export async function setUp<T>(app: ElectronApplication, folder: string, steps: () => Promise<T>): Promise<T> {
+  try {
+    return await steps();
+  } catch (error) {
+    await app.close().catch(() => undefined);
+    try {
+      removeTestFolder(folder);
+    } catch (leftover) {
+      console.error(`setUp: ${folder} was not removed: ${(leftover as Error).message}`);
+    }
+    throw error;
+  }
 }
 
 /**

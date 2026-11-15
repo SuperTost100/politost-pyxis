@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importPickedSource } from "./picked-source";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { makeBook } from "./book";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -45,12 +45,14 @@ async function launch(delay = 0) {
     PYXIS_E2E_PLAN_DELAY: String(delay),
   };
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  page.setDefaultTimeout(30000);
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData };
+  });
 }
 
 const goto = (page: Page, hash: string) =>
