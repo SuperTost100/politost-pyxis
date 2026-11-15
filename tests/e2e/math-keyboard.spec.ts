@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -12,19 +12,21 @@ import { fromChiediToExams } from "./doors";
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
   const app = await launchPyxis({ userData, env: extra });
-  const page = await app.firstWindow();
-  const violations: string[] = [];
-  page.on("console", (message) => {
-    if (/content security policy|refused to (load|connect|apply)/i.test(message.text()))
-      violations.push(message.text());
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    const violations: string[] = [];
+    page.on("console", (message) => {
+      if (/content security policy|refused to (load|connect|apply)/i.test(message.text()))
+        violations.push(message.text());
+    });
+    page.on("request", (request) => {
+      if (!/^(pyxis-app|data|blob|devtools|chrome-extension):/.test(request.url()))
+        violations.push(`request ${request.url()}`);
+    });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData, violations };
   });
-  page.on("request", (request) => {
-    if (!/^(pyxis-app|data|blob|devtools|chrome-extension):/.test(request.url()))
-      violations.push(`request ${request.url()}`);
-  });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData, violations };
 }
 
 /** Builds one half in the open field: fraction key, 1, move right, 2. */

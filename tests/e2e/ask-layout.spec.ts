@@ -7,7 +7,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { animationsSettled, atRest } from "./settled";
 import { removeTestFolder } from "./cleanup";
@@ -45,12 +45,14 @@ async function launch(extra: Record<string, string> = {}) {
     ...extra,
   };
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
-  await page.setViewportSize({ width: 1280, height: 832 });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    // The recent chats show beside the page from 1100px; Windows runners scale the default window below that.
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData };
+  });
 }
 
 /** Two subjects, each with a plan and a source, plus a source in no plan. Fisica's source holds the passage the reply cites. */

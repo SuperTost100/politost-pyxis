@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedSubjects } from "./seed";
@@ -315,32 +315,34 @@ async function start() {
   const userData = join(root, "userData");
   const saved = join(root, "map.png");
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_SAVE: saved } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  try {
-    seedSubjects(db, [{ id: "cinema", name: "Cinema" }]);
-    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cinema','cinema',?,'general',1)").run(
-      JSON.stringify({
-        version: 1,
-        maps: (["tree", "radial"] as const).map((layout) => ({
-          id: layout,
-          title: radialFixtures.filmHistory.title,
-          passageIds: [],
-          grounding: "general",
-          graph: storedGraph(radialFixtures.filmHistory, layout),
-        })),
-      }),
-    );
-  } finally {
-    db.close();
-  }
-  // The page keeps the window's own size. A viewport set by the test would lay the page out for a size the window may not
-  // have (a Mac runner's window is shorter than 800 pixels), while the export takes the window's pixels.
-  return { app, page, root, saved };
+  return setUp(app, root, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    try {
+      seedSubjects(db, [{ id: "cinema", name: "Cinema" }]);
+      db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES('row-cinema','cinema',?,'general',1)").run(
+        JSON.stringify({
+          version: 1,
+          maps: (["tree", "radial"] as const).map((layout) => ({
+            id: layout,
+            title: radialFixtures.filmHistory.title,
+            passageIds: [],
+            grounding: "general",
+            graph: storedGraph(radialFixtures.filmHistory, layout),
+          })),
+        }),
+      );
+    } finally {
+      db.close();
+    }
+    // The page keeps the window's own size. A viewport set by the test would lay the page out for a size the window may not
+    // have (a Mac runner's window is shorter than 800 pixels), while the export takes the window's pixels.
+    return { app, page, root, saved };
+  });
 }
 
 /** Picks Esporta > Solo quello che vedi and returns the saved picture, in base64. */

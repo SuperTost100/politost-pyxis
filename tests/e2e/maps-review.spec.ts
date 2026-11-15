@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -29,31 +29,33 @@ function graph(root: string) {
 async function startApp() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-maps-review-"));
   const app = await launchPyxis({ userData });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const dbPath = join(userData, "workspace", "pyxis.db");
-  const db = new DatabaseSync(dbPath, { timeout: 10000 });
-  seedSubjects(db, [{ id: "fis", name: "Fisica 2" }]);
-  const maps = [
-    { id: "m-campo", title: "Campo elettrico", graph: graph("Campo elettrico") },
-    { id: "m-rc", title: "Circuiti RC", graph: graph("Circuiti RC") },
-  ].map((map) => ({ passageIds: [], grounding: "sources", ...map }));
-  db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES(?,?,?,'sources',1)").run(
-    "row-fis",
-    "fis",
-    JSON.stringify({ version: 1, maps }),
-  );
-  db.prepare(
-    "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('build-fis','map-build',?,'failed',0,'offline',2,2)",
-  ).run(JSON.stringify({ input: { subjectId: "fis" } }));
-  db.close();
-  await page.reload();
-  return { app, page, userData, dbPath, errors };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const dbPath = join(userData, "workspace", "pyxis.db");
+    const db = new DatabaseSync(dbPath, { timeout: 10000 });
+    seedSubjects(db, [{ id: "fis", name: "Fisica 2" }]);
+    const maps = [
+      { id: "m-campo", title: "Campo elettrico", graph: graph("Campo elettrico") },
+      { id: "m-rc", title: "Circuiti RC", graph: graph("Circuiti RC") },
+    ].map((map) => ({ passageIds: [], grounding: "sources", ...map }));
+    db.prepare("INSERT INTO maps(id,subject_id,graph_json,grounding,created_at) VALUES(?,?,?,'sources',1)").run(
+      "row-fis",
+      "fis",
+      JSON.stringify({ version: 1, maps }),
+    );
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('build-fis','map-build',?,'failed',0,'offline',2,2)",
+    ).run(JSON.stringify({ input: { subjectId: "fis" } }));
+    db.close();
+    await page.reload();
+    return { app, page, userData, dbPath, errors };
+  });
 }
 
 async function openMaps(page: Page) {

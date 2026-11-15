@@ -64,7 +64,9 @@ export function usePlace(input: {
         .catch(() => false)
         .then((ok) => {
           setBusy(false);
-          if (ok) then();
+          // The student may have ended up on another page while this one saved: what waited here is theirs no more. A move
+          // still under way from this page counts as here, so a link just pressed wins over it.
+          if (ok && readTrail().current === key) then();
         });
     };
     return {

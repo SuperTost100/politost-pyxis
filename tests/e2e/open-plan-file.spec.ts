@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { animationsSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -24,8 +24,10 @@ const plan = (title: string, extra: object = {}) =>
 async function start(args: string[]) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
   const app = await launchPyxis({ userData, args });
-  const page = await app.firstWindow();
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    return { app, page, userData };
+  });
 }
 
 async function skipSetup(page: Page) {
@@ -80,6 +82,39 @@ test("a plan file named on the command line opens the import review once setup i
     }, second);
     await expect(page.locator(".px-import-review")).toContainText("Analisi");
     await expect(page.locator(".px-import-review .px-notice")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an import still under way when the student goes back finishes without taking them to the imported exam", async () => {
+  test.setTimeout(120000);
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-open-plan-file-"));
+  const file = join(dir, "Fisica prestata.pyxis");
+  writeFileSync(file, plan("Fisica prestata"));
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
+  // The core holds the import back, so the student can go back while it is under way.
+  const app = await launchPyxis({ userData, args: [file], env: { PYXIS_E2E_READ_DELAY: "plans.import=2500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/exams\/get$/);
+    await page.getByRole("button", { name: "Importa", exact: true }).click();
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    await expect(page).toHaveURL(/#\/(exams|ask)$/);
+    const where = await page.evaluate(() => location.hash);
+    // The import ends while the student is elsewhere: the exam is made, and the window stays where they went.
+    await expect
+      .poll(() => page.evaluate(() => window.pyxis.invoke("plans.list", {}).then((plans) => plans.length)))
+      .toBe(1);
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    expect(await page.evaluate(() => location.hash)).toBe(where);
+    await page.evaluate(() => {
+      location.hash = "/exams";
+    });
+    await expect(page.locator("a.px-exams-row", { hasText: "Fisica prestata" })).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

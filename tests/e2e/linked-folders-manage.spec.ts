@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSy
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { animationsSettled, atRest } from "./settled";
@@ -85,10 +85,12 @@ const status = (page: Page) => page.locator(".px-library-head [role=status]");
 async function start(env: Record<string, string | undefined> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-folders-user-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined, ...env } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  return { userData, app, page };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    return { userData, app, page };
+  });
 }
 
 test("The Library lists its linked folders, reads one again, finds one that moved, and unlinks one without touching the disk", async () => {

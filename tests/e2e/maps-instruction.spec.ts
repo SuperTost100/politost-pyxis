@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -38,35 +38,37 @@ async function startApp(replies: unknown[], env: Record<string, string> = {}) {
       ...env,
     },
   });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-  seedSubjects(db, [
-    { id: "an", name: "Analisi 1" },
-    { id: "geo", name: "Geometria" },
-  ]);
-  seedSource(db, {
-    id: "bramanti",
-    title: "Bramanti",
-    subjectId: "an",
-    document: { id: "bramanti-doc" },
-    passages: [
-      { id: "pa-1", text: "Il limite di una successione è il valore a cui tende.", section: "Limiti" },
-      { id: "pa-2", text: "Una successione convergente è limitata.", section: "Limiti" },
-    ],
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seedSubjects(db, [
+      { id: "an", name: "Analisi 1" },
+      { id: "geo", name: "Geometria" },
+    ]);
+    seedSource(db, {
+      id: "bramanti",
+      title: "Bramanti",
+      subjectId: "an",
+      document: { id: "bramanti-doc" },
+      passages: [
+        { id: "pa-1", text: "Il limite di una successione è il valore a cui tende.", section: "Limiti" },
+        { id: "pa-2", text: "Una successione convergente è limitata.", section: "Limiti" },
+      ],
+    });
+    seedPlan(db, { id: "p-an", subjectId: "an", title: "Analisi 1", topics: [{ id: "t-limits", title: "Limiti" }] });
+    db.exec(
+      "INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-limits', id FROM passages WHERE source_id = 'bramanti'",
+    );
+    db.close();
+    await page.reload();
+    return { app, page, userData, prompts, errors };
   });
-  seedPlan(db, { id: "p-an", subjectId: "an", title: "Analisi 1", topics: [{ id: "t-limits", title: "Limiti" }] });
-  db.exec(
-    "INSERT INTO topic_passages(topic_id,passage_id) SELECT 't-limits', id FROM passages WHERE source_id = 'bramanti'",
-  );
-  db.close();
-  await page.reload();
-  return { app, page, userData, prompts, errors };
 }
 
 /** The Nuova mappa dialog of the Mappe section, and a way to ask for a map of Limiti in it. */

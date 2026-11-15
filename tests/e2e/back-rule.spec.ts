@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline } from "../../src/core/study/test-parts";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
@@ -862,21 +862,23 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), "pyxis-back-rule-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies) } });
-  const page = await app.firstWindow();
-  // The sidebar lists the recent chats, which the row lit by a chat is among, only above 1099 px, and a Windows runner shows
-  // 1024 px of desktop and clamps the window's 1280 px default (`app-under-test.ts`).
-  await page.setViewportSize({ width: 1280, height: 832 });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  try {
-    engines = db.prepare("SELECT feature, selection_json, updated_at FROM feature_engines").all() as typeof engines;
-    seed(db);
-  } finally {
-    db.close();
-  }
-  await page.reload();
-  walk = { app, page };
+  await setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    // The sidebar lists the recent chats, which the row lit by a chat is among, only above 1099 px, and a Windows runner shows
+    // 1024 px of desktop and clamps the window's 1280 px default (`app-under-test.ts`).
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      engines = db.prepare("SELECT feature, selection_json, updated_at FROM feature_engines").all() as typeof engines;
+      seed(db);
+    } finally {
+      db.close();
+    }
+    await page.reload();
+    walk = { app, page };
+  });
 });
 
 test.afterAll(async () => {

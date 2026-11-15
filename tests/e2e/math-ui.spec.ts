@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { MathCheck } from "../../src/shared/math-check";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -25,11 +25,13 @@ async function launch(reply?: string) {
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply || undefined } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    return { app, page, userData };
+  });
 }
 
 test("MATH-02 Python UI and failed Solver badge in both languages and themes", async () => {

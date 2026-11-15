@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -116,23 +116,25 @@ async function start(extra: object = {}): Promise<Run> {
       }),
     },
   });
-  const page = await app.firstWindow();
-  page.setDefaultTimeout(30_000);
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const db = <T,>(use: (db: DatabaseSync) => T): T => {
-    const handle = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-    try {
-      return use(handle);
-    } finally {
-      handle.close();
-    }
-  };
-  db(seed);
-  await page.reload();
-  // PYXIS_E2E_SLOW_FPS=5 runs the spec in a window that draws that many frames a second, as a busy runner's does.
-  if (process.env.PYXIS_E2E_SLOW_FPS) await drawSlowly(page, Number(process.env.PYXIS_E2E_SLOW_FPS));
-  return { app, page, userData, release, db };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30_000);
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = <T,>(use: (db: DatabaseSync) => T): T => {
+      const handle = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+      try {
+        return use(handle);
+      } finally {
+        handle.close();
+      }
+    };
+    db(seed);
+    await page.reload();
+    // PYXIS_E2E_SLOW_FPS=5 runs the spec in a window that draws that many frames a second, as a busy runner's does.
+    if (process.env.PYXIS_E2E_SLOW_FPS) await drawSlowly(page, Number(process.env.PYXIS_E2E_SLOW_FPS));
+    return { app, page, userData, release, db };
+  });
 }
 
 async function stop(run: Run | undefined) {

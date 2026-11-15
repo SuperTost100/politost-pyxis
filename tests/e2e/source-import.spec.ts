@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 
@@ -52,11 +52,13 @@ async function start() {
   mkdirSync(join(userData, "vuota"));
   writeFileSync(join(userData, "vuota", "foto.xyz"), "not a source");
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined } });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  // Skipping setup navigates to Chiedi on its own; wait so it cannot override a later route.
-  await fromChiediToExams(page);
-  return { app, page, userData, notes, files };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping setup navigates to Chiedi on its own; wait so it cannot override a later route.
+    await fromChiediToExams(page);
+    return { app, page, userData, notes, files };
+  });
 }
 
 async function openAdd(page: Page, tab?: string) {

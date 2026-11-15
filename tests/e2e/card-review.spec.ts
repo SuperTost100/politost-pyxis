@@ -354,6 +354,56 @@ test("the Attività list on the cards page leaves the way the back control does,
   }
 });
 
+test("a link in the Attività list, held by the save of a rated session, does not move a student who went elsewhere meanwhile", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-jobs-held-"));
+  // The save that the link waits for is held back, so there is time to go to another page while it is on its way.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "plans.complete=2500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed(db);
+    db.prepare(
+      "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('j-fail','lesson-part',?,'failed',0,'engines.errors.engine-missing',?,?)",
+    ).run(JSON.stringify({ planId: "p", topicId: "t", position: 1 }), Date.now(), Date.now());
+    const cardSteps = () =>
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'lesson_completed' AND plan_id = 'p' AND payload_json LIKE '%\"cards\"%'",
+          )
+          .get() as { n: number }
+      ).n;
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    await page.reload();
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Seconda legge di Newton?");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Unità della forza?");
+
+    // The list's link to Settings waits for the save, which is held. Maps is chosen from the menu while it is on its way.
+    await page.getByRole("banner").getByRole("button", { name: /^Background tasks/ }).click();
+    await page.getByRole("button", { name: "AI tools", exact: true }).click();
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+    await expect(page).toHaveURL(/#\/maps/);
+    // The save ends while the student is on Maps: it is recorded, and the link that waited for it, which belongs to a page
+    // they left, moves nothing.
+    await expect.poll(cardSteps).toBe(1);
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    await expect(page).toHaveURL(/#\/maps/);
+    db.close();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Vai > Indietro on the cards page does what the back control does: the session with a rating is recorded first", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-menu-back-"));

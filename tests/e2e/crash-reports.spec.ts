@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 
@@ -40,8 +40,10 @@ async function launch(userData: string, endpoint: string): Promise<{ app: Electr
     // CI's shared dump folder would keep this test's deliberate crash; this profile's own Crashpad folder is used.
     env: { PYXIS_E2E_CRASH_ENDPOINT: endpoint, PYXIS_CRASH_DIR: undefined },
   });
-  const page = await app.firstWindow();
-  return { app, page };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    return { app, page };
+  });
 }
 
 /** Throws in the window after the current task, so it reaches the window's error handler as an uncaught error. */

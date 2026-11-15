@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { answerNextMenu, lastMenuItems, lastMenuLabels, type MenuItemShown } from "./native-menu";
@@ -55,17 +55,19 @@ async function addProbeFields(page: Page) {
 async function start(env: Record<string, string | undefined> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-text-menu-"));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.setViewportSize({ width: 1280, height: 832 });
-  await page.getByRole("button", { name: /^(Salta|Skip)$/ }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Analisi 1" }));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  seedSource(db, { id: "s1", title: "Appunti di fisica", document: { id: "d1" }, passages: [] });
-  db.close();
-  await toLibrary(page);
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 832 });
+    await page.getByRole("button", { name: /^(Salta|Skip)$/ }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Analisi 1" }));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedSource(db, { id: "s1", title: "Appunti di fisica", document: { id: "d1" }, passages: [] });
+    db.close();
+    await toLibrary(page);
+    return { app, page, userData };
+  });
 }
 
 test("A right-click in any text field opens the edit menu in Italian, with each item on only when it applies", async () => {

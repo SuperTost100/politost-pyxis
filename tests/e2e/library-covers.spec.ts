@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { onePagePdf } from "../../src/core/sources/test-pdf";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
@@ -105,14 +105,16 @@ function seed(userData: string) {
 async function start(env: Record<string, string | undefined> = {}): Promise<{ app: ElectronApplication; page: Page; userData: string }> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-library-covers-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_FILE: undefined, ...env } });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  seed(userData);
-  await toLibrary(page);
-  await page.reload();
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    seed(userData);
+    await toLibrary(page);
+    await page.reload();
+    return { app, page, userData };
+  });
 }
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

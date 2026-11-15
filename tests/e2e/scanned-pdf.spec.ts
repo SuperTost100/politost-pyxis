@@ -8,7 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { importPickedSource } from "./picked-source";
 import {
   drawScanPages,
@@ -51,31 +51,33 @@ async function openScan({ data = false } = {}): Promise<Run> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-scanned-pdf-"));
   if (data) installTessdata(userData, staged!);
   const app = await launchPyxis({ userData });
-  const page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
-  await fromChiediToExams(page);
-  if (data) {
-    // Consent was given with that download.
-    await page.evaluate(() => window.pyxis.invoke("sources.ocrData", { consent: true }));
-  }
-  const drawn = await drawScanPages(page);
-  const pdf = join(userData, "scan.pdf");
-  writeScanPdf(pdf, Array.from({ length: PAGE_COUNT }, (_, index) => drawn[index % drawn.length]!));
-  const { sourceId } = (await importPickedSource(page, app, pdf)) as {
-    sourceId: string;
-  };
-  const run = { app, page, userData, sourceId };
-  // The import extracts in the background; an image-only PDF has no text layer, so it waits for OCR.
-  await expect
-    .poll(() => status(run), { timeout: 60000 })
-    .toMatch(data ? /^(ocr-queued|ready)$/ : /^needs-ocr$/);
-  await page.evaluate(() => {
-    location.hash = "/exams/library";
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
+    await fromChiediToExams(page);
+    if (data) {
+      // Consent was given with that download.
+      await page.evaluate(() => window.pyxis.invoke("sources.ocrData", { consent: true }));
+    }
+    const drawn = await drawScanPages(page);
+    const pdf = join(userData, "scan.pdf");
+    writeScanPdf(pdf, Array.from({ length: PAGE_COUNT }, (_, index) => drawn[index % drawn.length]!));
+    const { sourceId } = (await importPickedSource(page, app, pdf)) as {
+      sourceId: string;
+    };
+    const run = { app, page, userData, sourceId };
+    // The import extracts in the background; an image-only PDF has no text layer, so it waits for OCR.
+    await expect
+      .poll(() => status(run), { timeout: 60000 })
+      .toMatch(data ? /^(ocr-queued|ready)$/ : /^needs-ocr$/);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
+    await page.reload();
+    await expect(page.locator("h1:visible").first()).toBeVisible();
+    return run;
   });
-  await page.reload();
-  await expect(page.locator("h1:visible").first()).toBeVisible();
-  return run;
 }
 
 async function close(run: Run) {
@@ -226,7 +228,7 @@ test.describe("with the pinned OCR data", () => {
       const kept = pagesRead(run);
       expect(kept).toBeLessThan(PAGE_COUNT);
       const reopened = await launchPyxis({ userData: run.userData });
-      const page = await reopened.firstWindow();
+      const page = await setUp(reopened, run.userData, () => reopened.firstWindow());
       const again = { ...run, app: reopened, page };
       try {
         await expect.poll(() => status(again), { timeout: 240000 }).toBe("ready");

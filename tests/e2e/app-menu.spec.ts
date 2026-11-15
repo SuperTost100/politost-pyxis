@@ -8,7 +8,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
@@ -26,12 +26,14 @@ async function launch(options: { onboarded: boolean }) {
     }),
   };
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  if (options.onboarded) {
-    await page.getByRole("button", { name: "Salta" }).click();
-    await fromChiediToExams(page);
-  }
-  return { app, page, userData };
+  return setUp(app, userData, async () => {
+    const page = await app.firstWindow();
+    if (options.onboarded) {
+      await page.getByRole("button", { name: "Salta" }).click();
+      await fromChiediToExams(page);
+    }
+    return { app, page, userData };
+  });
 }
 
 /** Picks a menu item the way a click on it would: runs its handler in the main process. */
