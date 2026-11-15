@@ -214,6 +214,101 @@ describe("OCR language data", () => {
     });
   });
 
+  describe("a file that is there but cannot be read for a moment", () => {
+    const fail = (code: string) => Object.assign(new Error(code), { code });
+    /** A file system whose reads fail with `codes` in turn and then read the real file, and a wait that only counts. */
+    const flaky = (codes: string[], forever = false) => {
+      const waits: number[] = [];
+      let reads = 0;
+      return {
+        waits,
+        reads: () => reads,
+        io: {
+          read: async (path: string) => {
+            const code = forever ? codes[0] : codes[reads];
+            reads += 1;
+            if (code) throw fail(code);
+            return readFileSync(path);
+          },
+          wait: async (ms: number) => void waits.push(ms),
+        },
+      };
+    };
+    const withFile = (bytes: Buffer = fake.eng) => {
+      const tess = scratch();
+      mkdirSync(ocrDataDir(tess), { recursive: true });
+      writeFileSync(join(ocrDataDir(tess), "eng.traineddata"), bytes);
+      return tess;
+    };
+    const download = (tess: string, io: ReturnType<typeof flaky>["io"]) => {
+      const fetchImpl = vi.fn(reply(fake.eng));
+      return { fetchImpl, run: () => downloadOcrLanguage(tess, "eng", signal(), { fetchImpl: fetchImpl as never, files, io }) };
+    };
+
+    it.each(["EBUSY", "EPERM", "EACCES"])("%s once and then a good read: checked, and nothing is downloaded", async (code) => {
+      const tess = withFile();
+      const system = flaky([code]);
+      const { fetchImpl, run } = download(tess, system.io);
+      await run();
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(system.reads()).toBe(2);
+      expect(system.waits).toEqual([100]);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng)).toBe(true);
+    });
+
+    it("a read that keeps failing is `unreadable` after a bounded wait: no download, the file untouched, not called altered", async () => {
+      const tess = withFile();
+      const system = flaky(["EBUSY"], true);
+      const { fetchImpl, run } = download(tess, system.io);
+      await expect(run()).rejects.toThrow("ocr-data-unreadable");
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(system.waits).toEqual([100, 250, 500, 1000]);
+      expect(system.reads()).toBe(5);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng)).toBe(true);
+      expect(readdirSync(ocrDataDir(tess))).toEqual(["eng.traineddata"]);
+      await expect(readVerifiedOcrData(tess, ["eng"], files, system.io)).rejects.toThrow("ocr-data-unreadable");
+      expect(await ocrDataStatus(tess, { eng: files.eng! }, system.io)).toMatchObject({ state: "unreadable" });
+    });
+
+    it("a language that is not there is still missing and still downloads, whichever way the system says so", async () => {
+      for (const code of ["ENOENT", "ENOTDIR"]) {
+        const tess = scratch();
+        const system = flaky([code], true);
+        expect(await ocrDataStatus(tess, { eng: files.eng! }, system.io)).toMatchObject({ state: "missing" });
+        expect(system.waits).toEqual([]);
+        const fetchImpl = vi.fn(reply(fake.eng));
+        await downloadOcrLanguage(tess, "eng", signal(), { fetchImpl: fetchImpl as never, files, io: system.io });
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+        expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng)).toBe(true);
+      }
+    });
+
+    it("a file that reads with the wrong bytes is still altered and still repaired, with no waiting", async () => {
+      const tess = withFile(fake.eng.subarray(0, 4));
+      const system = flaky([]);
+      expect(await ocrDataStatus(tess, { eng: files.eng! }, system.io)).toMatchObject({ state: "integrity" });
+      const { fetchImpl, run } = download(tess, system.io);
+      await run();
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(system.waits).toEqual([]);
+      expect(readFileSync(join(ocrDataDir(tess), "eng.traineddata")).equals(fake.eng)).toBe(true);
+    });
+
+    it("names a damaged or absent file before one that could not be read, because a download settles those", async () => {
+      const tess = withFile();
+      // ita is not there, eng cannot be read: the data is missing, and a download can fetch what is missing.
+      const unreadableEng = { read: async () => { throw fail("EBUSY"); }, wait: async () => undefined };
+      const io = {
+        ...unreadableEng,
+        read: async (path: string) => {
+          if (path.endsWith("ita.traineddata")) throw fail("ENOENT");
+          return unreadableEng.read();
+        },
+      };
+      await expect(readVerifiedOcrData(tess, ["eng", "ita"], files, io)).rejects.toThrow("ocr-data-missing");
+    });
+  });
+
   it("does not trust files an older build cached beside the pinned folder", async () => {
     const tess = scratch();
     writeFileSync(join(tess, "eng.traineddata"), fake.eng);

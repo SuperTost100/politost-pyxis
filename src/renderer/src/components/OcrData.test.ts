@@ -10,7 +10,7 @@ const lookup = (tree: Record<string, unknown>, key: string) =>
 
 describe("OCR data messages", () => {
   it("gives every raw job code and refusal key text in both languages", () => {
-    const codes = ["offline", "download", "too-big", "declined", "integrity", "missing"].map((c) => `ocr-data-${c}`);
+    const codes = ["offline", "download", "too-big", "declined", "integrity", "missing", "unreadable"].map((c) => `ocr-data-${c}`);
     const keys = [
       ...codes.map((code) => ocrErrorKey(code)),
       "sources.ocrDataMissing",

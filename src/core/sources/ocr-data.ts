@@ -103,20 +103,47 @@ export function ocrConsent(db: Database.Database): boolean {
   return row ? JSON.parse(row.value_json) !== false : true;
 }
 
-type Problem = "missing" | "integrity";
+type Problem = "missing" | "integrity" | "unreadable";
+
+/** How a file is read and how long a failed read waits, so a test can stand in for both. */
+export type OcrDataIo = {
+  read?: (path: string) => Promise<Buffer>;
+  wait?: (ms: number) => Promise<void>;
+};
+
+/**
+ * Pauses between the tries at a file that is there but cannot be opened. On Windows a virus scanner opens a file that was
+ * just written for a moment, and a read in that moment fails with EBUSY, EPERM or EACCES. The wait is bounded: after
+ * 1.85 s the file is reported as one that could not be checked.
+ */
+const READ_RETRY_MS = [100, 250, 500, 1000];
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Whether the error says there is no file at the path, as opposed to a file that cannot be read. */
+const absent = (error: unknown) =>
+  typeof error === "object" && error !== null && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR");
 
 async function check(
   tess: string,
   lang: string,
   files: Record<string, OcrDataFile>,
+  io: OcrDataIo = {},
 ): Promise<Uint8Array | Problem> {
   const pinned = files[lang];
   if (!pinned) throw new Error("ocr-language-unsupported");
-  let bytes: Buffer;
-  try {
-    bytes = await readFile(join(ocrDataDir(tess), `${lang}.traineddata`));
-  } catch {
-    return "missing";
+  const path = join(ocrDataDir(tess), `${lang}.traineddata`);
+  let bytes: Buffer | undefined;
+  for (let attempt = 0; bytes === undefined; attempt += 1) {
+    try {
+      bytes = await (io.read ?? readFile)(path);
+    } catch (error) {
+      // Only a file that is not there is missing. One that is there and cannot be read is not altered either, and it is
+      // never downloaded over: after the last try the answer is that it could not be checked.
+      if (absent(error)) return "missing";
+      const pause = READ_RETRY_MS[attempt];
+      if (pause === undefined) return "unreadable";
+      await (io.wait ?? sleep)(pause);
+    }
   }
   return bytes.length === pinned.size && sha256(bytes) === pinned.sha256
     ? bytes
@@ -124,28 +151,33 @@ async function check(
 }
 
 /**
- * The verified bytes of each language, read now. A file that is absent is `ocr-data-missing`, and one that is there
- * but is not the pinned file is `ocr-data-integrity`. Nothing is downloaded here.
+ * The verified bytes of each language, read now. A file that is absent is `ocr-data-missing`, one that is there but is
+ * not the pinned file is `ocr-data-integrity`, and one that is there but could not be read, after a few tries, is
+ * `ocr-data-unreadable`. Nothing is downloaded here.
  */
 export async function readVerifiedOcrData(
   tess: string,
   langs: string[],
   files: Record<string, OcrDataFile> = OCR_DATA_FILES,
+  io: OcrDataIo = {},
 ): Promise<Array<{ code: string; data: Uint8Array }>> {
   const out: Array<{ code: string; data: Uint8Array }> = [];
+  // The problem to name when several languages have one: a damaged file first, then an absent one, then a file that could
+  // not be read, because the first two are the ones a download settles.
+  const rank: Record<Problem, number> = { integrity: 3, missing: 2, unreadable: 1 };
   let problem: Problem | undefined;
   for (const code of langs) {
-    const result = await check(tess, code, files);
-    if (typeof result === "string")
-      problem = problem === "integrity" ? problem : result;
-    else out.push({ code, data: result });
+    const result = await check(tess, code, files, io);
+    if (typeof result === "string") {
+      if (!problem || rank[result] > rank[problem]) problem = result;
+    } else out.push({ code, data: result });
   }
   if (problem) throw new Error(`ocr-data-${problem}`);
   return out;
 }
 
 export type OcrDataState = {
-  state: "ready" | "missing" | "integrity";
+  state: "ready" | "missing" | "integrity" | "unreadable";
   totalBytes: number;
 };
 
@@ -153,20 +185,24 @@ export type OcrDataState = {
 export async function ocrDataStatus(
   tess: string,
   files: Record<string, OcrDataFile> = OCR_DATA_FILES,
+  io: OcrDataIo = {},
 ): Promise<OcrDataState> {
   const totalBytes = Object.values(files).reduce(
     (sum, file) => sum + file.size,
     0,
   );
   try {
-    await readVerifiedOcrData(tess, Object.keys(files), files);
+    await readVerifiedOcrData(tess, Object.keys(files), files, io);
     return { state: "ready", totalBytes };
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
     return {
       state:
-        error instanceof Error && error.message === "ocr-data-integrity"
+        message === "ocr-data-integrity"
           ? "integrity"
-          : "missing",
+          : message === "ocr-data-unreadable"
+            ? "unreadable"
+            : "missing",
       totalBytes,
     };
   }
@@ -175,7 +211,10 @@ export async function ocrDataStatus(
 /**
  * Downloads one language file into this pin's folder unless it is already there and verified. The body is read up to the
  * pinned size and no further, hashed, and only then renamed into place, so a short, long or altered file is never kept.
- * Errors: `ocr-data-offline` (no connection), `ocr-data-download` (HTTP error), `ocr-data-too-big`, `ocr-data-integrity`.
+ * A file that is there but cannot be read (see `check`) is never downloaded over: the answer is `ocr-data-unreadable`, and a
+ * later try, or the next start, checks it again.
+ * Errors: `ocr-data-offline` (no connection), `ocr-data-download` (HTTP error), `ocr-data-too-big`, `ocr-data-integrity`,
+ * `ocr-data-unreadable`.
  */
 export async function downloadOcrLanguage(
   tess: string,
@@ -185,13 +224,16 @@ export async function downloadOcrLanguage(
     fetchImpl?: typeof fetch;
     base?: string;
     files?: Record<string, OcrDataFile>;
+    io?: OcrDataIo;
   } = {},
 ): Promise<void> {
   const files = options.files ?? OCR_DATA_FILES;
   const pinned = files[lang];
   if (!pinned) throw new Error("ocr-language-unsupported");
   signal.throwIfAborted();
-  if (typeof (await check(tess, lang, files)) !== "string") return;
+  const found = await check(tess, lang, files, options.io);
+  if (typeof found !== "string") return;
+  if (found === "unreadable") throw new Error("ocr-data-unreadable");
   let response: Response;
   try {
     response = await (options.fetchImpl ?? fetch)(

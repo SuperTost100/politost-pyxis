@@ -418,6 +418,18 @@ export function menuOpener(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[aria-haspopup="menu"][aria-expanded="true"]');
 }
 
+/**
+ * Runs `then` once no modal dialog is open, at once when none is. The page behind a dialog is inert while it is open,
+ * which includes the moment it shrinks away after the work it ran has ended, and a focus placed then is lost. `alive`
+ * says whether the caller is still there to place it. For the places that move the focus after something left the page
+ * and cannot be told when the dialog closes (`onClosed` is the way when they can).
+ */
+export function afterDialog(then: () => void, alive: () => boolean = () => true): void {
+  if (!alive()) return;
+  if (document.querySelector("dialog:modal")) requestAnimationFrame(() => afterDialog(then, alive));
+  else then();
+}
+
 const ConfirmContext = createContext<((options: ConfirmOptions) => Promise<ConfirmAnswer>) | null>(null);
 
 /**

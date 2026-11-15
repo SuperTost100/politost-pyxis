@@ -361,6 +361,7 @@ const routes = [
   // Local OCR data: consent, progress and recovery in Settings, in the jobs list and where a read was refused.
   ["ocr-settings-missing", "/settings/data"],
   ["ocr-settings-integrity", "/settings/data"],
+  ["ocr-settings-unreadable", "/settings/data"],
   ["ocr-settings-ready", "/settings/data"],
   ["ocr-download-running", "/settings/data"],
   ["ocr-download-offline", "/settings/data"],
@@ -382,8 +383,10 @@ const routes = [
   ["library-exam-active", "/exams/library"],
   ["library-ocr-refused", "/exams/library"],
   ["library-ocr-ready", "/exams/library"],
+  ["library-ocr-unreadable", "/exams/library"],
   ["ask-ocr-refused", "/ask"],
   ["ask-ocr-ready", "/ask"],
+  ["ask-ocr-unreadable", "/ask"],
   // The chat panel and search; the subject chip's menu on a chat with a very long subject, and on a new chat's first page.
   ["ask-panel", "/ask/audit-chat"],
   ["ask-search", "/ask/audit-chat"],
@@ -417,6 +420,12 @@ const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
   "base64",
 );
+
+/** Folders where the language files belong: files that are there and cannot be read, as when a virus scanner holds them. */
+function lockOcrData() {
+  for (const lang of Object.keys(OCR_DATA_FILES))
+    mkdirSync(join(tessdataHome(), `${lang}.traineddata`), { recursive: true });
+}
 
 /** Puts the language files on disk the way a finished download leaves them, after checking them against the pins. */
 function stageOcrData(truncateEnglish = false) {
@@ -2546,7 +2555,7 @@ function prepareState(name: string) {
   });
   const noFile = name === "library-scan-no-file";
   const ocrState =
-    noFile || name.startsWith("ocr-") || /-ocr-(refused|ready)$/.test(name);
+    noFile || name.startsWith("ocr-") || /-ocr-(refused|ready|unreadable)$/.test(name);
   if (!ocrState) {
     rmSync(tessdataHome(), { recursive: true, force: true });
     withDb((db) => {
@@ -2557,12 +2566,13 @@ function prepareState(name: string) {
     });
   }
   if (ocrState) {
-    const stored = ["ocr-settings-integrity", "ocr-settings-ready"].includes(
+    const stored = ["ocr-settings-integrity", "ocr-settings-ready", "ocr-settings-unreadable"].includes(
       name,
     );
     rmSync(tessdataHome(), { recursive: true, force: true });
     if (name === "ocr-settings-integrity") stageOcrData(true);
     if (name === "ocr-settings-ready") stageOcrData();
+    if (name.endsWith("-unreadable")) lockOcrData();
     const now = Date.now();
     withDb((db) => {
       db.exec(`DELETE FROM jobs WHERE kind = 'ocr-data-download'`);
@@ -3615,6 +3625,16 @@ async function openState(page: Page, name: string) {
         }),
       ).toBeVisible();
       break;
+    case "ocr-settings-unreadable":
+      await expect(
+        page.getByText(
+          /non è riuscito a controllare i dati di lettura|could not check the scan-reading data/,
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /^(Riprova|Try again)$/ }),
+      ).toBeVisible();
+      break;
     case "ocr-settings-ready":
       await expect(
         page.getByText(/^(Pronta\. I dati|Ready\. The data), [\d.,]+ MB, (sono su questo computer|is on this computer)\.$/),
@@ -3775,6 +3795,62 @@ async function openState(page: Page, name: string) {
         ).toHaveCount(1);
       }
       break;
+    case "library-ocr-unreadable":
+      await page
+        .getByRole("button", {
+          name: both("Leggi la scansione", "Read the scan"),
+        })
+        .click();
+      await expect(
+        page.getByText(
+          /non è riuscito a controllare i dati di lettura|could not check the scan-reading data/,
+        ),
+      ).toBeVisible({ timeout: 30_000 });
+      // A refused read is not left looking as if it were reading.
+      await expect(
+        page.getByText(/Lettura delle pagine scansionate|Reading the scanned pages/),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: /^(Riprova|Try again)$/ }),
+      ).toBeVisible();
+      break;
+    case "ask-ocr-unreadable": {
+      const photo = join(auditUserData, "foto.png");
+      writeFileSync(photo, tinyPng);
+      await auditApp!.evaluate((_, path) => {
+        process.env.PYXIS_E2E_FILE = path;
+      }, photo);
+      await page
+        .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
+        .click();
+      await page
+        .getByRole("menuitem", {
+          name: both("Allega file o immagine", "Attach file or image"),
+        })
+        .click();
+      await auditApp!.evaluate((_, path) => {
+        process.env.PYXIS_E2E_FILE = path;
+      }, auditPicked);
+      await expect(page.getByText("foto.png")).toBeVisible();
+      await page
+        .getByRole("textbox", { name: both("Messaggio", "Message") })
+        .fill("Che cosa c'è scritto qui?");
+      await page.getByRole("button", { name: both("Invia", "Send") }).click();
+      await expect(
+        page.getByText(
+          /non è riuscito a controllare i dati di lettura|could not check the scan-reading data/,
+        ),
+      ).toBeVisible({ timeout: 30_000 });
+      // The message and the photo are still in the composer, and nothing was sent.
+      await expect(
+        page.getByRole("textbox", { name: both("Messaggio", "Message") }),
+      ).toHaveText("Che cosa c'è scritto qui?");
+      await expect(page.getByText("foto.png")).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: /^(Riprova|Try again)$/ }),
+      ).toBeVisible();
+      break;
+    }
     case "ask-ocr-refused":
     case "ask-ocr-ready": {
       const photo = join(auditUserData, "foto.png");

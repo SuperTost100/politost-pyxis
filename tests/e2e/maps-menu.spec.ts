@@ -406,6 +406,51 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
   }
 });
 
+test("a map deleted from its tile gives the focus to the tile that takes its place, though the confirmation is slow to shrink away", async () => {
+  test.setTimeout(120_000);
+  const { app, page, userData, errors } = await startApp();
+  try {
+    await openMaps(page);
+    // The confirmation's shrinking waits until the test lets it go, as it does on a computer that draws slowly. The page
+    // behind it is inert until then, and the tile has left by that time.
+    await page.evaluate(() => {
+      const animate = HTMLElement.prototype.animate;
+      const held: Animation[] = [];
+      Object.assign(window, { releaseDialog: () => held.splice(0).forEach((animation) => animation.play()) });
+      HTMLElement.prototype.animate = function (this: HTMLElement, ...args: Parameters<HTMLElement["animate"]>) {
+        const animation = animate.apply(this, args);
+        if (this instanceof HTMLDialogElement && this.classList.contains("is-closing")) {
+          animation.pause();
+          held.push(animation);
+        }
+        return animation;
+      };
+    });
+    // The page tries to place the focus a frame after the tile left, so the dialog is let go two frames later.
+    const release = async () => {
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await page.evaluate(() => (window as unknown as { releaseDialog: () => void }).releaseDialog());
+    };
+
+    const campo = tile(page, "Campo elettrico");
+    await campo.locator(".px-maps-thumb").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    // The tile is out of the page.
+    await expect(page.locator('[data-map-id="m-campo"]')).toHaveCount(0);
+    // The dialog is still on screen, and the focus has not gone anywhere yet.
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await release();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(tile(page, "Circuiti RC").getByRole("link")).toBeFocused();
+
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a map deleted while the window's move back is late still shrinks away on Mappe, and no notice says a link broke", async () => {
   test.setTimeout(120_000);
   const { app, page, userData, errors } = await startApp();

@@ -863,6 +863,9 @@ test.beforeAll(async () => {
   userData = mkdtempSync(join(tmpdir(), "pyxis-back-rule-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_PLAN_REPLIES: JSON.stringify(planReplies) } });
   const page = await app.firstWindow();
+  // The sidebar lists the recent chats, which the row lit by a chat is among, only above 1099 px, and a Windows runner shows
+  // 1024 px of desktop and clamps the window's 1280 px default (`app-under-test.ts`).
+  await page.setViewportSize({ width: 1280, height: 832 });
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
   const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });

@@ -191,8 +191,8 @@ export async function stageFiles(
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         // The language data is the student's to download. Say so, instead of a failed turn with no reason.
-        if (message === "ocr-data-missing" || message === "ocr-data-integrity")
-          throw new IpcError(message, message === "ocr-data-missing" ? "sources.ocrDataMissing" : "sources.ocrDataIntegrity");
+        const refused = { "ocr-data-missing": "sources.ocrDataMissing", "ocr-data-integrity": "sources.ocrDataIntegrity", "ocr-data-unreadable": "sources.ocrDataUnreadable" }[message];
+        if (refused) throw new IpcError(message, refused);
         throw error;
       }
       signal?.throwIfAborted();
