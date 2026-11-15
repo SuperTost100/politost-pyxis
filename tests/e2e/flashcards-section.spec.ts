@@ -143,3 +143,50 @@ test("the Flashcard section lists each subject's flashcards and starts every rev
     removeTestFolder(userData);
   }
 });
+
+test("after the last flashcard is removed, the Flashcard section still leads to the removed ones, where it can be restored", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-flashcards-removed-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "chem", name: "Chimica", position: 0 }]);
+      // One flashcard Pyxis wrote, so deleting it only removes it.
+      db.exec(`INSERT INTO cards(id,subject_id,front,back,seed_key,grounding,created_at) VALUES
+        ('s1','chem','Numero atomico?','Protoni nel nucleo.','k1','sources',10);`);
+    } finally {
+      db.close();
+    }
+    await page.evaluate(() => (location.hash = "/flashcards"));
+    await expect(page.getByRole("region", { name: "Chimica" })).toBeVisible();
+    await page.locator(".px-fc-head").getByRole("button", { name: "Sfoglia tutte", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards\/all$/);
+
+    // The last flashcard is removed, and the message says where to find it.
+    await page.getByRole("button", { name: /^Altre azioni: Numero atomico\?/ }).click();
+    await page.getByRole("menuitem", { name: "Elimina la flashcard…", exact: true }).click();
+    await page.getByRole("dialog", { name: "Eliminare questa flashcard?" }).getByRole("button", { name: "Elimina la flashcard", exact: true }).click();
+    await expect(page.getByRole("status")).toHaveText("Flashcard rimossa. Puoi ripristinarla da Rimosse.");
+
+    // The section has nothing left to list and offers one button, but the way to the removed ones is still there.
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(page.getByRole("button", { name: "Nuova flashcard", exact: true })).toHaveCount(1);
+    await page.locator(".px-fc-head").getByRole("button", { name: "Altro sulle flashcard", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Sfoglia tutte", exact: true }).click();
+    await expect(page).toHaveURL(/#\/flashcards\/all$/);
+    await page.getByRole("combobox", { name: "Mostra" }).click();
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Rimosse"]').click();
+    const removed = page.getByRole("listitem").filter({ hasText: "Numero atomico?" });
+    await expect(removed).toBeVisible();
+    await removed.getByRole("button", { name: /^Ripristina: Numero atomico\?/ }).click();
+    await expect(page.getByRole("status")).toHaveText("Flashcard ripristinata.");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

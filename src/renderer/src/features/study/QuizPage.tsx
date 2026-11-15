@@ -429,10 +429,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     },
     () => setActionError(true),
   );
-  // The answers save themselves, so a quiz does not hold the menu while it is answered. It holds it only while the
-  // newest answers are not saved (a save on its way, or one that failed): every menu command then waits for the save or
-  // is refused, instead of closing the page over answers that were never stored.
-  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved));
+  // The answers save themselves, so a quiz does not hold the menu while it is answered. From the first change the student
+  // makes it holds it whenever the saver says answers are not saved (waiting for the pause, a save on its way, or one that
+  // failed): a menu command is then refused, as under any lock, instead of closing the page over answers that were never
+  // stored. The draft a quiz opens with is saved on purpose (it starts a timed quiz's clock) but holds nothing, since
+  // nothing was changed; `opened` is that draft, and `changed` stays true from the first change on, even if the answers
+  // go back to what they were, because an earlier save can still land over them.
+  const opened = useRef<{ attemptId: string; json: string } | null>(null);
+  const [changed, setChanged] = useState(false);
+  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved) && changed);
   useEffect(() => {
     if (
       attemptId &&
@@ -441,9 +446,15 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       !gradingStarted &&
       !expired &&
       session.data?.submittedAt == null
-    )
-      drafts.schedule({ attemptId, planId, picks, index, marked });
-    else drafts.cancel();
+    ) {
+      const draft = { attemptId, planId, picks, index, marked };
+      const json = JSON.stringify(draft);
+      if (opened.current?.attemptId !== attemptId) {
+        opened.current = { attemptId, json };
+        setChanged(false);
+      } else if (json !== opened.current.json) setChanged(true);
+      drafts.schedule(draft);
+    } else drafts.cancel();
   }, [
     attemptId,
     hydratedAttempt,

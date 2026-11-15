@@ -715,3 +715,32 @@ test("Oggi measures nothing without a study goal, and its action opens the weekl
     await done();
   }
 });
+
+test("Resta qui, asked on leaving the settings the Oggi action opened, gives the focus back to the weekly hours being edited", async () => {
+  test.setTimeout(120_000);
+  const { page, planId, done } = await launch();
+  try {
+    await openExam(page, planId);
+    await invoke(page, "plans.complete", { planId, activity: "intro", topicId: null });
+    await page.reload();
+    await page
+      .getByRole("list", { name: "Anelli dell'esame" })
+      .getByRole("button", { name: "Imposta obiettivo di studio" })
+      .press("Enter");
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/settings$`));
+    // The page put the focus in the field itself, before anything watched where the focus goes.
+    const hours = page.getByRole("spinbutton", { name: "Ore a settimana" });
+    await expect(hours).toBeFocused();
+    await hours.fill("7");
+    await page.getByRole("button", { name: /^Torna a / }).click();
+    const question = page.getByRole("dialog", { name: "Uscire senza salvare?" });
+    await expect(question).toBeVisible();
+    await question.getByRole("button", { name: "Resta qui" }).click();
+    await expect(question).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/settings$`));
+    await expect(hours).toHaveValue("7");
+    await expect(hours).toBeFocused();
+  } finally {
+    await done();
+  }
+});
