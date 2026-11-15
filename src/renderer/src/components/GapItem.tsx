@@ -26,14 +26,14 @@ export function GapItem({
   severityMinorLabel?: string;
 }) {
   return (
-    <div className="px-card px-gap">
-      <span className={["px-gap-dot", `is-${severity}`].join(" ")} />
-      <div className="px-gap-body">
+    <div className="px-card px-gap-item">
+      <span className={["px-gap-item-dot", `is-${severity}`].join(" ")} />
+      <div className="px-gap-item-body">
         <Tag tone={severity === "severe" ? "severe" : "general"} icon="target">
           {severity === "severe" ? severitySevereLabel : severityMinorLabel}
         </Tag>
-        <p className="px-gap-text">{children}</p>
-        <span className="px-gap-topic">{topic}</span>
+        <p className="px-gap-item-text">{children}</p>
+        <span className="px-gap-item-topic">{topic}</span>
       </div>
       {onFill ? (
         <Button

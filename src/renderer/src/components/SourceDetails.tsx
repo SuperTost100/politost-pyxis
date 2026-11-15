@@ -642,7 +642,7 @@ export function SourceDetails({
           >
             {t("components.citation.open")}
           </Button>
-          <span className="px-grow" />
+          <span className="px-source-panel-spacer" />
           {source ? <SourceStatus status={source.status} /> : null}
         </div>
       </div>
