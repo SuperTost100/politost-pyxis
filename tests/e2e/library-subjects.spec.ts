@@ -832,19 +832,24 @@ test("A menu stays open when the page gets shorter under a student who has scrol
       const file = cover(page, "Fisica 2", "Termologia");
       await atRest(file);
       const owner = (await file.getAttribute("data-source-id"))!;
+      // With the student's hand only: a click through the locator that has to try again scrolls the page itself, to the
+      // start or the end of the element, and the page is no longer at its end under the menu.
+      const box = (await file.boundingBox())!;
       if (way === "dots") {
-        await file.hover();
-        await page.getByRole("button", { name: "Azioni per Termologia" }).click();
-      } else {
-        const box = (await file.boundingBox())!;
-        await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
-      }
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        const dots = page.getByRole("button", { name: "Azioni per Termologia" });
+        // The dots show under the pointer (`.px-cover:hover`) with a short fade.
+        await expect(dots).toHaveCSS("opacity", "1");
+        const at = (await dots.boundingBox())!;
+        await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2);
+      } else await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
       await expect(fileMenu, `${way} menu at the end of the page`).toBeVisible();
       await animationsSettled(page);
       await page.mouse.move(930, 450);
       const before = (await fileMenu.boundingBox())!;
       const scrollBefore = await place();
       const stateBefore = await state();
+      expect(scrollBefore.top, "still at the end of the page with the menu open").toBe(scrollBefore.end);
 
       // The page gets shorter below the file, so the browser scrolls it back by itself and the file moves down.
       await page.evaluate(() => document.getElementById("e2e-below")!.remove());
