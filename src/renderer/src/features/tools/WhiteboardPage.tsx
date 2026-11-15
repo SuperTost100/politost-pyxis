@@ -40,8 +40,10 @@ export function WhiteboardPage() {
   const past = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
   const board = useRef<HTMLCanvasElement>(null);
-  // Set when the student leaves without saving: a save still running then hands nothing on and moves nowhere.
+  // Set when the student leaves, with or without saving: a save still running then hands nothing on and moves nowhere.
+  // A board with nothing to lose leaves without a question, so unmounting sets it too; the next save starts it over.
   const left = useRef(false);
+  useEffect(() => () => void (left.current = true), []);
   useLeaveGuard({
     dirty: () => dirty.current,
     body: t("tools.leaveBody"),

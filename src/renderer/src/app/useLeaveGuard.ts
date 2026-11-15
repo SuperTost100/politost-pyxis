@@ -53,6 +53,9 @@ export function useLeaveGuard({
   // What had the focus before the one that has it now: a click on a link or a button takes it before the page asks.
   const focus = useRef<{ now: HTMLElement | null; before: HTMLElement | null }>({ now: null, before: null });
   useEffect(() => {
+    // A page can place the focus before this starts (the weekly hours field on arrival), and that field is where "Resta qui" returns to.
+    const held = document.activeElement;
+    if (held instanceof HTMLElement && held !== document.body) focus.current.now = held;
     const note = (event: FocusEvent) => {
       if (!(event.target instanceof HTMLElement) || event.target === focus.current.now) return;
       focus.current = { now: event.target, before: focus.current.now };

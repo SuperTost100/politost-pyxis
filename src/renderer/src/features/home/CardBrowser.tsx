@@ -125,8 +125,9 @@ export function CardBrowser({
   const filtered = Boolean(
     query.trim() || planId || topicId || status !== "all",
   );
-  // No flashcard at all, and nothing filtering: the page is empty, not a search with no result.
-  const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0);
+  // No flashcard at all, and nothing filtering: the page is empty, not a search with no result. A removed card is still a
+  // card: its exam, or the cards with no exam, keep the page and its "Rimosse" filter.
+  const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0 && !data.examless);
   // The first card replaces the empty page and its button, which the dialog gives the focus back to: once both have
   // happened, a focus that fell to the page goes to the list's summary line.
   const wasEmpty = useRef(false);

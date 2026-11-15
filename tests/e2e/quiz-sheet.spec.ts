@@ -481,6 +481,87 @@ test("the quiz too reopens on the question after Avanti and Segna per dopo press
   }
 });
 
+test("a menu command chosen right after an answer does not leave the page over an answer whose save fails", async () => {
+  test.setTimeout(120_000);
+  const lose = join(tmpdir(), `pyxis-quiz-sheet-draft-${process.pid}-${Date.now()}`);
+  const { app, page, done } = await launch({ PYXIS_E2E_READ_FAIL: `study.quizDraft=${lose}` });
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const quiz = "/plans/p-fis/quiz/t-kin?attempt=a-quiz";
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    // The first draft, written when the quiz opens, must be stored before the write that fails is armed.
+    await expect.poll(() => read(page, "a-quiz").then((run) => run.draft?.index)).toBe(0);
+    writeFileSync(lose, "");
+    const answer = page.getByRole("button", { name: /^B 25 m/ });
+    await answer.click();
+    await expect(answer).toHaveAttribute("aria-pressed", "true");
+    // Vai > Mappe, with the focus on a button: nothing is typed, so the menu alone would let it through. The answer is
+    // still waiting for its pause, and its save will fail.
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+    await expect.poll(() => existsSync(lose), { message: "the save of the answer was tried" }).toBe(false);
+    // The student is on the quiz still, or the answer is there when they are back: it was never lost.
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    rmSync(lose, { force: true });
+    await done();
+  }
+});
+
+test("an answer changed and changed back while its first save is on its way still holds the menu, and the answer is not lost when the last write fails", async () => {
+  test.setTimeout(120_000);
+  const lose = join(tmpdir(), `pyxis-quiz-sheet-revert-${process.pid}-${Date.now()}`);
+  const { app, page, userData, done } = await launch({ PYXIS_E2E_READ_FAIL: `study.quizDraft=${lose}` });
+  let lock: DatabaseSync | undefined;
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const quiz = "/plans/p-fis/quiz/t-kin?attempt=a-quiz";
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    const picked = () => read(page, "a-quiz").then((run) => run.draft?.picks["q-auto"]);
+    await expect.poll(() => read(page, "a-quiz").then((run) => run.draft?.index)).toBe(0);
+    // Answer A is stored.
+    const a = page.getByRole("button", { name: /^B 25 m/ });
+    const b = page.getByRole("button", { name: /^A 10 m/ });
+    await a.click();
+    await expect.poll(picked).toBeDefined();
+    const stored = await picked();
+    // The page's clock stops, so the pause of 500 ms ends when the test says. B is changed to and its save is sent, and
+    // the test holds the database's write lock, so the core waits in the middle of it.
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 5000));
+    lock = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    lock.exec("BEGIN IMMEDIATE");
+    await b.click();
+    await page.clock.runFor(600);
+    // A is back, which is what the store holds now, but B's save is still on its way and can land after A's.
+    await a.click();
+    await expect(a).toHaveAttribute("aria-pressed", "true");
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+    // The student could not leave: nothing is stored that says A, and the write that would is still to come.
+    await page.clock.runFor(50);
+    expect(await page.evaluate(() => location.hash)).toContain("/plans/p-fis/quiz/t-kin");
+    // B lands, then the write that restores A fails.
+    writeFileSync(lose, "");
+    lock.exec("ROLLBACK");
+    lock.close();
+    lock = undefined;
+    await expect.poll(picked).not.toBe(stored);
+    await page.clock.runFor(600);
+    await expect.poll(() => existsSync(lose), { message: "the write of A was tried" }).toBe(false);
+    // They are on the quiz still, or A is there when they are back: B never replaces it.
+    await go(page, quiz);
+    await expect(heading(page)).toHaveText("Domanda 1 di 8");
+    await expect(page.getByRole("button", { name: /^B 25 m/ })).toHaveAttribute("aria-pressed", "true");
+  } finally {
+    lock?.close();
+    rmSync(lose, { force: true });
+    await done();
+  }
+});
+
 test("a slow save on its way, a queued draft and a newer one sent on leaving: the newest answers are the ones stored", async () => {
   test.setTimeout(120_000);
   const { page, userData, done } = await launch();

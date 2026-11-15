@@ -8,9 +8,10 @@ import { useEffect, useRef, useState } from "react";
  * newer one took its place. `flush` resolves to whether the newest draft is saved, so a page can keep the student
  * there when it is not.
  *
- * `unsaved` says whether the newest answers are not saved yet: a save is on its way, or one failed and its draft still
- * waits. A draft that only waits for its pause is not counted, since leaving the page sends it. `watch` calls back when
- * that changes, so a page can hold the menu while it is true.
+ * `unsaved` says whether the newest answers are not saved yet: from the moment a draft changes, through its pause and its
+ * save, or one failed and its draft still waits. Leaving sends a draft that waits for its pause, but that send can fail,
+ * so a page that must not lose answers counts it. `watch` calls back when that changes, so a page can hold the menu
+ * while it is true.
  *
  * `flush(true)` is for a page that is going away: the newest draft is sent now instead of after a save still on its
  * way, which the page may not live to see come back (a reload), and before the read of the page opened next. Core
@@ -34,12 +35,15 @@ export function draftSaver<T>(
   let inFlight = 0;
   let failed = false;
   const watchers = new Set<() => void>();
-  const unsaved = () => inFlight > 0 || failed;
-  /** Runs `change`, and tells the watchers if it moved `unsaved`. */
+  const unsaved = () => pending !== null || queued !== null || inFlight > 0 || failed;
+  let reported = false;
+  /** Runs `change`, and tells the watchers if `unsaved` is not what they were last told. */
   function track(change: () => void) {
-    const before = unsaved();
     change();
-    if (unsaved() !== before) for (const watcher of watchers) watcher();
+    const now = unsaved();
+    if (now === reported) return;
+    reported = now;
+    for (const watcher of watchers) watcher();
   }
   /** Takes the newest unsent draft, so the turn that sends it is the only one that can. */
   function take() {
@@ -94,14 +98,16 @@ export function draftSaver<T>(
   }
   return {
     schedule(draft: T) {
-      pending = { draft, number: (count += 1) };
+      track(() => (pending = { draft, number: (count += 1) }));
       clearTimeout(timer);
       timer = setTimeout(() => void flush(), delay);
     },
     cancel() {
       clearTimeout(timer);
-      pending = null;
-      track(() => (failed = false));
+      track(() => {
+        pending = null;
+        failed = false;
+      });
     },
     flush,
     unsaved,
