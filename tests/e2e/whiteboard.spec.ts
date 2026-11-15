@@ -246,8 +246,9 @@ test("a screen twice as dense under a board half as big keeps the canvas' pixel 
     const cdp = await page.context().newCDPSession(page);
     const emulate = (width: number, height: number, deviceScaleFactor: number) =>
       cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor, mobile: false });
-    // The window starts at density 1, tall enough for the board to be half as high again without going under its least height.
-    const window0 = { width: await page.evaluate(() => innerWidth), height: 880 };
+    // The window starts at density 1, tall enough for the board to be half as high again without going under its least
+    // height, and at a width of its own so the board's sides are even whatever window the runner gave the app.
+    const window0 = { width: 1280, height: 880 };
     await emulate(window0.width, window0.height, 1);
     await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(1);
     const board = () =>
@@ -264,6 +265,7 @@ test("a screen twice as dense under a board half as big keeps the canvas' pixel 
       })
       .toBe(true);
     const first = await board();
+    expect(first.css.map((side) => side % 2), "the board's sides halve to whole pixels").toEqual([0, 0]);
     // The window moves to a display twice as dense, and the board's box is half as big in both directions: the same
     // number of pixels at twice the density, so the canvas needs no new size, only a new drawing scale.
     const smaller = { width: Math.round(window0.width - first.css[0]! / 2), height: Math.round(window0.height - first.css[1]! / 2) };
