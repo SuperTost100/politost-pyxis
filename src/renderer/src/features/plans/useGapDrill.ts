@@ -66,8 +66,11 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
     navigate(drillQuizPath(planId, drill.topicId, readyAttempt, drill.gapId), { replace });
   }, [drill, readyAttempt, planId, stillHere]);
 
+  // The start that is the latest: a start that is still on its way when another begins has nothing left to say.
+  const latestStart = useRef(0);
   async function start(topicId: string, gapId?: string) {
     if (preparing) return;
+    const mine = (latestStart.current += 1);
     setFailedTopic(null);
     lastGap.current = gapId;
     setDrill({ topicId, gapId });
@@ -81,6 +84,7 @@ export function useGapDrill(planId: string, { replace = false }: { replace?: boo
       setDrill((current) => (current && current.topicId === topicId && current.gapId === gapId ? { ...current, jobId } : current));
       await client.invalidateQueries({ queryKey: ["gap-drill", planId] });
     } catch {
+      if (mine !== latestStart.current) return;
       setDrill(null);
       setFailedTopic(topicId);
     }

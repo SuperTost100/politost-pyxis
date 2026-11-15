@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -350,6 +350,50 @@ test("LES-03 a single gap drill started from the exam page opens its quiz with t
     await expect(page.locator(".px-qz-sheet")).toBeVisible();
     await saveShot(page, "progress-drill-explanation-it.png", { animations: "disabled" });
     await expectNoAxeViolations(page);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a start that fails late does not clear the drill started after it, nor show its own failure", async () => {
+  test.setTimeout(180000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-drill-late-start-"));
+  const loseStart = join(userData, "lose-start");
+  const loseRead = join(userData, "lose-read");
+  // Starts wait 2.5 s in the core. The first one that gets there fails, and so does the first read of a drill's state, which
+  // frees the row's controls while that start is still on its way.
+  const app = await launchPyxis({
+    userData,
+    env: {
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({
+        markdown: { markdown: "## Ripasso\nUsa le formule [P1]." },
+        questions: diagnostic,
+        ...drillReplies(),
+      }),
+      PYXIS_E2E_READ_DELAY: "study.gapDrillStart=2500",
+      PYXIS_E2E_READ_FAIL: `study.gapDrillStart=${loseStart},study.gapDrillRead=${loseRead}`,
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    page.setDefaultTimeout(30000);
+    const { planId } = await setupPlan(userData, page, app);
+    await goto(page, `/plans/${planId}`);
+    const fill = page.getByRole("button", { name: /^Ripasso mirato/ });
+    await expect(fill).toHaveCount(2);
+    writeFileSync(loseStart, "");
+    writeFileSync(loseRead, "");
+    await fill.first().click();
+    // The read of the first drill failed, so the page does not take it for one that is preparing: the other topic can start.
+    await expect.poll(() => existsSync(loseRead)).toBe(false);
+    await expect(fill.last()).toBeEnabled();
+    await fill.last().click();
+    // The first start fails now, while the second one is the drill the page follows: it still opens its quiz, and the page
+    // does not say that the first topic's drill could not be prepared.
+    await expect.poll(() => existsSync(loseStart)).toBe(false);
+    await expect(page).toHaveURL(/\/quiz\/[^?]+\?attempt=/, { timeout: 30000 });
+    await expect(page.getByRole("heading", { name: "Prima una breve spiegazione" })).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);
