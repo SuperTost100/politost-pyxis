@@ -30,6 +30,7 @@ import {
 import { isWizardSeed, seedSessions, type WizardSeed } from "./wizardSeed";
 import { usePlace } from "../../app/usePlace";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
+import { useStillHere } from "../../lib/useStillHere";
 import "./PlanPage.css";
 import "./PlanWizard.css";
 import "./GuidedPlan.css";
@@ -169,6 +170,7 @@ function Guided({ seed }: { seed: WizardSeed }) {
     }
   }
 
+  const stillHere = useStillHere();
   async function create() {
     const topics = toDraftTopics(nodes);
     if (!topics.length || creating) return;
@@ -186,6 +188,8 @@ function Guided({ seed }: { seed: WizardSeed }) {
         draftTopics: topics,
       });
       await client.invalidateQueries({ queryKey: ["plans"] });
+      // The plan exists either way. A student who left this page meanwhile keeps the page they chose.
+      if (!stillHere()) return;
       // The plan exists now: moving on to its build is not leaving the answers behind.
       release();
       navigate(`/plans/new?build=${result.planId}`, { replace: true });
