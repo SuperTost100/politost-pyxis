@@ -231,6 +231,18 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     // Da rifare says when nothing is waiting.
     await expect(aside.getByText("No questions to redo.")).toBeVisible();
 
+    // Mappe: a map's drawing is styled here, before the Maps page has ever been opened: its boxes have their own fill
+    // and their outline shows against the tile.
+    const drawing = await aside.locator(".px-exam-mthumb-art").first().evaluate((tile) => {
+      const style = (node: Element) => getComputedStyle(node);
+      const box = tile.querySelector("rect:not(.is-root)")!;
+      return { tile: style(tile).backgroundColor, fill: style(box).fill, stroke: style(box).stroke, width: style(box).strokeWidth };
+    });
+    expect(drawing.stroke, "the boxes have an outline").not.toBe("none");
+    expect(drawing.fill, "the boxes are not the default black").not.toBe("rgb(0, 0, 0)");
+    expect(drawing.stroke, "the outline is not the tile's own colour").not.toBe(drawing.tile);
+    expect(drawing.width).not.toBe("0px");
+
     // Mappe: the subject's maps open, and All maps opens Maps at this subject.
     await aside.getByRole("link", { name: /^Vettori/ }).click();
     await expect(page).toHaveURL(/#\/(maps|plans\/p-fis\/map)\//);

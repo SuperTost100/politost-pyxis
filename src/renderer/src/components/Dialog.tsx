@@ -151,8 +151,7 @@ export function Dialog({
         return;
       }
       const active = document.activeElement;
-      // A form opened from a menu item grows out of the menu's opener, which is what will still be there when it closes.
-      before.current = menuOpener() ?? (active instanceof HTMLElement && active !== document.body ? active : null);
+      before.current = active instanceof HTMLElement && active !== document.body ? active : null;
       grownFrom.current = latest.current.origin?.current ?? before.current;
       dialog.showModal();
       focusOnOpen(dialog);
@@ -181,12 +180,25 @@ export function Dialog({
   useLayoutEffect(() => {
     const box = body.current;
     if (!box) return;
-    const measure = () => setScrolls(box.scrollHeight > box.clientHeight + 1);
-    measure();
+    // The body's scrollbar takes room from its content, so the footer's buttons would end past the fields. The body is
+    // made as much wider as its scrollbar, which then sits in the card's padding, and both share one right edge. Set
+    // a frame later when the size changed, so the observer is not told of a change it made itself.
+    const setGutter = () => box.style.setProperty("--px-scrollbar", `${box.offsetWidth - box.clientWidth}px`);
+    let frame = 0;
+    const measure = () => {
+      setScrolls(box.scrollHeight > box.clientHeight + 1);
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(setGutter);
+    };
+    setScrolls(box.scrollHeight > box.clientHeight + 1);
+    setGutter();
     const observer = new ResizeObserver(measure);
     observer.observe(box);
     for (const child of box.children) observer.observe(child);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
   }, [mounted, children, description]);
 
   // Taken off the page while open (its page went away): the top layer lets it go at once.
@@ -396,8 +408,9 @@ type Ask = {
 
 /**
  * What a menu was opened from, when the focus is on one of its items. The item leaves the page as the menu closes, so a
- * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to. `Dialog`
- * and `useConfirm` both use it.
+ * dialog that took it for its opener would have nothing connected to grow out of and give the focus back to. `useConfirm`
+ * uses it, since a question is asked while the menu is still open. A `Dialog` opened by state runs after the menu has
+ * closed and its item is gone, so it needs no help.
  */
 export function menuOpener(): HTMLElement | null {
   const active = document.activeElement;

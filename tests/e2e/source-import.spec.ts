@@ -119,7 +119,7 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
     await answerPicker(app, [join(userData, "vuota")]);
     dialog = await openAdd(page, "Cartella");
     await dialog.getByRole("button", { name: "Aggiungi una cartella" }).click();
-    await expect(dialog.getByText(/Nella cartella vuota non ci sono file/)).toBeVisible();
+    await expect(dialog.getByText(/Nella cartella «vuota» non ci sono file/)).toBeVisible();
     await expect(dialog.getByRole("button", { name: /^(Importa|Aggiungi) \d+ file/ })).toHaveCount(0);
   } finally {
     await app.close();

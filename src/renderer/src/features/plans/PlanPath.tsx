@@ -160,8 +160,9 @@ export function PlanPath({
     if (reading) return reading;
     if (row.current)
       return t("examPage.stepsDone", {
-        done: row.steps.filter((chip) => chip.state === "done").length,
-        count: row.steps.length,
+        // The count that picks the plural is the steps done: "1 passo su 3 fatto", as for the parts of a lesson.
+        count: row.steps.filter((chip) => chip.state === "done").length,
+        total: row.steps.length,
       });
     if (row.gaps > 0) return t("plans.path.gaps", { count: row.gaps });
     const expected = when(row.date);

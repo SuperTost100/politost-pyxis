@@ -169,7 +169,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     // An empty one does, from a right-click on its name, and asks once with Annulla focused.
     await shelf(page, "Fisica 2").getByRole("heading", { name: "Fisica 2" }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    const confirm = page.getByRole("dialog", { name: "Eliminare la materia Fisica 2?" });
+    const confirm = page.getByRole("dialog", { name: "Eliminare la materia «Fisica 2»?" });
     await expect(confirm.getByRole("button", { name: "Annulla" })).toBeFocused();
     await animationsSettled(page);
     await expectNoAxeViolations(page);

@@ -64,7 +64,7 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
 
     // A confirmation that deletes grows out of its button, with Annulla focused and never the red button.
     await opener.click();
-    const confirm = page.getByRole("dialog", { name: "Eliminare Fisica 1?" });
+    const confirm = page.getByRole("dialog", { name: "Eliminare «Fisica 1»?" });
     await expect(confirm).toBeVisible();
     expect(await dialogMotion(page)).toContainEqual({ duration: 320, moves: true });
     await expect(confirm).toHaveAccessibleDescription(/^Con l'esame cancelli quello che Pyxis ha preparato/);
@@ -187,7 +187,7 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
     await expect(runs).toHaveText("Lavori avviati: 0");
     const runOpener = page.getByRole("button", { name: "Conferma con un lavoro" });
     await runOpener.click();
-    const twice = page.getByRole("dialog", { name: "Eliminare Fisica 1?" });
+    const twice = page.getByRole("dialog", { name: "Eliminare «Fisica 1»?" });
     await twice.getByRole("button", { name: "Elimina l'esame" }).evaluate((button) => {
       (button as HTMLButtonElement).click();
       (button as HTMLButtonElement).click();
@@ -308,7 +308,7 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
     await name.fill("Fisica generale");
     await page.getByRole("button", { name: "Elimina l'esame…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Eliminare Fisica 1?" }).getByRole("button", { name: "Elimina l'esame" }).click();
+    await page.getByRole("dialog", { name: "Eliminare «Fisica 1»?" }).getByRole("button", { name: "Elimina l'esame" }).click();
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("dialog", { name: "Uscire senza salvare?" })).toHaveCount(0);
 

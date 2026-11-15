@@ -84,11 +84,12 @@
   margin: -1px -8px 0 0;
 }
 /* The body scrolls, and what scrolls is clipped at its edge, so it has room for the focus ring and outline of what sits
-   at its edges (a selected tile, a ghost button pulled out by its margin): 8px beside and 4px above and below, taken back by the negative margin. */
+   at its edges (a selected tile, a ghost button pulled out by its margin): 8px beside and 4px above and below, taken back by the negative margin. A scrollbar sits in the card's padding at the
+   right (`--px-scrollbar`, set by Dialog), so the content ends where the footer's buttons end. */
 .px-dialog-body {
   flex: 1 1 auto;
   min-height: 0;
-  margin: 4px -8px 0;
+  margin: 4px calc(-8px - var(--px-scrollbar, 0px)) 0 -8px;
   padding: 4px 8px;
   overflow: auto;
   overflow-wrap: anywhere;

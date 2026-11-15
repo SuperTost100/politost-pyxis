@@ -1,3 +1,5 @@
+import "./MapThumb.css";
+
 /** A path from (x1, y1) to (x2, y2) that turns twice with rounded corners, as the tree layout's links do. */
 function elbow(x1: number, y1: number, x2: number, y2: number): string {
   const middle = (x1 + x2) / 2;

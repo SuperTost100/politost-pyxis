@@ -972,6 +972,23 @@ test("a part moved to inside the lesson is one entry: one press leaves the lesso
   await expect(page).toHaveURL(new RegExp(`#${exam}$`));
 });
 
+test("a map names its exam as text when the back control leads there, and links it when the control leads elsewhere", async () => {
+  test.setTimeout(90_000);
+  const { page } = walk;
+  const examLink = page.locator(".px-map-sub").getByRole("link", { name: /^Apri l.esame/ });
+  const examName = page.locator(".px-map-sub").getByText(EXAM, { exact: true });
+  const mapRows = rows.filter((row) => row.page === "/maps/:subjectId/:topicId?");
+  // From the exam: one control to the exam, the back control, and the line under the title is its name.
+  await mapRows.find((row) => row.how === "a map from the exam's Mappe")!.reach(walk);
+  await expect(backControl(page)).toHaveText(EXAM);
+  await expect(examName).toBeVisible();
+  await expect(examLink).toHaveCount(0);
+  // From Mappe: the back control says Mappe, and the line is the only way to the exam.
+  await mapRows.find((row) => row.how === "a map from Mappe")!.reach(walk);
+  await expect(backControl(page)).toHaveText("Mappe");
+  await expect(examLink).toBeVisible();
+});
+
 test("A, B, back to A, then C: C goes back to A", async () => {
   test.setTimeout(90_000);
   const { page } = walk;

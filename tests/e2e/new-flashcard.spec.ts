@@ -188,6 +188,45 @@ const card = (n: number, front: string) => ({
   passageId: "{{passage:0}}",
 });
 
+test("the dialog's fields and its buttons end at one right edge, whether or not its body scrolls", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-edge-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await expect(dialog).toBeVisible();
+    const body = dialog.locator(".px-dialog-body");
+    for (const [height, scrolls] of [
+      [380, true],
+      [1000, false],
+    ] as const) {
+      await page.setViewportSize({ width: 960, height });
+      await expect.poll(() => body.evaluate((node) => node.scrollHeight > node.clientHeight + 1)).toBe(scrolls);
+      await animationsSettled(page);
+      // The scrollbar has to be settled too: it is measured a frame after the size changes.
+      await expect
+        .poll(async () => {
+          const field = (await dialog.getByRole("textbox", { name: "Fronte" }).boundingBox())!;
+          const last = (await dialog.getByRole("button", { name: "Salva", exact: true }).boundingBox())!;
+          return Math.abs(field.x + field.width - (last.x + last.width));
+        })
+        .toBeLessThan(1);
+      // The left edges agree too: the title and the fields start at the card's padding.
+      const title = (await dialog.getByRole("heading", { name: "Nuova flashcard" }).boundingBox())!;
+      const label = (await dialog.getByRole("textbox", { name: "Fronte" }).boundingBox())!;
+      expect(Math.abs(title.x - label.x)).toBeLessThan(1);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("text typed before the subjects arrive stays in Fronte, and so does the focus", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-early-"));
   const app = await launchPyxis({ userData });

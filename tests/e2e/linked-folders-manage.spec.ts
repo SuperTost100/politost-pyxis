@@ -179,7 +179,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await openList(page);
     await dots(page, folders.fisica).click();
     await page.getByRole("menuitem", { name: "Rileggi adesso" }).click();
-    await expect(status(page)).toHaveText(`Rileggo ${label(folders.fisica)}.`);
+    await expect(status(page)).toHaveText(`Rileggo «${label(folders.fisica)}».`);
     await expect(row(page, folders.fisica)).toContainText("4 file · controllata", { timeout: 60000 });
     await expect(shelf(page, "Fisica").locator(".px-cover", { hasText: "Potenziale" })).toBeVisible();
 
@@ -223,7 +223,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     rmSync(elsewhere, { recursive: true, force: true });
     await answerPicker(app, [moved]);
     await row(page, folders.analisi).getByRole("button", { name: "Trova la cartella…" }).click();
-    await expect(status(page)).toHaveText(`Ho ritrovato ${label(folders.analisi)}: i suoi 2 file sono di nuovo in Libreria.`);
+    await expect(status(page)).toHaveText(`Ho ritrovato «${label(folders.analisi)}»: i suoi 2 file sono di nuovo in Libreria.`);
     await expect(row(page, moved)).toContainText("2 file · controllata", { timeout: 30000 });
     expect((await listed(page)).filter((source) => source.linked?.folder === "Analisi 1")).toHaveLength(2);
 
@@ -251,7 +251,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     await dots(page, folders.fisica).click();
     await page.getByRole("menuitem", { name: "Scollega…" }).click();
     await confirm.getByRole("button", { name: "Scollega", exact: true }).click();
-    await expect(status(page)).toHaveText(`Ho scollegato ${label(folders.fisica)}: 4 file tolti dalla Libreria.`);
+    await expect(status(page)).toHaveText(`Ho scollegato «${label(folders.fisica)}»: 4 file tolti dalla Libreria.`);
     await expect(control(page)).toHaveText("1 cartella collegata");
     await expect(control(page)).toBeFocused();
     await expect(shelf(page, "Fisica")).toHaveAccessibleName("Fisica nessun file");
@@ -350,7 +350,7 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     await expect(page.getByRole("dialog", { name: /^Scollegare/ })).toHaveCount(0);
     await expect(list(page)).toBeVisible();
     await expect(row(page, folders.analisi)).toContainText(
-      `Non sono riuscito a scollegare ${label(folders.analisi)}, e non ho cambiato niente. Riprova.`,
+      `Non sono riuscito a scollegare «${label(folders.analisi)}», e non ho cambiato niente. Riprova.`,
     );
     await expect(control(page)).toHaveText("1 cartella collegata");
     expect((await listed(page)).filter((source) => source.status === "ready")).toHaveLength(2);
@@ -382,7 +382,7 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
     // The confirmation closed on a control that is gone: the focus goes to the one that took its place.
     await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
-    await expect(status(page)).toHaveText(`Ho scollegato ${label(folders.analisi)}: 2 file tolti dalla Libreria.`);
+    await expect(status(page)).toHaveText(`Ho scollegato «${label(folders.analisi)}»: 2 file tolti dalla Libreria.`);
     expect(await listed(page)).toEqual([]);
   } finally {
     await app.close();

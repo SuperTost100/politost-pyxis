@@ -309,7 +309,7 @@ function Recap({
         <p className="meta ink-muted">
           {done.length === count
             ? t("smart.recapScore", { right, count })
-            : t("smart.recapProgress", { done: done.length, count })}
+            : t("smart.recapProgress", { count: done.length, total: count })}
         </p>
       </div>
       {block.questions.map((question, index) => (

@@ -103,6 +103,7 @@ export function JobsButton({
           ref={trigger}
           type="text"
           className="px-top-tool px-jobs-button"
+          title={label}
           aria-expanded={open}
         >
           {/* The counts are only a picture of this sentence, so a screen reader reads the sentence once. */}

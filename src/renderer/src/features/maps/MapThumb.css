@@ -1,0 +1,24 @@
+/* Loaded with the drawing itself: the exam page shows it without the Mappe page's styles. */
+.px-map-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.px-map-thumb path {
+  fill: none;
+  stroke: var(--border-control);
+  stroke-width: 1.2;
+}
+.px-map-thumb rect {
+  fill: var(--surface);
+  stroke: var(--border-control);
+  stroke-width: 1;
+}
+[data-theme="dark"] .px-map-thumb rect {
+  fill: var(--surface-raised);
+}
+.px-map-thumb rect.is-root {
+  fill: var(--primary-soft);
+  stroke: var(--primary-text);
+  stroke-width: 1.4;
+}

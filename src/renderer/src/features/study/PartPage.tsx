@@ -519,7 +519,7 @@ export function PartPage({
             <Notice
               tone="warning"
               action={{ label: t("lesson.partRetry"), onClick: () => retry.mutate() }}
-              secondary={bookError?.action ?? { label: t("engines.title"), onClick: () => navigate("/settings/engines") }}
+              secondary={bookError?.action ?? { label: t("settings.enginesTitle"), onClick: () => navigate("/settings/engines") }}
             >
               {bookError ? `${t("lesson.sourceFallback")} ${bookError.text}` : t("lesson.sourceFallback")}
             </Notice>

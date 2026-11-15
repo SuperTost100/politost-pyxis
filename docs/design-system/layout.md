@@ -31,7 +31,7 @@ A page opened from another page has one way back, at its top left: an arrow and 
 | Focus          | Back on the page it left, the focus returns to what opened it (a step of the path, a tile, a row), or to its row when the step is folded away, or to the page's main heading. The page does not scroll unless that element is out of sight, and a page that places the focus itself on arrival keeps it there                               |
 | Escape         | Never leaves a page                                                                                                                                                                                                                                                                                                                         |
 
-A page takes its place with `usePlace` (`app/usePlace.ts`): it writes its own name for the controls that lead to it, and gets back its way back. A button that names the place it returns to, such as "Torna al percorso", goes back the same way when the back control leads there (`returnTo`).
+A page takes its place with `usePlace` (`app/usePlace.ts`): it writes its own name for the controls that lead to it, and gets back its way back. A button that names the place it returns to, such as "Torna al percorso", goes back the same way when the back control leads there (`returnTo`). No page has two controls that lead to the same place: a map opened from its exam has "← Fisica 1" as its way back, so the line under its title names the exam as plain text, and links it only when the way back leads elsewhere (a map opened from Mappe).
 
 A few places differ from the rule:
 
@@ -49,11 +49,11 @@ A few places differ from the rule:
 2. A thin separator, only after a back control.
 3. The title block: the topic or the thing as the title, and one line under it that says what the student is doing and where they are in it. The title sits beside the back control, not in the middle. Under 1,100 px a lesson's title opens the parts in a popover (`titleMenu`).
 4. A flexible space.
-5. The page's tools (`BarTool`): ghost buttons with an icon and a word. Under 1,100 px the word is kept for screen readers only.
+5. The page's tools (`BarTool`): ghost buttons with an icon and a word. Under 1,100 px the word is kept for screen readers only, and every tool carries its name as its tooltip (`BarTool` sets it).
 6. The page's dots (`MenuButton`), when the page has a menu. They hold actions only, and a right-click on them opens the same menu.
 7. Attività (`JobsButton keep`), always last at the far right.
 
-A link in the Attività list that leaves the page (a failed job's "Vai agli strumenti AI") leaves it the way the back control does: it waits for the page's `beforeLeave` (`BackTarget.leave`) and stays when that says no. On a running simulation, where nothing leaves, those links are off and give the reason. A page's own shortcuts (the flashcards' Space and ratings, a quiz's number keys) do nothing while the focus is inside an open dialog, menu or the Attività list (`lib/pageKeys.ts`).
+A link in the Attività list that leaves the page (a failed job's "Strumenti AI") leaves it the way the back control does: it waits for the page's `beforeLeave` (`BackTarget.leave`) and stays when that says no. On a running simulation, where nothing leaves, those links are off and give the reason. A page's own shortcuts (the flashcards' Space and ratings, a quiz's number keys) do nothing while the focus is inside an open dialog, menu or the Attività list (`lib/pageKeys.ts`).
 
 The bar draws the page's `progress` as a thin line along its bottom edge. A page has no foot button for the way back, since the bar's control is that: no "Indietro", no "Torna al percorso". The questions of a quiz and a simulation have "Domanda precedente" for the previous question.
 
