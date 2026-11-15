@@ -2,6 +2,7 @@
 const refusals = [
   "sources.ocrDataMissing",
   "sources.ocrDataIntegrity",
+  "sources.ocrDataUnreadable",
   "sources.ocrDataOffline",
 ];
 export const isOcrRefusal = (key: string | null | undefined): key is string =>
@@ -10,7 +11,7 @@ export const isOcrRefusal = (key: string | null | undefined): key is string =>
 /** The plain message for a raw code the download job (or a read that needed its data) stopped with. */
 export function ocrErrorKey(code: string): string | null {
   const found =
-    /ocr-data-(offline|download|too-big|declined|integrity|missing)/.exec(
+    /ocr-data-(offline|download|too-big|declined|integrity|missing|unreadable)/.exec(
       code,
     )?.[1];
   if (!found) return null;

@@ -474,11 +474,13 @@
     "fileMissing": "Pyxis no longer has the file for this scan, so it cannot read it. Use Replace file to add it again.",
     "ocrDataMissing": "Pyxis needs its scan-reading data to read this, and the data is not on this computer yet.",
     "ocrDataIntegrity": "The scan-reading data on this computer is damaged or incomplete, so Pyxis did not use it.",
+    "ocrDataUnreadable": "Pyxis could not check the scan-reading data on this computer just now, so it did not use it. Try again in a moment.",
     "ocrDataOffline": "Pyxis could not reach GitHub to download the scan-reading data. Check your connection, then try again.",
     "ocrData": {
       "title": "The scan-reading data is not on this computer yet",
       "body": "Pyxis downloads it by itself: it is the {{languages}} data, {{size}}, from the official Tesseract project on raw.githubusercontent.com, and your files are not sent anywhere. With it, Pyxis reads photos and scans on this computer, with no connection and no AI tool.",
       "integrityBody": "Downloading it again replaces the files with the official ones, {{size}}, from raw.githubusercontent.com. Your files are not sent anywhere.",
+      "unreadableBody": "The files are there and nothing was changed or downloaded. Trying again checks them once more.",
       "download": "Download {{size}}",
       "downloadAgain": "Download again, {{size}}",
       "retry": "Try again",
@@ -502,7 +504,8 @@
         "download": "GitHub answered with an error. Try again in a few minutes.",
         "too-big": "A file was larger than expected, so Pyxis threw it away. Try again.",
         "declined": "The download was turned off. Choose Download to start it.",
-        "integrity": "A downloaded file did not match its checksum, so Pyxis threw it away. Try again."
+        "integrity": "A downloaded file did not match its checksum, so Pyxis threw it away. Try again.",
+        "unreadable": "Pyxis could not read a file it already has, so it did not download it again. Try again in a moment."
       }
     },
     "version": "version {{version}}",

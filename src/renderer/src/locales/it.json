@@ -474,11 +474,13 @@
     "fileMissing": "Pyxis non ha più il file di questa scansione e non può leggerla. Usa Sostituisci il file per aggiungerlo di nuovo.",
     "ocrDataMissing": "Per leggere questo file Pyxis ha bisogno dei suoi dati di lettura delle scansioni, che non sono ancora su questo computer.",
     "ocrDataIntegrity": "I dati di lettura delle scansioni su questo computer sono danneggiati o incompleti, quindi Pyxis non li ha usati.",
+    "ocrDataUnreadable": "Pyxis non è riuscito a controllare i dati di lettura delle scansioni su questo computer, quindi non li ha usati. Riprova tra un momento.",
     "ocrDataOffline": "Pyxis non è riuscito a raggiungere GitHub per scaricare i dati di lettura delle scansioni. Controlla la connessione e riprova.",
     "ocrData": {
       "title": "I dati per leggere le scansioni non sono ancora su questo computer",
       "body": "Pyxis li scarica da solo: sono i dati per {{languages}}, {{size}}, del progetto ufficiale Tesseract su raw.githubusercontent.com, e i tuoi file non vengono inviati da nessuna parte. Con questi dati Pyxis legge foto e scansioni su questo computer, senza connessione e senza strumento AI.",
       "integrityBody": "Scaricarli di nuovo sostituisce i file con quelli ufficiali, {{size}}, da raw.githubusercontent.com. I tuoi file non vengono inviati da nessuna parte.",
+      "unreadableBody": "I file ci sono e non è stato cambiato né scaricato nulla. Riprovando, Pyxis li controlla ancora una volta.",
       "download": "Scarica {{size}}",
       "downloadAgain": "Scarica di nuovo, {{size}}",
       "retry": "Riprova",
@@ -502,7 +504,8 @@
         "download": "GitHub ha risposto con un errore. Riprova tra qualche minuto.",
         "too-big": "Un file era più grande del previsto, quindi Pyxis lo ha scartato. Riprova.",
         "declined": "Il download era stato disattivato. Scegli Scarica per farlo partire.",
-        "integrity": "Un file scaricato non corrispondeva al suo checksum, quindi Pyxis lo ha scartato. Riprova."
+        "integrity": "Un file scaricato non corrispondeva al suo checksum, quindi Pyxis lo ha scartato. Riprova.",
+        "unreadable": "Pyxis non è riuscito a leggere un file che ha già, quindi non l'ha scaricato di nuovo. Riprova tra un momento."
       }
     },
     "version": "versione {{version}}",

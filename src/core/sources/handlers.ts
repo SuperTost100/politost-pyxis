@@ -747,7 +747,9 @@ export function sourceHandlers(
     /**
      * Installs the OCR data without asking: the window calls this once setup is done, and when a screen needs the data.
      * Starts the download job, or joins the one running, unless the data is ready or the student turned it off. A
-     * download that stopped earlier is dismissed first, so Attività keeps one row for it.
+     * download that stopped earlier is dismissed first, so Attività keeps one row for it. Files that are there but could
+     * not be read count as not ready, so the job checks them again: it downloads nothing over a file it cannot read,
+     * and when it still cannot, it ends as failed with `ocr-data-unreadable`, a try away from another check.
      */
     async ocrDataAuto() {
       if (!ocrConsent(db)) return { state: "off" as const };

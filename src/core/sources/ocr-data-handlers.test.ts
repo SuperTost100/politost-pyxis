@@ -128,6 +128,19 @@ describe("SRC-04 / ASK-04 local OCR data: installed by default, job, and clear r
     expect(await handlers.ocrDataState()).toMatchObject({ state: "integrity" });
   });
 
+  it("says `unreadable` for a file that is there and cannot be read: a photo is refused with that, and the download job checks it again and downloads nothing", async () => {
+    const { handlers, runner, path, fetchSpy, tess } = setup();
+    // A folder where the file belongs cannot be read (EISDIR), as a file held by a scanner cannot be opened.
+    for (const lang of ["eng", "ita"]) mkdirSync(join(ocrDataDir(tess), `${lang}.traineddata`), { recursive: true });
+    expect(await handlers.ocrDataState()).toMatchObject({ state: "unreadable" });
+    await expect(handlers.importFile({ path })).rejects.toMatchObject({ messageKey: "sources.ocrDataUnreadable" });
+    const started = await handlers.ocrDataAuto();
+    await expect.poll(state(runner, started.jobId!), { timeout: 10_000 }).toBe("failed");
+    expect(job(runner, started.jobId!)?.error).toBe("ocr-data-unreadable");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(readdirSync(ocrDataDir(tess)).sort()).toEqual(["eng.traineddata", "ita.traineddata"]);
+  }, 30_000);
+
   it("refuses scanned-PDF OCR before queuing a page, and re-extract of a photo, with the same message", async () => {
     const { handlers, db } = setup();
     db.prepare(

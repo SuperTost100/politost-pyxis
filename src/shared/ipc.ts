@@ -3347,7 +3347,7 @@ export const requests = {
     input: z.object({}),
     output: z.object({
       consent: z.boolean(),
-      state: z.enum(["ready", "missing", "integrity"]),
+      state: z.enum(["ready", "missing", "integrity", "unreadable"]),
       totalBytes: z.number(),
       languages: z.array(z.string()),
       /** The download job while it is queued or running, so a reopened screen can show its progress. */

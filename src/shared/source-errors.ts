@@ -28,6 +28,7 @@ const SOURCE_ERROR_KEYS: Record<string, string> = {
   "vision-image-too-large": "sources.imageTooLarge",
   "ocr-data-missing": "sources.ocrDataMissing",
   "ocr-data-integrity": "sources.ocrDataIntegrity",
+  "ocr-data-unreadable": "sources.ocrDataUnreadable",
   "ocr-data-offline": "sources.ocrDataOffline",
   "ocr-data-download": "sources.ocrDataOffline",
   "ocr-data-too-big": "sources.ocrDataIntegrity",
