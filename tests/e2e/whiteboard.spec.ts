@@ -4,7 +4,9 @@ import {
   type Page,
 } from "@playwright/test";
 import {
+  existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
 } from "node:fs";
@@ -179,6 +181,44 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
       location.hash = "/ask";
     });
     await expect(page.getByAltText("Lavagna")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a board attached and closed before its staging ends hands nothing on and moves nowhere", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-late-"));
+  // The core holds the staging of the picture back, so the board can be closed while it is under way.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "tools.stagePng=1500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    await draw(page);
+    // The window's storage gives the drawing back as the board it opens with, so it starts clean: leaving asks nothing.
+    await page.reload();
+    const attach = page.getByRole("button", { name: "Allega alla chat" });
+    await expect(attach).toBeEnabled();
+    await attach.click();
+    await page.getByRole("button", { name: /^(Back to|Torna a) / }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    // The staging ends while the student is on Ask: the picture was written, and the board hands nothing on.
+    const staged = join(userData, "workspace", "scratch", "whiteboard");
+    await expect.poll(() => existsSync(staged) && readdirSync(staged).length).toBeGreaterThan(0);
+    // The core's answer to a later request comes after the staging's, which the page has handled by then.
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    expect(
+      await page.evaluate(() => [sessionStorage.getItem("pyxis-board-file"), sessionStorage.getItem("pyxis-board-png")]),
+    ).toEqual([null, null]);
+    await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await app.close();
     removeTestFolder(userData);
