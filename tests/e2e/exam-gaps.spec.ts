@@ -463,6 +463,45 @@ test.describe("Colma, with an earlier day of right answers", () => {
   });
 });
 
+test.describe("Colma, when a question of the drill is flagged as wrong on its results", () => {
+  let run: Run;
+  test.beforeEach(async () => {
+    run = await start();
+    run.db((handle) => {
+      setGaps(handle, [EIGHT[0]!]);
+      // An earlier day answered every question of the topic right.
+      handle
+        .prepare("INSERT INTO learning_events(id,kind,plan_id,topic_id,payload_json,created_at) VALUES('ev-prev','answer_given',?,'t-fun',?,?)")
+        .run(PLAN, JSON.stringify({ attemptId: "a-old", score: 1, scores: [1, 1, 1] }), Date.now() - day);
+    });
+    writeFileSync(run.release, "");
+  });
+  test.afterEach(async () => stop(run));
+
+  test("the end says the gap is closed once the question that kept it open is out of the score", async () => {
+    test.setTimeout(120_000);
+    const { page } = run;
+    await openExam(page);
+    await rows(page).first().getByRole("button", { name: /^Colma: Confondi/ }).click();
+    await expect(page).toHaveURL(/#\/plans\/p-an2\/quiz\/t-fun\?attempt=[^&]+&gap=g1$/);
+    // The first question is answered wrong: the gap stays open, and the end has nothing to say.
+    const sheet = page.locator(".px-qz-sheet");
+    for (let i = 0; i < 5; i++) {
+      await expect(page.getByText(`Domanda ${i + 1} di 5`, { exact: true })).toBeVisible();
+      if (i === 2) await sheet.getByRole("textbox").fill("risposta");
+      else await sheet.getByRole("button", { name: i === 0 ? /^[A-D] Due$/ : /^[A-D] (Uno|Vero)$/ }).click();
+      await page.locator(".px-qz-nav .px-btn-primary").click();
+    }
+    await expect(page.locator(".px-res-title")).not.toHaveText("Hai preso 30/30");
+    await expect(page.getByText("Lacuna colmata")).toHaveCount(0);
+    // Flagged as wrong, the question leaves the score and the gaps are worked out again: the answers left are right, on a
+    // second day, so the gap closes, and the end on this same page says so.
+    await page.getByRole("button", { name: "Domanda sbagliata?" }).first().click();
+    await expect(page.locator(".px-res-title")).toHaveText("Hai preso 30/30");
+    await expect(page.locator(".px-gap-end").getByRole("heading", { name: "Lacuna colmata" })).toBeVisible();
+  });
+});
+
 test.describe("Colma, when the drill's gap changes while it is written", () => {
   let run: Run;
   test.beforeEach(async () => {
