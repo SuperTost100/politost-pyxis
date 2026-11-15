@@ -42,18 +42,27 @@ env:
   PYXIS_TEST_E5: .tmp/e5
   PYXIS_CRASH_DIR: .tmp/ci-crashes
 
-# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent
-# runners, so a pull request starts eight macOS jobs; runs on main add the two macOS x64 route audits.
+# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent runners, so a pull
+# request starts fourteen macOS jobs (four test shards on each Mac, four route audits on arm64, two packages); runs on
+# main add the two macOS x64 route audits, and a test build starts six (four test shards and two packages).
 jobs:
+  # The end-to-end tests run in four shards per target, as in ci.yml. The other checks (types, Markdown, scripts and the
+  # unit suite) run once per target, in shard 1.
   test:
-    name: test ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    # macOS x64 took 44-48 minutes in October 2026, and two runs were cancelled at the old 50.
+    name: test ${{ matrix.target }} (${{ matrix.shard }}/4)
+    runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
+    # The end-to-end step took 64 minutes on macOS x64 (469 tests; the next run, with 478, was cancelled at 70 after
+    # 62.6 of them), 55 on macOS arm64, 43 on Windows and 37 on Linux, all in one job. A shard runs a quarter
+    # of the tests (128 of 478 at most): about 17 minutes on macOS x64. Shard 1 adds the unit suite (6 minutes on macOS
+    # x64) and the OCR data and window checks, so the longest job is about 26 minutes, well under half of 70.
     timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"},{"target":"windows-x64","runner":"windows-2025"},{"target":"linux-x64","runner":"ubuntu-24.04"}]') }}
+        target: [mac-arm64, mac-x64, windows-x64, linux-x64]
+        shard: [1, 2, 3, 4]
+        # A test build runs the tests on macOS arm64 only.
+        exclude: ${{ fromJSON(inputs.dev && '[{"target":"mac-x64"},{"target":"windows-x64"},{"target":"linux-x64"}]' || '[]') }}
     defaults:
       run:
         shell: bash
@@ -66,25 +75,29 @@ jobs:
           fixtures: "true"
           build: "true"
       # Type checking does not depend on the platform.
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run typecheck
       - name: Markdown formatting
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npx prettier --check "**/*.md"
       - name: Script checks
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run test:scripts
       - name: Unit checks
+        if: matrix.shard == 1
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         run: |
-          bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
-          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:'
+          # The OCR data and window checks run first, in shard 1, to expose core failures early.
+          if [ "${{ matrix.shard }}" = 1 ]; then
+            bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          fi
+          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:' --shard=${{ matrix.shard }}/4
       - name: Report end-to-end results
         if: always()
         uses: ./.github/actions/e2e
         with:
-          name: test-report-${{ matrix.target }}
+          name: test-report-${{ matrix.target }}-${{ matrix.shard }}
           failed: ${{ job.status == 'failure' }}
       - name: Report Windows application fault modules
         if: failure() && runner.os == 'Windows'
