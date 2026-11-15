@@ -182,7 +182,13 @@ function ExerciseCard({
   );
 }
 
+/** The router keeps this page on screen when only the topic changes, so each topic gets its own, with its own answers. */
 export function PracticePage() {
+  const { planId, topicId } = useParams();
+  return <TopicPractice key={`${planId}/${topicId}`} />;
+}
+
+function TopicPractice() {
   const { t } = useTranslation();
   const { planId, topicId } = useParams();
   useActiveTime(planId, topicId ?? null);
