@@ -42,6 +42,20 @@ export type ShelfHandlers = {
   act: (source: LibrarySource, key: string) => void;
 };
 
+/** The cover or row that holds the focus, and the files drawn beside it, next one first, as they are now. */
+type Held = { id: string; element: HTMLElement; beside: string[]; subjectId: string | null };
+
+function holding(item: HTMLElement): Held {
+  return {
+    id: item.dataset.sourceId ?? "",
+    element: item,
+    beside: [item.nextElementSibling, item.previousElementSibling].flatMap((sibling) =>
+      sibling instanceof HTMLElement && sibling.dataset.sourceId && !sibling.hasAttribute("data-leaving") ? [sibling.dataset.sourceId] : [],
+    ),
+    subjectId: item.closest<HTMLElement>("[data-subject-id]")?.dataset.subjectId ?? null,
+  };
+}
+
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
     ? String((err as { messageKey: unknown }).messageKey)
@@ -160,9 +174,10 @@ export function LibraryShelf({
     }
   });
 
-  // The file whose cover or row last held the focus, with the files drawn beside it. A file that leaves the list (removed,
-  // or taken out of the type filter by a new kind) takes its cover along, and with it the focus.
-  const held = useRef<{ id: string; beside: string[]; subjectId: string | null } | null>(null);
+  // The file whose cover or row last held the focus: the element itself, and the files drawn beside it. A file that leaves
+  // the list (removed, or taken out of the type filter by a new kind) takes its cover along, and with it the focus. The
+  // record is read again after every draw while the element is there, so it is the one that is true when the file leaves.
+  const held = useRef<Held | null>(null);
   useEffect(() => {
     const noteFocus = (event: FocusEvent) => {
       const target = event.target;
@@ -171,31 +186,29 @@ export function LibraryShelf({
       if (target.closest(".px-item-menu")) return;
       // Anywhere else the focus left the shelf (the file's panel, a dialog), and a file that goes away takes nothing with it.
       const item = root.current?.contains(target) ? target.closest<HTMLElement>("[data-source-id]") : null;
-      held.current = item
-        ? {
-            id: item.dataset.sourceId ?? "",
-            beside: [item.nextElementSibling, item.previousElementSibling].flatMap((sibling) =>
-              sibling instanceof HTMLElement && sibling.dataset.sourceId && !sibling.hasAttribute("data-leaving")
-                ? [sibling.dataset.sourceId]
-                : [],
-            ),
-            subjectId: item.closest<HTMLElement>("[data-subject-id]")?.dataset.subjectId ?? null,
-          }
-        : null;
+      held.current = item ? holding(item) : null;
     };
     document.addEventListener("focusin", noteFocus);
     return () => document.removeEventListener("focusin", noteFocus);
   }, []);
-  // The focus goes to the next cover or row, else the one before, else the subject's dots, else the page's "Aggiungi file".
+  // The focus goes to the file's own new cover or row, else the next cover or row, else the one before, else the subject's
+  // dots, else the page's "Aggiungi file".
   useEffect(() => {
     const was = held.current;
-    if (!was || root.current?.querySelector(`[data-source-id="${CSS.escape(was.id)}"]`)) return;
+    if (!was) return;
+    if (was.element.isConnected) {
+      held.current = holding(was.element);
+      return;
+    }
     held.current = null;
     const active = document.activeElement;
     if (active && active !== document.body) return;
     const find = (selector: string) => root.current?.querySelector<HTMLElement>(selector);
+    // The same file drawn again, as a row of "Da sistemare" becomes a cover when Pyxis gives the file a subject.
+    const open = (id: string) => find(`[data-source-id="${CSS.escape(id)}"] [data-source-open]`);
     (
-      was.beside.map((id) => find(`[data-source-id="${CSS.escape(id)}"] [data-source-open]`)).find(Boolean) ??
+      open(was.id) ??
+      was.beside.map(open).find(Boolean) ??
       (was.subjectId ? find(`[data-subject-id="${CSS.escape(was.subjectId)}"] .px-shelf-subject-dots`) : null) ??
       addButton.current?.querySelector("button") ??
       addButton.current

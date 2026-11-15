@@ -444,6 +444,81 @@ test("The focus stays in the page when the file that held it is renamed out of a
   }
 });
 
+/** Reads the Library's lists again, as the page does when a job ends or a linked folder changes, without touching the focus. */
+const readAgain = (page: Page) =>
+  page.evaluate(async () => {
+    const container = document.getElementById("root") as unknown as Record<string, unknown>;
+    const key = Object.keys(container).find((name) => name.startsWith("__reactContainer$"));
+    type Fiber = { child: Fiber | null; sibling: Fiber | null; memoizedProps: { client?: { invalidateQueries: (filter: object) => Promise<unknown> } } | null };
+    const find = (fiber: Fiber | null): Fiber["memoizedProps"] => {
+      for (let node = fiber; node; node = node.sibling) {
+        if (node.memoizedProps?.client?.invalidateQueries) return node.memoizedProps;
+        const inner = find(node.child);
+        if (inner) return inner;
+      }
+      return null;
+    };
+    const client = find(key ? (container[key] as Fiber) : null)?.client;
+    if (!client) throw new Error("The page's query client was not found");
+    await Promise.all([client.invalidateQueries({ queryKey: ["sources"] }), client.invalidateQueries({ queryKey: ["subjects"] })]);
+  });
+
+test("When the file that holds the focus is removed after the list changed beside it, the focus goes to the cover that now follows it", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await start();
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const covers = shelf(page, "Linguaggio cinematografico e storia del cinema").locator(".px-cover-open");
+    await expect(covers).toHaveCount(5);
+    const titles = await covers.evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
+    const [, second, third, fourth] = titles;
+    const ids = await shelf(page, "Linguaggio cinematografico e storia del cinema")
+      .locator(".px-cover")
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sourceId ?? ""));
+    const remove = (id: string) =>
+      page.evaluate((sourceId) => window.pyxis.invoke("sources.remove", { sourceId, confirmed: true }), id);
+    const title = (name: string | undefined) => page.getByRole("button", { name, exact: true });
+
+    // The focus is on the second cover, which has the first and the third beside it. A refresh takes the third away:
+    // the second keeps the focus, and now has the first and the fourth beside it.
+    await title(second).focus();
+    await remove(ids[2]!);
+    await readAgain(page);
+    await expect(title(third)).toHaveCount(0);
+    await expect(title(second)).toBeFocused();
+
+    // The second is taken away too: the focus goes to the fourth, the cover that took its place, not to the first.
+    await remove(ids[1]!);
+    await readAgain(page);
+    await expect(title(second)).toHaveCount(0);
+    await expect(title(fourth)).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("The focus stays on a file of Da sistemare when Pyxis sorts it into a subject by itself", async () => {
+  test.setTimeout(240_000);
+  const { app, page, userData } = await start();
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const row = page.locator('.px-unsorted-row[data-source-id="u-photo"]');
+    await row.getByRole("button", { name: "IMG_2077", exact: true }).focus();
+    // No choice of the student's: the file is given its subject, and the lists are read again.
+    await page.evaluate(() => window.pyxis.invoke("sources.move", { sourceId: "u-photo", subjectId: "cin" }));
+    await readAgain(page);
+    await expect(row).toHaveCount(0);
+    const placed = shelf(page, "Linguaggio cinematografico e storia del cinema").getByRole("button", { name: "IMG_2077", exact: true });
+    await expect(placed).toBeVisible();
+    expect(await focused(page)).not.toBe("body");
+    await expect(placed).toBeFocused();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("A linked file keeps the kind the student chose when its folder is read again", async () => {
   test.setTimeout(240_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-library-covers-linked-"));
