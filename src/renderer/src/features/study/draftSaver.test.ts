@@ -224,6 +224,82 @@ describe("draftSaver", () => {
     expect(states).toEqual([true, false]);
   });
 
+  /** A save whose answer the test gives by hand, per draft, so saves can end in any order. */
+  function byHand() {
+    const sent: string[] = [];
+    const calls = new Map<string, { land: () => void; fail: () => void }>();
+    const saver = draftSaver(
+      (draft: string) => {
+        sent.push(draft);
+        return new Promise<void>((resolve, reject) =>
+          calls.set(draft, { land: resolve, fail: () => reject(new Error("disk full")) }),
+        );
+      },
+      () => undefined,
+      500,
+    );
+    /** "old" is on its way, "new" was flushed behind it, and the page leaves: "new" is sent at once, past "old". */
+    async function oldThenNewLeaving() {
+      saver.schedule("old");
+      void saver.flush();
+      await vi.advanceTimersByTimeAsync(0);
+      saver.schedule("new");
+      const waiting = saver.flush();
+      void saver.flush(true);
+      expect(sent).toEqual(["old", "new"]);
+      return { waiting };
+    }
+    return { saver, sent, calls, oldThenNewLeaving };
+  }
+
+  it("never saves an older draft over a newer one that landed first: old fails after new, which left past it", async () => {
+    const { saver, sent, calls, oldThenNewLeaving } = byHand();
+    const { waiting } = await oldThenNewLeaving();
+    calls.get("new")!.land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saver.unsaved()).toBe(true);
+    calls.get("old")!.fail();
+    await vi.advanceTimersByTimeAsync(0);
+    // The failed old draft is not kept: nothing sends it after the newer one, and the newest answers are saved.
+    expect(sent).toEqual(["old", "new"]);
+    expect(saver.unsaved()).toBe(false);
+    await waiting;
+    await saver.flush();
+    expect(sent).toEqual(["old", "new"]);
+  });
+
+  it("does not keep a failed older draft while the newer one is still on its way, and says unsaved until it lands", async () => {
+    const { saver, sent, calls, oldThenNewLeaving } = byHand();
+    const { waiting } = await oldThenNewLeaving();
+    calls.get("old")!.fail();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saver.unsaved()).toBe(true);
+    calls.get("new")!.land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saver.unsaved()).toBe(false);
+    expect(sent).toEqual(["old", "new"]);
+    await waiting;
+  });
+
+  it("keeps the newer draft when it fails, whether the older one fails or lands after it", async () => {
+    for (const ending of ["fail", "land"] as const) {
+      const { saver, sent, calls, oldThenNewLeaving } = byHand();
+      await oldThenNewLeaving();
+      calls.get("new")!.fail();
+      await vi.advanceTimersByTimeAsync(0);
+      calls.get("old")![ending]();
+      await vi.advanceTimersByTimeAsync(0);
+      // The newest answers are the ones that did not save, so they still count and wait for the next flush.
+      expect(saver.unsaved(), ending).toBe(true);
+      void saver.flush();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent, ending).toEqual(["old", "new", "new"]);
+      calls.get("new")!.land();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(saver.unsaved(), ending).toBe(false);
+    }
+  });
+
   it("holds nothing once the answers are dropped", async () => {
     const saver = draftSaver(() => Promise.reject(new Error("disk full")), () => undefined, 500);
     saver.schedule("a");
