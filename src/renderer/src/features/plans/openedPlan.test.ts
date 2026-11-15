@@ -57,9 +57,10 @@ describe("handOverWaitingPlan", () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(router.state.location.pathname).toBe("/exams/get");
     expect(taken).toEqual(["plan"]);
-    const entries = router.state.historyAction;
+    // The entry's key changes with every navigation, a second PUSH included, so the same key means none was made.
+    const entry = router.state.location.key;
     await vi.advanceTimersByTimeAsync(5000);
-    expect(router.state.historyAction).toBe(entries);
+    expect(router.state.location.key).toBe(entry);
     expect(taken).toEqual(["plan"]);
     stop();
     router.dispose();
