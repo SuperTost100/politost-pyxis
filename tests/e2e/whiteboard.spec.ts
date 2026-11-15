@@ -187,6 +187,47 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
   }
 });
 
+test("the board follows a change of screen density that leaves its size as it was: the canvas is refitted and the strokes keep their place", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-density-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    await draw(page);
+    const canvas = () =>
+      page.evaluate(() => {
+        const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+        const box = element.getBoundingClientRect();
+        // The ink under the middle of the stroke `draw` made, from (100, 200) to (250, 300) of the board, in the canvas' own pixels.
+        const density = element.width / box.width;
+        const at = (x: number, y: number) =>
+          Array.from(element.getContext("2d")!.getImageData(Math.round(x * density), Math.round(y * density), 1, 1).data);
+        return { density: window.devicePixelRatio, width: element.width, cssWidth: box.width, ink: at(175, 250), blank: at(20, 20) };
+      });
+    const before = await canvas();
+    expect(before.width).toBe(Math.round(before.cssWidth));
+    expect(before.ink).not.toEqual(before.blank);
+    // The window moves to a display twice as dense: the board is as big as it was in CSS pixels, so only its density changed.
+    const size = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 2, mobile: false });
+    await expect.poll(async () => (await canvas()).density).toBe(2);
+    await expect.poll(async () => (await canvas()).width, "the canvas has twice the pixels").toBe(Math.round(before.cssWidth * 2));
+    const after = await canvas();
+    expect(after.ink, "the stroke is where it was drawn").not.toEqual(after.blank);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a board attached and closed before its staging ends hands nothing on and moves nowhere", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-late-"));

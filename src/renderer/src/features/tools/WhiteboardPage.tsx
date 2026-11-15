@@ -40,6 +40,8 @@ export function WhiteboardPage() {
   const past = useRef<Stroke[][]>([]);
   const future = useRef<Stroke[][]>([]);
   const board = useRef<HTMLCanvasElement>(null);
+  // The screen density the canvas was last sized for, which its drawing scale follows.
+  const fitted = useRef(window.devicePixelRatio || 1);
   // Set when the student leaves, with or without saving: a save still running then hands nothing on and moves nowhere.
   // A board with nothing to lose leaves without a question, so unmounting sets it too; the next save starts it over.
   const left = useRef(false);
@@ -60,7 +62,8 @@ export function WhiteboardPage() {
     const canvas = board.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    const density = window.devicePixelRatio || 1;
+    // The density the canvas was sized for: the screen's can change without the canvas changing size.
+    const density = fitted.current;
     ctx.setTransform(density, 0, 0, density, 0, 0);
     const width = canvas.width / density;
     const height = canvas.height / density;
@@ -95,7 +98,7 @@ export function WhiteboardPage() {
   useEffect(() => {
     paint(strokes);
   }, [strokes, appearance.resolved]);
-  // The canvas takes the board's size, and draws again whenever that changes.
+  // The canvas takes the board's size and the screen's density, and draws again whenever either changes.
   useEffect(() => {
     const canvas = board.current;
     if (!canvas) return;
@@ -107,12 +110,29 @@ export function WhiteboardPage() {
       if (canvas.width === width && canvas.height === height) return;
       canvas.width = width;
       canvas.height = height;
+      fitted.current = density;
       paint(latest.current);
     };
     fit();
     const watch = new ResizeObserver(fit);
     watch.observe(canvas);
-    return () => watch.disconnect();
+    // A window moved to a display of another density keeps the board's size in CSS pixels, so the observer hears nothing:
+    // a query for the current density tells when it stops being true, and is made again for the new one.
+    let stopDensity = () => {};
+    const watchDensity = () => {
+      const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+      const changed = () => {
+        fit();
+        watchDensity();
+      };
+      query.addEventListener("change", changed, { once: true });
+      stopDensity = () => query.removeEventListener("change", changed);
+    };
+    watchDensity();
+    return () => {
+      watch.disconnect();
+      stopDensity();
+    };
   }, []);
 
   function apply(next: Stroke[]) {
