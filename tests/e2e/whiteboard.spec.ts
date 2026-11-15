@@ -190,7 +190,9 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
 test("the board follows a change of screen density that leaves its size as it was: the canvas is refitted and the strokes keep their place", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-density-"));
-  const app = await launchPyxis({ userData });
+  // The display the test starts on has density 1, whatever the runner's display has, so the later change to 2 is one. The
+  // switch sets the display itself, not an emulation: a change between two emulated densities sends no media-query event.
+  const app = await launchPyxis({ userData, args: ["--force-device-scale-factor=1"] });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -222,6 +224,76 @@ test("the board follows a change of screen density that leaves its size as it wa
     await expect.poll(async () => (await canvas()).width, "the canvas has twice the pixels").toBe(Math.round(before.cssWidth * 2));
     const after = await canvas();
     expect(after.ink, "the stroke is where it was drawn").not.toEqual(after.blank);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a screen twice as dense under a board half as big keeps the canvas' pixel size, and a new stroke is drawn where the pointer is", async () => {
+  test.setTimeout(120000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-density-half-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      sessionStorage.removeItem("pyxis-board");
+      location.hash = "/tools/whiteboard";
+    });
+    const cdp = await page.context().newCDPSession(page);
+    const emulate = (width: number, height: number, deviceScaleFactor: number) =>
+      cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor, mobile: false });
+    // The window starts at density 1, tall enough for the board to be half as high again without going under its least
+    // height, and at a width of its own so the board's sides are even whatever window the runner gave the app.
+    const window0 = { width: 1280, height: 880 };
+    await emulate(window0.width, window0.height, 1);
+    await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(1);
+    const board = () =>
+      page.evaluate(() => {
+        const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+        const box = element.getBoundingClientRect();
+        return { density: devicePixelRatio, width: element.width, height: element.height, css: [box.width, box.height], page: [box.x, box.y] };
+      });
+    // The canvas has the board's size, one pixel to each of its CSS pixels.
+    await expect
+      .poll(async () => {
+        const now = await board();
+        return now.width === Math.round(now.css[0]!) && now.height === Math.round(now.css[1]!) && now.css[0]! > 0;
+      })
+      .toBe(true);
+    const first = await board();
+    expect(first.css.map((side) => side % 2), "the board's sides halve to whole pixels").toEqual([0, 0]);
+    // The window moves to a display twice as dense, and the board's box is half as big in both directions: the same
+    // number of pixels at twice the density, so the canvas needs no new size, only a new drawing scale.
+    const smaller = { width: Math.round(window0.width - first.css[0]! / 2), height: Math.round(window0.height - first.css[1]! / 2) };
+    await emulate(smaller.width, smaller.height, 2);
+    await expect.poll(async () => (await board()).density).toBe(2);
+    await expect.poll(async () => (await board()).css.map(Math.round)).toEqual([first.css[0]! / 2, first.css[1]! / 2].map(Math.round));
+    await expect
+      .poll(async () => {
+        const now = await board();
+        return [now.width, now.height];
+      }, "the canvas has the pixels it had")
+      .toEqual([first.width, first.height]);
+    const second = await board();
+    // A new stroke, drawn by the pointer from (100, 200) to (300, 300) of the board, under its toolbar: its ink is under the
+    // pointer.
+    const x = second.page[0]!;
+    const y = second.page[1]!;
+    await page.mouse.move(x + 100, y + 200);
+    await page.mouse.down();
+    await page.mouse.move(x + 300, y + 300, { steps: 12 });
+    await page.mouse.up();
+    const ink = await page.evaluate(() => {
+      const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
+      const density = element.width / element.getBoundingClientRect().width;
+      const at = (px: number, py: number) => Array.from(element.getContext("2d")!.getImageData(Math.round(px * density), Math.round(py * density), 1, 1).data);
+      return { under: at(200, 250), blank: at(20, 20) };
+    });
+    expect(ink.under, "the stroke is under the pointer").not.toEqual(ink.blank);
   } finally {
     await app.close();
     removeTestFolder(userData);

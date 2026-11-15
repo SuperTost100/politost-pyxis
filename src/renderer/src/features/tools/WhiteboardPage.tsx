@@ -107,7 +107,8 @@ export function WhiteboardPage() {
       const rect = canvas.getBoundingClientRect();
       const width = Math.max(1, Math.round(rect.width * density));
       const height = Math.max(1, Math.round(rect.height * density));
-      if (canvas.width === width && canvas.height === height) return;
+      // The same number of pixels at another density (the screen's doubled as the board's box halved) is still a new scale.
+      if (canvas.width === width && canvas.height === height && fitted.current === density) return;
       canvas.width = width;
       canvas.height = height;
       fitted.current = density;
