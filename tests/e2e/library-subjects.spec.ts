@@ -770,6 +770,11 @@ test("A menu stays open when the page gets shorter under a student who has scrol
     ] as const)
       for (const title of titles) await fileUnder(page, title, subject);
     for (const title of ["Appunti sciolti", "Esercizi sciolti", "Lezione sciolta"]) await pasteLoose(page, title);
+    // A file still being read sorts before the ones that are ready, so its cover changes places when its read ends: the
+    // files are all read before the test points at one, or the cover moves from under the pointer and its dots never show.
+    await expect
+      .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
+      .toBe(0);
     await expect(cover(page, "Fisica 2", "Termologia")).toBeVisible();
     await animationsSettled(page);
     // Something taller than the window under the last shelf, as a row of files still being read is, so the page scrolls.
