@@ -2117,7 +2117,7 @@
     "optionsChange": "Change",
     "optionsHide": "Close",
     "waitTitle": "New exam",
-    "waitBody": "You can close this screen: the preparation goes on, and you'll find it in Activities, at the top right.",
+    "waitBody": "You can close this screen: the preparation goes on. You'll find the exam in Exams, and its progress under Background tasks, at the top right.",
     "buildProgress": "{{percent}}% done",
     "topicsFound": "The topics I found",
     "topicsFoundNote": "Each topic already has its place in the path. You can change names and order later."
