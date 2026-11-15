@@ -51,8 +51,9 @@ test("a plan file named on the command line opens the import review once setup i
   writeFileSync(file, plan("Fisica prestata"));
   const { app, page, userData } = await start([file]);
   try {
-    // Onboarding blocks the jump; the file waits.
-    await skipSetup(page);
+    // Onboarding blocks the jump; the file waits. Setup ends on Chiedi and the file opens from there, so the window is not
+    // sent to Esami in between: a click on the sidebar that lands after the file's jump would leave the review.
+    await page.getByRole("button", { name: "Salta" }).click();
     await expect(page).toHaveURL(/#\/exams\/get$/);
     await expect(page.locator(".px-import-review")).toContainText("Fisica prestata");
     await page.getByRole("button", { name: "Importa", exact: true }).click();

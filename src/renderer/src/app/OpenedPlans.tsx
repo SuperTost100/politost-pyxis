@@ -5,7 +5,7 @@ import { MAX_OPENED_PLAN_BYTES } from "@shared/bridge";
 import { menuCommandAllowed } from "./menu-guard";
 import { readMenuContext } from "./menu-state";
 import { router } from "./router";
-import { offerPlanText, onPlanTextOffered, planTextWaiting } from "../features/plans/openedPlan";
+import { handOverWaitingPlan, offerPlanText } from "../features/plans/openedPlan";
 import { useProfile } from "../lib/queries";
 
 const PLAN_NAME = /\.pyxis(\.json)?$/i;
@@ -65,23 +65,7 @@ export function OpenedPlans() {
 
   useEffect(() => {
     if (!ready) return;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const show = () => {
-      clearTimeout(retry);
-      if (!planTextWaiting()) return;
-      const pathname = router.state.location.pathname;
-      if (menuCommandAllowed("exams", readMenuContext(pathname))) {
-        // On the page already, entering it again gives it a new location key, which is when it takes the text.
-        // A file comes from outside the app: the page starts a trail of its own (history.ts).
-        void router.navigate("/exams/get", { replace: pathname === "/exams/get", state: { via: "outside" } });
-      } else retry = setTimeout(show, 1000);
-    };
-    show();
-    const off = onPlanTextOffered(show);
-    return () => {
-      clearTimeout(retry);
-      off();
-    };
+    return handOverWaitingPlan(router, (pathname) => menuCommandAllowed("exams", readMenuContext(pathname)));
   }, [ready]);
 
   return null;
