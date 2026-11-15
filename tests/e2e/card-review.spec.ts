@@ -395,6 +395,68 @@ test("Vai > Indietro on the cards page does what the back control does: the sess
   }
 });
 
+test("Indietro on the cards page, held by the save of a rated session, does not undo a page the student chose meanwhile", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-card-back-held-"));
+  // The save that Indietro waits for is held back, so there is time to choose another page while it is on its way.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "plans.complete=2500" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed(db);
+    const cardSteps = () =>
+      (
+        db
+          .prepare(
+            "SELECT COUNT(*) AS n FROM learning_events WHERE kind = 'lesson_completed' AND plan_id = 'p' AND payload_json LIKE '%\"cards\"%'",
+          )
+          .get() as { n: number }
+      ).n;
+    await page.evaluate(() => {
+      location.hash = "#/plans/p";
+    });
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/cards/t";
+    });
+    const front = page.locator("article.px-card .px-card-front");
+    await expect(front).toHaveText("Seconda legge di Newton?");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("3");
+    await expect(front).toHaveText("Unità della forza?");
+
+    // Maps' code has not loaded yet, and the test holds it back: going to Maps stays under way, with the cards still on
+    // screen, until the test lets it through. A slow computer has the same moment, shorter.
+    await app.evaluate(({ session }) => {
+      const held = globalThis as unknown as { releaseMaps?: () => void };
+      const release = new Promise<void>((resolve) => {
+        held.releaseMaps = resolve;
+      });
+      session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        if (/\/assets\/MapsHome-[\w-]+\.js$/.test(details.url)) void release.then(() => callback({}));
+        else callback({});
+      });
+    });
+    // Back starts the save, which is held. Maps is chosen from the app menu while it is on its way, and is still loading
+    // when the save ends.
+    await page.getByRole("banner").getByRole("button", { name: /^(Back to|Torna a) / }).click();
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("maps")?.click());
+    await expect.poll(cardSteps).toBe(1);
+    await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    // The save has ended and the back step that waited for it was not taken: Maps loads and is where the student ends.
+    await app.evaluate(() => (globalThis as unknown as { releaseMaps: () => void }).releaseMaps());
+    await expect(page).toHaveURL(/#\/maps/);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    db.close();
+  } finally {
+    await app.evaluate(({ session }) => session.defaultSession.webRequest.onBeforeRequest(null));
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("new flashcard: a form grown from the bar adds to the deck, closes on Esc and Cancel, and holds the card's keys", async () => {
   test.setTimeout(90_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-card-new-"));
