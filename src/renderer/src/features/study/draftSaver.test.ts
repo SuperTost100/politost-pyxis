@@ -245,6 +245,26 @@ describe("draftSaver", () => {
     expect(states).toEqual([true, false]);
   });
 
+  it("still counts the answers as unsaved when a draft is changed and changed back while the first change is on its way", async () => {
+    const { saver, calls } = byHand();
+    saver.schedule("A");
+    void saver.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    calls.get("A")!.land();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(saver.unsaved()).toBe(false);
+    // B is on its way, then the answers go back to what the store held before it.
+    saver.schedule("B");
+    void saver.flush();
+    await vi.advanceTimersByTimeAsync(0);
+    saver.schedule("A again");
+    expect(saver.unsaved()).toBe(true);
+    calls.get("B")!.land();
+    await vi.advanceTimersByTimeAsync(0);
+    // B landed, but the draft that restores A has not been sent: the store holds the wrong answers.
+    expect(saver.unsaved()).toBe(true);
+  });
+
   it("holds nothing when the draft that waited for its pause is dropped", async () => {
     const saver = draftSaver(async () => undefined, () => undefined, 500);
     const states: boolean[] = [];

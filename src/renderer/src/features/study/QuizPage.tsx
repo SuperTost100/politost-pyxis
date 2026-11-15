@@ -414,9 +414,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     autoSubmitted.current = true;
     submit.mutate();
   }, [expired, running, canFinish, hydratedAttempt, attemptId]);
-  // Answers, checks and the current question are saved as they change and when the page closes. `stored` is the draft the
-  // store holds as far as this page knows: the one it opened with, then each one that saved.
-  const stored = useRef<{ attemptId: string; json: string } | null>(null);
+  // Answers, checks and the current question are saved as they change and when the page closes.
   const drafts = useDraftSaver(
     async (draft: {
       attemptId: string;
@@ -426,20 +424,20 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       marked: string[];
     }) => {
       await invoke("study.quizDraft", draft);
-      stored.current = { attemptId: draft.attemptId, json: JSON.stringify(draft) };
       // The first save after the quiz is ready starts the timer; pick up its deadline.
       if (timed && !deadlineAt && canFinish) void session.refetch();
     },
     () => setActionError(true),
   );
-  // The answers save themselves, so a quiz does not hold the menu while it is answered. It holds it only while answers
-  // that differ from the stored ones are not saved (waiting for the pause, a save on its way, or one that failed): a menu
-  // command is then refused, as under any lock, instead of closing the page over answers that were never stored. The draft
-  // a quiz opens with is the stored one, so opening it holds nothing.
-  const edited =
-    stored.current?.attemptId === attemptId &&
-    stored.current?.json !== JSON.stringify({ attemptId, planId, picks, index, marked });
-  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved) && edited);
+  // The answers save themselves, so a quiz does not hold the menu while it is answered. From the first change the student
+  // makes it holds it whenever the saver says answers are not saved (waiting for the pause, a save on its way, or one that
+  // failed): a menu command is then refused, as under any lock, instead of closing the page over answers that were never
+  // stored. The draft a quiz opens with is saved on purpose (it starts a timed quiz's clock) but holds nothing, since
+  // nothing was changed; `opened` is that draft, and `changed` stays true from the first change on, even if the answers
+  // go back to what they were, because an earlier save can still land over them.
+  const opened = useRef<{ attemptId: string; json: string } | null>(null);
+  const [changed, setChanged] = useState(false);
+  useMenuLock(useSyncExternalStore(drafts.watch, drafts.unsaved) && changed);
   useEffect(() => {
     if (
       attemptId &&
@@ -450,7 +448,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       session.data?.submittedAt == null
     ) {
       const draft = { attemptId, planId, picks, index, marked };
-      if (stored.current?.attemptId !== attemptId) stored.current = { attemptId, json: JSON.stringify(draft) };
+      const json = JSON.stringify(draft);
+      if (opened.current?.attemptId !== attemptId) {
+        opened.current = { attemptId, json };
+        setChanged(false);
+      } else if (json !== opened.current.json) setChanged(true);
       drafts.schedule(draft);
     } else drafts.cancel();
   }, [
