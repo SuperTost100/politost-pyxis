@@ -190,7 +190,9 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
 test("the board follows a change of screen density that leaves its size as it was: the canvas is refitted and the strokes keep their place", async () => {
   test.setTimeout(120000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-whiteboard-density-"));
-  const app = await launchPyxis({ userData });
+  // The display the test starts on has density 1, whatever the runner's display has, so the later change to 2 is one. The
+  // switch sets the display itself, not an emulation: a change between two emulated densities sends no media-query event.
+  const app = await launchPyxis({ userData, args: ["--force-device-scale-factor=1"] });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
