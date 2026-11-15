@@ -301,6 +301,21 @@ test("OCR data: files that are there and cannot be read are said so, nothing is 
     await saveShot(page, "ocr-unreadable/photo-import-card-try-again-still-locked-it-dark-960-large.png");
     expect(files.requests).toEqual([]);
 
+    // The card is one card while the files stay unreadable: the Try again button the student is about to press is the same
+    // element across the check that the failed job's update started in the page, which takes 1.85 s. That check is also the
+    // last one under way, so once the test's own check of the state has come back (it started after it) nothing in the page
+    // is reading the files. A check that is still waiting when the lock goes finds the files by itself, and the card turns
+    // ready before any click: that is right, and it is why the lock is not lifted before this.
+    const tryAgain = dialog.getByRole("button", { name: "Riprova" });
+    await tryAgain.evaluate((button) => {
+      (window as unknown as { tryAgainButton: Element }).tryAgainButton = button;
+    });
+    expect(await invoke(page, "sources.ocrDataState")).toMatchObject({ state: "unreadable" });
+    expect(
+      await tryAgain.evaluate((button) => button === (window as unknown as { tryAgainButton: Element }).tryAgainButton && button.isConnected),
+      "the Try again button is the element that was there before the check",
+    ).toBe(true);
+
     // The lock is gone: the files can be read. Try again checks them, finds them ready, and fetches nothing.
     for (const path of locked) rmSync(path, { recursive: true });
     for (const lang of Object.keys(OCR_DATA_FILES))
