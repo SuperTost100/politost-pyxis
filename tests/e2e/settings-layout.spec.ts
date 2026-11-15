@@ -99,6 +99,10 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await page.evaluate(() => {
       window.location.hash = "#/settings/updates";
     });
+    // The page has to have opened Aggiornamenti before the link to the version comes: the page is at the version already, so
+    // when both links arrive within one render the address ends where it began, and nothing scrolls. Opened, the updates
+    // section sits whole in the window, which the version heading's place at the top had left half out.
+    await expect(page.locator("#settings-updates")).toBeInViewport({ ratio: 1 });
     await page.evaluate(() => {
       const top = document.getElementById("settings-version")!.getBoundingClientRect().top + window.scrollY;
       window.scrollTo({ top: top + 400 });
