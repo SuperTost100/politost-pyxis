@@ -42,18 +42,27 @@ env:
   PYXIS_TEST_E5: .tmp/e5
   PYXIS_CRASH_DIR: .tmp/ci-crashes
 
-# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent
-# runners, so a pull request starts six macOS jobs; runs on main add the macOS x64 route audit.
+# Tests, route audits and packaging run as separate jobs in parallel. macOS allows few concurrent runners, so a pull
+# request starts fourteen macOS jobs (four test shards on each Mac, four route audits on arm64, two packages); runs on
+# main add the two macOS x64 route audits, and a test build starts six (four test shards and two packages).
 jobs:
+  # The end-to-end tests run in four shards per target, as in ci.yml. The other checks (types, Markdown, scripts and the
+  # unit suite) run once per target, in shard 1.
   test:
-    name: test ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    # macOS x64 took 44-48 minutes in October 2026, and two runs were cancelled at the old 50.
+    name: test ${{ matrix.target }} (${{ matrix.shard }}/4)
+    runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
+    # The end-to-end step took 64 minutes on macOS x64 (469 tests; the next run, with 478, was cancelled at 70 after
+    # 62.6 of them), 55 on macOS arm64, 43 on Windows and 37 on Linux, all in one job. A shard runs a quarter
+    # of the tests (128 of 478 at most): about 17 minutes on macOS x64. Shard 1 adds the unit suite (6 minutes on macOS
+    # x64) and the OCR data and window checks, so the longest job is about 26 minutes, well under half of 70.
     timeout-minutes: 70
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.dev && '[{"target":"mac-arm64","runner":"macos-15"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"},{"target":"windows-x64","runner":"windows-2025"},{"target":"linux-x64","runner":"ubuntu-24.04"}]') }}
+        target: [mac-arm64, mac-x64, windows-x64, linux-x64]
+        shard: [1, 2, 3, 4]
+        # A test build runs the tests on macOS arm64 only.
+        exclude: ${{ fromJSON(inputs.dev && '[{"target":"mac-x64"},{"target":"windows-x64"},{"target":"linux-x64"}]' || '[]') }}
     defaults:
       run:
         shell: bash
@@ -66,25 +75,29 @@ jobs:
           fixtures: "true"
           build: "true"
       # Type checking does not depend on the platform.
-      - if: runner.os == 'Linux'
+      - if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run typecheck
       - name: Markdown formatting
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npx prettier --check "**/*.md"
       - name: Script checks
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run test:scripts
       - name: Unit checks
+        if: matrix.shard == 1
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
         run: |
-          bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
-          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:'
+          # The OCR data and window checks run first, in shard 1, to expose core failures early.
+          if [ "${{ matrix.shard }}" = 1 ]; then
+            bash .github/actions/e2e/run.sh tests/e2e/ocr-data.spec.ts tests/e2e/window.spec.ts
+          fi
+          bash .github/actions/e2e/run.sh --grep-invert 'M14 every application|OCR data:|release loop:' --shard=${{ matrix.shard }}/4
       - name: Report end-to-end results
         if: always()
         uses: ./.github/actions/e2e
         with:
-          name: test-report-${{ matrix.target }}
+          name: test-report-${{ matrix.target }}-${{ matrix.shard }}
           failed: ${{ job.status == 'failure' }}
       - name: Report Windows application fault modules
         if: failure() && runner.os == 'Windows'
@@ -94,23 +107,29 @@ jobs:
             Where-Object { $_.Message -match '(?i)electron|politost|pyxis' } |
             Select-Object -First 5 -ExpandProperty Message
 
-  # One job per platform and language; each covers both themes and widths (and large text on macOS arm64).
+  # One job per platform and language, each covering both themes and both widths. On macOS arm64 the large-text runs are
+  # jobs of their own, so every job makes four runs of the audit.
   audit:
-    name: route audit ${{ matrix.target }} ${{ matrix.language }}
+    name: route audit ${{ matrix.target }} ${{ matrix.language }}${{ matrix.size == 'large' && ' large' || '' }}
     if: ${{ !inputs.dev }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
-    # A run of the audit covers one combination: 207 states took 7.5 minutes on macOS arm64 in November 2026 (8.8 with large
-    # text) and 5 on Linux. macOS arm64 makes eight runs, four of them with large text, so a healthy job takes about 66
-    # minutes, and one run on a slow runner took 17. That is why 45 and then 60 minutes cancelled it.
-    timeout-minutes: 90
+    # A run of the audit covers one combination. At 207 states it took 7.5 minutes on macOS arm64 in November 2026 (8.8
+    # with large text) and 5 on Linux, and one run on a slow runner took 17. The audit has 274 states now, which makes
+    # about 10 minutes (11.6 with large text) and 22 on a slow runner. A job makes four runs: about 40 minutes on macOS
+    # arm64, 47 with large text, and each slow run adds about 11, so two of them still fit in 75. All eight runs in one
+    # job came to 54 and 61 minutes at 207 states and would take about 84 now, so that would leave no room in 90 (45 and 60
+    # cancelled it earlier).
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         target: [mac-arm64, mac-x64, windows-x64, linux-x64]
         language: [it, en]
-        # macOS x64 renders with the same Chromium as macOS arm64; pull requests leave its audit to main.
-        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"}]' || '[]') }}
+        size: [normal, large]
+        # Large text runs on macOS arm64 only. macOS x64 renders with the same Chromium as macOS arm64; pull requests leave
+        # its audit to main.
+        exclude: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"mac-x64"},{"target":"windows-x64","size":"large"},{"target":"linux-x64","size":"large"}]' || '[{"target":"mac-x64","size":"large"},{"target":"windows-x64","size":"large"},{"target":"linux-x64","size":"large"}]') }}
     defaults:
       run:
         shell: bash
@@ -124,22 +143,21 @@ jobs:
           build: "true"
       - name: Route audit
         run: |
+          suffix=""
+          if [ "${{ matrix.size }}" = large ]; then
+            export PYXIS_UI_LARGE=1
+            suffix="-large"
+          fi
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
-            export PYXIS_UI_RECORD="ci-audit/audit-$combo.json"
+            export PYXIS_UI_RECORD="ci-audit/audit-$combo$suffix.json"
             bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
-            if [ "${{ matrix.target }}" = mac-arm64 ]; then
-              export PYXIS_UI_LARGE=1
-              export PYXIS_UI_RECORD="ci-audit/audit-$combo-large.json"
-              bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
-              unset PYXIS_UI_LARGE
-            fi
           done
       - name: Preserve route audit records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}
+          name: ui-audit-${{ matrix.target }}-${{ matrix.language }}${{ matrix.size == 'large' && '-large' || '' }}
           path: ci-audit/
           if-no-files-found: warn
           retention-days: 14
@@ -147,7 +165,7 @@ jobs:
         if: always()
         uses: ./.github/actions/e2e
         with:
-          name: audit-report-${{ matrix.target }}-${{ matrix.language }}
+          name: audit-report-${{ matrix.target }}-${{ matrix.language }}${{ matrix.size == 'large' && '-large' || '' }}
           failed: ${{ job.status == 'failure' }}
 
   package:
