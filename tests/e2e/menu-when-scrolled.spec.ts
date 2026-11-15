@@ -148,19 +148,28 @@ const longLesson = Array.from(
 async function start(seed: (db: DatabaseSync, userData: string) => void, size = { width: 1280, height: 832 }, env = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-menu-scrolled-"));
   const app = await launchPyxis({ userData, env });
-  const page = await app.firstWindow();
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.setViewportSize(size);
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  seed(db, userData);
-  db.close();
   const done = async () => {
     await app.close();
     removeTestFolder(userData);
   };
-  return { app, page, userData, done };
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize(size);
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seed(db, userData);
+    } finally {
+      db.close();
+    }
+    return { app, page, userData, done };
+  } catch (error) {
+    // The test never gets `done`, so nobody else can close the app or remove the workspace.
+    await done().catch(() => undefined);
+    throw error;
+  }
 }
 
 const go = (page: Page, hash: string) =>
