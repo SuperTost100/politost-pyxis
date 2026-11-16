@@ -59,6 +59,13 @@ describe("formulaWords", () => {
     expect(both("3{,}5\\differentialD x")).toEqual(["3,5 in dx", "3,5 dx"]);
   });
 
+  it("reads braces as LaTeX does: a group reads as what is in it, `\\{` as a brace that shows", () => {
+    expect(both("x_{n+1}-y_{2}")).toEqual(["x pedice (n più 1) meno y pedice 2", "x sub (n plus 1) minus y sub 2"]);
+    expect(both("{x+1}^{2}")).toEqual(["(x più 1) al quadrato", "(x plus 1) squared"]);
+    expect(both("A=\\{1,2\\}")).toEqual(["A uguale a {1,2}", "A equals {1,2}"]);
+    expect(both("A=\\lbrace 1,2\\rbrace")).toEqual(["A uguale a {1,2}", "A equals {1,2}"]);
+  });
+
   it("keeps Greek letters and other signs as they are written", () => {
     expect(both("\\omega=2\\pi f")).toEqual(["ω uguale a 2πf", "ω equals 2πf"]);
     expect(both("\\vec{F}=m\\vec{a}")).toEqual(["vettore F uguale a m vettore a", "vector F equals m vector a"]);

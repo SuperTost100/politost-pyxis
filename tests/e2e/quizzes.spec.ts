@@ -710,6 +710,36 @@ test("open answer: its formula is read back in words, and the optional steps are
   }
 });
 
+test("open answer: braces typed in a formula group, and the reading under the field follows", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    const reads = page.locator(".px-quiz-reads.is-shown");
+    await answer.click();
+    await page.waitForFunction(() => customElements.get("math-field") !== undefined);
+    await page.keyboard.type("La legge oraria è $s=t^{3}-t^{2}$");
+    await expect(reads).toHaveText("Si leggeLa legge oraria è s uguale a t al cubo meno t al quadrato");
+    await expect(answer).not.toContainText(/lbrace|rbrace|[{}]/);
+    await answer.fill("");
+    await page.keyboard.type("Un insieme: $A=\\{1,2\\} $");
+    await expect(reads).toHaveText("Si leggeUn insieme: A uguale a {1,2}");
+  } finally {
+    await done();
+  }
+});
+
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);

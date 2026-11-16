@@ -55,11 +55,35 @@ function braceFractions(latex: string): string {
   return out.join("");
 }
 
+/** The field writes a group the student typed with braces as `\mathord{…}`; stored text keeps it as `{…}`. */
+function bareGroups(latex: string): string {
+  const out: string[] = [];
+  let at = 0;
+  for (;;) {
+    const found = /\\mathord(?![A-Za-z])/.exec(latex.slice(at));
+    if (!found) break;
+    const start = at + found.index;
+    const afterName = start + found[0].length;
+    const body = latex[afterName] === "{" ? readArgument(latex, afterName) : null;
+    if (!body) {
+      out.push(latex.slice(at, afterName));
+      at = afterName;
+      continue;
+    }
+    out.push(latex.slice(at, start), `{${bareGroups(body.body)}}`);
+    at = body.end;
+  }
+  out.push(latex.slice(at));
+  return out.join("");
+}
+
 /** Tidies LaTeX from the formula field: no unfilled slots, braced fractions, no edge spaces. */
 export function cleanLatex(latex: string): string {
-  let body = braceFractions(
-    // The field marks unfilled slots; an unfilled slot has nothing to show.
-    latex.replace(/\\placeholder(?:\[[^\]]*\])?\{[^{}]*\}/g, ""),
+  let body = bareGroups(
+    braceFractions(
+      // The field marks unfilled slots; an unfilled slot has nothing to show.
+      latex.replace(/\\placeholder(?:\[[^\]]*\])?\{[^{}]*\}/g, ""),
+    ),
   ).trim();
   // A lone trailing backslash would escape the closing dollar sign.
   const tail = /\\+$/.exec(body)?.[0].length ?? 0;

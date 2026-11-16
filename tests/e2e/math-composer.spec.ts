@@ -115,6 +115,39 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
   }
 });
 
+test("Ask composer: braces typed in a formula group as in LaTeX, and \\{ is a literal brace", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await launch();
+  try {
+    const box = page.getByRole("textbox", { name: "Messaggio" });
+    await box.click();
+    // MathLive loads shortly after the field appears; keys typed before that wait in a queue of their own.
+    await page.waitForFunction(() => customElements.get("math-field") !== undefined);
+    const cases: Array<[typed: string, stored: string]> = [
+      ["$x(t)=t^{3}-t^{2}$", "$x\\left(t\\right)=t^3-t^2$"],
+      ["$t^{12}+1$", "$t^{12}+1$"],
+      ["$x_{n+1}-y_{2}$", "$x_{n+1}-y_2$"],
+      ["$e^{-x^{2}}$", "$e^{-x^2}$"],
+      ["$\\frac{a+1}{b}$", "$\\frac{a+1}{b}$"],
+      ["${x+1}^2$", "${x+1}^2$"],
+      ["$a}b$", "$ab$"],
+      ["$A=\\{1,2\\} $", "$A=\\{1,2\\}$"],
+    ];
+    for (const [typed, stored] of cases) {
+      await page.keyboard.type(typed);
+      await expect(box).toBeFocused();
+      await expect.poll(() => draft(page), { message: typed }).toBe(stored);
+      expect(await box.innerText()).not.toMatch(/lbrace|rbrace/);
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.press("Backspace");
+      await expect.poll(async () => (await draft(page)) ?? "").toBe("");
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("Ask composer: typing $ opens a formula, arrows move in and out, paste and drafts keep formulas", async () => {
   test.setTimeout(120000);
   const { app, page, userData } = await launch();

@@ -12,6 +12,14 @@ describe("cleanLatex", () => {
     expect(cleanLatex("\\frac{\\frac12}{3}")).toBe("\\frac{\\frac{1}{2}}{3}");
     expect(cleanLatex("\\frac")).toBe("\\frac");
   });
+  it("writes a group the field marked as \\mathord with plain braces", () => {
+    expect(cleanLatex("\\mathord{x+1}^2")).toBe("{x+1}^2");
+    expect(cleanLatex("a+\\mathord{\\frac12\\mathord{b}}")).toBe("a+{\\frac{1}{2}{b}}");
+    expect(cleanLatex("\\mathord{\\placeholder{}}")).toBe("{}");
+    expect(cleanLatex("\\mathord")).toBe("\\mathord");
+    expect(cleanLatex("\\mathordinary{x}")).toBe("\\mathordinary{x}");
+    expect(cleanLatex("\\{1,2\\}")).toBe("\\{1,2\\}");
+  });
   it("drops unfilled slots, edge spaces and a lone trailing backslash", () => {
     expect(cleanLatex("\\frac{1}{\\placeholder{}}")).toBe("\\frac{1}{}");
     expect(cleanLatex("  x^2 ")).toBe("x^2");
