@@ -91,7 +91,7 @@ export function MistakesNotebook() {
       </Notice>
     );
   if (data && data.entries.length === 0)
-    return <EmptyState body={t("mistakes.emptyBody")} />;
+    return <EmptyState centred body={t("mistakes.emptyBody")} />;
 
   // The topic's questions in the whole list, so "Redo" on a topic does not stop at the page edge.
   const topicKeys = new Map<string, string[]>();
