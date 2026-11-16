@@ -34,12 +34,14 @@ function undoAfter16(db: Database.Database) {
   for (const name of added.filter((name) => !before.includes(name))) db.exec(`DROP INDEX ${name}`);
 }
 
-/** Removes what migration 32 adds, so a test can rewind the version past it. */
+/** Removes what migrations 32 and 33 add, so a test can rewind the version past them. */
 function undoLessonParts(db: Database.Database) {
-  db.exec("DROP TABLE lesson_parts; DROP TABLE lesson_outlines;");
+  db.exec(
+    "DROP INDEX card_reviews_day; ALTER TABLE card_reviews DROP COLUMN seconds; DROP TABLE lesson_parts; DROP TABLE lesson_outlines;",
+  );
 }
 
-/** Removes what migrations 29 to 32 add, so a test can rewind the version past them. */
+/** Removes what migrations 29 to 33 add, so a test can rewind the version past them. */
 function undoSubjectSort(db: Database.Database) {
   undoLessonParts(db);
   db.exec("ALTER TABLE sources DROP COLUMN chosen_kind; DROP INDEX sources_blob_sha; DROP INDEX sources_subject_sort; ALTER TABLE sources DROP COLUMN subject_sort;");
@@ -193,7 +195,7 @@ describe("migrate", () => {
     ]) {
       expect(names).toContain(table);
     }
-    expect(db.pragma("user_version", { simple: true })).toBe(32);
+    expect(db.pragma("user_version", { simple: true })).toBe(33);
     const id = uuidv7();
     db.prepare(
       `INSERT INTO subjects (id, name, created_at) VALUES (?, ?, ?)`,
@@ -208,7 +210,7 @@ describe("migrate", () => {
       name: string;
     };
     expect(row.name).toBe("Fisica");
-    expect(again.pragma("user_version", { simple: true })).toBe(32);
+    expect(again.pragma("user_version", { simple: true })).toBe(33);
   });
 
   it("adds the free-book catalog link to sources, empty for sources that already exist", () => {
@@ -542,7 +544,8 @@ function seedCards(db: Database.Database) {
 const snapshot = (db: Database.Database) => ({
   cards: db.prepare("SELECT rowid AS r, * FROM cards ORDER BY id").all() as Array<Record<string, unknown>>,
   order: db.prepare("SELECT id FROM cards ORDER BY created_at, rowid").pluck().all(),
-  reviews: db.prepare("SELECT rowid AS r, * FROM card_reviews ORDER BY id").all(),
+  // Without `seconds`, which migration 33 adds and an older workspace does not have.
+  reviews: db.prepare("SELECT rowid AS r, id, card_id, rating, state_json, reviewed_at FROM card_reviews ORDER BY id").all(),
   events: db.prepare("SELECT * FROM learning_events ORDER BY id").all(),
 });
 
@@ -849,7 +852,15 @@ function seedLessonWork(db: Database.Database) {
 const lessonSnapshot = (db: Database.Database) =>
   Object.fromEntries(
     ["plans", "topics", "passages", "topic_passages", "items", "item_passages", "attempts", "cards", "card_reviews", "learning_events"].map(
-      (table) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all() as Array<Record<string, unknown>>],
+      (table) => [
+        table,
+        // A review without `seconds`, the column migration 33 adds, so a snapshot from before it compares equal.
+        db
+          .prepare(
+            `SELECT ${table === "card_reviews" ? "id, card_id, rating, state_json, reviewed_at" : "*"} FROM ${table} ORDER BY rowid`,
+          )
+          .all() as Array<Record<string, unknown>>,
+      ],
     ),
   );
 
@@ -877,12 +888,12 @@ const PART_OBJECTS = [
 describe("lesson outlines and parts (migration 32)", () => {
   it("creates both tables and their indexes once on a new workspace, and a second run changes nothing", () => {
     const db = tempDb();
-    expect(db.pragma("user_version", { simple: true })).toBe(32);
+    expect(db.pragma("user_version", { simple: true })).toBe(33);
     const objects = objectsOf(db, ["lesson_outlines", "lesson_parts"]);
     expect(objects.map(({ type, name }) => ({ type, name }))).toEqual(PART_OBJECTS);
     migrate(db);
     expect(objectsOf(db, ["lesson_outlines", "lesson_parts"])).toEqual(objects);
-    expect(db.pragma("user_version", { simple: true })).toBe(32);
+    expect(db.pragma("user_version", { simple: true })).toBe(33);
   });
 
   // Each version is built by running the real steps up to it: 1 is the first release, 23 is 0.4.x, 26 0.5.0-dev.7,
@@ -994,5 +1005,33 @@ describe("lesson outlines and parts (migration 32)", () => {
     db.prepare("DELETE FROM plans WHERE id = 'p'").run();
     expect(db.prepare("SELECT COUNT(*) FROM lesson_outlines").pluck().get()).toBe(0);
     expect(db.pragma("foreign_key_check")).toEqual([]);
+  });
+});
+
+describe("flashcard review time (migration 33)", () => {
+  it("adds `seconds` empty for every review that exists, and an index on the review's time", () => {
+    const { db, file } = workspaceAt(32);
+    seedCards(db);
+    const before = db.prepare("SELECT id, card_id, rating, state_json, reviewed_at FROM card_reviews ORDER BY rowid").all();
+    expect(before.length).toBeGreaterThan(0);
+    db.close();
+    const again = openDatabase(file);
+    opened.push(again);
+    expect(again.pragma("user_version", { simple: true })).toBe(33);
+    expect(again.prepare("SELECT id, card_id, rating, state_json, reviewed_at FROM card_reviews ORDER BY rowid").all()).toEqual(before);
+    expect(again.prepare("SELECT COUNT(*) FROM card_reviews WHERE seconds IS NOT NULL").pluck().get()).toBe(0);
+    expect(again.prepare("SELECT name FROM pragma_index_list('card_reviews') WHERE name = 'card_reviews_day'").pluck().get()).toBe(
+      "card_reviews_day",
+    );
+    // A new review keeps a time, and a negative one is refused.
+    const insert = (id: string, seconds: number | null) =>
+      again
+        .prepare("INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at, seconds) VALUES (?, 'c1', 'good', '{}', 9, ?)")
+        .run(id, seconds);
+    insert("fast", 7);
+    expect(again.prepare("SELECT seconds FROM card_reviews WHERE id = 'fast'").pluck().get()).toBe(7);
+    expect(() => insert("bad", -1)).toThrow(/CHECK/);
+    expect(again.pragma("integrity_check", { simple: true })).toBe("ok");
+    expect(again.pragma("foreign_key_check")).toEqual([]);
   });
 });
