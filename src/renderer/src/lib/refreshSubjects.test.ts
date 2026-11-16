@@ -7,6 +7,7 @@ describe("refreshSubjects", () => {
     const client = new QueryClient();
     const named = [
       ["subjects"],
+      ["subjects", "new-card-places"],
       ["sources"],
       ["plans"],
       ["plans", "planner"],
@@ -27,5 +28,12 @@ describe("refreshSubjects", () => {
     const stale = (key: unknown[]) => client.getQueryState(key)!.isInvalidated;
     for (const key of named) expect(stale(key), JSON.stringify(key)).toBe(true);
     for (const key of other) expect(stale(key), JSON.stringify(key)).toBe(false);
+  });
+
+  it("reaches the new-flashcard dialog's places also from the plain subjects key that the Library, the setup and a job use", async () => {
+    const client = new QueryClient();
+    client.setQueryData(["subjects", "new-card-places"], {});
+    await client.invalidateQueries({ queryKey: ["subjects"] });
+    expect(client.getQueryState(["subjects", "new-card-places"])!.isInvalidated).toBe(true);
   });
 });

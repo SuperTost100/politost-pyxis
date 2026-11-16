@@ -252,7 +252,7 @@ describe("agent lesson parts", () => {
 
   it("swaps the pipeline's no-citation rule for the shared citation rule", () => {
     const db = fixture();
-    const system = agentSystem(modelContext(db, "plan", "topic"), false);
+    const system = agentSystem(modelContext(db, "plan", "topic"), []);
     expect(system).not.toContain("Do not cite sources");
     expect(system).toContain(partialText("citation"));
     expect(system).toContain("```pyxis-tool");

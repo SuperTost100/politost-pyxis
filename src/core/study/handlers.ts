@@ -356,8 +356,8 @@ export function studyHandlers(
     review(input: { planId: string; count?: number; fromAttemptId?: string }) {
       return startReview(db, input.planId, { count: input.count, runner, fromAttemptId: input.fromAttemptId });
     },
-    reviewSession(input: { planId: string }) {
-      return readReview(db, input.planId);
+    reviewSession(input: { planId: string; finished?: boolean }) {
+      return readReview(db, input.planId, Date.now(), input.finished);
     },
     reviewDiscard(input: { planId: string }) {
       return discardReview(db, input.planId);
@@ -673,8 +673,8 @@ export function studyHandlers(
     attemptOutcome(input: { attemptId: string }) {
       return attemptOutcome(db, input.attemptId);
     },
-    rate(input: { cardId: string; rating: Rating }) {
-      return rateCard(db, input.cardId, input.rating, Date.now());
+    rate(input: { cardId: string; rating: Rating; seconds?: number }) {
+      return rateCard(db, input.cardId, input.rating, Date.now(), input.seconds);
     },
     undoRate(input: { reviewId: string }) {
       return undoRating(db, input.reviewId);

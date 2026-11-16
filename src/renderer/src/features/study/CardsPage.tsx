@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, type MenuProps } from "antd";
 import { Download, MessageCircleQuestion, Undo2 } from "lucide-react";
 import "./CardsPage.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { CitationChip } from "../../components/CitationChip";
@@ -16,7 +16,10 @@ import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
+import { reviewSessionKey } from "./reviewSession";
 import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
+import { SessionEnd, type Upcoming } from "./SessionEnd";
+import { RATINGS, type RatingName, type SeenCard } from "./sessionSummary";
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
@@ -28,11 +31,9 @@ import { NewCardButton } from "./NewCardButton";
 import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
 import { focusInOpenSurface } from "../../lib/pageKeys";
+import { reviewSeconds } from "@shared/review-time";
 import { cardsLine } from "./barLines";
 import { Working } from "../../components/Working";
-
-const RATINGS = ["again", "hard", "good", "easy"] as const;
-type RatingName = (typeof RATINGS)[number];
 
 /** The last change the student can take back from the review: a rating, a suspend, or deleting a card Pyxis wrote. */
 type Undoable =
@@ -132,10 +133,11 @@ export function CardsPage() {
   // A card brought back by Undo shows next, wherever the deck would sort it.
   const [pinned, setPinned] = useState<string | null>(null);
   const confirm = useConfirm();
-  const [seen, setSeen] = useState<Array<(typeof RATINGS)[number]>>([]);
+  // Every answer given in this session, with the card as it was shown. It lives in this page's memory only, like the
+  // summary it replaces: leaving the page ends it, and the ratings themselves stay stored.
+  const [seen, setSeen] = useState<SeenCard[]>([]);
   // Cards rated into a short learning step come back in this session instead of ending it.
   const [learning, setLearning] = useState<LearningCards>({});
-  const [clock, setClock] = useState(Date.now());
   const [editing, setEditing] = useState(false);
   const [draftFront, setDraftFront] = useState("");
   const [draftBack, setDraftBack] = useState("");
@@ -279,7 +281,7 @@ export function CardsPage() {
         ...(seen.length
           ? {
               result: {
-                correct: seen.filter((rating) => rating === "good" || rating === "easy").length,
+                correct: seen.filter((item) => item.rating === "good" || item.rating === "easy").length,
                 total: seen.length,
               },
             }
@@ -326,7 +328,6 @@ export function CardsPage() {
   const waiting = !card && deck.isSuccess && learningDue != null;
   useEffect(() => {
     if (!waiting || learningDue == null) return;
-    const tick = window.setInterval(() => setClock(Date.now()), 15_000);
     const due = window.setTimeout(
       () => {
         void deck.refetch().then(() => {
@@ -339,17 +340,62 @@ export function CardsPage() {
       },
       Math.max(0, learningDue - Date.now()) + 500,
     );
-    return () => {
-      clearInterval(tick);
-      clearTimeout(due);
-    };
+    return () => clearTimeout(due);
   }, [waiting, learningDue]);
   const sessionOver =
     !reviewing && seen.length > 0 && deck.isSuccess && !card && learningDue == null;
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
+  // When the card on screen appeared: a rating reports how long it took, which Oggi counts as study time.
+  const shownAt = useRef(Date.now());
+  // The session's end says what comes back later, read from the same cards the session read.
+  const dueScope = everywhere
+    ? { scope: "everywhere" as const, ...(only ? { only } : {}) }
+    : bySubject
+      ? { scope: "subject" as const, subjectId: subjectId ?? "" }
+      : planId && topicId
+        ? { scope: "topic" as const, planId, topicId }
+        : null;
+  const dueLater = useQuery({
+    queryKey: ["due-later", dueScope, seen.length],
+    enabled: sessionOver && dueScope != null,
+    gcTime: 0,
+    queryFn: () => invoke("study.dueLater", dueScope!),
+  });
+  // A read that has not landed, or is being redone after Undo and another answer, is not an answer yet. One that
+  // failed is not an empty schedule either: the end says it could not read it and offers another try.
+  const upcoming: Upcoming = dueLater.isError
+    ? { status: "failed", retrying: dueLater.isFetching }
+    : dueLater.isFetching || !dueLater.data
+      ? { status: "loading" }
+      : { status: "ready", ...dueLater.data };
+  // The answers the end lists. A Ripasso reads them from its stored reviews, so they are still there after the student
+  // leaves and comes back. Once its last card is answered a review with nothing else to ask is finished and has no
+  // session to resume, so the end reads the finished one instead: the page's own count would miss the answers given
+  // before the page was opened again.
+  const readFinished = reviewing && reviewQueue.isSuccess && !reviewQueue.data && !card;
+  const finishedReview = useQuery({
+    queryKey: [...reviewSessionKey(planId), "finished"],
+    enabled: readFinished,
+    gcTime: 0,
+    queryFn: () => invoke("study.reviewSession", { planId: planId ?? "", finished: true }),
+  });
+  const answers = reviewing
+    ? (reviewQueue.data?.answers ?? (readFinished ? finishedReview.data?.answers : undefined) ?? seen)
+    : seen;
+  // The session is on its last screen: a card waits for its next learning step, or nothing is due any more; in a Ripasso
+  // the cards are done, once the finished review's answers are read.
+  const ended =
+    answers.length > 0 &&
+    !card &&
+    (reviewing ? reviewQueue.isSuccess && !(readFinished && finishedReview.isFetching) : deck.isSuccess);
+  const waitingCards = useMemo(
+    () => (reviewing ? [] : Object.entries(learning).map(([cardId, dueAt]) => ({ cardId, dueAt }))),
+    [learning, reviewing],
+  );
   useEffect(() => {
+    shownAt.current = Date.now();
     setEditing(false);
     stopTurn();
     showBackRef.current = false;
@@ -357,8 +403,6 @@ export function CardsPage() {
     setFace(false);
     setPhase(null);
   }, [card?.id]);
-  const counts = { again: 0, hard: 0, good: 0, easy: 0 };
-  for (const rating of seen) counts[rating] += 1;
 
   async function refresh() {
     await Promise.all([
@@ -379,7 +423,12 @@ export function CardsPage() {
     setRatingPending(true);
     setRatingError(false);
     try {
-      const state = await invoke("study.rate", { cardId: card.id, rating });
+      const state = await invoke("study.rate", {
+        cardId: card.id,
+        rating,
+        // A clock that went back sends no time; the rating is saved either way.
+        seconds: reviewSeconds((Date.now() - shownAt.current) / 1000) ?? undefined,
+      });
       setLastAction({
         kind: "rate",
         cardId: card.id,
@@ -389,19 +438,28 @@ export function CardsPage() {
       });
       setPinned(null);
       stopTurn();
+      // The next card, or this one again with no other card between, starts its own time.
+      shownAt.current = Date.now();
       showBackRef.current = false;
       setShowBack(false);
       setFace(false);
       setPhase(null);
-      setSeen((current) => [...current, rating]);
+      setSeen((current) => [
+        ...current,
+        {
+          cardId: card.id,
+          reviewId: state.reviewId,
+          rating,
+          front: card.front,
+          subject: (everywhere ? shownCard?.subject : bySubject ? subjectName : plan.data?.subject) ?? null,
+        },
+      ]);
       if (everywhere && cardPlanId && card.topicId)
         setRatedIn((current) => [
           ...current,
           { reviewId: state.reviewId, planId: cardPlanId, topicId: card.topicId!, rating },
         ]);
-      const now = Date.now();
-      setClock(now);
-      setLearning((current) => trackLearning(current, card.id, state.dueAt, now));
+      setLearning((current) => trackLearning(current, card.id, state.dueAt, Date.now()));
       await refresh();
     } catch {
       setRatingError(true);
@@ -421,7 +479,7 @@ export function CardsPage() {
     try {
       if (action.kind === "rate") {
         await invoke("study.undoRate", { reviewId: action.reviewId });
-        setSeen((current) => current.slice(0, -1));
+        setSeen((current) => current.filter((item) => item.reviewId !== action.reviewId));
         setRatedIn((current) => current.filter((entry) => entry.reviewId !== action.reviewId));
         setLearning((current) =>
           Object.fromEntries(
@@ -782,12 +840,62 @@ export function CardsPage() {
             >
               {t("cards.loadFailed")}
             </LoadError>
-          ) : waiting && learningDue != null ? (
-            <p className="body" role="status">
-              {t("cards.learningWait", {
-                count: Math.max(1, Math.ceil((learningDue - clock) / 60_000)),
-              })}
-            </p>
+          ) : ended ? (
+            <>
+              <SessionEnd
+                seen={answers}
+                waiting={waitingCards}
+                upcoming={upcoming}
+                onRetry={() => void dueLater.refetch()}
+                stopBusy={Boolean(back?.busy)}
+                review={
+                  reviewing
+                    ? {
+                        next: reviewQueue.data?.next ?? "done",
+                        action:
+                          reviewQueue.data?.next === "questions" ? (
+                            <Button
+                              type="primary"
+                              shape="round"
+                              onClick={() =>
+                                navigate(
+                                  `/plans/${planId ?? ""}/review/questions?attempt=${encodeURIComponent(reviewQueue.data?.attemptId ?? "")}`,
+                                )
+                              }
+                            >
+                              {t("cards.reviewQuestions")}
+                            </Button>
+                          ) : reviewQueue.data?.next === "waiting" ? (
+                            <Notice
+                              tone="info"
+                              action={{
+                                label: t("cards.reviewWaitingOpen"),
+                                onClick: () => navigate(`/plans/${planId ?? ""}/review`),
+                              }}
+                            >
+                              {t("cards.reviewWaiting", { count: reviewQueue.data.progress.questionsPending })}
+                            </Notice>
+                          ) : null,
+                      }
+                    : undefined
+                }
+                onStop={() => (back ? back.go() : leaveTo("/flashcards"))}
+              />
+              {capped ? (
+                <p className="body">
+                  {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}{" "}
+                  <Link
+                    to="/settings/flashcards"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      leaveTo("/settings/flashcards");
+                    }}
+                  >
+                    {t("cards.changeLimit")}
+                  </Link>
+                </p>
+              ) : null}
+            </>
           ) : capped ? (
             <p className="body">
               {t("cards.dailyLimit", { count: queue.data?.newToday.limit ?? 0 })}{" "}
@@ -923,6 +1031,8 @@ export function CardsPage() {
                   {RATINGS.map((rating, index) => (
                     <Button
                       key={rating}
+                      className="px-rate"
+                      data-rate={rating}
                       disabled={ratingPending}
                       aria-keyshortcuts={String(index + 1)}
                       onClick={() => void rate(rating)}
@@ -947,8 +1057,8 @@ export function CardsPage() {
             )}
           </div>
         )}
-        {/* What the last change did; the bar's Undo last takes it back. */}
-        {lastAction ? (
+        {/* What the last change did; the bar's Undo last takes it back. The end of a session shows its own screen. */}
+        {lastAction && !ended ? (
           <div className="px-cards-undo">
             <p className="small" role="status">
               {undoText}
@@ -981,7 +1091,7 @@ export function CardsPage() {
             </Button>
           </div>
         ))}
-        {reviewing && reviewQueue.data?.next === "questions" && !card ? (
+        {reviewing && reviewQueue.data?.next === "questions" && !card && !ended ? (
           <Button
             type="primary"
             shape="round"
@@ -994,7 +1104,7 @@ export function CardsPage() {
             {t("cards.reviewQuestions")}
           </Button>
         ) : null}
-        {reviewing && reviewQueue.data?.next === "waiting" && !card ? (
+        {reviewing && reviewQueue.data?.next === "waiting" && !card && !ended ? (
           <Notice
             tone="info"
             action={{
@@ -1004,17 +1114,6 @@ export function CardsPage() {
           >
             {t("cards.reviewWaiting", { count: reviewQueue.data.progress.questionsPending })}
           </Notice>
-        ) : null}
-        {seen.length > 0 && !card ? (
-          <p className="body" role="status">
-            {t("cards.summary", {
-              seen: seen.length,
-              again: counts.again,
-              hard: counts.hard,
-              good: counts.good,
-              easy: counts.easy,
-            })}
-          </p>
         ) : null}
       </section>
     </StudyLayout>

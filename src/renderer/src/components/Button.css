@@ -10,6 +10,9 @@
   padding: 0 14px;
   border-radius: var(--radius-field);
   border: 0;
+  /* Ant Design's hover rule sets `border: var(--ant-btn-border-width) …`, which beat `border: 0` and grew every button
+     by 2px under the pointer. With no width there is no outline to appear, and a row that just fits stays put. */
+  --ant-btn-border-width: 0px;
   font: 600 calc(13.5px * var(--text-scale, 1)) / 1 var(--font-sans);
   cursor: pointer;
   white-space: nowrap;

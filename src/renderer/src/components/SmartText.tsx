@@ -160,7 +160,7 @@ export function SmartText({
           <Figure
             key={segment.block.id}
             caption={segment.block.caption}
-            image={figures[figureKey(segment.block.code)]}
+            image={figures[figureKey(segment.block.code, segment.block.figureKind)]}
             drawing={streaming}
           />
         ) : (
