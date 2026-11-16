@@ -28,7 +28,7 @@ export function OpenedPlans() {
         .take()
         .then((opened) => {
           if (!opened) return;
-          if (opened.ok) offerPlanText(opened.text);
+          if (opened.ok) offerPlanText(opened.text, { name: opened.name, bytes: opened.bytes });
           else void message.error(t(`shared.openFailed.${opened.reason}`));
         })
         .catch(() => void message.error(t("shared.openFailed.unreadable")));
@@ -52,7 +52,7 @@ export function OpenedPlans() {
       if (plan.size > MAX_OPENED_PLAN_BYTES) return void message.error(t("shared.openFailed.too-big"));
       void plan
         .text()
-        .then(offerPlanText)
+        .then((text) => offerPlanText(text, { name: plan.name, bytes: plan.size }))
         .catch(() => void message.error(t("shared.openFailed.unreadable")));
     };
     window.addEventListener("dragover", over);

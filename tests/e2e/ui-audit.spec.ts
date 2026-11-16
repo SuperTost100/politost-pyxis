@@ -25,6 +25,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { docx } from "./source-panel-fixture";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
 import { SHOTS, saveShot } from "./shots";
@@ -401,6 +402,17 @@ const routes = [
   // A free book with a newer version in the catalog: the Library row and the books list offer the update.
   ["library-book-update", "/exams/library"],
   ["library-books-update", "/exams/library"],
+  // A free book about the subject, which the student does not have: its row on the shelf, the reader on it, the reader
+  // after the add, and the full list with its Open buttons.
+  ["library-book-offer", "/exams/library"],
+  ["library-book-reader", "/exams/library"],
+  ["library-book-reader-added", "/exams/library"],
+  ["library-books-open", "/exams/library"],
+  // The same book offered as a ticked source: in a new exam named like it, read first from there, and with the first file
+  // of a new subject.
+  ["wizard-book-offer", "/plans/new"],
+  ["wizard-book-reader", "/plans/new"],
+  ["library-book-first-file", "/exams/library"],
   ["shell-exam-active", "/exams"],
   // The same, over the map's page, which fills the window, and over the Library: Resume sits in the top strip and the
   // page keeps its height.
@@ -1952,12 +1964,12 @@ function prepareLibrarySubjects(name: string) {
     db.exec(`DELETE FROM jobs WHERE id = 'audit-sort-job';
       DELETE FROM sources WHERE id LIKE 'audit-sort-%';
       DELETE FROM subjects WHERE id = 'audit-sort-made';`);
-    if (!["library-sorting", "library-unsorted", "library-move-menu"].includes(name)) return;
+    if (!["library-sorting", "library-unsorted", "library-move-menu", "library-book-first-file"].includes(name)) return;
     const now = Date.now();
     const source = db.prepare(
       "INSERT INTO sources(id,kind,title,status,subject_id,subject_sort,created_at,updated_at) VALUES(?,'pdf',?,?,?,?,?,?)",
     );
-    if (name === "library-unsorted") {
+    if (name === "library-unsorted" || name === "library-book-first-file") {
       source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
       source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
       // A file the Library never asked about has no reason to say Pyxis could not place it.
@@ -2616,8 +2628,9 @@ function prepareState(name: string) {
     db.prepare(
       "INSERT OR IGNORE INTO sources(id,kind,title,blob_sha,mime,status,library,catalog_id,catalog_version,created_at,updated_at) VALUES('audit-free-book','smartbook','Fisica di prova',?,'application/vnd.politost.ptsb','ready',0,'fisica-demo','1.0.0',2,2)",
     ).run("a".repeat(64));
+    // The book states add it and place it, so each state starts with it hidden and on no shelf.
     db.prepare(
-      "UPDATE sources SET library = ? WHERE id = 'audit-free-book'",
+      "UPDATE sources SET library = ?, subject_id = NULL, subject_sort = NULL WHERE id = 'audit-free-book'",
     ).run(
       name.includes("book-update") || name.includes("books-update") ? 1 : 0,
     );
@@ -3222,6 +3235,11 @@ async function openState(page: Page, name: string) {
         window.pyxis.invoke("plans.export", { planId: "audit-plan" }),
       );
       file.author = "Example author";
+      // One original that is not in the file, so the page shows its choice as well as the ones inside it.
+      if (file.sources?.[0]) {
+        delete file.sources[0].data;
+        file.sources[0].sha = "a".repeat(64);
+      }
       await page
         .locator('input[type="file"]')
         .first()
@@ -3231,6 +3249,13 @@ async function openState(page: Page, name: string) {
           buffer: Buffer.from(JSON.stringify(file)),
         });
       await expect(page.locator(".px-import-review")).toBeVisible();
+      // The page opens on its title, and the footer's action is a button the keyboard reaches.
+      await expect(page.locator(".px-import-review h1")).toBeFocused();
+      await expect(
+        page.getByRole("region", { name: both("Aggiungere l'esame", "Add the exam") }).getByRole("button", {
+          name: both("Aggiungi ai miei esami", "Add to my exams"),
+        }),
+      ).toBeVisible();
       const after = await page.evaluate(() =>
         window.pyxis.invoke("plans.list", {}),
       );
@@ -4349,6 +4374,57 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       break;
+    case "library-book-offer": {
+      const offer = page.getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") });
+      await expect(offer).toBeVisible();
+      await expect(offer.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })).toBeVisible();
+      break;
+    }
+    case "library-book-reader":
+    case "library-book-reader-added": {
+      await page
+        .getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") })
+        .getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })
+        .click();
+      const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+      await expect(reader.getByText(both("Non è ancora nella tua Libreria.", "It's not in your Library yet."))).toBeVisible();
+      await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      if (name === "library-book-reader-added") {
+        await reader.getByRole("button", { name: both("Aggiungi alla Libreria", "Add to Library") }).click();
+        await expect(reader.getByText(both("È nella tua Libreria, sullo scaffale di Fisica.", "It's in your Library, on the Fisica shelf."))).toBeVisible();
+      }
+      break;
+    }
+    case "wizard-book-offer":
+    case "wizard-book-reader": {
+      await page.getByRole("textbox", { name: both("Nome dell'esame", "Exam name"), exact: true }).fill("Fisica di prova");
+      await page.getByRole("button", { name: both("Non ho ancora la data", "I don't have the date yet") }).click();
+      await page.getByRole("button", { name: /Continua|Continue/, exact: true }).click();
+      const choice = page.locator("[data-book-choice]");
+      await expect(choice.getByRole("checkbox")).toBeChecked();
+      if (name === "wizard-book-reader") {
+        await choice.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") }).click();
+        const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+        await expect(reader.getByText(both("È tra le fonti di questo esame.", "It's among this exam's sources."))).toBeVisible();
+        await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      }
+      break;
+    }
+    case "library-book-first-file": {
+      // "Nuova materia…" is the picker's last choice, whose value is not a subject's id.
+      await page.locator('[data-unsorted-id="audit-sort-board"]').getByRole("combobox").selectOption({ value: "\u0000new" });
+      const naming = page.getByRole("dialog");
+      await naming.getByRole("textbox").fill("Fisica di prova");
+      await expect(naming.locator("[data-book-choice]").getByRole("checkbox")).toBeChecked();
+      break;
+    }
+    case "library-books-open": {
+      await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
+      await page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") }).click();
+      await dialog.getByRole("button", { name: both("Apri Fisica di prova", "Open Fisica di prova") }).click();
+      await expect(page.getByRole("complementary", { name: "Fisica di prova" }).getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      break;
+    }
     case "library-books-update":
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
       await page
@@ -5357,6 +5433,19 @@ test("M14 every application route in both languages, themes and supported widths
   }
   // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
   const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
+  // The package is real, so the reader can open the book; adding it takes the hidden copy that is already there.
+  const auditBook = makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    version: "1.1.0",
+    chapters: [
+      { title: "Moti", text: "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato, $v = s / t$.\n\n## p2 | Accelerazione\nL'accelerazione è la variazione di velocità nel tempo.\n" },
+      { title: "Forze", text: "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n" },
+      { title: "Energia", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+    ],
+  });
+  mkdirSync(join(booksSite, "books"));
+  writeFileSync(join(booksSite, "books", "fisica-demo@1.1.0.ptsb"), auditBook);
   writeFileSync(
     join(booksSite, "catalog.json"),
     JSON.stringify({
@@ -5370,8 +5459,8 @@ test("M14 every application route in both languages, themes and supported widths
           version: "1.1.0",
           chapters: 3,
           package: "books/fisica-demo@1.1.0.ptsb",
-          bytes: 1024,
-          sha256: "b".repeat(64),
+          bytes: auditBook.byteLength,
+          sha256: createHash("sha256").update(auditBook).digest("hex"),
         },
       ],
     }),
