@@ -193,3 +193,67 @@ test("MATH-02 MATH-06 complete solve sets, own-request queue clock and crashed-r
     removeTestFolder(userData);
   }
 });
+
+test("the Python page offers both packs as one download, and only the drawing files to a workspace that has Python", async () => {
+  test.skip(
+    !existsSync(".tmp/pyodide/pyodide.js") || !existsSync(".tmp/drawing"),
+    "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.",
+  );
+  test.setTimeout(120000);
+  const packs = Object.fromEntries(
+    ["pyodide", "drawing"].map((pack) => [
+      pack,
+      JSON.parse(readFileSync(join(process.cwd(), `resources/${pack}-manifest.json`), "utf8")) as {
+        version: string;
+        files: Array<{ size: number }>;
+      },
+    ]),
+  );
+  const megabytes = (...names: string[]) =>
+    new Intl.NumberFormat("it", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(
+      names.flatMap((name) => packs[name]!.files).reduce((sum, file) => sum + file.size, 0) / 1e6,
+    );
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-python-offer-"));
+  const stage = (pack: string) => {
+    const folder = join(userData, "workspace/runtimes", pack, packs[pack]!.version);
+    mkdirSync(folder, { recursive: true });
+    cpSync(join(process.cwd(), ".tmp", pack), folder, { recursive: true });
+  };
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => {
+      location.hash = "/tools/python";
+    });
+    const run = page.getByRole("button", { name: "Esegui", exact: true });
+    // Nothing downloaded: one download of Python and the drawing files together.
+    await expect(page.getByText("Python richiede un download una tantum")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: `Scarica Python (${megabytes("pyodide", "drawing")} MB)` }),
+    ).toBeVisible();
+    await expect(run).toBeDisabled();
+
+    // A workspace that downloaded Python before the drawing files existed: Python runs, and the rest is on offer.
+    stage("pyodide");
+    await page.reload();
+    await expect(page.getByText("I disegni dei circuiti richiedono un piccolo download")).toBeVisible();
+    await expect(page.getByRole("button", { name: `Scarica (${megabytes("drawing")} MB)` })).toBeVisible();
+    await expect(page.getByText("Python richiede un download una tantum")).toHaveCount(0);
+    await run.click();
+    await expect(page.getByRole("region", { name: "Risultato" }).locator("pre")).toHaveText("2", {
+      timeout: 60000,
+    });
+
+    // Both packs there: nothing left to offer.
+    stage("drawing");
+    await page.reload();
+    await expect(run).toBeEnabled();
+    await expect(page.getByRole("button", { name: /^Scarica/ })).toHaveCount(0);
+    await expect(page.getByText(/richied(e|ono) un/)).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
