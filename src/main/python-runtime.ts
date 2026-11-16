@@ -54,6 +54,47 @@ function clearSession(): Promise<void> {
   return clearing;
 }
 
+/**
+ * The requests using the session now. The run lane and the check lane are two lanes of one window, so a request can end
+ * while another is still running in the same session, and clearing then would take storage from the one that is not
+ * done. `stale` says that the session may hold what a request left and nobody has cleared it yet.
+ */
+let users = 0;
+let stale = false;
+let draining: Promise<void> | null = null;
+const idle: Array<() => void> = [];
+
+/**
+ * Clears the session once nobody is using it. A request that starts meanwhile waits for it, so it neither starves the
+ * clearing nor meets it halfway.
+ */
+function drain(): Promise<void> {
+  draining ??= (async () => {
+    while (users > 0) await new Promise<void>((resolve) => idle.push(resolve));
+    await clearSession();
+    stale = false;
+  })().finally(() => {
+    draining = null;
+  });
+  return draining;
+}
+
+/** A request starts using the session. A run never starts on what an earlier request left: it waits for the clearing. */
+async function enter(operation: "run" | "check"): Promise<void> {
+  while (draining) await draining;
+  if (operation === "run" && stale) await drain();
+  users++;
+}
+
+/** A request is done with the session, which is cleared when it was the last one using it. */
+async function leave(): Promise<void> {
+  users--;
+  stale = true;
+  if (users > 0) return;
+  for (const resolve of idle.splice(0)) resolve();
+  await drain();
+}
+
 /** Ends a window, and clears what the session kept for it. A window ends once: its own `closed` event comes here again. */
 function retire(target: BrowserWindow): void {
   if (retired.has(target)) return;
@@ -102,6 +143,9 @@ async function sandbox(): Promise<BrowserWindow> {
     const owned = await pythonSession();
     // The storage of the window that ended is cleared before the next one opens in the same session.
     await clearing;
+    // The runtime may have been disposed while this waited: a window made now would belong to a generation that is over,
+    // and retiring it could clear the session in the middle of a request of the current one.
+    if (epoch !== generation) throw new Error("runtime-disposed");
     const created = new BrowserWindow({
       show: false,
       webPreferences: {
@@ -179,45 +223,50 @@ async function dispatch(
   timeoutMs: number | undefined,
   method: "run" | "check" | "grade",
 ): Promise<unknown> {
-  const target = await sandbox();
-  if (target.isDestroyed()) throw new Error("runtime-crashed");
-  const extra =
-    operation === "run"
-      ? `, ${timeoutMs}, ${JSON.stringify(await drawingWheels())}`
-      : "";
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let onClosed: (() => void) | undefined;
+  await enter(operation);
   try {
-    return await Promise.race([
-      target.webContents
-        .executeJavaScript(
-          `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${extra})`,
-        )
-        .catch((error: unknown) => {
-          // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before
-          // the request completed"), before the window closes. A call that fails with the renderer gone crashed.
-          if (rendererGone(target)) throw new Error("runtime-crashed");
-          throw error;
+    const target = await sandbox();
+    if (target.isDestroyed()) throw new Error("runtime-crashed");
+    const extra =
+      operation === "run"
+        ? `, ${timeoutMs}, ${JSON.stringify(await drawingWheels())}`
+        : "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onClosed: (() => void) | undefined;
+    try {
+      return await Promise.race([
+        target.webContents
+          .executeJavaScript(
+            `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${extra})`,
+          )
+          .catch((error: unknown) => {
+            // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before
+            // the request completed"), before the window closes. A call that fails with the renderer gone crashed.
+            if (rendererGone(target)) throw new Error("runtime-crashed");
+            throw error;
+          }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            void target.webContents
+              .executeJavaScript(
+                `window.pyxisRuntime.stop(${JSON.stringify(operation === "run" ? "python" : "check")})`,
+              )
+              .catch(() => undefined);
+            reject(new Error("runtime-timeout"));
+          }, RUN_CEILING_MS);
         }),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          void target.webContents
-            .executeJavaScript(
-              `window.pyxisRuntime.stop(${JSON.stringify(operation === "run" ? "python" : "check")})`,
-            )
-            .catch(() => undefined);
-          reject(new Error("runtime-timeout"));
-        }, RUN_CEILING_MS);
-      }),
-      new Promise((_, reject) => {
-        onClosed = () => reject(new Error("runtime-crashed"));
-        target.once("closed", onClosed);
-      }),
-    ]);
+        new Promise((_, reject) => {
+          onClosed = () => reject(new Error("runtime-crashed"));
+          target.once("closed", onClosed);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onClosed) target.removeListener("closed", onClosed);
+    }
   } finally {
-    if (timer) clearTimeout(timer);
-    if (onClosed) target.removeListener("closed", onClosed);
-    await clearSession();
+    // Cleared when this was the last request using the session, and not under one that is still running.
+    await leave();
   }
 }
 export async function handleRuntimeRequest(

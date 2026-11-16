@@ -11,6 +11,8 @@ const fake = vi.hoisted(() => ({
   partitions: [] as string[],
   handled: [] as string[],
   cleared: 0,
+  /** How many clearings had started when each script was sent to a page, in order. */
+  clearedAtScript: [] as number[],
   /** While set, clearing the session's storage does not finish until it resolves. */
   clearGate: null as Promise<void> | null,
 }));
@@ -38,6 +40,7 @@ vi.mock("electron", () => {
       mainFrame: this.frame,
       executeJavaScript: (script: string) => {
         fake.scripts.push(script);
+        fake.clearedAtScript.push(fake.cleared);
         if (script.startsWith("window.pyxisRuntime.stop("))
           return Promise.resolve(undefined);
         return new Promise((resolve, reject) =>
@@ -346,6 +349,7 @@ describe("python runtime session", () => {
     fake.partitions.length = 0;
     fake.handled.length = 0;
     fake.cleared = 0;
+    fake.clearedAtScript.length = 0;
     fake.clearGate = null;
     python = await import("./python-runtime");
     python.configurePythonRuntime("/workspace-a");
@@ -411,5 +415,73 @@ describe("python runtime session", () => {
     await vi.waitFor(() => expect(fake.held).toHaveLength(2));
     fake.held[1]!.settle({ state: "none" });
     await second;
+  });
+
+  it("does not make a window for a request that a disposal overtook while it waited for the storage to be cleared", async () => {
+    const first = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle({ state: "none" });
+    await first;
+    // The window ends and its clearing is slow; the next request waits for it.
+    let finish: () => void = () => undefined;
+    fake.clearGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    fake.windows[0]!.destroy();
+    const overtaken = python.handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.cleared).toBeGreaterThanOrEqual(1));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fake.windows).toHaveLength(1);
+    // The runtime is disposed meanwhile (another workspace), and a request of the new generation is made.
+    python.configurePythonRuntime("/workspace-b");
+    const current = python.handleRuntimeRequest("python", { code: "2" });
+    finish();
+    await expect(overtaken).rejects.toThrow("runtime-disposed");
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    // One window was made after the disposal, for the new request. The one that was overtaken made none, so nothing it did
+    // could clear the session under the new request, which is still running.
+    expect(fake.windows).toHaveLength(2);
+    expect(fake.windows[1]!.destroyed).toBe(false);
+    expect(fake.cleared).toBe(fake.clearedAtScript.at(-1));
+    fake.held[1]!.settle({ stdout: "" });
+    await current;
+  });
+
+  it("does not clear the session while a request is still using it, and clears it when the last one ends", async () => {
+    const running = python.handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    const checking = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    // The check ends first, beside the run: the run's storage is not cleared under it.
+    fake.held[1]!.settle({ state: "none" });
+    await checking;
+    expect(fake.cleared).toBe(0);
+    // The run ends last, and then the session is cleared.
+    fake.held[0]!.settle({ stdout: "" });
+    await running;
+    expect(fake.cleared).toBe(1);
+  });
+
+  it("starts no run on storage that an earlier request left while another was still using the session", async () => {
+    const first = python.handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    const checking = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    // The first run ends while the check is still on: nothing can be cleared yet, and the next run is asked for.
+    fake.held[0]!.settle({ stdout: "" });
+    await first;
+    expect(fake.cleared).toBe(0);
+    const next = python.handleRuntimeRequest("python", { code: "2" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // It has not started: its script has not been sent to the page.
+    expect(fake.held).toHaveLength(2);
+    // The check ends, the session is cleared, and only then does the next run start.
+    fake.held[1]!.settle({ state: "none" });
+    await checking;
+    await vi.waitFor(() => expect(fake.held).toHaveLength(3));
+    expect(fake.cleared).toBeGreaterThanOrEqual(1);
+    expect(fake.clearedAtScript.at(-1)).toBeGreaterThanOrEqual(1);
+    fake.held[2]!.settle({ stdout: "" });
+    await next;
   });
 });

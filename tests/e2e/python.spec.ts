@@ -410,3 +410,42 @@ test("nothing a Python run leaves in the window's session reaches the next run: 
     removeTestFolder(userData);
   }
 });
+
+test("a Python run keeps its own storage while checks run beside it, and the run after it still starts clean", async () => {
+  test.skip(!existsSync(".tmp/pyodide/pyodide.js"), "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.");
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-python-beside-"));
+  const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
+  mkdirSync(pack, { recursive: true });
+  cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
+  const app = await launchPyxis({ userData, env: { HOME: userData } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const python = async (code: string) =>
+      (await page.evaluate((code) => window.pyxis.invoke("tools.python", { code }), code)) as { stdout: string; stderr: string };
+    // A run writes an entry in the Cache API, waits, and reads it back: the run lane and the check lane are two lanes of one
+    // window and one session, and a check that ends in the meantime must not clear what the run is using.
+    const holding = [
+      "import asyncio, js, json",
+      "await js.caches.open('held-cache')",
+      "await asyncio.sleep(6)",
+      "print(json.dumps([str(name) for name in await js.caches.keys()]))",
+    ].join("\n");
+    const running = python(holding);
+    await page.waitForTimeout(2500);
+    for (let round = 0; round < 3; round++) {
+      const checked = (await page.evaluate(() => window.pyxis.invoke("tools.check", { kind: "equal", expr: "x+x", claimed: "2*x" }))) as { state: string };
+      expect(checked.state).toBe("verified");
+    }
+    const result = await running;
+    expect(result.stderr, "the run").toBe("");
+    expect(JSON.parse(result.stdout.trim()), "what the run finds of its own storage").toEqual(["held-cache"]);
+    // The next run starts clean, as every run does.
+    expect(JSON.parse((await python(readStorage)).stdout.trim())).toEqual({ cache: [], opfs: [], idb: [] });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
