@@ -9,7 +9,7 @@ import { Reveal } from "../../components/Controls";
 import { afterDialog, useConfirm } from "../../components/Dialog";
 import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
-import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
+import { MenuButton, MenuItemArea, menuTakesEscape } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
 import { Notice } from "../../components/Notice";
 import { ListToolbar, ToolbarSearch } from "../../components/ListToolbar";
@@ -268,6 +268,28 @@ export function CardBrowser({
   }
   // Leaving the page asks the same question while an edit holds typing.
   useLeaveGuard({ dirty: () => typed() && savingNow.current !== editingNow.current?.card.id, body: t("cardBrowser.leaveEdit") });
+  // Escape closes the edit also when the focus is not in it, on another card or on the page, and asks the same question
+  // (Escape in the edit's own fields is handled there). A menu, a list or a dialog that is open takes its Escape first.
+  const isEditing = editing !== null;
+  const closeEdit = useRef<() => void>(() => undefined);
+  closeEdit.current = () => void cancelEdit();
+  useEffect(() => {
+    if (!isEditing) return;
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        menuTakesEscape(event) ||
+        (event.target instanceof Element && event.target.closest("dialog, [role='dialog']")) ||
+        document.querySelector("dialog[open], [aria-haspopup][aria-expanded='true']")
+      )
+        return;
+      event.preventDefault();
+      closeEdit.current();
+    };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [isEditing]);
   // The draft goes with the edit it belonged to.
   useEffect(() => {
     if (!editing) draft.current = null;

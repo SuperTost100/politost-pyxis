@@ -209,6 +209,36 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await expect(page.getByRole("group", { name: "Edit flashcard" })).toBeHidden();
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
+    // Escape closes the edit also when the focus is elsewhere on the page: on another card's dots, whose menu it closes first.
+    const editBox = page.getByRole("group", { name: "Edit flashcard" });
+    await page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ }).click();
+    await page.getByRole("button", { name: /^More actions: Velocità media\?/ }).click();
+    await expect(page.getByRole("menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await expect(editBox).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(editBox).toBeHidden();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ })).toBeFocused();
+    // With typing in it, the same Escape asks once, and the answer decides.
+    await page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ }).click();
+    await editBox.getByRole("textbox", { name: "Back" }).fill("Cambiato di nuovo.");
+    await page.getByRole("button", { name: /^More actions: Velocità media\?/ }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    const askLeave = page.getByRole("dialog", { name: "Leave without saving?" });
+    await expect(askLeave).toBeVisible();
+    await askLeave.getByRole("button", { name: "Stay here" }).click();
+    await expect(askLeave).toHaveCount(0);
+    await expect(editBox).toBeVisible();
+    await expect(editBox.getByRole("textbox", { name: "Back" })).toHaveValue("Cambiato di nuovo.");
+    await page.keyboard.press("Escape");
+    await expect(askLeave).toBeVisible();
+    await askLeave.getByRole("button", { name: "Leave without saving" }).click();
+    await expect(editBox).toBeHidden();
+
     // A right-click on a card's row opens the same menu as its dots, and a pick acts the same way.
     const speedRow = page.getByRole("listitem").filter({ hasText: "Velocità media?" });
     await speedRow.click({ button: "right" });
