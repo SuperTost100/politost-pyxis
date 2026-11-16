@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { expectEmptyPage, headBox } from "./empty-page";
+import { expectCentred, expectEmptyPage, headBox } from "./empty-page";
 import { saveShot } from "./shots";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 
@@ -71,7 +71,7 @@ test("Esami with no exam says what will appear, keeps the dots in its head and h
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/exams");
-      await expectEmptyPage(page, { line: lines[language], action: names[language][1] });
+      await expectEmptyPage(page, { line: lines[language], action: names[language][1], art: true });
       await saveShot(page, `empty-pages/exams-${look.key}.png`);
       // The head holds the dots and nothing else.
       await headButtons(page, ".px-exams-head").toEqual([names[language][0]]);
@@ -107,7 +107,7 @@ test("Esami with every exam archived says where they are, and its one button ope
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/exams");
-      await expectEmptyPage(page, { line: lines[language], action: names[language][2] });
+      await expectEmptyPage(page, { line: lines[language], action: names[language][2], small: true });
       await saveShot(page, `empty-pages/exams-archived-${look.key}.png`);
       // Not an empty page for the head: the exam can still be made from it.
       await headButtons(page, ".px-exams-head").toEqual([names[language][0], names[language][1]]);
@@ -134,7 +134,7 @@ test("Mappe with subjects and no map says what will appear, and its one button m
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/maps");
-      await expectEmptyPage(page, { line: lines[language], action: actions[language] });
+      await expectEmptyPage(page, { line: lines[language], action: actions[language], art: true });
       await saveShot(page, `empty-pages/maps-${look.key}.png`);
       // The search and the head's button wait for the first map.
       await expect(page.getByRole("textbox", { name: searches[language] })).toHaveCount(0);
@@ -157,7 +157,7 @@ test("Mappe with no subject says what will appear, and its one button links the 
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/maps");
-      await expectEmptyPage(page, { line: lines[language], action: actions[language] });
+      await expectEmptyPage(page, { line: lines[language], action: actions[language], art: true });
       await saveShot(page, `empty-pages/maps-none-${look.key}.png`);
     }
     await page.getByRole("main").getByRole("button", { name: "Link a folder", exact: true }).click();
@@ -178,7 +178,7 @@ test("Flashcard with no flashcard says what will appear, keeps the dots in its h
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/flashcards");
-      await expectEmptyPage(page, { line: lines[language], action: names[language][1] });
+      await expectEmptyPage(page, { line: lines[language], action: names[language][1], art: true });
       await saveShot(page, `empty-pages/flashcards-${look.key}.png`);
       await headButtons(page, ".px-fc-head").toEqual([names[language][0]]);
     }
@@ -217,7 +217,7 @@ test("All flashcards with no flashcard says what will appear, keeps Import from 
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/flashcards/all");
-      await expectEmptyPage(page, { line: lines[language], action: names[language][1] });
+      await expectEmptyPage(page, { line: lines[language], action: names[language][1], art: true });
       await saveShot(page, `empty-pages/cards-${look.key}.png`);
       // The head has the way back and the dots; its menu offers the import and, with nothing to export, no export.
       await expect(page.getByRole("textbox", { name: /^(Cerca nelle flashcard|Search flashcards)$/ })).toHaveCount(0);
@@ -246,6 +246,8 @@ for (const [hash, name] of [
     const { page, finish } = await start(`dialog-${name.toLowerCase().replace(/\W+/g, "-")}`);
     try {
       await show(page, looks[0], hash);
+      const title = page.getByRole("main").getByRole("heading", { level: 1 });
+      const titleAt = (await title.boundingBox())!.y;
       await page.getByRole("main").getByRole("button", { name: "Nuova flashcard", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
       await expect(dialog).toBeVisible();
@@ -269,6 +271,8 @@ for (const [hash, name] of [
       await dialog.getByRole("button", { name: "Salva", exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect(page.locator(".px-empty")).toHaveCount(0);
+      // The title stays where it was: only the room under it changes, so the card takes the block's place with no jump.
+      expect(Math.abs((await title.boundingBox())!.y - titleAt)).toBeLessThanOrEqual(1);
       // The button the dialog grew out of is gone with the empty page: the focus does not fall to the body.
       await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
       await expect(page.getByRole("main").getByText(/Formula del metano\?|Chimica organica/).first()).toBeVisible();
@@ -292,7 +296,7 @@ test("The Library with no file says what will appear, keeps the free books in it
     for (const look of looks) {
       const language = look.language;
       await show(page, look, "/exams/library");
-      await expectEmptyPage(page, { line: lines[language], action: names[language][1] });
+      await expectEmptyPage(page, { line: lines[language], action: names[language][1], art: true });
       await saveShot(page, `empty-pages/library-${look.key}.png`);
       // The head holds the dots and "Aggiungi file", which adds loose files, a different action from the page's own;
       // not the folders control, and the books are offered once.
@@ -334,6 +338,32 @@ test("The Library with no file says what will appear, keeps the free books in it
   }
 });
 
+test("The Library with subjects and no file keeps its subjects under a small line, with no drawing and not centred", async () => {
+  const { page, open, finish } = await start("library-subjects");
+  try {
+    await toLibrary(page);
+    const db = open();
+    seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
+    db.close();
+    for (const look of looks) {
+      await show(page, look, "/exams/library");
+      await expectEmptyPage(page, {
+        line:
+          look.language === "it"
+            ? /^Qui compariranno i tuoi file, divisi per materia\./
+            : /^Your files will appear here, by subject\./,
+        action: look.language === "it" ? "Collega una cartella" : "Link a folder",
+        small: true,
+      });
+      await expect(page.locator(".px-empty-centred")).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Fisica I" })).toBeVisible();
+      await saveShot(page, `empty-pages/library-subjects-${look.key}.png`);
+    }
+  } finally {
+    await finish();
+  }
+});
+
 test("The mistakes notebook with no mistake says what will collect there, with no button", async () => {
   const { page, finish } = await start("mistakes");
   try {
@@ -346,6 +376,54 @@ test("The mistakes notebook with no mistake says what will collect there, with n
       await show(page, look, "/exams/mistakes");
       await expectEmptyPage(page, { line: lines[language] });
       await saveShot(page, `empty-pages/mistakes-${look.key}.png`);
+    }
+  } finally {
+    await finish();
+  }
+});
+
+test("Every empty page centres its block under the head at 1280 and 960, with the sidebar open and folded, and in a short window keeps it clear of the head and scrolls", async () => {
+  const { page, finish } = await start("centred");
+  try {
+    const pages = [
+      ["Esami", "/exams"],
+      ["Mappe", "/maps"],
+      ["Flashcard", "/flashcards"],
+      ["Libreria", "/exams/library"],
+      ["Tutte le flashcard", "/flashcards/all"],
+      ["Quaderno", "/exams/mistakes"],
+    ] as const;
+    for (const [name, hash] of pages) {
+      // Sidebar open, and the sidebar folded by the student (it folds by itself at the narrowest window).
+      for (const folded of [false, true]) {
+        await page.evaluate((folded) => {
+          if (folded) localStorage.setItem("pyxis.side", "folded");
+          else localStorage.removeItem("pyxis.side");
+        }, folded);
+        await show(page, looks[1], hash);
+        for (const size of [
+          { width: 1280, height: 800 },
+          { width: 960, height: 800 },
+          { width: 960, height: 640 },
+        ]) {
+          await page.setViewportSize(size);
+          await expectCentred(page).catch((error: Error) => {
+            error.message = `${name}, sidebar ${folded ? "folded" : "open"}, ${size.width}x${size.height}: ${error.message}`;
+            throw error;
+          });
+        }
+      }
+      await page.evaluate(() => localStorage.removeItem("pyxis.side"));
+      // Large text at the narrow width, and a window too short for the block: it sits clear of the head and scrolls.
+      await show(page, looks[0], hash);
+      await expectCentred(page);
+      await page.setViewportSize({ width: 960, height: 300 });
+      await expectCentred(page);
+      // The page scrolls to the block's last part, which is then in the window.
+      const last = page.locator(".px-empty").locator("button, p").last();
+      await last.scrollIntoViewIfNeeded();
+      const box = (await last.boundingBox())!;
+      expect(box.y + box.height, `${name}: the end of the block can be scrolled into the window`).toBeLessThanOrEqual(300);
     }
   } finally {
     await finish();
