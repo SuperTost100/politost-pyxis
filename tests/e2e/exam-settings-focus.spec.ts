@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { launchPyxis } from "./app-under-test";
+import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan } from "./seed";
@@ -15,21 +15,25 @@ import { seedPlan } from "./seed";
 async function openedAtHours(held: number) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-focus-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: `plans.planner=${held}` } });
-  const page: Page = await app.firstWindow();
-  await page.getByRole("button", { name: "Salta" }).click();
-  await fromChiediToExams(page);
-  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
-  try {
-    seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", topics: [{ id: "topic-a", title: "Cinematica" }] });
-  } finally {
-    db.close();
-  }
-  // An entry with a key of its own and the state the Oggi action leaves, read again from the start: nothing is cached.
-  await page.evaluate(() => {
-    history.pushState({ key: "hours-entry", idx: 99, usr: { focus: "hours" } }, "", "#/plans/plan-a/settings");
+  // A step that fails here closes the app and removes the profile, as the caller never gets them to do it.
+  const page = await setUp(app, userData, async () => {
+    const page: Page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedPlan(db, { id: "plan-a", title: "Fisica 1", language: "it", topics: [{ id: "topic-a", title: "Cinematica" }] });
+    } finally {
+      db.close();
+    }
+    // An entry with a key of its own and the state the Oggi action leaves, read again from the start: nothing is cached.
+    await page.evaluate(() => {
+      history.pushState({ key: "hours-entry", idx: 99, usr: { focus: "hours" } }, "", "#/plans/plan-a/settings");
+    });
+    await page.reload();
+    return page;
   });
-  await page.reload();
   return { app, page, userData };
 }
 

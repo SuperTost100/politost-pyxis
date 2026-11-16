@@ -8,7 +8,8 @@ import { readAhead, whenRead } from "./placesRead";
  * saves (`refreshCards`).
  */
 export const newCardsQuery = {
-  queryKey: ["new-card-places"],
+  // Under "subjects", so whatever marks the subjects stale (a subject added, renamed or removed) marks the places too.
+  queryKey: ["subjects", "new-card-places"],
   queryFn: () => invoke("study.newCardPlaces", {}),
   staleTime: 5_000,
 };

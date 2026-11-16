@@ -40,7 +40,7 @@ async function refreshCards(client: QueryClient, planId?: string | null) {
       ["plans", "today"],
       ["plans", "rings"],
       ["plans", "examlessDue"],
-      ["new-card-places"],
+      newCardsQuery.queryKey,
     ].map((queryKey) => client.invalidateQueries({ queryKey })),
     ...(planId
       ? ["cards", "card-queue", "review-session", "plan"].map((key) =>
@@ -143,8 +143,13 @@ export function NewCardDialog({
   // Counts the times the dialog has been opened. A reply that comes back from an earlier opening is not this one's.
   const opening = useRef(0);
 
+  // The list is the state of the workspace once the read that made it has ended without failing: before that it may be
+  // older than a subject made a moment ago, and a missing subject that was asked for is not yet a missing one.
+  const readSettled = !places.isFetching && !places.isError;
   const subject = subjects.find((item) => item.id === subjectId);
   const isNew = subjectId === NEW_SUBJECT;
+  // The subject asked for is not in the list the dialog holds yet: nothing is filed or written until it is.
+  const waiting = subjectId !== "" && !isNew && !subject;
   const [topicPlan, topicId] = topic ? topic.split("\u0000") : ["", ""];
   const topicTitle = subject?.topics.find((group) => group.planId === topicPlan)?.topics.find((item) => item.id === topicId)
     ?.title;
@@ -163,7 +168,11 @@ export function NewCardDialog({
     setWasOpen(open);
     if (open) {
       setSide(openSide);
-      setSubjectId(places.data ? chosenSubject(places.data.subjects, openSubject ?? "", openSide) : (openSubject ?? ""));
+      setSubjectId(
+        places.data
+          ? chosenSubject(places.data.subjects, openSubject ?? "", openSide, !readSettled)
+          : (openSubject ?? ""),
+      );
       setPlanId("");
       setNewName("");
       setFront("");
@@ -193,8 +202,10 @@ export function NewCardDialog({
   // Once the subjects are known: the one asked for if it exists, else the first, else a new one to name.
   useEffect(() => {
     if (!open || !places.data) return;
-    setSubjectId((current) => chosenSubject(places.data.subjects, current, side));
-  }, [open, places.data, side]);
+    setSubjectId((current) =>
+      chosenSubject(places.data.subjects, current, side, current === openSubject && !readSettled),
+    );
+  }, [open, places.data, readSettled, side]);
 
   useEffect(
     () => () => {
@@ -339,7 +350,7 @@ export function NewCardDialog({
         target = made.id;
         targetName = made.name;
         void client.invalidateQueries({ queryKey: ["subjects"] });
-        await client.invalidateQueries({ queryKey: ["new-card-places"] });
+        await client.invalidateQueries({ queryKey: newCardsQuery.queryKey });
         if (mine === opening.current) {
           setSubjectId(made.id);
           setNewName("");
@@ -494,10 +505,10 @@ export function NewCardDialog({
           </span>
         ),
         tone: "secondary",
-        disabled: !places.data,
+        disabled: !places.data || waiting,
         onClick: () => void saveByHand(true),
       },
-      { label: t("flashcards.new.save"), disabled: !places.data, onClick: () => void saveByHand(false) },
+      { label: t("flashcards.new.save"), disabled: !places.data || waiting, onClick: () => void saveByHand(false) },
     ];
   else
     actions = [
@@ -578,7 +589,7 @@ export function NewCardDialog({
         )}
 
           <div className="px-nc-body">
-            {places.isError && !places.data ? (
+            {places.isError && (!places.data || waiting) ? (
               <Notice tone="danger" action={{ label: t("flashcards.new.retry"), onClick: () => void places.refetch() }}>
                 {t("flashcards.loadFailed")}
               </Notice>
@@ -590,7 +601,7 @@ export function NewCardDialog({
                 subjects={subjects}
                 value={subjectId}
                 allowNew
-                disabled={saving || !places.data}
+                disabled={saving || !places.data || waiting}
                 onChange={chooseSubject}
               />
               <Fold shut={!isNew}>
@@ -713,7 +724,7 @@ export function NewCardDialog({
                       id="nc-py-subject"
                       subjects={subjects}
                       value={subjectId === NEW_SUBJECT ? "" : subjectId}
-                      disabled={!places.data}
+                      disabled={!places.data || waiting}
                       onChange={chooseSubject}
                     />
                     <Fold shut={!subject || subject.topics.length === 0}>

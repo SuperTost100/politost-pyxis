@@ -74,4 +74,11 @@ describe("chosenSubject", () => {
     expect(chosenSubject(subjects, NEW_SUBJECT, "hand")).toBe(NEW_SUBJECT);
     expect(chosenSubject(subjects, NEW_SUBJECT, "pyxis")).toBe("ana");
   });
+
+  it("keeps a subject the list lacks while the list may be older than it, and drops it once a read confirms it is gone", () => {
+    expect(chosenSubject(subjects, "chem", "hand", true)).toBe("chem");
+    expect(chosenSubject(subjects, "chem", "pyxis", true)).toBe("chem");
+    expect(chosenSubject(subjects, "chem", "hand", false)).toBe("ana");
+    expect(chosenSubject([], "", "hand", true)).toBe(NEW_SUBJECT);
+  });
 });

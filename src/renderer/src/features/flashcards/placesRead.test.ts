@@ -113,4 +113,22 @@ describe("whenRead and readAhead", () => {
     expect(reads.invoke).toHaveBeenCalledTimes(2);
     expect(client.getQueryData(newCardsQuery.queryKey)).toEqual(places("Chimica"));
   });
+
+  it("waits for a read being made again even while the cached one is still fresh", async () => {
+    reads.invoke.mockResolvedValueOnce(places("Analisi"));
+    readPlacesAhead(client);
+    await vi.advanceTimersByTimeAsync(0);
+    let answer!: (value: ReturnType<typeof places>) => void;
+    reads.invoke.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
+    readPlacesAhead(client, 0);
+    const open = vi.fn();
+    whenPlacesRead(client, open);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(open).not.toHaveBeenCalled();
+    expect(reads.invoke).toHaveBeenCalledTimes(2);
+    answer(places("Analisi", "Chimica"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(newCardsQuery.queryKey)).toEqual(places("Analisi", "Chimica"));
+  });
 });

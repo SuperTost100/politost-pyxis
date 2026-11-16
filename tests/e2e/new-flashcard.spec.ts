@@ -394,6 +394,55 @@ test("the dialog starts in the subject every time, with the subjects as they are
   }
 });
 
+test("a dialog opened for a subject that the places read before it lacks keeps it, and saves nowhere else", async () => {
+  test.setTimeout(90_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-asked-"));
+  // Every read of the places takes 1.2 s, so the fresh one is still on its way when the dialog opens.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=1200" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    try {
+      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+    } finally {
+      db.close();
+    }
+    await toFlashcards(page);
+    // The page's read of the places arrives, and it knows Analisi 1 only.
+    await page.waitForTimeout(1_800);
+    // A subject made elsewhere, and the read ages past its 5 seconds: the dialog is asked for Chimica as the Library's
+    // "Crea flashcard di questa materia" asks, with the new read still on its way.
+    const chem = await page.evaluate(() => window.pyxis.invoke("subjects.add", { name: "Chimica" }));
+    await page.waitForTimeout(5_300);
+    await page.evaluate(() => {
+      location.hash = "/exams/library";
+    });
+    await expect(page).toHaveURL(/#\/exams\/library$/);
+    await page.evaluate((id) => {
+      location.hash = `/flashcards?new=hand&subject=${id}`;
+    }, chem.id);
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    await expect(dialog).toBeVisible();
+    const subject = dialog.getByRole("combobox", { name: "Materia" });
+    // Until the read confirms the subject, it stays the one asked for: its list and the buttons that save are off.
+    await expect(subject).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Salva", exact: true })).toBeDisabled();
+    await expect(subject).toBeEnabled({ timeout: 10_000 });
+    await expect(subject).toHaveValue(chem.id);
+    await dialog.getByRole("textbox", { name: "Fronte" }).fill("Numero atomico?");
+    await dialog.getByRole("textbox", { name: "Retro" }).fill("Protoni nel nucleo.");
+    await dialog.getByRole("button", { name: "Salva", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(cards(userData)).toEqual([expect.objectContaining({ front: "Numero atomico?", subject: "Chimica" })]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("a student who tabs to a button while the subjects are read keeps the focus there", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-tab-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2500" } });
