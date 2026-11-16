@@ -9,8 +9,9 @@ type Held = { sha: string; bytes: Uint8Array; parsed: ParsedSmartbook; timer: Re
 /**
  * The one free book being read before it is added. Its package is downloaded and checked as an add would, then kept in
  * memory only: nothing is written to the workspace or the database, so a reader closed without adding leaves nothing.
- * Adding the book next takes the same bytes, so reading first is not a second download. The slot empties after
- * `KEEP_MS`, when another book is read, or when the book is added.
+ * Adding the book next takes the same bytes, so reading first is not a second download, and a reader still open on the
+ * book goes on from them. The slot empties after `KEEP_MS` or when another book is read; once the added book is read, its
+ * stored copy answers instead.
  */
 export function createBookReading(keepMs = KEEP_MS) {
   let held: Held | null = null;

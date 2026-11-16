@@ -3270,7 +3270,7 @@ export const requests = {
   /**
    * A free book to read before it is added: its title and chapters, read from the package in memory. Nothing is stored
    * for it; the package is downloaded on this call, checked against the catalog, and held in memory for a few minutes,
-   * so reading on and then adding it is one download. Errors: `books-missing` and the download's `books-*`.
+   * so reading on and then adding it is one download. Once the book is in the Library and read, the stored copy answers. Errors: `books-missing` and the download's `books-*`.
    */
   "sources.bookPreview": {
     input: z.object({ id: z.string().max(100) }),
