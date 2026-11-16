@@ -551,3 +551,41 @@
   color: var(--ink-subtle);
   font-size: calc(13.5px * var(--text-scale, 1));
 }
+
+/* A tool ran out of requests: the alarm mark stays, since the job waits for a choice. */
+.px-jobs-out .px-jobs-problem-mark {
+  color: var(--ink);
+}
+
+/*
+ * A row that arrives in the list grows out of the place it came from, open in height, rather than appearing whole: the
+ * waiting row after Aspetta, the choice after a tool runs out. Under reduced motion the global rule ends it at once.
+ */
+@keyframes px-jobs-grow-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    max-height: 200px;
+  }
+}
+.px-jobs-out {
+  position: relative;
+}
+.px-jobs-out-x {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+}
+.px-jobs-out > .px-jobs-what {
+  padding-right: 32px;
+}
+.px-jobs-out,
+.px-jobs-waiting {
+  overflow: hidden;
+  animation: px-jobs-grow-in var(--duration-small) var(--ease-out);
+}

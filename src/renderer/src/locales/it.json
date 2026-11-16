@@ -2653,7 +2653,30 @@
         "other_other": "{{count}} già fatti"
       }
     },
-    "lessonPartInvalid": "Non sono riuscito a scrivere questa parte della lezione. Riprova."
+    "lessonPartInvalid": "Non sono riuscito a scrivere questa parte della lezione. Riprova.",
+    "out": {
+      "why": "{{tool}} ha finito le richieste.",
+      "back": {
+        "today": "Tornano alle {{time}}.",
+        "tomorrow": "Tornano domani alle {{time}}.",
+        "later": "Tornano {{day}}."
+      },
+      "at": {
+        "today": "alle {{time}}",
+        "tomorrow": "domani alle {{time}}",
+        "later": "{{day}}"
+      },
+      "goOn": "Continua con {{tool}}",
+      "wait": {
+        "today": "Aspetta fino alle {{time}}",
+        "tomorrow": "Aspetta domani",
+        "later": "Aspetta fino a {{day}}"
+      },
+      "waiting": "Riparto da sola quando tornano le richieste di {{tool}}, {{when}}",
+      "stopWaiting": "Smetti di aspettare"
+    },
+    "waiting_one": "{{count}} in attesa",
+    "waiting_other": "{{count}} in attesa"
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",

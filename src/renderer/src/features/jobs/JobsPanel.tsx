@@ -5,6 +5,7 @@ import { forwardRef, useId, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { currentToolLabel } from "@shared/tool-names";
 import { useNavigate } from "react-router";
+import type { InstallableProvider } from "@shared/installers";
 import type { JobView } from "@shared/ipc";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/Icon";
@@ -12,6 +13,7 @@ import { IconButton } from "../../components/IconButton";
 import { Logo } from "../../components/Logo";
 import { useEngineError } from "../../lib/engineError";
 import { invoke } from "../../lib/ipc";
+import { limitWhen } from "../../lib/toolOrder";
 import {
   finishedLabelKey,
   jobContext,
@@ -24,6 +26,8 @@ import {
   type ProblemKind,
 } from "./jobGroups";
 import { JobDebug } from "./JobDebug";
+import { jobErrorEngine } from "./jobErrors";
+import type { ToolLimits } from "./outOfRequests";
 import "./JobsPanel.css";
 
 type Act = (
@@ -38,6 +42,7 @@ const PROBLEM_ICONS = {
   stopped: Pause,
   retry: CircleAlert,
   "nothing-found": Search,
+  "out-of-requests": CircleAlert,
 } satisfies Record<ProblemKind, unknown>;
 
 /** How many of a request's jobs its row names when it opens; the rest are counted. */
@@ -302,6 +307,153 @@ function RequestCard({
   );
 }
 
+/** When a tool's requests are back, as the row says it: what the Wait button offers and what the row under it tells. */
+function useWhen() {
+  const { t, i18n } = useTranslation();
+  return (until: number) => {
+    const when = limitWhen(until, Date.now());
+    const time = new Intl.DateTimeFormat(i18n.language, { hour: "2-digit", minute: "2-digit" }).format(until);
+    const day = new Intl.DateTimeFormat(i18n.language, { weekday: "long", day: "numeric", month: "long" }).format(until);
+    return {
+      when,
+      time,
+      day,
+      /** "Tornano domani alle 06:00." */
+      text: t(`jobs.out.back.${when}`, { time, day }),
+      /** "domani alle 06:00", to follow a verb. */
+      at: t(`jobs.out.at.${when}`, { time, day }),
+    };
+  };
+}
+
+/**
+ * A tool ran out of requests while a job needed it. The student chooses: go on with the next tool of their list, wait
+ * until the requests are back, or (with no other tool to go on with) open the tools in Settings. A job that ran out on
+ * the same tool as another one shares its row, since the choice is the same for both.
+ */
+function OutOfRequestsCard({
+  problem,
+  tools,
+  settle,
+  act,
+  onNavigate,
+  blocked,
+}: {
+  problem: Problem;
+  tools: ToolLimits;
+  settle: (sent: Promise<unknown>) => void;
+  act: Act;
+  onNavigate: (to: string, state?: object) => void;
+  blocked?: string;
+}) {
+  const { t } = useTranslation();
+  const nameOf = useJobName();
+  const whenOf = useWhen();
+  const [busy, setBusy] = useState(false);
+  const { jobs, engine } = problem;
+  const first = jobs[0]!;
+  const many = jobs.length > 1;
+  const tool = tools.rows.find((row) => row.id === engine);
+  const name = tool?.name ?? engine ?? "";
+  const until = engine ? tools.limits.get(engine) : undefined;
+  const next = tools.next(engine);
+  const when = until === undefined ? undefined : whenOf(until);
+  const named = (action: string) => (many ? undefined : t("jobs.actionOn", { action, name: nameOf(first) }));
+  // Each choice starts every job of the row, and the row goes when they leave the list.
+  const send = (run: (job: JobView) => Promise<unknown>) => {
+    setBusy(true);
+    settle(Promise.all(jobs.map(run)).finally(() => setBusy(false)));
+  };
+  return (
+    <li className="px-jobs-problem px-jobs-out">
+      <CircleAlert className="px-jobs-problem-mark" size={20} strokeWidth={1.75} aria-hidden />
+      <p className="px-jobs-what">{many ? t("jobs.problem.many.failed", { count: jobs.length }) : nameOf(first)}</p>
+      <p className="px-jobs-why">
+        {[t("jobs.out.why", { tool: name }), when?.text].filter(Boolean).join(" ")}
+      </p>
+      <div className="px-jobs-acts">
+        {next ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            aria-label={named(t("jobs.out.goOn", { tool: next.name }))}
+            onClick={() => send((job) => invoke("jobs.retryWith", { jobId: job.id, provider: next.id as InstallableProvider }))}
+          >
+            {t("jobs.out.goOn", { tool: next.name })}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={Boolean(blocked)}
+            title={blocked}
+            onClick={() => onNavigate("/settings/engines")}
+          >
+            {t("settings.enginesTitle")}
+          </Button>
+        )}
+        {when ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            aria-label={named(t(`jobs.out.wait.${when.when}`, { time: when.time, day: when.day }))}
+            onClick={() => send((job) => invoke("jobs.wait", { jobId: job.id, wait: true }))}
+          >
+            {t(`jobs.out.wait.${when.when}`, { time: when.time, day: when.day })}
+          </Button>
+        ) : null}
+      </div>
+      {/* The way to let the job go sits in the row's corner, as a finished row's does, so the two choices keep the line. */}
+      <span className="px-jobs-out-x">
+        <IconButton
+          icon="x"
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          label={many ? t("jobs.dismissAll") : t("jobs.actionOn", { action: t("jobs.dismiss"), name: nameOf(first) })}
+          onClick={() => act("jobs.dismiss", jobs)}
+        />
+      </span>
+    </li>
+  );
+}
+
+/** A job the student has wait for a tool's requests: it starts again by itself, and Ferma gives the wait up. */
+function WaitingRow({
+  job,
+  tools,
+  settle,
+}: {
+  job: JobView;
+  tools: ToolLimits;
+  settle: (sent: Promise<unknown>) => void;
+}) {
+  const { t } = useTranslation();
+  const nameOf = useJobName();
+  const whenOf = useWhen();
+  const until = job.waitingUntil!;
+  const engine = jobErrorEngine(job.error ?? "");
+  const tool = tools.rows.find((row) => row.id === engine)?.name ?? engine ?? "";
+  return (
+    <li className="px-jobs-row px-jobs-waiting">
+      <Icon name="clock" size={20} className="px-jobs-mark" />
+      <div className="px-jobs-body">
+        <p className="px-jobs-what">{nameOf(job)}</p>
+        <p className="px-jobs-sub">{t("jobs.out.waiting", { tool, when: whenOf(until).at })}</p>
+      </div>
+      <IconButton
+        icon="square"
+        size="sm"
+        variant="ghost"
+        label={t("jobs.actionOn", { action: t("jobs.out.stopWaiting"), name: nameOf(job) })}
+        onClick={() => settle(invoke("jobs.wait", { jobId: job.id, wait: false }))}
+      />
+    </li>
+  );
+}
+
 function RunningRow({ job, act }: { job: JobView; act: Act }) {
   const { t } = useTranslation();
   const nameOf = useJobName();
@@ -459,19 +611,17 @@ function FinishedRow({ job, act }: { job: JobView; act: Act }) {
   }).format(at);
   return (
     <li className="px-jobs-row">
-      <Icon name="circle-check" size={20} className="px-jobs-mark is-done" />
+      {/* Work another tool finished has the arrows of a change, so the line under it needs no box. */}
+      <Icon name={job.fallback ? "refresh-cw" : "circle-check"} size={20} className="px-jobs-mark is-done" />
       <div className="px-jobs-body">
         <p className="px-jobs-what">{what}</p>
         {where ? <p className="px-jobs-sub">{where}</p> : null}
         {job.fallback ? (
-          <p className="px-jobs-note">
-            <Info size={16} strokeWidth={1.75} aria-hidden />
-            <span>
-              {t(`engines.fallback.${job.fallback.reason}`, {
-                from: currentToolLabel(job.fallback.from),
-                to: currentToolLabel(job.fallback.to),
-              })}
-            </span>
+          <p className="px-jobs-sub">
+            {t(`engines.fallback.${job.fallback.reason}`, {
+              from: currentToolLabel(job.fallback.from),
+              to: currentToolLabel(job.fallback.to),
+            })}
           </p>
         ) : null}
         <JobDebug jobId={job.id} running={false} />
@@ -501,6 +651,8 @@ export const JobsPanel = forwardRef<
   HTMLElement,
   {
     groups: JobGroups;
+    /** The tools that are out of requests and the ones a stopped job can go on with. */
+    tools: ToolLimits;
     /** Asks for the password of a locked PDF whose import stopped. */
     onUnlock: (job: JobView) => void;
     /** Closes the list, after it sent the student to another page. */
@@ -511,27 +663,27 @@ export const JobsPanel = forwardRef<
     /** Why the page cannot be left, when nothing leaves it: those links are off. */
     blocked?: string;
   }
->(function JobsPanel({ groups, onUnlock, onClose, onEscape, leave, blocked }, ref) {
+>(function JobsPanel({ groups, tools, onUnlock, onClose, onEscape, leave, blocked }, ref) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const client = useQueryClient();
   const navigate = useNavigate();
   const headId = useId();
   // A job that changed meanwhile, or a core that restarted, refuses the action. Say so and show the list as it is now.
-  const act: Act = (request, jobs) => {
-    const sent =
+  const settle = (sent: Promise<unknown>) => {
+    void sent.catch(() => {
+      void message.error(t("jobs.actionFailed"));
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+      void client.invalidateQueries({ queryKey: ["jobs-finished"] });
+    });
+  };
+  const act: Act = (request, jobs) =>
+    settle(
       request === "jobs.resumeAll"
         ? invoke(request, { jobIds: jobs.map((job) => job.id) })
-        : Promise.all(jobs.map((job) => invoke(request, { jobId: job.id })));
-    void sent.catch(
-      () => {
-        void message.error(t("jobs.actionFailed"));
-        void client.invalidateQueries({ queryKey: ["jobs"] });
-        void client.invalidateQueries({ queryKey: ["jobs-finished"] });
-      },
+        : Promise.all(jobs.map((job) => invoke(request, { jobId: job.id }))),
     );
-  };
-  const { problems, runningItems, finishedItems, finished, running } = groups;
+  const { problems, runningItems, finishedItems, finished, running, waiting } = groups;
   const stoppable = running.some((job) => !job.inPage);
   // Stopping everything asks nothing: what stopped waits under "Needs you" with Resume.
   const stopAll = () => {
@@ -561,24 +713,37 @@ export const JobsPanel = forwardRef<
       </header>
       {problems.length > 0 ? (
         <GroupSection title={t("jobs.group.toFix")} needs>
-          {problems.map((problem) => (
-            <ProblemCard
-              key={problem.key}
-              problem={problem}
-              act={act}
-              onUnlock={onUnlock}
-              blocked={blocked}
-              onNavigate={(to, state) => {
-                onClose();
-                const go = () => void navigate(to, state ? { state } : undefined);
-                if (leave) leave(go);
-                else go();
-              }}
-            />
-          ))}
+          {problems.map((problem) => {
+            const onNavigate = (to: string, state?: object) => {
+              onClose();
+              const go = () => void navigate(to, state ? { state } : undefined);
+              if (leave) leave(go);
+              else go();
+            };
+            return problem.kind === "out-of-requests" ? (
+              <OutOfRequestsCard
+                key={problem.key}
+                problem={problem}
+                tools={tools}
+                settle={settle}
+                act={act}
+                blocked={blocked}
+                onNavigate={onNavigate}
+              />
+            ) : (
+              <ProblemCard
+                key={problem.key}
+                problem={problem}
+                act={act}
+                onUnlock={onUnlock}
+                blocked={blocked}
+                onNavigate={onNavigate}
+              />
+            );
+          })}
         </GroupSection>
       ) : null}
-      {runningItems.length > 0 ? (
+      {runningItems.length + waiting.length > 0 ? (
         <GroupSection
           title={t("jobs.group.running")}
           action={
@@ -596,6 +761,9 @@ export const JobsPanel = forwardRef<
               <RunningRow key={item.job.id} job={item.job} act={act} />
             ),
           )}
+          {waiting.map((job) => (
+            <WaitingRow key={job.id} job={job} tools={tools} settle={settle} />
+          ))}
         </GroupSection>
       ) : null}
       {finished.length > 0 ? (

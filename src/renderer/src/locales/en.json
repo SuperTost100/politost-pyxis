@@ -2653,7 +2653,30 @@
         "other_other": "{{count}} done"
       }
     },
-    "lessonPartInvalid": "I couldn't write this part of the lesson. Try again."
+    "lessonPartInvalid": "I couldn't write this part of the lesson. Try again.",
+    "out": {
+      "why": "{{tool}} is out of requests.",
+      "back": {
+        "today": "They are back at {{time}}.",
+        "tomorrow": "They are back tomorrow at {{time}}.",
+        "later": "They are back on {{day}}."
+      },
+      "at": {
+        "today": "at {{time}}",
+        "tomorrow": "tomorrow at {{time}}",
+        "later": "on {{day}}"
+      },
+      "goOn": "Continue with {{tool}}",
+      "wait": {
+        "today": "Wait until {{time}}",
+        "tomorrow": "Wait until tomorrow",
+        "later": "Wait until {{day}}"
+      },
+      "waiting": "Starts again by itself when {{tool}}'s requests are back, {{when}}",
+      "stopWaiting": "Stop waiting"
+    },
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting"
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",
