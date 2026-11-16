@@ -1,10 +1,13 @@
 /**
- * Engines an automatic task skips for now: one that hit a usage limit, in memory until the limit resets, and one whose
- * sign-in a provider refused. A refused sign-in also takes the engine out of the automatic plan and shows it signed out
- * in Settings, because the CLI's own check can go on saying "signed in" (Codex does after its token stops working). It
- * is kept in the workspace when a store is configured, so a restart does not send lessons back to it.
+ * Engines an automatic task skips for now: one that hit a usage limit, until the limit resets, one whose sign-in a
+ * provider refused, and one whose program was gone when a call started it. A refused sign-in also takes the engine out
+ * of the automatic plan and shows it signed out in Settings, because the CLI's own check can go on saying "signed in"
+ * (Codex does after its token stops working). Limits and refused sign-ins are kept in the workspace when a store is
+ * configured, so a restart does not send lessons back to an engine known to be out.
  */
-const limited = new Map<string, number>();
+const limited = new Map<string, { until: number; since: number; guessed: boolean }>();
+/** Engines whose program was not found when a call started it, each with the moment on `engineClock` it was marked. */
+const missing = new Map<string, number>();
 /** Refused sign-ins, each with the moment on `engineClock` it was marked. */
 const signedOut = new Map<string, number>();
 let clock = 0;
@@ -23,23 +26,41 @@ export function signedOutSince(provider: string): number | undefined {
   return signedOut.get(provider);
 }
 
-/** Where refused sign-ins are kept between launches. */
+/** Where refused sign-ins and usage limits are kept between launches. */
 export type SignOutStore = {
   load(): string[];
   save(provider: string, signedOut: boolean): void;
+  /** The limits still kept, each with the time it resets. */
+  loadLimits(): Array<{ provider: string; until: number }>;
+  /** Keeps a limit until `until`, or forgets it when `until` is null. */
+  saveLimit(provider: string, until: number | null): void;
 };
+/**
+ * What changed about an engine: its sign-in or its program, which move the automatic plan, or a usage limit, which
+ * only changes what Settings says about it.
+ */
+export type BenchChange = "sign-in" | "missing" | "limit";
 let store: SignOutStore | undefined;
-let onChange: ((provider: string) => void) | undefined;
+let onChange: ((provider: string, change: BenchChange) => void) | undefined;
 
-/** Reads the refused sign-ins kept in `next`. `listener` hears every engine that is marked or cleared. */
+/**
+ * Reads the refused sign-ins and the usage limits kept in `next`. A limit whose reset time has passed is forgotten.
+ * `listener` hears every engine that is marked or cleared.
+ */
 export function configureSignOuts(
   next: SignOutStore | undefined,
-  listener?: (provider: string) => void,
+  listener?: (provider: string, change: BenchChange) => void,
+  now = Date.now(),
 ): void {
   store = next;
   onChange = listener;
   signedOut.clear();
+  limited.clear();
   for (const provider of next?.load() ?? []) signedOut.set(provider, engineClock());
+  for (const { provider, until } of next?.loadLimits() ?? []) {
+    if (until > now) limited.set(provider, { until, since: engineClock(), guessed: false });
+    else next?.saveLimit(provider, null);
+  }
 }
 
 /** How long a limit without a reset time keeps an engine out. */
@@ -59,7 +80,65 @@ export function benchEngine(
   const until = Number.isFinite(reset)
     ? reset
     : now + (limit?.retryAfterMs ?? DEFAULT_LIMIT_MS);
-  limited.set(provider, until);
+  // Without a reset time the wait is Pyxis's own guess, which the engine's usage report may replace (`limitIsGuess`).
+  limited.set(provider, {
+    until,
+    since: engineClock(),
+    guessed: !Number.isFinite(reset) && limit?.retryAfterMs === undefined,
+  });
+  store?.saveLimit(provider, until);
+  onChange?.(provider, "limit");
+}
+
+/** When this engine's usage limit resets, in milliseconds since the epoch, or undefined while it has requests left. */
+export function limitedUntil(provider: string, now = Date.now()): number | undefined {
+  const limit = limited.get(provider);
+  if (!limit) return undefined;
+  if (limit.until > now) return limit.until;
+  forgetLimit(provider);
+  return undefined;
+}
+
+/** True while the engine is out on a wait Pyxis guessed, because its limit came without a reset time. */
+export function limitIsGuess(provider: string): boolean {
+  return limited.get(provider)?.guessed === true;
+}
+
+function forgetLimit(provider: string): boolean {
+  if (!limited.delete(provider)) return false;
+  store?.saveLimit(provider, null);
+  return true;
+}
+
+/**
+ * A call that began at `startedAt` (on `engineClock`) answered, so the engine has requests left, unless the limit was
+ * hit after this call began: a call that slipped through before the last request was used says nothing about now.
+ */
+export function clearLimitBefore(provider: string, startedAt: number): void {
+  const limit = limited.get(provider);
+  if (!limit || limit.since >= startedAt) return;
+  forgetLimit(provider);
+  onChange?.(provider, "limit");
+}
+
+/**
+ * The engine's program was not found when a call started it. It stays out until a scan that began later finds it
+ * installed, and the automatic plan is worked out again without it.
+ */
+export function markMissing(provider: string): void {
+  const known = missing.has(provider);
+  missing.set(provider, engineClock());
+  if (!known) onChange?.(provider, "missing");
+}
+
+/** A scan that began at `scanStarted` (on `engineClock`) found the program: the engine is back unless it went missing later. */
+export function clearMissingBefore(provider: string, scanStarted: number): void {
+  const since = missing.get(provider);
+  if (since !== undefined && since < scanStarted) missing.delete(provider);
+}
+
+export function isMissing(provider: string): boolean {
+  return missing.has(provider);
 }
 
 /** The provider refused the engine's sign-in or key: it stays out until the student signs in again. */
@@ -69,7 +148,7 @@ export function markSignedOut(provider: string): void {
   signedOut.set(provider, engineClock());
   if (known) return;
   store?.save(provider, true);
-  onChange?.(provider);
+  onChange?.(provider, "sign-in");
 }
 
 export function isSignedOut(provider: string): boolean {
@@ -77,12 +156,8 @@ export function isSignedOut(provider: string): boolean {
 }
 
 export function isBenched(provider: string, now = Date.now()): boolean {
-  if (signedOut.has(provider)) return true;
-  const until = limited.get(provider);
-  if (until === undefined) return false;
-  if (until > now) return true;
-  limited.delete(provider);
-  return false;
+  if (signedOut.has(provider) || missing.has(provider)) return true;
+  return limitedUntil(provider, now) !== undefined;
 }
 
 /**
@@ -92,7 +167,7 @@ export function isBenched(provider: string, now = Date.now()): boolean {
 export function clearSignOut(provider: string): void {
   if (!signedOut.delete(provider)) return;
   store?.save(provider, false);
-  onChange?.(provider);
+  onChange?.(provider, "sign-in");
 }
 
 /**
@@ -183,6 +258,7 @@ export function isModelBenched(
 export function clearBench(): void {
   limited.clear();
   signedOut.clear();
+  missing.clear();
   refusedModels.clear();
   pointedTo.clear();
   onModelRefused = undefined;
