@@ -135,7 +135,10 @@ export function Shell() {
             ? "px-shell-container px-shell-exam"
             : target.pathname.startsWith("/exams/library")
               ? "px-shell-container px-shell-library"
-              : "px-shell-container";
+              : // The list of every flashcard is a wider column of small cards (CardBrowser.css).
+                target.pathname === "/flashcards/all"
+                ? "px-shell-container px-shell-cards"
+                : "px-shell-container";
 
   return (
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>

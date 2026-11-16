@@ -177,6 +177,35 @@ export function countDueCards(
 }
 
 /**
+ * When the reviewed cards of a deck come back, soonest first, for those due after `after` and no later than `until`.
+ * A card never reviewed has no time, so a new card past today's limit is not among them. Without `limit` every card
+ * is returned.
+ */
+export function deckDueTimes(
+  db: Database.Database,
+  deck: CardDeck,
+  after: number,
+  until: number,
+  topicId?: string,
+  limit?: number,
+): number[] {
+  const where = deckWhere(deck);
+  return (
+    db
+      .prepare(
+        `SELECT due_at FROM (
+           SELECT CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER) AS due_at
+           FROM cards c
+           WHERE ${where.sql}
+             AND ${ACTIVE}
+             AND (? IS NULL OR COALESCE(c.topic_id, '') = ?)
+         ) WHERE due_at > ? AND due_at <= ? ORDER BY due_at LIMIT ?`,
+      )
+      .all(...where.params, topicId ?? null, topicId ?? null, after, until, limit ?? -1) as Array<{ due_at: number }>
+  ).map((row) => row.due_at);
+}
+
+/**
  * The decks of cards with no exam that hold any card that could come up, in subject order, the cards without a subject
  * last. Archived topics cannot hold such cards, since a card with a topic has an exam.
  */

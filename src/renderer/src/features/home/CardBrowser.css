@@ -1,30 +1,58 @@
+/* Tutte le flashcard: a 920px column, the head, the toolbar, then a grid of small cards for each subject. Shell.tsx sets
+   the class on the page's column. */
+.px-shell-container.px-shell-cards {
+  --shell-max: calc(920px + 48px);
+}
 .px-cardbrowser {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
 }
-.px-cardbrowser-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: 24px;
+/* The back control and the head sit one block above the toolbar, 24px from it as a sub-page's title is. */
+.px-cardbrowser-head {
+  margin-bottom: var(--space-2);
 }
-.px-cardbrowser-summary p {
+.px-cardbrowser-title {
+  flex: 1;
+  min-width: 0;
+}
+.px-cardbrowser-title h1 {
+  text-wrap: balance;
+}
+.px-cardbrowser-lead {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-muted);
+}
+/* The count and what a change did, beside the filters. */
+.px-cardbrowser-summary {
   margin: 0;
   color: var(--ink-muted);
 }
+/* The exam filter reads its whole name where there is room, up to a width the other filters share. */
+.px-cardbrowser .px-list-toolbar-rest > .ant-select {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 150px;
+  max-width: 280px;
+}
+.px-cardbrowser-clear.px-btn {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
 .px-cardbrowser-subject {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-top: var(--space-2);
+  margin-top: var(--space-4);
+  container-type: inline-size;
 }
 .px-cardbrowser-subject > header {
   display: flex;
   align-items: baseline;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
 }
 .px-cardbrowser-subject h2 {
   margin: 0;
@@ -34,127 +62,208 @@
 .px-cardbrowser-subject > header .small {
   color: var(--ink-muted);
 }
-/* One surface per exam and topic: the exam and topic as its header, the cards as rows under it. */
-.px-cardbrowser-run {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+.px-cardbrowser-subject > header .px-btn {
+  align-self: center;
+  margin-inline-start: auto;
 }
-.px-cardbrowser-topic {
-  margin: 0;
-  padding: var(--space-2) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  color: var(--ink-muted);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-/* The heading of a subject's cards with no exam, with its Review button at the end of the line. */
-.px-cardbrowser-runhead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-right: var(--space-3);
-  border-bottom: 1px solid var(--border);
-}
-.px-cardbrowser-runhead .px-cardbrowser-topic {
-  flex: 1;
-  border-bottom: 0;
-}
-.px-cardbrowser-run > ul {
+
+.px-ct-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(206px, 1fr));
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.px-cardbrowser-run > ul > li + li {
-  border-top: 1px solid var(--border);
+/* The rest of a subject grows out of the button under the first eight; its tiles throw shadows past the clip. */
+.px-cardbrowser-more > div {
+  overflow-clip-margin: 20px;
 }
-.px-cardbrowser-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
-  min-width: 0;
-  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
-}
-.px-cardbrowser-text {
+
+/* One flashcard: the topic, the front, and under them the back and the state on a tinted ground. */
+.px-ct {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   min-width: 0;
-  overflow-wrap: anywhere;
+  min-height: 204px;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--duration-micro) var(--ease-out);
+  /* A card far off screen is not laid out; the grid holds its place by a typical card's height. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 204px;
 }
-/* The front stops at two lines and the back at one; Edit shows both in full. */
-.px-cardbrowser-front,
-.px-cardbrowser-back {
+.px-ct:hover,
+.px-ct.is-pointed {
+  box-shadow: var(--shadow-raised);
+}
+.px-ct-topic {
+  padding: var(--space-3) 14px 0;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: calc(11.5px * var(--text-scale, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-ct-front {
+  flex: 1;
+  padding: 6px 14px var(--space-3);
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.px-ct-lower {
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--border);
+}
+.px-ct-back {
+  padding: 10px 14px 2px;
+  overflow-wrap: anywhere;
+  color: var(--ink-muted);
+}
+/* The front stops at four lines and the back at two; the edit shows both in full. */
+.px-ct-front > .px-markdown,
+.px-ct-back > .px-markdown {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+.px-ct-back > .px-markdown {
   -webkit-line-clamp: 2;
 }
-.px-cardbrowser-back {
-  -webkit-line-clamp: 1;
-  color: var(--ink-muted);
+.px-ct .px-ct-front .px-markdown.is-body {
+  font: 500 calc(14px * var(--text-scale, 1)) / 1.4 var(--font-sans);
 }
-.px-cardbrowser-text .px-markdown > * {
+.px-ct .px-ct-back .px-markdown.is-body {
+  font: 400 calc(13px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+}
+.px-ct .px-markdown > * {
   margin-top: 0;
   margin-bottom: 0;
 }
-.px-cardbrowser-leech {
+.px-ct-state {
+  box-sizing: border-box;
+  min-height: 38px;
   margin: 0;
+  /* Room at the end for the dots or Restore, which sit over it. */
+  padding: 10px 52px 10px 14px;
+  overflow: hidden;
   color: var(--ink-muted);
-}
-.px-cardbrowser-state {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  color: var(--ink-muted);
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: 18px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.px-cardbrowser-actions {
+.px-ct.is-removed .px-ct-state {
+  padding-inline-end: 110px;
+}
+.px-ct-state.is-flag {
+  color: var(--ink);
+  font-weight: 600;
+}
+/* The whole card is the button that edits it, under the dots. */
+.px-ct-open {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.px-ct-open:focus-visible {
+  outline-offset: -3px;
+}
+.px-ct-corner {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
 }
-.px-cardbrowser-actions .ant-btn {
-  white-space: nowrap;
+.px-ct.is-loading {
+  padding: var(--space-4);
 }
-/* Narrow, a tagged card's state drops under the text so the text keeps a readable line. */
-@media (max-width: 720px) {
-  .px-cardbrowser-row.has-tags {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "text actions"
-      "state state";
-  }
-  .has-tags > .px-cardbrowser-text {
-    grid-area: text;
-  }
-  .has-tags > .px-cardbrowser-state {
-    grid-area: state;
-    justify-content: flex-start;
-  }
-  .has-tags > .px-cardbrowser-actions {
-    grid-area: actions;
+
+/* A card being edited takes two columns, or the whole row where there is room for one column. */
+.px-ct.is-editing {
+  grid-column: span 2;
+  min-height: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  overflow: clip;
+  overflow-clip-margin: 4px;
+  content-visibility: visible;
+}
+@container (max-width: 470px) {
+  .px-ct.is-editing {
+    grid-column: 1 / -1;
   }
 }
-.px-cardbrowser-pages {
-  margin-top: var(--space-4);
-}
-.px-cardbrowser-edit {
+.px-ct-edit {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding: var(--space-4);
 }
-.px-cardbrowser-edit p {
-  margin: 0 0 var(--space-2);
+.px-ct-edit .label {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+.px-ct-editfoot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.px-ct-editfoot p {
+  flex: 1 1 160px;
+  margin: 0;
   color: var(--ink-muted);
 }
 
-/* The back control and the head sit one block above the toolbar, 24px from it as a sub-page's title is. */
-.px-cardbrowser-head {
-  margin-bottom: var(--space-2);
+/* "Mostra le altre": a quiet text button under the eight, with the page's own chevron. */
+.px-cardbrowser-showmore {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  height: var(--control-sm);
+  margin-inline-start: calc(var(--space-3) * -1);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: calc(13px * var(--text-scale, 1));
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--duration-micro) var(--ease-out);
+}
+.px-cardbrowser-showmore:hover:not([aria-disabled]) {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-cardbrowser-showmore[aria-disabled] {
+  cursor: progress;
+}
+
+/* A search or a filter with nothing in it: the sentence and the one button that clears it. */
+.px-cardbrowser-none {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+}
+.px-cardbrowser-none p {
+  margin: 0;
+  color: var(--ink-muted);
 }
