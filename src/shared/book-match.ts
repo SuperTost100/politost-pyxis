@@ -16,6 +16,12 @@ function plainName(name: string): string {
     .join(" ");
 }
 
+/** Whether two names are the same name, by the rule `booksNamed` uses. */
+export function sameName(a: string, b: string): boolean {
+  const left = plainName(a);
+  return left !== "" && left === plainName(b);
+}
+
 /**
  * The free books that are about a subject or an exam, found by name only. A book matches when the name is the book's
  * subject or its title, the same up to case, accents, punctuation and Roman numerals. Nothing looser: a name that is

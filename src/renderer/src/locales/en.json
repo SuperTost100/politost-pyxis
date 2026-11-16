@@ -3896,7 +3896,6 @@
     "addNamed": "Add {{title}}",
     "addingNamed": "Downloading {{title}}",
     "adding": "Downloading…",
-    "added": "Added",
     "inLibrary": "In your library",
     "update": "Update",
     "updateNamed": "Update {{title}}",
@@ -3924,6 +3923,18 @@
       "added": "{{title}} is in the Library, on the {{subject}} shelf.",
       "hide": "Hide",
       "hideNamed": "Hide the book {{title}} for this subject"
+    },
+    "choice": {
+      "name": "{{title}}, PoliTost book",
+      "lead": "Free and written for the course: {{chapters}} that the path can use as topics.",
+      "examIn": "It's among this exam's sources.",
+      "examOut": "It's not among this exam's sources.",
+      "examRemove": "Remove from sources",
+      "examAdd": "Add to sources",
+      "subjectIn": "It goes into the Library with this file.",
+      "subjectOut": "It doesn't go into the Library.",
+      "subjectRemove": "Don't add it",
+      "subjectAdd": "Add it"
     },
     "reader": {
       "opening": "Downloading the book…",

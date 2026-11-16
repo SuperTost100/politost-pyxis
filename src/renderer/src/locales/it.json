@@ -3896,7 +3896,6 @@
     "addNamed": "Aggiungi {{title}}",
     "addingNamed": "Scarico {{title}}",
     "adding": "Scarico…",
-    "added": "Aggiunto",
     "inLibrary": "Nella tua libreria",
     "update": "Aggiorna",
     "updateNamed": "Aggiorna {{title}}",
@@ -3924,6 +3923,18 @@
       "added": "{{title}} è nella Libreria, sullo scaffale di {{subject}}.",
       "hide": "Nascondi",
       "hideNamed": "Nascondi il libro {{title}} per questa materia"
+    },
+    "choice": {
+      "name": "{{title}}, libro PoliTost",
+      "lead": "Gratuito e scritto per il corso: {{chapters}} che il percorso può usare come argomenti.",
+      "examIn": "È tra le fonti di questo esame.",
+      "examOut": "Non è tra le fonti di questo esame.",
+      "examRemove": "Togli dalle fonti",
+      "examAdd": "Aggiungi alle fonti",
+      "subjectIn": "Va nella Libreria con questo file.",
+      "subjectOut": "Non va nella Libreria.",
+      "subjectRemove": "Non aggiungerlo",
+      "subjectAdd": "Aggiungilo"
     },
     "reader": {
       "opening": "Scarico il libro…",

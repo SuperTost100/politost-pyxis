@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { booksNamed } from "./book-match";
+import { booksNamed, sameName } from "./book-match";
 
 const books = [
   { id: "fisica-1", title: "Fisica 1", subject: "Fisica 1" },
@@ -38,5 +38,14 @@ describe("booksNamed", () => {
 
   it("takes the names of an exam, its subject and its title, together", () => {
     expect(ids(["Esame di fisica", "Fisica 1"])).toEqual(["fisica-1"]);
+  });
+});
+
+describe("sameName", () => {
+  it("compares names by the same rule, and never calls two empty names the same", () => {
+    expect(sameName("Fisica I", "fisica 1")).toBe(true);
+    expect(sameName("Fisica 1", "Fisica 2")).toBe(false);
+    expect(sameName("", "")).toBe(false);
+    expect(sameName("!", " ")).toBe(false);
   });
 });
