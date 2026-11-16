@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
   figureImages,
+  figureKey,
   mapFigureBlocks,
   splitCitationGroups,
 } from "../../shared/smart-text";
@@ -141,7 +142,13 @@ type AskInput = {
    * Continue: the reply that was cut short. The model writes only the rest, appended to its text, from the passages it
    * was written with (null for a reply saved before they were recorded, which retrieves them again).
    */
-  resumeFrom?: { text: string; passages: KeptPassage[] | null; widened?: boolean };
+  resumeFrom?: {
+    text: string;
+    passages: KeptPassage[] | null;
+    widened?: boolean;
+    /** The pictures the stopped reply had saved, by the key of the figure block each is for, which the continuation keeps. */
+    figures?: Record<string, string>;
+  };
 };
 
 /** A passage a stopped reply was written with, and the P-number it had. */
@@ -1084,6 +1091,7 @@ async function answer(
         now,
       },
       drawn,
+      input.resumeFrom?.figures,
     ),
     ...skippedImages,
   });
@@ -1150,6 +1158,8 @@ async function answer(
       // The fix call is counted with this chat's tokens and stops with the turn.
       fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
       signal: input.signal,
+      // A continued reply keeps the pictures its figures already had, drawn again by nobody.
+      known: input.resumeFrom?.figures,
       onFigure: input.onFigure,
     });
   } catch (err) {
@@ -1213,6 +1223,8 @@ function finishReply(
   meta: Omit<SavedReply, "figures">,
   /** The text with the figures that were drawn before the stop and their pictures, when the stop came while they were. */
   drawn?: { markdown: string; figures: Record<string, string> },
+  /** The pictures a continued reply had saved: its figure blocks that have one stay, with their pictures. */
+  carried?: Record<string, string>,
 ): AskResult {
   if (drawn)
     return saveReply(
@@ -1222,9 +1234,17 @@ function finishReply(
       { ...meta, ...(Object.keys(drawn.figures).length ? { figures: drawn.figures } : {}) },
     );
   const parsed = splitFollowups(text);
-  // A reply stopped while it was written has nothing drawn, so its figure blocks go.
-  parsed.body = mapFigureBlocks(parsed.body, () => "");
-  return saveReply(db, chatId, { body: parsed.body, followups: [] }, meta);
+  // A reply stopped while it was written has nothing drawn of its own, so its figure blocks go. A continued one keeps the
+  // blocks that already had a picture, with it, as the reply it continues did.
+  const figures: Record<string, string> = {};
+  parsed.body = mapFigureBlocks(parsed.body, (figure) => {
+    const key = figure ? figureKey(figure.code, figure.figureKind) : "";
+    const image = carried?.[key];
+    if (!image) return "";
+    figures[key] = image;
+    return null;
+  });
+  return saveReply(db, chatId, { body: parsed.body, followups: [] }, { ...meta, ...(Object.keys(figures).length ? { figures } : {}) });
 }
 
 type SavedReply = {
@@ -1352,7 +1372,7 @@ export async function regenerateTurn(
   requireIdle(input.chatId);
   const last = db
     .prepare(
-      `SELECT id, role, body, stopped, passages_json, grounding, prompt_template FROM messages
+      `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template FROM messages
        WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
     .get(input.chatId) as
@@ -1362,6 +1382,7 @@ export async function regenerateTurn(
         body: string;
         stopped: number;
         passages_json: string | null;
+        figures_json: string | null;
         grounding: string | null;
         prompt_template: string | null;
       }
@@ -1382,6 +1403,7 @@ export async function regenerateTurn(
           text: splitFollowups(splitChecks(last.body).body).body,
           passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
           widened: last.grounding === "mixed",
+          ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
   // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.

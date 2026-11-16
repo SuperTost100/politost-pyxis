@@ -1067,3 +1067,83 @@ test("a figure whose correction fails loses its working state at once, while the
     removeTestFolder(userData);
   }
 });
+
+test("the figures a stopped answer kept are still there after it is continued, stopped again, and let finish", async () => {
+  test.skip(!packsPinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-continue-"));
+  stagePacks(userData);
+  const release = join(userData, "release-fix");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: threeFigures,
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      // The correction waits for a file the test creates at the end; until then only a stop ends it.
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ code: divider, hold: release }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Come funziona un partitore di tensione?");
+    const shown = page.locator(".px-msg figure.px-figure");
+    await expect(shown).toHaveCount(2, { timeout: 180000 });
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(1);
+    await page.getByRole("button", { name: "Interrompi", exact: true }).click();
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(0, { timeout: 30000 });
+    await expect(shown).toHaveCount(2);
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    const chatId = chats[0]!.id;
+    const readReply = async () => {
+      const saved = (await page.evaluate((id) => window.pyxis.invoke("chats.read", { chatId: id }), chatId)) as {
+        messages: Array<{ role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
+      };
+      return saved.messages.filter((message) => message.role === "assistant");
+    };
+    expect(await readReply()).toHaveLength(1);
+
+    // The page offers Continua for a reply that failed, not for one the student stopped, so the continuation is asked of core
+    // as the button would: it keeps the saved pictures, tells them at once, and waits for the correction again.
+    await page.evaluate((id) => {
+      const events: unknown[] = [];
+      const handle = window.pyxis.stream("chats.regenerate", { chatId: id, resume: true }, (event) => events.push(event));
+      Object.assign(window, { continuation: { events, handle } });
+    }, chatId);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { continuation: { events: Array<{ type?: string; image?: unknown }> } }).continuation.events.filter((event) => event.type === "figure" && typeof event.image === "string").length))
+      .toBe(2);
+    // Stopped again while the correction waits.
+    await page.evaluate(() => (window as unknown as { continuation: { handle: { cancel: () => void } } }).continuation.handle.cancel());
+    await page.evaluate(() => (window as unknown as { continuation: { handle: { result: Promise<unknown> } } }).continuation.handle.result.catch(() => undefined));
+    await expect.poll(async () => (await readReply()).at(-1)?.stopped).toBe(true);
+    const stoppedAgain = await readReply();
+    expect(stoppedAgain).toHaveLength(1);
+    expect(Object.keys(stoppedAgain[0]!.figures ?? {})).toHaveLength(2);
+
+    // Continued once more and let finish: the two pictures are kept without being drawn again, and the corrected circuit joins.
+    writeFileSync(release, "go");
+    await page.evaluate((id) => window.pyxis.invoke("chats.regenerate", { chatId: id, resume: true }), chatId);
+    const finished = await readReply();
+    expect(finished).toHaveLength(1);
+    expect(finished[0]!.stopped).toBeFalsy();
+    expect(Object.keys(finished[0]!.figures ?? {})).toHaveLength(3);
+    // A reload shows all three, and none is still being drawn.
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, chatId);
+    await page.reload();
+    // (The recorded reply answers every continuation with the whole answer again, so the text holds each figure's block
+    // more than once; every block shows its picture and none is left drawing.)
+    const blocks = (finished[0]!.body.match(/```pyxis-figure/g) ?? []).length;
+    expect(blocks).toBeGreaterThanOrEqual(3);
+    await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(blocks);
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});

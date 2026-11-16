@@ -5,7 +5,7 @@ import type { FigureRunner } from "../math/figures";
 import { figureKey } from "../../shared/smart-text";
 import { isFigureFixCall } from "../engine/recorded-plan";
 import { setUsageRecorder, storeUsage } from "../engine/usage";
-import { askTurn, readChat } from "./turn";
+import { askTurn, readChat, regenerateTurn } from "./turn";
 import { visibleText } from "./visible";
 
 const PNG =
@@ -313,4 +313,95 @@ it("tells the chat each figure as it is drawn, and a stop keeps the ones already
   // What was shown is what is saved: a reload finds the same two pictures and the chat is still there.
   expect(readChat(db, result.chatId).at(-1)!.figures).toEqual(message.figures);
   expect(db.prepare("SELECT COUNT(*) FROM chats WHERE id = ?").pluck().get(result.chatId)).toBe(1);
+});
+
+/** A chat whose reply was stopped while its third figure was being corrected: the other two are drawn and saved with it. */
+async function stoppedWithTwoFigures() {
+  const first = "x = np.linspace(0, 1)\nplt.plot(x, x)";
+  const last = "x = np.linspace(0, 2)\nplt.plot(x, x**2)";
+  const reply = ["Tre figure.", "", figure("La prima.", first), "", figure("Una che non si disegna.", "raise ValueError('no')"), "", figure("L'ultima.", last), "", "Fine."].join("\n");
+  const { db, run } = setup();
+  const stop = new AbortController();
+  let fixing!: () => void;
+  const asked = new Promise<void>((resolve) => {
+    fixing = resolve;
+  });
+  const replying: typeof run = async (input) => {
+    if (isFigureFixCall(input.system)) {
+      fixing();
+      return new Promise<EngineResult>((_, reject) => stop.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }
+    return input.system?.startsWith("Extract mathematical claims") ? run(input) : { text: reply, provider: "claude", model: "m", inputTokens: 1 };
+  };
+  const asking = askTurn(db, { text: "Disegna tre figure.", allowGeneral: true, run: replying, python, signal: stop.signal });
+  await asked;
+  stop.abort();
+  const stopped = await asking;
+  expect(stopped.message!.stopped).toBe(true);
+  expect(Object.keys(stopped.message!.figures ?? {}).sort()).toEqual([figureKey(first), figureKey(last)].sort());
+  return { db, chatId: stopped.chatId, first, last, saved: stopped.message! };
+}
+const savedFigures = (db: ReturnType<typeof setup>["db"], chatId: string) => {
+  const replies = readChat(db, chatId).filter((row) => row.role === "assistant");
+  return { count: replies.length, last: replies.at(-1)! };
+};
+
+it("keeps the figures of a stopped reply when its continuation is stopped or fails, and when it finishes", async () => {
+  const { db, chatId, first, last } = await stoppedWithTwoFigures();
+  const kept = { [figureKey(first)]: PNG, [figureKey(last)]: PNG };
+  // Continua, and the continuation streams a little and is stopped again.
+  const stopAgain = new AbortController();
+  const stopping: ReturnType<typeof setup>["run"] = async (input) => {
+    (input as { onDelta?: (text: string) => void }).onDelta?.("\n\nE un'ultima frase");
+    stopAgain.abort();
+    throw new DOMException("aborted", "AbortError");
+  };
+  const again = await regenerateTurn(db, { chatId, resume: true, run: stopping, python, signal: stopAgain.signal });
+  expect(again.message!.stopped).toBe(true);
+  expect(again.message!.body).toContain("E un'ultima frase");
+  expect(again.message!.figures).toEqual(kept);
+  expect(again.message!.body).toContain(figure("La prima.", first));
+  expect(again.message!.body).toContain(figure("L'ultima.", last));
+  expect(again.message!.body).not.toContain("raise ValueError");
+  expect(savedFigures(db, chatId).count).toBe(1);
+  expect(savedFigures(db, chatId).last.figures).toEqual(kept);
+  // Continua again, and the engine fails after some text: the reply is kept with its error and still has the two.
+  const failing: ReturnType<typeof setup>["run"] = async (input) => {
+    (input as { onDelta?: (text: string) => void }).onDelta?.("\n\nUn'altra frase");
+    throw new Error("the engine dropped");
+  };
+  const failed = await regenerateTurn(db, { chatId, resume: true, run: failing, python });
+  expect(failed.message!.stopped).toBe(true);
+  expect(failed.message!.body).toContain("Un'altra frase");
+  expect(failed.message!.figures).toEqual(kept);
+  expect(savedFigures(db, chatId).count).toBe(1);
+  // Continua once more, and it finishes: the figures are kept without drawing them again, even with no sandbox to draw in.
+  let runs = 0;
+  const finishing: ReturnType<typeof setup>["run"] = async () => ({ text: "\n\nFine davvero.", provider: "claude", model: "m", inputTokens: 1 });
+  const unavailable: FigureRunner = async () => {
+    runs++;
+    return { stdout: "", stderr: "runtime-unavailable", images: [], timedOut: false, truncated: false };
+  };
+  const done = await regenerateTurn(db, { chatId, resume: true, run: finishing, python: unavailable });
+  expect(done.message!.stopped).toBe(false);
+  expect(done.message!.body).toContain("Fine davvero.");
+  expect(done.message!.figures).toEqual(kept);
+  expect(runs).toBe(0);
+  expect(savedFigures(db, chatId).count).toBe(1);
+  // A reload finds the same.
+  expect(readChat(db, chatId).at(-1)!.figures).toEqual(kept);
+});
+
+it("keeps the earlier reply, figures included, when a regenerated one is stopped", async () => {
+  const { db, chatId, first, last } = await stoppedWithTwoFigures();
+  const stopAgain = new AbortController();
+  const stopping: ReturnType<typeof setup>["run"] = async (input) => {
+    (input as { onDelta?: (text: string) => void }).onDelta?.("Un'altra risposta");
+    stopAgain.abort();
+    throw new DOMException("aborted", "AbortError");
+  };
+  await expect(regenerateTurn(db, { chatId, run: stopping, python, signal: stopAgain.signal })).rejects.toMatchObject({ name: "AbortError" });
+  const kept = savedFigures(db, chatId);
+  expect(kept.count).toBe(1);
+  expect(kept.last.figures).toEqual({ [figureKey(first)]: PNG, [figureKey(last)]: PNG });
 });
