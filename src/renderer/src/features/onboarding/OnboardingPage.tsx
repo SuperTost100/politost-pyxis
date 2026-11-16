@@ -229,12 +229,16 @@ function Setup({
     );
   }
 
+  const notice = failed ? <Notice tone="danger">{t("onboarding.saveFailed")}</Notice> : null;
+  const actions =
+    id === "material" ? null : (
+      <div className="px-onboarding-actions">
+        <span>{secondary}</span>
+        <span className="px-onboarding-primary">{primary}</span>
+      </div>
+    );
   return (
-    <div
-      className={
-        id === "profile" ? "px-onboarding" : "px-onboarding is-wide"
-      }
-    >
+    <div className="px-onboarding">
       <BackControl target={place} variant="page" />
       <div className="px-onboarding-head">
         <span className="px-brand">
@@ -266,7 +270,7 @@ function Setup({
       )}
 
       {id === "profile" ? (
-        <>
+        <div className="px-onboarding-narrow">
           <ProfileStep
             values={{ name, level, year, school, course, interests }}
             set={{ setName, setLevel, setYear, setSchool, setCourse, setInterests }}
@@ -277,21 +281,15 @@ function Setup({
             disabled={busy}
             onChange={setCrashReports}
           />
-        </>
+          {notice}
+          {actions}
+        </div>
       ) : null}
       {id === "engines" ? (
         <EnginesStep onState={onEngines} again={again} />
       ) : null}
-
-      {failed ? (
-        <Notice tone="danger">{t("onboarding.saveFailed")}</Notice>
-      ) : null}
-      {id === "material" ? null : (
-        <div className="px-onboarding-actions">
-          <span>{secondary}</span>
-          <span className="px-onboarding-primary">{primary}</span>
-        </div>
-      )}
+      {id === "profile" ? null : notice}
+      {id === "profile" ? null : actions}
     </div>
   );
 }

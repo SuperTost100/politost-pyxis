@@ -81,6 +81,19 @@ const button = (page: Page | Locator, name: string | RegExp) =>
   page.getByRole("button", { name, exact: typeof name === "string" });
 // The stepper says where the student is once, to screen readers; the same text is not printed again on screen.
 const stepper = (page: Page) => page.getByRole("list", { name: "Avanzamento" });
+/** Where the head of setup stands: the mark, the stepper and the title. It stays put from one step to the next. */
+const headPlace = (page: Page) =>
+  page.evaluate(() => {
+    const box = (selector: string) => {
+      const { left, right, top } = document.querySelector(selector)!.getBoundingClientRect();
+      return { left, right, top };
+    };
+    return {
+      mark: box(".px-onboarding-head .px-brand"),
+      stepper: box(".px-onboarding-head .px-stepper"),
+      title: box(".px-onboarding-title h1"),
+    };
+  });
 const currentStep = (page: Page) => page.locator("[aria-current=step]");
 // The visible primary buttons: each state of a step has exactly one.
 const primaryButtons = (page: Page) => page.locator(".ant-btn-primary:visible");
@@ -121,10 +134,12 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.setViewportSize({ width: 1280, height: 800 });
     // Step 1: the name, what the student studies and the crash reports, on one screen.
     await expect(
       page.getByRole("heading", { name: "Ciao, come ti chiami e cosa studi?" }),
     ).toBeVisible();
+    const head = await headPlace(page);
     await expect(stepper(page).getByRole("listitem")).toHaveCount(3);
     await expect(currentStep(page)).toHaveText("Passo 1 di 3: 1 · Tu");
     await expect(page.getByText("Passo 1 di 3")).not.toBeInViewport();
@@ -157,6 +172,7 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
       page.getByRole("heading", { name: "Claude e ChatGPT sono pronti" }),
     ).toBeVisible({ timeout: 30000 });
     await expect(currentStep(page)).toHaveText("Passo 2 di 3: 2 · L'AI");
+    expect(await headPlace(page)).toEqual(head);
     await expect(found(page, "Ho trovato Claude e ChatGPT.")).toHaveCount(1);
     // One notice for both engines, here and not later in a task. Until it is confirmed Pyxis plans nothing with them.
     const notice = page.getByRole("region", {
@@ -213,6 +229,7 @@ test("First setup: you with crash reports off, the AI with its notice, the two w
 
     // Step 3: the profile is saved when the AI step ends, with crash reports off.
     await expect(currentStep(page)).toHaveText("Passo 3 di 3: 3 · Il materiale");
+    expect(await headPlace(page)).toEqual(head);
     expect(await profile(page)).toMatchObject({
       displayName: "Ada",
       educationLevel: "university",

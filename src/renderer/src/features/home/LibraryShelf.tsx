@@ -417,6 +417,18 @@ export function LibraryShelf({
     if (existing && (counts.get(existing.id) ?? 0) > 0) return undefined;
     return (books ?? []).find((book) => !book.sourceId && subjectForBook([{ id: "", name }], book) !== undefined);
   };
+  // The reader opened from a book's row closes onto the book's cover once it is added, and onto the subject's dots while
+  // it is not, as the shelf does for any file whose cover goes away. The catalog is read when the reader closes.
+  const booksNow = useRef(books);
+  booksNow.current = books;
+  const afterReader = (book: FreeBook, subject: Subject) => () => {
+    const sourceId = booksNow.current?.find((item) => item.id === book.id)?.sourceId;
+    return (
+      (sourceId ? root.current?.querySelector<HTMLElement>(`[data-source-id="${CSS.escape(sourceId)}"] [data-source-open]`) : null) ??
+      root.current?.querySelector<HTMLElement>(`[data-subject-id="${CSS.escape(subject.id)}"] .px-shelf-subject-dots`) ??
+      null
+    );
+  };
   /** Adds a book from its row: the cover grows out of the row's picture, and focus follows it if it was on the row. */
   function addFromRow(book: FreeBook, subject: Subject) {
     const row = root.current?.querySelector<HTMLElement>(`[data-book-offer="${CSS.escape(book.id)}"]`);
@@ -550,7 +562,7 @@ export function LibraryShelf({
                 }}
                 onNewMap={() => navigate(`/maps?subject=${encodeURIComponent(subject.id)}&new=1`)}
                 onNewCards={() => navigate(newCardPath("pyxis", subject.id))}
-                onBook={offer ? () => openBook(offer.id, { subjectId: subject.id }) : undefined}
+                onBook={offer ? () => openBook(offer.id, { subjectId: subject.id, focusAfter: afterReader(offer, subject) }) : undefined}
                 onDelete={(index) => remove(subject, index)}
                 offer={
                   offer && !filtering && !hiddenRows.has(subject.id) ? (
@@ -560,7 +572,7 @@ export function LibraryShelf({
                       subjectName={subject.name}
                       adding={false}
                       error={bookAdding.failed.get(offer.id)}
-                      onOpen={() => openBook(offer.id, { subjectId: subject.id })}
+                      onOpen={() => openBook(offer.id, { subjectId: subject.id, focusAfter: afterReader(offer, subject) })}
                       onAdd={() => addFromRow(offer, subject)}
                       onHide={() => hideRow(subject)}
                     />

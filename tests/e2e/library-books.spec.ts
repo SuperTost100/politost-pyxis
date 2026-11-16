@@ -184,6 +184,149 @@ test("Adding from the reader keeps it open and says where the book went, without
   }
 });
 
+test("Closing the reader after adding the book from it puts the focus on the book's new cover", async () => {
+  test.setTimeout(180_000);
+  const run = await start();
+  const { page } = run;
+  try {
+    const opener = offer(page).getByRole("button", { name: "Apri il libro Fisica 1" });
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("La velocità media è lo spazio percorso")).toBeVisible({ timeout: 30_000 });
+    await panel.getByRole("button", { name: "Aggiungi alla Libreria" }).click();
+    await expect(panel.getByText("È nella tua Libreria, sullo scaffale di Fisica 1.")).toBeVisible({ timeout: 30_000 });
+    // The row that opened the reader is gone; the book's cover took its place.
+    await expect(offer(page)).toHaveCount(0);
+    const cover = shelf(page, "Fisica 1").getByRole("button", { name: "Fisica 1", exact: true });
+    await expect(cover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(cover).toBeFocused();
+    await saveShot(page, "library-books/reader-closed-focus-it-light-1280.png");
+  } finally {
+    await finish(run);
+  }
+});
+
+test("A second Escape while the reader is closing leaves the focus where the first one put it", async () => {
+  test.setTimeout(180_000);
+  const run = await start();
+  const { page } = run;
+  try {
+    const opener = offer(page).getByRole("button", { name: "Apri il libro Fisica 1" });
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("La velocità media è lo spazio percorso")).toBeVisible({ timeout: 30_000 });
+    await panel.getByRole("button", { name: "Aggiungi alla Libreria" }).click();
+    await expect(panel.getByText("È nella tua Libreria, sullo scaffale di Fisica 1.")).toBeVisible({ timeout: 30_000 });
+    const cover = shelf(page, "Fisica 1").getByRole("button", { name: "Fisica 1", exact: true });
+    await expect(cover).toBeVisible();
+    // Both keys arrive in the same instant, so the second finds the reader still leaving. The Library's heading cannot
+    // take the focus, so what a second close does to it is read from the calls to `focus`.
+    await page.evaluate(() => {
+      const calls: string[] = [];
+      const focus = HTMLElement.prototype.focus;
+      HTMLElement.prototype.focus = function (...args) {
+        calls.push(this.tagName);
+        return focus.apply(this, args);
+      };
+      (window as unknown as { focusCalls: string[] }).focusCalls = calls;
+      const target = document.activeElement ?? document.body;
+      for (let i = 0; i < 2; i += 1) target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    await expect(panel).toHaveCount(0);
+    await expect(cover).toBeFocused();
+    expect(await page.evaluate(() => (window as unknown as { focusCalls: string[] }).focusCalls)).not.toContain("H1");
+    // The reader opens and closes again after that.
+    await cover.click();
+    await expect(reader(page, "Fisica 1")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(reader(page, "Fisica 1")).toHaveCount(0);
+    await expect(cover).toBeFocused();
+  } finally {
+    await finish(run);
+  }
+});
+
+test("A focus the student chose elsewhere stays put when the book from the reader arrives", async () => {
+  test.setTimeout(180_000);
+  // Core answers the add four seconds late, so the add is pending long enough to move the focus meanwhile.
+  const run = await start({ PYXIS_E2E_READ_DELAY: "sources.importBook=4000" });
+  const { page } = run;
+  try {
+    await offer(page).getByRole("button", { name: "Apri il libro Fisica 1" }).click();
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("La velocità media è lo spazio percorso")).toBeVisible({ timeout: 30_000 });
+    const add = panel.getByRole("button", { name: "Aggiungi alla Libreria" });
+    await add.click();
+    await expect(panel.getByRole("button", { name: "Scarico…" })).toBeDisabled();
+    const chosen = page.getByRole("button", { name: "Collega una cartella" });
+    await chosen.focus();
+    await expect(chosen).toBeFocused();
+    await expect(panel.getByText("È nella tua Libreria, sullo scaffale di Fisica 1.")).toBeVisible({ timeout: 30_000 });
+    await expect(chosen).toBeFocused();
+  } finally {
+    await finish(run);
+  }
+});
+
+test("A file's menu reopened with the mouse takes every quick arrow press", async () => {
+  test.setTimeout(120_000);
+  const run = await start({}, false);
+  const { page } = run;
+  try {
+    const dots = page.getByRole("button", { name: /^Azioni per Appunti di fisica$/ });
+    const items = page.getByRole("menuitem");
+    const point = async () => {
+      const box = (await dots.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.up();
+    };
+    await expect(dots).toBeVisible();
+    await point();
+    await expect(items).toHaveCount(7);
+    await page.keyboard.press("Escape");
+    await expect(items).toHaveCount(0);
+    // Click, Escape, click again, then three presses with no pause: the third item, however often it was reopened.
+    for (const closes of [1, 3]) {
+      for (let i = 0; i < closes; i += 1) {
+        await point();
+        await expect(items.first()).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(items).toHaveCount(0);
+      }
+      await point();
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("ArrowDown");
+      await expect(items.nth(2)).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(items).toHaveCount(0);
+    }
+    // Eight presses at once end where eight presses with a pause between them end.
+    const focused = () => page.evaluate(() => document.activeElement?.textContent?.trim());
+    await point();
+    let seen: string | undefined;
+    for (let i = 0; i < 8; i += 1) {
+      await page.keyboard.press("ArrowDown");
+      // Each press is answered before the next: the focus is on an item other than the one before.
+      await expect.poll(focused).not.toBe(seen);
+      seen = await focused();
+    }
+    const slow = seen;
+    await page.keyboard.press("Escape");
+    await expect(items).toHaveCount(0);
+    await point();
+    for (let i = 0; i < 8; i += 1) await page.keyboard.press("ArrowDown");
+    await expect.poll(focused).toBe(slow);
+  } finally {
+    await finish(run);
+  }
+});
+
 test("The full list opens any book it does not have in the reader and adds it, and the offer is gone when offline", async () => {
   test.setTimeout(180_000);
   const run = await start();
