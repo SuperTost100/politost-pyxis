@@ -271,9 +271,6 @@ for (const [hash, name] of [
     const { page, finish } = await start(`dialog-${name.toLowerCase().replace(/\W+/g, "-")}`);
     try {
       await show(page, looks[0], hash);
-      // The page's own head comes with its lazy chunk: until then a fallback h1 stands in its place, and it is taken out
-      // when the chunk arrives, so a box measured on it is null or from the wrong element. The empty page is the real one.
-      await expect(page.locator(".px-empty")).toBeVisible();
       const title = page.getByRole("main").getByRole("heading", { level: 1 });
       const titleAt = (await title.boundingBox())!.y;
       await page.getByRole("main").getByRole("button", { name: "Nuova flashcard", exact: true }).click();

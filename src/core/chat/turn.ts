@@ -12,6 +12,7 @@ import {
   drawFigures,
   figureCaptions,
   figureFixer,
+  type FigureEvent,
   figureRunner,
   noSandbox,
   type FigureRunner,
@@ -125,6 +126,8 @@ type AskInput = {
   embed?: Embedder | null;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  /** Hears each figure of the answer as it is drawn (its picture), or as it is left out (`null`), while the others go on. */
+  onFigure?: (event: FigureEvent) => void;
   /** The passages this turn's reply may cite, by number, before it streams. A stored reply labels them the same way. */
   onPassages?: (passages: Array<{ index: number; label: string }>) => void;
   /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
@@ -1056,22 +1059,32 @@ async function answer(
       : null;
   const skippedImages = saved?.skipped.length ? { skippedImages: saved.skipped } : {};
   /** What arrived, saved as a reply that stopped early: marked stopped, or with the failure, and offering Continue. */
-  const stopReply = (text: string, error: string | null) => ({
-    ...finishReply(db, chatId, text, {
-      messageId,
-      provider: answering.provider,
-      model: answering.model,
-      selected,
-      attached: thisTurnFile,
-      widened: widened || Boolean(input.resumeFrom?.widened),
-      within,
-      searched,
-      template,
-      citations,
-      stopped: true,
-      error,
-      now,
-    }),
+  const stopReply = (
+    text: string,
+    error: string | null,
+    drawn?: { markdown: string; figures: Record<string, string> },
+  ) => ({
+    ...finishReply(
+      db,
+      chatId,
+      text,
+      {
+        messageId,
+        provider: answering.provider,
+        model: answering.model,
+        selected,
+        attached: thisTurnFile,
+        widened: widened || Boolean(input.resumeFrom?.widened),
+        within,
+        searched,
+        template,
+        citations,
+        stopped: true,
+        error,
+        now,
+      },
+      drawn,
+    ),
     ...skippedImages,
   });
   try {
@@ -1126,8 +1139,9 @@ async function answer(
   const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
-  // Stop pressed while the figures are drawn or corrected: the whole answer is already read, so it is kept as a stopped
-  // reply with no figures, like any other stop, and the chat stays.
+  // The figures are drawn together and each is told as it is drawn (`onFigure`), so the page shows it in its place without
+  // waiting for the others. Stop pressed meanwhile: the whole answer is already read, so it is kept as a stopped reply
+  // with the figures that were drawn before the stop, and the ones still in progress are left out. The chat stays.
   let drawn;
   try {
     drawn = await drawFigures(parsed.body, {
@@ -1136,12 +1150,17 @@ async function answer(
       // The fix call is counted with this chat's tokens and stops with the turn.
       fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
       signal: input.signal,
+      onFigure: input.onFigure,
     });
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
       return stopReply(resume + result.text, null);
     throw err;
+  }
+  if (drawn.stopped) {
+    requireTutorAvailable(db);
+    return stopReply(resume + result.text, null, drawn);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1192,9 +1211,18 @@ function finishReply(
   chatId: string,
   text: string,
   meta: Omit<SavedReply, "figures">,
+  /** The text with the figures that were drawn before the stop and their pictures, when the stop came while they were. */
+  drawn?: { markdown: string; figures: Record<string, string> },
 ): AskResult {
+  if (drawn)
+    return saveReply(
+      db,
+      chatId,
+      { body: drawn.markdown, followups: [] },
+      { ...meta, ...(Object.keys(drawn.figures).length ? { figures: drawn.figures } : {}) },
+    );
   const parsed = splitFollowups(text);
-  // Nothing draws a stopped reply's figures, so their blocks go.
+  // A reply stopped while it was written has nothing drawn, so its figure blocks go.
   parsed.body = mapFigureBlocks(parsed.body, () => "");
   return saveReply(db, chatId, { body: parsed.body, followups: [] }, meta);
 }

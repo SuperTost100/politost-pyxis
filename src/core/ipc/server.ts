@@ -652,6 +652,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.reviewSession":
@@ -741,6 +742,7 @@ async function dispatchValidated(
         ...requests["chats.ask"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
         onQuestion: (id, chatId) => emit?.({ type: "question", id, chatId }),
       });
@@ -749,6 +751,7 @@ async function dispatchValidated(
         ...requests["chats.regenerate"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
       });
     case "sources.books":

@@ -4,6 +4,7 @@ import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
+import type { FigureEvent } from "../math/figures";
 import { askTurn, chatContext, chatPickedSources, chatPlan, chatSubject, chatSubjectBy, clearChatContext, deleteChat, heldSources, listChats, rateMessage, readChat, regenerateTurn, renameChat, seedChat, setChatSubject } from "./turn";
 import type { AnswerWay } from "./way";
 
@@ -123,6 +124,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
+      onFigure?: (event: FigureEvent) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
       files?: string[];
     }) {
@@ -140,6 +142,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       allowGeneral?: boolean;
       signal?: AbortSignal;
       onDelta?: (text: string) => void;
+      onFigure?: (event: FigureEvent) => void;
       onPassages?: (passages: Array<{ index: number; label: string }>) => void;
       onQuestion?: (messageId: string, chatId: string) => void;
       subject?: string | null;

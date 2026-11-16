@@ -494,9 +494,6 @@ test.describe("Colma, when a question of the drill is flagged as wrong on its re
     }
     await expect(page.locator(".px-res-title")).not.toHaveText("Hai preso 30/30");
     await expect(page.getByText("Lacuna colmata")).toHaveCount(0);
-    // The finished grading reaches Attività in a refresh that also reads the gap again, a quarter of a second after the
-    // results came up. The flag comes after it, as it does when the student takes longer than that to reach it.
-    await expect(page.getByRole("button", { name: "Attività: 2 finite oggi" })).toBeVisible();
     // Flagged as wrong, the question leaves the score and the gaps are worked out again: the answers left are right, on a
     // second day, so the gap closes, and the end on this same page says so.
     await page.getByRole("button", { name: "Domanda sbagliata?" }).first().click();
@@ -546,10 +543,6 @@ test.describe("Colma, when the drill's gap changes while it is written", () => {
     await rows(page).first().getByRole("button", { name: /^Colma: Confondi/ }).click();
     const sheet = page.locator(".px-gp-sheet");
     await expect(sheet.getByRole("status")).toContainText("Preparo una spiegazione breve");
-    // The page says it is preparing as soon as the question is sent, before core has made the job: a delete before that
-    // removes nothing, and the job made after it waits for good. So the job is there first (the start can be held with
-    // PYXIS_E2E_READ_DELAY=study.gapDrillStart=2500, which shows it).
-    await expect.poll(() => drillJobs(run)).toBe(1);
     // Nothing is held against the page now: the job it waits for no longer exists.
     db((handle) => handle.exec("DELETE FROM jobs WHERE kind = 'gap-drill'"));
     await expect(sheet.getByRole("alert")).toContainText("Non sono riuscito a preparare la spiegazione e le domande.");

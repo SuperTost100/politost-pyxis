@@ -125,9 +125,6 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
     await expect(answer).toHaveText("Ultima risposta: conferma");
     await opener.click();
     await confirm.getByRole("button", { name: "Archivia invece" }).click();
-    // Known and unexplained: on the Intel Mac runner (run 43835591394) the click above did nothing and the answer stayed
-    // "conferma" for 15 s. It did not repeat in 40 loops of this step under CPU throttling and stalls on Linux. See
-    // pull request 491; a trace of the next failure on macOS is kept in the job's artifact.
     await expect(answer).toHaveText("Ultima risposta: l'azione in più");
 
     // A click outside closes a dialog with nothing typed in it.

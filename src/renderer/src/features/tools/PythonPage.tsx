@@ -77,21 +77,11 @@ export function PythonPage() {
     setSnippets(next);
     writeSnippets(localStorage, next);
   }
-  // Ctrl or Cmd+Enter pressed while the page has not yet read whether Python is there is kept, and runs the code once the
-  // read says it is, as the Run button's click does once it is enabled; pressed when Python is known to be missing, it
-  // does nothing, and the notice above the editor says why.
-  const [runWhenKnown, setRunWhenKnown] = useState(false);
   function onKeyDown(event: KeyboardEvent) {
     if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
     event.preventDefault();
     if (canRun) void run();
-    else if (runtime.isPending && !busy) setRunWhenKnown(true);
   }
-  useEffect(() => {
-    if (!runWhenKnown || runtime.isPending) return;
-    setRunWhenKnown(false);
-    if (canRun) void run();
-  }, [runWhenKnown, runtime.isPending, canRun]);
   const megabytes = mb(runtime.data?.totalBytes ?? 0);
   async function download() {
     setStarting(true);

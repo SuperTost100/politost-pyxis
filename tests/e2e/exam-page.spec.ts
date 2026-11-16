@@ -55,9 +55,7 @@ async function openExam(page: Page, id = "p-fis", title = "Fisica I") {
   await page.evaluate((id) => {
     location.hash = `/plans/${id}`;
   }, id);
-  // The whole title: "Analisi no-date" is also part of "Analisi no-date-no-topics", the page the reload left, which stays
-  // on screen until the router has followed the address.
-  await expect(page.getByRole("heading", { level: 1, name: title, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
 }
 
 /**

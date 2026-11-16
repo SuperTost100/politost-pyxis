@@ -88,10 +88,6 @@ jobs:
         if: matrix.shard == 1
         run: npm test -- --maxWorkers=2
       - name: Recorded Electron end-to-end checks
-        env:
-          # A trace of each failed test costs 10 to 25 % of a short spec, so only the macOS jobs, where failures have gone
-          # unexplained, record it. The failed job's artifact carries the traces (see CONTRIBUTING.md).
-          PYXIS_TRACE: ${{ runner.os == 'macOS' && '1' || '0' }}
         run: |
           # The OCR data and window checks run first, in shard 1, to expose core failures early.
           if [ "${{ matrix.shard }}" = 1 ]; then

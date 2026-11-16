@@ -201,30 +201,7 @@ test("the exam page suggests the next part of a lesson in parts, picks up from i
     await other.click();
     await page.getByRole("menuitem", { name: /^Flashcard/ }).click();
     await backToExam(page, /#\/plans\/p-an2\/cards\/t-fun$/);
-    // The other keys that move through a menu reach it the same way when they come before it has the focus: sent in the
-    // same task as the click that opens it again, in order, they lead where the menu's own keys would.
-    for (const [keys, item] of [
-      [["End", "ArrowUp"], /^Flashcard/],
-      [["ArrowDown", "ArrowDown", "Home"], /^Esercizi/],
-      [["ArrowUp"], /^Rileggi una parte/],
-    ] as const) {
-      await other.click();
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("menuitem")).toHaveCount(0);
-      await other.evaluate((button: HTMLElement, keys) => {
-        button.click();
-        for (const key of keys) button.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
-      }, keys);
-      await expect(page.getByRole("menuitem", { name: item })).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("menuitem")).toHaveCount(0);
-    }
-    // Rileggi una parte lists the parts read, with the right arrow. The menu is opened again right after it closed, when
-    // it is hidden for a few frames and cannot take the focus, so the three down arrows reach its button first. The menu
-    // keeps them in order and takes the focus on the item they lead to, the third.
-    await other.click();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menuitem")).toHaveCount(0);
+    // Rileggi una parte lists the parts read, with the right arrow.
     await other.click();
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");

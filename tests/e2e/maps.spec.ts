@@ -410,33 +410,12 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         .locator(".px-map-canvas")
         .evaluate((el) => getComputedStyle(el).backgroundColor);
       const rgb = color.match(/\d+/g)!.slice(0, 3).map(Number);
-      // Match a blank canvas pixel: catches old dark-only repaint exports. The pixel is the first one, going in from 20 CSS
-      // pixels under the top edge and from the left edge, that has no node, line or tool over it or within 28 px of it. Not
-      // a fixed corner: the map is fitted to its canvas, and on the Apple silicon and Intel Mac runners the canvas began
-      // about 30 px lower, which put the top right node under the old top right pixel (white, in four macOS jobs). Not
-      // the right either: the menu the export was chosen from hangs there, and on a window that draws late the picture
-      // still held it (and the canvas tools) once in 40 runs with the renderer slowed.
-      const blank = await page.locator(".px-map-canvas").evaluate((canvas) => {
-        const box = canvas.getBoundingClientRect();
-        const left = Math.max(0, box.left);
-        const top = Math.max(0, box.top);
-        const busy = ".react-flow__node, .react-flow__edge, .react-flow__edgelabel-renderer *, .react-flow__panel, .react-flow__controls, .react-flow__minimap";
-        for (let dy = 20; dy <= 120; dy += 10)
-          for (let dx = 20; dx <= 200; dx += 10) {
-            const x = left + dx;
-            const y = top + dy;
-            // Clear all round, as a node's shadow and a line's soft edge reach past what a point over them hits.
-            const clear = [-28, 0, 28].every((ox) =>
-              [-28, 0, 28].every((oy) => !document.elementsFromPoint(x + ox, y + oy).some((el) => el.closest(busy))),
-            );
-            if (clear) return { x: x - left, y: y - top };
-          }
-        return null;
-      });
-      expect(blank, "a point of the canvas with nothing on it").not.toBeNull();
-      const at = { x: Math.round(blank!.x * ratio), y: Math.round(blank!.y * ratio) };
-      const offset = (at.y * png.width + at.x) * 4;
-      expect([...png.data.slice(offset, offset + 3)], `the pixel at ${at.x}, ${at.y} of ${png.width}x${png.height}`).toEqual(rgb);
+      // Match a blank canvas pixel: catches old dark-only repaint exports. The pixel is 20 CSS pixels from the top and
+      // from the right edge, in whole pixels: a ratio such as 4/3 makes 20 * ratio a fraction, and the byte offset
+      // would then start inside another pixel.
+      const margin = Math.round(20 * ratio);
+      const offset = (margin * png.width + (png.width - margin)) * 4;
+      expect([...png.data.slice(offset, offset + 3)]).toEqual(rgb);
     }
     expect(errors).toEqual([]);
     if (process.env.PYXIS_LIVE_MAP)

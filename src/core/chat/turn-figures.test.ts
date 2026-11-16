@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import type { EngineResult } from "../engine/funnel";
 import type { FigureRunner } from "../math/figures";
@@ -228,17 +228,19 @@ it("draws the code of a figure as written, and the corrected code as the fix cal
   expect(result.message!.body).toContain(figure("Un circuito che non si disegna.", label));
 });
 
-it("keeps the whole answer when Stop is pressed while a figure is being corrected, with the figures left out, and keeps the chat", async () => {
+it("keeps the whole answer when Stop is pressed while a figure is being corrected, with the figure that was already drawn, and keeps the chat", async () => {
   const stop = new AbortController();
   const { db, run } = setup([], stop);
   const result = await askTurn(db, { text: "Com'è fatto il seno?", allowGeneral: true, run, python, signal: stop.signal });
   const message = result.message!;
-  // What the student had read is saved whole, marked stopped; no figure block is left, and none is stored.
+  // What the student had read is saved whole, marked stopped. The sine had drawn before the stop and stays with its
+  // picture; the figure being corrected is left out.
   expect(message.stopped).toBe(true);
   expect(message.body).toContain("Il seno oscilla tra $-1$ e $1$.");
   expect(message.body).toContain("Il periodo è $2\\pi$.");
-  expect(message.body).not.toContain("pyxis-figure");
-  expect(message.figures).toBeUndefined();
+  expect(message.body).toContain(figure("Il grafico di $\\sin x$.", sine));
+  expect(message.body).not.toContain("raise ValueError");
+  expect(message.figures).toEqual({ [figureKey(sine)]: PNG });
   const saved = readChat(db, result.chatId);
   expect(saved.at(-1)!.body).toBe(message.body);
   expect(db.prepare("SELECT COUNT(*) FROM chats WHERE id = ?").pluck().get(result.chatId)).toBe(1);
@@ -266,4 +268,49 @@ it("asks for no fix in a turn that offers no figures", async () => {
   await askTurn(db, { text: "Il seno?", allowGeneral: true, run, python: null });
   await askTurn(db, { text: "Il seno?", way: "guided", run, python });
   expect(fixCalls).toEqual([]);
+});
+
+it("tells the chat each figure as it is drawn, and a stop keeps the ones already drawn with their images, as the saved reply", async () => {
+  const first = "x = np.linspace(0, 1)\nplt.plot(x, x)";
+  const last = "x = np.linspace(0, 2)\nplt.plot(x, x**2)";
+  const reply = ["Tre figure.", "", figure("La prima.", first), "", figure("Una che non si disegna.", "raise ValueError('no')"), "", figure("L'ultima.", last), "", "Fine."].join("\n");
+  const { db, run } = setup();
+  const stop = new AbortController();
+  let fixing!: () => void;
+  const asked = new Promise<void>((resolve) => {
+    fixing = resolve;
+  });
+  const replying: typeof run = async (input) => {
+    if (isFigureFixCall(input.system)) {
+      // The fix is out and never comes back; the stop is what ends it.
+      fixing();
+      return new Promise<EngineResult>((_, reject) => stop.signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }
+    return input.system?.startsWith("Extract mathematical claims") ? run(input) : { text: reply, provider: "claude", model: "m", inputTokens: 1 };
+  };
+  const seen: Array<{ key: string; image: string | null }> = [];
+  const asking = askTurn(db, {
+    text: "Disegna tre figure.",
+    allowGeneral: true,
+    run: replying,
+    python,
+    signal: stop.signal,
+    onFigure: (figure) => seen.push(figure),
+  });
+  await asked;
+  // While the third is being corrected the other two are told, each under the key of its block.
+  await vi.waitFor(() => expect(seen).toHaveLength(2));
+  expect(seen.map((figure) => figure.key).sort()).toEqual([figureKey(first), figureKey(last)].sort());
+  stop.abort();
+  const result = await asking;
+  const message = result.message!;
+  expect(message.stopped).toBe(true);
+  expect(message.figures).toEqual({ [figureKey(first)]: PNG, [figureKey(last)]: PNG });
+  expect(message.body).toContain(figure("La prima.", first));
+  expect(message.body).toContain(figure("L'ultima.", last));
+  expect(message.body).not.toContain("raise ValueError");
+  expect(message.body).toContain("Fine.");
+  // What was shown is what is saved: a reload finds the same two pictures and the chat is still there.
+  expect(readChat(db, result.chatId).at(-1)!.figures).toEqual(message.figures);
+  expect(db.prepare("SELECT COUNT(*) FROM chats WHERE id = ?").pluck().get(result.chatId)).toBe(1);
 });

@@ -84,14 +84,6 @@ describe("after the answer", () => {
 
   it("leaves the focus where the student moved it meanwhile", () => {
     expect(focusFollowsAnswer(option, elsewhere, body)).toBe(false);
-    expect(focusFollowsAnswer(option, elsewhere, body, {})).toBe(false);
-  });
-
-  it("moves the focus on from the part's title, where the page puts it as a part arrives", () => {
-    const title = {};
-    expect(focusFollowsAnswer(body, title, body, title)).toBe(true);
-    expect(focusFollowsAnswer(option, title, body, title)).toBe(true);
-    expect(focusFollowsAnswer(body, title, body)).toBe(false);
   });
 });
 

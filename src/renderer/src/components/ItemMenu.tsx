@@ -1,7 +1,7 @@
 import { Button as AntButton, Dropdown, type MenuProps } from "antd";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type HTMLAttributes, type MutableRefObject, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { clampedBy, isMenuMoveKey, menuTrigger, movedBy, pendingItem, type MenuMoveKey, type MenuPoint } from "../lib/itemMenu";
+import { clampedBy, menuTrigger, movedBy, type MenuPoint } from "../lib/itemMenu";
 import { Icon, type IconName } from "./Icon";
 import "./Button.css";
 import "./ItemMenu.css";
@@ -140,8 +140,8 @@ function MenuRegion({
 }: {
   label: string;
   open: boolean;
-  /** The keys that move through the items (arrows, Home, End) pressed on the button or the item before the menu took the focus: the menu then takes it on the item they end on. */
-  arrow?: MutableRefObject<MenuMoveKey[] | null>;
+  /** An arrow pressed on the button or the item before the menu took the focus: the menu then takes it on its first or last item. */
+  arrow?: MutableRefObject<"first" | "last" | null>;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -149,9 +149,9 @@ function MenuRegion({
     if (!open) return;
     const take = () => {
       const region = ref.current;
-      const pending = arrow?.current;
-      const items = pending ? [...(region?.querySelectorAll<HTMLElement>(ROOT_ITEMS) ?? [])] : [];
-      const target = pending ? items[pendingItem(pending, items.length)] : region?.querySelector<HTMLElement>(".ant-dropdown-menu");
+      const edge = arrow?.current;
+      const items = edge ? [...(region?.querySelectorAll<HTMLElement>(ROOT_ITEMS) ?? [])] : [];
+      const target = edge ? (edge === "first" ? items[0] : items.at(-1)) : region?.querySelector<HTMLElement>(".ant-dropdown-menu");
       if (!target) return;
       target.focus({ preventScroll: true });
       // A popup not yet in the page takes no focus, and the arrow waits for the next try.
@@ -393,11 +393,10 @@ export function useItemMenu({
   };
   // The item the menu belongs to, read when it opens: the menu closes when the page scrolls under it or the window resizes.
   const item = useRef<Element | null>(null);
-  // The keys that move through the items (arrows, Home, End) pressed on the item after the menu opened but before it
-  // took the focus, as a quick Shift+F10 and down arrow do on a slow computer. The menu takes the focus on the item they
-  // end on, as a menu button's does, and the page does not scroll, which would close the menu. Only a menu with a
-  // region takes the focus itself.
-  const arrow = useRef<MenuMoveKey[] | null>(null);
+  // An arrow pressed on the item after the menu opened but before it took the focus, as a quick Shift+F10 and down arrow
+  // do on a slow computer. The menu takes the focus on its first or last item, as a menu button's does, and the page does
+  // not scroll, which would close the menu. Only a menu with a region takes the focus itself.
+  const arrow = useRef<"first" | "last" | null>(null);
   const trigger = menuTrigger(
     (point, byKey, target) => {
       shown.current = true;
@@ -414,11 +413,11 @@ export function useItemMenu({
       const early =
         region &&
         shown.current &&
-        isMenuMoveKey(event.key) &&
+        (event.key === "ArrowDown" || event.key === "ArrowUp") &&
         !(event.target instanceof Element && event.target.closest(".px-item-menu"));
       if (!early) return trigger.onKeyDown(event);
       event.preventDefault();
-      arrow.current = [...(arrow.current ?? []), event.key as MenuMoveKey];
+      arrow.current = event.key === "ArrowDown" ? "first" : "last";
     },
   };
   useMenuLifetime(at !== null, () => item.current, () => close(true, false));
@@ -583,10 +582,9 @@ export function MenuButton({
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, [open]);
-  // The menu takes the focus as it opens. The keys that move through the items pressed on the button before it could are
-  // kept for the menu, in order, so a quick Enter and down arrow still reach the first item, and three down arrows the
-  // third.
-  const arrow = useRef<MenuMoveKey[] | null>(null);
+  // The menu takes the focus as it opens. An arrow pressed on the button before it could is kept for the menu, so a
+  // quick Enter and down arrow still reach the first item.
+  const arrow = useRef<"first" | "last" | null>(null);
   // The menu closes when the page scrolls, and follows its button when the window is resized or the layout shifts it.
   useMenuLifetime(
     open,
@@ -665,9 +663,9 @@ export function MenuButton({
               : undefined
           }
           onKeyDown={(event) => {
-            if (!open || !isMenuMoveKey(event.key)) return rightClick ? own.bind.onKeyDown(event) : undefined;
+            if (!open || (event.key !== "ArrowDown" && event.key !== "ArrowUp")) return rightClick ? own.bind.onKeyDown(event) : undefined;
             event.preventDefault();
-            arrow.current = [...(arrow.current ?? []), event.key];
+            arrow.current = event.key === "ArrowDown" ? "first" : "last";
           }}
           title={dots ? label : undefined}
           disabled={disabled}

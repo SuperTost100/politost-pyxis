@@ -33,32 +33,6 @@ export function pointBelow(box: { left: number; bottom: number; right: number })
   return { x: Math.min(box.left + 8, box.right), y: box.bottom };
 }
 
-/** The keys that move through a menu's items, which the menu's own key handling answers once it has the focus. */
-export type MenuMoveKey = "ArrowDown" | "ArrowUp" | "Home" | "End";
-
-/** Whether `key` is one of the keys that move through a menu's items. */
-export function isMenuMoveKey(key: string): key is MenuMoveKey {
-  return key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End";
-}
-
-/**
- * Which of `count` items the keys end on when a menu was sent them before it had the focus, as a slow computer delivers
- * them, in the order they came. The menu has no active item then, so the first down arrow goes to the first item and the
- * first up arrow to the last, Home and End go to the first and the last, and each key after moves on from there. The list
- * is a ring, as the menu's own keys make it. Returns -1 when there is no item to land on.
- */
-export function pendingItem(keys: readonly MenuMoveKey[], count: number): number {
-  if (count <= 0) return -1;
-  let at = -1;
-  for (const key of keys) {
-    if (key === "Home") at = 0;
-    else if (key === "End") at = count - 1;
-    else if (key === "ArrowDown") at = at < 0 ? 0 : (at + 1) % count;
-    else at = at < 0 ? count - 1 : (at - 1 + count) % count;
-  }
-  return at;
-}
-
 /** The edges of an element's box, as `getBoundingClientRect` gives them. */
 type Box = { left: number; top: number; right: number; bottom: number };
 

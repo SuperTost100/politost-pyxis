@@ -23,7 +23,12 @@ export type Turn = {
   readonly live: ReturnType<typeof liveValue<string>>;
   /** The passages core retrieved for this turn. Only these become citation chips while the reply streams. */
   readonly passages: ReturnType<typeof liveValue<TurnPassage[]>>;
-  /** Takes a stream event: the reply so far, applied at most every 100 ms, or the turn's passages. */
+  /**
+   * The figures of the reply as they are drawn, by the key of their block as written: the picture, or "" for one that was
+   * left out, which stops showing its working state. The page shows each in its place while the others go on.
+   */
+  readonly figures: ReturnType<typeof liveValue<Record<string, string>>>;
+  /** Takes a stream event: the reply so far, applied at most every 100 ms, a figure, or the turn's passages. */
   readonly onEvent: (event: unknown) => void;
   stop: () => void;
   /** The chat was deleted while the reply was written: the turn ends quietly, without putting the message back. */
@@ -58,6 +63,7 @@ export const turns = {
     const live = liveValue("");
     const passages = liveValue<TurnPassage[]>([]);
     const questionId = liveValue<string | null>(null);
+    const figures = liveValue<Record<string, string>>({});
     const chat = liveValue(from);
     // Each delta carries the whole reply so far. Rendering it at most every 100 ms keeps long answers with math responsive.
     const text = latestEvery<string>(100, live.set);
@@ -69,8 +75,17 @@ export const turns = {
       after,
       live,
       passages,
+      figures,
       onEvent(event) {
-        const data = event as { type?: string; text?: unknown; passages?: unknown; id?: unknown; chatId?: unknown };
+        const data = event as {
+          type?: string;
+          text?: unknown;
+          passages?: unknown;
+          id?: unknown;
+          chatId?: unknown;
+          key?: unknown;
+          image?: unknown;
+        };
         if (typeof data.text === "string") text.push(data.text);
         else if (data.type === "question" && typeof data.id === "string") {
           questionId.set(data.id);
@@ -78,6 +93,8 @@ export const turns = {
         }
         else if (data.type === "passages" && Array.isArray(data.passages))
           passages.set(data.passages as TurnPassage[]);
+        else if (data.type === "figure" && typeof data.key === "string")
+          figures.set({ ...figures.get(), [data.key]: typeof data.image === "string" ? data.image : "" });
       },
       questionId,
       stop: () => undefined,
