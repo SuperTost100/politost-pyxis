@@ -18,7 +18,7 @@ import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
 import { SessionEnd, type Upcoming } from "./SessionEnd";
-import { RATINGS, rateCounts, type RatingName, type SeenCard } from "./sessionEnd";
+import { RATINGS, type RatingName, type SeenCard } from "./sessionEnd";
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";
@@ -366,11 +366,15 @@ export function CardsPage() {
     : dueLater.isFetching || !dueLater.data
       ? { status: "loading" }
       : { status: "ready", ...dueLater.data };
-  // The session is on its last screen: a card waits for its next learning step, or nothing is due any more.
-  const ended = !reviewing && seen.length > 0 && !card && deck.isSuccess;
+  // The answers the end lists. A Ripasso reads them from its stored reviews, so they are still there after the student
+  // leaves and comes back; its last answer can end the review at once, which leaves no stored session to read.
+  const answers = reviewing ? (reviewQueue.data?.answers ?? seen) : seen;
+  // The session is on its last screen: a card waits for its next learning step, or nothing is due any more; in a Ripasso
+  // the cards are done.
+  const ended = answers.length > 0 && !card && (reviewing ? reviewQueue.isSuccess : deck.isSuccess);
   const waitingCards = useMemo(
-    () => Object.entries(learning).map(([cardId, dueAt]) => ({ cardId, dueAt })),
-    [learning],
+    () => (reviewing ? [] : Object.entries(learning).map(([cardId, dueAt]) => ({ cardId, dueAt }))),
+    [learning, reviewing],
   );
   useEffect(() => {
     setEditing(false);
@@ -380,7 +384,6 @@ export function CardsPage() {
     setFace(false);
     setPhase(null);
   }, [card?.id]);
-  const counts = rateCounts(seen);
 
   async function refresh() {
     await Promise.all([
@@ -814,11 +817,42 @@ export function CardsPage() {
           ) : ended ? (
             <>
               <SessionEnd
-                seen={seen}
+                seen={answers}
                 waiting={waitingCards}
                 upcoming={upcoming}
                 onRetry={() => void dueLater.refetch()}
                 stopBusy={Boolean(back?.busy)}
+                review={
+                  reviewing
+                    ? {
+                        next: reviewQueue.data?.next ?? "done",
+                        action:
+                          reviewQueue.data?.next === "questions" ? (
+                            <Button
+                              type="primary"
+                              shape="round"
+                              onClick={() =>
+                                navigate(
+                                  `/plans/${planId ?? ""}/review/questions?attempt=${encodeURIComponent(reviewQueue.data?.attemptId ?? "")}`,
+                                )
+                              }
+                            >
+                              {t("cards.reviewQuestions")}
+                            </Button>
+                          ) : reviewQueue.data?.next === "waiting" ? (
+                            <Notice
+                              tone="info"
+                              action={{
+                                label: t("cards.reviewWaitingOpen"),
+                                onClick: () => navigate(`/plans/${planId ?? ""}/review`),
+                              }}
+                            >
+                              {t("cards.reviewWaiting", { count: reviewQueue.data.progress.questionsPending })}
+                            </Notice>
+                          ) : null,
+                      }
+                    : undefined
+                }
                 onStop={() => (back ? back.go() : leaveTo("/flashcards"))}
               />
               {capped ? (
@@ -1031,7 +1065,7 @@ export function CardsPage() {
             </Button>
           </div>
         ))}
-        {reviewing && reviewQueue.data?.next === "questions" && !card ? (
+        {reviewing && reviewQueue.data?.next === "questions" && !card && !ended ? (
           <Button
             type="primary"
             shape="round"
@@ -1044,7 +1078,7 @@ export function CardsPage() {
             {t("cards.reviewQuestions")}
           </Button>
         ) : null}
-        {reviewing && reviewQueue.data?.next === "waiting" && !card ? (
+        {reviewing && reviewQueue.data?.next === "waiting" && !card && !ended ? (
           <Notice
             tone="info"
             action={{
@@ -1054,17 +1088,6 @@ export function CardsPage() {
           >
             {t("cards.reviewWaiting", { count: reviewQueue.data.progress.questionsPending })}
           </Notice>
-        ) : null}
-        {reviewing && seen.length > 0 && !card ? (
-          <p className="body" role="status">
-            {t("cards.summary", {
-              seen: seen.length,
-              again: counts.again,
-              hard: counts.hard,
-              good: counts.good,
-              easy: counts.easy,
-            })}
-          </p>
         ) : null}
       </section>
     </StudyLayout>

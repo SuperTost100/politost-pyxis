@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 import { daysBetween } from "../../../../shared/local-day";
@@ -41,6 +41,10 @@ const frontText = (front: string) => (isCloze(front) ? clozeAnswer(front) : fron
  * stop for today. On the right, the cards seen under the answer the student gave, and what comes back later.
  *
  * It stays on screen while the card counts down. When the card is due the page shows it and this goes.
+ *
+ * The card phase of a Ripasso ends the same way (`review`): its cards are answered once each and nothing counts down, so
+ * the left column says the flashcards are done, and its action (the way on to the questions, or the notice that they
+ * are still being prepared) sits where "Per oggi basta" does.
  */
 export function SessionEnd({
   seen,
@@ -49,6 +53,7 @@ export function SessionEnd({
   onRetry,
   onStop,
   stopBusy,
+  review,
 }: {
   seen: SeenCard[];
   waiting: WaitingCard[];
@@ -58,6 +63,8 @@ export function SessionEnd({
   /** "Per oggi basta": leaves the way the bar's back control does. */
   onStop: () => void;
   stopBusy: boolean;
+  /** Set on the card phase of a Ripasso: what comes next, and the control for it. */
+  review?: { next: "cards" | "questions" | "waiting" | "done"; action: ReactNode };
 }) {
   const { t, i18n } = useTranslation();
   const titleId = useId();
@@ -82,34 +89,51 @@ export function SessionEnd({
   const later = upcoming.status === "ready" ? upcoming.later : [];
   const next = upcoming.status === "ready" ? upcoming.next : null;
   const laterTotal = later.reduce((sum, row) => sum + row.count, 0);
-  const phase =
-    soonest != null ? "waiting" : upcoming.status === "failed" ? "unknown" : later.length > 0 ? "later" : "done";
+  const phase = review
+    ? "review"
+    : soonest != null
+      ? "waiting"
+      : upcoming.status === "failed"
+        ? "unknown"
+        : later.length > 0
+          ? "later"
+          : "done";
   // A card still to come needs no read; a finished session waits for what comes back later before it words its ending.
-  const ready = phase === "waiting" || upcoming.status !== "loading";
+  const ready = phase === "waiting" || phase === "review" || upcoming.status !== "loading";
 
   const title =
-    phase === "later" ? t("cards.endLaterTitle") : phase === "unknown" ? t("cards.endUnknownTitle") : t("cards.endDone");
+    phase === "later"
+      ? t("cards.endLaterTitle")
+      : phase === "unknown"
+        ? t("cards.endUnknownTitle")
+        : phase === "review"
+          ? t("cards.endReviewTitle")
+          : t("cards.endDone");
+  /** What follows "You gave N answers", by how the session ended. */
+  const rest = () => {
+    if (review)
+      return t(
+        review.next === "questions"
+          ? "cards.endReviewQuestions"
+          : review.next === "waiting"
+            ? "cards.endReviewWaiting"
+            : "cards.endReviewDone",
+      );
+    if (phase === "unknown") return t("cards.endUnknown");
+    if (phase === "later") return t("cards.endLater", { count: laterTotal, time: clock.format(later[0]!.at) });
+    if (!next) return "";
+    return t("cards.endNext", {
+      count: next.count,
+      when:
+        daysBetween(now, next.at) === 1
+          ? t("cards.endTomorrow")
+          : t("cards.endOnDay", { day: dayName.format(next.at) }),
+    });
+  };
   const text =
     phase === "waiting"
       ? t("cards.endWaitingText", { count: waiting.length })
-      : [
-          t("cards.endGave", { count: seen.length }),
-          phase === "unknown"
-            ? t("cards.endUnknown")
-            : phase === "later"
-              ? t("cards.endLater", { count: laterTotal, time: clock.format(later[0]!.at) })
-              : next
-                ? t("cards.endNext", {
-                    count: next.count,
-                    when:
-                      daysBetween(now, next.at) === 1
-                        ? t("cards.endTomorrow")
-                        : t("cards.endOnDay", { day: dayName.format(next.at) }),
-                  })
-                : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
+      : [t("cards.endGave", { count: seen.length }), rest()].filter(Boolean).join(" ");
 
   // Said once when the state changes, in a region that was already there: the headline, or for a card still to come the
   // wait as the page has always put it.
@@ -133,7 +157,11 @@ export function SessionEnd({
     <div className="px-end">
       <section className="px-end-summary" aria-labelledby={titleId}>
         <p className="small px-end-kicker">
-          {phase === "waiting" ? t("cards.endWaiting", { count: waiting.length }) : t("cards.endKicker")}
+          {phase === "waiting"
+            ? t("cards.endWaiting", { count: waiting.length })
+            : phase === "review"
+              ? t("cards.reviewTitle")
+              : t("cards.endKicker")}
         </p>
         {phase === "waiting" ? (
           <p id={titleId} className="px-end-clock" role="timer" aria-live="off">
@@ -166,6 +194,7 @@ export function SessionEnd({
             <p className="px-end-fine">{t("cards.endStopHint", { count: waiting.length })}</p>
           </div>
         ) : null}
+        {review?.action ? <div className="px-end-stop">{review.action}</div> : null}
         {phase === "unknown" ? (
           <div className="px-end-stop">
             <Button
