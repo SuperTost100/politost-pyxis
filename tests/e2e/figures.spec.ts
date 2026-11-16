@@ -321,8 +321,11 @@ test("a circuit whose code reaches for the network or the host fails with an err
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const leak = `http://127.0.0.1:${(server.address() as AddressInfo).port}/leak`;
-  const planted = join(userData, "planted.txt");
-  const secretFile = join(userData, "secret.txt");
+  // A folder of its own, which only the test writes to: the profile's folder next to it fills with the app's files.
+  const bait = join(userData, "bait");
+  mkdirSync(bait);
+  const planted = join(bait, "planted.txt");
+  const secretFile = join(bait, "secret.txt");
   const secret = `SECRET-${Math.random().toString(36).slice(2)}`;
   writeFileSync(secretFile, secret);
   // The same paths with forward slashes, which is how the sandbox's own file system spells a path on every platform.
@@ -331,7 +334,7 @@ test("a circuit whose code reaches for the network or the host fails with an err
   const slashed = (path: string) => path.replaceAll("\\", "/");
   const hostFiles = () => ({
     secret: readFileSync(secretFile, "utf8"),
-    folder: readdirSync(userData).sort(),
+    folder: readdirSync(bait).sort(),
   });
   const hostBefore = hostFiles();
   // Each adds a resistor first, so schemdraw is at work and the code would give a drawing if its reach were allowed.
