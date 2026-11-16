@@ -10,10 +10,19 @@ import { jobErrorEngine, jobErrorKey } from "./jobErrors";
  * - `interrupted`: Pyxis was closed while it worked, so it can go on from where it stopped;
  * - `stopped`: the student stopped it, so it can go on from where it stopped too;
  * - `retry`: a plain retry, for a failure that can pass;
+ * - `out-of-requests`: the tool the job ran on has used up its requests, and the student chooses what happens: go on
+ *   with another tool, wait for the requests to come back, or open the tools in Settings;
  * - `nothing-found`: not a failure: the request read everything and found nothing, so it waits for the student to
  *   change it (`endedEmpty`), on the page the row leads to.
  */
-export type ProblemKind = "engine" | "locked-pdf" | "interrupted" | "stopped" | "retry" | "nothing-found";
+export type ProblemKind =
+  | "engine"
+  | "locked-pdf"
+  | "interrupted"
+  | "stopped"
+  | "retry"
+  | "nothing-found"
+  | "out-of-requests";
 
 /** Jobs that stopped for the same reason, shown once. */
 export type Problem = {
@@ -47,6 +56,8 @@ export type JobItem = { job: JobView; batch?: undefined } | { batch: JobBatch; j
 
 export type JobGroups = {
   problems: Problem[];
+  /** Jobs the student has wait for a tool's requests to come back: they start again by themselves. */
+  waiting: JobView[];
   /** Every waiting and running job, one by one. */
   running: JobView[];
   /** The rows of "Running". */
@@ -177,7 +188,23 @@ export function jobTopicName(
   return more(topics[0]!, topics.length - 1);
 }
 
-function problemOf(job: JobView): Omit<Problem, "jobs"> {
+/** The usage limit a failed job stopped on, as the tool that hit it, when that tool is still out of requests. */
+function limitedTool(job: JobView, limits: ReadonlyMap<string, number>): string | undefined {
+  if (!job.error?.startsWith("quota")) return undefined;
+  const engine = jobErrorEngine(job.error);
+  return engine && limits.has(engine) ? engine : undefined;
+}
+
+function problemOf(job: JobView, limits: ReadonlyMap<string, number>): Omit<Problem, "jobs"> {
+  const out = job.state === "failed" ? limitedTool(job, limits) : undefined;
+  // Every job that ran out on the same tool is one row, since the choice is the same for all of them.
+  if (out)
+    return {
+      key: `out-of-requests:${out}`,
+      kind: "out-of-requests",
+      messageKey: "engines.errors.quota",
+      engine: out,
+    };
   if (job.state === "interrupted")
     return {
       key: "interrupted",
@@ -255,8 +282,14 @@ function batchOf(batches: Map<string, JobBatch>, job: JobView): JobBatch | undef
  * Jobs of one kind from one request form one row from two jobs up; while some of them run, those that finished are
  * counted on that row rather than listed under finished.
  */
-export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
+export function groupJobs(
+  active: JobView[],
+  done: JobView[],
+  /** When each tool that is out of requests has them again (`limitsOf`). */
+  limits: ReadonlyMap<string, number> = new Map(),
+): JobGroups {
   const problems = new Map<string, Problem>();
+  const waiting: JobView[] = [];
   const running: JobView[] = [];
   // A request that found nothing is kept by core, on any day, until it is dismissed, so it comes with `active`.
   const unmatched: JobView[] = [];
@@ -265,8 +298,10 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
       running.push(job);
     } else if (endedEmpty(job)) {
       unmatched.push(job);
+    } else if (job.state === "failed" && job.waitingUntil !== undefined) {
+      waiting.push(job);
     } else if (job.state !== "succeeded") {
-      const found = problemOf(job);
+      const found = problemOf(job, limits);
       const known = problems.get(found.key);
       if (known) known.jobs.push(job);
       else problems.set(found.key, { ...found, jobs: [job] });
@@ -299,6 +334,7 @@ export function groupJobs(active: JobView[], done: JobView[]): JobGroups {
     }));
   return {
     problems: [...problems.values(), ...requests],
+    waiting,
     running,
     runningItems,
     finished,

@@ -138,10 +138,15 @@ function allowed(provider: AutoProvider, feature: string): boolean {
  * preferred provider; when two or more providers are ready, features move from
  * the busiest to the idlest provider while that evens out the load, so no
  * single subscription carries most of the usage.
+ *
+ * With `order`, the list the student put their tools in, nothing is shared out: every feature goes to the first tool
+ * of the list that can do it, and a tool the list leaves out comes after the listed ones. The list only names
+ * subscription CLIs, so a pool without any of them is planned as if there were no list.
  */
 export function planAuto(
   ready: AutoProvider[],
   features: readonly string[] = autoFeatures,
+  order?: readonly string[] | null,
 ): AutoPlan {
   const usable = ready.filter(
     (provider) => provider.models.length > 0 && data.family[provider.id],
@@ -152,6 +157,19 @@ export function planAuto(
   if (!pool.length) return {};
 
   const assigned = new Map<string, AutoProvider>();
+  if (order && pool.some((provider) => order.includes(provider.id))) {
+    const place = (provider: AutoProvider) =>
+      order.indexOf(provider.id) + 1 || order.length + 1;
+    // Array.prototype.sort is stable, so tools the list leaves out keep the order they came in.
+    const listed = [...pool].sort((a, b) => place(a) - place(b));
+    for (const feature of features) {
+      const permitted = listed.filter((provider) => allowed(provider, feature));
+      const first =
+        permitted.find((provider) => canServe(provider, feature)) ?? permitted[0];
+      if (first) assigned.set(feature, first);
+    }
+    return choices(assigned, features);
+  }
   for (const feature of features) {
     const permitted = pool.filter((provider) => allowed(provider, feature));
     if (!permitted.length) continue;
@@ -203,6 +221,14 @@ export function planAuto(
     }
   }
 
+  return choices(assigned, features);
+}
+
+/** The model and effort of each feature on the provider it was given. */
+function choices(
+  assigned: ReadonlyMap<string, AutoProvider>,
+  features: readonly string[],
+): AutoPlan {
   const plan: AutoPlan = {};
   for (const feature of features) {
     const provider = assigned.get(feature);
