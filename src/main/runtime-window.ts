@@ -8,7 +8,7 @@ import type { BrowserWindow, Session } from "electron";
  * The request filter sees only what goes through the network loader. A page can also reach out where it never passes,
  * and the policy of the page does not govern either: WebRTC opens its own sockets (UDP to a STUN or TURN server), and
  * `<link rel=preconnect>` and `dns-prefetch` are the network stack's own work, with a connection or a DNS lookup and no
- * request. So the session goes through a proxy that is not there (a SOCKS proxy on the discard port of this machine, with
+ * request. So the session goes through a proxy that is not there (a SOCKS proxy at port 0 of this machine, with
  * the loopback rule off so that this machine's own addresses are not left out): whatever the network stack opens for this
  * window goes to a port nothing listens on, and a name is looked up by that proxy and never by this machine. WebRTC is
  * set (in `lockWindow`) to use no UDP that does not go through it. `observe` hears every URL the filter is asked about.
@@ -35,8 +35,12 @@ export async function lockSession(
   });
 }
 
-/** Nothing listens on the discard port, and a SOCKS proxy resolves names itself, so this machine looks up none. */
-export const DEAD_PROXY = "socks5://127.0.0.1:9";
+/**
+ * No process can listen on port 0 (binding to it asks the system for any free port), and a connection to it fails (checked on
+ * Linux), so nothing can receive what the network stack sends here. The discard port, 9, was refused too, but on
+ * Windows any local process may listen on it. A SOCKS proxy resolves names itself, so this machine looks up none.
+ */
+export const DEAD_PROXY = "socks5://127.0.0.1:0";
 
 export function lockWindow(created: BrowserWindow): void {
   const contents = created.webContents;

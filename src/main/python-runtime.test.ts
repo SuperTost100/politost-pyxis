@@ -125,7 +125,7 @@ describe("python runtime queue", () => {
     await vi.waitFor(() => expect(fake.held).toHaveLength(1));
     // Whatever the network stack opens for this window (WebRTC, preconnect, DNS) goes to a SOCKS proxy that is not there,
     // loopback included, and WebRTC may use no UDP that does not go through it.
-    expect(fake.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:9", proxyBypassRules: "<-loopback>" }]);
+    expect(fake.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:0", proxyBypassRules: "<-loopback>" }]);
     expect(fake.webrtc).toEqual(["disable_non_proxied_udp"]);
     fake.held[0]!.settle({ stdout: "" });
     await running;
