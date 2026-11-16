@@ -21,6 +21,7 @@ export function Button({
   hasPopup,
   controls,
   pressed,
+  keepFocus,
   keyShortcuts,
   title,
   focusKey,
@@ -45,6 +46,8 @@ export function Button({
   controls?: string;
   /** For a button that toggles a state, such as "Segna per dopo": whether it is on. */
   pressed?: boolean;
+  /** A click leaves focus where it was, for buttons that act on the field being typed in. */
+  keepFocus?: boolean;
   /** The key that presses it, for assistive technology (`aria-keyshortcuts`). */
   keyShortcuts?: string;
   title?: string;
@@ -77,6 +80,7 @@ export function Button({
       block={block}
       disabled={disabled}
       onClick={onClick}
+      onMouseDown={keepFocus ? (event) => event.preventDefault() : undefined}
       className={[
         "px-btn",
         `px-btn-${variant}`,

@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { IconButton } from "./IconButton";
+import { Button } from "./Button";
 import { FormulaDock } from "./math/FormulaDock";
 import { MathTextEditor, type MathTextEditorHandle } from "./math/MathTextEditor";
 import { useFormulaKeys } from "./math/useFormulaKeys";
@@ -33,7 +33,7 @@ export function MathInput({
   maxLength?: number;
   /** A line about what is written, shown right under the field and above the formula keyboard. */
   note?: ReactNode;
-  /** The sigma button's name, for a page with more than one of these fields. "Inserisci formula" otherwise. */
+  /** The sigma button's name, for a page with more than one of these fields: which one it is for. It shows "Inserisci formula" either way. */
   formulaLabel?: string;
   /** Fields with the same group show one formula keyboard between them. */
   keysGroup?: string;
@@ -59,16 +59,19 @@ export function MathInput({
       {note}
       <FormulaDock {...formula.dock} open={formula.open && !disabled} />
       <div className="px-mathinput-bar">
-        <IconButton
-          icon="sigma"
-          label={formulaLabel ?? t("math.toggle")}
+        {/* The button "Nuova flashcard" has beside each face: the word on it, and the field in its name. */}
+        <Button
           variant="ghost"
           size="sm"
+          icon="sigma"
+          aria-label={formulaLabel}
           pressed={formula.open}
           disabled={disabled}
           keepFocus
           onClick={formula.toggle}
-        />
+        >
+          {t("math.toggle")}
+        </Button>
       </div>
     </div>
   );

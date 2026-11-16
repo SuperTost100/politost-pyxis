@@ -740,6 +740,40 @@ test("open answer: braces typed in a formula group, and the reading under the fi
   }
 });
 
+test("open answer: the formula button under each field says what it does, in both languages", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    const address = `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`;
+    for (const [lang, visible, names] of [
+      ["it", "Inserisci formula", ["Inserisci formula nella risposta", "Inserisci formula nei passaggi"]],
+      ["en", "Insert formula", ["Insert formula in the answer", "Insert formula in the steps"]],
+    ] as const) {
+      await page.evaluate((value) => localStorage.setItem("pyxis.lang", value), lang);
+      await page.reload();
+      await go(page, address);
+      for (const name of names) {
+        const button = page.getByRole("button", { name });
+        // The word is on the button, as on "Nuova flashcard", and the name adds which field it is for.
+        await expect(button).toHaveText(visible);
+        await expect(button).toHaveAttribute("aria-pressed", "false");
+      }
+    }
+  } finally {
+    await done();
+  }
+});
+
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);
