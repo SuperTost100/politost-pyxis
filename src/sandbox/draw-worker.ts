@@ -1,9 +1,10 @@
+import { describeGraphvizError } from "../shared/dot";
 import { inspectDot, type GraphvizLibrary } from "./inspect-dot";
 
 /**
  * The worker of the drawing window. It runs the downloaded Graphviz and nothing else, in a context of its own: the code
  * of the pack cannot reach the page's sanitiser, its rasteriser or its DOM, and the page takes what comes back from here
- * as text to be cleaned, whatever it says. A drawing is one message in and one message out.
+ * as text to be cleaned, whatever it says. A drawing is one message in and one message out, and the worker is ended after it.
  */
 const BASE = "pyxis-runtime://draw/";
 type Request = { id: number; code: string; engine: string };
@@ -16,7 +17,7 @@ const scope = self as unknown as {
 
 let library: Promise<GraphvizLibrary> | undefined;
 
-/** The library is loaded when the first graph is drawn, once for the life of this worker. */
+/** The library is loaded when the first graph is drawn, once for the life of this worker, which is one drawing. */
 function loadLibrary(): Promise<GraphvizLibrary> {
   library ??= (async () => {
     // The pack's file is served by main after its hash is checked again; this worker asks for nothing else.
@@ -46,6 +47,6 @@ scope.onmessage = async ({ data }) => {
     }
     scope.postMessage({ id, ok: true, svg: loaded.layout(data.code, "svg", data.engine) });
   } catch (error) {
-    scope.postMessage({ id, ok: false, error: (error instanceof Error ? error.message : String(error)).slice(0, 500) });
+    scope.postMessage({ id, ok: false, error: describeGraphvizError(error instanceof Error ? error.message : String(error)) });
   }
 };

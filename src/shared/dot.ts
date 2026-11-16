@@ -391,6 +391,29 @@ export function checkDotAttributes(code: string): string | null {
   return null;
 }
 
+/** The most of a token that a Graphviz message quoted that is passed on. */
+const TOKEN_MAX = 20;
+/** What a quoted token may keep: letters, digits, spaces and plain punctuation. Markup, quotes and backslashes go. */
+const TOKEN_UNSAFE = /[^\p{L}\p{N} _.,:;=\-+*/()[\]{}#!?|~%]/gu;
+
+/**
+ * What a model needs of one of Graphviz's own error messages to correct the DOT it wrote: the kind of error, its line and
+ * a short quoted token. Graphviz's messages can echo the input, so nothing else of them is passed on, and a message that
+ * has no line (a failure inside the layout, a WebAssembly trap) becomes one fixed sentence. For `syntax error in line 3
+ * near '->'` it gives `syntax error in line 3, near "-"`: the characters of markup are removed from the token.
+ */
+export function describeGraphvizError(raw: string): string {
+  const first = raw.split("\n", 1)[0] ?? "";
+  const match = /^(?:Error:\s*)?([A-Za-z ]{3,40}?) in line (\d{1,6})\b/.exec(first);
+  if (!match) return "Graphviz could not draw this graph: simplify it";
+  const where = `${match[1]} in line ${match[2]}`;
+  if (/scanning a HTML string/.test(first)) return `${where}, in an HTML-like string that is not closed`;
+  const near = / near '(.*)'\s*$/.exec(first)?.[1];
+  const token = near?.replace(TOKEN_UNSAFE, "").trim();
+  if (!token) return where;
+  return `${where}, near "${token.length > TOKEN_MAX ? `${token.slice(0, TOKEN_MAX)}…` : token}"`;
+}
+
 /**
  * What a graph looks like unless it says otherwise, to sit on the same white card as a plot and a circuit: the ink of
  * the circuits, thin lines, small arrowheads, the plots' 11 point text, and a drawing no bigger than a plot (6.4 inches
