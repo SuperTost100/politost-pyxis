@@ -73,6 +73,24 @@ async function measure(page: Page): Promise<Seen> {
   });
 }
 
+/** The name of the page that shows a plan file under review, which needs a file chosen on the opener first. */
+const REVIEW = "Revisione di un file";
+const REVIEWED_FILE = JSON.stringify({
+  version: 2,
+  id: "plan-column",
+  createdAt: 1_760_000_000_000,
+  author: "Marco Bianchi",
+  title: "Analisi Matematica 2",
+  topics: [
+    { id: "t0", title: "Successioni e serie di funzioni", position: 0 },
+    { id: "t1", title: "Funzioni di più variabili", position: 1 },
+  ],
+  nodes: [],
+  cards: [{ front: "a", back: "b", topic: 0 }],
+  sessions: [{ date: Date.UTC(2027, 1, 2, 12), time: "09:00", label: "Scritto" }],
+  sources: [{ id: "s1", title: "Bramanti, Pagani, Salsa", sha: "a".repeat(64), bytes: 9 }],
+});
+
 /** The pages of the shell with a head: a name for the report, the address, and the heading that tells the page has loaded. */
 const PAGES: Array<[string, string, string]> = [
   ["Esami", "/exams", "Esami"],
@@ -87,6 +105,8 @@ const PAGES: Array<[string, string, string]> = [
   ["Libreria", "/exams/library", "Libreria"],
   ["Quaderno degli errori", "/exams/mistakes", "Quaderno degli errori"],
   ["Esame condiviso", "/exams/get", "Apri un esame condiviso"],
+  // The review of a file, before it is accepted: the same address with a file chosen (see `REVIEW`).
+  [REVIEW, "/exams/get", "Analisi Matematica 2"],
   ["Impostazioni", "/settings", "Profilo"],
   ...(
     [
@@ -183,6 +203,14 @@ async function checkPages(label: string, pages: Array<[string, string, string]>,
       const seen: Record<string, Seen> = {};
       for (const [name, route, heading] of pages) {
         await page.evaluate((route) => (location.hash = route), route);
+        if (name === REVIEW) {
+          await expect(page.locator("main h1:visible").first()).toHaveText("Apri un esame condiviso");
+          await page.locator('input[type="file"]').first().setInputFiles({
+            name: "Analisi Matematica 2.pyxis",
+            mimeType: "application/json",
+            buffer: Buffer.from(REVIEWED_FILE),
+          });
+        }
         await expect(page.locator("main h1:visible").first()).toHaveText(heading);
         // The page's own data is in: a skeleton has the page's width, but its head is not yet whole.
         await expect(page.locator("main .px-skeleton")).toHaveCount(0);

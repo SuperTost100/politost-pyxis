@@ -88,7 +88,7 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
   }
 });
 
-test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Annulla, a click outside that stays, and Importa", async () => {
+test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Annulla, a click outside that stays, and Aggiungi ai miei esami", async () => {
   test.setTimeout(120_000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-dialog-import-"));
   const app = await launchPyxis({ userData });
@@ -118,7 +118,7 @@ test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Ann
     await expect(dialog.getByRole("heading", { name: "Fisica prestata" })).toBeVisible();
     // The buttons are the dialog's own, and it has no X beside Annulla.
     await expect(dialog.getByRole("button", { name: "Annulla" })).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Importa", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Aggiungi ai miei esami", exact: true })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Chiudi" })).toHaveCount(0);
     await animationsSettled(page);
 
@@ -132,7 +132,7 @@ test("DIALOG-04 a .pyxis file picked on Esami is reviewed in the one dialog: Ann
     await input.setInputFiles(file);
     await expect(dialog).toBeVisible();
     await animationsSettled(page);
-    await dialog.getByRole("button", { name: "Importa", exact: true }).click();
+    await dialog.getByRole("button", { name: "Aggiungi ai miei esami", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     const titles = await page.evaluate(async () =>
       (await window.pyxis.invoke("plans.list", {})).map((plan: { title: string }) => plan.title),

@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -45,6 +46,7 @@ import {
   cancelRuntimeDownload,
   currentRuntimeStatus,
   downloadRuntime,
+  invalidatePack,
   invalidateRuntime,
   requireRuntime,
   verifiedRuntimeFile,
@@ -234,4 +236,48 @@ it("deletes an older version of the drawing pack only after the new one is verif
   expect(existsSync(join(path, "runtimes/drawing/d2/circuits.whl"))).toBe(true);
   // Python's folders are not this pack's to delete.
   expect(existsSync(olderPython)).toBe(true);
+});
+
+it("hashes a file of the drawing pack every time it is read, so a rewrite that puts the modification time back is caught", async () => {
+  const path = workspace();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path);
+  const wheel = join(path, "runtimes/drawing/d2/circuits.whl");
+  const python = join(path, "runtimes/pyodide/test/runtime.js");
+  expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeDefined();
+  expect(await verifiedRuntimeFile(path, "pyodide", "runtime.js")).toBeDefined();
+  // The same size, other bytes, and the stamp (size, time, inode) of before: written in place, with the time set back.
+  const before = statSync(wheel);
+  writeFileSync(wheel, "WHEEL");
+  utimesSync(wheel, before.atime, before.mtime);
+  expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeUndefined();
+  // Every read of an intact file is hashed, however often, where Python's 31 MB are not.
+  writeFileSync(wheel, "wheel");
+  utimesSync(wheel, before.atime, before.mtime);
+  const hashes = vi.mocked(createHash).mock.calls.length;
+  for (let i = 0; i < 3; i++) expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeDefined();
+  expect(vi.mocked(createHash).mock.calls.length).toBe(hashes + 3);
+  const pythonHashes = vi.mocked(createHash).mock.calls.length;
+  for (let i = 0; i < 3; i++) expect(await verifiedRuntimeFile(path, "pyodide", "runtime.js")).toBeDefined();
+  expect(vi.mocked(createHash).mock.calls.length).toBe(pythonHashes);
+  void python;
+});
+
+it("makes the drawing pack not ready again when a window could not load its file, until its files check out", async () => {
+  const path = workspace();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path);
+  const wheel = join(path, "runtimes/drawing/d2/circuits.whl");
+  await requireRuntime(path, "drawing");
+  writeFileSync(wheel, "WHEEL");
+  // A pack that was ready stays ready in memory, which is what let a damaged file open a window every time.
+  await requireRuntime(path, "drawing");
+  invalidatePack(path, "drawing");
+  await expect(requireRuntime(path, "drawing")).rejects.toThrow("runtime-missing");
+  expect((await currentRuntimeStatus(path)).packs).toEqual({ pyodide: "ready", drawing: "idle" });
+  // Python is untouched, and a file that is right again makes the pack ready.
+  await requireRuntime(path);
+  writeFileSync(wheel, "wheel");
+  await requireRuntime(path, "drawing");
+  expect((await currentRuntimeStatus(path)).packs).toEqual({ pyodide: "ready", drawing: "ready" });
 });

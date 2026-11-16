@@ -25,6 +25,8 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { docx } from "./source-panel-fixture";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { AuditRecord } from "./audit-record";
+import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
 import { SHOTS, saveShot } from "./shots";
@@ -401,6 +403,17 @@ const routes = [
   // A free book with a newer version in the catalog: the Library row and the books list offer the update.
   ["library-book-update", "/exams/library"],
   ["library-books-update", "/exams/library"],
+  // A free book about the subject, which the student does not have: its row on the shelf, the reader on it, the reader
+  // after the add, and the full list with its Open buttons.
+  ["library-book-offer", "/exams/library"],
+  ["library-book-reader", "/exams/library"],
+  ["library-book-reader-added", "/exams/library"],
+  ["library-books-open", "/exams/library"],
+  // The same book offered as a ticked source: in a new exam named like it, read first from there, and with the first file
+  // of a new subject.
+  ["wizard-book-offer", "/plans/new"],
+  ["wizard-book-reader", "/plans/new"],
+  ["library-book-first-file", "/exams/library"],
   ["shell-exam-active", "/exams"],
   // The same, over the map's page, which fills the window, and over the Library: Resume sits in the top strip and the
   // page keeps its height.
@@ -1311,8 +1324,8 @@ const auditRecapText = [
 ].join("\n");
 
 /**
- * The part's text with a plot after its first section and a circuit after its second, and the two images as core
- * stores them. The images in tests/fixtures were drawn once by the pinned Python and drawing packs; the code here
+ * The part's text with a plot after its first section and a graph and a circuit after its second, and the images as
+ * core stores them. The images in tests/fixtures were drawn once by the pinned Python and drawing packs; the code here
  * only gives each image its key.
  */
 const auditFigures = (
@@ -1328,6 +1341,12 @@ const auditFigures = (
       "Quando non è nessuno dei due",
       "Un circuito RC in serie con il generatore $V_s$.",
       "d += elm.SourceV().up().label('$V_s$')\nd += elm.Resistor().right().label('R = 1 kΩ')",
+    ],
+    [
+      "graph",
+      "Quando non è nessuno dei due",
+      "Il grafo delle definizioni: dall'intorno all'insieme aperto, dalla frontiera all'insieme chiuso.",
+      'digraph { rankdir=LR; node [shape=box]; "Intorno" -> "Punto interno" -> "Insieme aperto"; "Frontiera" -> "Insieme chiuso" }',
     ],
   ] as const
 ).map(([kind, after, caption, code]) => ({
@@ -1903,22 +1922,29 @@ function prepareExamParts(name: string) {
   });
 }
 
-function prepareExamsEmpty(name: string) {
+/**
+ * The exams page with no exam: the plans move to a side table for that state and the notebook of mistakes, and come back
+ * for every other. Foreign keys are off while they move, so their topics and cards stay where they are. The plans come
+ * back first in `prepareState`, before any step records a row that belongs to one, and go after the steps that delete
+ * the subjects and plans of other states, so the side table never holds a plan whose subject is deleted before it returns.
+ */
+function showHiddenExams() {
   withDb((db) => {
     db.exec("PRAGMA foreign_keys = OFF");
-    const hidden = db
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'",
-      )
-      .get();
-    // With no exam there is no mistake either, so the notebook is empty.
-    if (name === "exams-empty" || name === "mistakes-empty") {
-      if (hidden) return;
-      db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
-        DELETE FROM plans;`);
-    } else if (hidden)
+    const hidden = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'").get();
+    if (hidden)
       db.exec(`INSERT INTO plans SELECT * FROM audit_hidden_plans;
         DROP TABLE audit_hidden_plans;`);
+  });
+}
+
+function prepareExamsEmpty(name: string) {
+  // With no exam there is no mistake either, so the notebook is empty.
+  if (name !== "exams-empty" && name !== "mistakes-empty") return;
+  withDb((db) => {
+    db.exec("PRAGMA foreign_keys = OFF");
+    db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
+      DELETE FROM plans;`);
   });
 }
 
@@ -1946,12 +1972,12 @@ function prepareLibrarySubjects(name: string) {
     db.exec(`DELETE FROM jobs WHERE id = 'audit-sort-job';
       DELETE FROM sources WHERE id LIKE 'audit-sort-%';
       DELETE FROM subjects WHERE id = 'audit-sort-made';`);
-    if (!["library-sorting", "library-unsorted", "library-move-menu"].includes(name)) return;
+    if (!["library-sorting", "library-unsorted", "library-move-menu", "library-book-first-file"].includes(name)) return;
     const now = Date.now();
     const source = db.prepare(
       "INSERT INTO sources(id,kind,title,status,subject_id,subject_sort,created_at,updated_at) VALUES(?,'pdf',?,?,?,?,?,?)",
     );
-    if (name === "library-unsorted") {
+    if (name === "library-unsorted" || name === "library-book-first-file") {
       source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
       source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
       // A file the Library never asked about has no reason to say Pyxis could not place it.
@@ -2345,6 +2371,9 @@ function prepareBuild(name: string) {
 }
 
 function prepareState(name: string) {
+  // First, so the exams the empty states hid are back before any step below writes a row that belongs to one: the lesson
+  // steps record events on the audit exam, and a state that follows exams-empty in a filtered run would fail on a foreign key.
+  showHiddenExams();
   prepareSessionEnd(name);
   prepareLessonParts(name);
   prepareOldLessons(name);
@@ -2352,7 +2381,6 @@ function prepareState(name: string) {
   prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
-  prepareExamsEmpty(name);
   prepareExamsArchived(name);
   prepareExamParts(name);
   preparePanelSources(name);
@@ -2361,8 +2389,11 @@ function prepareState(name: string) {
   prepareLibrarySubjects(name);
   prepareLibraryShelf(name);
   prepareLinkedFolders(name);
-  prepareMapsEmpty(name);
   prepareCardBrowser(name);
+  // These two take rows out for their state only, so they run after the steps that delete or seed rows of the same
+  // subjects: a row hidden while its subject is deleted could not come back.
+  prepareMapsEmpty(name);
+  prepareExamsEmpty(name);
   prepareBackupState(name);
   prepareUpdate(name);
   prepareGradingLive(name);
@@ -2610,8 +2641,9 @@ function prepareState(name: string) {
     db.prepare(
       "INSERT OR IGNORE INTO sources(id,kind,title,blob_sha,mime,status,library,catalog_id,catalog_version,created_at,updated_at) VALUES('audit-free-book','smartbook','Fisica di prova',?,'application/vnd.politost.ptsb','ready',0,'fisica-demo','1.0.0',2,2)",
     ).run("a".repeat(64));
+    // The book states add it and place it, so each state starts with it hidden and on no shelf.
     db.prepare(
-      "UPDATE sources SET library = ? WHERE id = 'audit-free-book'",
+      "UPDATE sources SET library = ?, subject_id = NULL, subject_sort = NULL WHERE id = 'audit-free-book'",
     ).run(
       name.includes("book-update") || name.includes("books-update") ? 1 : 0,
     );
@@ -3216,6 +3248,11 @@ async function openState(page: Page, name: string) {
         window.pyxis.invoke("plans.export", { planId: "audit-plan" }),
       );
       file.author = "Example author";
+      // One original that is not in the file, so the page shows its choice as well as the ones inside it.
+      if (file.sources?.[0]) {
+        delete file.sources[0].data;
+        file.sources[0].sha = "a".repeat(64);
+      }
       await page
         .locator('input[type="file"]')
         .first()
@@ -3225,6 +3262,13 @@ async function openState(page: Page, name: string) {
           buffer: Buffer.from(JSON.stringify(file)),
         });
       await expect(page.locator(".px-import-review")).toBeVisible();
+      // The page opens on its title, and the footer's action is a button the keyboard reaches.
+      await expect(page.locator(".px-import-review h1")).toBeFocused();
+      await expect(
+        page.getByRole("region", { name: both("Aggiungere l'esame", "Add the exam") }).getByRole("button", {
+          name: both("Aggiungi ai miei esami", "Add to my exams"),
+        }),
+      ).toBeVisible();
       const after = await page.evaluate(() =>
         window.pyxis.invoke("plans.list", {}),
       );
@@ -3614,10 +3658,11 @@ async function openState(page: Page, name: string) {
     }
     case "lesson-part-figures": {
       const figures = page.locator("figure.px-figure");
-      await expect(figures).toHaveCount(2);
+      await expect(figures).toHaveCount(3);
       await expect(figures.nth(0).getByRole("img")).toHaveAttribute("alt", /palla aperta/);
-      await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /circuito RC/);
-      // Both images have loaded, so the page is at its final height.
+      await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /grafo delle definizioni/);
+      await expect(figures.nth(2).getByRole("img")).toHaveAttribute("alt", /circuito RC/);
+      // Every image has loaded, so the page is at its final height.
       await expect
         .poll(() =>
           figures.getByRole("img").evaluateAll((images) => images.every((image) => (image as HTMLImageElement).naturalWidth > 0)),
@@ -3635,11 +3680,15 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "lesson-part-popover": {
+      // The page is still loading when its first heading shows, and it has neither the title button (narrow windows) nor
+      // the parts column (wide ones) until it has read the part, so wait for whichever this width has before choosing.
       const title = page.locator(".px-studybar-title-menu");
+      const column = page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") });
+      await expect(title.or(column)).toBeVisible();
       if (await title.isVisible()) {
         await title.click();
         await expect(page.getByRole("dialog", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
-      } else await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
+      }
       break;
     }
     case "lesson-part-planning":
@@ -4342,6 +4391,57 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       break;
+    case "library-book-offer": {
+      const offer = page.getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") });
+      await expect(offer).toBeVisible();
+      await expect(offer.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })).toBeVisible();
+      break;
+    }
+    case "library-book-reader":
+    case "library-book-reader-added": {
+      await page
+        .getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") })
+        .getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })
+        .click();
+      const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+      await expect(reader.getByText(both("Non è ancora nella tua Libreria.", "It's not in your Library yet."))).toBeVisible();
+      await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      if (name === "library-book-reader-added") {
+        await reader.getByRole("button", { name: both("Aggiungi alla Libreria", "Add to Library") }).click();
+        await expect(reader.getByText(both("È nella tua Libreria, sullo scaffale di Fisica.", "It's in your Library, on the Fisica shelf."))).toBeVisible();
+      }
+      break;
+    }
+    case "wizard-book-offer":
+    case "wizard-book-reader": {
+      await page.getByRole("textbox", { name: both("Nome dell'esame", "Exam name"), exact: true }).fill("Fisica di prova");
+      await page.getByRole("button", { name: both("Non ho ancora la data", "I don't have the date yet") }).click();
+      await page.getByRole("button", { name: /Continua|Continue/, exact: true }).click();
+      const choice = page.locator("[data-book-choice]");
+      await expect(choice.getByRole("checkbox")).toBeChecked();
+      if (name === "wizard-book-reader") {
+        await choice.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") }).click();
+        const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+        await expect(reader.getByText(both("È tra le fonti di questo esame.", "It's among this exam's sources."))).toBeVisible();
+        await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      }
+      break;
+    }
+    case "library-book-first-file": {
+      // "Nuova materia…" is the picker's last choice, whose value is not a subject's id.
+      await page.locator('[data-unsorted-id="audit-sort-board"]').getByRole("combobox").selectOption({ value: "\u0000new" });
+      const naming = page.getByRole("dialog");
+      await naming.getByRole("textbox").fill("Fisica di prova");
+      await expect(naming.locator("[data-book-choice]").getByRole("checkbox")).toBeChecked();
+      break;
+    }
+    case "library-books-open": {
+      await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
+      await page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") }).click();
+      await dialog.getByRole("button", { name: both("Apri Fisica di prova", "Open Fisica di prova") }).click();
+      await expect(page.getByRole("complementary", { name: "Fisica di prova" }).getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      break;
+    }
     case "library-books-update":
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
       await page
@@ -5316,12 +5416,44 @@ async function keyboardCheck(page: Page, name: string) {
   }
 }
 
-test("M14 every application route in both languages, themes and supported widths", async () => {
-  test.setTimeout(1500000);
+// One launched app and one seeded workspace serve every part of the audit, so each state must start from what it needs,
+// whatever ran before it. The states are walked in parts of about 80, in their order, each a test of its own: a failure
+// or a timeout names its part and its state and ends only that part, and the next part starts a new app.
+const selectedStates = process.env.PYXIS_UI_STATES?.split(",");
+// PYXIS_UI_RECORD keeps a focused run from overwriting another run's record.
+const recordFile =
+  process.env.PYXIS_UI_RECORD ??
+  (selectedStates
+    ? ".tmp/m14-ui-audit-filter.json"
+    : process.env.PYXIS_UI_LARGE
+      ? ".tmp/m14-ui-audit-large.json"
+      : ".tmp/m14-ui-audit.json");
+const auditRoutes = selectedStates ? routes.filter(([name]) => selectedStates.includes(name)) : routes;
+// The record of this run, kept in a file so it survives a part that ends its worker. The run is the TMPDIR that Playwright's
+// global setup made for this invocation, which every worker of it inherits.
+const record = new AuditRecord(recordFile, process.env.TMPDIR ?? "", {
+  routes,
+  excluded: ["/print, covered by isolated native PDF export test"],
+});
+const records = record.records;
+const failures = record.failures;
+const pageErrors: string[] = [];
+/** The state under way, named when a part times out, since a timeout carries no message of its own. */
+let auditNow = "";
+/** What the audit made in the temp folder, removed when the worker ends. */
+const auditFolders: string[] = [];
+
+test.beforeAll(async () => {
+  // First, before anything here can fail: a part that failed or timed out has left its record in the file.
+  record.resume();
+  test.setTimeout(180_000);
+  mkdirSync(dirname(recordFile), { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-"));
   auditUserData = userData;
+  auditFolders.push(userData);
   // The e2e seam answers every native picker with this path: a folder of two importable files for the Folder tab.
   const importFolder = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-folder-"));
+  auditFolders.push(importFolder);
   writeFileSync(
     join(importFolder, "appunti.txt"),
     "La forza è massa per accelerazione.",
@@ -5337,6 +5469,7 @@ test("M14 every application route in both languages, themes and supported widths
   // The study folder setup links: three subjects and a folder of holiday paperwork the recorded reply skips.
   auditStudy = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-study-")), "Università");
   auditCourses = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-courses-")), "Polito");
+  auditFolders.push(dirname(auditStudy), dirname(auditCourses));
   for (const course of ["Tecnologie Digitali", "Linguaggio cinematografico"])
     mkdirSync(join(auditCourses, course), { recursive: true });
   for (const [folder, file, text] of [
@@ -5350,6 +5483,20 @@ test("M14 every application route in both languages, themes and supported widths
   }
   // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
   const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
+  auditFolders.push(booksSite);
+  // The package is real, so the reader can open the book; adding it takes the hidden copy that is already there.
+  const auditBook = makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    version: "1.1.0",
+    chapters: [
+      { title: "Moti", text: "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato, $v = s / t$.\n\n## p2 | Accelerazione\nL'accelerazione è la variazione di velocità nel tempo.\n" },
+      { title: "Forze", text: "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n" },
+      { title: "Energia", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+    ],
+  });
+  mkdirSync(join(booksSite, "books"));
+  writeFileSync(join(booksSite, "books", "fisica-demo@1.1.0.ptsb"), auditBook);
   writeFileSync(
     join(booksSite, "catalog.json"),
     JSON.stringify({
@@ -5363,8 +5510,8 @@ test("M14 every application route in both languages, themes and supported widths
           version: "1.1.0",
           chapters: 3,
           package: "books/fisica-demo@1.1.0.ptsb",
-          bytes: 1024,
-          sha256: "b".repeat(64),
+          bytes: auditBook.byteLength,
+          sha256: createHash("sha256").update(auditBook).digest("hex"),
         },
       ],
     }),
@@ -5432,59 +5579,60 @@ test("M14 every application route in both languages, themes and supported widths
   const app = await launchPyxis({ userData, env });
   auditApp = app;
   auditPicked = importFolder;
-  const records: unknown[] = [];
-  const failures: string[] = [];
-  const selectedStates = process.env.PYXIS_UI_STATES?.split(",");
-  // PYXIS_UI_RECORD keeps a focused run from overwriting another run's record.
-  const recordFile =
-    process.env.PYXIS_UI_RECORD ??
-    (selectedStates
-      ? ".tmp/m14-ui-audit-filter.json"
-      : process.env.PYXIS_UI_LARGE
-        ? ".tmp/m14-ui-audit-large.json"
-        : ".tmp/m14-ui-audit.json");
-  const auditRoutes = selectedStates
-    ? routes.filter(([name]) => selectedStates.includes(name))
-    : routes;
-  expect(auditRoutes.length).toBeGreaterThan(0);
-  mkdirSync(".tmp", { recursive: true });
-  mkdirSync(dirname(recordFile), { recursive: true });
+  const page = await app.firstWindow();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // The first render waits for core to start, which takes far longer than 7 s on a cold hosted Windows runner.
+  await page
+    .getByRole("button", { name: "Salta" })
+    .click({ timeout: 90_000 });
+  page.setDefaultTimeout(7000);
+  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+  // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
+  await page.evaluate(
+    (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
+    updateTag,
+  );
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "pyxis-board",
+      JSON.stringify([
+        {
+          width: 4,
+          points: [
+            { x: 200, y: 450 },
+            { x: 420, y: 160 },
+            { x: 680, y: 450 },
+          ],
+        },
+      ]),
+    ),
+  );
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+    timeout: 10000,
+  });
+  seed(db);
+  db.close();
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+});
+
+test.afterEach(() => {
+  const info = test.info();
+  if (info.status === "timedOut") console.log(`M14 timed out in ${auditNow}: ${info.title}`);
+});
+
+test.afterAll(async () => {
+  record.write();
+  await auditApp?.close();
+  removeTestFolder(auditUserData);
+  for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
+});
+
+/** Every state of one part, in every language, theme and width asked for. A state that fails is named in the failure. */
+async function walk(slice: typeof auditRoutes) {
+  expect(slice.length).toBeGreaterThan(0);
+  const page = await auditApp!.firstWindow();
+  const first = failures.length;
   try {
-    const page = await app.firstWindow();
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    // The first render waits for core to start, which takes far longer than 7 s on a cold hosted Windows runner.
-    await page
-      .getByRole("button", { name: "Salta" })
-      .click({ timeout: 90_000 });
-    page.setDefaultTimeout(7000);
-    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-    // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
-    await page.evaluate(
-      (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
-      updateTag,
-    );
-    await page.evaluate(() =>
-      sessionStorage.setItem(
-        "pyxis-board",
-        JSON.stringify([
-          {
-            width: 4,
-            points: [
-              { x: 200, y: 450 },
-              { x: 420, y: 160 },
-              { x: 680, y: 450 },
-            ],
-          },
-        ]),
-      ),
-    );
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
-      timeout: 10000,
-    });
-    seed(db);
-    db.close();
-    const pageErrors: string[] = [];
-    page.on("pageerror", (error) => pageErrors.push(error.message));
     for (const language of ["it", "en"] as const)
       for (const theme of ["dark", "light"] as const)
         for (const width of [1280, 960]) {
@@ -5509,9 +5657,10 @@ test("M14 every application route in both languages, themes and supported widths
               }),
             process.env.PYXIS_UI_LARGE ? ("lg" as const) : ("md" as const),
           );
-          for (const [name, route] of auditRoutes) {
+          for (const [name, route] of slice) {
             const key = `${name}-${language}-${theme}-${width}${process.env.PYXIS_UI_LARGE ? "-large" : ""}`;
             const before = pageErrors.length;
+            auditNow = key;
             try {
               prepareState(name);
               await page.evaluate((route) => {
@@ -5734,37 +5883,30 @@ test("M14 every application route in both languages, themes and supported widths
                 failed: String(error),
               });
             }
-            writeFileSync(
-              recordFile,
-              JSON.stringify({ routes, records, failures }, null, 2),
-            );
+            record.write();
             console.log(
               `M14 ${key}: ${failures.at(-1)?.startsWith(key) ? failures.at(-1) : "passed"}`,
             );
           }
         }
   } finally {
-    writeFileSync(
-      recordFile,
-      JSON.stringify(
-        {
-          routes,
-          excluded: ["/print, covered by isolated native PDF export test"],
-          records,
-          failures,
-        },
-        null,
-        2,
-      ),
-    );
-    await app.close();
-    removeTestFolder(userData);
-    rmSync(importFolder, { recursive: true, force: true });
-    rmSync(dirname(auditStudy), { recursive: true, force: true });
-    rmSync(dirname(auditCourses), { recursive: true, force: true });
-    rmSync(booksSite, { recursive: true, force: true });
-    rmSync(updateFolder, { recursive: true, force: true });
-    rmSync(auditEngines, { recursive: true, force: true });
+    record.write();
   }
-  expect(failures, failures.join("\n")).toEqual([]);
-});
+  expect(failures.slice(first), failures.slice(first).join("\n")).toEqual([]);
+}
+
+// A part gets the share of the old 25 minutes for the whole walk that its states are of the list, at least two minutes.
+const STATES_PER_PART = 80;
+const combos = process.env.PYXIS_UI_COMBO ? 1 : 8;
+const parts = Math.max(1, Math.ceil(auditRoutes.length / STATES_PER_PART));
+for (let part = 0; part < parts; part += 1) {
+  const slice = auditRoutes.slice(
+    Math.floor((part * auditRoutes.length) / parts),
+    Math.floor(((part + 1) * auditRoutes.length) / parts),
+  );
+  const range = slice.length ? `, ${slice[0]![0]} to ${slice.at(-1)![0]}` : "";
+  test(`M14 every application route in both languages, themes and supported widths, part ${part + 1} of ${parts}${range}`, async () => {
+    test.setTimeout(Math.max(120_000, Math.round((1_500_000 * slice.length) / routes.length)) * combos);
+    await walk(slice);
+  });
+}

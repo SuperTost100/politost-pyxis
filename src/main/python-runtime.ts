@@ -1,8 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
-import { runtimePackIds, type PackId } from "../shared/figure-kinds";
 import { checkClaimSchema, gradeCheckSchema } from "../shared/math-check";
 import {
   cancelRuntimeDownload,
@@ -10,35 +6,106 @@ import {
   downloadRuntime,
   requireRuntime,
   runtimePacks,
-  verifiedRuntimeFile,
 } from "./runtime-pack";
+import { handleDrawRequest } from "./draw-runtime";
+import { registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
+import { lockSession, lockWindow, rendererGone } from "./runtime-window";
 
-const ORIGIN = "pyxis-runtime://sandbox/";
-const trusted = new Map([
-  ["index.html", "sandbox.html"],
-  ["host.js", "host.js"],
-  ["python-worker.js", "python-worker.js"],
-  ["check-worker.js", "check-worker.js"],
-  ["symbolic.py", "symbolic.py"],
-]);
-// A pack's files are served under its id: `pyodide/pyodide.js`, `drawing/<wheel>`.
-const allowed = new Set([
-  ...trusted.keys(),
-  ...runtimePackIds.flatMap((id) =>
-    runtimePacks[id].files.map((file) => `${id}/${file.name}`),
-  ),
-]);
-const HEADERS = {
-  "Content-Security-Policy":
-    "default-src 'none'; script-src pyxis-runtime: 'wasm-unsafe-eval'; connect-src pyxis-runtime:; worker-src pyxis-runtime:; img-src data:; base-uri 'none'; form-action 'none'",
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Embedder-Policy": "require-corp",
-  "Cross-Origin-Resource-Policy": "same-origin",
-};
+const ORIGIN = runtimeOrigin("sandbox");
 let workspace = "";
 let window: BrowserWindow | null = null;
 let opening: Promise<BrowserWindow> | null = null;
 let generation = 0;
+let partition: Promise<Session> | null = null;
+/** The clearing of the session's storage that was asked for last. A window is not opened until it has finished. */
+let clearing: Promise<void> = Promise.resolve();
+const retired = new WeakSet<BrowserWindow>();
+
+/**
+ * The one session of the Python windows, made when the first window is. Electron never frees a session, so a session per
+ * window would add a browser context, a protocol handler and a request filter to the main process each time a window is
+ * replaced after a timeout or a crash. The protocol reads the workspace when it serves. The session is in memory (no
+ * `persist:`), and its storage is cleared after every request and when a window ends, so nothing the student's code
+ * leaves in it (the Cache API, IndexedDB, OPFS, a service worker) reaches the next run.
+ */
+function pythonSession(): Promise<Session> {
+  partition ??= (async () => {
+    const created = session.fromPartition("pyxis-python", { cache: false });
+    registerRuntimeProtocol(created, () => workspace, ["sandbox"]);
+    await lockSession(created, (url) => Boolean(runtimeResourceName(url, "sandbox")));
+    return created;
+  })();
+  partition.catch(() => {
+    partition = null;
+  });
+  return partition;
+}
+
+/**
+ * Wipes what the session kept. The clearings run one after the other, and the next window waits for the last one. Failing
+ * to wipe is not a reason to fail the request that ran.
+ */
+function clearSession(): Promise<void> {
+  const before = clearing;
+  clearing = (async () => {
+    await before;
+    await partition?.then((owned) => owned.clearStorageData()).catch(() => undefined);
+  })();
+  return clearing;
+}
+
+/**
+ * The requests using the session now. The run lane and the check lane are two lanes of one window, so a request can end
+ * while another is still running in the same session, and clearing then would take storage from the one that is not
+ * done. `stale` says that the session may hold what a request left and nobody has cleared it yet.
+ */
+let users = 0;
+let stale = false;
+let draining: Promise<void> | null = null;
+const idle: Array<() => void> = [];
+
+/**
+ * Clears the session once nobody is using it. A request that starts meanwhile waits for it, so it neither starves the
+ * clearing nor meets it halfway.
+ */
+function drain(): Promise<void> {
+  draining ??= (async () => {
+    while (users > 0) await new Promise<void>((resolve) => idle.push(resolve));
+    await clearSession();
+    stale = false;
+  })().finally(() => {
+    draining = null;
+  });
+  return draining;
+}
+
+/** A request starts using the session. A run never starts on what an earlier request left: it waits for the clearing. */
+async function enter(operation: "run" | "check"): Promise<void> {
+  while (draining) await draining;
+  if (operation === "run" && stale) await drain();
+  users++;
+}
+
+/** A request is done with the session, which is cleared when it was the last one using it. */
+async function leave(): Promise<void> {
+  users--;
+  stale = true;
+  if (users > 0) return;
+  for (const resolve of idle.splice(0)) resolve();
+  await drain();
+}
+
+/** Ends a window, and clears what the session kept for it. A window ends once: its own `closed` event comes here again. */
+function retire(target: BrowserWindow): void {
+  if (retired.has(target)) return;
+  retired.add(target);
+  if (window === target) {
+    window = null;
+    opening = null;
+  }
+  if (!target.isDestroyed()) target.destroy();
+  void clearSession();
+}
 
 export function configurePythonRuntime(path: string): void {
   if (workspace !== path) {
@@ -46,65 +113,22 @@ export function configurePythonRuntime(path: string): void {
     workspace = path;
   }
 }
+/** A handle for the end-to-end tests, which reach it through `app.evaluate`; only a run with PYXIS_E2E=1 installs it. */
+export function pythonTestHandle() {
+  return {
+    windows: () => (window && !window.isDestroyed() ? [window.id] : []),
+    /** Runs a script in the Python window's page, as code in that page would. */
+    evaluate: (script: string) => {
+      if (!window || window.isDestroyed()) throw new Error("no Python window is open");
+      return window.webContents.executeJavaScript(script);
+    },
+  };
+}
 export function disposePythonRuntime(): void {
   generation++;
-  window?.destroy();
+  if (window) retire(window);
   window = null;
   opening = null;
-}
-function resourceName(raw: string): string | undefined {
-  try {
-    const url = new URL(raw);
-    if (
-      url.protocol !== "pyxis-runtime:" ||
-      url.hostname !== "sandbox" ||
-      url.search ||
-      url.hash ||
-      url.username ||
-      url.password ||
-      url.port
-    )
-      return undefined;
-    const name = url.pathname.slice(1);
-    return allowed.has(name) ? name : undefined;
-  } catch {
-    return undefined;
-  }
-}
-function mime(name: string): string {
-  if (name.endsWith(".html")) return "text/html";
-  if (name.endsWith(".js") || name.endsWith(".mjs")) return "text/javascript";
-  if (name.endsWith(".wasm")) return "application/wasm";
-  if (name.endsWith(".json")) return "application/json";
-  if (name.endsWith(".py")) return "text/plain";
-  return "application/octet-stream";
-}
-export function registerRuntimeProtocol(
-  target: Session,
-  path: string | (() => string),
-): void {
-  target.protocol.handle("pyxis-runtime", async (request) => {
-    const name = resourceName(request.url);
-    if (!name || request.method !== "GET")
-      return new Response("not found", { status: 404, headers: HEADERS });
-    const asset = trusted.get(name);
-    const bytes = asset
-      ? new Uint8Array(
-          await readFile(
-            join(import.meta.dirname, "../renderer/runtime", asset),
-          ),
-        )
-      : await verifiedRuntimeFile(
-          typeof path === "function" ? path() : path,
-          name.slice(0, name.indexOf("/")) as PackId,
-          name.slice(name.indexOf("/") + 1),
-        );
-    return bytes
-      ? new Response(bytes, {
-          headers: { ...HEADERS, "Content-Type": mime(name) },
-        })
-      : new Response("not found", { status: 404, headers: HEADERS });
-  });
 }
 async function sandbox(): Promise<BrowserWindow> {
   if (!workspace) throw new Error("runtime-workspace-missing");
@@ -116,21 +140,16 @@ async function sandbox(): Promise<BrowserWindow> {
   if (opening) return opening;
   if (window && !window.isDestroyed()) return window;
   opening = (async () => {
-    const partition = session.fromPartition(`pyxis-python-${randomUUID()}`, {
-      cache: false,
-    });
-    registerRuntimeProtocol(partition, path);
-    partition.webRequest.onBeforeRequest((details, callback) =>
-      callback({ cancel: !resourceName(details.url) }),
-    );
-    partition.setPermissionRequestHandler((_contents, _permission, callback) =>
-      callback(false),
-    );
-    partition.setPermissionCheckHandler(() => false);
+    const owned = await pythonSession();
+    // The storage of the window that ended is cleared before the next one opens in the same session.
+    await clearing;
+    // The runtime may have been disposed while this waited: a window made now would belong to a generation that is over,
+    // and retiring it could clear the session in the middle of a request of the current one.
+    if (epoch !== generation) throw new Error("runtime-disposed");
     const created = new BrowserWindow({
       show: false,
       webPreferences: {
-        session: partition,
+        session: owned,
         sandbox: true,
         nodeIntegration: false,
         contextIsolation: true,
@@ -139,20 +158,10 @@ async function sandbox(): Promise<BrowserWindow> {
       },
     });
     window = created;
-    created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    created.webContents.on("will-navigate", (event) => event.preventDefault());
-    const forget = () => {
-      if (window === created) {
-        window = null;
-        opening = null;
-      }
-    };
-    created.on("closed", forget);
+    lockWindow(created);
+    created.on("closed", () => retire(created));
     // A crashed renderer is replaced by a fresh window on the next request.
-    created.webContents.on("render-process-gone", () => {
-      forget();
-      if (!created.isDestroyed()) created.destroy();
-    });
+    created.webContents.on("render-process-gone", () => retire(created));
     try {
       await created.loadURL(ORIGIN + "index.html");
       if (epoch !== generation || created.isDestroyed())
@@ -160,7 +169,7 @@ async function sandbox(): Promise<BrowserWindow> {
       window = created;
       return created;
     } catch (error) {
-      if (!created.isDestroyed()) created.destroy();
+      retire(created);
       if (epoch === generation) opening = null;
       throw error;
     }
@@ -194,13 +203,6 @@ function execute(
   tails[operation] = turn.catch(() => undefined);
   return turn;
 }
-// The sandbox never navigates (will-navigate is refused), so a main frame that is destroyed or detached means its
-// renderer is gone. Electron can dispose the frame before isCrashed() turns true and before render-process-gone.
-function rendererGone(target: BrowserWindow): boolean {
-  if (target.isDestroyed() || target.webContents.isDestroyed() || target.webContents.isCrashed()) return true;
-  const frame = target.webContents.mainFrame;
-  return !frame || frame.isDestroyed() || frame.detached;
-}
 /**
  * The wheels of the drawing pack, which a Python run installs before its code, so circuits can import schemdraw. None
  * while the pack is not downloaded: Python runs the same without it.
@@ -221,44 +223,50 @@ async function dispatch(
   timeoutMs: number | undefined,
   method: "run" | "check" | "grade",
 ): Promise<unknown> {
-  const target = await sandbox();
-  if (target.isDestroyed()) throw new Error("runtime-crashed");
-  const extra =
-    operation === "run"
-      ? `, ${timeoutMs}, ${JSON.stringify(await drawingWheels())}`
-      : "";
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let onClosed: (() => void) | undefined;
+  await enter(operation);
   try {
-    return await Promise.race([
-      target.webContents
-        .executeJavaScript(
-          `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${extra})`,
-        )
-        .catch((error: unknown) => {
-          // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before
-          // the request completed"), before the window closes. A call that fails with the renderer gone crashed.
-          if (rendererGone(target)) throw new Error("runtime-crashed");
-          throw error;
+    const target = await sandbox();
+    if (target.isDestroyed()) throw new Error("runtime-crashed");
+    const extra =
+      operation === "run"
+        ? `, ${timeoutMs}, ${JSON.stringify(await drawingWheels())}`
+        : "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onClosed: (() => void) | undefined;
+    try {
+      return await Promise.race([
+        target.webContents
+          .executeJavaScript(
+            `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${extra})`,
+          )
+          .catch((error: unknown) => {
+            // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before
+            // the request completed"), before the window closes. A call that fails with the renderer gone crashed.
+            if (rendererGone(target)) throw new Error("runtime-crashed");
+            throw error;
+          }),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            void target.webContents
+              .executeJavaScript(
+                `window.pyxisRuntime.stop(${JSON.stringify(operation === "run" ? "python" : "check")})`,
+              )
+              .catch(() => undefined);
+            reject(new Error("runtime-timeout"));
+          }, RUN_CEILING_MS);
         }),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          void target.webContents
-            .executeJavaScript(
-              `window.pyxisRuntime.stop(${JSON.stringify(operation === "run" ? "python" : "check")})`,
-            )
-            .catch(() => undefined);
-          reject(new Error("runtime-timeout"));
-        }, RUN_CEILING_MS);
-      }),
-      new Promise((_, reject) => {
-        onClosed = () => reject(new Error("runtime-crashed"));
-        target.once("closed", onClosed);
-      }),
-    ]);
+        new Promise((_, reject) => {
+          onClosed = () => reject(new Error("runtime-crashed"));
+          target.once("closed", onClosed);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onClosed) target.removeListener("closed", onClosed);
+    }
   } finally {
-    if (timer) clearTimeout(timer);
-    if (onClosed) target.removeListener("closed", onClosed);
+    // Cleared when this was the last request using the session, and not under one that is still running.
+    await leave();
   }
 }
 export async function handleRuntimeRequest(
@@ -302,6 +310,8 @@ export async function handleRuntimeRequest(
       return { state: "none", reason: "runtime-unavailable" };
     }
   }
+  // The drawing window draws what is not Python. It is a lane of its own, with its own queue.
+  if (operation === "draw") return handleDrawRequest(payload, deadline);
   if (operation === "python") {
     if (
       !payload ||

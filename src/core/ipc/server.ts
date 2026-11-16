@@ -465,6 +465,8 @@ const routes = {
   "sources.sortSubjects": ["sources", "sortSubjects"],
   "sources.move": ["sources", "move"],
   "sources.importBook": ["sources", "importBook", "signal"],
+  "sources.bookPreview": ["sources", "bookPreview", "signal"],
+  "sources.bookChapter": ["sources", "bookChapter", "signal"],
   "sources.updateBook": ["sources", "updateBook", "signal"],
   "sources.scanFolder": ["sources", "scanFolder", "signal"],
   "sources.linkFolders": ["sources", "linkFolders", "signal"],
@@ -868,8 +870,9 @@ export function bindChat(
   workspace = "",
   fixtureReply?: string,
   replyDelayMs = 0,
+  figureFixes?: string,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs, figureFixes);
   setChecksListener((event) => broadcast("chats.checks", event));
 }
 

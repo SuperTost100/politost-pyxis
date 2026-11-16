@@ -409,3 +409,18 @@ input.px-ctl-field.px-shelf-subject-rename {
   color: var(--ink-subtle);
   font-weight: 400;
 }
+
+/* "Libro PoliTost" under the title of a free book's cover. */
+.px-cover-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-subtle);
+  font: 400 calc(12px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+/* A free book still downloading shows on its shelf and does nothing yet. */
+.px-cover.is-adding .px-cover-open {
+  cursor: default;
+}
+.px-cover.is-adding .px-cover-open:hover {
+  background: transparent;
+}

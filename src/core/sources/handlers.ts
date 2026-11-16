@@ -70,12 +70,14 @@ import {
   type CatalogBook,
 } from "./books";
 import { bookState, linkCatalogBooks, linkedBookSource } from "./book-update";
+import { createBookReading } from "./book-reading";
 import { compareToPlans, storedSyllabus, syllabusFor } from "./syllabus";
 import { maxSourceBytes, MAX_SOURCE_BYTES } from "../../shared/source-types";
 import {
   chapterPassages,
   listSources,
   passagesAround,
+  parsedChapter,
   smartbookChapters,
   smartbookMeta,
   sourcePassages,
@@ -287,6 +289,19 @@ export function sourceHandlers(
     catalog = { at: Date.now(), books };
     return books;
   };
+  /** One catalog book, from the catalog as read in the last minutes: the address and checksum are never the window's. */
+  const catalogBook = async (id: string, signal?: AbortSignal) => {
+    const book = (await readCatalog(signal)).find((item) => item.id === id);
+    if (!book) throw new Error("books-missing");
+    return book;
+  };
+  /** The source holding this exact package once its read is over, so a reader of the book needs no package at all. */
+  const storedBook = (book: CatalogBook): string | null => {
+    const id = existingSourceFor(db, book.sha256);
+    return id && db.prepare(`SELECT 1 FROM sources WHERE id = ? AND status = 'ready'`).get(id) ? id : null;
+  };
+  // The book being read before it is added, in memory only.
+  const reading = createBookReading();
   const requireOcrData = async () => {
     const { state } = await ocrDataStatus(tess);
     if (state !== "ready") throw new Error(`ocr-data-${state}`);
@@ -318,26 +333,31 @@ export function sourceHandlers(
      * Downloads a free book and imports it as a smartbook. The catalog is read again here, so the package address and
      * checksum never come from the renderer. A book already in the library is returned as it is.
      */
-    async importBook(input: { id: string }, signal?: AbortSignal) {
+    async importBook(input: { id: string; subjectId?: string }, signal?: AbortSignal) {
       try {
         const book = (await readCatalog(signal, true)).find(
           (item) => item.id === input.id,
         );
         if (!book) throw new Error("books-missing");
+        // Where the book goes: the shelf the student added it from. A subject that is gone refuses before anything is downloaded.
+        if (input.subjectId && !db.prepare(`SELECT 1 FROM subjects WHERE id = ?`).get(input.subjectId))
+          throw new Error("subject-missing");
+        const place = (result: { sourceId: string; jobId?: string; title: string; subject: string }) => {
+          if (input.subjectId) moveSource(db, result.sourceId, { subjectId: input.subjectId });
+          return result;
+        };
         // An older version already here is used as it is. Its row offers the update.
         const existing =
           existingSourceFor(db, book.sha256) ?? linkedBookSource(db, book.id);
         if (existing) {
           // A copy a chat or a plan file brought in joins the library, so the book shows there.
           promoteSource(db, existing);
-          return { sourceId: existing, title: book.title, subject: book.subject };
+          return place({ sourceId: existing, title: book.title, subject: book.subject });
         }
-        const bytes = await downloadBook(
-          book,
-          booksTransport,
-          maxSourceBytes(".ptsb"),
-          signal,
-        );
+        // A book the student opened first is already here, checked against the catalog: it is not downloaded again.
+        const bytes =
+          reading.bytesOf(book) ??
+          (await downloadBook(book, booksTransport, maxSourceBytes(".ptsb"), signal));
         let imported;
         try {
           imported = enqueueSourceData(db, workspace, runner, bytes, ".ptsb", book.title, undefined, undefined, {
@@ -346,15 +366,48 @@ export function sourceHandlers(
           });
         } catch (err) {
           // The book arrived another way while it downloaded: that copy is the book.
-          if (err instanceof SourceExists) return { sourceId: err.sourceId, title: book.title, subject: book.subject };
+          if (err instanceof SourceExists) return place({ sourceId: err.sourceId, title: book.title, subject: book.subject });
           throw err;
         }
-        return {
+        // The held package stays until its time is up: a reader still open on the book goes on from it.
+        return place({
           sourceId: imported.sourceId,
           jobId: imported.jobId,
           title: book.title,
           subject: book.subject,
+        });
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    /**
+     * Reads a free book that is not in the library: downloads it as an add would (checked against the catalog) and
+     * returns its chapters. Nothing is stored; see `book-reading.ts`. A book the student already has is read the same way.
+     */
+    async bookPreview(input: { id: string }, signal?: AbortSignal) {
+      try {
+        const book = await catalogBook(input.id, signal);
+        const stored = storedBook(book);
+        if (stored)
+          return { title: book.title, subject: book.subject, version: book.version, chapters: smartbookChapters(db, stored) };
+        const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
+        return {
+          title: book.title,
+          subject: book.subject,
+          version: book.version,
+          chapters: parsed.config.chapters.map((chapter) => ({ number: chapter.number, title: chapter.title })),
         };
+      } catch (err) {
+        sourceError(err);
+      }
+    },
+    async bookChapter(input: { id: string; chapter: number }, signal?: AbortSignal) {
+      try {
+        const book = await catalogBook(input.id, signal);
+        const stored = storedBook(book);
+        if (stored) return chapterPassages(db, stored, input.chapter).map(({ id, text }) => ({ id, text }));
+        const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
+        return parsedChapter(parsed, input.chapter);
       } catch (err) {
         sourceError(err);
       }

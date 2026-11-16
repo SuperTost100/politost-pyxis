@@ -22,7 +22,7 @@ import { BackControl } from "../../components/BackControl";
 import { StudyLayout } from "../study/StudyBar";
 import { ImportReview } from "./ImportReview";
 import { readPlanText, type ImportRequest } from "./importPreview";
-import { takePlanText } from "./openedPlan";
+import { takePlan, type PlanOrigin } from "./openedPlan";
 import { isWizardSeed } from "./wizardSeed";
 import { ExamStep, MaterialPrimary, MaterialStep, useExamDraft } from "./ExamDraft";
 import { usePlan } from "../../lib/queries";
@@ -44,12 +44,10 @@ function Wizard() {
     (location.state as {
       wizard?: unknown;
       step?: number;
-      books?: boolean;
     } | null) ?? {};
   const seed = isWizardSeed(carried.wizard) ? carried.wizard : null;
   const [step, setStep] = useState(seed ? Math.min(carried.step ?? 1, 1) : 0);
-  // "Start from a free PoliTost book" opens the wizard with the books already showing.
-  const draft = useExamDraft({ seed, books: carried.books === true, scale });
+  const draft = useExamDraft({ seed, offers: step === 1, scale });
   const [, setParams] = useSearchParams();
   const stillHere = useStillHere();
   // An error belongs to the step and the attempt that raised it.
@@ -326,7 +324,9 @@ export function SharedPlanPage() {
   const [url, setUrl] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [review, setReview] = useState<PlanFile | null>(null);
+  // Each file opened gets its own key, so a second file starts the review over with its own choices.
+  const [review, setReview] = useState<{ file: PlanFile; origin?: PlanOrigin; key: number } | null>(null);
+  const opened = useRef(0);
   const pending = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const back = usePlace({});
@@ -344,113 +344,122 @@ export function SharedPlanPage() {
   }
 
   // The file is only validated here; nothing is written until the person confirms the summary.
-  function openText(text: string) {
+  function openText(text: string, origin?: PlanOrigin) {
     const read = readPlanText(text);
-    setReview("file" in read ? read.file : null);
+    setReview("file" in read ? { file: read.file, ...(origin ? { origin } : {}), key: ++opened.current } : null);
     setNote("file" in read ? null : t(`shared.reason.${read.reason}`));
   }
 
   // A file opened from the system or dropped on the window waits in the store. It is taken when this page mounts, and
   // again whenever the page is entered again (a new location key), so a page that is on its way out never claims it.
   const location = useLocation();
-  const openWaiting = useRef((text: string) => openText(text));
+  const openWaiting = useRef(openText);
   openWaiting.current = openText;
   useEffect(() => {
-    const text = takePlanText();
-    if (text !== null) openWaiting.current(text);
+    const plan = takePlan();
+    if (plan !== null) openWaiting.current(plan.text, plan.origin);
   }, [location.key]);
 
   const stillHere = useStillHere();
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);
     await client.invalidateQueries({ queryKey: ["plans"] });
-    // The exam is made either way; a student who went back meanwhile is not taken to it.
-    if (stillHere()) navigate(`/plans/${result.planId}`);
+    // The exam is made either way; a student who went back meanwhile is not taken to it. The review is a finished step,
+    // so the exam takes its entry: the way back from the exam is where the review was opened from (or Esami), and going
+    // forward again never reopens it, as when the new exam's forms hand over to its page.
+    if (stillHere()) navigate(`/plans/${result.planId}`, { replace: true });
   }
 
+  const reviewing = review !== null;
   return (
     <div>
       <BackControl target={back} variant="page" />
-      <h1 className="title-1">{t("shared.title")}</h1>
-      <p className="body ink-muted">{t("shared.body")}</p>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="application/json,.json,.pyxis"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (!file || !take()) return;
-          void file
-            .text()
-            .then(openText)
-            .catch(() => setNote(t("shared.bad")))
-            .finally(drop);
-        }}
-      />
-      <Button
-        shape="round"
-        disabled={busy}
-        onClick={() => fileRef.current?.click()}
-      >
-        {t("shared.file")}
-      </Button>
-      <form
-        className="px-shared-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const link = url.trim();
-          if (!link || !take()) return;
-          void window.pyxis
-            .fetchPlan(link)
-            .then(openText)
-            .catch((error: unknown) => {
-              const detail = error instanceof Error ? error.message : "";
-              setNote(
-                t(
-                  detail.includes("plan-too-big")
-                    ? "shared.tooBig"
-                    : detail.includes("plan-redirect")
-                      ? "shared.redirectFailed"
-                      : detail.includes("link-scheme") ||
-                          detail.includes("plan-url")
-                        ? "shared.unsafeLink"
-                        : "shared.downloadFailed",
-                ),
-              );
-            })
-            .finally(drop);
-        }}
-      >
-        <label className="label" htmlFor="plan-url">
-          {t("shared.url")}
-        </label>
-        <div className="px-form-inline">
-          <Input
-            id="plan-url"
-            type="url"
-            placeholder={t("shared.urlPlaceholder")}
-            disabled={busy}
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-          />
-          <Button
-            htmlType="submit"
-            shape="round"
-            type="primary"
-            disabled={busy}
-          >
-            {t("shared.open")}
-          </Button>
-        </div>
-      </form>
-      {note ? <p className="body">{note}</p> : null}
+      {/* Hidden, not removed, while a file is under review: the link the student typed is still there if they come back. */}
+      <div hidden={reviewing}>
+        <h1 className="title-1">{t("shared.title")}</h1>
+        <p className="body ink-muted">{t("shared.body")}</p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json,.pyxis"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (!file || !take()) return;
+            void file
+              .text()
+              .then((text) => openText(text, { name: file.name, bytes: file.size }))
+              .catch(() => setNote(t("shared.bad")))
+              .finally(drop);
+          }}
+        />
+        <Button
+          shape="round"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {t("shared.file")}
+        </Button>
+        <form
+          className="px-shared-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const link = url.trim();
+            if (!link || !take()) return;
+            void window.pyxis
+              .fetchPlan(link)
+              .then(openText)
+              .catch((error: unknown) => {
+                const detail = error instanceof Error ? error.message : "";
+                setNote(
+                  t(
+                    detail.includes("plan-too-big")
+                      ? "shared.tooBig"
+                      : detail.includes("plan-redirect")
+                        ? "shared.redirectFailed"
+                        : detail.includes("link-scheme") ||
+                            detail.includes("plan-url")
+                          ? "shared.unsafeLink"
+                          : "shared.downloadFailed",
+                  ),
+                );
+              })
+              .finally(drop);
+          }}
+        >
+          <label className="label" htmlFor="plan-url">
+            {t("shared.url")}
+          </label>
+          <div className="px-form-inline">
+            <Input
+              id="plan-url"
+              type="url"
+              placeholder={t("shared.urlPlaceholder")}
+              disabled={busy}
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+            />
+            <Button
+              htmlType="submit"
+              shape="round"
+              type="primary"
+              disabled={busy}
+            >
+              {t("shared.open")}
+            </Button>
+          </div>
+        </form>
+        {note ? <p className="body">{note}</p> : null}
+      </div>
       {review ? (
         <ImportReview
-          file={review}
+          key={review.key}
+          file={review.file}
+          origin={review.origin}
           onImport={importReviewed}
-          onCancel={() => setReview(null)}
+          // Annulla goes back to where the file was opened from; with no way back it returns to the opener.
+          onCancel={() => (back ? back.go() : setReview(null))}
         />
       ) : null}
     </div>

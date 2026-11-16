@@ -133,7 +133,7 @@ describe("prompt templates", () => {
 
   it("asks for output in the supplied content language wherever the output is text", () => {
     const withLanguage = ids.filter(
-      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe"].includes(id),
+      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe", "figure.fix"].includes(id),
     );
     for (const id of withLanguage) {
       expect(placeholders(loadTemplate(id)), id).toEqual(["contentLanguage"]);
@@ -147,20 +147,30 @@ describe("prompt templates", () => {
       "reference's language",
     );
     expect(placeholders(loadTemplate("chat.checks"))).toEqual([]);
+    // The fix call answers in code, and keeps the language of the figure's own labels.
+    expect(placeholders(loadTemplate("figure.fix"))).toEqual([]);
+    expect(loadTemplate("figure.fix").body).toContain("keep what the code draws, its labels and its language");
   });
 
   it("offers only the figure kinds that can be drawn, and no figure without the runtime", () => {
     for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
       const text = systemPrompt(id, { contentLanguage: "Italian" });
-      const all = figureText(text, ["plot", "circuit"], 2);
+      const all = figureText(text, ["plot", "circuit", "graph"], 2);
       expect(all, id).toContain("opening line is exactly ```pyxis-figure");
       expect(all, id).toContain('\n- "plot", for function plots');
       expect(all, id).toContain('\n- "circuit", for electric and electronic circuits');
+      expect(all, id).toContain('\n- "graph", for graphs, trees, automata and flows');
       expect(all, id).toContain("Add no more than 2 of them in one reply");
       // Python without the drawing pack: plots only, and the limit of the place that asks.
       const plots = figureText(text, ["plot"], 1);
       expect(plots, id).toContain('\n- "plot", for function plots');
       expect(plots, id).not.toContain("circuit");
+      expect(plots, id).not.toContain("Graphviz");
+      // Graphs need the drawing pack alone, so with Python missing they are the one kind offered.
+      const graphs = figureText(text, ["graph"], 2);
+      expect(graphs, id).toContain("Graphviz DOT");
+      expect(graphs, id).not.toContain("matplotlib");
+      expect(graphs, id).not.toContain("schemdraw");
       expect(plots, id).not.toContain("schemdraw");
       expect(plots, id).toContain("Add no more than 1 of them in one reply");
       // No runtime: the instruction is gone and the rest of the template is as written.

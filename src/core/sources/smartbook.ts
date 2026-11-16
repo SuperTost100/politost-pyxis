@@ -619,6 +619,27 @@ export function passagesAround(db: Database.Database, passageId: string) {
   );
 }
 
+/**
+ * One chapter of a parsed package as the reader shows it, the same paragraphs a stored book gives for that chapter, for
+ * a book read before it is added: nothing is stored, so the ids only tell the paragraphs apart.
+ */
+export function parsedChapter(parsed: ParsedSmartbook, chapter: number): Array<{ id: string; text: string }> {
+  const own = parsed.paragraphs.filter((paragraph) => paragraph.chapter === chapter);
+  return mergeViewerParagraphs(
+    own.map((paragraph, index) => ({
+      id: `${chapter}:${index}`,
+      text: paragraph.text,
+      sectionPath: paragraph.section,
+      locator: {
+        chapter: paragraph.chapter,
+        paragraph: paragraph.paragraph,
+        ...(paragraph.title ? { title: paragraph.title } : {}),
+      },
+    })),
+    own.map((paragraph) => paragraph.start),
+  ).map(({ id, text }) => ({ id, text }));
+}
+
 function mergeViewerParagraphs<
   T extends {
     text: string;

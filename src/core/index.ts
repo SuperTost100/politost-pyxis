@@ -178,7 +178,14 @@ if (!parent) {
       db,
       workspacePath,
       runner,
-      booksFixture ? folderTransport(booksFixture) : undefined,
+      booksFixture
+        ? folderTransport(booksFixture, Number(process.env["PYXIS_E2E_BOOKS_DELAY"]) || 0)
+        : // A run with the test seams on never reaches the real books site, so a spec's Library does not depend on its catalog.
+          dev && process.env["PYXIS_E2E"] === "1"
+          ? async () => {
+              throw new Error("books-offline");
+            }
+          : undefined,
       userDataPath,
       // The subjects of a linked folder come from the same recorded replies as plans, in end-to-end runs.
       dev && process.env["PYXIS_E2E_PLAN_REPLIES"]
@@ -191,6 +198,8 @@ if (!parent) {
       workspacePath,
       dev ? process.env["PYXIS_E2E_REPLY"] : undefined,
       dev ? Math.min(Number(process.env["PYXIS_E2E_REPLY_DELAY"]) || 0, 15_000) : 0,
+      // The recorded `figureFix` replies, which answer the call that corrects a failed figure in a chat turn too.
+      dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined,
     );
     // Main keeps a copy of the crash-report switch so it can start the crash reporter before core is up. Core sends
     // the stored value now (a restore or a new workspace can change it) and again after every profile save.

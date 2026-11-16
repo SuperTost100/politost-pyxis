@@ -1,8 +1,11 @@
+/* The review of a plan file: a page (the exam as it will be) and a dialog (the same parts in one column). The page shares
+   its head, its path and its column of sections with the exam it becomes (ExamPage.css, PlanPath.css). */
 .px-import-review {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   width: 100%;
+  min-width: 0;
   margin-top: var(--space-5);
 }
 .px-import-review h2,
@@ -14,50 +17,207 @@
 .px-dialog .px-import-review {
   margin-top: 0;
 }
-.px-import-counts {
+/* The page sits in the shared page column (--page-width): no width or start of its own, and its head starts where the
+   back control does. */
+.px-import-page {
+  display: block;
+  margin-top: 0;
+}
+.px-import-page h1 {
+  margin: 0;
+}
+/* The title takes the focus when the page opens: the page moves on, and no box is drawn around it. */
+.px-import-page h1[tabindex="-1"]:focus {
+  outline: none;
+}
+/* The exam's own head leaves a long author or label unbroken; here every line of it comes from the file. */
+.px-import-page .px-exam-date {
+  overflow-wrap: anywhere;
+}
+
+/* The file the page was made from: its icon, its name and its size. */
+.px-import-file {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.3;
+  color: var(--ink-muted);
+}
+.px-import-file > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.px-file-icon {
+  flex: none;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.22));
+}
+
+.px-import-notices {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.px-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 26px var(--space-8);
+  align-items: start;
+  margin-top: 26px;
+}
+/* The exam's classes name grid areas this grid does not have: the path takes the first column, the sections the second. */
+.px-import-grid > .px-exam-path {
+  grid-area: auto;
+  grid-column: 1;
+  min-width: 0;
+}
+.px-import-grid > .px-exam-aside {
+  grid-area: auto;
+  grid-column: 2;
+}
+/* A file without topics or a date leaves the sections the whole width. */
+.px-import-grid > .px-exam-aside:only-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1200px) {
+  .px-import-grid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 22px;
+  }
+}
+/* One column when the path would be squeezed, at the same point as the exam page; in em, so large text moves it. */
+@container px-exam (max-width: 44em) {
+  .px-import-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .px-import-grid > .px-exam-aside {
+    grid-column: 1;
+  }
+}
+
+/* While the exam is added the path is held still: nothing in it changes until the exam is there. */
+.px-xpath-list.is-adding {
+  opacity: 0.6;
+  transition: opacity var(--duration-micro) var(--ease-out);
+}
+
+.px-import-facts {
+  display: grid;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
-  font: 400 15px/22px var(--font-sans);
 }
-.px-import-source {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-.px-import-option {
+.px-import-facts li {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  font: 400 15px/22px var(--font-sans);
+  min-width: 0;
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
 }
-.px-import-option input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--primary);
+.px-import-facts .px-icon {
+  flex: none;
+  color: var(--ink-subtle);
 }
-.px-import-option input:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
+.px-import-review p.px-import-progress {
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: calc(19px * var(--text-scale, 1));
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
 }
-.px-import-locate,
-.px-import-actions {
+.px-import-review p.px-import-help {
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: calc(18px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+}
+
+/* Materiale: each original with where it is, and for the ones that are not in the file, what to do. */
+.px-import-sources {
+  display: grid;
+}
+.px-import-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border);
+}
+.px-import-source:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.px-import-source:last-child {
+  padding-bottom: 0;
+}
+.px-import-source > b {
+  font-weight: 600;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.px-import-source > small {
+  font-size: calc(12.5px * var(--text-scale, 1));
+  line-height: calc(17px * var(--text-scale, 1));
+  color: var(--ink-subtle);
+  overflow-wrap: anywhere;
+}
+.px-import-select {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+.px-import-locate {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+  margin-top: var(--space-1);
 }
-.px-import-actions {
-  margin-top: var(--space-3);
+
+/* The footer: what adding does, then Annulla and the action. It stays at the bottom of the window, like the save bar. */
+.px-import-foot {
+  position: sticky;
+  bottom: var(--space-4);
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-6);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-overlay);
+  box-shadow: 0 8px 24px rgba(21, 24, 30, 0.12);
 }
+[data-theme="dark"] .px-import-foot {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+html:has(.px-import-foot) {
+  scroll-padding-bottom: calc(var(--space-16) + var(--space-8));
+}
+.px-import-foot > p,
+.px-import-foot > .px-import-working {
+  flex: 1 1 240px;
+  margin: 0;
+  min-width: 0;
+}
+.px-import-review p.px-import-note {
+  font-size: calc(14px * var(--text-scale, 1));
+  line-height: calc(20px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-import-foot-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
 .px-import-review .ant-btn {
   white-space: nowrap;
 }

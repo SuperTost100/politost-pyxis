@@ -64,6 +64,9 @@ fileAssociations:
     description: Pyxis plan
     mimeType: application/vnd.politost.pyxis+json
     role: Viewer
+    # The sheet with the path on it (scripts/gen-file-icon.mjs): build/pyxis.icns for the Finder and build/pyxis.ico for
+    # the Explorer. The name without an extension is how electron-builder picks the one of each platform.
+    icon: pyxis
 mac:
   # Signed in build/after-pack.cjs. electron-builder's own codesign rejects
   # Finder metadata that macOS 27 leaves on the unpacked app.
@@ -104,3 +107,14 @@ deb:
   fpm:
     - --deb-compression-level
     - "9"
+    # electron-builder writes the MIME type with the stock "x-office-document" icon and has no setting for another. The
+    # deb adds the sheet to the hicolor theme under the type's icon name, and a second MIME file that names it. The
+    # name starts with z so update-mime-database reads it after electron-builder's own file; the last icon it reads wins.
+    # The AppImage has no such hook: it keeps the stock icon.
+    - build/file-icon/16.png=/usr/share/icons/hicolor/16x16/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/file-icon/32.png=/usr/share/icons/hicolor/32x32/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/file-icon/64.png=/usr/share/icons/hicolor/64x64/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/file-icon/128.png=/usr/share/icons/hicolor/128x128/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/file-icon/256.png=/usr/share/icons/hicolor/256x256/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/file-icon/512.png=/usr/share/icons/hicolor/512x512/mimetypes/application-vnd.politost.pyxis+json.png
+    - build/pyxis-mime-icon.xml=/usr/share/mime/packages/z-politost-pyxis-icon.xml

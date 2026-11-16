@@ -137,4 +137,5 @@ The mark is star trails: three trails circling the pole star, the fixed point yo
 
 - Mark files: `pyxis-mark-dark.svg` on dark grounds, `pyxis-mark-light.svg` on light, `pyxis-mark-mono.svg` for one colour.
 - App icon: white trails and a gold star on a teal (`#14807a`) rounded square, `pyxis-app-icon.svg`. Below 32px use `pyxis-app-icon-small.svg`, which keeps two thicker trails. `build/icon.png` is its 1024px render.
+- File icon: a `.pyxis` file is a white sheet with a folded corner and a small path on it (a step done, the current step and a gold star for the exam), with PYXIS at the foot. `pyxis-file-icon.svg` is the drawing from 64px up (the label is outlined, so it needs no font); `pyxis-file-icon-32.svg` and `pyxis-file-icon-16.svg` are cropped to the sheet and drop the label, and the 16px one keeps a dot and the star. `node scripts/gen-file-icon.mjs` renders them into `build/pyxis.icns`, `build/pyxis.ico` and `build/file-icon/*.png`, and the results are committed.
 - Never recolour the star, add trails or rotate the mark.

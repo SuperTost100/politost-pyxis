@@ -134,6 +134,42 @@ describe("generate with LaTeX in the answer", () => {
   });
 });
 
+describe("generate with a field that holds code", () => {
+  const schema = z.object({ stem: z.string(), note: z.string() });
+  // `note` is Python: the backslash and the n of a string literal are not a line break. `stem` is prose with LaTeX that the
+  // model wrote with one backslash, which became a form feed and "rac" when it was read.
+  const python = "plt.ylabel('Voltage\\n(V)')";
+  const broken = "$\frac{a}{b}$";
+  const whole = "$\\frac{a}{b}$";
+
+  it("keeps the named fields as the model wrote them and repairs the rest, in a structured answer and in JSON text", async () => {
+    const structured = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      verbatim: ["note"],
+      run: async () => result({ structured: { stem: broken, note: python }, text: "" }),
+    });
+    expect(structured.data).toEqual({ stem: whole, note: python });
+    const text = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      verbatim: ["note"],
+      run: async () => result({ text: JSON.stringify({ stem: broken, note: python }) }),
+    });
+    expect(text.data).toEqual({ stem: whole, note: python });
+    // Without the option the same answer is repaired, which is what breaks code: a line break where the escape was.
+    const repaired = await generate({
+      selection,
+      prompt: "q",
+      schema,
+      run: async () => result({ structured: { stem: broken, note: python }, text: "" }),
+    });
+    expect(repaired.data).toEqual({ stem: whole, note: "plt.ylabel('Voltage\n(V)')" });
+  });
+});
+
 describe("generate", () => {
   it("sends a union of shapes as anyOf, which strict schemas accept", async () => {
     let sent: unknown;
