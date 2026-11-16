@@ -2,14 +2,28 @@ import type { ReactNode } from "react";
 import "./EmptyState.css";
 
 /**
- * What a page shows when it has nothing yet: one line on what will appear here, then the one action that starts it, in
- * the place where the content will be. There is no title, because the page's own title says what is empty, and no
- * second button. `art` is a drawing above the line; with none, nothing is reserved for it.
+ * What a page shows when it has nothing yet: one line on what will appear here, then the one action that starts it. There
+ * is no title, because the page's own title says what is empty, and no second button.
+ *
+ * With `centred` the block is the page's whole body and sits in the middle of the room under the page's head, across and
+ * down (EmptyState.css makes the page at least as tall as the window). `art` is a drawing above the line and belongs to
+ * that case. Without `centred` the block is small and stays under the head, left-aligned, so a page that also shows
+ * something else, such as the Library's subjects, keeps its content in place.
  */
-export function EmptyState({ body, action, art }: { body: string; action?: ReactNode; art?: ReactNode }) {
+export function EmptyState({
+  body,
+  action,
+  art,
+  centred = false,
+}: {
+  body: string;
+  action?: ReactNode;
+  art?: ReactNode;
+  centred?: boolean;
+}) {
   return (
-    <div className="px-empty">
-      {art ? (
+    <div className={centred ? "px-empty px-empty-centred" : "px-empty"}>
+      {centred && art ? (
         <div className="px-empty-art" aria-hidden>
           {art}
         </div>
