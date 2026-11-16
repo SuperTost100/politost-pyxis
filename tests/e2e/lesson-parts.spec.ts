@@ -636,13 +636,13 @@ test("a click on the title while an answer is saved keeps the focus there", asyn
     await options.nth(right).click();
     await title.click();
     await expect(title).toBeFocused();
-    // Both clicks came while the answer was on its way: if a slow runner took longer than the answer's 2.5 s, this fails
-    // instead of passing without having tested the case.
-    await expect(page.getByText("Giusto.", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Giusto.", { exact: true })).toBeVisible({ timeout: 20_000 });
+    // Both clicks came while the answer was on its way, and the part is not done yet: if a slow runner took longer than the
+    // answer's 2.5 s, this fails instead of passing without having tested the case.
+    const done = page.locator(".px-reader-side li[data-done]");
+    await expect(done).toHaveCount(0);
     // The answer is saved and the part is read again as done, which is when the page moves the focus to Continua, in the
     // animation frame after it: three frames later it has had its turn.
-    await expect(page.locator(".px-reader-side li[data-done]").first()).toBeVisible();
+    await expect(done.first()).toBeVisible({ timeout: 20_000 });
     await expect(continueButton(page)).toContainText("Continua: Interno, esterno, frontiera");
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
