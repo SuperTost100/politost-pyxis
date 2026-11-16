@@ -534,6 +534,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
         });
       }
     for (const title of ["Appunti sciolti", "Esercizi sciolti", "Lezione sciolta"]) await pasteLoose(page, title);
+    // The files are all read before the test points at one: a read that ends moves its cover, and the page with it.
+    await allRead(page);
     await expect(cover(page, "Fisica 2", "Termologia")).toBeVisible();
     await animationsSettled(page);
 
@@ -569,7 +571,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     const expectMenuAt = async (menu: Locator, at: { x: number; y: number }, owner: string | null, shot: string) => {
       await withTrail(page, () => expect(menu).toBeVisible());
       await animationsSettled(page);
-      const box = (await menu.boundingBox())!;
+      // Says what the page did when the menu is gone by now, as a menu that closed on a slow runner left no trace.
+      const box = await openBox(menu, page, "The menu, shown a moment ago,");
       const view = page.viewportSize()!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.y).toBeGreaterThanOrEqual(0);
@@ -595,10 +598,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
     // The page's own scrolls, the wheel's and this one, have stopped: a menu closes on a scroll that moves its item, and
     // on an Intel Mac this menu opened and was gone.
     await atRest(target);
-    await target.hover();
     const dots = page.getByRole("button", { name: "Azioni per Integrali" });
-    await expect(dots).toBeVisible();
-    await dots.click();
+    await openDots(page, target, dots);
     await expectMenuAt(fileMenu, centre((await dots.boundingBox())!), await sourceId(target), "library-menu/960-file-dots.png");
     // Sposta in opens beside the menu, inside the window.
     await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
@@ -687,10 +688,8 @@ test("At 960 px a file's and a subject's menu open at the dots or the pointer af
         await file.scrollIntoViewIfNeeded();
         // After this scroll, the wheel's and the window's last resize, which closes a right-click menu.
         await atRest(file);
-        if (way === "dots") {
-          await file.hover();
-          await page.getByRole("button", { name: "Azioni per Serie" }).click();
-        } else {
+        if (way === "dots") await openDots(page, file, page.getByRole("button", { name: "Azioni per Serie" }));
+        else {
           const from = centre((await file.boundingBox())!);
           await page.mouse.click(from.x, from.y, { button: "right" });
         }
@@ -864,6 +863,34 @@ test("A menu stays open when the page gets shorter under a student who has scrol
   }
 });
 
+/**
+ * Waits until no file of the library is still being read. A file being read sorts before the ones that are ready, so its
+ * cover changes places when its read ends, and a pointer, a menu's owner or the page under a menu is left over another
+ * cover. A spec that points at covers waits for this first; one that needs a file to arrive while a menu is open waits for
+ * the files before it only.
+ */
+async function allRead(page: Page) {
+  await expect
+    .poll(() => page.evaluate(async () => (await window.pyxis.invoke("sources.list", {})).filter((source) => source.status !== "ready").length))
+    .toBe(0);
+}
+
+/**
+ * Opens a cover's dots with the pointer alone: the cover is scrolled into view first, the pointer goes to its middle once
+ * it is at rest, and the dots are clicked once they have faded in. A click through the locator that has to try again
+ * scrolls the page itself, and a scroll ends an open menu by design.
+ */
+async function openDots(page: Page, file: Locator, dots: Locator) {
+  await file.scrollIntoViewIfNeeded();
+  await atRest(file);
+  const box = (await file.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // The dots show under the pointer (`.px-cover:hover`) with a short fade.
+  await expect(dots).toHaveCSS("opacity", "1");
+  const at = (await dots.boundingBox())!;
+  await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2);
+}
+
 /** Gives a file a subject by name, without the page's own menus. */
 async function fileUnder(page: Page, title: string, subject: string): Promise<string> {
   const id = await pasteLoose(page, title);
@@ -888,12 +915,14 @@ test("A menu stays open and acts on its own file while the page changes under it
       ["right-click", "Limiti", "Appunti sciolti"],
       ["dots", "Derivate", "Esercizi sciolti"],
     ] as const) {
+      // The files before this one are read, so no cover moves when a read ends. The file that arrives below is not waited
+      // for: it arrives while the menu is open on purpose.
+      await allRead(page);
       const file = cover(page, "Analisi 1", title);
+      await atRest(file);
       const top = (await file.boundingBox())!.y;
-      if (way === "dots") {
-        await file.hover();
-        await page.getByRole("button", { name: `Azioni per ${title}` }).click();
-      } else {
+      if (way === "dots") await openDots(page, file, page.getByRole("button", { name: `Azioni per ${title}` }));
+      else {
         const box = (await file.boundingBox())!;
         await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: "right" });
       }
@@ -1016,6 +1045,7 @@ async function tallLibrary(page: Page) {
     ["Geometria", ["Vettori"]],
   ] as const)
     for (const title of titles) await fileUnder(page, title, subject);
+  await allRead(page);
   await page.reload();
   await expect(cover(page, "Geometria", "Vettori")).toBeVisible();
   await animationsSettled(page);
@@ -1081,8 +1111,7 @@ test("A scroll that ends a keyboard-opened menu leaves the page where it went an
     await scrollUp();
 
     // A menu opened with the pointer keeps focus where the click put it: a scroll does not move it.
-    await cover(page, "Fisica 2", "Dinamica").hover();
-    await page.getByRole("button", { name: "Azioni per Dinamica" }).click();
+    await openDots(page, cover(page, "Fisica 2", "Dinamica"), page.getByRole("button", { name: "Azioni per Dinamica" }));
     await expect(menu.getByRole("menuitem", { name: "Dettagli della fonte" })).toBeVisible();
     await page.mouse.move(1100, 300);
     await page.mouse.wheel(0, 450);

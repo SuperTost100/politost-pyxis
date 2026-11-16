@@ -100,8 +100,12 @@ async function finish(app: ElectronApplication, userData: string) {
 }
 
 test("Ask: recent chats, automatic titles, rename and delete, greeting and the thinking placeholder", async () => {
-  test.setTimeout(120000);
-  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "3000" });
+  // The reply is held for half of this before its first words, and the thinking placeholder stands for that long. The check
+  // below looks about 25 ms after the question is sent on Linux, but a 2.5 s stall of the page was enough to miss the
+  // 1.5 s that 3000 held (the Intel Mac runner did, run 43864805540). Five seconds is longer than the 4 s that
+  // ask-remount.spec.ts holds its reply for, and costs this test 10 s for each of its two replies.
+  test.setTimeout(150000);
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "10000" });
   try {
     await page.evaluate(() => window.pyxis.invoke("profile.save", { displayName: "Tommaso" }));
     await page.evaluate(() => {
@@ -233,6 +237,10 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Argomento 20" }).click();
     await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
+    // Known and unexplained: on the Intel Mac runner (run 43883525076) the click above did nothing. The report's page
+    // still held the confirmation, not busy, and "Argomento 20" in the list, so the delete never started and the sidebar
+    // had nothing to read again. The same as the dialog clicks of dialogs.spec.ts and leave-with-typing.spec.ts, and it did
+    // not repeat in 10 runs under CPU throttling and stalls on Linux. See pull request 491; the macOS jobs keep a trace.
     await expect(list.getByRole("link", { name: "Argomento 01" })).toBeVisible();
     await expect(list.getByRole("listitem")).toHaveCount(20);
     await expect(allChats).toHaveCount(0);

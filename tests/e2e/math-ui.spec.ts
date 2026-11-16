@@ -16,7 +16,7 @@ import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 
-async function launch(reply?: string) {
+async function launch(reply?: string, extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
   const { version } = JSON.parse(
     readFileSync("resources/pyodide-manifest.json", "utf8"),
@@ -24,7 +24,7 @@ async function launch(reply?: string) {
   const pack = join(userData, "workspace/runtimes/pyodide", version);
   mkdirSync(pack, { recursive: true });
   cpSync(".tmp/pyodide", pack, { recursive: true });
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply || undefined } });
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_REPLY: reply || undefined, ...extra } });
   return setUp(app, userData, async () => {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -100,6 +100,35 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
     await expectNoAxeViolations(page);
     await saveShot(page, "m9-failed-light.png");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("Ctrl+Enter pressed before the Python page knows Python is there runs the code once it does", async () => {
+  test.skip(
+    !existsSync(".tmp/pyodide/pyodide.js"),
+    "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.",
+  );
+  test.setTimeout(120000);
+  // The page reads which packs are there, and the key is pressed while that read is held back.
+  const { app, page, userData } = await launch(undefined, { PYXIS_E2E_READ_DELAY: "tools.runtime=3000" });
+  try {
+    await page.evaluate(() => {
+      window.location.hash = "/tools/python";
+    });
+    const code = page.getByRole("textbox", { name: /Codice Python|Python code/ });
+    await code.fill("print('42')");
+    // The key is sent in the same task that checks Run is still disabled, which it is until the read has returned, so the
+    // test cannot pass because the read came back first on a slow runner.
+    await page.evaluate(() => {
+      const run = [...document.querySelectorAll("button")].find((button) => /^(Esegui|Run)$/.test(button.getAttribute("aria-label") ?? button.textContent?.trim() ?? ""));
+      if (!run) throw new Error("no Run button");
+      if (!run.disabled) throw new Error("the read of the Python pack had already returned");
+      document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
+    });
+    await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
   } finally {
     await app.close();
     removeTestFolder(userData);

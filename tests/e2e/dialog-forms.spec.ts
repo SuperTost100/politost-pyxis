@@ -47,12 +47,20 @@ test("DIALOG-03 a form's select opens above the dialog, is reached by keyboard, 
     const last = list.locator(".ant-select-item-option").last();
     // The list scrolls inside itself, so the last option is brought into its view first.
     await last.scrollIntoViewIfNeeded();
+    // Says what is at that point when it is not the option, as a run that failed here (macOS, run 43883525076) did not.
     const reachable = await last.evaluate((option) => {
       const box = option.getBoundingClientRect();
       const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      return { hit: hit !== null && option.contains(hit), inside: box.bottom <= innerHeight && box.top >= 0 };
+      const list = option.closest(".ant-select-dropdown")?.getBoundingClientRect();
+      return {
+        hit: hit !== null && option.contains(hit),
+        inside: box.bottom <= innerHeight && box.top >= 0,
+        found: hit === null ? "nothing" : `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 80)}`,
+        option: [box.left, box.top, box.width, box.height].map(Math.round),
+        list: list ? [list.left, list.top, list.width, list.height].map(Math.round) : null,
+      };
     });
-    expect(reachable).toEqual({ hit: true, inside: true });
+    expect({ hit: reachable.hit, inside: reachable.inside }, `at the last option's centre: ${JSON.stringify(reachable)}`).toEqual({ hit: true, inside: true });
 
     // Escape closes the list, and the dialog stays with its field.
     await page.keyboard.press("Escape");

@@ -255,6 +255,9 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
     }
     await control("Esami").click();
     await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    // Known and unexplained: on the Intel Mac runner (run 43840904857) the click above did nothing, and for 15 s the
+    // address stayed `#/plans/new` with the question still open. It did not repeat in 15 loops of this step under CPU
+    // throttling on Linux. See pull request 491; a trace of the next failure on macOS is kept in the job's artifact.
     await expect(page).toHaveURL(/#\/exams$/);
 
     // The guided exam: the exam step and the material step with nothing picked lead to it.
