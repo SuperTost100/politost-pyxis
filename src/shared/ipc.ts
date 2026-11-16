@@ -1614,7 +1614,8 @@ export const requests = {
   },
   "study.browse": {
     // Cards across every exam and subject, in subject order, one page at a time. `query` matches the front or the back,
-    // ignoring case and accents. `planId: null` keeps the cards with no exam.
+    // ignoring case and accents. `planId: null` keeps the cards with no exam. With `perSubject` the cards are not a page:
+    // each subject gives its first `perSubject` cards, and all of them when `expand` lists it (`null` is "No subject").
     input: z.object({
       query: z.string().max(200).optional(),
       planId: z.string().nullable().optional(),
@@ -1622,6 +1623,8 @@ export const requests = {
       status: z.enum(["all", "due", "suspended", "removed", "leech"]).optional(),
       offset: z.number().int().min(0).optional(),
       limit: z.number().int().min(1).max(100).optional(),
+      perSubject: z.number().int().min(1).max(100).optional(),
+      expand: z.array(z.string().nullable()).max(500).optional(),
     }),
     output: z.object({
       total: z.number().int(),
@@ -1652,6 +1655,7 @@ export const requests = {
           subjectId: z.string().nullable(),
           subject: z.string().nullable(),
           count: z.number().int(),
+          noExam: z.number().int(),
         }),
       ),
       plans: z.array(

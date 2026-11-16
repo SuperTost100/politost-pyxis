@@ -45,6 +45,8 @@ export type BrowseResult = {
     subjectId: string | null;
     subject: string | null;
     count: number;
+    /** How many of those have no exam, which the subject can review on their own. */
+    noExam: number;
   }>;
   /** Exams (in subject order) and topics that hold cards, for the filters. Not narrowed by the search or the filters. */
   plans: Array<{
@@ -100,7 +102,9 @@ const PAGE_MAX = 100;
 
 /**
  * Cards across every exam, grouped by subject and ordered subject, exam, topic, creation; in each subject the cards
- * with no exam come after its exams'. A subject is the card's own, which for an exam's card is the exam's. Cards of an
+ * with no exam come after its exams'. With `perSubject` the result is not a page: it holds the first `perSubject` cards
+ * of every subject and all the cards of the subjects in `expand` (`null` is "No subject"), and `offset` and `limit` are
+ * ignored. A subject is the card's own, which for an exam's card is the exam's. Cards of an
  * archived exam or topic stay out, as in the review queue. `planId: null` keeps only the cards with no exam. Every word of the search has to
  * appear in the front or the back, compared on the folded copy in `cards.search_text`.
  */
@@ -113,6 +117,8 @@ export function browseCards(
     status?: CardStatus;
     offset?: number;
     limit?: number;
+    perSubject?: number;
+    expand?: Array<string | null>;
   },
   now: number,
 ): BrowseResult {
@@ -155,27 +161,55 @@ export function browseCards(
   ];
   const groups = db
     .prepare(
-      `SELECT s.id AS subjectId, s.name AS subject, COUNT(*) AS count ${from}
+      `SELECT s.id AS subjectId, s.name AS subject, COUNT(*) AS count,
+         COALESCE(SUM(c.plan_id IS NULL), 0) AS noExam ${from}
        GROUP BY s.id ORDER BY ${subjectOrder}`,
     )
     .all(...params) as BrowseResult["groups"];
-  const offset = Math.max(0, input.offset ?? 0);
-  const limit = Math.min(PAGE_MAX, Math.max(1, input.limit ?? 25));
-  const rows = db
-    .prepare(
-      `SELECT c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
+  const columns = `c.id, c.front, c.back, c.plan_id, p.title AS plan_title,
         c.topic_id, t.title AS topic_title, s.id AS subject_id, s.name AS subject_name,
         c.suspended, c.removed, c.seed_key, c.passage_id,
         (SELECT ps.source_id FROM passages ps WHERE ps.id = c.passage_id) AS source_id,
-        ${latest} AS state_json
-       ${from}
-       ORDER BY ${subjectOrder},
-         p.id IS NULL, p.title COLLATE NOCASE, p.id,
+        ${latest} AS state_json`;
+  const joins = `LEFT JOIN plans p ON p.id = c.plan_id
+       LEFT JOIN topics t ON t.id = c.topic_id
+       LEFT JOIN subjects s ON s.id = c.subject_id`;
+  const cardOrder = `p.id IS NULL, p.title COLLATE NOCASE, p.id,
          t.id IS NULL, t.position, t.id,
-         c.created_at, c.rowid
+         c.created_at, c.rowid`;
+  let rows: Row[];
+  if (input.perSubject !== undefined) {
+    // Ranks the matches by id alone, so the saved review state and the source are read for the cards that stay.
+    const open = (input.expand ?? []).filter((id): id is string => id !== null);
+    const openNone = (input.expand ?? []).includes(null) ? 1 : 0;
+    rows = db
+      .prepare(
+        `WITH ranked AS (
+           SELECT c.id AS id, s.id AS sid,
+             ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY ${cardOrder}) AS rank,
+             ROW_NUMBER() OVER (ORDER BY ${subjectOrder}, ${cardOrder}) AS seq
+           ${from}
+         )
+         SELECT ${columns}
+         FROM ranked r JOIN cards c ON c.id = r.id ${joins}
+         WHERE r.rank <= ?
+           OR (r.sid IS NULL AND ? = 1)
+           OR r.sid IN (SELECT value FROM json_each(?))
+         ORDER BY r.seq`,
+      )
+      .all(...params, Math.max(1, input.perSubject), openNone, JSON.stringify(open)) as Row[];
+  } else {
+    const offset = Math.max(0, input.offset ?? 0);
+    const limit = Math.min(PAGE_MAX, Math.max(1, input.limit ?? 25));
+    rows = db
+      .prepare(
+        `SELECT ${columns}
+       ${from}
+       ORDER BY ${subjectOrder}, ${cardOrder}
        LIMIT ? OFFSET ?`,
-    )
-    .all(...params, limit, offset) as Row[];
+      )
+      .all(...params, limit, offset) as Row[];
+  }
 
   const cards = rows.map((row): BrowsedCard => {
     const saved = row.state_json

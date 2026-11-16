@@ -101,9 +101,9 @@ describe("card browser", () => {
     const result = browseCards(db, {}, T0);
     expect(result.total).toBe(6);
     expect(result.groups).toEqual([
-      { subjectId: "s-phys", subject: "Fisica", count: 3 },
-      { subjectId: "s-chem", subject: "Chimica", count: 2 },
-      { subjectId: null, subject: null, count: 1 },
+      { subjectId: "s-phys", subject: "Fisica", count: 3, noExam: 0 },
+      { subjectId: "s-chem", subject: "Chimica", count: 2, noExam: 0 },
+      { subjectId: null, subject: null, count: 1, noExam: 0 },
     ]);
     expect(result.cards.map((card) => card.subjectName)).toEqual([
       "Fisica",
@@ -392,8 +392,8 @@ describe("card browser", () => {
     const page = browseCards(db, { status: "due", offset: 1, limit: 2 }, T0);
     expect(page.total).toBe(3);
     expect(page.groups).toEqual([
-      { subjectId: "s-phys", subject: "Fisica", count: 2 },
-      { subjectId: "s-chem", subject: "Chimica", count: 1 },
+      { subjectId: "s-phys", subject: "Fisica", count: 2, noExam: 0 },
+      { subjectId: "s-chem", subject: "Chimica", count: 1, noExam: 0 },
     ]);
     expect(page.cards.map((card) => card.front)).toEqual([
       "Unità della forza?",
@@ -450,10 +450,10 @@ describe("card browser", () => {
     const result = browseCards(db, {}, T0);
     expect(result.examless).toBe(true);
     expect(result.groups).toEqual([
-      { subjectId: "s-phys", subject: "Fisica", count: 4 },
-      { subjectId: "s-chem", subject: "Chimica", count: 2 },
-      { subjectId: "s-geo", subject: "Geometria", count: 1 },
-      { subjectId: null, subject: null, count: 1 },
+      { subjectId: "s-phys", subject: "Fisica", count: 4, noExam: 1 },
+      { subjectId: "s-chem", subject: "Chimica", count: 2, noExam: 0 },
+      { subjectId: "s-geo", subject: "Geometria", count: 1, noExam: 1 },
+      { subjectId: null, subject: null, count: 1, noExam: 0 },
     ]);
     expect(result.cards.slice(0, 4).map((card) => [card.front, card.planId, card.planTitle])).toEqual([
       ["Velocità media?", "p-phys", "Fisica 1"],
@@ -469,5 +469,53 @@ describe("card browser", () => {
     // The exam filter offers the exams that hold cards; "No exam" is offered when some card has none.
     expect(result.plans.map((item) => item.id)).toEqual(["p-phys", "p-chem", "p-none"]);
     expect(browseCards(library(), {}, T0).examless).toBe(false);
+  });
+
+  it("gives each subject its first cards, and all of them for a subject that is expanded", () => {
+    const db = library();
+    const first = browseCards(db, { perSubject: 2 }, T0);
+    expect(first.total).toBe(6);
+    expect(first.groups.map((group) => group.count)).toEqual([3, 2, 1]);
+    // Physics holds three cards and shows two, in the order of the list; the others show all they have.
+    expect(first.cards.map((card) => card.front)).toEqual([
+      "Velocità media?",
+      "Perché un corpo accelera?",
+      "Numero atomico?",
+      "{{c1::Elettroni}} orbitano il nucleo.",
+      "Sparsa",
+    ]);
+    const open = browseCards(db, { perSubject: 2, expand: ["s-phys"] }, T0);
+    expect(open.cards.map((card) => card.front)).toEqual([
+      "Velocità media?",
+      "Perché un corpo accelera?",
+      "Unità della forza?",
+      "Numero atomico?",
+      "{{c1::Elettroni}} orbitano il nucleo.",
+      "Sparsa",
+    ]);
+    // "No subject" is expanded with null.
+    saveCard(db, { subjectId: "s-chem", front: "Mole?", back: "Quantità di sostanza." }, T0);
+    expect(browseCards(db, { perSubject: 1 }, T0).cards).toHaveLength(3);
+    expect(browseCards(db, { perSubject: 1, expand: ["s-chem", null] }, T0).cards).toHaveLength(5);
+  });
+
+  it("applies the search and the filters before it counts the cards of a subject", () => {
+    const db = library();
+    setSuspended(db, idOf(db, "Unità della forza?"), true);
+    const found = browseCards(db, { perSubject: 1, query: "forza" }, T0);
+    // Two physics cards mention a force, the one shown is the first, and the others have no match to show.
+    expect(found.groups).toEqual([{ subjectId: "s-phys", subject: "Fisica", count: 2, noExam: 0 }]);
+    expect(found.cards.map((card) => card.front)).toEqual(["Perché un corpo accelera?"]);
+    const suspended = browseCards(db, { perSubject: 5, status: "suspended" }, T0);
+    expect(suspended.cards.map((card) => card.front)).toEqual(["Unità della forza?"]);
+    expect(suspended.cards[0]?.suspended).toBe(true);
+  });
+
+  it("keeps each shown card's review state when it ranks by subject", () => {
+    const db = library();
+    rateCard(db, idOf(db, "Numero atomico?"), "easy", T0);
+    const card = browseCards(db, { perSubject: 1 }, T0).cards.find((item) => item.front === "Numero atomico?")!;
+    expect(card.state).toBe("scheduled");
+    expect(card.dueAt).not.toBeNull();
   });
 });
