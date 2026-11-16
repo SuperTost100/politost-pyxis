@@ -89,6 +89,12 @@ const routes = [
   // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
+  // The end of today's session: the last card with its four answers, then the end with a card counting down, with
+  // nothing left today and with more coming back later today.
+  ["cards-end-last", "/cards/due"],
+  ["cards-end-waiting", "/cards/due"],
+  ["cards-end-done", "/cards/due"],
+  ["cards-end-later", "/cards/due"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -1606,6 +1612,28 @@ function prepareCardBrowser(name: string) {
   });
 }
 
+/**
+ * The end-of-session states answer the audit exam's one due card, which stores a review and, once the session is over,
+ * a cards step on the exam's path. Every state first takes those back, so each one starts from the seed; the later
+ * state also gets a card reviewed before and due again this afternoon.
+ */
+function prepareSessionEnd(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM card_reviews WHERE id NOT LIKE 'audit-%';
+      DELETE FROM learning_events WHERE id NOT LIKE 'audit-%'
+        AND (kind = 'card_rated' OR (kind = 'lesson_completed' AND payload_json LIKE '%"cards"%'));
+      DELETE FROM card_reviews WHERE card_id = 'audit-end-later';
+      DELETE FROM cards WHERE id = 'audit-end-later'`);
+    if (name !== "cards-end-later") return;
+    const at = Math.min(Date.now() + 2 * 3_600_000, new Date().setHours(24, 0, 0, 0) - 1000);
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at)
+      VALUES('audit-end-later','audit-plan','audit-topic','Che cos’è il flusso del campo elettrico?','La carica racchiusa divisa per ε₀.','audit-end-later','sources',2)`);
+    db.prepare(
+      "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-end-later-review','audit-end-later','good',?,1)",
+    ).run(JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt: at }));
+  });
+}
+
 /** Saves the automatic-backup state as main leaves it. Main reads the file again for every status request. */
 function prepareBackupState(name: string) {
   const file = join(auditUserData, "backups.json");
@@ -2179,6 +2207,7 @@ function prepareBuild(name: string) {
 }
 
 function prepareState(name: string) {
+  prepareSessionEnd(name);
   prepareLessonParts(name);
   prepareOldLessons(name);
   prepareRadialMaps(name);
@@ -3316,6 +3345,21 @@ async function openState(page: Page, name: string) {
       });
       await expect(got).toHaveAttribute("aria-pressed", "true");
       await expect(missed).toHaveAttribute("aria-pressed", "false");
+      break;
+    }
+    case "cards-end-last":
+    case "cards-end-waiting":
+    case "cards-end-done":
+    case "cards-end-later": {
+      await expect(page.locator("article.px-card .px-card-front")).toBeVisible();
+      await page.keyboard.press("Space");
+      await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+      if (name === "cards-end-last") break;
+      // Not knowing it sends the card to learning, so the end counts down; Easy ends the session.
+      await page.keyboard.press(name === "cards-end-waiting" ? "1" : "4");
+      await expect(page.locator(".px-end-text")).toBeVisible();
+      if (name === "cards-end-waiting") await expect(page.getByRole("timer")).toBeVisible();
+      else await expect(page.getByRole("heading", { level: 2, name: both("Per oggi hai finito|Per ora hai finito", "You're done for today|You're done for now") })).toBeVisible();
       break;
     }
     case "cards-new": {

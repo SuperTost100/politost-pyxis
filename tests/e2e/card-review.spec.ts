@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -741,6 +741,253 @@ test("card limit: past today's new cards, the message links to the setting, afte
     await page.reload();
     await expect(page.getByText("The limit for new flashcards is 0, so none start today.")).toBeVisible();
   } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** Today's cards (the daily review), English, with the exam's subject so the lists can name it. */
+async function openToday(userData: string, extra?: (db: DatabaseSync) => void) {
+  const app = await launchPyxis({ userData });
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Salta" }).click();
+  await fromChiediToExams(page);
+  await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  seed(db);
+  db.exec(`INSERT INTO subjects(id,name,position,created_at) VALUES('s1','Fisica 1',0,1);
+    UPDATE plans SET subject_id = 's1' WHERE id = 'p'`);
+  extra?.(db);
+  await page.evaluate(() => {
+    location.hash = "#/cards/due";
+  });
+  await page.reload();
+  return { app, page, db };
+}
+
+const TODAY = ["Seconda legge di Newton?", "Unità della forza?", "Velocità media?", "Mia carta"];
+
+/** Answers today's cards in order with the given keys (1 didn't know it, 2 hard, 3 knew it, 4 easy). */
+async function answerToday(page: Page, keys: Array<"1" | "2" | "3" | "4">) {
+  const front = page.locator("article.px-card .px-card-front");
+  for (const [index, key] of keys.entries()) {
+    await expect(front).toHaveText(TODAY[index]!);
+    await page.keyboard.press("Space");
+    await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+    await page.keyboard.press(key);
+  }
+}
+
+const answers = (page: Page) => page.getByRole("list", { name: "Your answers" }).getByRole("listitem");
+
+test("session end: the last card's four answers carry their colours without a dot", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  const { app, page, db } = await openToday(userData);
+  try {
+    await answerToday(page, ["4", "4", "4"]);
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Mia carta");
+    await page.keyboard.press("Space");
+    const rates = page.getByRole("group", { name: "How well did you know it?" }).getByRole("button");
+    await expect(rates).toHaveText(["Didn't know it1", "Hard2", "Knew it3", "Easy4"]);
+    // One colour for each answer, from the app's own tokens, as a bottom edge on the button and nothing else.
+    const colours = await rates.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const style = getComputedStyle(button);
+        return { rate: button.getAttribute("data-rate"), edge: style.boxShadow, fill: style.backgroundColor, dots: button.querySelectorAll("i, .gd").length };
+      }),
+    );
+    expect(colours.map((item) => item.rate)).toEqual(["again", "hard", "good", "easy"]);
+    expect(new Set(colours.map((item) => item.edge)).size, "each answer has its own edge colour").toBe(4);
+    expect(new Set(colours.map((item) => item.fill)).size, "the four buttons share one fill: no tint").toBe(1);
+    for (const item of colours) {
+      expect(item.edge).toMatch(/inset/);
+      expect(item.dots, "no dot on a button").toBe(0);
+    }
+    await expectNoAxeViolations(page);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("session end: a card still to learn counts down, and the answers sit under their colours", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  const { app, page, db } = await openToday(userData);
+  try {
+    await answerToday(page, ["1", "2", "4", "4"]);
+    const timer = page.getByRole("timer");
+    await expect(page.locator(".px-end-kicker")).toHaveText("2 flashcards come back, the first in");
+    await expect(timer).toHaveText(/^(0:[0-5]\d|1:00)$/);
+    // The countdown is not a live region: a screen reader hears the state once, in the status.
+    await expect(timer).toHaveAttribute("aria-live", "off");
+    await expect(page.locator(".px-end .visually-hidden[role=status]")).toHaveText(
+      "A flashcard you are learning comes back in 1 minute. Stay here and I'll show it.",
+    );
+    await expect(page.locator(".px-end-text")).toHaveText(
+      "You are still learning them, so I'll show them again as soon as they are due. You can stay here.",
+    );
+    // The four answers as bars with their counts; the two cards still to come are listed on their own, then the rest.
+    await expect(answers(page)).toHaveText(["Didn't know it1", "Hard1", "Knew it0", "Easy2"]);
+    const groups = page.locator(".px-end-group");
+    await expect(groups.nth(0).getByRole("heading")).toHaveText("Coming back soon2");
+    await expect(groups.nth(0).getByRole("listitem")).toHaveCount(2);
+    await expect(groups.nth(0).getByRole("listitem").first()).toContainText("Seconda legge di Newton?");
+    await expect(groups.nth(0).getByRole("listitem").first()).toContainText("Fisica 1");
+    await expect(groups.nth(1).getByRole("heading")).toHaveText("Easy2");
+    await expect(groups.nth(1).getByRole("listitem")).toHaveText([/Velocità media\?/, /Mia carta/]);
+    await expect(groups).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Done for today" })).toBeVisible();
+    await expect(page.locator(".px-end-fine")).toHaveText("If you stop, the flashcards wait for your next review.");
+    // No dot anywhere on the screen, and the four bars have four colours.
+    await expect(page.locator(".px-end .gd, .px-end-group h2 i")).toHaveCount(0);
+    // A group's name sits on a tint of its answer's colour.
+    const chip = groups.nth(1).locator(".px-end-chip");
+    await expect(chip).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    const fills = await page.locator(".px-end-bar > i").evaluateAll((bars) => bars.map((bar) => getComputedStyle(bar).backgroundColor));
+    expect(new Set(fills).size).toBe(4);
+    await expectNoAxeViolations(page);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("session end: finished with nothing left today, Undo last from this screen brings the last card back", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  const { app, page, db } = await openToday(userData);
+  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  try {
+    await answerToday(page, ["4", "4", "4", "4"]);
+    await expect(page.getByRole("heading", { level: 2, name: "You're done for today" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText(/^You gave 4 answers\. The next 4 come back (tomorrow|on [A-Z][a-z]+, [A-Z][a-z]+ \d+)\.$/);
+    await expect(page.getByRole("timer")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Done for today" })).toHaveCount(0);
+    await expect(answers(page)).toHaveText(["Didn't know it0", "Hard0", "Knew it0", "Easy4"]);
+    // The old three lines are gone: no summary, no "You picked".
+    await expect(page.getByText(/^Seen 4\./)).toHaveCount(0);
+    await expect(page.locator(".px-cards-undo")).toHaveCount(0);
+    // A few cards per answer, then "1 more" unfolds the rest and folds it back.
+    const easy = page.locator(".px-end-group");
+    await expect(easy.getByRole("heading")).toHaveText("Easy4");
+    await expect(easy.getByRole("listitem")).toHaveCount(4);
+    const more = easy.getByRole("button", { name: "1 more" });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await expect(easy.locator(".px-end-row")).toHaveCount(3);
+    await more.click();
+    await expect(easy.locator(".px-end-row")).toHaveCount(4);
+    await expect(easy.getByRole("button", { name: "Show fewer" })).toHaveAttribute("aria-expanded", "true");
+    await easy.getByRole("button", { name: "Show fewer" }).click();
+    await expect(easy.locator(".px-end-row")).toHaveCount(3);
+    await expectNoAxeViolations(page);
+
+    // Undo last works from here: the last card comes back, its review is gone and the counts follow.
+    expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(4);
+    await page.getByRole("banner").getByRole("button", { name: "Undo last", exact: true }).click();
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Mia carta");
+    await expect(page.locator(".px-end")).toHaveCount(0);
+    expect(count("SELECT COUNT(*) AS n FROM card_reviews")).toBe(3);
+    // A Hard answer sends it to learning, so the screen counts down this time, with the first answer given back to it.
+    await page.keyboard.press("Space");
+    await page.keyboard.press("2");
+    await expect(page.getByRole("timer")).toBeVisible();
+    await expect(answers(page)).toHaveText(["Didn't know it0", "Hard1", "Knew it0", "Easy3"]);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("session end: finished with more coming back later today, they are listed with their time", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  // A card reviewed before, due a couple of hours from now, or a second before midnight when that is sooner.
+  const midnight = new Date().setHours(24, 0, 0, 0);
+  const at = Math.min(Date.now() + 2 * 3_600_000, midnight - 1000);
+  const { app, page, db } = await openToday(userData, (setup) => {
+    setup.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES('c5','p','t','Già ripassata','Sì.','k5',5)`);
+    setup
+      .prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('r5','c5','good',?,1)")
+      .run(JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt: at }));
+  });
+  try {
+    await answerToday(page, ["4", "4", "4", "4"]);
+    const time = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(at);
+    await expect(page.getByRole("heading", { level: 2, name: "You're done for now" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText(`You gave 4 answers. Another one comes back today, at ${time}.`);
+    const today = page.locator(".px-end-group").first();
+    await expect(today.getByRole("heading")).toHaveText("Coming back today1");
+    await expect(today.getByRole("listitem")).toHaveText(`1 flashcard from Fisica 1${time}`);
+    await expect(page.locator(".px-end .visually-hidden[role=status]")).toHaveText(
+      `You're done for now. You gave 4 answers. Another one comes back today, at ${time}.`,
+    );
+    await expectNoAxeViolations(page);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** One card due today and the rest parked, so a single answer leaves a card counting down. */
+const oneCard = (db: DatabaseSync) => db.exec("UPDATE cards SET suspended = 1 WHERE id <> 'c1'");
+
+test("session end: the card shows by itself when its time comes", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  const { app, page, db } = await openToday(userData, oneCard);
+  try {
+    // The page's clock is the test's; core's is real, so the card is made due in the database as the clock moves.
+    await page.clock.install();
+    await answerToday(page, ["1"]);
+    await expect(page.getByRole("timer")).toBeVisible();
+    await expect(page.locator(".px-end-kicker")).toHaveText("A flashcard comes back in");
+    await expect(page.locator(".px-end-text")).toHaveText(
+      "You are still learning it, so I'll show it again as soon as it is due. You can stay here.",
+    );
+    db.prepare("UPDATE card_reviews SET state_json = json_set(state_json, '$.dueAt', ?) WHERE card_id = 'c1'").run(Date.now() - 1000);
+    await page.clock.fastForward("01:05");
+    // The end screen goes and the card is there, flipped to its front, announced once as the next flashcard.
+    await expect(page.locator("article.px-card .px-card-front")).toHaveText("Seconda legge di Newton?");
+    await expect(page.locator(".px-end")).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "Next flashcard: Seconda legge di Newton?" })).toHaveCount(1);
+    await expect(page.getByRole("timer")).toHaveCount(0);
+    // And it can be answered like any other: the session ends again, this time with the card's second answer.
+    await page.keyboard.press("Space");
+    await page.keyboard.press("4");
+    await expect(answers(page)).toHaveText(["Didn't know it1", "Hard0", "Knew it0", "Easy1"]);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("session end: Done for today leaves for the Flashcard section, records the session and keeps the card for later", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  const { app, page, db } = await openToday(userData, oneCard);
+  const rows = (sql: string) => db.prepare(sql).all() as Array<{ payload_json: string }>;
+  try {
+    await answerToday(page, ["2"]);
+    await expect(page.getByRole("timer")).toBeVisible();
+    await page.getByRole("button", { name: "Done for today" }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect
+      .poll(() => rows("SELECT payload_json FROM learning_events WHERE kind = 'lesson_completed' AND payload_json LIKE '%\"cards\"%'").length)
+      .toBe(1);
+    // The card was not removed or suspended: it keeps its review and waits for its next time.
+    expect(
+      db.prepare("SELECT COUNT(*) AS n FROM cards WHERE id = 'c1' AND removed = 0 AND suspended = 0").get(),
+    ).toEqual({ n: 1 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM card_reviews WHERE card_id = 'c1'").get()).toEqual({ n: 1 });
+  } finally {
+    db.close();
     await app.close();
     removeTestFolder(userData);
   }
