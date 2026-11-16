@@ -182,7 +182,7 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     const first = await makeCards(page, "legami");
     await expect.poll(async () => (await jobOf(page, first))?.state, { timeout: 30_000 }).toBe("succeeded");
     expect((await jobOf(page, first))?.fallback).toEqual({ from: "ChatGPT", to: "Claude", reason: "limit" });
-    const told = page.getByText("ChatGPT ha raggiunto il limite di utilizzo, quindi ha risposto Claude.");
+    const told = page.getByText("ChatGPT ha finito le richieste, quindi ha risposto Claude.");
     await expect(told).toHaveCount(1);
     // The flashcards are there: the work was done.
     expect(

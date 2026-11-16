@@ -3080,7 +3080,7 @@
     "code": "Codice di accesso",
     "sendCode": "Invia",
     "fallback": {
-      "limit": "{{from}} ha raggiunto il limite di utilizzo, quindi ha risposto {{to}}.",
+      "limit": "{{from}} ha finito le richieste, quindi ha risposto {{to}}.",
       "signed-out": "{{from}} non ha più l'accesso, quindi ha risposto {{to}}.",
       "model": "Il tuo abbonamento a {{from}} non include questo modello, quindi ha risposto {{to}}.",
       "not-installed": "{{from}} non è più installato, quindi ha risposto {{to}}."

@@ -357,7 +357,7 @@ esac
     await expect(box("Claude")).toBeEnabled();
     const choice = () =>
       page.evaluate(() => window.pyxis.invoke("engines.choice", {}));
-    await expect.poll(choice).toEqual({ allowed: ["claude", "codex"] });
+    await expect.poll(choice).toEqual({ allowed: ["claude", "codex"], order: null });
     await noAxeViolations(page);
 
     // The pick outlasts leaving the step, and opens Advanced by itself on the way back. Automatic puts every ready
@@ -369,7 +369,7 @@ esac
     });
     await expect(box("ChatGPT")).toBeChecked();
     await page.getByRole("radio", { name: /^Automatico/ }).click();
-    await expect.poll(choice).toEqual({ allowed: null });
+    await expect.poll(choice).toEqual({ allowed: null, order: null });
   } finally {
     await app.close();
     removeTestFolder(userData);

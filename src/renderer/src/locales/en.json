@@ -3080,7 +3080,7 @@
     "code": "Sign-in code",
     "sendCode": "Send",
     "fallback": {
-      "limit": "{{from}} reached its usage limit, so {{to}} answered.",
+      "limit": "{{from}} ran out of requests, so {{to}} answered.",
       "signed-out": "{{from}} is signed out, so {{to}} answered.",
       "model": "Your {{from}} subscription doesn't include this model, so {{to}} answered.",
       "not-installed": "{{from}} is no longer installed, so {{to}} answered."
