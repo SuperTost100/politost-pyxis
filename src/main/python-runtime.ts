@@ -1,13 +1,16 @@
 import { BrowserWindow, session, type Session } from "electron";
+import { z } from "zod";
+import { runtimePackIds, type PackId } from "../shared/figure-kinds";
 import { checkClaimSchema, gradeCheckSchema } from "../shared/math-check";
 import {
   cancelRuntimeDownload,
   currentRuntimeStatus,
   downloadRuntime,
+  removeRuntimePack,
   requireRuntime,
   runtimePacks,
 } from "./runtime-pack";
-import { handleDrawRequest } from "./draw-runtime";
+import { disposeDrawRuntime, handleDrawRequest } from "./draw-runtime";
 import { registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
 import { lockSession, lockWindow, rendererGone } from "./runtime-window";
 
@@ -269,20 +272,46 @@ async function dispatch(
     await leave();
   }
 }
+/**
+ * Takes a pack off the disk and shuts the window that was using it, so what it drew is unavailable at once. A window
+ * keeps nothing of the pack but what it loaded for a run, and the next run asks for the files again and finds none.
+ */
+async function removePack(pack: PackId): Promise<void> {
+  await removeRuntimePack(workspace, pack);
+  if (pack === "pyodide") disposePythonRuntime();
+  else disposeDrawRuntime();
+}
 export async function handleRuntimeRequest(
   operation: string,
   payload: unknown,
   deadline?: number,
 ): Promise<unknown> {
   if (operation === "status") return currentRuntimeStatus(workspace);
+  // The packs a request names, or none for every pack.
+  const named = () => {
+    const packs = z.object({ packs: z.array(z.enum(runtimePackIds)).optional() }).parse(payload ?? {}).packs;
+    return packs?.length ? packs : undefined;
+  };
   if (operation === "download") {
     if (!workspace) throw new Error("runtime-workspace-missing");
-    await downloadRuntime(workspace);
+    try {
+      await downloadRuntime(workspace, named());
+    } catch (error) {
+      // Stopped by the student: told as such, so the job that asked ends as cancelled and not as failed.
+      if (error instanceof Error && error.name === "AbortError") throw new Error("runtime-download-cancelled");
+      throw error;
+    }
     return currentRuntimeStatus(workspace);
   }
   if (operation === "cancel-download") {
-    cancelRuntimeDownload(workspace);
+    cancelRuntimeDownload(workspace, named());
     return {};
+  }
+  if (operation === "remove") {
+    if (!workspace) throw new Error("runtime-workspace-missing");
+    const { pack } = z.object({ pack: z.enum(runtimePackIds) }).parse(payload);
+    await removePack(pack);
+    return currentRuntimeStatus(workspace);
   }
   if (operation === "check") {
     try {

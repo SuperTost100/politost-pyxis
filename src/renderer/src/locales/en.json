@@ -2404,6 +2404,47 @@
       "unsupported": "This computer does not show notifications from Pyxis. Allow them in the system settings.",
       "valueOff": "Off"
     },
+    "packs": {
+      "title": "Drawings and Python",
+      "python": {
+        "title": "Python",
+        "about": "To do the calculations in answers, run your own code and draw plots and circuits.",
+        "download": "Download Python ({{size}})",
+        "more": "More about Python",
+        "remove": "Remove Python",
+        "consent": "Downloaded once from jsDelivr, only when you ask. Nothing about you is sent.",
+        "onDisk": "{{size}} on disk.",
+        "outdated": "Python needs an update, version {{version}} ({{size}}): the one on disk is from an older version and is not used until you update it.",
+        "progress": "Downloading Python: {{percent}}%",
+        "removeTitle": "Remove Python?",
+        "removeBody": "Python ({{size}}) is taken off this workspace. Without it the calculations in answers, your own code and the plots and circuits stop working. Drawings already made stay in the lessons and answers. You can download it again whenever you like."
+      },
+      "drawings": {
+        "title": "Drawings",
+        "about": "Graphs, trees and automata in lessons and answers.",
+        "withPython": "With Python it also draws circuits.",
+        "withoutPython": "Without Python it draws everything except circuits.",
+        "download": "Download the drawings ({{size}})",
+        "more": "More about the drawings",
+        "remove": "Remove the drawings",
+        "consent": "Downloaded once from jsDelivr and PyPI, only when you ask. Nothing about you is sent.",
+        "onDisk": "{{size}} on disk · version {{version}}.",
+        "outdated": "The drawings need an update, version {{version}} ({{size}}): the ones on disk are from an older version and are not used until you update them.",
+        "progress": "Downloading the drawings: {{percent}}%",
+        "removeTitle": "Remove the drawings?",
+        "removeBody": "The drawings ({{size}}) are taken off this workspace, and circuits with them. Pyxis stops making new graphs and circuits, while the ones already made stay in the lessons and answers. You can download them again whenever you like."
+      },
+      "transfer": "{{current}} of {{total}}",
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "update": "Update",
+      "removeConfirm": "Remove",
+      "removeFailed": "I could not remove the files. Close whatever is using them and try again.",
+      "stoppedAt": "The download stopped at {{done}}. Check your connection.",
+      "notStarted": "The download did not start. Check your connection.",
+      "tampered": "The files that arrived were not the expected ones and were discarded. Try again.",
+      "startFailed": "I could not start the download. Try again."
+    },
     "restoreFailed": "That file is not a valid backup.",
     "restoreRolledBack": "The restore could not finish, so Pyxis went back to the data you had before it. Nothing from the backup was kept.",
     "restoreRecoveryRequired": "Pyxis could neither finish the restore nor undo it, so it stopped to keep your data safe. Quit Pyxis and open it again to get back the data you had before the restore.",
@@ -2587,7 +2628,8 @@
       "ocrData": "Scan reading data downloaded",
       "embedding": "Search model downloaded",
       "python": "Python downloaded",
-      "librarySort": "Subjects chosen"
+      "librarySort": "Subjects chosen",
+      "drawings": "Drawings downloaded"
     },
     "cancel": "Cancel",
     "stop": "Stop",
@@ -2747,7 +2789,8 @@
       "stopWaiting": "Stop waiting"
     },
     "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting"
+    "waiting_other": "{{count}} waiting",
+    "drawingsDownload": "Download the drawings"
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",
@@ -3393,11 +3436,11 @@
     "code": "Python code",
     "sessionFiles": "Each run has its own temporary files.",
     "consentTitle": "Python needs a one-time download",
-    "consentBody": "Pyxis downloads the Python runtime ({{size}} MB) to this workspace. Nothing is downloaded until you ask.",
+    "consentBody": "Pyxis downloads the Python runtime and the drawing files ({{size}} MB) to this workspace, once, from jsDelivr and PyPI. Nothing is downloaded until you ask, and nothing about you is sent.",
     "downloadAction": "Download Python ({{size}} MB)",
     "retryDownload": "Retry download ({{size}} MB)",
     "drawingsTitle": "Circuits and graphs need a small download",
-    "drawingsBody": "Pyxis downloads the files that draw circuits and graphs ({{size}} MB) to this workspace. Nothing is downloaded until you ask.",
+    "drawingsBody": "Pyxis downloads the files that draw circuits and graphs ({{size}} MB) to this workspace, once, from jsDelivr and PyPI. Nothing is downloaded until you ask, and nothing about you is sent.",
     "drawingsAction": "Download ({{size}} MB)",
     "drawingsDownload": "Downloading · {{current}} of {{total}} MB",
     "cancelDownload": "Cancel",
