@@ -16,7 +16,8 @@ On Windows, CI keeps crash dumps on the ephemeral runner and prints only excepti
 
 Recorded import and release-loop checks run first to expose core failures early. After packaging, each target checks its packaged executable. `scripts/packaged-fuses.mjs` fails unless the binary has the Electron fuses that `build/after-pack.cjs` sets: RunAsNode, `NODE_OPTIONS` and `--inspect` off, embedded asar integrity validation and load-app-only-from-asar on. Playwright attaches through `--inspect`, so the script then turns that one fuse back on in the unpacked copy; the installers are built by then and keep it off. The executable then runs these specs (`PYXIS_DIST_APP`):
 
-- `window.spec.ts`: the recorded release loop, the window CSP check (no string `eval`, no remote images), and a check that the packaged app reports the same `app.getGPUFeatureStatus()` as Electron's own build.
+- `window.spec.ts`: the recorded release loop, the window CSP check (no string `eval`, no remote images), a check that the packaged app reports the same `app.getGPUFeatureStatus()` as Electron's own build, and a check that the Windows and Linux apps carry their spelling dictionaries and flag an Italian misspelling with them (the Mac app carries none).
+- `network.spec.ts`: a new profile's Chromium net-log, through start-up and typing in a field, names no host outside loopback.
 - `ocr-data.spec.ts` and `scanned-pdf.spec.ts`: the OCR data download and Tesseract reading photos and scanned PDFs. The scans load `@napi-rs/canvas` from the packaged `node_modules`.
 - `sources.spec.ts`: a 600-page PDF import and the real e5 indexing check, which loads `@huggingface/transformers` from the packaged `node_modules`.
 

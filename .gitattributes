@@ -1,0 +1,3 @@
+# Shipped and checked byte for byte (resources/dictionaries/README.md records their SHA-256 sums).
+resources/dictionaries/*.bdic binary
+resources/dictionaries/source/* binary
