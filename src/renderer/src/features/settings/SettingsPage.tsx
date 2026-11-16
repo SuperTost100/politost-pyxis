@@ -26,7 +26,7 @@ import { usePlace } from "../../app/usePlace";
 import { BackControl } from "../../components/BackControl";
 import { invoke } from "../../lib/ipc";
 import { i18n, setLanguage, type Locale } from "../../locales/i18n";
-import { EnginesPanel } from "./EnginesPanel";
+import { EnginesIntro, EnginesPanel } from "./EnginesPanel";
 import { useProfile } from "../../lib/queries";
 
 /** From this window width the sections sit in a sidebar; below it each one is a page of its own. */
@@ -316,7 +316,8 @@ export function SettingsPage() {
     <div className="px-settings-page">
       <header className="px-settings-head">
         <h1 className="title-1">{pageName(page.key)}</h1>
-        <p>{t(`settings.pageIntro.${page.key}`)}</p>
+        {/* The AI tools' line says what Pyxis does with the list below, which depends on whether it has an order. */}
+        <p>{page.key === "engines" ? <EnginesIntro /> : t(`settings.pageIntro.${page.key}`)}</p>
       </header>
       {saveError ? <Notice tone="danger">{t("settings.saveFailed")}</Notice> : null}
       {page.sections.map((key) => {
