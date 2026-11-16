@@ -267,49 +267,52 @@ export async function drawFigures(
       tell({ key: asked, image: drawn.image });
     } else tell({ key: asked, image: null });
   }
-  /** The blocks past the limit, which are removed and told as left out once each. */
-  const overLimit = new Set<string>();
-  for (const figure of requested) {
-    const asked = figureKey(figure.code, figure.figureKind);
-    if (settled.has(asked) || overLimit.has(asked)) continue;
-    if (settled.size === FIGURE_MAX) {
-      overLimit.add(asked);
-      tell({ key: asked, image: null });
-      continue;
-    }
-    settled.set(asked, null);
-    // A figure that already has its picture keeps it, stopped or not.
-    if (known[asked]) {
-      figures[asked] = known[asked];
-      settled.set(asked, figure.code);
-      tell({ key: asked, image: known[asked] });
-      continue;
-    }
-    // Work that was stopped before it began is not started.
-    if (!options.signal?.aborted) work.push(draw(figure, asked));
-  }
   const signal = options.signal;
   let onAbort = () => {};
-  const stop = new Promise<void>((resolve) => {
-    onAbort = resolve;
-    if (signal?.aborted) resolve();
-    else signal?.addEventListener("abort", onAbort, { once: true });
-  });
-  // A figure's work ends in a stop when the fix call it waits on is stopped; any other failure is not ours to hide.
-  const done = Promise.all(
-    work.map((task) =>
-      task.catch((error: unknown) => {
-        if (!signal?.aborted) throw error;
-      }),
-    ),
-  );
   let stopped: boolean;
+  // One guard for the whole function: however it ends, the loop included (a callback that throws there leaves work
+  // already started), work still in the air tells nobody and changes nothing, and the signal is let go.
   try {
+    /** The blocks past the limit, which are removed and told as left out once each. */
+    const overLimit = new Set<string>();
+    for (const figure of requested) {
+      const asked = figureKey(figure.code, figure.figureKind);
+      if (settled.has(asked) || overLimit.has(asked)) continue;
+      if (settled.size === FIGURE_MAX) {
+        overLimit.add(asked);
+        tell({ key: asked, image: null });
+        continue;
+      }
+      settled.set(asked, null);
+      // A figure that already has its picture keeps it, stopped or not.
+      if (known[asked]) {
+        figures[asked] = known[asked];
+        settled.set(asked, figure.code);
+        tell({ key: asked, image: known[asked] });
+        continue;
+      }
+      // Work that was stopped before it began is not started.
+      if (!options.signal?.aborted) work.push(draw(figure, asked));
+    }
+    const stop = new Promise<void>((resolve) => {
+      onAbort = resolve;
+      if (signal?.aborted) resolve();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+    // A figure's work ends in a stop when the fix call it waits on is stopped; any other failure is not ours to hide.
+    const done = Promise.all(
+      work.map((task) =>
+        task.catch((error: unknown) => {
+          if (!signal?.aborted) throw error;
+        }),
+      ),
+    );
     stopped = await Promise.race([done.then(() => false), stop.then(() => true)]);
   } finally {
-    // However the wait ends, work still in the air tells nobody, and the signal is let go.
     closed = true;
     signal?.removeEventListener("abort", onAbort);
+    // Work started before a throw in the loop has no handler yet, and its failure is not ours to report once we have rejected.
+    for (const task of work) task.catch(() => undefined);
   }
   const result = {
     markdown: mapFigureBlocks(markdown, (figure) => {

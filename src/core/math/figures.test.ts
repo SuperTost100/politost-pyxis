@@ -594,6 +594,44 @@ it("keeps the pictures it was given when the stop comes before it begins, as it 
   expect(runs).toBe(0);
 });
 
+it("tells nothing after a callback that throws in the request loop, and leaves no unhandled rejection", async () => {
+  const controller = new AbortController();
+  const added = vi.spyOn(controller.signal, "addEventListener");
+  const removed = vi.spyOn(controller.signal, "removeEventListener");
+  const held = gate();
+  const python: FigureRunner = async (code, timeout) => {
+    if (code.includes("plt.plot([2])")) await held.promise;
+    return drawsAll(code, timeout);
+  };
+  const known = "plt.plot([3])";
+  const told: string[] = [];
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    // The first block's drawing is in the air when the known one throws in the request loop.
+    const drawing = drawFigures([block("plt.plot([2])"), block(known)].join("\n\n"), {
+      python,
+      signal: controller.signal,
+      known: { [figureKey(known)]: PNG },
+      onFigure: (event) => {
+        told.push(event.key);
+        throw new Error("the page could not take it");
+      },
+    });
+    await expect(drawing).rejects.toThrow("the page could not take it");
+    expect(told).toEqual([figureKey(known)]);
+    // Whatever was attached to the signal is let go.
+    expect(removed.mock.calls.length).toBeGreaterThanOrEqual(added.mock.calls.length);
+    held.release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(told).toHaveLength(1);
+    expect(unhandled).toEqual([]);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+});
+
 it("tells nothing after it has rejected, and lets go of the signal", async () => {
   const controller = new AbortController();
   const removed = vi.spyOn(controller.signal, "removeEventListener");
