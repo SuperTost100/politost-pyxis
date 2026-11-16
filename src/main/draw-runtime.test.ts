@@ -28,7 +28,10 @@ const fake = vi.hoisted(() => ({
     handled: string[];
     downloads: number;
     downloadBlocked: boolean;
+    proxies: unknown[];
+    cleared: number;
   }>,
+  webrtc: [] as string[],
   held: [] as Array<{ script: string; settle: (value: unknown) => void; fail: (error: Error) => void }>,
   scripts: [] as string[],
   workingSetKb: 100_000,
@@ -52,6 +55,9 @@ vi.mock("electron", () => {
     webContents = {
       setWindowOpenHandler: (handler: () => { action: string }) => {
         this.openHandler = handler;
+      },
+      setWebRTCIPHandlingPolicy: (policy: string) => {
+        fake.webrtc.push(policy);
       },
       on: (name: string, listener: (...args: unknown[]) => void) => {
         this.contentsListeners.set(name, listener);
@@ -96,10 +102,24 @@ vi.mock("electron", () => {
   }
   const session = {
     fromPartition: (name: string, options: unknown) => {
-      const partition: (typeof fake.partitions)[number] = { name, options, handled: [], downloads: 0, downloadBlocked: false };
+      const partition: (typeof fake.partitions)[number] = {
+        name,
+        options,
+        handled: [],
+        downloads: 0,
+        downloadBlocked: false,
+        proxies: [],
+        cleared: 0,
+      };
       fake.partitions.push(partition);
       return {
         protocol: { handle: (scheme: string) => partition.handled.push(scheme) },
+        setProxy: async (config: unknown) => {
+          partition.proxies.push(config);
+        },
+        clearStorageData: async () => {
+          partition.cleared++;
+        },
         webRequest: { onBeforeRequest: (filter: typeof partition.requestFilter) => (partition.requestFilter = filter) },
         setPermissionRequestHandler: (handler: (...args: unknown[]) => void) => (partition.permissionRequest = handler),
         setPermissionCheckHandler: (handler: () => boolean) => (partition.permissionCheck = handler),
@@ -118,8 +138,10 @@ vi.mock("electron", () => {
 });
 
 const requireRuntime = vi.hoisted(() => vi.fn(async (_path: string, _pack?: string) => undefined));
+const invalidatePack = vi.hoisted(() => vi.fn());
 vi.mock("./runtime-pack", () => ({
   requireRuntime,
+  invalidatePack,
   runtimePacks: {
     pyodide: { files: [{ name: "pyodide.js" }] },
     drawing: { files: [{ name: "graphviz.js" }, { name: "schemdraw.whl" }] },
@@ -133,11 +155,13 @@ import {
   MEMORY_LIMIT_KB,
   MEMORY_POLL_MS,
   checkPng,
-  configureDrawRuntime,
-  disposeDrawRuntime,
-  handleDrawRequest,
   readAnswer,
 } from "./draw-runtime";
+// The module keeps one session for the life of the app, so each test loads it again, to have a session of its own to look at.
+type Draw = typeof import("./draw-runtime");
+let configureDrawRuntime: Draw["configureDrawRuntime"];
+let disposeDrawRuntime: Draw["disposeDrawRuntime"];
+let handleDrawRequest: Draw["handleDrawRequest"];
 import { styledDot } from "../shared/dot";
 import { FIGURE_IMAGE_MAX } from "../shared/smart-text";
 
@@ -157,9 +181,13 @@ function pngUrl(width = 100, height = 50, signature = [0x89, 0x50, 0x4e, 0x47, 0
 const good = { ok: true, png: pngUrl() };
 
 describe("the drawing window", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ configureDrawRuntime, disposeDrawRuntime, handleDrawRequest } = (await import("./draw-runtime")) as Draw);
     fake.windows.length = 0;
     fake.partitions.length = 0;
+    fake.webrtc.length = 0;
+    invalidatePack.mockReset();
     fake.held.length = 0;
     fake.scripts.length = 0;
     fake.workingSetKb = 100_000;
@@ -189,10 +217,12 @@ describe("the drawing window", () => {
       disableDialogs: true,
     });
     expect(window!.options.webPreferences).not.toHaveProperty("preload");
+    // No GPU for text that came from an AI.
+    expect(window!.options.webPreferences).toMatchObject({ webgl: false });
     expect(window!.options.webPreferences).not.toHaveProperty("nodeIntegrationInWorker", true);
-    // An in-memory partition: a name without `persist:`, and no cache, fresh for each window.
+    // An in-memory partition: a name without `persist:`, and no cache.
     const [partition] = fake.partitions;
-    expect(partition!.name).toMatch(/^pyxis-draw-/);
+    expect(partition!.name).toBe("pyxis-draw");
     expect(partition!.name).not.toMatch(/^persist:/);
     expect(partition!.options).toEqual({ cache: false });
     expect(partition!.handled).toEqual(["pyxis-runtime"]);
@@ -205,6 +235,83 @@ describe("the drawing window", () => {
     expect(styledDot(DOT).indexOf("graph [fontname")).toBeLessThan(styledDot(DOT).indexOf("a -> b"));
     fake.held[0]!.settle(good);
     await expect(result).resolves.toEqual({ image: good.png });
+  });
+
+  it("sends the network stack's own work to a proxy that is not there, and lets WebRTC use no UDP that does not go through it", async () => {
+    const pending = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    // WebRTC, preconnect and DNS lookups do not pass the request filter: a SOCKS proxy on the discard port takes them, with
+    // the loopback rule off so this machine's own addresses are not left out, and WebRTC is held to the proxy.
+    expect(fake.partitions[0]!.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:9", proxyBypassRules: "<-loopback>" }]);
+    expect(fake.webrtc).toEqual(["disable_non_proxied_udp"]);
+    // The session is locked before the window loads its page.
+    expect(fake.windows[0]!.loaded).toEqual(["pyxis-runtime://draw/index.html"]);
+    fake.held[0]!.settle(good);
+    await pending;
+  });
+
+  it("makes one session for the life of the app, however many windows are replaced, and clears what it kept each time", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    for (let round = 0; round < 100; round++) {
+      // A window that runs over its time is destroyed, and the next request opens another.
+      const slow = handleDrawRequest({ kind: "graph", code: DOT });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(slow).resolves.toMatchObject({ timedOut: true });
+    }
+    expect(fake.windows).toHaveLength(100);
+    expect(fake.windows.every((window) => window.destroyed)).toBe(true);
+    // One partition, one protocol handler, one filter, one proxy setting.
+    expect(fake.partitions).toHaveLength(1);
+    expect(fake.partitions[0]!.handled).toEqual(["pyxis-runtime"]);
+    expect(fake.partitions[0]!.proxies).toHaveLength(1);
+    // And what it kept for the windows that went was cleared each time.
+    expect(fake.partitions[0]!.cleared).toBe(100);
+    // A crash, a window that fails to load and a pack file that failed its check are replaced the same way.
+    fake.windows.length = 0;
+    const failing = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.advanceTimersByTimeAsync(0);
+    fake.held.at(-1)!.settle({ ok: false, error: "runtime-draw-library-missing" });
+    await failing;
+    expect(fake.partitions).toHaveLength(1);
+  });
+
+  it("does not trust the drawing pack again when a window could not load a file of it, so no window is opened for a damaged pack", async () => {
+    const drawing = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle({ ok: false, error: "runtime-draw-library-missing" });
+    await expect(drawing).resolves.toEqual({ error: "runtime-draw-library-missing" });
+    expect(invalidatePack).toHaveBeenCalledWith("/workspace-a", "drawing");
+    // The pack is looked at again: with a file that fails its hash it is not ready, and the request fails with no window.
+    requireRuntime.mockRejectedValueOnce(new Error("runtime-missing"));
+    const windows = fake.windows.length;
+    expect(await handleDrawRequest({ kind: "graph", code: DOT })).toEqual({ error: "runtime-missing" });
+    expect(fake.windows).toHaveLength(windows);
+  });
+
+  it("does not use a window whose renderer is gone, even when no event said so", async () => {
+    const first = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle(good);
+    await first;
+    expect(fake.windows).toHaveLength(1);
+    // Electron can report a dead renderer before it fires an event: the window is destroyed and the next request opens
+    // another, and never sends its script to the dead one.
+    fake.windows[0]!.crashed = true;
+    const second = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    expect(fake.windows).toHaveLength(2);
+    expect(fake.windows[0]!.destroyed).toBe(true);
+    expect(fake.windows[1]!.destroyed).toBe(false);
+    fake.held[1]!.settle(good);
+    await expect(second).resolves.toEqual({ image: good.png });
+    // The same for a frame that is detached.
+    (fake.windows[1] as unknown as { frame: { detached: boolean } }).frame.detached = true;
+    const third = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(3));
+    expect(fake.windows).toHaveLength(3);
+    fake.held[2]!.settle(good);
+    await third;
   });
 
   it("refuses at the session every request that is not one of its own files, and every permission, download and navigation", async () => {
@@ -317,8 +424,8 @@ describe("the drawing window", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(fake.windows).toHaveLength(2);
     expect(fake.windows[1]!.destroyed).toBe(false);
-    expect(fake.partitions).toHaveLength(2);
-    expect(fake.partitions[0]!.name).not.toBe(fake.partitions[1]!.name);
+    // The session is the same one: a session is never freed, so a window that is replaced must not make another.
+    expect(fake.partitions).toHaveLength(1);
     fake.held[1]!.settle(good);
     await expect(next).resolves.toEqual({ image: good.png });
   });
@@ -410,11 +517,19 @@ describe("the drawing window", () => {
     const png = pngUrl(300, 200);
     expect(readAnswer({ ok: true, png })).toEqual({ image: png });
     expect(readAnswer({ ok: false, error: "syntax error in line 1" })).toEqual({ error: "syntax error in line 1" });
-    // A failure is plain text of a bounded length, with its control characters gone.
-    expect(readAnswer({ ok: false, error: `bad\u0000\u001b[31m\nline\u007f${"x".repeat(900)}` })).toEqual({
-      error: `bad [31m line ${"x".repeat(900)}`.replace(/\s+/g, " ").slice(0, 500),
+    // A failure is plain text of a bounded length, with its control characters gone. It is cut to 500 characters first.
+    const long = `bad\u0000\u001b[31m\nline\u007f${"x".repeat(900)}`;
+    expect(readAnswer({ ok: false, error: long })).toEqual({
+      // eslint-disable-next-line no-control-regex -- control characters are what this removes
+      error: long.slice(0, 500).replace(/[\u0000-\u001f\u007f]+/g, " ").trim(),
     });
     expect(readAnswer({ ok: false, error: "" })).toEqual({ error: "the drawing failed" });
+    // What the page sends is cut before anything is done to it, so a huge message costs no more than a short one.
+    const started = Date.now();
+    const answered = readAnswer({ ok: false, error: `${"\u0000".repeat(60_000_000)}the end` });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(answered).toEqual({ error: "the drawing failed" });
+    expect(readAnswer({ ok: false, error: `${"x".repeat(499)}\u0000tail beyond the cut` })).toEqual({ error: "x".repeat(499) });
     expect(readAnswer({ ok: false, error: { toString: () => "x" } })).toEqual({ error: "the drawing failed" });
     // Anything else is no answer.
     for (const value of [undefined, null, "", "ok", 7, [], [good], { ok: "yes", png }, { png }, { ok: 1 }, new Date()])

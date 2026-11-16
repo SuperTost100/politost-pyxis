@@ -49,6 +49,7 @@ import {
   configurePythonRuntime,
   disposePythonRuntime,
   handleRuntimeRequest,
+  pythonTestHandle,
 } from "./python-runtime";
 import { configureDrawRuntime, disposeDrawRuntime, drawTestHandle } from "./draw-runtime";
 import { registerRuntimeProtocol } from "./runtime-protocol";
@@ -565,7 +566,7 @@ function removeSourceCopies(): void {
 const openedSourceFiles: Array<{ sourceId: string; name: string; stored: boolean; path: string }> = [];
 if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eOpenedFiles: () => openedSourceFiles });
 // The drawing window's handle, for the specs that check what it does with hostile text (tests/e2e/drawing.spec.ts).
-if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eDraw: drawTestHandle() });
+if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eDraw: drawTestHandle(), pyxisE2ePython: pythonTestHandle() });
 
 /** Asks core for the cards due now. null: core is not up, so the check runs again in a minute. */
 function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | null> {

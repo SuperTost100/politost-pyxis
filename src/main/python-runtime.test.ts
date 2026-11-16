@@ -6,6 +6,8 @@ const fake = vi.hoisted(() => ({
   windows: [] as Array<{ destroyed: boolean; crashed: boolean; frame: { destroyed: boolean; detached: boolean } }>,
   held: [] as Array<{ script: string; settle: (value: unknown) => void; fail: (error: Error) => void }>,
   scripts: [] as string[],
+  proxies: [] as unknown[],
+  webrtc: [] as string[],
 }));
 
 vi.mock("electron", () => {
@@ -22,6 +24,9 @@ vi.mock("electron", () => {
     listeners = new Map<string, Set<() => void>>();
     webContents = {
       setWindowOpenHandler: () => undefined,
+      setWebRTCIPHandlingPolicy: (policy: string) => {
+        fake.webrtc.push(policy);
+      },
       on: () => undefined,
       isDestroyed: () => this.destroyed,
       isCrashed: () => this.crashed,
@@ -67,6 +72,9 @@ vi.mock("electron", () => {
     webRequest: { onBeforeRequest: () => undefined },
     setPermissionRequestHandler: () => undefined,
     setPermissionCheckHandler: () => undefined,
+    setProxy: async (config: unknown) => {
+      fake.proxies.push(config);
+    },
   };
   return {
     BrowserWindow: FakeWindow,
@@ -102,12 +110,25 @@ describe("python runtime queue", () => {
     fake.windows.length = 0;
     fake.held.length = 0;
     fake.scripts.length = 0;
+    fake.proxies.length = 0;
+    fake.webrtc.length = 0;
     requireRuntime.mockClear();
     configurePythonRuntime("/workspace-a");
   });
   afterEach(() => {
     disposePythonRuntime();
     vi.useRealTimers();
+  });
+
+  it("locks the Python sandbox's window as the drawing window is: a dead proxy for the network stack, and no WebRTC UDP", async () => {
+    const running = handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    // Whatever the network stack opens for this window (WebRTC, preconnect, DNS) goes to a SOCKS proxy that is not there,
+    // loopback included, and WebRTC may use no UDP that does not go through it.
+    expect(fake.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:9", proxyBypassRules: "<-loopback>" }]);
+    expect(fake.webrtc).toEqual(["disable_non_proxied_udp"]);
+    fake.held[0]!.settle({ stdout: "" });
+    await running;
   });
 
   it("does not reopen the sandbox for requests queued when it is disposed", async () => {

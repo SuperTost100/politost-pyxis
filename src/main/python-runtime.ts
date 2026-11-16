@@ -24,6 +24,17 @@ export function configurePythonRuntime(path: string): void {
     workspace = path;
   }
 }
+/** A handle for the end-to-end tests, which reach it through `app.evaluate`; only a run with PYXIS_E2E=1 installs it. */
+export function pythonTestHandle() {
+  return {
+    windows: () => (window && !window.isDestroyed() ? [window.id] : []),
+    /** Runs a script in the Python window's page, as code in that page would. */
+    evaluate: (script: string) => {
+      if (!window || window.isDestroyed()) throw new Error("no Python window is open");
+      return window.webContents.executeJavaScript(script);
+    },
+  };
+}
 export function disposePythonRuntime(): void {
   generation++;
   window?.destroy();
@@ -43,8 +54,8 @@ async function sandbox(): Promise<BrowserWindow> {
     const partition = session.fromPartition(`pyxis-python-${randomUUID()}`, {
       cache: false,
     });
-    registerRuntimeProtocol(partition, path);
-    lockSession(partition, (url) => Boolean(runtimeResourceName(url, "sandbox")));
+    registerRuntimeProtocol(partition, path, ["sandbox"]);
+    await lockSession(partition, (url) => Boolean(runtimeResourceName(url, "sandbox")));
     const created = new BrowserWindow({
       show: false,
       webPreferences: {

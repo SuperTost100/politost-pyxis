@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, session, type Session } from "electron";
 import { z } from "zod";
 import { styledDot } from "../shared/dot";
 import { FIGURE_KINDS, figureProblem, graphLayout } from "../shared/figure-kinds";
 import { FIGURE_IMAGE_MAX } from "../shared/smart-text";
-import { requireRuntime } from "./runtime-pack";
-import { registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
+import { invalidatePack, requireRuntime } from "./runtime-pack";
+import { policy, registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
 import { lockSession, lockWindow, rendererGone } from "./runtime-window";
 
 /**
@@ -13,11 +12,15 @@ import { lockSession, lockWindow, rendererGone } from "./runtime-window";
  * hands back a picture. It runs text that came from an AI or from an imported plan file, through libraries from the
  * downloaded pack, so everything about it assumes the page can be hostile:
  *
- * - A fresh partition per window that keeps nothing (no `persist:`), a sandboxed renderer without Node, context
- *   isolation and no preload. The page is its own script (`draw-host.js`, bundled with the app), and main talks to it
- *   with one `executeJavaScript` call and reads one value back.
+ * - One in-memory partition for all the windows the app opens (no `persist:`, so nothing is kept, and a session cannot be
+ *   freed, so a window that is replaced does not make another). Its storage is cleared each time a window goes. The
+ *   window is sandboxed, without Node, isolated, with no preload, no WebGL. The page is its own script (`draw-host.js`,
+ *   bundled with the app), and main talks to it with one `executeJavaScript` call and reads one value back.
  * - The session refuses every request that is not one of this window's own files, whatever the page or its CSP says,
- *   and refuses permissions and downloads. The window refuses navigation and new windows.
+ *   refuses permissions and downloads, and sends all the network stack's own work (WebRTC, preconnect, DNS) to a proxy
+ *   that is not there (see `lockSession`). The window refuses navigation and new windows.
+ * - Graphviz, the downloaded code, runs in a worker of its own. The sanitiser and the rasteriser are in the page, which
+ *   the pack's code cannot reach. What the worker sends back is read as text and cleaned.
  * - The value that comes back is validated here. Only a PNG data URL of bounded size and size in pixels is accepted,
  *   or a failure with a short plain message. Nothing from the page is shown as it is, and nothing from it is run.
  * - One drawing at a time. Each has a time limit, and the window's memory is read while it runs. A drawing that goes
@@ -43,10 +46,36 @@ const requestSchema = z.object({
 export type DrawResult = { image: string } | { error: string; timedOut?: boolean };
 
 let workspace = "";
+/** The window that has loaded its page. */
 let window: BrowserWindow | null = null;
-let opening: Promise<BrowserWindow> | null = null;
+/** The window that is loading its page, and the promise of it. */
+let opening: { window: BrowserWindow; ready: Promise<BrowserWindow> } | null = null;
 let generation = 0;
 let tail: Promise<unknown> = Promise.resolve();
+let partition: Promise<Session> | null = null;
+/** The last URLs the session was asked about, for the end-to-end tests that look at what it sees. */
+const seen: string[] = [];
+
+/**
+ * The one session of the drawing windows, made when the first window is. Electron never frees a session, so a session
+ * per window would add a browser context, a protocol handler and a request filter to the main process each time a window
+ * is replaced after a timeout, a crash or a file that failed its check. The protocol reads the workspace when it serves.
+ */
+function drawSession(): Promise<Session> {
+  partition ??= (async () => {
+    const created = session.fromPartition("pyxis-draw", { cache: false });
+    registerRuntimeProtocol(created, () => workspace, ["draw"]);
+    await lockSession(created, (url) => Boolean(runtimeResourceName(url, "draw")), (url) => {
+      seen.push(url);
+      if (seen.length > 500) seen.shift();
+    });
+    return created;
+  })();
+  partition.catch(() => {
+    partition = null;
+  });
+  return partition;
+}
 
 export function configureDrawRuntime(path: string): void {
   if (workspace !== path) {
@@ -57,23 +86,24 @@ export function configureDrawRuntime(path: string): void {
 
 export function disposeDrawRuntime(): void {
   generation++;
-  window?.destroy();
+  if (window) retire(window);
+  if (opening) retire(opening.window);
   window = null;
   opening = null;
 }
 
-function destroy(target: BrowserWindow): void {
-  if (window === target) {
-    window = null;
-    opening = null;
-  }
+/** Ends a window, and clears what the session kept for it. */
+function retire(target: BrowserWindow): void {
+  if (window === target) window = null;
+  if (opening?.window === target) opening = null;
   if (!target.isDestroyed()) target.destroy();
+  void partition?.then((owned) => owned.clearStorageData()).catch(() => undefined);
 }
 
 /** How the window is made. There is no preload: the page is its own script and main reads one value back. */
-export function windowPreferences(partition: Session) {
+export function windowPreferences(owned: Session) {
   return {
-    session: partition,
+    session: owned,
     sandbox: true,
     nodeIntegration: false,
     contextIsolation: true,
@@ -85,6 +115,8 @@ export function windowPreferences(partition: Session) {
     enableWebSQL: false,
     navigateOnDragDrop: false,
     disableDialogs: true,
+    // The window draws with a 2D canvas and nothing else. The GPU is not for text that came from an AI.
+    webgl: false,
     // A hidden window would slow its timers, and a drawing has a clock.
     backgroundThrottling: false,
   };
@@ -97,28 +129,30 @@ async function openWindow(): Promise<BrowserWindow> {
   // Drawing never downloads; the explicit runtime job does that.
   await requireRuntime(path, "drawing");
   if (epoch !== generation) throw new Error("runtime-disposed");
-  if (opening) return opening;
-  if (window && !window.isDestroyed() && !rendererGone(window)) return window;
-  opening = (async () => {
-    // No `persist:` prefix and no cache: the partition lives in memory and goes with the window.
-    const partition = session.fromPartition(`pyxis-draw-${randomUUID()}`, { cache: false });
-    registerRuntimeProtocol(partition, path);
-    lockSession(partition, (url) => Boolean(runtimeResourceName(url, "draw")));
-    const created = new BrowserWindow({ show: false, webPreferences: windowPreferences(partition) });
-    window = created;
-    lockWindow(created);
-    const forget = () => {
-      if (window === created) {
-        window = null;
-        opening = null;
-      }
-    };
-    created.on("closed", forget);
-    // A crashed renderer is replaced by a fresh window on the next request.
-    created.webContents.on("render-process-gone", () => {
-      forget();
-      if (!created.isDestroyed()) created.destroy();
-    });
+  // A window that has loaded is used again unless its renderer is gone, which Electron can report before an event.
+  if (window && !window.isDestroyed()) {
+    if (!rendererGone(window)) return window;
+    retire(window);
+  }
+  if (opening) return opening.ready;
+  const owned = await drawSession();
+  if (epoch !== generation) throw new Error("runtime-disposed");
+  // Another request may have opened it while the session was being made.
+  const meanwhile = (): typeof opening => opening;
+  if (meanwhile()) return meanwhile()!.ready;
+  const created = new BrowserWindow({ show: false, webPreferences: windowPreferences(owned) });
+  lockWindow(created);
+  const forget = () => {
+    if (window === created) window = null;
+    if (opening?.window === created) opening = null;
+  };
+  created.on("closed", forget);
+  // A crashed renderer is replaced by a fresh window on the next request.
+  created.webContents.on("render-process-gone", () => {
+    forget();
+    if (!created.isDestroyed()) created.destroy();
+  });
+  const ready = (async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -128,15 +162,19 @@ async function openWindow(): Promise<BrowserWindow> {
         }),
       ]);
       if (epoch !== generation || created.isDestroyed()) throw new Error("runtime-disposed");
+      // Loaded: from here it is the window, and `opening` is not what a later request waits for.
+      window = created;
+      opening = null;
       return created;
     } catch (error) {
-      destroy(created);
+      retire(created);
       throw error;
     } finally {
       clearTimeout(timer);
     }
   })();
-  return opening;
+  opening = { window: created, ready };
+  return ready;
 }
 
 const PNG_URL = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/;
@@ -162,9 +200,10 @@ export function checkPng(value: unknown): string | null {
 
 /** A failure message from the page, as plain text of a bounded length: it is told to a model, never shown as markup. */
 function plainMessage(value: unknown): string {
-  const text = typeof value === "string" ? value : "";
+  // Cut first: the page sent this, so the work done on it is bounded by what is kept, not by what was sent.
+  const text = typeof value === "string" ? value.slice(0, 500) : "";
   // eslint-disable-next-line no-control-regex -- control characters are what this removes
-  const clean = text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 500);
+  const clean = text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
   return clean || "the drawing failed";
 }
 
@@ -190,7 +229,8 @@ function workingSetKb(target: BrowserWindow): number {
 
 type PageRequest = { kind: "graph"; code: string; engine: string; timeoutMs: number };
 
-async function dispatch(request: PageRequest): Promise<DrawResult> {
+/** One script run in the window under the limits of a drawing: its time, its memory, and a window that dies under it. */
+async function dispatch(script: string, timeoutMs: number): Promise<DrawResult> {
   const target = await openWindow();
   if (target.isDestroyed()) throw new Error("runtime-draw-crashed");
   return new Promise<DrawResult>((resolve) => {
@@ -203,7 +243,7 @@ async function dispatch(request: PageRequest): Promise<DrawResult> {
       clearTimeout(timer);
       clearInterval(poll);
       target.removeListener("closed", crashed);
-      if (stop) destroy(target);
+      if (stop) retire(target);
       resolve(result);
     };
     const crashed = () => finish({ error: "runtime-draw-crashed" });
@@ -212,12 +252,12 @@ async function dispatch(request: PageRequest): Promise<DrawResult> {
       () =>
         finish(
           {
-            error: `the drawing ran longer than ${request.timeoutMs / 1000} seconds: draw fewer nodes and edges`,
+            error: `the drawing ran longer than ${timeoutMs / 1000} seconds: draw fewer nodes and edges`,
             timedOut: true,
           },
           true,
         ),
-      request.timeoutMs,
+      timeoutMs,
     );
     poll = setInterval(() => {
       try {
@@ -228,12 +268,15 @@ async function dispatch(request: PageRequest): Promise<DrawResult> {
       }
     }, MEMORY_POLL_MS);
     target.webContents
-      .executeJavaScript(`window.pyxisDraw.draw(${JSON.stringify(request)})`)
+      .executeJavaScript(script)
       .then(
         (answer: unknown) => {
           const result = readAnswer(answer);
-          // A window that could not load its library would not try again: the next request gets a new one.
-          finish(result, "error" in result && result.error === "runtime-draw-library-missing");
+          // A window that could not load its library file is replaced, and the pack is not trusted again until its
+          // files are looked at: a file that fails its hash makes it not ready, and no window is opened for it.
+          const missing = "error" in result && result.error === "runtime-draw-library-missing";
+          if (missing) invalidatePack(workspace, "drawing");
+          finish(result, missing);
         },
         // Since Electron 45 a renderer that dies rejects the pending call at once, before the window closes.
         () =>
@@ -247,12 +290,12 @@ async function dispatch(request: PageRequest): Promise<DrawResult> {
  * turn is dropped, not run, when the runtime was disposed since it was queued (backup, restore, move, wipe, quit) or
  * when its requester's `deadline` has passed.
  */
-function execute(request: PageRequest, deadline?: number): Promise<DrawResult> {
+function execute(script: string, timeoutMs: number, deadline?: number): Promise<DrawResult> {
   const epoch = generation;
   const turn = tail.then(() => {
     if (epoch !== generation) throw new Error("runtime-disposed");
     if (deadline !== undefined && Date.now() >= deadline) throw new Error("runtime-expired");
-    return dispatch(request);
+    return dispatch(script, timeoutMs);
   });
   tail = turn.catch(() => undefined);
   return turn;
@@ -279,7 +322,8 @@ export async function handleDrawRequest(
   // The clock never runs longer than the kind's limit, whatever a request asks for.
   const timeoutMs = Math.max(50, Math.min(rules.timeoutMs, parsed.data.timeoutMs ?? rules.timeoutMs));
   try {
-    return await execute({ kind, code: styledDot(code), engine: graphLayout(code) ?? "dot", timeoutMs }, deadline);
+    const request: PageRequest = { kind, code: styledDot(code), engine: graphLayout(code) ?? "dot", timeoutMs };
+    return await execute(`window.pyxisDraw.draw(${JSON.stringify(request)})`, timeoutMs, deadline);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return { error: message.startsWith("runtime-") ? message : "runtime-draw-failed" };
@@ -309,6 +353,14 @@ export function drawTestHandle() {
       void _session;
       return rest;
     },
+    /** The URLs the session's request filter was asked about, last ones, in order. */
+    seen: () => [...seen],
+    /** Serves the window's files without their policy headers (true), to show what the session's own filter does alone. */
+    setPolicyOff: (off: boolean) => {
+      policy.off = off;
+    },
+    /** Runs a script as a drawing, under the limits of one: its time, its memory, and a window that dies under it. */
+    runScript: (script: string, timeoutMs: number) => execute(script, timeoutMs),
     /** Runs a script in a drawing window, as a hostile page would. */
     evaluate: (script: string) => {
       const [target] = openWindows();

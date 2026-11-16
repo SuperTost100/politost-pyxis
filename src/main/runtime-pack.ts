@@ -23,13 +23,20 @@ type Pack = {
   totalBytes: number;
   /** Whether the folders of earlier versions are deleted once this version is verified. */
   replacesOlder: boolean;
+  /**
+   * Whether a file is hashed every time it is read, not only when its size, modification time or inode has changed. A
+   * file rewritten in place with its modification time put back would pass the stamp. The drawing pack is small, so it is
+   * hashed on every read; Python's is 31 MB and keeps the stamp.
+   */
+  hashEveryRead: boolean;
 };
-function pack(version: string, files: PackFile[], replacesOlder: boolean): Pack {
+function pack(version: string, files: PackFile[], replacesOlder: boolean, hashEveryRead = false): Pack {
   return {
     version,
     files,
     totalBytes: files.reduce((sum, file) => sum + file.size, 0),
     replacesOlder,
+    hashEveryRead,
   };
 }
 /**
@@ -44,7 +51,7 @@ export const runtimePacks: Record<PackId, Pack> = {
     pyodide.files.map((file) => ({ ...file, url: pyodide.baseURL + file.name })),
     false,
   ),
-  drawing: pack(drawing.version, drawing.files, true),
+  drawing: pack(drawing.version, drawing.files, true, true),
 };
 export type PackPhase = "idle" | "downloading" | "ready" | "failed";
 /**
@@ -128,7 +135,7 @@ export async function verifiedRuntimeFile(
       const bytes = await handle.readFile();
       if (
         bytes.length === file.size &&
-        (verified.get(path) === before ||
+        ((!runtimePacks[id].hashEveryRead && verified.get(path) === before) ||
           sha256(bytes) === file.sha256)
       ) {
         verified.set(path, before);
@@ -151,7 +158,7 @@ async function runtimeFileReady(
   name: string,
 ): Promise<boolean> {
   const path = join(packRoot(workspace, id), name);
-  const known = verified.get(path);
+  const known = runtimePacks[id].hashEveryRead ? undefined : verified.get(path);
   if (known) {
     try {
       if (stamp(await stat(path, { bigint: true })) === known) return true;
@@ -200,6 +207,16 @@ export async function requireRuntime(
   if (stateOf(workspace).packs[id] === "ready") return;
   if ((await currentRuntimeStatus(workspace)).packs[id] !== "ready")
     throw new Error("runtime-missing");
+}
+/**
+ * Forgets that a pack was verified: its next use looks at the disk again, and a file that fails its hash makes the pack
+ * not ready, so nothing opens a window for it until the student downloads it again. Called when a window could not load
+ * a file of the pack.
+ */
+export function invalidatePack(workspace: string, id: PackId): void {
+  const state = states.get(workspace);
+  if (state && state.packs[id] === "ready") state.packs[id] = "idle";
+  for (const file of runtimePacks[id].files) verified.delete(join(packRoot(workspace, id), file.name));
 }
 export function cancelRuntimeDownload(workspace: string): void {
   controllers.get(workspace)?.abort();

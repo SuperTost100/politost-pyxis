@@ -27,6 +27,12 @@ const ISOLATION = {
   "Cross-Origin-Resource-Policy": "same-origin",
 };
 
+/**
+ * For the end-to-end tests only (the drawing window's test handle sets it, and only a run with PYXIS_E2E=1 has that handle):
+ * serve every file without the policy headers, to show that the session's own filter holds when the policy does not.
+ */
+export const policy = { off: false };
+
 export const hosts: Record<RuntimeHost, Host> = {
   sandbox: {
     trusted: new Map([
@@ -47,13 +53,15 @@ export const hosts: Record<RuntimeHost, Host> = {
     trusted: new Map([
       ["index.html", "draw.html"],
       ["draw-host.js", "draw-host.js"],
+      ["draw-worker.js", "draw-worker.js"],
     ]),
     pack: (id, file) => id === "drawing" && file.endsWith(".js"),
     // Nothing is fetched, nothing is embedded and nothing runs from a string: scripts come from this scheme only (and
-    // WebAssembly compiles), pictures are blob: and data: only, and every other kind of load is refused.
+    // WebAssembly compiles), pictures are blob: and data: only, and every other kind of load is refused. The one worker is
+    // the one that runs Graphviz, and the policy names its file.
     headers: {
       "Content-Security-Policy":
-        "default-src 'none'; script-src pyxis-runtime: 'wasm-unsafe-eval'; img-src blob: data:; connect-src 'none'; worker-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+        "default-src 'none'; script-src pyxis-runtime: 'wasm-unsafe-eval'; img-src blob: data:; connect-src 'none'; worker-src pyxis-runtime://draw/draw-worker.js; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
       ...ISOLATION,
     },
   },
@@ -102,21 +110,25 @@ function mime(name: string): string {
   return "application/octet-stream";
 }
 
-/** Serves the `pyxis-runtime:` scheme on a session, for the hosts above. `path` is the workspace folder. */
+/**
+ * Serves the `pyxis-runtime:` scheme on a session, for the hosts above that `only` names (both when it is left out). A
+ * window's own session answers for its own host and for no other. `path` is the workspace folder.
+ */
 export function registerRuntimeProtocol(
   target: Session,
   path: string | (() => string),
+  only: readonly RuntimeHost[] = ["sandbox", "draw"],
 ): void {
   target.protocol.handle("pyxis-runtime", async (request) => {
-    const host = (["sandbox", "draw"] as const).find((name) => {
+    const host = only.find((name) => {
       try {
         return new URL(request.url).hostname === name;
       } catch {
         return false;
       }
     });
-    const refused = () =>
-      new Response("not found", { status: 404, headers: host ? hosts[host].headers : ISOLATION });
+    const headers = (host: RuntimeHost | undefined) => (policy.off ? {} : host ? hosts[host].headers : ISOLATION);
+    const refused = () => new Response("not found", { status: 404, headers: headers(host) });
     if (!host || request.method !== "GET") return refused();
     const name = runtimeResourceName(request.url, host);
     if (!name) return refused();
@@ -132,7 +144,7 @@ export function registerRuntimeProtocol(
         );
     return bytes
       ? new Response(bytes, {
-          headers: { ...hosts[host].headers, "Content-Type": mime(name) },
+          headers: { ...headers(host), "Content-Type": mime(name) },
         })
       : refused();
   });
