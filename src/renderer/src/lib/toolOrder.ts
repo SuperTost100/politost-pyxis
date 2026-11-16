@@ -48,7 +48,9 @@ export function movedOrder(
 /**
  * The tools Pyxis may use after `id` is turned off or on again. `ready` are the tools that work now: the connected
  * ones and each API provider with a saved key. Null means every tool, also one connected later: turning back on the
- * last of the ready tools that was off returns to it. An empty answer is refused, because one tool has to stay in use.
+ * last of the ready tools that was off returns to it. Turning a tool off is refused (undefined) when no ready tool
+ * would be left in use. Turning one on never is, also when it does not work yet: a tool is turned on as it is
+ * connected, before its sign-in.
  */
 export function toggledUse(
   allowed: readonly string[] | null,
@@ -58,8 +60,9 @@ export function toggledUse(
 ): string[] | null | undefined {
   const current = allowed ?? ready;
   const next = use ? [...new Set([...current, id])] : current.filter((item) => item !== id);
-  if (!ready.some((item) => next.includes(item))) return undefined;
-  return ready.every((item) => next.includes(item)) ? null : next;
+  if (!use && !ready.some((item) => next.includes(item))) return undefined;
+  const everyTool = use ? [...new Set([...ready, id])] : ready;
+  return everyTool.every((item) => next.includes(item)) ? null : next;
 }
 
 /** How to say when a tool has requests again: later today, tomorrow, or on another day. */
