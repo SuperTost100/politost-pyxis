@@ -386,3 +386,12 @@ it("a fix call that fails leaves the figure unfixed, and one that is stopped sto
   });
   await expect(stopped(figure, "ValueError: x")).rejects.toThrow();
 });
+
+it("hands back the corrected code as the model wrote it: an escape inside a Python string is not turned into a line break", async () => {
+  const label = "plt.plot([1, 2])\nplt.ylabel('Voltage\\n(V)')\nplt.xlabel('Time \\t(s)')";
+  const figure = { figureKind: "plot", caption: "x", code: "plt.plot([1])" } as const;
+  // A structured reply, as the providers that support it give it, and a text reply that holds the same JSON.
+  const asText = async () => ({ text: JSON.stringify({ code: label }), provider: "claude", model: "fixer", inputTokens: 1 });
+  for (const run of [async () => answer(label), asText])
+    expect(await figureFixer({ selection, run })(figure, "ValueError: x")).toBe(label);
+});

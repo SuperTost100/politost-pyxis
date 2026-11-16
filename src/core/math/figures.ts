@@ -139,6 +139,8 @@ export function figureFixer(
           error: errorEnd(error),
         }),
         schema: figureFixReply,
+        // Code is not prose or LaTeX: the `\n` of a Python string must stay a backslash and an n.
+        verbatim: ["code"],
       });
       return (reply.data as z.infer<typeof figureFixReply>).code;
     } catch {
