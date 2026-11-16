@@ -494,6 +494,9 @@ test.describe("Colma, when a question of the drill is flagged as wrong on its re
     }
     await expect(page.locator(".px-res-title")).not.toHaveText("Hai preso 30/30");
     await expect(page.getByText("Lacuna colmata")).toHaveCount(0);
+    // The finished grading reaches Attività in a refresh that also reads the gap again, a quarter of a second after the
+    // results came up. The flag comes after it, as it does when the student takes longer than that to reach it.
+    await expect(page.getByRole("button", { name: "Attività: 2 finite oggi" })).toBeVisible();
     // Flagged as wrong, the question leaves the score and the gaps are worked out again: the answers left are right, on a
     // second day, so the gap closes, and the end on this same page says so.
     await page.getByRole("button", { name: "Domanda sbagliata?" }).first().click();
