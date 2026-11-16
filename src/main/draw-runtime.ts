@@ -53,6 +53,9 @@ let opening: { window: BrowserWindow; ready: Promise<BrowserWindow> } | null = n
 let generation = 0;
 let tail: Promise<unknown> = Promise.resolve();
 let partition: Promise<Session> | null = null;
+/** The clearing of the session's storage that was asked for last. A window is not opened until it has finished. */
+let clearing: Promise<void> = Promise.resolve();
+const retired = new WeakSet<BrowserWindow>();
 /** The last URLs the session was asked about, for the end-to-end tests that look at what it sees. */
 const seen: string[] = [];
 
@@ -92,12 +95,23 @@ export function disposeDrawRuntime(): void {
   opening = null;
 }
 
-/** Ends a window, and clears what the session kept for it. */
+/**
+ * Ends a window, and clears what the session kept for it. Every way a window ends comes here: a replaced one, a timeout,
+ * a memory limit, a crash. The clearing is awaited by the next window before it opens, so it never meets storage that is
+ * still being cleared, and the clearings run one after the other.
+ */
 function retire(target: BrowserWindow): void {
+  // A window ends once: its own `closed` event, after the destroy below, comes here again.
+  if (retired.has(target)) return;
+  retired.add(target);
   if (window === target) window = null;
   if (opening?.window === target) opening = null;
   if (!target.isDestroyed()) target.destroy();
-  void partition?.then((owned) => owned.clearStorageData()).catch(() => undefined);
+  const before = clearing;
+  clearing = (async () => {
+    await before;
+    await partition?.then((owned) => owned.clearStorageData()).catch(() => undefined);
+  })();
 }
 
 /** How the window is made. There is no preload: the page is its own script and main reads one value back. */
@@ -136,22 +150,18 @@ async function openWindow(): Promise<BrowserWindow> {
   }
   if (opening) return opening.ready;
   const owned = await drawSession();
+  // The storage of the window that ended is cleared before the next one opens in the same session.
+  await clearing;
   if (epoch !== generation) throw new Error("runtime-disposed");
   // Another request may have opened it while the session was being made.
   const meanwhile = (): typeof opening => opening;
   if (meanwhile()) return meanwhile()!.ready;
   const created = new BrowserWindow({ show: false, webPreferences: windowPreferences(owned) });
   lockWindow(created);
-  const forget = () => {
-    if (window === created) window = null;
-    if (opening?.window === created) opening = null;
-  };
-  created.on("closed", forget);
-  // A crashed renderer is replaced by a fresh window on the next request.
-  created.webContents.on("render-process-gone", () => {
-    forget();
-    if (!created.isDestroyed()) created.destroy();
-  });
+  // A window that closed on its own, or whose renderer died, is retired as any other: it is replaced on the next request,
+  // and its storage is cleared.
+  created.on("closed", () => retire(created));
+  created.webContents.on("render-process-gone", () => retire(created));
   const ready = (async () => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -279,8 +289,10 @@ async function dispatch(script: string, timeoutMs: number): Promise<DrawResult> 
           finish(result, missing);
         },
         // Since Electron 45 a renderer that dies rejects the pending call at once, before the window closes.
-        () =>
-          finish({ error: rendererGone(target) ? "runtime-draw-crashed" : "runtime-draw-failed" }),
+        () => {
+          const gone = rendererGone(target);
+          finish({ error: gone ? "runtime-draw-crashed" : "runtime-draw-failed" }, gone);
+        },
       );
   });
 }

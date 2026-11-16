@@ -37,6 +37,8 @@ const fake = vi.hoisted(() => ({
   workingSetKb: 100_000,
   loadNever: false,
   nextId: 1,
+  /** While set, clearing the session's storage does not finish until it resolves. */
+  clearGate: null as Promise<void> | null,
 }));
 
 vi.mock("electron", () => {
@@ -119,6 +121,7 @@ vi.mock("electron", () => {
         },
         clearStorageData: async () => {
           partition.cleared++;
+          await fake.clearGate;
         },
         webRequest: { onBeforeRequest: (filter: typeof partition.requestFilter) => (partition.requestFilter = filter) },
         setPermissionRequestHandler: (handler: (...args: unknown[]) => void) => (partition.permissionRequest = handler),
@@ -192,6 +195,7 @@ describe("the drawing window", () => {
     fake.scripts.length = 0;
     fake.workingSetKb = 100_000;
     fake.loadNever = false;
+    fake.clearGate = null;
     requireRuntime.mockReset();
     requireRuntime.mockImplementation(async () => undefined);
     configureDrawRuntime("/workspace-a");
@@ -240,9 +244,9 @@ describe("the drawing window", () => {
   it("sends the network stack's own work to a proxy that is not there, and lets WebRTC use no UDP that does not go through it", async () => {
     const pending = handleDrawRequest({ kind: "graph", code: DOT });
     await vi.waitFor(() => expect(fake.held).toHaveLength(1));
-    // WebRTC, preconnect and DNS lookups do not pass the request filter: a SOCKS proxy on the discard port takes them, with
+    // WebRTC, preconnect and DNS lookups do not pass the request filter: a SOCKS proxy at port 0 takes them, with
     // the loopback rule off so this machine's own addresses are not left out, and WebRTC is held to the proxy.
-    expect(fake.partitions[0]!.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:9", proxyBypassRules: "<-loopback>" }]);
+    expect(fake.partitions[0]!.proxies).toEqual([{ mode: "fixed_servers", proxyRules: "socks5://127.0.0.1:0", proxyBypassRules: "<-loopback>" }]);
     expect(fake.webrtc).toEqual(["disable_non_proxied_udp"]);
     // The session is locked before the window loads its page.
     expect(fake.windows[0]!.loaded).toEqual(["pyxis-runtime://draw/index.html"]);
@@ -499,6 +503,60 @@ describe("the drawing window", () => {
     await vi.waitFor(() => expect(fake.held).toHaveLength(3));
     fake.windows[1]!.destroy();
     await expect(closing).resolves.toEqual({ error: "runtime-draw-crashed" });
+  });
+
+  it("clears the storage of every window that ends, however it ended, and once", async () => {
+    const cleared = () => fake.partitions[0]!.cleared;
+    // A crash found by the rejected call, which comes before the window's own events: retired at once, and not again when
+    // the events follow.
+    const running = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.windows[0]!.crashed = true;
+    fake.held[0]!.fail(new Error("Render frame was disposed before the request completed"));
+    await expect(running).resolves.toEqual({ error: "runtime-draw-crashed" });
+    expect(fake.windows[0]!.destroyed).toBe(true);
+    fake.windows[0]!.contentsListeners.get("render-process-gone")!();
+    await vi.waitFor(() => expect(cleared()).toBe(1));
+    // A renderer that dies between two drawings: the event alone retires the window.
+    const idle = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    fake.held[1]!.settle(good);
+    await idle;
+    fake.windows[1]!.contentsListeners.get("render-process-gone")!();
+    expect(fake.windows[1]!.destroyed).toBe(true);
+    await vi.waitFor(() => expect(cleared()).toBe(2));
+    // A window that closed on its own.
+    const last = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(3));
+    fake.held[2]!.settle(good);
+    await last;
+    fake.windows[2]!.destroy();
+    await vi.waitFor(() => expect(cleared()).toBe(3));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(cleared()).toBe(3);
+  });
+
+  it("does not open the next window until the storage of the one that ended has been cleared", async () => {
+    const first = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle(good);
+    await first;
+    // The clearing is slow: the window ends, and the next drawing has to wait for it.
+    let finish: () => void = () => undefined;
+    fake.clearGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    fake.windows[0]!.contentsListeners.get("render-process-gone")!();
+    const second = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.partitions[0]!.cleared).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fake.windows).toHaveLength(1);
+    expect(fake.held).toHaveLength(1);
+    finish();
+    await vi.waitFor(() => expect(fake.windows).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    fake.held[1]!.settle(good);
+    await expect(second).resolves.toEqual({ image: good.png });
   });
 
   it("gives up on a window that does not load its page, and destroys it", async () => {
