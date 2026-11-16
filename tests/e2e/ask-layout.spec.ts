@@ -237,6 +237,10 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Argomento 20" }).click();
     await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
+    // Known and unexplained: on the Intel Mac runner (run 43883525076) the click above did nothing. The report's page
+    // still held the confirmation, not busy, and "Argomento 20" in the list, so the delete never started and the sidebar
+    // had nothing to read again. The same as the dialog clicks of dialogs.spec.ts and leave-with-typing.spec.ts, and it did
+    // not repeat in 10 runs under CPU throttling and stalls on Linux. See pull request 491; the macOS jobs keep a trace.
     await expect(list.getByRole("link", { name: "Argomento 01" })).toBeVisible();
     await expect(list.getByRole("listitem")).toHaveCount(20);
     await expect(allChats).toHaveCount(0);
