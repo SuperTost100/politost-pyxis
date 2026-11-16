@@ -100,8 +100,12 @@ async function finish(app: ElectronApplication, userData: string) {
 }
 
 test("Ask: recent chats, automatic titles, rename and delete, greeting and the thinking placeholder", async () => {
-  test.setTimeout(120000);
-  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "3000" });
+  // The reply is held for half of this before its first words, and the thinking placeholder stands for that long. The check
+  // below looks about 25 ms after the question is sent on Linux, but a 2.5 s stall of the page was enough to miss the
+  // 1.5 s that 3000 held (the Intel Mac runner did, run 43864805540). Five seconds is longer than the 4 s that
+  // ask-remount.spec.ts holds its reply for, and costs this test 10 s for each of its two replies.
+  test.setTimeout(150000);
+  const { app, page, userData } = await launch({ PYXIS_E2E_REPLY_DELAY: "10000" });
   try {
     await page.evaluate(() => window.pyxis.invoke("profile.save", { displayName: "Tommaso" }));
     await page.evaluate(() => {
