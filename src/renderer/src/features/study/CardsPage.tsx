@@ -18,7 +18,7 @@ import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
 import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
 import { SessionEnd, type Upcoming } from "./SessionEnd";
-import { RATINGS, type RatingName, type SeenCard } from "./sessionEnd";
+import { RATINGS, type RatingName, type SeenCard } from "./sessionSummary";
 
 import { clozeAnswer, clozeQuestion, isCloze } from "../../../../core/study/cloze";
 import { Notice } from "../../components/Notice";

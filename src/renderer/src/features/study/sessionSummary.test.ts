@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barShare, countdownText, groupSeen, minutesLeft, rateCounts, type SeenCard } from "./sessionEnd";
+import { barShare, countdownText, groupSeen, minutesLeft, rateCounts, type SeenCard } from "./sessionSummary";
 
 const card = (cardId: string, rating: SeenCard["rating"], reviewId = `${cardId}-${rating}`): SeenCard => ({
   cardId,
@@ -9,7 +9,7 @@ const card = (cardId: string, rating: SeenCard["rating"], reviewId = `${cardId}-
   subject: null,
 });
 
-describe("session end", () => {
+describe("session summary", () => {
   const seen = [card("a", "good"), card("b", "again"), card("c", "good"), card("a", "easy", "a-2"), card("d", "hard")];
 
   it("counts each answer, the ones nobody gave as zero", () => {

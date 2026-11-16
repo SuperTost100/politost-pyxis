@@ -16,7 +16,7 @@ import {
   rateCounts,
   type RatingName,
   type SeenCard,
-} from "./sessionEnd";
+} from "./sessionSummary";
 
 /** When the reviewed cards that are not due yet come back (`study.dueLater`), or what is known of it. */
 export type Upcoming =
