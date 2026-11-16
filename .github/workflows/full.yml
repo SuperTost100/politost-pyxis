@@ -115,14 +115,14 @@ jobs:
     if: ${{ !inputs.dev }}
     # The runner is looked up from the target: an include entry left without its excluded combinations would become a job of its own.
     runs-on: ${{ fromJSON('{"mac-arm64":"macos-15","mac-x64":"macos-15-intel","windows-x64":"windows-2025","linux-x64":"ubuntu-24.04"}')[matrix.target] }}
-    # A run of the audit covers one combination. At 207 states it took 7.5 minutes on macOS arm64 in November 2026 (8.8
-    # with large text) and 5 on Linux, and one run on a slow runner took 17. The audit has 274 states now, which makes
-    # about 10 minutes (11.6 with large text) and 22 on a slow runner. A job makes four runs: about 40 minutes on macOS
-    # arm64, 47 with large text, and each slow run adds about 11, so two of them still fit in 75. All eight runs in one
-    # job came to 54 and 61 minutes at 207 states and would take about 84 now, so that would leave no room in 90 (45 and 60
-    # cancelled it earlier). At 290 states in November 2026 a job took 40 to 43 minutes on macOS arm64, 29 to 30 on Windows
-    # and 24 to 29 on Linux. The audit's four parts each get a quarter of the test time, so a hang names its part.
-    timeout-minutes: 75
+    # A run of the audit covers one combination, and a job makes four. They all run, also after one fails, so the limit is
+    # the four-run worst case with setup. Measured on 16 November 2026 at 280 states (run 43840904857), first to last state:
+    # 6.7 to 7.4 minutes a combination on Linux, 6.8 to 7.4 on Windows and 9.2 to 11.9 on macOS arm64. The slowest runner
+    # seen was a macOS arm64 one on 13 November (run 43379439442, 218 states): 16.8 minutes for its first combination, 59.8
+    # for the four and 62.1 for the job. At the 297 states of the audit now that runner takes 22.9 minutes for the first
+    # combination, 81.5 for the four and about 84 for the job; four combinations as slow as its first would take 91.6, about
+    # 94 with setup (1.3 minutes) and the upload. Playwright's own timeouts end a hung combination in under 40 minutes.
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
