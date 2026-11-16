@@ -50,7 +50,7 @@ describe("prompt templates", () => {
     expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
       // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.
-      expect(loadTemplate(id).body.split("\n"), id).toContain("{{> figures}}");
+      expect(loadTemplate(id).body.split(/\r?\n/), id).toContain("{{> figures}}");
       expect(loadTemplate(id).body, id).not.toContain("pyxis-figure");
     }
     expect(partialsOf(loadTemplate("chat.socratic"))).not.toContain("figures");
@@ -164,7 +164,7 @@ describe("prompt templates", () => {
       // No runtime: the instruction is gone and the rest of the template is as written.
       const none = figureText(text, [], 2);
       expect(none, id).toBe(
-        text.split("\n").filter((line) => !line.startsWith("[figure")).join("\n"),
+        text.split(/\r?\n/).filter((line) => !line.startsWith("[figure")).join("\n"),
       );
       for (const word of ["pyxis-figure", "matplotlib", "schemdraw"])
         expect(none, id).not.toContain(word);
@@ -173,7 +173,7 @@ describe("prompt templates", () => {
         expect(filled, id).not.toMatch(/\[figures?\b|\[max\]/);
     }
     // Every kind in the table has its line, with the limit the table sets.
-    const lines = partialText("figures").split("\n");
+    const lines = partialText("figures").split(/\r?\n/);
     expect(lines[0]).toMatch(/^\[figures\] /);
     expect(lines.slice(1).map((line) => /^\[figure:([a-z]+)\] - "\1", /.exec(line)?.[1])).toEqual(figureKinds);
     for (const kind of figureKinds)
@@ -209,6 +209,26 @@ describe("prompt templates", () => {
       const text = renderTemplate(id, values).text;
       expect(text.includes(rule), id).toBe(passageTemplates.includes(id));
     }
+  });
+
+  it("reads a template and a partial the same with CRLF endings, as a Windows checkout has them", () => {
+    const crlf = (text: string) => text.replace(/\r?\n/g, "\r\n");
+    for (const id of ids) {
+      const source = TEMPLATE_SOURCES[id];
+      // The front matter is parsed as before: the version, which keys every cache, is the same string.
+      expect(parseTemplate(id, crlf(source)), id).toEqual(parseTemplate(id, source));
+      expect(parseTemplate(id, crlf(source)).body, id).not.toContain("\r");
+    }
+    expect(crlf(partialText("figures"))).toContain("\r\n");
+    for (const id of ["citation", "figures"] as const) {
+      const sources = { citation: crlf(partialText("citation")), figures: crlf(partialText("figures")) };
+      expect(partialText(id, sources), id).toBe(partialText(id));
+      expect(partialText(id, sources), id).not.toContain("\r");
+    }
+    // A text cut by its lines, as the figure instruction is, finds the same lines.
+    const filled = (sources: Parameters<typeof partialText>[1]) =>
+      figureText(partialText("figures", sources), ["plot"], 2);
+    expect(filled({ citation: "", figures: crlf(partialText("figures")) })).toBe(filled(undefined));
   });
 
   it("maps stored language codes to prompt language names", () => {
