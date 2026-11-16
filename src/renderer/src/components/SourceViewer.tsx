@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { topicTitle } from "@shared/book-text";
 import { spokenText } from "@shared/spoken-math";
+import { bookErrorKey } from "../lib/bookErrors";
 import { invoke } from "../lib/ipc";
 import { useSources } from "../lib/queries";
 import { Button } from "./Button";
@@ -24,23 +25,37 @@ const PdfSourcePage = lazy(() => import("./PdfSourcePage"));
 let markdown: typeof import("./MarkdownView") | undefined;
 const loadMarkdown = async () => (markdown ??= await import("./MarkdownView"));
 
-/** Where a source opens: at a cited passage, or at a source's start (its chapter or paragraph for a free book). */
-export type SourceLocation = { passageId?: string; sourceId?: string; chapter?: number; paragraph?: string };
+/**
+ * Where a source opens: at a cited passage, or at a source's start (its chapter or paragraph for a free book). `bookId`
+ * is a free book that is not in the Library: it is read from its package, and nothing of it is stored.
+ */
+export type SourceLocation = { passageId?: string; sourceId?: string; chapter?: number; paragraph?: string; bookId?: string };
 /** The actions on the file, the same menu its cover in the Library has, read each time the panel draws its head. */
 export type SourceMenu = () => { items: NonNullable<MenuProps["items"]>; onSelect: (key: string) => void } | null;
-type Opening = SourceLocation & { back?: () => void; menu?: SourceMenu };
+/** A row under the panel's head, read each time it draws: a book not in the Library says so and offers to add it. */
+export type SourceBar = () => ReactNode;
+type Opening = SourceLocation & { back?: () => void; menu?: SourceMenu; bar?: SourceBar };
 
 const eventName = "pyxis:source-viewer";
 const closeName = "pyxis:source-viewer-close";
+const refreshName = "pyxis:source-viewer-refresh";
 
 /**
  * Opens the source panel at a passage or a source. A second call moves the open panel to the new place; it never opens
- * another. `back`, when the panel was opened from another panel (the source details), adds a way back to it, and `menu`
- * gives the panel the file's own menu.
+ * another. `back`, when the panel was opened from another panel (the source details), adds a way back to it, `menu`
+ * gives the panel the file's own menu, and `bar` adds a row under its head.
  */
-export function openSourceViewer(location: SourceLocation, options?: (() => void) | { back?: () => void; menu?: SourceMenu }): void {
+export function openSourceViewer(
+  location: SourceLocation,
+  options?: (() => void) | { back?: () => void; menu?: SourceMenu; bar?: SourceBar },
+): void {
   const extra = typeof options === "function" ? { back: options } : (options ?? {});
   window.dispatchEvent(new CustomEvent(eventName, { detail: { ...location, ...extra } }));
+}
+
+/** Draws the panel's head again, for a `bar` whose answer changed. */
+export function refreshSourceViewer(): void {
+  window.dispatchEvent(new Event(refreshName));
 }
 
 /** Closes the panel, as when the file's details take its place. */
@@ -57,26 +72,38 @@ const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matc
  */
 export function useSourceView(
   location: SourceLocation | null,
-  props: { titleId: string; onClose: () => void; onBack?: () => void; menu?: SourceMenu; openKey?: number },
+  props: { titleId: string; onClose: () => void; onBack?: () => void; menu?: SourceMenu; bar?: SourceBar; openKey?: number },
 ): { head: ReactNode; body: ReactNode } {
   const { t } = useTranslation();
+  const bookId = location?.bookId;
   const source = useQuery({
     queryKey: ["source-panel", location],
-    enabled: location != null,
+    enabled: location != null && !bookId,
     queryFn: () => invoke("sources.panel", { sourceId: location?.sourceId, passageId: location?.passageId }),
   });
+  // A free book not in the Library: its title and chapters, read from the package on the first look. Nothing is stored.
+  const book = useQuery({
+    queryKey: ["book-preview", bookId],
+    enabled: bookId != null,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: () => invoke("sources.bookPreview", { id: bookId ?? "" }),
+  });
+  const read = bookId ? book : source;
   const sources = useSources(location != null);
   // A file renamed, removed or read again while the panel shows it: the panel reads it again, on the same page.
   const listedAt = sources.dataUpdatedAt;
   const refetch = source.refetch;
   useEffect(() => {
-    if (listedAt) void refetch();
-  }, [listedAt, refetch]);
-  const view = source.data ?? null;
+    if (listedAt && !bookId) void refetch();
+  }, [listedAt, refetch, bookId]);
+  const view = bookId ? (book.data ? bookPanel(bookId, book.data.title) : null) : (source.data ?? null);
   const listed = view ? sources.data?.find((row) => row.id === view.sourceId) : undefined;
   const menu = props.menu?.() ?? null;
-  const what = [listed ? t(`sources.fileKind.${listed.fileKind}`) : null, view?.passage?.sectionPath].filter(Boolean).join(" · ");
-  const title = view?.title ?? (source.isPending ? "" : t("sources.details"));
+  const what = book.data
+    ? [t("books.bookName"), t("books.chapters", { count: book.data.chapters.length }), t("books.free")].join(" · ")
+    : [listed ? t(`sources.fileKind.${listed.fileKind}`) : null, view?.passage?.sectionPath].filter(Boolean).join(" · ");
+  const title = view?.title ?? (read.isPending ? "" : t("sources.details"));
   const menuProps: MenuProps = { items: menu?.items ?? [], onClick: ({ key }) => menu?.onSelect(key) };
   const itemMenu = useItemMenu({ menu: menuProps, disabled: !menu });
   const head = (
@@ -97,17 +124,18 @@ export function useSourceView(
           {t("sources.viewer.backToDetails")}
         </button>
       ) : null}
+      {props.bar?.()}
       {itemMenu.popup}
     </div>
   );
-  const body = !location ? null : source.isError ? (
+  const body = !location ? null : read.isError ? (
     <div className="source-view-page">
-      <LoadError onRetry={() => void source.refetch()}>{t("sources.viewerFailed")}</LoadError>
+      <LoadError onRetry={() => void read.refetch()}>{t(bookId ? bookErrorKey(read.error) : "sources.viewerFailed")}</LoadError>
     </div>
   ) : !view ? (
-    source.isPending ? (
+    read.isPending ? (
       <div className="source-view-page">
-        <PagePlaceholder />
+        <PagePlaceholder label={bookId ? t("books.reader.opening") : undefined} />
       </div>
     ) : (
       <div className="source-view-page">
@@ -115,9 +143,37 @@ export function useSourceView(
       </div>
     )
   ) : (
-    <SourceBody key={`${props.openKey ?? 0}:${view.sourceId}:${view.passage?.id ?? ""}`} location={location} source={view} onClose={props.onClose} />
+    <SourceBody
+      key={`${props.openKey ?? 0}:${view.sourceId}:${view.passage?.id ?? ""}`}
+      location={location}
+      source={view}
+      bookChapters={book.data?.chapters}
+      onClose={props.onClose}
+    />
   );
   return { head, body };
+}
+
+/** What the panel draws a free book from that is not in the Library: a book with no original and no cited passage. */
+function bookPanel(id: string, title: string): PanelSource {
+  return {
+    sourceId: `book:${id}`,
+    title,
+    kind: "smartbook",
+    status: "ready",
+    state: "ready",
+    errorJobId: null,
+    original: null,
+    mime: null,
+    size: null,
+    linked: false,
+    missing: false,
+    changed: false,
+    originUrl: null,
+    pages: null,
+    slides: null,
+    passage: null,
+  };
 }
 
 /** The page's shape while what goes in it loads: a sheet with the working mark, shown only after a short wait. */
@@ -140,7 +196,18 @@ function PagePlaceholder({ label }: { label?: string }) {
   );
 }
 
-function SourceBody({ location, source, onClose }: { location: SourceLocation; source: PanelSource; onClose: () => void }) {
+function SourceBody({
+  location,
+  source,
+  bookChapters,
+  onClose,
+}: {
+  location: SourceLocation;
+  source: PanelSource;
+  /** The chapters of a book read before it is added, which has no stored copy to ask. */
+  bookChapters?: Array<{ number: number; title: string }>;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const plan = planPanel(source, { chapter: location.chapter });
   const [page, setPage] = useState(plan.start);
@@ -154,10 +221,10 @@ function SourceBody({ location, source, onClose }: { location: SourceLocation; s
   const [openFailed, setOpenFailed] = useState(false);
   const chapters = useQuery({
     queryKey: ["source-chapters", source.sourceId],
-    enabled: plan.unit === "chapter",
+    enabled: plan.unit === "chapter" && !bookChapters,
     queryFn: () => invoke("sources.chapters", { sourceId: source.sourceId }),
   });
-  const total = plan.unit === "chapter" ? (chapters.data?.length || null) : count;
+  const total = plan.unit === "chapter" ? ((bookChapters ?? chapters.data)?.length || null) : count;
   const where = { sourceId: location.passageId ? undefined : source.sourceId, passageId: location.passageId };
   const citedAt = plan.unit === "slide" ? source.passage?.slide : plan.unit === "chapter" ? source.passage?.chapter : source.passage?.page;
   // A citation to a page the file no longer has: the last page, and a line that says so.
@@ -458,9 +525,12 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
     if (!markdownReady) void loadMarkdown().then(() => setMarkdownReady(true));
   }, [markdownReady]);
   const passageId = location.passageId;
+  const bookId = location.bookId;
   const rows = useQuery({
     queryKey: ["source-panel-text", source.sourceId, plan.unit, page, passageId, location.chapter, location.paragraph],
     queryFn: async () => {
+      // A book not in the Library has no stored text: its chapter is read from the package core holds in memory.
+      if (bookId) return (await invoke("sources.bookChapter", { id: bookId, chapter: page })).map((row) => ({ ...row, current: false }));
       if (plan.unit === "page" || plan.unit === "slide") {
         const lines = await invoke("sources.panelPage", { sourceId: passageId ? undefined : source.sourceId, passageId, unit: plan.unit, n: page });
         return lines.map((line) => ({ id: line.id, text: line.text, current: line.current }));
@@ -481,12 +551,29 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
     holder.current?.querySelector(".is-current")?.scrollIntoView({ block: "center" });
   }, [rows.data, markdownReady]);
   const own = plan.body.show === "text" ? plan.body.ownApp : null;
+  const sheet = (
+    <div ref={holder} className="source-paper source-viewer-chapter">
+      {list.length === 0 && rows.isSuccess ? <p className="source-read-line">{t("sources.viewer.noReadText")}</p> : null}
+      {list.map((row) => (
+        <section
+          key={row.id}
+          className={row.current ? "source-viewer-paragraph is-current" : "source-viewer-paragraph"}
+          aria-label={row.current ? t("sources.viewer.cited") : spokenText(topicTitle(row.text, 70)) || undefined}
+        >
+          {markdown ? <markdown.MarkdownView>{row.text}</markdown.MarkdownView> : null}
+        </section>
+      ))}
+    </div>
+  );
   return (
     <>
       {own ? <p className="source-view-note">{t(own === "slides" ? "sources.viewer.ownAppSlides" : "sources.viewer.ownApp")}</p> : null}
       {rows.isError ? <LoadError onRetry={() => void rows.refetch()}>{t("sources.viewerFailed")}</LoadError> : null}
       {rows.isPending || !markdownReady ? (
         <PagePlaceholder />
+      ) : bookId ? (
+        // Asking about a selection needs stored passages, which a book not yet added does not have.
+        sheet
       ) : (
         <SelectionMenu
           sourceIds={[source.sourceId]}
@@ -496,18 +583,7 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
             window.location.hash = `/ask/${chatId}`;
           }}
         >
-          <div ref={holder} className="source-paper source-viewer-chapter">
-            {list.length === 0 && rows.isSuccess ? <p className="source-read-line">{t("sources.viewer.noReadText")}</p> : null}
-            {list.map((row) => (
-              <section
-                key={row.id}
-                className={row.current ? "source-viewer-paragraph is-current" : "source-viewer-paragraph"}
-                aria-label={row.current ? t("sources.viewer.cited") : spokenText(topicTitle(row.text, 70)) || undefined}
-              >
-                {markdown ? <markdown.MarkdownView>{row.text}</markdown.MarkdownView> : null}
-              </section>
-            ))}
-          </div>
+          {sheet}
         </SelectionMenu>
       )}
     </>
@@ -522,6 +598,8 @@ function TextView({ location, source, plan, page, onClose }: { location: SourceL
 export function SourceViewer({ watch }: { watch?: (listener: () => void) => () => void } = {}) {
   const [opening, setOpening] = useState<(Opening & { key: number }) | null>(null);
   const [leaving, setLeaving] = useState(false);
+  // A row under the head that changed its answer asks for the head again.
+  const [, redraw] = useState(0);
   const titleId = useId();
   const panel = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
@@ -573,7 +651,9 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
         shut();
       }
     };
+    const again = () => redraw((n) => n + 1);
     window.addEventListener(eventName, open);
+    window.addEventListener(refreshName, again);
     window.addEventListener(closeName, shut);
     window.addEventListener("popstate", leave);
     window.addEventListener("hashchange", leave);
@@ -581,6 +661,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
     const unwatch = watch?.(leave);
     return () => {
       window.removeEventListener(eventName, open);
+      window.removeEventListener(refreshName, again);
       window.removeEventListener(closeName, shut);
       window.removeEventListener("popstate", leave);
       window.removeEventListener("hashchange", leave);
@@ -660,7 +741,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
         back();
       }
     : undefined;
-  const view = useSourceView(opening, { titleId, onClose: close, onBack: goBack, menu: opening?.menu, openKey: opening?.key });
+  const view = useSourceView(opening, { titleId, onClose: close, onBack: goBack, menu: opening?.menu, bar: opening?.bar, openKey: opening?.key });
   if (!opening) return null;
   const sheet = (
     <aside

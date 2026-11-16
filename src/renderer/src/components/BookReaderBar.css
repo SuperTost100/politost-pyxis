@@ -1,0 +1,34 @@
+/* The row under the reader's head: whether a free book is in the Library, and the button that adds it. */
+.px-book-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) -10px -12px -20px;
+  padding: var(--space-2) 10px var(--space-2) 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+.px-book-bar.is-in {
+  background: var(--primary-soft);
+  transition: background-color 240ms var(--ease-out);
+}
+.px-book-bar-text {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.35;
+}
+.px-book-bar.is-in .px-book-bar-text {
+  color: var(--primary-text);
+}
+.px-book-bar-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--danger);
+}

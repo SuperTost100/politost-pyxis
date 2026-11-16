@@ -1,11 +1,15 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
 import { Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RequestOutput } from "@shared/ipc";
-import { invoke } from "../lib/ipc";
-import { Dialog, useConfirm } from "./Dialog";
+import { addBook, subjectForBook, useBookAdding } from "../lib/bookAdding";
+import { bookErrorKey } from "../lib/bookErrors";
+import { useBookUpdate, useFreeBooks } from "../lib/freeBooks";
+import { useSubjects } from "../lib/queries";
+import { openBook } from "./BookReaderBar";
+import { Dialog } from "./Dialog";
 import { Notice } from "./Notice";
 import "./FreeBooks.css";
 import { formatBytes } from "@shared/format-bytes";
@@ -14,72 +18,11 @@ import { Logo } from "./Logo";
 type Book = RequestOutput<"sources.books">[number];
 export type AddedBook = { sourceId: string; title: string; subject: string };
 
-function errorKey(err: unknown): string {
-  return err && typeof err === "object" && "messageKey" in err
-    ? String((err as { messageKey: unknown }).messageKey)
-    : "sources.books.offline";
-}
-
 /**
- * The free books list, with each book's library source and whether a newer version can update it. Under "sources",
- * so a change to the library (an import, a removal, an update) reads it again; core keeps the catalog for a few
- * minutes, so that does not ask books.politost.it each time. Only enabled while the list or the Library is open.
- */
-export function useFreeBooks(enabled: boolean) {
-  return useQuery({
-    queryKey: ["sources", "free-books"],
-    queryFn: () => invoke("sources.books", {}),
-    enabled,
-    retry: false,
-    staleTime: 5 * 60_000,
-  });
-}
-
-/**
- * Updates a free book in place. A book that plans use asks first, as Replace does. Resolves with the version being
- * installed, or null when the student declined. Errors are thrown to the caller, which shows them where it acted.
- */
-export function useBookUpdate() {
-  const { t } = useTranslation();
-  const client = useQueryClient();
-  const confirm = useConfirm();
-  const [busy, setBusy] = useState<string | null>(null);
-  async function update(sourceId: string): Promise<string | null> {
-    setBusy(sourceId);
-    try {
-      let result = await invoke("sources.updateBook", {
-        sourceId,
-        confirmed: false,
-      });
-      if (!result.started && result.inUse > 0) {
-        const inUse = result.inUse;
-        const answer = await confirm({
-          title: t("books.updateTitle"),
-          body: t("books.updateInUse", { count: inUse }),
-          confirm: t("books.updateConfirm"),
-          // The dialog stays, busy, until the update has started.
-          run: async () => {
-            result = await invoke("sources.updateBook", {
-              sourceId,
-              confirmed: true,
-            });
-          },
-        });
-        if (answer !== "confirm") return null;
-      }
-      void client.invalidateQueries({ queryKey: ["sources"] });
-      return result.started ? (result.version ?? null) : null;
-    } finally {
-      setBusy(null);
-    }
-  }
-  return { update, busy };
-}
-
-/**
- * The free PoliTost smartbooks from books.politost.it. Pyxis reads the list only while this dialog is open. Adding a
- * book downloads it, checks it against the catalog and imports it; a book already in the library is not downloaded
- * again. `added` lists the source ids the caller already holds, such as the sources of the exam being created.
+ * The free PoliTost smartbooks from books.politost.it. Pyxis reads the list only while this dialog is open. A book the
+ * student does not have opens in the reader before it is added. Adding a book downloads it, checks it against the
+ * catalog and imports it; a book already in the library is not downloaded again. `added` lists the source ids the
+ * caller already holds, such as the sources of the exam being created.
  */
 export function FreeBooks({
   open,
@@ -95,29 +38,20 @@ export function FreeBooks({
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const books = useFreeBooks(open);
+  const subjects = useSubjects();
   const updater = useBookUpdate();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ id: string; key: string } | null>(
-    null,
-  );
-  // Sources added while the dialog is open, so the row says so before the list reloads.
-  const [done, setDone] = useState<Record<string, string>>({});
-  // Once the list reloads it says which books are in the library, including one removed since it was added here.
-  useEffect(() => setDone({}), [books.dataUpdatedAt]);
+  const adding = useBookAdding();
+  const [failed, setFailed] = useState<{ id: string; key: string } | null>(null);
+  // "Apri" closes the list and then opens the book beside the page, so the reader is not drawn over the list.
+  const reading = useRef<string | null>(null);
 
   async function add(book: Book) {
-    setBusy(book.id);
     setFailed(null);
-    try {
-      const result = await invoke("sources.importBook", { id: book.id });
-      setDone((current) => ({ ...current, [book.id]: result.sourceId }));
-      onAdded?.(result);
-      void client.invalidateQueries({ queryKey: ["sources"] });
-    } catch (err) {
-      setFailed({ id: book.id, key: errorKey(err) });
-    } finally {
-      setBusy(null);
-    }
+    // Added to the Library, the book goes on the shelf its name says; added for an exam, it only joins the exam.
+    const result = await addBook(client, book.id, {
+      subjectId: onAdded ? undefined : subjectForBook(subjects.data ?? [], book),
+    });
+    if (result) onAdded?.(result);
   }
 
   async function update(book: Book) {
@@ -126,15 +60,16 @@ export function FreeBooks({
     try {
       await updater.update(book.sourceId);
     } catch (err) {
-      setFailed({ id: book.id, key: errorKey(err) });
+      setFailed({ id: book.id, key: bookErrorKey(err) });
     }
   }
 
   const size = (bytes: number) => formatBytes(bytes, i18n.language);
 
   function action(book: Book) {
-    const sourceId = done[book.id] ?? book.sourceId;
-    const working = busy !== null || updater.busy !== null;
+    const sourceId = book.sourceId;
+    const busy = adding.adding.has(book.id);
+    const working = adding.adding.size > 0 || updater.busy !== null;
     if (sourceId && book.update === "running")
       return (
         <span className="small px-books-state">
@@ -170,30 +105,54 @@ export function FreeBooks({
           {t(onAdded ? "books.added" : "books.inLibrary")}
         </span>
       );
-    return addButton(book);
+    return (
+      <span className="px-books-actions">
+        {sourceId || onAdded ? null : (
+          <Button
+            shape="round"
+            type="text"
+            disabled={busy}
+            aria-label={t("books.openShortNamed", { title: book.title })}
+            onClick={() => {
+              reading.current = book.id;
+              onClose();
+            }}
+          >
+            {t("books.openShort")}
+          </Button>
+        )}
+        {addButton(book)}
+      </span>
+    );
   }
 
   function addButton(book: Book) {
+    const busy = adding.adding.has(book.id);
     return (
       <Button
         shape="round"
-        loading={busy === book.id}
-        disabled={
-          (busy !== null && busy !== book.id) || updater.busy !== null
-        }
-        aria-label={t(busy === book.id ? "books.addingNamed" : "books.addNamed", {
+        loading={busy}
+        disabled={(adding.adding.size > 0 && !busy) || updater.busy !== null}
+        aria-label={t(busy ? "books.addingNamed" : "books.addNamed", {
           title: book.title,
         })}
         onClick={() => void add(book)}
       >
-        {busy === book.id ? t("books.adding") : t("books.add")}
+        {busy ? t("books.adding") : t("books.add")}
       </Button>
     );
   }
 
   return (
     // The list has no action of its own: each book has its own button, so the dialog only closes.
-    <Dialog open={open} width="md" title={t("books.title")} cancel={t("dialog.close")} onClose={onClose} className="px-books">
+    <Dialog open={open} width="md" title={t("books.title")} cancel={t("dialog.close")} onClose={onClose}
+      onClosed={() => {
+        const id = reading.current;
+        reading.current = null;
+        if (id) openBook(id);
+      }}
+      className="px-books"
+    >
       <p className="small px-books-intro">{t("books.intro")}</p>
       {books.isPending ? (
         <p className="body" role="status">
@@ -208,7 +167,7 @@ export function FreeBooks({
             onClick: () => void books.refetch(),
           }}
         >
-          {t(errorKey(books.error))}
+          {t(bookErrorKey(books.error))}
         </Notice>
       ) : null}
       {books.isSuccess && books.data.length === 0 ? (
@@ -237,9 +196,9 @@ export function FreeBooks({
                     {t("books.newVersion")}
                   </span>
                 ) : null}
-                {failed?.id === book.id ? (
+                {(failed?.id === book.id ? failed.key : adding.failed.get(book.id)) ? (
                   <span className="small px-books-error" role="alert">
-                    {t(failed.key)}
+                    {t((failed?.id === book.id ? failed.key : adding.failed.get(book.id)) ?? "")}
                   </span>
                 ) : null}
               </div>
