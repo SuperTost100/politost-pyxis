@@ -1,6 +1,7 @@
+/* Settings > AI tools: the connected tools in their order, the ones still to connect, and Advanced. */
 .engines-panel {
   display: grid;
-  gap: var(--space-5);
+  gap: 30px;
 }
 .engines-panel h2,
 .engines-panel p {
@@ -11,33 +12,168 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
+  min-height: 30px;
 }
-.engines-heading .ant-btn {
+.engines-heading .px-btn {
   flex: none;
   white-space: nowrap;
 }
-.engines-list,
-.engines-add-list {
+.engines-panel .px-ctl-group > .px-notice,
+.engines-panel .px-ctl-group > .engines-hint,
+.engines-panel .px-ctl-group > .engines-result {
+  margin-top: 10px;
+}
+.engines-loading {
+  margin-top: 12px;
+}
+.engines-empty {
+  margin-top: 10px !important;
+  padding: 18px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+
+/* A connected tool: its grip, its place, its name over the program and models, its state, Scollega and the dots. */
+.engines-tool {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 10px 10px 12px;
+  background: var(--surface);
+}
+.engines-tools > .engines-tool:first-child {
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+.engines-tools > .engines-tool:last-child {
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+.engines-tools > .engines-tool:only-child {
+  border-radius: var(--radius-card);
+}
+/* The list's own padding would show under a row lifted out of it. */
+.px-ctl.engines-tools {
+  padding: 0;
+}
+/* Lifted: the row rides above its neighbours on its own shadow, and the lines between rows stay with the list. */
+.engines-tool.is-dragging {
+  z-index: 1;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-overlay);
+}
+.engines-grip {
   display: grid;
-  gap: var(--space-2);
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 32px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink-subtle);
+  cursor: grab;
+  /* A touch or a pen drags the row instead of scrolling the page. */
+  touch-action: none;
 }
-.engines-panel .px-engine,
-.engines-add-list .px-engine {
-  max-width: none;
+.engines-grip:hover {
+  color: var(--ink);
 }
-.engines-row.is-disabled .px-engine {
-  background: var(--surface-raised);
+.engines-grip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
-.engines-row.is-disabled .px-engine-main {
+.engines-tool.is-dragging .engines-grip {
+  cursor: grabbing;
+}
+.engines-grip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.engines-tool-n {
+  flex: none;
+  width: 16px;
+  color: var(--ink-subtle);
+  font: 650 13px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.engines-tool .px-ctl-description {
+  overflow-wrap: anywhere;
+}
+.engines-tool.is-off .px-ctl-title,
+.engines-tool.is-off .px-ctl-description {
+  color: var(--ink-subtle);
+}
+.engines-tool-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
   color: var(--ink-muted);
+  font: 500 13px/1.3 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.engines-disabled-reason {
-  margin: var(--space-2) var(--space-4) 0 !important;
-  color: var(--ink-muted);
+.engines-tool-state.is-ok > svg {
+  color: var(--primary-text);
+}
+.engines-tool-state.is-warn,
+.engines-tool-state.is-warn > svg {
+  color: var(--star-text);
+}
+.engines-tool-working .px-working-line {
+  font-size: 13px;
+  white-space: nowrap;
+}
+/* The icon that leads a row under Advanced. A row without one keeps its text in line with the rows that have it. */
+.engines-lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  color: var(--ink-subtle);
+}
+
+/* Advanced, closed until opened: a summary that reads as the group titles above it. */
+.engines-advanced > summary,
+.engines-section > summary,
+.engines-diagnostics > summary {
+  display: inline-flex;
+  font: 650 15.5px/1.3 var(--font-sans);
+}
+.engines-section > summary,
+.engines-diagnostics > summary {
+  font-size: 14.5px;
+}
+.engines-advanced > summary:focus-visible,
+.engines-section > summary:focus-visible,
+.engines-diagnostics > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+.engines-advanced-body {
+  display: grid;
+  gap: 18px;
+  margin-top: 4px;
+}
+.engines-advanced-body > .px-ctl {
+  margin-top: 6px;
+}
+.engines-section > .engines-heading {
+  margin-top: var(--space-3);
 }
 .engines-feature-table {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  margin-top: var(--space-3);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
   overflow: hidden;
 }
 .engines-feature-row,
@@ -52,14 +188,14 @@
 .engines-feature-head {
   padding-block: var(--space-2);
   color: var(--ink-muted);
-  background: var(--surface-raised);
   border-bottom: 1px solid var(--border);
 }
 .engines-feature-row {
   align-items: start;
 }
 .engines-feature-row > label {
-  line-height: 32px;
+  line-height: 36px;
+  font-weight: 500;
 }
 .engines-effort-caption {
   display: none;
@@ -67,32 +203,32 @@
 .engines-feature-row + .engines-feature-row {
   border-top: 1px solid var(--border);
 }
-.engines-feature-row .ant-select {
+.engines-feature-row select.px-ctl-field {
   width: 100%;
-}
-.engines-feature-row label {
-  font-weight: 500;
 }
 .engines-warning {
   color: var(--star-text);
   margin-top: var(--space-2) !important;
 }
+.engines-debug-failed {
+  padding: 0 16px 12px;
+}
 .engines-hint,
 .engines-terms {
   color: var(--ink-muted);
 }
-.engines-diagnostics {
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+.engines-section > .engines-hint {
+  margin-top: var(--space-3);
 }
-.engines-diagnostics summary {
-  cursor: pointer;
-  font-weight: 500;
+.engines-terms {
+  max-width: 78ch;
 }
 .engines-diagnostics-scroll {
   overflow: auto;
-  margin: var(--space-4) 0;
+  margin: var(--space-3) 0;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
 }
 .engines-diagnostics table {
   border-collapse: collapse;
@@ -105,46 +241,53 @@
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
+.engines-diagnostics tr:last-child td {
+  border-bottom: 0;
+}
 .engines-diagnostics code {
   font-size: 11px;
   white-space: nowrap;
 }
-.engines-drawer {
+.engines-details {
   display: grid;
-  gap: var(--space-5);
-}
-.engines-drawer .ant-select {
-  width: 100%;
-}
-.engines-fast {
-  display: flex;
-  justify-content: space-between;
   gap: var(--space-4);
+}
+.engines-details > .px-ctl {
+  margin-top: 0;
 }
 .engines-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-.engines-actions .ant-btn {
+.engines-actions .px-btn {
   white-space: nowrap;
 }
-.engines-key-form {
-  display: grid;
-  gap: var(--space-3);
-}
-.engines-key-form .ant-select {
-  width: 100%;
-}
-.engines-key-form .ant-btn {
-  justify-self: start;
-  margin-top: var(--space-2);
-}
 .engines-result {
-  margin: var(--space-3) 0 !important;
   overflow-wrap: anywhere;
 }
+.engines-auto-model {
+  margin-top: var(--space-2) !important;
+  color: var(--ink-muted);
+  font-family: var(--font-sans);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+/* A narrow window: the state and the buttons go under the name, in line with it. */
 @media (max-width: 640px) {
+  .engines-tool {
+    flex-wrap: wrap;
+  }
+  .engines-tool > .px-ctl-text {
+    flex-basis: calc(100% - 96px);
+  }
+  .engines-tool-state {
+    margin-left: 44px;
+    white-space: normal;
+  }
+  .engines-tool > .px-btn {
+    margin-left: auto;
+  }
   .engines-feature-head {
     display: none;
   }
@@ -157,54 +300,9 @@
     color: var(--ink-muted);
     margin-block: var(--space-2) var(--space-1);
   }
-  .engines-add-list .px-engine {
-    flex-wrap: wrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .engines-tool {
+    transition: none !important;
   }
-  .engines-add-list .px-engine-main {
-    flex-basis: calc(100% - 60px);
-  }
-}
-.engines-disabled-reason a {
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-.engines-advanced-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: none;
-  font-weight: 500;
-  cursor: pointer;
-}
-.engines-summary {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-4);
-}
-.engines-summary-body {
-  display: grid;
-  gap: var(--space-2);
-  min-width: 0;
-}
-.engines-auto-model {
-  margin-top: var(--space-2) !important;
-  color: var(--ink-muted);
-  font-family: var(--font-sans);
-  overflow-wrap: anywhere;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The engine for each function, closed until opened: a summary that reads as a heading. */
-.engines-section {
-  margin-top: var(--space-6);
-}
-.engines-section > summary {
-  display: inline-flex;
-}
-.engines-section > summary > h2 {
-  margin: 0;
-}
-.engines-section > .engines-heading {
-  margin-top: var(--space-3);
 }

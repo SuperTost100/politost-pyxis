@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Switch } from "antd";
-import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { ControlList, SwitchRow } from "../../components/Controls";
 import { invoke } from "../../lib/ipc";
 
 /** Debug mode is read by Settings and by Attività, which shows each job's technical details while it is on. */
@@ -16,7 +15,6 @@ export const debugQuery = {
  */
 export function DebugSwitch() {
   const { t } = useTranslation();
-  const id = useId();
   const client = useQueryClient();
   const debug = useQuery(debugQuery);
   const save = useMutation({
@@ -25,27 +23,21 @@ export function DebugSwitch() {
   });
   const checked = save.isPending ? save.variables === true : debug.data?.on === true;
   return (
-    <div className="px-card px-crash-row engines-debug">
-      <div className="px-crash-text">
-        <label className="body-strong" htmlFor={id}>
-          {t("engines.debug")}
-        </label>
-        <p className="small" id={`${id}-hint`}>
-          {t("engines.debugHint")}
-        </p>
-        {save.isError ? (
-          <p className="small engines-warning" role="alert">
-            {t("engines.debugFailed")}
-          </p>
-        ) : null}
-      </div>
-      <Switch
-        id={id}
+    <ControlList>
+      <SwitchRow
+        title={t("engines.debug")}
+        description={t("engines.debugHint")}
         checked={checked}
         disabled={debug.isPending || save.isPending}
-        aria-describedby={`${id}-hint`}
         onChange={(on) => save.mutate(on)}
+        below={
+          save.isError ? (
+            <p className="small engines-warning engines-debug-failed" role="alert">
+              {t("engines.debugFailed")}
+            </p>
+          ) : null
+        }
       />
-    </div>
+    </ControlList>
   );
 }
