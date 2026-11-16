@@ -44,12 +44,10 @@ function Wizard() {
     (location.state as {
       wizard?: unknown;
       step?: number;
-      books?: boolean;
     } | null) ?? {};
   const seed = isWizardSeed(carried.wizard) ? carried.wizard : null;
   const [step, setStep] = useState(seed ? Math.min(carried.step ?? 1, 1) : 0);
-  // "Start from a free PoliTost book" opens the wizard with the books already showing.
-  const draft = useExamDraft({ seed, books: carried.books === true, scale });
+  const draft = useExamDraft({ seed, offers: step === 1, scale });
   const [, setParams] = useSearchParams();
   const stillHere = useStillHere();
   // An error belongs to the step and the attempt that raised it.

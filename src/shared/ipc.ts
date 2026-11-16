@@ -3255,13 +3255,36 @@ export const requests = {
     }),
   },
   "sources.importBook": {
-    input: z.object({ id: z.string().max(100) }),
+    input: z.object({
+      id: z.string().max(100),
+      /** The subject whose shelf the book goes on, as when the student moves it there. Without one it waits in "Da sistemare". */
+      subjectId: z.string().max(100).optional(),
+    }),
     output: z.object({
       sourceId: z.string(),
       jobId: z.string().optional(),
       title: z.string(),
       subject: z.string(),
     }),
+  },
+  /**
+   * A free book to read before it is added: its title and chapters, read from the package in memory. Nothing is stored
+   * for it; the package is downloaded on this call, checked against the catalog, and held in memory for a few minutes,
+   * so reading on and then adding it is one download. Once the book is in the Library and read, the stored copy answers. Errors: `books-missing` and the download's `books-*`.
+   */
+  "sources.bookPreview": {
+    input: z.object({ id: z.string().max(100) }),
+    output: z.object({
+      title: z.string(),
+      subject: z.string(),
+      version: z.string(),
+      chapters: z.array(z.object({ number: z.number(), title: z.string() })),
+    }),
+  },
+  /** One chapter of a book being read before it is added, as paragraphs of text in reading order. */
+  "sources.bookChapter": {
+    input: z.object({ id: z.string().max(100), chapter: z.number().int() }),
+    output: z.array(z.object({ id: z.string(), text: z.string() })),
   },
   "sources.linkPreview": {
     // Core checks the address, so text that is not a web link gets the link message rather than a validation error.

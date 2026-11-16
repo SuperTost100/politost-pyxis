@@ -16,6 +16,7 @@ import { useNavigate } from "react-router";
 import { FILE_KINDS, isFileKind, type FileKind } from "@shared/file-kind";
 import type { RequestOutput } from "@shared/ipc";
 import { isPdfPasswordError } from "@shared/source-errors";
+import { openBook } from "../../components/BookReaderBar";
 import { Button } from "../../components/Button";
 import { useConfirm } from "../../components/Dialog";
 import { FileCover } from "../../components/FileCover";
@@ -23,17 +24,22 @@ import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import type { SourceMenu } from "../../components/SourceViewer";
+import { sameName } from "@shared/book-match";
+import { addBook, subjectForBook, useBookAdding } from "../../lib/bookAdding";
+import { hideBookRow, useHiddenBookRows } from "../../lib/hiddenBooks";
 import { invoke } from "../../lib/ipc";
 import { kindWords } from "../../lib/kindWords";
 import { refreshSubjects } from "../../lib/refreshSubjects";
 import { newCardPath } from "../flashcards/FlashcardsHome";
 import { jobErrorKey } from "../jobs/jobErrors";
+import { BookOffer } from "./BookOffer";
 import { isUnsorted, NewSubjectDialog, SubjectPicker, UnsortedGroup } from "./LibrarySubjects";
 import { byShelfOrder, coverColour, needsStudent, nextPickerRow, placeWhenReady, PROBLEM } from "./shelf";
 import "./LibraryShelf.css";
 
 export type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
+type FreeBook = RequestOutput<"sources.books">[number];
 
 /** What a file's menu and its cover do, other than moving it, which the shelf does itself. */
 export type ShelfHandlers = {
@@ -89,6 +95,7 @@ export function LibraryShelf({
   newVersions,
   refreshBusy,
   bookBusy,
+  books,
   handlers,
   addButton,
   subjectsFailed = false,
@@ -105,6 +112,8 @@ export function LibraryShelf({
   newVersions: Map<string, string>;
   refreshBusy: boolean;
   bookBusy: string | null;
+  /** The free PoliTost books the catalog lists, when it could be read: a book about a subject is offered on its shelf. */
+  books?: FreeBook[];
   handlers: RefObject<ShelfHandlers | null>;
   /** The page's "Aggiungi file", where focus goes when the last subject is deleted. */
   addButton: RefObject<HTMLElement | null>;
@@ -116,6 +125,8 @@ export function LibraryShelf({
   const client = useQueryClient();
   const navigate = useNavigate();
   const confirm = useConfirm();
+  const hiddenRows = useHiddenBookRows();
+  const bookAdding = useBookAdding();
   const [naming, setNaming] = useState<LibrarySource | null>(null);
   const [said, setSaid] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -390,6 +401,42 @@ export function LibraryShelf({
     });
   }
 
+  // The free book each subject's shelf offers: one the student does not have, named like the subject. A dismissed row is
+  // not drawn, but its book stays in the subject's menu. A book being added shows as a cover on the shelf it goes to.
+  const bookOf = new Map<string, FreeBook>();
+  const addingOn = new Map<string, FreeBook>();
+  for (const book of books ?? []) {
+    const subjectId = subjectForBook(subjects, book);
+    if (!subjectId) continue;
+    if (bookAdding.adding.has(book.id)) addingOn.set(subjectId, book);
+    else if (!book.sourceId && !bookOf.has(subjectId)) bookOf.set(subjectId, book);
+  }
+  /** The free book offered with a new subject's first file: named like the typed name, not owned, and no file there yet. */
+  const firstFileBook = (name: string): FreeBook | undefined => {
+    const existing = subjects.find((subject) => sameName(subject.name, name));
+    if (existing && (counts.get(existing.id) ?? 0) > 0) return undefined;
+    return (books ?? []).find((book) => !book.sourceId && subjectForBook([{ id: "", name }], book) !== undefined);
+  };
+  /** Adds a book from its row: the cover grows out of the row's picture, and focus follows it if it was on the row. */
+  function addFromRow(book: FreeBook, subject: Subject) {
+    const row = root.current?.querySelector<HTMLElement>(`[data-book-offer="${CSS.escape(book.id)}"]`);
+    const hadFocus = row?.contains(document.activeElement) ?? false;
+    void addBook(client, book.id, {
+      subjectId: subject.id,
+      onImported: (added) => {
+        const from = root.current?.querySelector(`[data-pending-book="${CSS.escape(book.id)}"] .px-cover-art`)?.getBoundingClientRect();
+        landing.current.set(added.sourceId, { from, focus: hadFocus ? "cover" : null });
+        setSaid(t("books.offer.added", { title: book.title, subject: subject.name }));
+      },
+    }).then((added) => {
+      // A failed add leaves the row where it was, so the focus stays on it.
+      if (!added) row?.querySelector<HTMLElement>("button")?.focus();
+    });
+  }
+  function hideRow(subject: Subject) {
+    hideBookRow(subject.id);
+    pendingFocus.current = `[data-subject-id="${CSS.escape(subject.id)}"] .px-shelf-subject-dots`;
+  }
   const shownSubjects = filtering ? subjects.filter((subject) => bySubject.has(subject.id)) : subjects;
   // With the subjects unread, a file that has one is in no card: it shows in a group of its own, so it is still there.
   const detached = subjectsFailed
@@ -403,9 +450,12 @@ export function LibraryShelf({
       <NewSubjectDialog
         source={naming}
         onClose={() => setNaming(null)}
-        onMove={async (source, name) => {
+        bookFor={firstFileBook}
+        onMove={async (source, name, book) => {
           const focus = isUnsorted(source) || !source.subjectId ? afterUnsorted(source) : "cover";
-          await move(source, { name }, focus, true);
+          const subject = await move(source, { name }, focus, true);
+          // The book that came with the first file goes on the same shelf. If it fails, the shelf's own row offers it again.
+          if (book && subject) void addBook(client, book.id, { subjectId: subject.id });
         }}
       />
       {unsorted.length || goneRows.length ? (
@@ -478,6 +528,8 @@ export function LibraryShelf({
             const shown = open ? files : files.slice(0, SHELF_CAP);
             const count = counts.get(subject.id) ?? 0;
             const made = madeFor.get(subject.id) ?? 0;
+            const offer = bookOf.get(subject.id);
+            const pending = addingOn.get(subject.id);
             return (
               <SubjectCard
                 key={subject.id}
@@ -498,7 +550,32 @@ export function LibraryShelf({
                 }}
                 onNewMap={() => navigate(`/maps?subject=${encodeURIComponent(subject.id)}&new=1`)}
                 onNewCards={() => navigate(newCardPath("pyxis", subject.id))}
+                onBook={offer ? () => openBook(offer.id, { subjectId: subject.id }) : undefined}
                 onDelete={(index) => remove(subject, index)}
+                offer={
+                  offer && !filtering && !hiddenRows.has(subject.id) ? (
+                    <BookOffer
+                      book={offer}
+                      colour={coverColour(subject.id)}
+                      subjectName={subject.name}
+                      adding={false}
+                      error={bookAdding.failed.get(offer.id)}
+                      onOpen={() => openBook(offer.id, { subjectId: subject.id })}
+                      onAdd={() => addFromRow(offer, subject)}
+                      onHide={() => hideRow(subject)}
+                    />
+                  ) : pending && !filtering ? (
+                    <BookOffer
+                      book={pending}
+                      colour={coverColour(subject.id)}
+                      subjectName={subject.name}
+                      adding
+                      onOpen={() => undefined}
+                      onAdd={() => undefined}
+                      onHide={() => undefined}
+                    />
+                  ) : undefined
+                }
                 ahead={
                   // With covers behind "Mostra tutti", the count line says the files that need the student come first.
                   !open && files.length > SHELF_CAP && files.some(needsStudent)
@@ -525,8 +602,9 @@ export function LibraryShelf({
                   ) : null
                 }
               >
-                {shown.length ? (
+                {shown.length || pending ? (
                   <ul className="px-shelf" aria-label={t("sources.shelf.files", { name: subject.name })}>
+                    {pending ? <PendingCover book={pending} colour={coverColour(subject.id)} subjectName={subject.name} /> : null}
                     {shown.map((source) => (
                       <Cover
                         key={source.id}
@@ -870,6 +948,7 @@ const Cover = memo(function Cover({
           ))}
         </span>
       ) : null}
+      {source.kind === "smartbook" ? <span className="px-cover-sub">{t("books.bookName")}</span> : null}
       <FileActions source={source} newVersion={newVersion} bookBusy={bookBusy} onAct={onAct} />
       <MenuButton
         menu={menuProps}
@@ -881,6 +960,49 @@ const Cover = memo(function Cover({
     </li>
   );
 });
+
+/**
+ * The cover of a free book while it downloads, on the shelf it is going to. It grows out of the offer row's picture, and
+ * the real cover takes its place once the book is in the Library.
+ */
+function PendingCover({ book, colour, subjectName }: { book: FreeBook; colour: number; subjectName: string }) {
+  const { t } = useTranslation();
+  const item = useRef<HTMLLIElement>(null);
+  useLayoutEffect(() => {
+    const art = item.current?.querySelector<HTMLElement>(".px-cover-art");
+    const from = document.querySelector(`[data-book-offer="${CSS.escape(book.id)}"] .px-book-offer-art`)?.getBoundingClientRect();
+    if (!art || window.matchMedia(STILL).matches) return;
+    const to = art.getBoundingClientRect();
+    if (!from || !from.width) {
+      art.animate([{ scale: "0.4", opacity: 0 }, { scale: "1", opacity: 1 }], { duration: 200, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+      return;
+    }
+    const zoom = Number.parseFloat(getComputedStyle(art).zoom) || 1;
+    const dx = (from.left - to.left) / zoom;
+    const dy = (from.top - to.top) / zoom;
+    art.animate(
+      [{ transform: `translate(${dx}px, ${dy}px) scale(${from.width / to.width})`, transformOrigin: "0 0", opacity: 0.4 }, { transform: "none", transformOrigin: "0 0", opacity: 1 }],
+      { duration: 320, easing: "cubic-bezier(0.77, 0, 0.175, 1)" },
+    );
+  }, [book.id]);
+  return (
+    <li ref={item} className="px-cover is-adding" data-pending-book={book.id}>
+      <span className="px-cover-open" aria-hidden>
+        <span className="px-cover-frame">
+          <span className="px-cover-art is-reading" data-kind="book">
+            <FileCover kind="book" colour={colour} symbol={subjectName} />
+            <CoverMark mark="reading" />
+          </span>
+        </span>
+        <span className="px-cover-title">{book.title}</span>
+      </span>
+      <span className="px-cover-sub">{t("books.bookName")}</span>
+      <span className="px-cover-state" aria-hidden>
+        {t("books.downloading")}
+      </span>
+    </li>
+  );
+}
 
 /** A file without a subject: its picture, name and kind, the choice of subject (or Pyxis choosing it) and its menu. */
 function UnsortedRow({
@@ -1007,7 +1129,9 @@ function SubjectCard({
   onRenameCancel,
   onNewMap,
   onNewCards,
+  onBook,
   onDelete,
+  offer,
   more,
   children,
 }: {
@@ -1031,7 +1155,11 @@ function SubjectCard({
   onRenameCancel: () => void;
   onNewMap: () => void;
   onNewCards: () => void;
+  /** Opens the free PoliTost book about this subject, when there is one the student does not have. */
+  onBook?: () => void;
   onDelete: (index: number) => void;
+  /** The row that offers that book, under the shelf. */
+  offer?: ReactNode;
   more: ReactNode;
   children: ReactNode;
 }) {
@@ -1048,6 +1176,7 @@ function SubjectCard({
       { key: "rename", label: t("sources.sort.rename") },
       { key: "map", label: t("sources.shelf.newMap") },
       { key: "cards", label: t("sources.shelf.newCards") },
+      ...(onBook ? [{ key: "book", label: t("books.menuOpen") }] : []),
       ...(empty ? [{ type: "divider" as const }, { key: "delete", label: t("sources.shelf.delete"), danger: true }] : []),
     ],
     onClick: ({ key }) => {
@@ -1056,6 +1185,7 @@ function SubjectCard({
         onRename();
       } else if (key === "map") onNewMap();
       else if (key === "cards") onNewCards();
+      else if (key === "book") onBook?.();
       else if (key === "delete") onDelete(index);
     },
   };
@@ -1168,6 +1298,7 @@ function SubjectCard({
         </p>
       )}
       {more ? <div className="px-shelf-subject-more">{more}</div> : null}
+      {offer}
     </section>
   );
 }

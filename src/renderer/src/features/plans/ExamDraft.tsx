@@ -1,12 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AutoComplete, Button, Input, Slider } from "antd";
 import dayjs from "dayjs";
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router";
+import { booksNamed } from "@shared/book-match";
 import { PLAN_TITLE_MAX } from "@shared/plan-file";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
-import { FreeBooks } from "../../components/FreeBooks";
+import { openBook } from "../../components/BookReaderBar";
+import { refreshSourceViewer } from "../../components/SourceViewer";
+import { addBook, addFailure, useBookAdding } from "../../lib/bookAdding";
+import { useFreeBooks } from "../../lib/freeBooks";
 import { invoke } from "../../lib/ipc";
 import {
   defaultGoal,
@@ -35,11 +39,12 @@ const GUIDED_PATH = "/plans/new/guided";
  */
 export function useExamDraft({
   seed,
-  books = false,
+  offers = false,
   scale,
 }: {
   seed: WizardSeed | null;
-  books?: boolean;
+  /** The material step is showing: only then is the free books catalog read, for the book the exam can be offered. */
+  offers?: boolean;
   scale: GradeScale;
 }) {
   const { t, i18n } = useTranslation();
@@ -59,7 +64,25 @@ export function useExamDraft({
   const [title, setTitle] = useState(seed?.title ?? "");
   const [subject, setSubject] = useState(seed?.subject ?? "");
   const [picked, setPicked] = useState<string[]>([]);
-  const [booksOpen, setBooksOpen] = useState(books);
+  // A free PoliTost book named like the exam's subject or title, which the student does not have, is offered as one more
+  // source, ticked. Leaving it out is remembered per book; nothing is downloaded until the exam is created with it ticked.
+  const freeBooks = useFreeBooks(offers);
+  const adding = useBookAdding();
+  const [leftOut, setLeftOut] = useState<ReadonlySet<string>>(() => new Set());
+  const offered = booksNamed(
+    [subject, title],
+    (freeBooks.data ?? []).filter((book) => !book.sourceId),
+  )[0];
+  const bookOn = offered !== undefined && !leftOut.has(offered.id);
+  const setBookOn = (on: boolean) => {
+    if (!offered) return;
+    setLeftOut((current) => {
+      const next = new Set(current);
+      if (on) next.delete(offered.id);
+      else next.add(offered.id);
+      return next;
+    });
+  };
   // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
   const [examChoice, setExamChoice] = useState<ExamChoice>(seed?.examChoice ?? "");
   const [sessions, setSessions] = useState<SessionDraft[]>(
@@ -119,16 +142,30 @@ export function useExamDraft({
     setStartError(null);
     setStarting(true);
     try {
+      let sourceIds = picked;
+      let bookTitle: { id: string; title: string } | null = null;
+      if (offered && bookOn) {
+        // The ticked book is downloaded now. If that fails the exam is not made, and the tick stays for another try.
+        const added = await addBook(client, offered.id);
+        if (!added) {
+          setStartError(addFailure(offered.id) ?? "sources.books.offline");
+          return null;
+        }
+        // It is a source of the form from here on, so a later failure keeps it.
+        pick([added.sourceId]);
+        sourceIds = [...picked, added.sourceId];
+        bookTitle = { id: added.sourceId, title: added.title };
+      }
       const result = await invoke("plans.create", {
         title: name,
         subject: subject.trim() || undefined,
-        sourceIds: picked,
+        sourceIds,
         sessions: sessionsFromDrafts(sessions),
         target,
         language,
         style,
-        topicTitles: picked.map(
-          (id) => (sources.data ?? []).find((source) => source.id === id)?.title || "",
+        topicTitles: sourceIds.map(
+          (id) => (sources.data ?? []).find((source) => source.id === id)?.title || (bookTitle?.id === id ? bookTitle.title : ""),
         ),
       });
       if (!result) return null;
@@ -182,8 +219,10 @@ export function useExamDraft({
     picked,
     pick,
     setPicked,
-    booksOpen,
-    setBooksOpen,
+    offered,
+    bookOn,
+    setBookOn,
+    bookBusy: offered !== undefined && adding.adding.has(offered.id),
     sources,
     chosenSources,
     blockedSource,
@@ -345,6 +384,13 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   const { t } = useTranslation();
   const [options, setOptions] = useState(false);
   const optionsId = useId();
+  // The reader opened on the offered book says whether it is ticked, and follows the tick made on this page.
+  const latestOn = useRef(draft.bookOn);
+  latestOn.current = draft.bookOn;
+  // Once the exam is being created the choice is made: the reader shows it locked, as the page does.
+  const latestStarting = useRef(draft.starting);
+  latestStarting.current = draft.starting;
+  useEffect(() => refreshSourceViewer(), [draft.bookOn, draft.starting]);
   return (
     <>
       <WizardSources
@@ -353,7 +399,23 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
         onPick={draft.pick}
         onRemove={(id) => draft.setPicked((current) => current.filter((item) => item !== id))}
         onGuided={draft.startGuided}
-        onFreeBooks={() => draft.setBooksOpen(true)}
+        offer={
+          draft.offered
+            ? {
+                book: draft.offered,
+                on: draft.bookOn,
+                busy: draft.bookBusy || draft.starting,
+                onToggle: draft.setBookOn,
+                onOpen: () => {
+                  const book = draft.offered;
+                  if (book)
+                    openBook(book.id, {
+                      choice: { words: "exam", on: () => latestOn.current, set: draft.setBookOn, locked: () => latestStarting.current },
+                    });
+                },
+              }
+            : undefined
+        }
         blocked={draft.blockedSource}
       />
       <div className="px-wizard-options-line">
@@ -428,17 +490,6 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
           {t("wizard.titleRequired")}
         </p>
       ) : null}
-      <FreeBooks
-        open={draft.booksOpen}
-        added={draft.picked}
-        onClose={() => draft.setBooksOpen(false)}
-        onAdded={(book) => {
-          draft.pick([book.sourceId]);
-          // A first book names the exam, unless the student already did.
-          draft.setTitle((current) => current || book.title);
-          draft.setSubject((current) => current || book.subject);
-        }}
-      />
     </>
   );
 }
@@ -456,7 +507,7 @@ export function MaterialPrimary({
 }) {
   const { t } = useTranslation();
   // The step's one primary button always moves on: Continue without material, Create once something is picked.
-  if (draft.picked.length === 0)
+  if (draft.picked.length === 0 && !draft.bookOn)
     return (
       <Button type="primary" shape="round" onClick={draft.startGuided}>
         {t("wizard.continue")}

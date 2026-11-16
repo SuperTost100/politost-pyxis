@@ -3886,7 +3886,7 @@
   "books": {
     "title": "Free PoliTost books",
     "open": "Free PoliTost books",
-    "intro": "Smartbooks written for PoliTost, free to use. The list comes from books.politost.it. Pyxis connects only while this window is open, or while the Sources page is open and holds one of these books, to check for a new version.",
+    "intro": "Smartbooks written for PoliTost, free to use. The list comes from books.politost.it, and Pyxis reads it when you open the Library or this window. A book is downloaded only when you open it or add it.",
     "loading": "Loading the list from books.politost.it…",
     "empty": "No books are published yet.",
     "chapters_one": "{{count}} chapter",
@@ -3896,7 +3896,6 @@
     "addNamed": "Add {{title}}",
     "addingNamed": "Downloading {{title}}",
     "adding": "Downloading…",
-    "added": "Added",
     "inLibrary": "In your library",
     "update": "Update",
     "updateNamed": "Update {{title}}",
@@ -3909,7 +3908,46 @@
     "updateInUse_other": "{{count}} exams use this book. Updating keeps the old text for those exams' citations, and marks lessons and quizzes that cite changed text as out of date. Then use Rebuild topics in each exam to pick up new chapters.",
     "retry": "Try again",
     "updateTitle": "Update the book?",
-    "updateConfirm": "Update the book"
+    "updateConfirm": "Update the book",
+    "bookName": "PoliTost book",
+    "free": "free",
+    "openBook": "Open the book",
+    "openBookNamed": "Open the book {{title}}",
+    "openShort": "Open",
+    "openShortNamed": "Open {{title}}",
+    "menuOpen": "Open the PoliTost book",
+    "downloading": "Downloading the book…",
+    "offer": {
+      "title": "There is a PoliTost book for this subject",
+      "body": "{{title}}, free and written for the course: {{chapters}}, which an exam's path can use as its topics.",
+      "added": "{{title}} is in the Library, on the {{subject}} shelf.",
+      "hide": "Hide",
+      "hideNamed": "Hide the book {{title}} for this subject"
+    },
+    "choice": {
+      "name": "{{title}}, PoliTost book",
+      "lead": "Free and written for the course: {{chapters}} that the path can use as topics.",
+      "examIn": "It's among this exam's sources.",
+      "examOut": "It's not among this exam's sources.",
+      "examRemove": "Remove from sources",
+      "examAdd": "Add to sources",
+      "subjectIn": "It goes into the Library with this file.",
+      "subjectOut": "It doesn't go into the Library.",
+      "subjectRemove": "Don't add it",
+      "subjectAdd": "Add it",
+      "examLockedIn": "The exam is being created with this book.",
+      "examLockedOut": "The exam is being created without this book.",
+      "subjectLockedIn": "The file is being moved with this book.",
+      "subjectLockedOut": "The file is being moved without this book."
+    },
+    "reader": {
+      "opening": "Downloading the book…",
+      "notInLibrary": "It's not in your Library yet.",
+      "addToLibrary": "Add to Library",
+      "inShelf": "It's in your Library, on the {{subject}} shelf.",
+      "inUnsorted": "It's in your Library, under “To sort”.",
+      "inLibrary": "It's in your Library."
+    }
   },
   "makeCards": {
     "title": "Make flashcards",
