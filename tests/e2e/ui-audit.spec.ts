@@ -9,7 +9,6 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -26,6 +25,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { docx } from "./source-panel-fixture";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { AuditRecord } from "./audit-record";
 import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
@@ -5410,31 +5410,23 @@ const recordFile =
       ? ".tmp/m14-ui-audit-large.json"
       : ".tmp/m14-ui-audit.json");
 const auditRoutes = selectedStates ? routes.filter(([name]) => selectedStates.includes(name)) : routes;
-const records: unknown[] = [];
-const failures: string[] = [];
+// The record of this run, kept in a file so it survives a part that ends its worker. The run is the TMPDIR that Playwright's
+// global setup made for this invocation, which every worker of it inherits.
+const record = new AuditRecord(recordFile, process.env.TMPDIR ?? "", {
+  routes,
+  excluded: ["/print, covered by isolated native PDF export test"],
+});
+const records = record.records;
+const failures = record.failures;
 const pageErrors: string[] = [];
 /** The state under way, named when a part times out, since a timeout carries no message of its own. */
 let auditNow = "";
 /** What the audit made in the temp folder, removed when the worker ends. */
 const auditFolders: string[] = [];
 
-function writeRecord() {
-  writeFileSync(
-    recordFile,
-    JSON.stringify(
-      {
-        routes,
-        excluded: ["/print, covered by isolated native PDF export test"],
-        records,
-        failures,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
 test.beforeAll(async () => {
+  // First, before anything here can fail: a part that failed or timed out has left its record in the file.
+  record.resume();
   test.setTimeout(180_000);
   mkdirSync(dirname(recordFile), { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-"));
@@ -5602,13 +5594,6 @@ test.beforeAll(async () => {
   seed(db);
   db.close();
   page.on("pageerror", (error) => pageErrors.push(error.message));
-  // A part that fails or times out ends its worker and the next part starts a new one, which takes up the record where the
-  // last one stopped.
-  if (test.info().workerIndex > 0 && existsSync(recordFile)) {
-    const kept = JSON.parse(readFileSync(recordFile, "utf8")) as { records: unknown[]; failures: string[] };
-    records.push(...kept.records);
-    failures.push(...kept.failures);
-  }
 });
 
 test.afterEach(() => {
@@ -5617,7 +5602,7 @@ test.afterEach(() => {
 });
 
 test.afterAll(async () => {
-  writeRecord();
+  record.write();
   await auditApp?.close();
   removeTestFolder(auditUserData);
   for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
@@ -5879,17 +5864,14 @@ async function walk(slice: typeof auditRoutes) {
                 failed: String(error),
               });
             }
-            writeFileSync(
-              recordFile,
-              JSON.stringify({ routes, records, failures }, null, 2),
-            );
+            record.write();
             console.log(
               `M14 ${key}: ${failures.at(-1)?.startsWith(key) ? failures.at(-1) : "passed"}`,
             );
           }
         }
   } finally {
-    writeRecord();
+    record.write();
   }
   expect(failures.slice(first), failures.slice(first).join("\n")).toEqual([]);
 }
