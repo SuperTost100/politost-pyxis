@@ -2436,6 +2436,29 @@ export const requests = {
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),
   },
+  "study.dueLater": {
+    // When the reviewed cards a card session reads, and that are not due yet, come back. `scope` is what the session
+    // reads: the daily review (`only` narrows it like study.dueEverywhere), a subject's cards with no exam, or a topic.
+    // `later` lists each card due before tomorrow with its subject; `next` is the first day after today that has any
+    // card due, and how many come back that day.
+    input: z.discriminatedUnion("scope", [
+      z.object({
+        scope: z.literal("everywhere"),
+        only: z
+          .union([
+            z.object({ subjectId: z.string().nullable(), examless: z.boolean().optional() }),
+            z.object({ planId: z.string(), noTopic: z.boolean().optional() }),
+          ])
+          .optional(),
+      }),
+      z.object({ scope: z.literal("subject"), subjectId: z.string() }),
+      z.object({ scope: z.literal("topic"), planId: z.string(), topicId: z.string() }),
+    ]),
+    output: z.object({
+      later: z.array(z.object({ at: z.number(), subject: z.string().nullable() })),
+      next: z.object({ at: z.number(), count: z.number().int() }).nullable(),
+    }),
+  },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
     output: z.array(

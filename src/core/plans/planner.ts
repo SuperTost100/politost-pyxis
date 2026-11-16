@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { pathNext, stayActivities, type Activity, type Step, type TopicStatus } from "./path";
 import { pathState } from "./create";
-import { countDeckDue, countDueCards, deckDueCards, dueCards, examlessDecks, NO_TOPIC } from "../study/cards";
+import { countDeckDue, countDueCards, deckDueCards, deckDueTimes, type CardDeck, dueCards, examlessDecks, NO_TOPIC } from "../study/cards";
 import { planMasteryBreakdown, topicPassageCounts, weightedPlanMastery } from "./progress";
 import { putSetting } from "../settings";
 import { addDays, dayKey, startOfDay, startOfWeek } from "../../shared/local-day";
@@ -526,6 +526,18 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
   };
 }
 
+type ReviewOnly = { subjectId: string | null; examless?: boolean } | { planId: string; noTopic?: boolean };
+
+/** The exams and the decks of cards with no exam that the daily review reads, narrowed like `dueEverywhere`. */
+function reviewScope(db: Database.Database, only?: ReviewOnly) {
+  return {
+    plans: (db.prepare(studyPlans).all() as PlanRow[]).filter((row) =>
+      !only ? true : "planId" in only ? row.id === only.planId : !only.examless && row.subject_id === only.subjectId,
+    ),
+    examless: examlessDecks(db).filter((deck) => !only || ("subjectId" in only && deck.subjectId === only.subjectId)),
+  };
+}
+
 /**
  * Due flashcards from every plan for Oggi's one cards item: the closest exam's cards first, then plans without a date
  * and each subject's cards with no exam, past exams last; at most 20 at a time, like a plan's own session.
@@ -537,13 +549,11 @@ export function todayPlan(db: Database.Database, now = Date.now()) {
 export function dueEverywhere(
   db: Database.Database,
   now = Date.now(),
-  only?: { subjectId: string | null; examless?: boolean } | { planId: string; noTopic?: boolean },
+  only?: ReviewOnly,
 ) {
   const today = startOfDay(now);
   const topicId = only && "planId" in only && only.noTopic ? NO_TOPIC : undefined;
-  const rows = (db.prepare(studyPlans).all() as PlanRow[]).filter((row) =>
-    !only ? true : "planId" in only ? row.id === only.planId : !only.examless && row.subject_id === only.subjectId,
-  );
+  const { plans: rows, examless } = reviewScope(db, only);
   const rank = (row: PlanRow) =>
     row.exam_at == null ? 1 : startOfDay(row.exam_at) < today ? 2 : 0;
   const ordered = rows.sort(
@@ -563,16 +573,14 @@ export function dueEverywhere(
       .map((row) => () =>
         dueCards(db, row.id, now, topicId).map((card) => ({ ...card, planId: row.id, planTitle: row.title, subject: row.subject })),
       ),
-    ...examlessDecks(db)
-      .filter((deck) => !only || ("subjectId" in only && deck.subjectId === only.subjectId))
-      .map((deck) => () =>
-        deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
-          ...card,
-          planId: null,
-          planTitle: null,
-          subject: deck.subject,
-        })),
-      ),
+    ...examless.map((deck) => () =>
+      deckDueCards(db, { subjectId: deck.subjectId }, now).map((card) => ({
+        ...card,
+        planId: null,
+        planTitle: null,
+        subject: deck.subject,
+      })),
+    ),
     ...ordered
       .filter((row) => rank(row) === 2)
       .map((row) => () =>
@@ -585,6 +593,55 @@ export function dueEverywhere(
     cards.push(...deck());
   }
   return cards.slice(0, 20);
+}
+
+/** What a card session reads: the daily review (narrowed like `dueEverywhere`), a subject's cards with no exam, or a topic. */
+export type DueLaterScope =
+  | { scope: "everywhere"; only?: ReviewOnly }
+  | { scope: "subject"; subjectId: string }
+  | { scope: "topic"; planId: string; topicId: string };
+
+/**
+ * When the reviewed cards of a session's scope that are not due yet come back: each one due before tomorrow with the
+ * subject it belongs to, and the first day after today that has any, with how many come back that day. A card never
+ * reviewed has no time, so the new cards past today's limit are not counted.
+ */
+export function dueLater(db: Database.Database, now: number, input: DueLaterScope) {
+  const decks: Array<{ deck: CardDeck; topicId?: string; subject: string | null }> =
+    input.scope === "topic"
+      ? (db.prepare(studyPlans).all() as PlanRow[])
+          .filter((row) => row.id === input.planId)
+          .map((row) => ({ deck: { planId: row.id }, topicId: input.topicId, subject: row.subject }))
+      : input.scope === "subject"
+        ? [
+            {
+              deck: { subjectId: input.subjectId },
+              subject: (db.prepare("SELECT name FROM subjects WHERE id = ?").get(input.subjectId) as { name: string } | undefined)?.name ?? null,
+            },
+          ]
+        : (() => {
+            const { plans, examless } = reviewScope(db, input.only);
+            const topicId = input.only && "planId" in input.only && input.only.noTopic ? NO_TOPIC : undefined;
+            return [
+              ...plans.map((row) => ({ deck: { planId: row.id } as CardDeck, topicId, subject: row.subject })),
+              ...examless.map((deck) => ({ deck: { subjectId: deck.subjectId } as CardDeck, subject: deck.subject })),
+            ];
+          })();
+  const tomorrow = addDays(now, 1);
+  const later = decks
+    .flatMap(({ deck, topicId, subject }) => deckDueTimes(db, deck, now, tomorrow - 1, topicId).map((at) => ({ at, subject })))
+    .sort((a, b) => a.at - b.at);
+  // The first day after today with a card due, then how many come back that day.
+  const firsts = decks.flatMap(({ deck, topicId }) => deckDueTimes(db, deck, tomorrow - 1, Number.MAX_SAFE_INTEGER, topicId, 1));
+  if (firsts.length === 0) return { later, next: null };
+  const first = Math.min(...firsts);
+  const dayEnd = addDays(first, 1) - 1;
+  const count = decks.reduce(
+    // shortcut: a deck's count for that day reads at most 10,000 times, far above any real deck, so raise it if one grows past that.
+    (sum, { deck, topicId }) => sum + deckDueTimes(db, deck, startOfDay(first) - 1, dayEnd, topicId, 10_000).length,
+    0,
+  );
+  return { later, next: { at: first, count } };
 }
 
 /** Flashcards due with no exam, across subjects: the ones the daily review adds to the exams' own, as Oggi counts them. */
