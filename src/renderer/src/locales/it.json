@@ -991,6 +991,8 @@
     "endGave_other": "Hai dato {{count}} risposte.",
     "endNext_one": "La prossima torna {{when}}.",
     "endNext_other": "Le prossime {{count}} tornano {{when}}.",
+    "endUnknownTitle": "Sessione finita",
+    "endUnknown": "Non sono riuscito a leggere quando tornano le prossime flashcard.",
     "endTomorrow": "domani",
     "endOnDay": "{{day}}",
     "endLater_one": "Un'altra torna oggi, alle {{time}}.",

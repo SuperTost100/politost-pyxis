@@ -20,7 +20,9 @@ import {
 
 /** When the reviewed cards that are not due yet come back (`study.dueLater`), or what is known of it. */
 export type Upcoming =
-  | { status: "loading" | "failed" }
+  | { status: "loading" }
+  /** The read failed: what comes back later is unknown, which is not the same as nothing. `retrying`: another try runs. */
+  | { status: "failed"; retrying: boolean }
   | {
       status: "ready";
       later: Array<{ at: number; subject: string | null; count: number }>;
@@ -44,12 +46,15 @@ export function SessionEnd({
   seen,
   waiting,
   upcoming,
+  onRetry,
   onStop,
   stopBusy,
 }: {
   seen: SeenCard[];
   waiting: WaitingCard[];
   upcoming: Upcoming;
+  /** Reads again what comes back later, after a read that failed. */
+  onRetry: () => void;
   /** "Per oggi basta": leaves the way the bar's back control does. */
   onStop: () => void;
   stopBusy: boolean;
@@ -77,27 +82,31 @@ export function SessionEnd({
   const later = upcoming.status === "ready" ? upcoming.later : [];
   const next = upcoming.status === "ready" ? upcoming.next : null;
   const laterTotal = later.reduce((sum, row) => sum + row.count, 0);
-  const phase = soonest != null ? "waiting" : later.length > 0 ? "later" : "done";
+  const phase =
+    soonest != null ? "waiting" : upcoming.status === "failed" ? "unknown" : later.length > 0 ? "later" : "done";
   // A card still to come needs no read; a finished session waits for what comes back later before it words its ending.
   const ready = phase === "waiting" || upcoming.status !== "loading";
 
-  const title = phase === "later" ? t("cards.endLaterTitle") : t("cards.endDone");
+  const title =
+    phase === "later" ? t("cards.endLaterTitle") : phase === "unknown" ? t("cards.endUnknownTitle") : t("cards.endDone");
   const text =
     phase === "waiting"
       ? t("cards.endWaitingText", { count: waiting.length })
       : [
           t("cards.endGave", { count: seen.length }),
-          phase === "later"
-            ? t("cards.endLater", { count: laterTotal, time: clock.format(later[0]!.at) })
-            : next
-              ? t("cards.endNext", {
-                  count: next.count,
-                  when:
-                    daysBetween(now, next.at) === 1
-                      ? t("cards.endTomorrow")
-                      : t("cards.endOnDay", { day: dayName.format(next.at) }),
-                })
-              : "",
+          phase === "unknown"
+            ? t("cards.endUnknown")
+            : phase === "later"
+              ? t("cards.endLater", { count: laterTotal, time: clock.format(later[0]!.at) })
+              : next
+                ? t("cards.endNext", {
+                    count: next.count,
+                    when:
+                      daysBetween(now, next.at) === 1
+                        ? t("cards.endTomorrow")
+                        : t("cards.endOnDay", { day: dayName.format(next.at) }),
+                  })
+                : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -155,6 +164,17 @@ export function SessionEnd({
               {t("cards.endStop")}
             </Button>
             <p className="px-end-fine">{t("cards.endStopHint", { count: waiting.length })}</p>
+          </div>
+        ) : null}
+        {phase === "unknown" ? (
+          <div className="px-end-stop">
+            <Button
+              shape="round"
+              loading={upcoming.status === "failed" && upcoming.retrying}
+              onClick={onRetry}
+            >
+              {t("errors.retry")}
+            </Button>
           </div>
         ) : null}
         <div className="visually-hidden" role="status">

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -747,8 +747,8 @@ test("card limit: past today's new cards, the message links to the setting, afte
 });
 
 /** Today's cards (the daily review), English, with the exam's subject so the lists can name it. */
-async function openToday(userData: string, extra?: (db: DatabaseSync) => void) {
-  const app = await launchPyxis({ userData });
+async function openToday(userData: string, extra?: (db: DatabaseSync) => void, env?: Record<string, string>) {
+  const app = await launchPyxis({ userData, env });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: "Salta" }).click();
   await fromChiediToExams(page);
@@ -927,6 +927,37 @@ test("session end: finished with more coming back later today, they are listed w
       `You're done for now. You gave 4 answers. Another one comes back today, at ${time}.`,
     );
     await expectNoAxeViolations(page);
+  } finally {
+    db.close();
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("session end: when what comes back later cannot be read, the page keeps the results, says so and retries", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-session-end-"));
+  // The first read of study.dueLater is lost; the next one, from Try again, comes back.
+  const lose = join(tmpdir(), `pyxis-session-end-lose-${process.pid}-${Date.now()}`);
+  const { app, page, db } = await openToday(userData, undefined, { PYXIS_E2E_READ_FAIL: `study.dueLater=${lose}` });
+  try {
+    writeFileSync(lose, "");
+    await answerToday(page, ["4", "4", "4", "4"]);
+    // Not "done for today": nothing is known of what comes back, and the page says that and keeps the answers.
+    await expect(page.getByRole("heading", { level: 2, name: "Session finished" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText("You gave 4 answers. I couldn't read when the next flashcards come back.");
+    await expect(page.getByText("You're done for today")).toHaveCount(0);
+    await expect(answers(page)).toHaveText(["Didn't know it0", "Hard0", "Knew it0", "Easy4"]);
+    await expect(page.locator(".px-end-group")).toHaveCount(1);
+    await expect(page.locator(".px-end .visually-hidden[role=status]")).toHaveText(
+      "Session finished. You gave 4 answers. I couldn't read when the next flashcards come back.",
+    );
+    await expectNoAxeViolations(page);
+    // Retry reads it once more, and this time the session ends as it would have.
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("heading", { level: 2, name: "You're done for today" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText(/^You gave 4 answers\. The next 4 come back /);
+    await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(0);
   } finally {
     db.close();
     await app.close();

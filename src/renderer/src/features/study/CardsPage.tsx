@@ -359,13 +359,13 @@ export function CardsPage() {
     gcTime: 0,
     queryFn: () => invoke("study.dueLater", dueScope!),
   });
-  // A read that has not landed, or is being redone after Undo and another answer, is not an answer yet.
-  const upcoming: Upcoming =
-    dueLater.isFetching || (!dueLater.data && !dueLater.isError)
+  // A read that has not landed, or is being redone after Undo and another answer, is not an answer yet. One that
+  // failed is not an empty schedule either: the end says it could not read it and offers another try.
+  const upcoming: Upcoming = dueLater.isError
+    ? { status: "failed", retrying: dueLater.isFetching }
+    : dueLater.isFetching || !dueLater.data
       ? { status: "loading" }
-      : dueLater.data
-        ? { status: "ready", ...dueLater.data }
-        : { status: "failed" };
+      : { status: "ready", ...dueLater.data };
   // The session is on its last screen: a card waits for its next learning step, or nothing is due any more.
   const ended = !reviewing && seen.length > 0 && !card && deck.isSuccess;
   const waitingCards = useMemo(
@@ -817,6 +817,7 @@ export function CardsPage() {
                 seen={seen}
                 waiting={waitingCards}
                 upcoming={upcoming}
+                onRetry={() => void dueLater.refetch()}
                 stopBusy={Boolean(back?.busy)}
                 onStop={() => (back ? back.go() : leaveTo("/flashcards"))}
               />
