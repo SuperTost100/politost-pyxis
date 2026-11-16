@@ -202,7 +202,9 @@ type Token = {
 function tokens(latex: string): Token[] {
   const out: Token[] = [];
   // `3{,}5` is how LaTeX writes a decimal comma.
-  for (const match of latex.replace(/\{,\}/g, ",").matchAll(/\\([A-Za-z]+)|\\([\s\S])|(\d+(?:[.,]\d+)*)|(\s+)|([\s\S])/gu)) {
+  // A digit is a token of its own, as LaTeX reads an argument written without braces: `x^12` is `x^{1}2`. A number
+  // is put together from them where it is read, so "3,5" and "12" stay whole.
+  for (const match of latex.replace(/\{,\}/g, ",").matchAll(/\\([A-Za-z]+)|\\([\s\S])|(\d)|(\s+)|([\s\S])/gu)) {
     const source = match[0];
     const name = match[1] ? (SAME[match[1]] ?? match[1]) : "";
     if (BRACKETS[name]) out.push({ kind: "char", text: BRACKETS[name], source });
@@ -370,7 +372,22 @@ class Reader {
 
   private primary(at: number, to: number): [Term | null, number] {
     const token = this.list[at]!;
-    if (token.kind === "number") return [{ text: token.text, kind: "atom" }, at + 1];
+    if (token.kind === "number") {
+      let text = token.text;
+      let end = at + 1;
+      for (;;) {
+        const next = end < to ? this.list[end] : undefined;
+        const after = end + 1 < to ? this.list[end + 1] : undefined;
+        if (next?.kind === "number") {
+          text += next.text;
+          end += 1;
+        } else if (next?.kind === "char" && (next.text === "." || next.text === ",") && after?.kind === "number") {
+          text += next.text + after.text;
+          end += 2;
+        } else break;
+      }
+      return [{ text, kind: "atom" }, end];
+    }
     if (token.kind === "command") return this.command(token.text, at, to);
     if (token.kind === "literal")
       return [token.text === "%" ? { text: this.words.percent, kind: "link" } : { text: token.text, kind: "atom" }, at + 1];

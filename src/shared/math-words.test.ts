@@ -64,6 +64,16 @@ describe("formulaWords", () => {
     expect(both("\\vec{F}=m\\vec{a}")).toEqual(["vettore F uguale a m vettore a", "vector F equals m vector a"]);
   });
 
+  it("takes one symbol for an argument written without braces, as LaTeX does", () => {
+    // `x^12` is x to the 1, then a 2; `\\frac12` is one half.
+    expect(both("x^12")).toEqual(["x alla 1 2", "x to the 1 2"]);
+    expect(both("\\frac12")).toEqual(["1 fratto 2", "1 over 2"]);
+    expect(both("\\sqrt49")).toEqual(["(radice quadrata di 4) 9", "(square root of 4) 9"]);
+    // A written number stays whole: a decimal, and digits outside an argument.
+    expect(both("2,5x+12")).toEqual(["2,5x più 12", "2,5x plus 12"]);
+    expect(both("x^{12}")).toEqual(["x alla 12", "x to the 12"]);
+  });
+
   it("gives nothing for a sum, an integral or a limit with an upper bound and no lower one", () => {
     for (const latex of ["\\sum^{n} i", "\\prod^{n}i", "\\int^{1}x\\,\\mathrm{d}x", "\\lim^{2}x"])
       expect([formulaWords(latex, "it"), formulaWords(latex, "en")], latex).toEqual([null, null]);
