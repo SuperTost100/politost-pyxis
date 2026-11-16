@@ -47,7 +47,8 @@ async function measure(page: Page): Promise<Seen> {
     // Settings names the page in its list, and the open section has a title of its own.
     const title = first(".px-settings-nav h2") ?? first("h1");
     const head = title?.closest("[class*='head']") ?? title?.parentElement ?? null;
-    const lead = head ? ([...head.querySelectorAll("p")].find(visible) ?? null) : null;
+    // An empty page's line is its block, centred in the page, not a line under the title.
+    const lead = head ? ([...head.querySelectorAll("p")].find((p) => visible(p) && !p.closest(".px-empty")) ?? null) : null;
     const dots = first('button[aria-label^="Altro su"]');
     const band = title?.getBoundingClientRect();
     const onTitleLine = [...main.querySelectorAll("button, a")].filter((el) => {
@@ -149,8 +150,8 @@ const SETUPS: Setup[] = [
   { name: "960 folded, large text", width: 960, fold: true, large: true },
 ];
 
-test("every page of the shell starts in the same place and ends at the same edge", async () => {
-  test.setTimeout(600_000);
+/** Opens each page in every setup of a fresh app, seeded by `fill`, and returns what does not hold. Pictures keep `label` in their names. */
+async function checkPages(label: string, pages: Array<[string, string, string]>, fill: (db: DatabaseSync) => void): Promise<string[]> {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-page-column-"));
   const app = await launchPyxis({ userData });
   const report: Record<string, Record<string, Seen>> = {};
@@ -165,7 +166,7 @@ test("every page of the shell starts in the same place and ends at the same edge
     const theme: "dark" | "light" = process.env.PYXIS_COLUMN_THEME === "dark" ? "dark" : "light";
     await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
-    seed(db);
+    fill(db);
     db.close();
 
     const shots = process.env.PYXIS_COLUMN_SHOTS;
@@ -180,7 +181,7 @@ test("every page of the shell starts in the same place and ends at the same edge
       await page.setViewportSize({ width: setup.width, height: 800 });
       await page.reload();
       const seen: Record<string, Seen> = {};
-      for (const [name, route, heading] of PAGES) {
+      for (const [name, route, heading] of pages) {
         await page.evaluate((route) => (location.hash = route), route);
         await expect(page.locator("main h1:visible").first()).toHaveText(heading);
         // The page's own data is in: a skeleton has the page's width, but its head is not yet whole.
@@ -194,7 +195,7 @@ test("every page of the shell starts in the same place and ends at the same edge
         if (shots) {
           mkdirSync(shots, { recursive: true });
           const slug = route.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
-          await page.screenshot({ path: join(shots, `${setup.width}${setup.fold ? "f" : "o"}${setup.large ? "L" : ""}-${slug}${theme === "dark" ? "-dark" : ""}.png`) });
+          await page.screenshot({ path: join(shots, `${setup.width}${setup.fold ? "f" : "o"}${setup.large ? "L" : ""}-${label}${slug}${theme === "dark" ? "-dark" : ""}.png`) });
         }
       }
       report[setup.name] = seen;
@@ -221,10 +222,30 @@ test("every page of the shell starts in the same place and ends at the same edge
   } finally {
     if (process.env.PYXIS_COLUMN_REPORT) {
       mkdirSync(join(process.env.PYXIS_COLUMN_REPORT, ".."), { recursive: true });
-      writeFileSync(process.env.PYXIS_COLUMN_REPORT, JSON.stringify(report, null, 1));
+      writeFileSync(process.env.PYXIS_COLUMN_REPORT.replace(/\.json$/, `${label}.json`), JSON.stringify(report, null, 1));
     }
     await app.close();
     removeTestFolder(userData);
   }
-  expect(failures).toEqual([]);
+  return failures;
+}
+
+test("every page of the shell starts in the same place and ends at the same edge", async () => {
+  test.setTimeout(600_000);
+  expect(await checkPages("", PAGES, seed)).toEqual([]);
+});
+
+/** The six pages that have an empty state, with nothing in the workspace: their block is centred in the same column. */
+const EMPTY_PAGES: Array<[string, string, string]> = [
+  ["Esami vuoto", "/exams", "Esami"],
+  ["Mappe vuoto", "/maps", "Mappe"],
+  ["Flashcard vuoto", "/flashcards", "Flashcard"],
+  ["Tutte le flashcard vuoto", "/flashcards/all", "Tutte le flashcard"],
+  ["Libreria vuota", "/exams/library", "Libreria"],
+  ["Quaderno degli errori vuoto", "/exams/mistakes", "Quaderno degli errori"],
+];
+
+test("the empty pages start in the same place and end at the same edge as the others", async () => {
+  test.setTimeout(600_000);
+  expect(await checkPages("empty-", EMPTY_PAGES, () => {})).toEqual([]);
 });
