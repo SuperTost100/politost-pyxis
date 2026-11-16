@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { drawingPinned, pngSize, stagePacks, stagedDrawingPack } from "./drawing-packs";
+import { listeners, networkStackScript, resolved } from "./network-probes";
 
 // The drawing window runs text from an AI, or from a plan file somebody sent, through Graphviz. These checks use the real
 // window, with the drawing pack only (Python is not staged: graphs need nothing else), and reach it through the handle
@@ -24,6 +25,9 @@ type Handle = {
   drawUnchecked: (payload: unknown) => Promise<Drawn>;
   windows: () => number[];
   preferences: () => Record<string, unknown>;
+  seen: () => string[];
+  setPolicyOff: (off: boolean) => void;
+  runScript: (script: string, timeoutMs: number) => Promise<Drawn>;
   evaluate: (script: string) => Promise<unknown>;
 };
 
@@ -43,6 +47,15 @@ const windows = (app: ElectronApplication) =>
   app.evaluate(() => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.windows());
 const inWindow = <T>(app: ElectronApplication, script: string) =>
   app.evaluate((_, text) => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.evaluate(text), script) as Promise<T>;
+
+/**
+ * The schemes the session's request filter was asked about when a page tried every way out, which is what Electron 45
+ * gives `webRequest`: the network (http, ws) and the app's own scheme, which it filters. It is never asked about `blob:`
+ * or `data:`, which are content of the page's own and no network, nor about a `file:` request from a page of another
+ * scheme, which the browser refuses before it gets that far. The pictures the window draws use `blob:` and `data:`, so
+ * the filter must not be the thing that lets them work, and it is not.
+ */
+const SEEN_SCHEMES = ["http", "pyxis-runtime", "ws"];
 
 const automaton = [
   "digraph automaton {",
@@ -95,6 +108,75 @@ function expectPictureOrFailure(result: Drawn, name: string) {
   if ("image" in result) expect(pngSize(result.image), name).not.toBeNull();
   else expect(result.error, name).toMatch(/^[\x20-\x7e\u00a0-\uffff]{1,500}$/);
 }
+
+/**
+ * Every way a page reaches out that the test can name, tried by the page itself, as one script. `settled` says what each
+ * did: only "blocked" is a pass. Used by the test of the window as built and by the one with its policy turned off.
+ */
+function waysOut(leak: string): string {
+  return `(async () => {
+          const settle = (promise) => promise.then(() => "reached", () => "blocked");
+          const load = (tag, props) => new Promise((resolve) => {
+            const element = document.createElement(tag);
+            element.onload = () => resolve("reached");
+            element.onerror = () => resolve("blocked");
+            Object.assign(element, props);
+            document.head.append(element);
+            setTimeout(() => resolve("blocked"), 1500);
+          });
+          const out = {};
+          out.fetch = await settle(fetch(${JSON.stringify(leak + "/fetch")}));
+          out.fetchNoCors = await settle(fetch(${JSON.stringify(leak + "/nocors")}, { mode: "no-cors" }));
+          out.fetchFile = await settle(fetch("file:///etc/hostname"));
+          out.fetchOtherHost = await settle(fetch("pyxis-runtime://sandbox/host.js"));
+          out.xhr = await settle(new Promise((resolve, reject) => { const x = new XMLHttpRequest(); x.open("GET", ${JSON.stringify(leak + "/xhr")}); x.onload = resolve; x.onerror = reject; x.send(); }));
+          out.image = await load("img", { src: ${JSON.stringify(leak + "/image.png")} });
+          out.script = await load("script", { src: ${JSON.stringify(leak + "/script.js")} });
+          out.stylesheet = await load("link", { rel: "stylesheet", href: ${JSON.stringify(leak + "/style.css")} });
+          // Fonts: a page loading one from the network, or from a file, and the app's own font through the scheme.
+          out.fontRemote = await settle(new FontFace("Remote", "url(" + ${JSON.stringify(leak + "/font.woff2")} + ")").load());
+          out.fontFile = await settle(new FontFace("File", "url(file:///etc/hostname)").load());
+          out.fontOtherHost = await settle(new FontFace("Other", "url(pyxis-runtime://sandbox/host.js)").load());
+          out.fontAppFile = await settle(new FontFace("App", "url(pyxis-runtime://draw/fonts/Figtree-Variable.woff2)").load());
+          out.otherHostScript = await load("script", { src: "pyxis-runtime://sandbox/host.js" });
+          out.packWheel = await settle(import("pyxis-runtime://draw/drawing/schemdraw-0.23-py3-none-any.whl"));
+          out.pythonFile = await settle(import("pyxis-runtime://draw/pyodide/pyodide.js"));
+          out.importRemote = await settle(import(${JSON.stringify(leak + "/module.js")}));
+          out.websocket = await settle(new Promise((resolve, reject) => { try { const s = new WebSocket(${JSON.stringify(leak.replace("http", "ws") + "/ws")}); s.onopen = resolve; s.onerror = reject; s.onclose = reject; } catch (e) { reject(e); } }));
+          out.eventSource = await settle(new Promise((resolve, reject) => { const s = new EventSource(${JSON.stringify(leak + "/events")}); s.onopen = resolve; s.onerror = reject; }));
+          // A beacon is queued and says true; the server's count at the end shows that it went nowhere.
+          navigator.sendBeacon?.(${JSON.stringify(leak + "/beacon")}, "x");
+          // Workers: the policy names the one file that may be started, the worker that runs Graphviz. Any other file of the
+          // window, and the pack's own, may not.
+          const workerFrom = (url, message) => settle(new Promise((resolve, reject) => { try { const w = new Worker(url); w.onmessage = resolve; w.onerror = reject; if (message) w.postMessage(message); setTimeout(reject, 1200); } catch (e) { reject(e); } }));
+          out.worker = await workerFrom("pyxis-runtime://draw/draw-host.js");
+          out.workerPack = await workerFrom("pyxis-runtime://draw/drawing/graphviz.js");
+          out.workerRemote = await workerFrom(${JSON.stringify(leak + "/worker.js")});
+          out.workerOwn = await workerFrom("pyxis-runtime://draw/draw-worker.js", { id: 1, code: "digraph { a -> b }", engine: "dot" });
+          const frame = document.createElement("iframe");
+          frame.src = ${JSON.stringify(leak + "/frame")};
+          document.body.append(frame);
+          const form = document.createElement("form");
+          form.action = ${JSON.stringify(leak + "/form")};
+          form.method = "post";
+          document.body.append(form);
+          try { form.submit(); } catch (e) {}
+          out.open = String(window.open(${JSON.stringify(leak + "/open")}));
+          // Inline script and string evaluation, which the CSP does not allow.
+          const inline = document.createElement("script");
+          inline.textContent = "window.__inline = 1";
+          document.head.append(inline);
+          out.inlineScript = typeof window.__inline === "undefined" ? "blocked" : "ran";
+          try { setTimeout("window.__timer = 1", 0); } catch (e) {}
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          out.timerString = typeof window.__timer === "undefined" ? "blocked" : "ran";
+          // The one control: the window's own library does load.
+          out.control = await settle(import("pyxis-runtime://draw/drawing/graphviz.js"));
+          setTimeout(() => { location.href = ${JSON.stringify(leak + "/navigate")}; }, 0);
+          return out;
+        })()`;
+}
+
 
 test.describe("the drawing window", () => {
   test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
@@ -301,6 +383,11 @@ test.describe("the drawing window", () => {
         filter: svg(`<filter id="f"><feImage href="${leak}/fe.png"/></filter><rect filter="url(#f)" width="5" height="5"/>`),
         animate: svg('<set attributeName="onmouseover" to="window.__pwned = 6"/><animate attributeName="href" values="javascript:window.__pwned = 7"/>'),
         fillUrl: svg(`<polygon fill="url(${leak}/f.svg#x)" points="0,0 5,5 0,5"/>`),
+        // An attribute of a drawing is read as CSS, which reads escapes: these are url(http://...) to a browser.
+        fillEscapedLetter: svg(`<polygon fill="u\\72l(${leak}/e1)" points="0,0 5,5 0,5"/>`),
+        fillEscapedHex: svg(`<polygon fill="\\75rl(${leak}/e2)" points="0,0 5,5 0,5"/>`),
+        fillEscapedAll: svg(`<polygon fill="\\75\\72\\6c(${leak}/e3)" points="0,0 5,5 0,5"/>`),
+        fillComment: svg(`<polygon fill="url(/**/${leak}/e4)" points="0,0 5,5 0,5"/>`),
         styleAttribute: svg(`<polygon style="fill:url(${leak}/s)" points="0,0 5,5 0,5"/>`),
         dataUri: svg('<image href="data:image/svg+xml;base64,PHN2Zy8+" width="5" height="5"/>'),
         entity: `<?xml version="1.0"?><!DOCTYPE svg [<!ENTITY secret SYSTEM "file:///etc/passwd">]><svg xmlns="http://www.w3.org/2000/svg" width="60pt" height="40pt"><text>&secret;</text></svg>`,
@@ -399,64 +486,7 @@ test.describe("the drawing window", () => {
       ).toEqual([]);
 
       // Every way a page reaches out, tried by the page itself. `settled` says what each did: only "blocked" is a pass.
-      const attempts = await inWindow<Record<string, string>>(
-        app,
-        `(async () => {
-          const settle = (promise) => promise.then(() => "reached", () => "blocked");
-          const load = (tag, props) => new Promise((resolve) => {
-            const element = document.createElement(tag);
-            element.onload = () => resolve("reached");
-            element.onerror = () => resolve("blocked");
-            Object.assign(element, props);
-            document.head.append(element);
-            setTimeout(() => resolve("blocked"), 1500);
-          });
-          const out = {};
-          out.fetch = await settle(fetch(${JSON.stringify(leak + "/fetch")}));
-          out.fetchNoCors = await settle(fetch(${JSON.stringify(leak + "/nocors")}, { mode: "no-cors" }));
-          out.fetchFile = await settle(fetch("file:///etc/hostname"));
-          out.fetchOtherHost = await settle(fetch("pyxis-runtime://sandbox/host.js"));
-          out.xhr = await settle(new Promise((resolve, reject) => { const x = new XMLHttpRequest(); x.open("GET", ${JSON.stringify(leak + "/xhr")}); x.onload = resolve; x.onerror = reject; x.send(); }));
-          out.image = await load("img", { src: ${JSON.stringify(leak + "/image.png")} });
-          out.script = await load("script", { src: ${JSON.stringify(leak + "/script.js")} });
-          out.stylesheet = await load("link", { rel: "stylesheet", href: ${JSON.stringify(leak + "/style.css")} });
-          // Fonts: a page loading one from the network, or from a file, and the app's own font through the scheme.
-          out.fontRemote = await settle(new FontFace("Remote", "url(" + ${JSON.stringify(leak + "/font.woff2")} + ")").load());
-          out.fontFile = await settle(new FontFace("File", "url(file:///etc/hostname)").load());
-          out.fontOtherHost = await settle(new FontFace("Other", "url(pyxis-runtime://sandbox/host.js)").load());
-          out.fontAppFile = await settle(new FontFace("App", "url(pyxis-runtime://draw/fonts/Figtree-Variable.woff2)").load());
-          out.otherHostScript = await load("script", { src: "pyxis-runtime://sandbox/host.js" });
-          out.packWheel = await settle(import("pyxis-runtime://draw/drawing/schemdraw-0.23-py3-none-any.whl"));
-          out.pythonFile = await settle(import("pyxis-runtime://draw/pyodide/pyodide.js"));
-          out.importRemote = await settle(import(${JSON.stringify(leak + "/module.js")}));
-          out.websocket = await settle(new Promise((resolve, reject) => { try { const s = new WebSocket(${JSON.stringify(leak.replace("http", "ws") + "/ws")}); s.onopen = resolve; s.onerror = reject; s.onclose = reject; } catch (e) { reject(e); } }));
-          out.eventSource = await settle(new Promise((resolve, reject) => { const s = new EventSource(${JSON.stringify(leak + "/events")}); s.onopen = resolve; s.onerror = reject; }));
-          // A beacon is queued and says true; the server's count at the end shows that it went nowhere.
-          navigator.sendBeacon?.(${JSON.stringify(leak + "/beacon")}, "x");
-          out.worker = await settle(new Promise((resolve, reject) => { try { const w = new Worker("pyxis-runtime://draw/draw-host.js"); w.onmessage = resolve; w.onerror = reject; setTimeout(reject, 800); } catch (e) { reject(e); } }));
-          const frame = document.createElement("iframe");
-          frame.src = ${JSON.stringify(leak + "/frame")};
-          document.body.append(frame);
-          const form = document.createElement("form");
-          form.action = ${JSON.stringify(leak + "/form")};
-          form.method = "post";
-          document.body.append(form);
-          try { form.submit(); } catch (e) {}
-          out.open = String(window.open(${JSON.stringify(leak + "/open")}));
-          // Inline script and string evaluation, which the CSP does not allow.
-          const inline = document.createElement("script");
-          inline.textContent = "window.__inline = 1";
-          document.head.append(inline);
-          out.inlineScript = typeof window.__inline === "undefined" ? "blocked" : "ran";
-          try { setTimeout("window.__timer = 1", 0); } catch (e) {}
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          out.timerString = typeof window.__timer === "undefined" ? "blocked" : "ran";
-          // The one control: the window's own library does load.
-          out.control = await settle(import("pyxis-runtime://draw/drawing/graphviz.js"));
-          setTimeout(() => { location.href = ${JSON.stringify(leak + "/navigate")}; }, 0);
-          return out;
-        })()`,
-      );
+      const attempts = await inWindow<Record<string, string>>(app, waysOut(leak));
       expect(attempts).toEqual({
         fetch: "blocked",
         fetchNoCors: "blocked",
@@ -477,6 +507,9 @@ test.describe("the drawing window", () => {
         websocket: "blocked",
         eventSource: "blocked",
         worker: "blocked",
+        workerPack: "blocked",
+        workerRemote: "blocked",
+        workerOwn: "reached",
         open: "null",
         inlineScript: "blocked",
         timerString: "blocked",
@@ -495,6 +528,213 @@ test.describe("the drawing window", () => {
     } finally {
       await finish(app, userData);
       await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test("has no way out through the network stack either: WebRTC and preconnect go nowhere, and no name is looked up for them", async () => {
+    // What the session's request filter cannot see: WebRTC opens its own sockets, and <link rel=preconnect> and
+    // dns-prefetch are the network stack's own work, with no request for the filter. A UDP listener, a TCP server that
+    // counts connections and a log of the network stack's DNS work show that none of it leaves the window.
+    const { datagrams, connections, udpPort, tcpPort, close } = await listeners();
+    const host = `leak-${Math.random().toString(36).slice(2)}.example.invalid`;
+    const hintHost = `hint-${Math.random().toString(36).slice(2)}.example.invalid`;
+    const { app, userData } = await start();
+    const log = join(userData, "net-log.json");
+    try {
+      expectPicture(await draw(app, automaton), "the window is open");
+      await app.evaluate(async ({ BrowserWindow }, path) => {
+        const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))!;
+        await target.webContents.session.netLog.startLogging(path, { captureMode: "everything" });
+      }, log);
+      const outcome = await inWindow<Record<string, string>>(app, networkStackScript(host, hintHost, udpPort, tcpPort));
+      await app.evaluate(async ({ BrowserWindow }) => {
+        const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))!;
+        await target.webContents.session.netLog.stopLogging();
+      });
+      expect(outcome.webrtc).toBeDefined();
+      // Nothing was heard: no datagram, no connection, and the network stack did no DNS work for the names the page tried
+      // (the log of its events holds none for them).
+      const lookups = resolved(log, host);
+      expect({ udp: datagrams.length, tcp: connections.length, dns: lookups.length }).toEqual({ udp: 0, tcp: 0, dns: 0 });
+      expect({ datagrams, connections, lookups }).toEqual({ datagrams: [], connections: [], lookups: [] });
+      // The one thing the session cannot stop: Chromium resolves the name of a dns-prefetch hint itself, as a speculative
+      // lookup, through the machine's own resolver, whatever the proxy is. Only code that makes a <link> element in the
+      // window's page can ask for it, and the page never does, and the pack's code runs in a worker, which has no DOM. The
+      // test says so, and tells whoever reads its report, so the claim of the pull request is what is true.
+      const hinted = resolved(log, hintHost);
+      test.info().annotations.push({
+        type: "known gap",
+        description: `a dns-prefetch hint made by code in the page is resolved speculatively by the machine's resolver (${hinted.length} resolver events for ${hintHost}); page code is the app's own, and the pack runs in a worker with no DOM`,
+      });
+    } finally {
+      await finish(app, userData);
+      await close();
+    }
+  });
+
+  test("the session's own filter holds with the policy turned off: nothing leaves, on any scheme", async () => {
+    // Every way out in the test above is also stopped by the page's policy, and one by a header, so a filter that saw
+    // nothing would have passed. Here the files are served with no policy at all (a switch that only the end-to-end seam
+    // reaches), and the page tries again, from its own code and from code that arrived by data: and blob: URLs.
+    const arrived: string[] = [];
+    const server = createServer((request, response) => {
+      arrived.push(`${request.method} ${request.url}`);
+      response.end("leaked");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const leak = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const { datagrams, connections, udpPort, tcpPort, close } = await listeners();
+    const host = `leak-${Math.random().toString(36).slice(2)}.example.invalid`;
+    const hintHost = `hint-${Math.random().toString(36).slice(2)}.example.invalid`;
+    const { app, page, userData } = await start();
+    try {
+      expectPicture(await draw(app, automaton), "the window is open");
+      await app.evaluate(() => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.setPolicyOff(true));
+      // A new window loads its files again, now without the policy.
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))
+          ?.webContents.forcefullyCrashRenderer();
+      });
+      await expect.poll(() => windows(app)).toEqual([]);
+      expectPicture(await draw(app, automaton), "the window draws with no policy");
+      // The network stack's log, from here on, for the names the page and its workers try.
+      const log = join(userData, "net-log-off.json");
+      const workerHost = `worker-${Math.random().toString(36).slice(2)}.example.invalid`;
+      await app.evaluate(async ({ BrowserWindow }, path) => {
+        const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))!;
+        await target.webContents.session.netLog.startLogging(path, { captureMode: "everything" });
+      }, log);
+      // The policy really is off: an inline script and a string given to a timer run, which the policy forbids.
+      const ways = await inWindow<Record<string, string>>(app, waysOut(leak));
+      expect(ways).toMatchObject({ inlineScript: "ran", timerString: "ran" });
+      // What the policy used to stop, the session's filter stops: the network, files, the other host and the files of the
+      // window that are not on its list. (A worker of a file that is on the list is the window's own, and starts.)
+      expect(ways).toMatchObject({
+        fetch: "blocked", fetchNoCors: "blocked", fetchFile: "blocked", fetchOtherHost: "blocked", xhr: "blocked", image: "blocked",
+        script: "blocked", stylesheet: "blocked", fontRemote: "blocked", fontFile: "blocked", fontOtherHost: "blocked", fontAppFile: "blocked",
+        otherHostScript: "blocked", packWheel: "blocked", pythonFile: "blocked", importRemote: "blocked", websocket: "blocked",
+        eventSource: "blocked", workerPack: "blocked", workerRemote: "blocked", open: "null", control: "reached",
+      });
+      // Code that arrived by a data: URL, a blob: URL and an iframe of data: runs, and its own attempts are refused too.
+      // A worker's own requests, to a name nothing resolves, are refused before any lookup: only a page can make a hint.
+      const reach = `fetch("http://${workerHost}/" + KIND).catch(() => 0); fetch(${JSON.stringify(leak + "/from-")} + KIND).catch(() => 0); try { new WebSocket(${JSON.stringify(leak.replace("http", "ws") + "/ws-from-")} + KIND); } catch (e) {} new Image().src = ${JSON.stringify(leak + "/img-from-")} + KIND;`;
+      const nested = await inWindow<Record<string, string>>(
+        app,
+        `(async () => {
+          const out = {};
+          const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const code = (kind) => ${JSON.stringify(reach)}.replaceAll("KIND", JSON.stringify(kind)) + " globalThis.__ran = (globalThis.__ran || []).concat(" + JSON.stringify("x") + ");";
+          // A module from a data: URL, which the policy would have refused and the filter does not see.
+          try { await import("data:text/javascript," + encodeURIComponent(code("data-module"))); out.dataModule = "ran"; } catch (e) { out.dataModule = "refused"; }
+          // A module from a blob: URL.
+          try { await import(URL.createObjectURL(new Blob([code("blob-module")], { type: "text/javascript" }))); out.blobModule = "ran"; } catch (e) { out.blobModule = "refused"; }
+          // A worker from a blob: URL.
+          try { const w = new Worker(URL.createObjectURL(new Blob([code("blob-worker")], { type: "text/javascript" }))); w.onerror = () => {}; out.blobWorker = "started"; } catch (e) { out.blobWorker = "refused"; }
+          // A document from data: in a frame, with a script in it.
+          try { const frame = document.createElement("iframe"); frame.src = "data:text/html," + encodeURIComponent("<script>" + code("data-frame") + "<\/script>"); document.body.append(frame); out.dataFrame = "added"; } catch (e) { out.dataFrame = "refused"; }
+          // Plain requests for data: and blob: URLs, which are not the network.
+          out.fetchData = await fetch("data:text/plain,hello").then((r) => r.text(), () => "refused");
+          out.fetchBlob = await fetch(URL.createObjectURL(new Blob(["blob"]))).then((r) => r.text(), () => "refused");
+          out.fetchOwn = await fetch("pyxis-runtime://draw/index.html").then((r) => String(r.status), () => "refused");
+          out.fetchOwnUnlisted = await fetch("pyxis-runtime://draw/nothing.js").then((r) => String(r.status), () => "refused");
+          await wait(800);
+          return out;
+        })()`,
+      );
+      // The network stack's own work, with no policy either.
+      await inWindow(app, networkStackScript(host, hintHost, udpPort, tcpPort));
+      await app.evaluate(async ({ BrowserWindow }) => {
+        const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))!;
+        await target.webContents.session.netLog.stopLogging();
+      });
+      await page.waitForTimeout(1000);
+      expect(nested.fetchData).toBe("hello");
+      expect(nested.fetchBlob).toBe("blob");
+      expect(nested.fetchOwn).toBe("200");
+      expect(nested.fetchOwnUnlisted).not.toBe("200");
+      // The server heard nothing from any of it, nor did a UDP listener or a TCP server, nor a resolver.
+      expect(arrived).toEqual([]);
+      expect({ udp: datagrams.length, tcp: connections.length, dns: resolved(log, host).length, workerDns: resolved(log, workerHost).length }).toEqual({ udp: 0, tcp: 0, dns: 0, workerDns: 0 });
+      // The filter really was asked: it saw the requests the page made (and refused them), on the schemes it is given.
+      const seen = await app.evaluate(() => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.seen());
+      const schemes = [...new Set(seen.map((url) => url.split(":")[0]))].sort();
+      expect(seen.some((url) => url.startsWith(`${leak}/fetch`))).toBe(true);
+      expect(seen.some((url) => url.startsWith("ws://127.0.0.1"))).toBe(true);
+      expect(seen.some((url) => url === "pyxis-runtime://draw/draw-host.js")).toBe(true);
+      expect(schemes).toEqual(SEEN_SCHEMES);
+      // The server does record what reaches it.
+      await app.evaluate((_, url) => fetch(url).then((reply) => reply.text()), `${leak}/control`);
+      expect(arrived).toEqual(["GET /control"]);
+    } finally {
+      await app.evaluate(() => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.setPolicyOff(false)).catch(() => undefined);
+      await finish(app, userData);
+      await close();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test("stops a page that fills memory, in a real window, and draws again with a new one", async () => {
+    const { app, userData } = await start();
+    try {
+      expectPicture(await draw(app, automaton), "before");
+      const [open] = await windows(app);
+      // The page allocates 64 MB at a time and touches it, as the pack's own code could. The window's working set is read every
+      // 250 ms during a drawing, and over 512 MB the window is destroyed; Chromium may also end it first.
+      const script = `(async () => {
+        const held = [];
+        for (let i = 0; i < 60; i++) {
+          held.push(new Uint8Array(64 * 1024 * 1024).fill(i + 1));
+          await new Promise((resolve) => setTimeout(resolve, 15));
+        }
+        return { ok: true, png: "never" };
+      })()`;
+      const started = Date.now();
+      const result = await app.evaluate((_, [text, ms]) => (globalThis as unknown as { pyxisE2eDraw: Handle }).pyxisE2eDraw.runScript(text, ms), [script, 20000] as const);
+      expect(Date.now() - started, "stopped well before the script's own end").toBeLessThan(15000);
+      expect(result).toMatchObject({ error: expect.stringMatching(/too much memory|^runtime-draw-crashed$/) });
+      expect(await windows(app)).toEqual([]);
+      expectPicture(await draw(app, automaton), "after");
+      const [replaced] = await windows(app);
+      expect(replaced).not.toBe(open);
+    } finally {
+      await finish(app, userData);
+    }
+  });
+
+  test("checks what Graphviz understood, so the texts that got past the text checks reach no layout", async () => {
+    // Sent to the window with the checks of the text skipped, as the review's two bypasses and their family are. The window
+    // parses each with Graphviz first, and refuses by what Graphviz made of it.
+    const { app, userData } = await start();
+    try {
+      expectPicture(await draw(app, automaton), "the window is open");
+      const names = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`).join(" ");
+      const refused: Array<[string, string, RegExp]> = [
+        ["URL split by a continuation", 'digraph { a ["UR\\\nL"="https://example.com/x"] }', /^the attribute URL is not allowed/],
+        ["image split by a continuation", 'digraph { a ["ima\\\nge"="/etc/passwd"] }', /^the attribute image is not allowed/],
+        ["URL joined by +", 'digraph { a ["UR" + "L"="https://example.com/c"] }', /^the attribute URL is not allowed/],
+        ["layout name split", 'digraph { "lay\\\nout"=sfdp; a -> b }', /^layout=sfdp is not allowed/],
+        ["layout value split", 'digraph { layout="sf\\\ndp"; a -> b }', /^layout=sfdp is not allowed/],
+        ["fontname joined", 'digraph { a [fontname="Tim" + "es"] }', /^fontname=Times is not allowed/],
+        ["a tuning knob joined", 'digraph { "mc" + "limit"=1000000; a -> b }', /only tunes how long the layout takes/],
+        ["a subgraph named again", `digraph { subgraph s { ${names("n", 20)} } subgraph s {} -> subgraph s {} }`, /^the graph has 400 edges: keep it within 300$/],
+        ["the most that 4,000 characters make", `digraph { subgraph s { ${names("n", 150)} } ${Array.from({ length: 10 }, () => "subgraph s {}").join(" -> ")} }`, /^the graph has 202500 edges: keep it within 300$/],
+        ["every pair of two groups", `digraph { {${names("a", 20)}} -> {${names("b", 20)}} }`, /^the graph has 400 edges/],
+        ["an HTML-like label", 'digraph { a [label=<<TABLE HREF="http://x"><TR><TD><IMG SRC="/etc/passwd"/></TD></TR></TABLE>>] }', /HTML-like labels/],
+      ];
+      for (const [name, code, message] of refused) {
+        const started = Date.now();
+        const result = await drawUnchecked(app, code);
+        expect(result, name).toHaveProperty("error");
+        expect((result as { error: string }).error, name).toMatch(message);
+        // Refused before the layout, so quickly, and without costing the window.
+        expect(Date.now() - started, name).toBeLessThan(5000);
+        expect((result as { timedOut?: boolean }).timedOut, name).toBeUndefined();
+      }
+      expect(await windows(app)).toHaveLength(1);
+      expectPicture(await draw(app, automaton), "after them all");
+    } finally {
+      await finish(app, userData);
     }
   });
 
