@@ -34,7 +34,9 @@ export type SourceLocation = { passageId?: string; sourceId?: string; chapter?: 
 export type SourceMenu = () => { items: NonNullable<MenuProps["items"]>; onSelect: (key: string) => void } | null;
 /** A row under the panel's head, read each time it draws: a book not in the Library says so and offers to add it. */
 export type SourceBar = () => ReactNode;
-type Opening = SourceLocation & { back?: () => void; menu?: SourceMenu; bar?: SourceBar };
+type Opening = SourceLocation & { back?: () => void; menu?: SourceMenu; bar?: SourceBar; focusAfter?: FocusAfter };
+/** Where the focus goes when the panel closes and what opened it is no longer on the page: what took its place. */
+export type FocusAfter = () => HTMLElement | null;
 
 const eventName = "pyxis:source-viewer";
 const closeName = "pyxis:source-viewer-close";
@@ -43,11 +45,12 @@ const refreshName = "pyxis:source-viewer-refresh";
 /**
  * Opens the source panel at a passage or a source. A second call moves the open panel to the new place; it never opens
  * another. `back`, when the panel was opened from another panel (the source details), adds a way back to it, `menu`
- * gives the panel the file's own menu, and `bar` adds a row under its head.
+ * gives the panel the file's own menu, `bar` adds a row under its head, and `focusAfter` says where the focus goes on
+ * close when what opened the panel has left the page.
  */
 export function openSourceViewer(
   location: SourceLocation,
-  options?: (() => void) | { back?: () => void; menu?: SourceMenu; bar?: SourceBar },
+  options?: (() => void) | { back?: () => void; menu?: SourceMenu; bar?: SourceBar; focusAfter?: FocusAfter },
 ): void {
   const extra = typeof options === "function" ? { back: options } : (options ?? {});
   window.dispatchEvent(new CustomEvent(eventName, { detail: { ...location, ...extra } }));
@@ -603,6 +606,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
   const titleId = useId();
   const panel = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLElement | null>(null);
+  const focusAfter = useRef<FocusAfter | null>(null);
   const grownFrom = useRef<DOMRect | null>(null);
   const counter = useRef(0);
   const shownAt = useRef<string | null>(null);
@@ -618,6 +622,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
       if (!inside) {
         trigger.current = active instanceof HTMLElement && active !== document.body ? active : null;
         grownFrom.current = trigger.current?.getBoundingClientRect() ?? null;
+        focusAfter.current = (event as CustomEvent<Opening>).detail.focusAfter ?? null;
       }
       counter.current += 1;
       shownAt.current = pathOf(window.location.hash);
@@ -710,15 +715,17 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
   const close = useCallback(() => {
     const element = panel.current;
     const back = trigger.current;
+    const after = focusAfter.current;
     const closing = counter.current;
     trigger.current = null;
+    focusAfter.current = null;
     // The exit ends this opening only: a source opened while it ran keeps its panel, and keeps the focus.
     const done = () => {
       if (counter.current !== closing) return;
       setOpening(null);
       setLeaving(false);
       if (back?.isConnected) back.focus({ preventScroll: true });
-      else document.querySelector<HTMLElement>("main h1, h1")?.focus({ preventScroll: true });
+      else (after?.() ?? document.querySelector<HTMLElement>("main h1, h1"))?.focus({ preventScroll: true });
     };
     if (!element) return done();
     setLeaving(true);

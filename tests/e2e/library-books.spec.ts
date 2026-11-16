@@ -184,6 +184,31 @@ test("Adding from the reader keeps it open and says where the book went, without
   }
 });
 
+test("Closing the reader after adding the book from it puts the focus on the book's new cover", async () => {
+  test.setTimeout(180_000);
+  const run = await start();
+  const { page } = run;
+  try {
+    const opener = offer(page).getByRole("button", { name: "Apri il libro Fisica 1" });
+    await opener.focus();
+    await page.keyboard.press("Enter");
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("La velocità media è lo spazio percorso")).toBeVisible({ timeout: 30_000 });
+    await panel.getByRole("button", { name: "Aggiungi alla Libreria" }).click();
+    await expect(panel.getByText("È nella tua Libreria, sullo scaffale di Fisica 1.")).toBeVisible({ timeout: 30_000 });
+    // The row that opened the reader is gone; the book's cover took its place.
+    await expect(offer(page)).toHaveCount(0);
+    const cover = shelf(page, "Fisica 1").getByRole("button", { name: "Fisica 1", exact: true });
+    await expect(cover).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(cover).toBeFocused();
+    await saveShot(page, "library-books/reader-closed-focus-it-light-1280.png");
+  } finally {
+    await finish(run);
+  }
+});
+
 test("The full list opens any book it does not have in the reader and adds it, and the offer is gone when offline", async () => {
   test.setTimeout(180_000);
   const run = await start();
