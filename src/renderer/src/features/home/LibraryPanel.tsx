@@ -1165,8 +1165,10 @@ export function LibraryPanel({
         </LoadError>
       ) : empty ? (
         // Its size waits for the subjects: with none, the empty page is the whole body and sits in the middle; with some,
-        // the shelf of subjects goes on showing under a small line, as before.
-        subjects.isPending && !subjectsFailed ? null : (
+        // the shelf of subjects goes on showing under a small line, as before. The placeholder holds the place meanwhile.
+        subjects.isPending && !subjectsFailed ? (
+          <SkeletonRows label={t("components.loading")} />
+        ) : (
           <EmptyState
             centred={subjectList.length === 0}
             art={<EmptyArt kind="library" />}

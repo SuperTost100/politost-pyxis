@@ -133,8 +133,17 @@ export function ExamsList({
           ) : archived.length > 0 ? (
             // Everything is archived: the line says where the exams are, and its button opens them.
             <EmptyState body={t("exams.allArchivedBody")} action={archiveToggle} />
+          ) : examless.isPending ? (
+            // The due line above is part of this page when flashcards with no exam are due, and then the block stays
+            // small under it. The count decides, so the placeholder holds the block's place until it is known.
+            <ExamsSkeleton label={t("components.loading")} />
           ) : (
-            <EmptyState centred art={<EmptyArt kind="exams" />} body={t("exams.emptyBody")} action={newExam} />
+            <EmptyState
+              centred={(examless.data?.count ?? 0) === 0}
+              art={<EmptyArt kind="exams" />}
+              body={t("exams.emptyBody")}
+              action={newExam}
+            />
           )}
           {archived.length > 0 ? (
             <>
