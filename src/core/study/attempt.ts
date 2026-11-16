@@ -167,6 +167,8 @@ export function submitAttempt(
     string,
     { score: number; expected: string; explanation: string }
   >,
+  /** The steps written under open answers, by question id. Only those beside a written answer are saved. */
+  steps: Record<string, string> = {},
 ): {
   score: number;
   results: AttemptResult[];
@@ -193,9 +195,22 @@ export function submitAttempt(
     ...(questionFlagged(blocked, question) ? { flagged: true } : {}),
   }));
   const score = attemptScore(results);
+  const kept = Object.fromEntries(
+    stored.questions.flatMap((question) => {
+      const text = steps[question.id];
+      const pick = picks[question.id];
+      const answered = typeof pick === "string" && pick.trim() !== "";
+      return question.answer.kind === "open" && answered && text?.trim() ? [[question.id, text]] : [];
+    }),
+  );
   db.prepare(
     `INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)`,
-  ).run(uuidv7(now), attemptId, JSON.stringify({ picks, results, score }), now);
+  ).run(
+    uuidv7(now),
+    attemptId,
+    JSON.stringify({ picks, ...(Object.keys(kept).length ? { steps: kept } : {}), results, score }),
+    now,
+  );
   db.prepare(`UPDATE attempts SET submitted_at = ? WHERE id = ?`).run(
     now,
     attemptId,
