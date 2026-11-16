@@ -3,11 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // A stand-in for Electron: windows never load anything, and each run/check the page is asked for stays pending until
 // the test settles it, so a request can be held in flight while others queue behind it.
 const fake = vi.hoisted(() => ({
-  windows: [] as Array<{ destroyed: boolean; crashed: boolean; frame: { destroyed: boolean; detached: boolean } }>,
+  windows: [] as Array<{ destroyed: boolean; crashed: boolean; destroy(): void; frame: { destroyed: boolean; detached: boolean } }>,
   held: [] as Array<{ script: string; settle: (value: unknown) => void; fail: (error: Error) => void }>,
   scripts: [] as string[],
   proxies: [] as unknown[],
   webrtc: [] as string[],
+  partitions: [] as string[],
+  handled: [] as string[],
+  cleared: 0,
+  /** While set, clearing the session's storage does not finish until it resolves. */
+  clearGate: null as Promise<void> | null,
 }));
 
 vi.mock("electron", () => {
@@ -68,7 +73,15 @@ vi.mock("electron", () => {
     }
   }
   const partition = {
-    protocol: { handle: () => undefined },
+    protocol: {
+      handle: (scheme: string) => {
+        fake.handled.push(scheme);
+      },
+    },
+    clearStorageData: async () => {
+      fake.cleared++;
+      await fake.clearGate;
+    },
     webRequest: { onBeforeRequest: () => undefined },
     setPermissionRequestHandler: () => undefined,
     setPermissionCheckHandler: () => undefined,
@@ -78,7 +91,12 @@ vi.mock("electron", () => {
   };
   return {
     BrowserWindow: FakeWindow,
-    session: { fromPartition: () => partition },
+    session: {
+      fromPartition: (name: string) => {
+        fake.partitions.push(name);
+        return partition;
+      },
+    },
   };
 });
 
@@ -112,6 +130,9 @@ describe("python runtime queue", () => {
     fake.scripts.length = 0;
     fake.proxies.length = 0;
     fake.webrtc.length = 0;
+    fake.partitions.length = 0;
+    fake.handled.length = 0;
+    fake.cleared = 0;
     requireRuntime.mockClear();
     configurePythonRuntime("/workspace-a");
   });
@@ -310,5 +331,85 @@ describe("python runtime queue", () => {
       handleRuntimeRequest("grade", { answer: "x".repeat(8001), reference: "1" }),
     ).resolves.toEqual({ state: "none", reason: "runtime-unavailable" });
     expect(fake.windows).toHaveLength(0);
+  });
+});
+
+// The session is made once per app run, so these tests start from a fresh module.
+describe("python runtime session", () => {
+  let python: typeof import("./python-runtime");
+  beforeEach(async () => {
+    vi.resetModules();
+    fake.windows.length = 0;
+    fake.held.length = 0;
+    fake.scripts.length = 0;
+    fake.proxies.length = 0;
+    fake.partitions.length = 0;
+    fake.handled.length = 0;
+    fake.cleared = 0;
+    fake.clearGate = null;
+    python = await import("./python-runtime");
+    python.configurePythonRuntime("/workspace-a");
+  });
+  afterEach(() => python.disposePythonRuntime());
+
+  it("keeps one in-memory session for a hundred windows, and clears its storage as each one ends", async () => {
+    for (let round = 0; round < 100; round++) {
+      const running = python.handleRuntimeRequest("check", claim);
+      await vi.waitFor(() => expect(fake.held).toHaveLength(1), { interval: 1 });
+      // The renderer dies mid-request, as a crash would, and the next request opens a fresh window.
+      fake.windows.at(-1)!.destroy();
+      await running;
+      fake.held.length = 0;
+    }
+    expect(fake.windows).toHaveLength(100);
+    expect(fake.partitions).toEqual(["pyxis-python"]);
+    expect(fake.handled).toEqual(["pyxis-runtime"]);
+    expect(fake.proxies).toHaveLength(1);
+    // Cleared when the window ended, and again when the request that was running in it settled.
+    expect(fake.cleared).toBeGreaterThanOrEqual(100);
+  });
+
+  it("clears the session's storage after every run, so nothing a run leaves reaches the next one", async () => {
+    const running = python.handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    expect(fake.cleared).toBe(0);
+    fake.held[0]!.settle({ stdout: "" });
+    await running;
+    expect(fake.cleared).toBe(1);
+    // A run that fails clears it as well.
+    const failing = python.handleRuntimeRequest("python", { code: "2" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    fake.held[1]!.fail(new Error("boom"));
+    await expect(failing).rejects.toThrow();
+    expect(fake.cleared).toBe(2);
+  });
+
+  it("clears the session's storage when the runtime is disposed", async () => {
+    const running = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    python.disposePythonRuntime();
+    await running;
+    expect(fake.cleared).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not open the next window until the storage of the one that ended has been cleared", async () => {
+    const first = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle({ state: "none" });
+    await first;
+    let finish: () => void = () => undefined;
+    fake.clearGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    fake.windows[0]!.destroy();
+    const second = python.handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.cleared).toBeGreaterThanOrEqual(1));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fake.windows).toHaveLength(1);
+    finish();
+    await vi.waitFor(() => expect(fake.windows).toHaveLength(2));
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    fake.held[1]!.settle({ state: "none" });
+    await second;
   });
 });

@@ -304,3 +304,109 @@ test("the Python window's page reaches nothing through the network stack either:
     removeTestFolder(userData);
   }
 });
+
+/** Python that writes something into every kind of storage a page's workers can reach, and says which kinds took it. */
+const writeStorage = [
+  "import js, asyncio, json",
+  "from pyodide.ffi import create_once_callable, to_js",
+  "result = {}",
+  "async def write():",
+  "    try:",
+  "        cache = await js.caches.open('leak-cache')",
+  "        await cache.put('https://example.invalid/leak', js.Response.new('leaked'))",
+  "        result['cache'] = 'written'",
+  "    except Exception as error:",
+  "        result['cache'] = 'unavailable ' + str(error)[:50]",
+  "    try:",
+  "        root = await js.navigator.storage.getDirectory()",
+  "        handle = await root.getFileHandle('leak.txt', to_js({'create': True}, dict_converter=js.Object.fromEntries))",
+  "        stream = await handle.createWritable()",
+  "        await stream.write('leaked')",
+  "        await stream.close()",
+  "        result['opfs'] = 'written'",
+  "    except Exception as error:",
+  "        result['opfs'] = 'unavailable ' + str(error)[:50]",
+  "    try:",
+  "        done = asyncio.get_event_loop().create_future()",
+  "        request = js.indexedDB.open('leak-db', 1)",
+  "        request.onupgradeneeded = create_once_callable(lambda event: request.result.createObjectStore('s'))",
+  "        request.onsuccess = create_once_callable(lambda event: done.set_result(request.result))",
+  "        request.onerror = create_once_callable(lambda event: done.set_exception(Exception('open failed')))",
+  "        database = await done",
+  "        database.close()",
+  "        result['idb'] = 'written'",
+  "    except Exception as error:",
+  "        result['idb'] = 'unavailable ' + str(error)[:50]",
+  "await write()",
+  "print(json.dumps(result))",
+].join("\n");
+
+/** Python that looks for what the one above wrote, and says what it found. */
+const readStorage = [
+  "import js, json",
+  "found = {}",
+  "try:",
+  "    found['cache'] = [str(name) for name in await js.caches.keys()]",
+  "except Exception as error:",
+  "    found['cache'] = 'unavailable'",
+  "try:",
+  "    root = await js.navigator.storage.getDirectory()",
+  "    await root.getFileHandle('leak.txt')",
+  "    found['opfs'] = ['leak.txt']",
+  "except Exception as error:",
+  "    found['opfs'] = []",
+  "try:",
+  "    found['idb'] = [str(entry.name) for entry in await js.indexedDB.databases()]",
+  "except Exception as error:",
+  "    found['idb'] = 'unavailable'",
+  "print(json.dumps(found))",
+].join("\n");
+
+test("nothing a Python run leaves in the window's session reaches the next run: every run starts clean", async () => {
+  test.skip(!existsSync(".tmp/pyodide/pyodide.js"), "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.");
+  test.setTimeout(240000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-python-clean-"));
+  const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
+  mkdirSync(pack, { recursive: true });
+  cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
+  const app = await launchPyxis({ userData, env: { HOME: userData } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const python = async (code: string) =>
+      (await page.evaluate((code) => window.pyxis.invoke("tools.python", { code }), code)) as { stdout: string; stderr: string };
+    const written = await python(writeStorage);
+    expect(written.stderr, "the writing run").toBe("");
+    const wrote = JSON.parse(written.stdout.trim()) as Record<string, string>;
+    // The test is only worth something for the kinds of storage a worker can write: at least one took it.
+    expect(Object.values(wrote).filter((value) => value === "written").length, JSON.stringify(wrote)).toBeGreaterThan(0);
+    // Each run is a fresh worker in the same window and session, and finds none of it.
+    const found = await python(readStorage);
+    expect(found.stderr, "the reading run").toBe("");
+    const seen = JSON.parse(found.stdout.trim()) as Record<string, unknown>;
+    expect(seen).toEqual({ cache: [], opfs: [], idb: [] });
+    // And a run that comes after a replaced window finds none either.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://sandbox/"))
+        ?.webContents.forcefullyCrashRenderer();
+    });
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().startsWith("pyxis-runtime://sandbox/")).length))
+      .toBe(0);
+    await python(writeStorage);
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://sandbox/"))
+        ?.webContents.forcefullyCrashRenderer();
+    });
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL().startsWith("pyxis-runtime://sandbox/")).length))
+      .toBe(0);
+    expect(JSON.parse((await python(readStorage)).stdout.trim())).toEqual({ cache: [], opfs: [], idb: [] });
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
