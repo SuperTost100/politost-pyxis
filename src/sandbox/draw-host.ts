@@ -100,6 +100,9 @@ async function draw(request: { kind: string; code: string; engine: string }): Pr
     try {
       svg = library.layout(request.code, "svg", request.engine);
     } catch (error) {
+      // A failed layout can leave the WebAssembly instance in a state of its own (an abort, a memory limit), so the next
+      // drawing gets a new one. The library's file is already loaded, so this takes a moment.
+      graphviz = undefined;
       return fail(error);
     }
     return await fromSvg(svg);

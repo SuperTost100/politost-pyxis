@@ -127,6 +127,8 @@ test.describe("the drawing window", () => {
       const syntax = await draw(app, "digraph { a -> b [label=] }");
       expect(syntax).toHaveProperty("error");
       expect((syntax as { error: string }).error).toMatch(/\S/);
+      // A failed drawing does not spoil the next one, which is drawn with a new instance of the library.
+      expectPicture(await draw(app, automaton), "after a failed drawing");
     } finally {
       await finish(app, userData);
     }
