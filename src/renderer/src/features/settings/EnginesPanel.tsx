@@ -262,8 +262,8 @@ export function EnginesPanel() {
   // the keys are read the list cannot know the keyed ones, so turning a tool off waits: a pick without them would drop
   // them and their tasks.
   const manual = manualChoice(rows, keyStatus(keys));
-  const usable = manual.rows.map((row) => row.id);
   const readyRows = rows.filter((row) => row.installed && row.loggedIn && !row.disabled);
+  const ready = readyRows.map((row) => row.id);
   const inUse = (row: Engine) => allowed === null || allowed.includes(row.id);
   // The connected tools in the order Pyxis uses them, and the rest of the CLIs, still to install or sign in to.
   const connected = shownOrder(rows.filter(isConnected), order);
@@ -374,7 +374,7 @@ export function EnginesPanel() {
   function connect(row: Engine) {
     if (!isInstallable(row.id)) return;
     if (allowed !== null && !allowed.includes(row.id)) {
-      const next = toggledUse(allowed, usable, readyRows.map((item) => item.id), row.id, true);
+      const next = toggledUse(allowed, ready, row.id, true);
       if (next !== undefined) choose.mutate(next);
     }
     setSetupFor(row.id);
@@ -468,14 +468,14 @@ export function EnginesPanel() {
     if (moved) setSaid(t("engines.order.dropped", { name: moved.name, position: to + 1, count: connected.length }));
   }
   function setUse(row: Engine, use: boolean) {
-    const next = toggledUse(allowed, usable, readyRows.map((item) => item.id), row.id, use);
+    const next = toggledUse(allowed, ready, row.id, use);
     if (next !== undefined) choose.mutate(next);
   }
   /** The actions a tool shares in the list and under Advanced: test it, use it or not, open its details. */
   function sharedItems(row: Engine): NonNullable<ToolMenu["items"]> {
     const using = inUse(row);
     // One tool has to stay in use, and the list of the keyed ones has to be read before a tool can be left out.
-    const last = using && toggledUse(allowed, usable, readyRows.map((item) => item.id), row.id, false) === undefined;
+    const last = using && toggledUse(allowed, ready, row.id, false) === undefined;
     return [
       { key: "test", label: t("engines.test"), disabled: test.isPending || manage.isPending },
       {
@@ -633,7 +633,7 @@ export function EnginesPanel() {
           {said}
         </p>
         {reorder.isError || choose.isError ? <Notice tone="danger">{t("engines.order.failed")}</Notice> : null}
-        {pinnedCount > 0 ? (
+        {pinnedCount > 0 && connected.length > 0 ? (
           <p className="small engines-hint">{t("engines.auto.pinned", { count: pinnedCount })}</p>
         ) : null}
         {!details && !addingKey ? feedback : null}
@@ -694,15 +694,18 @@ export function EnginesPanel() {
             })}
           </ControlList>
           {nothingReady ? (
-            <Notice
-              tone="info"
-              action={{
-                label: t("onboarding.engines.offersLink"),
-                onClick: () => void window.pyxis.openExternal(offersPage(i18n.language)),
-              }}
-            >
-              {t("engines.installHelp")}
-            </Notice>
+            <p className="small engines-hint">
+              {t("engines.installHelp")}{" "}
+              <a
+                href={offersPage(i18n.language)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void window.pyxis.openExternal(offersPage(i18n.language));
+                }}
+              >
+                {t("onboarding.engines.offersLink")}
+              </a>
+            </p>
           ) : null}
         </section>
       ) : null}

@@ -54,20 +54,24 @@ describe("moving a tool", () => {
 });
 
 describe("turning a tool off and on", () => {
-  const usable = ["claude", "codex", "antigravity"];
+  const ready = ["claude", "codex", "antigravity"];
 
   it("starts from the tools that work now and leaves the one turned off out", () => {
-    expect(toggledUse(null, usable, ["claude", "codex"], "codex", false)).toEqual(["claude"]);
+    expect(toggledUse(null, ["claude", "codex"], "codex", false)).toEqual(["claude"]);
   });
 
-  it("returns to every tool, also one connected later, when the last one is turned on again", () => {
-    expect(toggledUse(["claude", "antigravity"], usable, usable, "codex", true)).toBeNull();
-    expect(toggledUse(["claude"], usable, usable, "codex", true)).toEqual(["claude", "codex"]);
+  it("returns to every tool, also one connected later, when the last one that was off is turned on again", () => {
+    expect(toggledUse(["claude", "antigravity"], ready, "codex", true)).toBeNull();
+    expect(toggledUse(["claude"], ready, "codex", true)).toEqual(["claude", "codex"]);
+    // A tool that is not connected now does not keep the choice from going back to every tool.
+    expect(toggledUse(["claude"], ["claude", "codex"], "codex", true)).toBeNull();
   });
 
   it("refuses to turn off the only tool in use", () => {
-    expect(toggledUse(["claude"], usable, usable, "claude", false)).toBeUndefined();
-    expect(toggledUse(null, usable, ["claude"], "claude", false)).toBeUndefined();
+    expect(toggledUse(["claude"], ready, "claude", false)).toBeUndefined();
+    expect(toggledUse(null, ["claude"], "claude", false)).toBeUndefined();
+    // A tool that is allowed but signed out does not count as one left in use.
+    expect(toggledUse(["claude", "agent"], ["claude"], "claude", false)).toBeUndefined();
   });
 });
 

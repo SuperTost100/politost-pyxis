@@ -46,22 +46,20 @@ export function movedOrder(
 }
 
 /**
- * The tools Pyxis may use after `id` is turned off or on again. `usable` are the tools the student can turn on or off
- * (every CLI of this build and each API provider with a saved key) and `ready` the ones that work now. Null means
- * every tool, also one connected later: turning the last one back on returns to it. An empty answer is refused: one
- * tool has to stay in use.
+ * The tools Pyxis may use after `id` is turned off or on again. `ready` are the tools that work now: the connected
+ * ones and each API provider with a saved key. Null means every tool, also one connected later: turning back on the
+ * last of the ready tools that was off returns to it. An empty answer is refused, because one tool has to stay in use.
  */
 export function toggledUse(
   allowed: readonly string[] | null,
-  usable: readonly string[],
   ready: readonly string[],
   id: string,
   use: boolean,
 ): string[] | null | undefined {
   const current = allowed ?? ready;
   const next = use ? [...new Set([...current, id])] : current.filter((item) => item !== id);
-  if (next.length === 0) return undefined;
-  return usable.every((item) => next.includes(item)) ? null : next;
+  if (!ready.some((item) => next.includes(item))) return undefined;
+  return ready.every((item) => next.includes(item)) ? null : next;
 }
 
 /** How to say when a tool has requests again: later today, tomorrow, or on another day. */

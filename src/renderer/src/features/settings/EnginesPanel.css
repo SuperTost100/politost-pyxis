@@ -193,9 +193,11 @@
 .engines-feature-row {
   align-items: start;
 }
+/* The task's name sits on the picker's first line, and a name that wraps keeps its lines together. */
 .engines-feature-row > label {
-  line-height: 36px;
+  padding-top: 8px;
   font-weight: 500;
+  line-height: 1.4;
 }
 .engines-effort-caption {
   display: none;
@@ -216,6 +218,10 @@
 .engines-hint,
 .engines-terms {
   color: var(--ink-muted);
+}
+.engines-hint a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 .engines-section > .engines-hint {
   margin-top: var(--space-3);

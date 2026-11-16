@@ -34,7 +34,7 @@ export function recordedPlanRun(
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
     });
-    const limit = limited[input.selection.provider];
+    const limit = input.selection ? limited[input.selection.provider] : undefined;
     if (limit && !(limit.until && existsSync(limit.until)))
       throw Object.assign(new Error("You've hit your usage limit."), {
         code: "cli-failed",

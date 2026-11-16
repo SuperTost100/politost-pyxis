@@ -3116,7 +3116,7 @@
     "advanced": "Avanzate",
     "automatic": "Automatico",
     "backToAuto": "Torna alla scelta automatica",
-    "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Premi Installa accanto all'AI che paghi già, poi accedi. Il modello lo sceglie Pyxis.",
+    "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Collega qui sopra l'AI che paghi già: il modello lo sceglie Pyxis.",
     "auto": {
       "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
       "single": "Pyxis usa {{name}} per tutto, con il modello più economico che basta.",

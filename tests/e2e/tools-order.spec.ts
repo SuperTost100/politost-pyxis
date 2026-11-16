@@ -227,3 +227,71 @@ test("Strumenti AI: work goes on with the next tool when the first is out of req
     rmSync(tools.bin, { recursive: true, force: true });
   }
 });
+
+test("Strumenti AI: a tool the student turns off keeps its row and takes no work until it is used again", async () => {
+  test.skip(process.platform === "win32", "stand-in tools are shell scripts");
+  test.setTimeout(180_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-tools-off-"));
+  const tools = standInTools(["claude", "codex"]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  const providers = async (page: Page) => {
+    const features = (await page.evaluate(() => window.pyxis.invoke("engines.features", {}))) as Record<
+      string,
+      { provider: string }
+    >;
+    return [...new Set(Object.values(features).map((row) => row.provider))].sort();
+  };
+  const allowed = (page: Page) =>
+    page.evaluate(
+      async () => ((await window.pyxis.invoke("engines.choice", {})) as { allowed: string[] | null }).allowed,
+    );
+  const menu = (page: Page, name: string) => page.getByRole("region", { name: `Azioni su ${name}` });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await useTools(page, ["claude", "codex"]);
+    await page.evaluate(() => window.pyxis.invoke("engines.reorder", { order: ["codex", "claude"] }));
+    await openTools(page);
+    await expect(listed(page)).toHaveText(["ChatGPT", "Claude"]);
+    await expect.poll(() => providers(page)).toEqual(["codex"]);
+
+    // ---- Turned off from its menu: the first tool keeps its row, loses its place and takes no work.
+    await page.getByRole("button", { name: "Azioni su ChatGPT" }).click();
+    await menu(page, "ChatGPT").getByRole("menuitem", { name: "Non usare" }).click();
+    const chatgpt = page.locator('.engines-tool[data-tool="codex"]');
+    await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Non in uso");
+    await expect(chatgpt.locator(".engines-tool-n")).toHaveCount(0);
+    await expect(page.locator('.engines-tool[data-tool="claude"] .engines-tool-n')).toHaveText("1");
+    await expect.poll(() => allowed(page)).toEqual(["claude"]);
+    await expect.poll(() => providers(page)).toEqual(["claude"]);
+    await expect(page.locator(".engines-summary")).toContainText("Pyxis usa Claude per tutto");
+    await saveShot(page, "tools/off-it.png", { fullPage: true });
+    // One tool has to stay in use: the last one cannot be turned off.
+    await page.getByRole("button", { name: "Azioni su Claude" }).click();
+    await expect(menu(page, "Claude").getByRole("menuitem", { name: "Non usare" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+
+    // ---- Used again: it takes its place back, and with it the work, since it is first in the list.
+    await page.getByRole("button", { name: "Azioni su ChatGPT" }).click();
+    await menu(page, "ChatGPT").getByRole("menuitem", { name: "Usa di nuovo" }).click();
+    await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Collegato");
+    await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2"]);
+    // Every tool is in use again, also one connected later.
+    await expect.poll(() => allowed(page)).toBeNull();
+    await expect.poll(() => providers(page)).toEqual(["codex"]);
+
+    // ---- Scollega asks first, since coming back takes a sign-in in the browser.
+    await page.getByRole("button", { name: "Scollega ChatGPT" }).click();
+    const ask = page.getByRole("dialog", { name: "Scollegare ChatGPT?" });
+    await expect(ask).toBeVisible();
+    await ask.getByRole("button", { name: "Annulla" }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Collegato");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
