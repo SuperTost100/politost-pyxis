@@ -131,7 +131,7 @@ describe("prompt templates", () => {
 
   it("asks for output in the supplied content language wherever the output is text", () => {
     const withLanguage = ids.filter(
-      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe"].includes(id),
+      (id) => !["quiz.open-grade", "chat.checks", "source.transcribe", "figure.fix"].includes(id),
     );
     for (const id of withLanguage) {
       expect(placeholders(loadTemplate(id)), id).toEqual(["contentLanguage"]);
@@ -145,6 +145,9 @@ describe("prompt templates", () => {
       "reference's language",
     );
     expect(placeholders(loadTemplate("chat.checks"))).toEqual([]);
+    // The fix call answers in code, and keeps the language of the figure's own labels.
+    expect(placeholders(loadTemplate("figure.fix"))).toEqual([]);
+    expect(loadTemplate("figure.fix").body).toContain("keep what the code draws, its labels and its language");
   });
 
   it("offers only the figure kinds that can be drawn, and no figure without the runtime", () => {

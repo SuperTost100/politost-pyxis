@@ -7,7 +7,7 @@ import { parseLooseJson, parseSmartText, partQuestions, replaceSection, smartSec
 import { generate, type GenerateInput } from "../engine/generate";
 import { planLanguage, promptProvenance, systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
-import { figureRunner, type FigureRunner } from "../math/figures";
+import { figureFixer, figureRunner, type FigureRunner } from "../math/figures";
 import { interestsLine } from "../profile/context";
 import { cacheKey, itemBody, loadLessonById, saveLesson } from "./lesson";
 import {
@@ -1030,7 +1030,10 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
     } else problems = checked.problems;
   }
   if (!shaped || !engine) throw new Error("lesson-part-invalid");
-  const { markdown, figures } = await withFigures(shaped.markdown, drawer, { signal: input.signal });
+  const { markdown, figures } = await withFigures(shaped.markdown, drawer, {
+    signal: input.signal,
+    fix: figureFixer({ selection, run: input.run, signal: input.signal }),
+  });
   input.signal?.throwIfAborted();
   const passageIds = passages.map((passage) => passage.id);
   const summary = shaped.summary ?? (part.about || null);
@@ -1306,7 +1309,11 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
   }
   if (!shaped || !engine) throw new Error("lesson-part-invalid");
   // Figures the rest of the part already has keep their images; a new one in the rewritten section is drawn.
-  const { markdown, figures } = await withFigures(shaped.markdown, drawer, { known: saved.figures, signal: input.signal });
+  const { markdown, figures } = await withFigures(shaped.markdown, drawer, {
+    known: saved.figures,
+    signal: input.signal,
+    fix: figureFixer({ selection, run: input.run, signal: input.signal }),
+  });
   input.signal?.throwIfAborted();
   const summary = shaped.summary ?? part.summary;
   db.transaction(() => {

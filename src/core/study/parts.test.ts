@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/connection";
 import { jsonSchema, type GenerateInput } from "../engine/generate";
+import { isFigureFixCall } from "../engine/recorded-plan";
+import type { FigureRunner } from "../math/figures";
+import { figureKey } from "../../shared/smart-text";
 import { IpcError } from "../../shared/ipc";
 import { exportMarkdown } from "../share/markdown";
 import { removePlanSource } from "../plans/views";
@@ -24,6 +27,7 @@ import {
   partShape,
   partsMarkdown,
   planParts,
+  rewritePartSection,
   writePart,
   type OutlinePassage,
   type OutlineReply,
@@ -1004,5 +1008,96 @@ describe("writePart", () => {
       "### Passo 3 primo",
       "### Passo 3 secondo",
     ]);
+  });
+});
+
+describe("figures in a part", () => {
+  const PNG =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const broken = "raise ValueError('no axis')";
+  const mended = "plt.plot([0, 1, 2])";
+  const figureBlock = (code: string) =>
+    ["```pyxis-figure", JSON.stringify({ caption: "Una retta.", code }), "```"].join("\n");
+  // The sandbox stand-in: code that raises fails, the rest draws.
+  const python: FigureRunner = async (code) => ({
+    stdout: "",
+    stderr: code.includes("raise ValueError") ? "ValueError: no axis\n" : "",
+    images: code.includes("raise ValueError") ? [] : [PNG],
+    timedOut: false,
+    truncated: false,
+  });
+  const withFigure = (tag: string, code: string) =>
+    partText(tag).replace("Riprendiamo da dove eravamo.", `Riprendiamo da dove eravamo.\n\n${figureBlock(code)}`);
+  /** The part's reply, and the fix calls with the engine each one named; `fix` answers them. */
+  function engineFor(reply: string, fix: string | Error) {
+    const engine = recorded(reply);
+    const fixes: Array<{ model: string; prompt: string }> = [];
+    const run: GenerateInput["run"] = async (input) => {
+      if (!isFigureFixCall(input.system)) return engine.run(input);
+      fixes.push({ model: input.selection.model, prompt: input.prompt });
+      if (fix instanceof Error) throw fix;
+      return { text: JSON.stringify({ code: fix }), structured: { code: fix }, provider: "claude", model: "fixer", inputTokens: 1 };
+    };
+    return { engine, fixes, run };
+  }
+  async function planned() {
+    const db = workspace(Array(6).fill(4_000));
+    await planParts(db, {
+      planId: "p",
+      topicId: "t",
+      run: recorded(reply(["Uno", ["P1", "P2"]], ["Due", ["P3", "P4"]], ["Tre", ["P5"]], ["Quattro", ["P6"]])).run,
+    });
+    return db;
+  }
+  const picked = { provider: "claude", model: "picked-model" } as const;
+
+  it("corrects a figure that failed with one call on the engine the part was asked of, before the part is saved", async () => {
+    const db = await planned();
+    const { fixes, run } = engineFor(withFigure("1", broken), mended);
+    const outline = await writePart(db, { planId: "p", topicId: "t", position: 1, run, python, selection: picked });
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0]!.model).toBe("picked-model");
+    expect(JSON.parse(fixes[0]!.prompt)).toMatchObject({ kind: "plot", caption: "Una retta.", code: broken });
+    const body = JSON.parse(
+      (db.prepare("SELECT body_json FROM items WHERE id = ?").get(outline.parts[0]!.itemId) as { body_json: string }).body_json,
+    ) as { markdown: string; figures: Record<string, string> };
+    expect(body.figures).toEqual({ [figureKey(mended)]: PNG });
+    expect(body.markdown).toContain(figureBlock(mended));
+    expect(body.markdown).not.toContain("no axis");
+  });
+
+  it("drops a figure whose fix failed and saves the part with its text whole", async () => {
+    const db = await planned();
+    const { fixes, run } = engineFor(withFigure("1", broken), new Error("the engine is out"));
+    const outline = await writePart(db, { planId: "p", topicId: "t", position: 1, run, python });
+    expect(fixes).toHaveLength(1);
+    const body = JSON.parse(
+      (db.prepare("SELECT body_json FROM items WHERE id = ?").get(outline.parts[0]!.itemId) as { body_json: string }).body_json,
+    ) as { markdown: string; figures?: Record<string, string> };
+    expect(body.figures ?? {}).toEqual({});
+    expect(body.markdown).not.toContain("pyxis-figure");
+    expect(body.markdown).toContain("Riprendiamo da dove eravamo.");
+    expect(body.markdown).toContain("## Passo 1 secondo");
+  });
+
+  it("corrects a figure of a rewritten section the same way, and keeps the part's other figures", async () => {
+    const db = await planned();
+    const first = engineFor(withFigure("1", "plt.plot([5, 6])"), mended);
+    await writePart(db, { planId: "p", topicId: "t", position: 1, run: first.run, python });
+    expect(first.fixes).toHaveLength(0);
+    const newSection = `${section("Passo 1 primo", 150, "Passo1primoNuovo")}\n\n${figureBlock(broken).replace("Una retta.", "Una curva.")}`;
+    const second = engineFor(newSection, mended);
+    const result = await rewritePartSection(db, {
+      planId: "p",
+      topicId: "t",
+      position: 1,
+      section: 0,
+      run: second.run,
+      python,
+      selection: picked,
+    });
+    expect(second.fixes.map((call) => call.model)).toEqual(["picked-model"]);
+    expect(Object.keys(result.figures ?? {}).sort()).toEqual([figureKey("plt.plot([5, 6])"), figureKey(mended)].sort());
+    expect(result.markdown).toContain(figureBlock(mended).replace("Una retta.", "Una curva."));
   });
 });

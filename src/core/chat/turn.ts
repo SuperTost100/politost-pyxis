@@ -11,6 +11,7 @@ import {
 import {
   drawFigures,
   figureCaptions,
+  figureFixer,
   figureRunner,
   noSandbox,
   type FigureRunner,
@@ -1127,6 +1128,8 @@ async function answer(
   const drawn = await drawFigures(parsed.body, {
     python: drawer?.run ?? noSandbox,
     kinds: drawer?.kinds ?? [],
+    // The fix call is counted with this chat's tokens and stops with the turn.
+    fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
     signal: input.signal,
   });
   parsed.body = drawn.markdown;

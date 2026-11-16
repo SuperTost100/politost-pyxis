@@ -15,7 +15,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { figureProgram } from "../../src/core/math/figures";
+import { figureProgram } from "../../src/core/math/figure-program";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
