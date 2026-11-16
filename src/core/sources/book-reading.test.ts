@@ -78,7 +78,7 @@ function site(options: { tamper?: boolean } = {}) {
     else downloads.catalogs += 1;
     return inner(url, max, signal, progress);
   };
-  return { transport, downloads };
+  return { transport, downloads, dir };
 }
 
 function setup(options: { tamper?: boolean } = {}) {
@@ -90,7 +90,7 @@ function setup(options: { tamper?: boolean } = {}) {
   registerSourceJobs(db, workspace, runner, (async (input: { path: string }) => ({
     book: parseSmartbook(new Uint8Array(readFileSync(input.path))),
   })) as never);
-  return { workspace, db, runner, handlers, downloads: books.downloads };
+  return { workspace, db, runner, handlers, downloads: books.downloads, siteDir: books.dir, transport: books.transport };
 }
 
 const count = (db: ReturnType<typeof openDatabase>, table: string) =>
@@ -130,6 +130,24 @@ describe("reading a free book before it is added", () => {
       library: 1,
     });
     await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    ctx.db.close();
+  });
+
+  it("goes on reading an open book after it is added, from what is held or stored, with no second download and no network", async () => {
+    const ctx = setup();
+    await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1 }))[0]?.text).toBe(SPEED);
+    const added = await ctx.handlers.importBook({ id: "fisica-demo" });
+    await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    // The package leaves the site: a chapter not read yet must not need it.
+    rmSync(join(ctx.siteDir, "books"), { recursive: true, force: true });
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 2 }))[0]?.text).toContain("massa per accelerazione");
+    expect(ctx.downloads.packages).toBe(1);
+    // After the held copy is gone (another launch, or ten minutes), the stored book answers the same way.
+    const later = sourceHandlers(ctx.db, ctx.workspace, ctx.runner, undefined, undefined, ctx.transport);
+    expect((await later.bookChapter({ id: "fisica-demo", chapter: 2 }))[0]?.text).toContain("massa per accelerazione");
+    expect((await later.bookPreview({ id: "fisica-demo" })).chapters).toHaveLength(2);
+    expect(ctx.downloads.packages).toBe(1);
     ctx.db.close();
   });
 

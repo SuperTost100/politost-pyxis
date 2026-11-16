@@ -5,7 +5,7 @@ import { Outlet, useLocation, useNavigate, useNavigation } from "react-router";
 import { useChatActions } from "../../features/ask/chatActions";
 import { JobsButton } from "../../features/jobs/JobsButton";
 import { invoke } from "../../lib/ipc";
-import { isExamPagePath, isMapPath } from "../paths";
+import { isMapPath } from "../paths";
 import { useSection } from "../useSection";
 import { Finder, type FinderScope } from "../Finder";
 import { LaunchEngineNotice } from "../LaunchEngineNotice";
@@ -122,23 +122,13 @@ export function Shell() {
     };
   }, [inSetup]);
 
-  // The page column's width rules for the page being opened; the strip with an exam in progress follows them too.
+  // Every page sits in the one column (global.css); Chiedi runs edge to edge, and a map fills the window's height.
   const container =
-    target.pathname.startsWith("/settings")
-      ? "px-shell-container px-shell-wide"
-      : target.pathname.startsWith("/ask") || isMapPath(target.pathname)
-        ? "px-shell-container px-shell-bleed"
-        : // The exam list and an exam's page set their own widths (ExamsList.css, ExamPage.css).
-          target.pathname === "/exams"
-          ? "px-shell-container px-shell-exams"
-          : isExamPagePath(target.pathname)
-            ? "px-shell-container px-shell-exam"
-            : target.pathname.startsWith("/exams/library")
-              ? "px-shell-container px-shell-library"
-              : // The list of every flashcard is a wider column of small cards (CardBrowser.css).
-                target.pathname === "/flashcards/all"
-                ? "px-shell-container px-shell-cards"
-                : "px-shell-container";
+    target.pathname.startsWith("/ask")
+      ? "px-shell-container px-shell-bleed"
+      : isMapPath(target.pathname)
+        ? "px-shell-container px-shell-fill"
+        : "px-shell-container";
 
   return (
     <div className={inSetup ? "px-app px-in-setup" : "px-app"}>

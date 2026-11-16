@@ -173,6 +173,9 @@ test("Adding from the reader keeps it open and says where the book went, without
     await expect(panel.getByText("È nella tua Libreria, sullo scaffale di Fisica 1.")).toBeVisible({ timeout: 30_000 });
     await expect(panel.getByRole("button", { name: "Aggiungi alla Libreria" })).toHaveCount(0);
     await expect(panel.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+    // A chapter not read before the add still opens, from the package the book arrived in, with the site empty.
+    await panel.getByRole("button", { name: /Capitolo successivo|Prossimo capitolo|Next chapter/ }).click();
+    await expect(panel.getByText("La forza risultante è massa per accelerazione.")).toBeVisible();
     await expect(offer(page)).toHaveCount(0);
     await expect(shelf(page, "Fisica 1").getByRole("button", { name: "Fisica 1", exact: true })).toBeVisible();
     await saveShot(page, "library-books/reader-added-it-light-1280.png", { fullPage: true });

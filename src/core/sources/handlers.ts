@@ -295,6 +295,11 @@ export function sourceHandlers(
     if (!book) throw new Error("books-missing");
     return book;
   };
+  /** The source holding this exact package once its read is over, so a reader of the book needs no package at all. */
+  const storedBook = (book: CatalogBook): string | null => {
+    const id = existingSourceFor(db, book.sha256);
+    return id && db.prepare(`SELECT 1 FROM sources WHERE id = ? AND status = 'ready'`).get(id) ? id : null;
+  };
   // The book being read before it is added, in memory only.
   const reading = createBookReading();
   const requireOcrData = async () => {
@@ -364,7 +369,7 @@ export function sourceHandlers(
           if (err instanceof SourceExists) return place({ sourceId: err.sourceId, title: book.title, subject: book.subject });
           throw err;
         }
-        reading.drop();
+        // The held package stays until its time is up: a reader still open on the book goes on from it.
         return place({
           sourceId: imported.sourceId,
           jobId: imported.jobId,
@@ -382,6 +387,9 @@ export function sourceHandlers(
     async bookPreview(input: { id: string }, signal?: AbortSignal) {
       try {
         const book = await catalogBook(input.id, signal);
+        const stored = storedBook(book);
+        if (stored)
+          return { title: book.title, subject: book.subject, version: book.version, chapters: smartbookChapters(db, stored) };
         const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
         return {
           title: book.title,
@@ -396,6 +404,8 @@ export function sourceHandlers(
     async bookChapter(input: { id: string; chapter: number }, signal?: AbortSignal) {
       try {
         const book = await catalogBook(input.id, signal);
+        const stored = storedBook(book);
+        if (stored) return chapterPassages(db, stored, input.chapter).map(({ id, text }) => ({ id, text }));
         const { parsed } = await reading.open(book, booksTransport, maxSourceBytes(".ptsb"), signal);
         return parsedChapter(parsed, input.chapter);
       } catch (err) {
