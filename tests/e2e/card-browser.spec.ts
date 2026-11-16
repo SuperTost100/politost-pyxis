@@ -1,3 +1,4 @@
+import { saveShot } from "./shots";
 import {
   expect,
   test,
@@ -221,6 +222,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await expect(editBox).toBeHidden();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ })).toBeFocused();
+    await saveShot(page, "card-browser-escape-closed-en-light.png", { animations: "disabled" });
     // With typing in it, the same Escape asks once, and the answer decides.
     await page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ }).click();
     await editBox.getByRole("textbox", { name: "Back" }).fill("Cambiato di nuovo.");

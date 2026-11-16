@@ -732,6 +732,7 @@ test("open answer: braces typed in a formula group, and the reading under the fi
     await page.keyboard.type("La legge oraria è $s=t^{3}-t^{2}$");
     await expect(reads).toHaveText("Si leggeLa legge oraria è s uguale a t al cubo meno t al quadrato");
     await expect(answer).not.toContainText(/lbrace|rbrace|[{}]/);
+    await saveShot(page, "quiz-open-braces-it-light-1280.png", { animations: "disabled" });
     await answer.fill("");
     await page.keyboard.type("Un insieme: $A=\\{1,2\\} $");
     await expect(reads).toHaveText("Si leggeUn insieme: A uguale a {1,2}");
