@@ -56,13 +56,13 @@ export async function launchPyxis({
   );
   try {
     await sizeWindow(app, set.PYXIS_E2E_WINDOW);
+    if (tracing()) await traceUntilClosed(app);
   } catch (error) {
     // The caller never gets this app, so nobody else can close it, and on Windows its open database would make the
     // test's cleanup fail and hide this error.
     await app.close().catch(() => undefined);
     throw error;
   }
-  if (tracing()) await traceUntilClosed(app);
   return app;
 }
 
