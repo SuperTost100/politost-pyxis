@@ -124,7 +124,7 @@ test("reviewing flashcards moves Oggi on every exam page and in the Esami list, 
       await page.getByRole("button", { name: "Easy", exact: true }).click();
       if (index < 4) await expect(page.getByText(`${index + 2} of 5`).first()).toBeVisible();
     }
-    await expect(page.getByText("No flashcards are due.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "You're done for today", level: 2 })).toBeVisible();
     // Four reviews of about 30 seconds and one capped at 60: 3 minutes, flashcards with an exam and without one alike.
     const seconds = db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").all() as Array<{ seconds: number }>;
     expect(seconds).toHaveLength(5);
@@ -179,7 +179,7 @@ test("a rating is never lost to the time measured: a card open for days, or a cl
       await page.getByRole("button", { name: "Easy", exact: true }).click();
       if (index < 2) await expect(page.getByText(`${index + 2} of 3`).first()).toBeVisible();
     }
-    await expect(page.getByText("No flashcards are due.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "You're done for today", level: 2 })).toBeVisible();
     await expect(page.getByText("The flashcard could not be rated")).toHaveCount(0);
     const seconds = db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").all() as Array<{ seconds: number | null }>;
     // All three are saved: a minute, no time, and about half a minute.
@@ -188,6 +188,93 @@ test("a rating is never lost to the time measured: a card open for days, or a cl
     expect(seconds[1]!.seconds).toBeNull();
     expect(seconds[2]!.seconds).toBeGreaterThanOrEqual(30);
     expect(seconds[2]!.seconds).toBeLessThan(40);
+  } finally {
+    await done();
+  }
+});
+
+test("a card's time follows it through the session's end: Undo last takes it back, and the card that returns after its countdown is timed afresh", async () => {
+  test.setTimeout(120_000);
+  const { page, db, done } = await openApp();
+  try {
+    db.exec("INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES ('c1','p-near','t-p-near','Prima','a',1)");
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+    // The page's clock is the test's: moving it is instant, and core's clock is real.
+    await page.clock.install();
+    await page.evaluate(() => {
+      location.hash = "/cards/due";
+    });
+    const front = page.locator("article.px-card .px-card-front");
+    await expect(front).toHaveText("Prima");
+    const times = () => (db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").all() as Array<{ seconds: number | null }>).map((row) => row.seconds);
+    const between = (value: number | null | undefined, low: number, high: number) => {
+      expect(value).toBeGreaterThanOrEqual(low);
+      expect(value).toBeLessThanOrEqual(high);
+    };
+
+    // Half a minute on the card, then "Didn't know it": it is still to learn, so the end screen counts down.
+    await page.clock.fastForward("00:30");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("1");
+    await expect(page.getByRole("timer")).toBeVisible();
+    expect(times()).toHaveLength(1);
+    between(times()[0], 30, 33);
+
+    // Undo last from the end screen takes the review and its time back, and the card is timed from its return.
+    await page.getByRole("button", { name: "Undo last" }).click();
+    await expect(front).toHaveText("Prima");
+    expect(times()).toEqual([]);
+    await page.clock.fastForward("00:20");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("1");
+    await expect(page.getByRole("timer")).toBeVisible();
+    expect(times()).toHaveLength(1);
+    between(times()[0], 20, 23);
+
+    // The countdown ends with the page open for over a minute; the card comes back and its time starts there.
+    db.prepare("UPDATE card_reviews SET state_json = json_set(state_json, '$.dueAt', ?) WHERE card_id = 'c1'").run(Date.now() - 1000);
+    await page.clock.fastForward("01:05");
+    await expect(front).toHaveText("Prima");
+    await page.clock.fastForward("00:10");
+    await page.keyboard.press("Space");
+    await page.keyboard.press("4");
+    await expect(page.getByRole("heading", { name: "You're done for today", level: 2 })).toBeVisible();
+    expect(times()).toHaveLength(2);
+    between(times()[1], 10, 13);
+  } finally {
+    await done();
+  }
+});
+
+test("the cards of a Ripasso carry their time too", async () => {
+  test.setTimeout(120_000);
+  const { page, db, done } = await openApp();
+  try {
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
+      ('c1','p-near','t-p-near','Prima','a',1), ('c2','p-near','t-p-near','Seconda','b',2)`);
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+    await page.clock.install();
+    await page.evaluate(() => window.pyxis.invoke("study.review", { planId: "p-near", count: 2 }));
+    await page.evaluate(() => {
+      location.hash = "/plans/p-near/review/cards";
+    });
+    await expect(page.locator("article.px-card .px-markdown").first()).toHaveText("Prima");
+    // Half a minute on the first card, a quarter of a minute on the second.
+    for (const [front, wait] of [["Prima", "00:30"], ["Seconda", "00:15"]] as const) {
+      await expect(page.locator("article.px-card .px-markdown").first()).toHaveText(front);
+      await page.clock.fastForward(wait);
+      await page.keyboard.press("Space");
+      await page.keyboard.press("4");
+    }
+    const rows = () => db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").all() as Array<{ seconds: number }>;
+    await expect.poll(() => rows().length).toBe(2);
+    const seconds = rows().map((row) => row.seconds);
+    expect(seconds[0]).toBeGreaterThanOrEqual(30);
+    expect(seconds[0]).toBeLessThanOrEqual(33);
+    expect(seconds[1]).toBeGreaterThanOrEqual(15);
+    expect(seconds[1]).toBeLessThanOrEqual(18);
   } finally {
     await done();
   }
