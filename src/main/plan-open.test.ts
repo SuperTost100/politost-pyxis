@@ -48,7 +48,13 @@ describe("readOpenedPlan", () => {
   it("reads a plan file as text", async () => {
     const path = join(dir, "Fisica.pyxis");
     writeFileSync(path, "\ufeff" + JSON.stringify({ version: 2, title: "Città" }));
-    expect(await readOpenedPlan(path)).toEqual({ ok: true, text: '{"version":2,"title":"Città"}' });
+    expect(await readOpenedPlan(path)).toEqual({
+      ok: true,
+      text: '{"version":2,"title":"Città"}',
+      name: "Fisica.pyxis",
+      // The byte order mark is in the file's size, not in the text.
+      bytes: 3 + Buffer.byteLength('{"version":2,"title":"Città"}'),
+    });
   });
 
   it("refuses a name that is not a plan file, a directory and a missing file", async () => {
@@ -64,7 +70,7 @@ describe("readOpenedPlan", () => {
     writeFileSync(join(dir, "secret.txt"), "private");
     symlinkSync(join(dir, "real.pyxis"), join(dir, "alias.pyxis"));
     symlinkSync(join(dir, "secret.txt"), join(dir, "trick.pyxis"));
-    expect(await readOpenedPlan(join(dir, "alias.pyxis"))).toEqual({ ok: true, text: "{}" });
+    expect(await readOpenedPlan(join(dir, "alias.pyxis"))).toEqual({ ok: true, text: "{}", name: "alias.pyxis", bytes: 2 });
     expect(await readOpenedPlan(join(dir, "trick.pyxis"))).toEqual({ ok: false, reason: "not-a-plan-file" });
   });
 
