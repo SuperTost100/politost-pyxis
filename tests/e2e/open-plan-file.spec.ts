@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -535,5 +535,117 @@ test("pictures of the import page in both languages, for the folder PYXIS_SHOTS 
       await app.close();
       removeTestFolder(userData);
     }
+  }
+});
+
+/** The ways back besides the control: Vai > Indietro (which ⌘[ and Alt+Left run), and the mouse's back button. */
+const ways = {
+  control: (page: Page) => page.getByRole("button", { name: /^Torna a / }).click(),
+  menu: (page: Page, app: ElectronApplication) =>
+    app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("back")?.click()),
+  mouse: (page: Page) =>
+    page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 3, bubbles: true, cancelable: true }))),
+};
+const forwards = {
+  control: (page: Page) => page.goForward(),
+  menu: (page: Page, app: ElectronApplication) =>
+    app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("forward")?.click()),
+  mouse: (page: Page) =>
+    page.evaluate(() => window.dispatchEvent(new MouseEvent("mouseup", { button: 4, bubbles: true, cancelable: true }))),
+};
+const add = (page: Page) => page.getByRole("button", { name: /^Aggiungi (ai miei esami|una copia lo stesso)$/ }).click();
+
+test("after an import the exam's back control reads Esami and every way back leads there, and going forward does not reopen the review", async () => {
+  test.setTimeout(180000);
+  const { app, page, userData } = await start([]);
+  try {
+    await skipSetup(page);
+    for (const way of ["control", "menu", "mouse"] as const) {
+      // Opened from Esami's menu, the way a link or a chosen file is: the opener page, then the review, then the exam.
+      await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
+      await page.getByRole("menuitem", { name: "Importa da un link" }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
+      await page.locator('input[type="file"]').first().setInputFiles({
+        name: "Analisi.pyxis",
+        mimeType: "application/json",
+        buffer: Buffer.from(shared("Analisi")),
+      });
+      await expect(page.locator(".px-import-review")).toBeVisible();
+      await add(page);
+      await expect(page).toHaveURL(/#\/plans\/[^/]+$/);
+      const exam = page.url();
+      // The import page is a finished step: the control names Esami, not the page that made the exam.
+      await expect(page.getByRole("button", { name: /^Torna a / })).toHaveText("Esami");
+      await expect(page.getByRole("button", { name: "Torna a Esami" })).toBeVisible();
+      await ways[way](page, app);
+      await expect(page).toHaveURL(/#\/exams$/);
+      // Forward returns to the exam, and the review is not behind or ahead of anything.
+      await forwards[way](page, app);
+      await expect(page).toHaveURL(exam);
+      await expect(page.locator(".px-import-review")).toHaveCount(0);
+      await ways[way](page, app);
+      await expect(page).toHaveURL(/#\/exams$/);
+      // One more step back from Esami goes to where Esami was opened (Chiedi), never to the review; Esami again is the
+      // sidebar's row, as it was for the first round.
+      await page.goBack();
+      await expect(page).toHaveURL(/#\/ask$/);
+      await fromChiediToExams(page);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a file opened from outside leaves Esami as the way back from the exam it made, however the student goes back", async () => {
+  test.setTimeout(180000);
+  const dir = mkdtempSync(join(tmpdir(), "pyxis-open-plan-file-"));
+  const file = join(dir, "Analisi.pyxis");
+  writeFileSync(file, shared("Analisi"));
+  const { app, page, userData } = await start([file]);
+  try {
+    await page.getByRole("button", { name: "Salta" }).click();
+    for (const way of ["control", "menu", "mouse"] as const) {
+      await expect(page).toHaveURL(/#\/exams\/get$/);
+      await expect(page.locator(".px-import-review")).toBeVisible();
+      await add(page);
+      await expect(page).toHaveURL(/#\/plans\/[^/]+$/);
+      await expect(page.getByRole("button", { name: /^Torna a / })).toHaveText("Esami");
+      await ways[way](page, app);
+      await expect(page).toHaveURL(/#\/exams$/);
+      await expect(page.locator(".px-import-review")).toHaveCount(0);
+      // The same file again, as a second launch or a drop would hand it over.
+      await app.evaluate(({ app: electron }, path) => {
+        electron.emit("second-instance", {}, ["/usr/bin/pyxis", path], "/");
+      }, file);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a file picked in the dialog on Esami adds the exam and leaves the window on Esami, with no new entry in its history", async () => {
+  test.setTimeout(120000);
+  const { app, page, userData } = await start([]);
+  try {
+    await skipSetup(page);
+    const entries = await page.evaluate(() => history.length);
+    await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("menuitem", { name: "Importa da un file .pyxis" }).click();
+    await (await chooser).setFiles({ name: "Analisi.pyxis", mimeType: "application/json", buffer: Buffer.from(shared("Analisi")) });
+    const dialog = page.getByRole("dialog", { name: "Importa un esame" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Aggiungi ai miei esami", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/exams$/);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    await expect(page.getByRole("button", { name: /^Torna a / })).toHaveCount(0);
+    await expect(page.locator("a.px-exams-row", { hasText: "Analisi" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
   }
 });

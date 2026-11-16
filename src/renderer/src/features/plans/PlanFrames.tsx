@@ -366,8 +366,10 @@ export function SharedPlanPage() {
   async function importReviewed(request: ImportRequest) {
     const result = await invoke("plans.import", request);
     await client.invalidateQueries({ queryKey: ["plans"] });
-    // The exam is made either way; a student who went back meanwhile is not taken to it.
-    if (stillHere()) navigate(`/plans/${result.planId}`);
+    // The exam is made either way; a student who went back meanwhile is not taken to it. The review is a finished step,
+    // so the exam takes its entry: the way back from the exam is where the review was opened from (or Esami), and going
+    // forward again never reopens it, as when the new exam's forms hand over to its page.
+    if (stillHere()) navigate(`/plans/${result.planId}`, { replace: true });
   }
 
   const reviewing = review !== null;
