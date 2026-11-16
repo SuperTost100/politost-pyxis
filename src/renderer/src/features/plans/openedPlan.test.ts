@@ -1,13 +1,13 @@
 import { createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handOverWaitingPlan, offerPlanText, planTextWaiting, takePlanText } from "./openedPlan";
+import { handOverWaitingPlan, offerPlanText, planTextWaiting, takePlan } from "./openedPlan";
 
 /** What the shared-plan page does: take the text each time it is entered. */
 function sharedPlanPage(router: ReturnType<typeof open>, taken: string[]) {
   return router.subscribe((state) => {
     if (state.navigation.state === "idle" && state.location.pathname === "/exams/get") {
-      const text = takePlanText();
-      if (text !== null) taken.push(text);
+      const text = takePlan()?.text;
+      if (text !== undefined) taken.push(text);
     }
   });
 }
@@ -35,7 +35,7 @@ function open(held?: { release: () => void }) {
 
 beforeEach(() => {
   vi.useFakeTimers();
-  takePlanText();
+  takePlan();
 });
 
 afterEach(() => {

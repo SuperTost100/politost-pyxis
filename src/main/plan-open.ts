@@ -1,5 +1,5 @@
 import { open, realpath, stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { MAX_OPENED_PLAN_BYTES, type OpenedPlan } from "../shared/bridge";
 
 /** The names a plan file has: what Pyxis saves, and what its documentation calls the format. */
@@ -49,7 +49,7 @@ export async function readOpenedPlan(path: string): Promise<OpenedPlan> {
       if (info.size > MAX_OPENED_PLAN_BYTES) return { ok: false, reason: "too-big" };
       const bytes = await handle.readFile();
       if (bytes.length > MAX_OPENED_PLAN_BYTES) return { ok: false, reason: "too-big" };
-      return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+      return { ok: true, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), name: basename(path), bytes: bytes.length };
     } finally {
       await handle.close();
     }

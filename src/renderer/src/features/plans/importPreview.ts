@@ -1,3 +1,4 @@
+import { nextExamDate } from "../../../../shared/exam-sessions";
 import {
   PLAN_FILE_PARTS,
   PLAN_FILE_REASONS,
@@ -20,6 +21,10 @@ export type PreviewSource = {
   /** Library source with the same content hash. */
   libraryId?: string;
 };
+/** One step of the path the file carries: a topic and what the file holds for it. */
+export type PreviewTopic = { title: string; lessons: number; quizzes: number; cards: number; maps: number };
+/** The exam day the file carries: the next session, or the last when all are over. */
+export type PreviewExam = { at: number; time: string | null; label: string | null };
 export type PlanPreview = {
   title: string;
   author?: string;
@@ -32,6 +37,9 @@ export type PlanPreview = {
   progress: boolean;
   /** Active topics the model wrote without source material (PLAN-11). */
   generalTopics: number;
+  /** The topics in the order of the path, without the ones a rebuild set aside. */
+  path: PreviewTopic[];
+  exam: PreviewExam | null;
   sources: PreviewSource[];
   missing: PreviewSource[];
 };
@@ -69,9 +77,35 @@ export function importFailure(error: unknown): { reason: PlanFileReason; without
   return { reason, without: PLAN_FILE_PARTS.filter((part) => named.includes(part)) };
 }
 
+function previewPath(file: PlanFile): PreviewTopic[] {
+  const items = file.items ?? [];
+  return file.topics
+    .map((topic, index) => ({ topic, index }))
+    .filter(({ topic }) => !topic.archived)
+    .sort((a, b) => a.topic.position - b.topic.position || a.index - b.index)
+    .map(({ topic, index }) => ({
+      title: topic.title,
+      lessons: items.filter((item) => item.kind === "lesson" && item.topic === index).length,
+      quizzes: items.filter((item) => item.kind === "quiz" && item.topic === index).length,
+      cards: file.cards.filter((card) => card.topic === index).length,
+      maps: (file.maps ?? [])
+        .filter((map) => map.topic === index)
+        .reduce((sum, map) => sum + map.entries.length, 0),
+    }));
+}
+
+function previewExam(file: PlanFile, now: number): PreviewExam | null {
+  const sessions = file.sessions ?? [];
+  const next = nextExamDate(sessions.map((session) => session.date), now);
+  const session = sessions.find((one) => one.date === next);
+  if (session) return { at: session.date, time: session.time ?? null, label: session.label ?? null };
+  return file.examAt == null ? null : { at: file.examAt, time: null, label: null };
+}
+
 export function previewPlan(
   file: PlanFile,
   library: ReadonlyArray<{ id: string; blobSha: string | null }>,
+  now = Date.now(),
 ): PlanPreview {
   const items = file.items ?? [];
   const sources = (file.sources ?? []).map((source, index) => {
@@ -106,6 +140,8 @@ export function previewPlan(
     generalTopics: file.topics.filter(
       (topic) => !topic.archived && topic.grounding === "general",
     ).length,
+    path: previewPath(file),
+    exam: previewExam(file, now),
     sources,
     missing: sources.filter((source) => !source.embedded),
   };

@@ -175,4 +175,68 @@ describe("why a file cannot be opened or imported", () => {
     expect(importFailure(null)).toBeNull();
     expect(importFailure(refusal("bad-map", "everything"))).toEqual({ reason: "bad-map", without: [] });
   });
+  it("lists the path in its order with what the file holds for each topic, and leaves out the ones set aside", () => {
+    const quiz = { kind: "quiz" as const, body: { questions: [] }, passageIds: [], grounding: null, provider: null, model: null };
+    const withPath = parsePlanText(
+      JSON.stringify({
+        version: 2,
+        title: "Analisi",
+        topics: [
+          { title: "Secondo", position: 1 },
+          { title: "Messo da parte", position: 2, archived: true },
+          { title: "Primo", position: 0 },
+        ],
+        nodes: [],
+        cards: [
+          { front: "a", back: "b", topic: 2 },
+          { front: "c", back: "d", topic: 2 },
+          { front: "e", back: "f", topic: 0 },
+        ],
+        items: [
+          { ...quiz, id: "q1", topic: 2 },
+          { id: "l1", topic: 2, kind: "lesson", body: { markdown: "x" }, passageIds: [], grounding: null, provider: null, model: null },
+          { id: "l2", topic: 2, kind: "lesson", body: { markdown: "y" }, passageIds: [], grounding: null, provider: null, model: null },
+        ],
+      }),
+    )!;
+    expect(previewPlan(withPath, []).path).toEqual([
+      { title: "Primo", lessons: 2, quizzes: 1, cards: 2, maps: 0 },
+      { title: "Secondo", lessons: 0, quizzes: 0, cards: 1, maps: 0 },
+    ]);
+  });
+
+  it("reads the exam day from the sessions, the next one first, or from the older single date", () => {
+    const day = (days: number) => Date.UTC(2027, 1, 2) + days * 86_400_000;
+    const now = day(0);
+    const sessions = (list: Array<{ date: number; time?: string; label?: string }>) => ({ ...file, sessions: list, examAt: null });
+    expect(previewPlan(file, [], now).exam).toBeNull();
+    expect(previewPlan({ ...file, examAt: day(9) }, [], now).exam).toEqual({ at: day(9), time: null, label: null });
+    expect(
+      previewPlan(sessions([{ date: day(20), label: "Orale" }, { date: day(3), time: "09:00", label: "Scritto" }]), [], now).exam,
+    ).toEqual({ at: day(3), time: "09:00", label: "Scritto" });
+    // Every session over: the last one, as the exam page counts days since it.
+    expect(previewPlan(sessions([{ date: day(-9) }, { date: day(-2) }]), [], now).exam?.at).toBe(day(-2));
+  });
+
+  it("keeps hostile and very long text exactly as the file has it, so the page can only show it as text", () => {
+    const hostile = '<img src=x onerror="window.pwned=1"><script>alert(1)</script>';
+    // The schema stops titles at 500 characters and the author at 200; a title with no space is the worst case for the layout.
+    const long = "Q".repeat(500);
+    const odd = parsePlanText(
+      JSON.stringify({
+        version: 2,
+        title: long,
+        author: hostile,
+        topics: [{ title: long, position: 0 }],
+        nodes: [],
+        cards: [],
+        sources: [{ id: "s", title: hostile, sha: null, bytes: 1 }],
+      }),
+    )!;
+    const preview = previewPlan(odd, []);
+    expect(preview.title).toBe(long);
+    expect(preview.author).toBe(hostile);
+    expect(preview.path[0]?.title).toBe(long);
+    expect(preview.sources[0]?.title).toBe(hostile);
+  });
 });

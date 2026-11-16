@@ -3031,6 +3031,11 @@ async function openState(page: Page, name: string) {
         window.pyxis.invoke("plans.export", { planId: "audit-plan" }),
       );
       file.author = "Example author";
+      // One original that is not in the file, so the page shows its choice as well as the ones inside it.
+      if (file.sources?.[0]) {
+        delete file.sources[0].data;
+        file.sources[0].sha = "a".repeat(64);
+      }
       await page
         .locator('input[type="file"]')
         .first()
@@ -3040,6 +3045,13 @@ async function openState(page: Page, name: string) {
           buffer: Buffer.from(JSON.stringify(file)),
         });
       await expect(page.locator(".px-import-review")).toBeVisible();
+      // The page opens on its title, and the footer's action is a button the keyboard reaches.
+      await expect(page.locator(".px-import-review h1")).toBeFocused();
+      await expect(
+        page.getByRole("region", { name: both("Aggiungere l'esame", "Add the exam") }).getByRole("button", {
+          name: both("Aggiungi ai miei esami", "Add to my exams"),
+        }),
+      ).toBeVisible();
       const after = await page.evaluate(() =>
         window.pyxis.invoke("plans.list", {}),
       );
