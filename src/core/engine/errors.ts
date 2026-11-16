@@ -115,13 +115,13 @@ export function translateEngineError(
 
 /**
  * Why another engine could answer instead: the engine hit a usage limit (CLI Funnel attaches the `limit` it reported to
- * the error), its sign-in or key was refused, or the subscription does not include the model. Any other failure is not
- * one a second engine would get round.
+ * the error), its sign-in or key was refused, its program is not on this computer, or the subscription does not
+ * include the model. Any other failure is not one a second engine would get round.
  */
 export function fallbackReason(
   err: unknown,
   provider: string,
-): "limit" | "signed-out" | "model" | undefined {
+): "limit" | "signed-out" | "model" | "not-installed" | undefined {
   if (!isEngineFailure(err) && !(err instanceof Error && "limit" in err))
     return undefined;
   if (err && typeof err === "object" && "limit" in err && err.limit)
@@ -130,6 +130,7 @@ export function fallbackReason(
   if (code === "quota") return "limit";
   if (code === "not-logged-in" || code === "refused") return "signed-out";
   if (code === "model-not-included") return "model";
+  if (code === "not-installed") return "not-installed";
   return undefined;
 }
 

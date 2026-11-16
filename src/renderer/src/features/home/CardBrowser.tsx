@@ -15,6 +15,7 @@ import { ListToolbar, ToolbarSearch } from "../../components/ListToolbar";
 import { invoke } from "../../lib/ipc";
 import { usePlans } from "../../lib/queries";
 import { NewCardDialog } from "../flashcards/NewCardDialog";
+import { readPlacesAhead, whenPlacesRead } from "../flashcards/newCardPlaces";
 import { AnkiDialog } from "./AnkiDialog";
 import { CardEditor, CardTile, type CardActions, type Draft } from "./CardTile";
 import {
@@ -115,6 +116,10 @@ export function CardBrowser({
   // No flashcard at all, and nothing filtering: the page is empty, not a search with no result. A removed card is still a
   // card: its exam, or the cards with no exam, keep the page and its "Rimosse" filter.
   const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0 && !data.examless);
+  // The empty page's button opens it: the subjects are read as the page shows it, so the dialog finds them.
+  useEffect(() => {
+    if (emptyPage) readPlacesAhead(client, 0);
+  }, [emptyPage]);
   // The first card replaces the empty page and its button, which the dialog gives the focus back to: once both have
   // happened, a focus that fell to the page goes to the list's summary line.
   const wasEmpty = useRef(false);
@@ -509,8 +514,8 @@ export function CardBrowser({
         <EmptyState
           body={t("cardBrowser.emptyBody")}
           action={
-            <span ref={newButton}>
-              <PxButton icon="plus" onClick={() => setNewCard(true)}>
+            <span ref={newButton} onPointerEnter={() => readPlacesAhead(client)} onFocus={() => readPlacesAhead(client)}>
+              <PxButton icon="plus" onClick={() => whenPlacesRead(client, () => setNewCard(true))}>
                 {t("flashcards.new.action")}
               </PxButton>
             </span>

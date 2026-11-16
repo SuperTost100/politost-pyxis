@@ -217,12 +217,13 @@ describe("the engines the student lets Pyxis use", () => {
     const db = openDatabase(":memory:");
     const handlers = engineHandlers(db, () => undefined);
     useFunnel({ claude: true, codex: true });
-    expect(handlers.choice()).toEqual({ allowed: null });
+    expect(handlers.choice()).toEqual({ allowed: null, order: null });
 
     handlers.choose({ allowed: ["claude"] });
     // A new launch reads the same choice.
     expect(engineHandlers(db, () => undefined).choice()).toEqual({
       allowed: ["claude"],
+      order: null,
     });
     const overview = await handlers.overview();
     expect(

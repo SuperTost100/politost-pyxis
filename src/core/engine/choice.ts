@@ -3,7 +3,9 @@ import { putSetting } from "../settings";
 import type { SignOutStore } from "./bench";
 
 const ALLOWED_KEY = "engines.allowed";
+const ORDER_KEY = "engines.order";
 const signOutKey = (provider: string) => `engine-signed-out:${provider}`;
+const limitKey = (provider: string) => `engine-limited:${provider}`;
 
 /**
  * The engines the student lets Pyxis use, or null for automatic: every engine that is ready, including ones signed in
@@ -34,7 +36,29 @@ export function isAllowed(
   return allowed === null || allowed.includes(provider);
 }
 
-/** Keeps refused sign-ins in the settings table, so they outlast a restart. */
+/**
+ * The order the student put their tools in, first to last, or null while they never set one: Pyxis then shares the
+ * work among the ready tools as it always did. Settings writes it; the automatic plan and a failing task's next tool
+ * read it.
+ */
+export function readOrder(db: Database.Database): string[] | null {
+  const row = db
+    .prepare("SELECT value_json FROM settings WHERE key = ?")
+    .get(ORDER_KEY) as { value_json: string } | undefined;
+  const value: unknown = row ? JSON.parse(row.value_json) : null;
+  return Array.isArray(value)
+    ? value.filter((id): id is string => typeof id === "string")
+    : null;
+}
+
+export function writeOrder(
+  db: Database.Database,
+  order: readonly string[] | null,
+): void {
+  putSetting(db, ORDER_KEY, order ? [...new Set(order)] : null);
+}
+
+/** Keeps refused sign-ins and usage limits in the settings table, so they outlast a restart. */
 export function signOutStore(db: Database.Database): SignOutStore {
   return {
     load: () =>
@@ -48,6 +72,21 @@ export function signOutStore(db: Database.Database): SignOutStore {
     save: (provider, signedOut) => {
       if (signedOut) putSetting(db, signOutKey(provider), true);
       else db.prepare("DELETE FROM settings WHERE key = ?").run(signOutKey(provider));
+    },
+    loadLimits: () =>
+      (
+        db
+          .prepare("SELECT key, value_json FROM settings WHERE key LIKE 'engine-limited:%'")
+          .all() as Array<{ key: string; value_json: string }>
+      ).flatMap((row) => {
+        const until: unknown = JSON.parse(row.value_json);
+        return typeof until === "number"
+          ? [{ provider: row.key.slice(limitKey("").length), until }]
+          : [];
+      }),
+    saveLimit: (provider, until) => {
+      if (until === null) db.prepare("DELETE FROM settings WHERE key = ?").run(limitKey(provider));
+      else putSetting(db, limitKey(provider), until);
     },
   };
 }

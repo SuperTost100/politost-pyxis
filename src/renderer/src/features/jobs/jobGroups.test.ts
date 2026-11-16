@@ -300,3 +300,45 @@ describe("jobs list groups", () => {
   });
 });
 
+
+describe("jobs that stopped because a tool ran out of requests", () => {
+  const limited = (id: string, tool: string, over: Partial<JobView> = {}) =>
+    job(id, { error: `quota [${tool}]: You've hit your usage limit.`, ...over });
+  const out = new Map([["codex", 5_000]]);
+
+  it("shows the jobs that ran out on the same tool as one row, apart from other failures", () => {
+    const groups = groupJobs(
+      [limited("a", "codex"), limited("b", "codex"), job("c", { error: "cli-failed" }), limited("d", "claude")],
+      [],
+      new Map([...out, ["claude", 9_000]]),
+    );
+    expect(groups.problems.map((problem) => [problem.kind, problem.engine, problem.jobs.map((item) => item.id)])).toEqual([
+      ["out-of-requests", "codex", ["a", "b"]],
+      ["retry", undefined, ["c"]],
+      ["out-of-requests", "claude", ["d"]],
+    ]);
+  });
+
+  it("is an ordinary engine failure with a retry once the tool has requests again, so the row goes with the limit", () => {
+    const groups = groupJobs([limited("a", "codex")], [], new Map());
+    expect(groups.problems.map((problem) => problem.kind)).toEqual(["engine"]);
+  });
+
+  it("does not take a sign-in failure, or a limit another tool hit, for this one", () => {
+    const groups = groupJobs(
+      [job("a", { error: "not-logged-in [codex]: 401" }), limited("b", "agent")],
+      [],
+      out,
+    );
+    expect(groups.problems.map((problem) => problem.kind)).toEqual(["engine", "engine"]);
+  });
+
+  it("moves a job the student has wait out of what needs them and lists it as waiting", () => {
+    const waiting = limited("w", "codex", { waitingUntil: 9_000 });
+    const groups = groupJobs([waiting, limited("a", "codex")], [], out);
+    expect(groups.waiting.map((item) => item.id)).toEqual(["w"]);
+    expect(groups.problems.map((problem) => problem.jobs.map((item) => item.id))).toEqual([["a"]]);
+    // A wait is not work in progress: nothing runs, so the clock does not turn for it.
+    expect(groups.running).toEqual([]);
+  });
+});

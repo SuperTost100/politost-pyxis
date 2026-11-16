@@ -156,3 +156,18 @@ describe("recorded figure fixes", () => {
     await expect(recordedPlanRun("{}")(fix)).rejects.toThrow('no recorded reply for "code"');
   });
 });
+
+describe("a recorded tool that is out of requests", () => {
+  const selection = (provider: string) => ({ provider, model: "m" }) as never;
+
+  it("fails every call to that tool with a usage limit and the reset time, and answers the other tools", async () => {
+    const run = recordedPlanRun(
+      JSON.stringify({ limited: { codex: { resetAt: "2026-12-01T00:00:00Z" } }, markdown: { markdown: "ok" } }),
+    );
+    await expect(run({ prompt: "{}", selection: selection("codex") })).rejects.toMatchObject({
+      code: "cli-failed",
+      limit: { kind: "quota", resetAt: "2026-12-01T00:00:00Z" },
+    });
+    await expect(run({ prompt: "{}", selection: selection("claude") })).resolves.toMatchObject({ text: "ok" });
+  });
+});

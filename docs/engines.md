@@ -25,6 +25,7 @@ Pyxis picks the engine, model and effort for each feature itself. `planAuto()` i
 - Effort follows the tier, see [Reasoning effort](#reasoning-effort).
 - A provider is ready when it is installed, signed in and not disabled. API providers count only with a stored key that the provider accepts. CLIs win. A local model the student turned on comes next, and API providers are used only when neither is ready, because they bill per token.
 - With two or more ready providers each tier has a preference order (fast: Antigravity, Codex, Cursor, Claude Code; mid: Claude Code, Cursor, Antigravity, Codex; strong: Claude Code, Codex, Cursor, Antigravity). Features then move from the busiest provider to the idlest while that narrows the gap. A feature's load is its weight times its tier cost, so frequent chat on a cheap model and rare plans on a strong model each weigh what they cost. Every ready CLI gets at least one feature.
+- Once the student has put their tools in order, nothing is shared out, see [The student's order](#the-students-order).
 
 Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against CLI Funnel 0.4 model lists:
 
@@ -37,11 +38,21 @@ Defaults for common mixes, as `src/core/engine/auto.test.ts` checks them against
 | Cursor + Antigravity      | Gemini Flash                                    | Gemini Flash        | Cursor sonnet | Cursor sonnet | OCR (no image CLI) | Cursor opus | Gemini Pro    |
 | All four                  | Gemini Flash (chat), Cursor Gemini Flash (maps) | Gemini Flash        | Codex terra   | Claude sonnet | Claude sonnet      | Claude opus | Cursor sonnet |
 
+### The student's order
+
+Settings, AI tools lists the tools the student is signed in to, and the student can put them in order: by dragging a row, with the keyboard on its grip, or from the row's menu. The order is the `engines.order` row of the `settings` table (`readOrder()` in `src/core/engine/choice.ts`), a list of CLI provider ids, first to last. `engines.choice` returns it beside `allowed`, and `engines.reorder` saves it; `null` gives the order up.
+
+- Without an order (`null`, the state of every workspace until the student moves a tool), `planAuto()` shares the work as described above.
+- With one, `planAuto(ready, features, order)` gives every feature to the first tool of the list that is ready and can do it. A feature the first tool cannot do goes to the next one: photos skip Cursor and Gemini, which read no pictures. A ready tool the list does not name, such as one connected since, comes after the listed ones. The model and the effort still follow the feature's tier.
+- The list names subscription CLIs only. The local model and the API keys keep their place after them, and a pool with no listed tool in it (only API keys, say) is planned as if there were no list.
+- A tool the student turned off (`engines.allowed`, "Don't use" in the tool's menu) is never planned and never answers instead of another, wherever it is in the list.
+- A task pinned to a model in Advanced stays where it is. The page says how many tasks are pinned, because the order alone no longer explains where they go.
+
 An automatic row in `feature_engines` carries `"auto": true` in its JSON. A row without it is pinned. `engines.setFeature` pins, and `engines.autoConfigure` with `reset` returns features to automatic. Only automatic rows are rewritten. When no engine is ready they are removed, which brings back `engine-missing`. If every ready engine fails to list models, the current rows stay.
 
 CLI Funnel has no sign-out for Antigravity, so `engines.overview` reports `capabilities.signOut` false for it, the engine screen explains how to sign out in the program itself, and `engines.logout` refuses it with `engines.signOutUnsupported`.
 
-`engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
+`engines.autoConfigure` (`{ reset?, features? }` returning `{ ready, features }`) recomputes on demand. Core also runs it at startup, after sign-in, sign-out, update and removal, when a key is added or removed, when the student changes the order or turns a tool off, and when `engines.overview` sees a changed engine set (at most every 30 seconds). `selectionFor` drops the `auto` flag, so callers see the same shape as before.
 
 Feature keys are `default`, `chat`, `plan`, `lesson`, `grading`, `map`, `vision` and `cards`. Providers are `claude`, `codex`, Cursor `agent`, `antigravity`, `anthropic-api` and `openai-api`. A CLI provider is disabled unless its CLI Funnel adapter lists `none` in `capabilities.access`. CLI Funnel 0.4 runs Cursor Agent in ask mode from its own workspace, whose `.cursor/cli.json` denies shell, file reads and writes, web fetches and MCP tools. It runs Antigravity with a pre-tool hook that denies every tool. Cursor's grep and glob tools still run, but only inside that empty workspace. Ollama is offered only as the local model, see [Local models](#local-models). Other CLI Funnel providers, such as `gemini-api`, are not offered. API keys are encrypted in `userData/keys.json`; core receives decrypted values through a main-process handshake. The database stores model selections, not keys.
 
@@ -74,7 +85,7 @@ Free space is measured where Ollama keeps models: `OLLAMA_MODELS`, else `~/.olla
 
 The computer also needs 8 GB of RAM, and the disk needs the download plus 2 GB. With too little free space a smaller model that fits is suggested; when none fits, Settings says how much space the suggested one needs. A model Ollama already has needs no space. Gemma 3 was chosen because it has no thinking phase that slows each answer, reads images and writes Italian well. Every turn on Ollama sets the context to the table's `contextWindow` (16,384 tokens) through `num_ctx`, because Ollama's default of a few thousand tokens silently cuts the start of a long lesson prompt. Ollama keeps the model loaded for 10 minutes after a turn, as long as a chat's conversation.
 
-When the check finds no fitting model, setup shows nothing, and Settings, Engines has a closed section that says why: no usable GPU, too little graphics memory, too little RAM, too little disk space, or a GPU that could not be read.
+When the check finds no fitting model, setup shows nothing, and Settings, AI tools has a closed section under Advanced that says why: no usable GPU, too little graphics memory, too little RAM, too little disk space, or a GPU that could not be read.
 
 ### Download and check
 
@@ -89,9 +100,9 @@ The settings row `local-model` stores the model, whether the student has it on (
 
 - The automatic choice takes the checked model only, while it is on, its check passed with the current `LOCAL_CHECK_VERSION` and Ollama lists it. Other models in the student's Ollama are never chosen. Without a ready CLI the local model takes every task, photos included.
 - A local model never builds plans or grades unless it passed the structured-output check: `planAuto()` leaves `plan` and `grading` without it, and `engines.setFeature` refuses to pin it there (`engines.local.noStructured`).
-- In Advanced, a task can be pinned to the local model once it is on.
+- Under Advanced, a task can be pinned to the local model once it is on.
 - Ollama keeps a chat's conversation as history in core, like the API providers.
-- The line at the top of Settings, Engines says what leaves the computer (`disclosureText()` in `src/renderer/src/features/settings/disclosure.ts`). With only the local model it says nothing leaves; with a mix it names the tasks that stay on the computer and those that go to a vendor. The launch notice lists only cloud engines the student has not confirmed, so Ollama never appears in it: the download consent covers it.
+- The line at the foot of Settings, AI tools says what leaves the computer (`disclosureText()` in `src/renderer/src/features/settings/disclosure.ts`). With only the local model it says nothing leaves; with a mix it names the tasks that stay on the computer and those that go to a vendor. The launch notice lists only cloud engines the student has not confirmed, so Ollama never appears in it: the download consent covers it.
 
 The unit tests run every hardware parser on captured command output and the check and download against a fake Ollama server (`src/core/engine/fake-ollama.ts`). No test talks to a real Ollama or the network.
 
@@ -124,20 +135,48 @@ The student's pick lives in the same JSON as the engine:
 - A pick the model does not list stays stored but is ignored, and the engine screen says so. It applies again when a model that lists it comes back.
 - Handing one task back to Pyxis keeps its pick. Resetting every task drops them.
 
-In Settings, Engines, with Advanced options on, each task has an effort picker next to its model. "Automatic" is the default and shows the level it resolves to.
+In Settings, AI tools, under Advanced, each task has an effort picker next to its model. "Automatic" is the default and shows the level it resolves to.
 
 ## Switching engines on a usage limit
 
-When the engine Pyxis chose for a task hits a usage limit, is signed out (a refused key counts for API providers) or says the student's subscription doesn't include the model, `generate()` asks once more on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
+When the engine Pyxis chose for a task hits a usage limit, is signed out (a refused key counts for API providers), is no longer installed or says the student's subscription doesn't include the model, `generate()` asks again on another engine. The replacement is what `planAuto()` would choose for the same task without the failed engine, among the engines the last automatic choice could use: with the student's order that is the next tool of their list. Core then broadcasts `engine.fallback` and the window shows one line saying which engine answered.
 
-- Only automatic selections switch. `selectionFor` sets `chosenFor` (the task) on the selections it returns from an automatic row, so a task the student pinned keeps its engine and model and shows the error. Choosing engines with "Scelgo io" does not pin a model: the rows stay automatic.
+- Only automatic selections switch. `selectionFor` sets `chosenFor` (the task) on the selections it returns from an automatic row, so a task the student pinned keeps its engine and model and shows the error. Turning tools off or putting them in order does not pin a model: the rows stay automatic.
 - `chosenFor` is plain data, so it survives in a background job's saved parameters, and a job's calls (an exam build, a quiz check) switch like any other automatic call. `generate()` strips it before the selection reaches CLI Funnel.
-- After a limit or a sign-out the retry happens once. If the second engine fails too, its error is shown. After a refused model the task tries up to `MODEL_STEPS` (3) more models, because a plan that refuses one model often refuses its neighbours, then shows the refusal.
+- A task moves only for a failure the next engine would not share. `fallbackReason()` in `src/core/engine/errors.ts` names four: `limit`, `signed-out`, `not-installed` and `model`. A lost connection, a reply that cannot be used or a crash of the CLI is shown as it is.
+- When the engine the task moved to is out as well, the task goes on to the next one, and so on down the list. Each engine that fails this way is marked and left out of the next step, so the walk ends with the last ready engine, whose error is then shown (`ENGINE_STEPS` bounds it at 6). After a refused model the task tries up to `MODEL_STEPS` (3) more models, because a plan that refuses one model often refuses its neighbours, then shows the refusal.
 - When a refusal names the kind of model to use instead (Cursor: "Buy credits or switch to a Grok model to continue"), the automatic choice keeps to that engine's models of that kind for the same 24 hours, if it lists any.
-- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A usage limit keeps it out until the reset time CLI Funnel reports (`resetAt`, else `retryAfterMs`), or 30 minutes when it reports neither. A sign-out keeps it out until a scan finds it signed in again or its API key changes. A refused model keeps only that model out, for 24 hours: core runs the automatic choice again at once, so the tasks that used it move to another model and Settings shows the new one, while the engine's other models stay in use. A refused Prova marks its model the same way. While a model is out, the engine's row reads "Pronto, con limiti" and names the refused model, and the next Prova uses another model. The replacement for a refused model may be the same engine on another model, and the notice then names that model by its readable name. Usage limits and refused models live in core's memory only (`src/core/engine/bench.ts`), so a restart tries them again. A refused sign-in is kept in the `settings` table (`engine-signed-out:<provider>`, see `src/core/engine/choice.ts`) and outlasts a restart until the engine is signed in again.
+- Later automatic calls skip the failed engine and go straight to the replacement, without a notice. A sign-out keeps it out until a scan finds it signed in again or its API key changes. A missing program keeps it out until a scan that began after the failed call finds it installed; core reads its detection again at once, since CLI Funnel caches it for a minute. A refused model keeps only that model out, for 24 hours: core runs the automatic choice again at once, so the tasks that used it move to another model and Settings shows the new one, while the engine's other models stay in use. A refused Prova marks its model the same way. While a model is out, the engine's row reads "Pronto, con limiti" and names the refused model, and the next Prova uses another model. The replacement for a refused model may be the same engine on another model, and the notice then names that model by its readable name. Refused models live in core's memory only (`src/core/engine/bench.ts`), so a restart tries them again. A refused sign-in is kept in the `settings` table (`engine-signed-out:<provider>`, see `src/core/engine/choice.ts`) and outlasts a restart until the engine is signed in again.
 - A stopped turn never switches, and a turn with a picture switches only to an engine that can see it.
 - CLI Funnel already retries an API request twice on 429 and 5xx before any output. A limit is recognised from the `limit` CLI Funnel attaches to the error, and otherwise from the same classification that maps errors to `engines.errors.quota`, `not-logged-in`, `refused` and `model-not-included`. The last one matches the wording vendors use when a plan leaves a model out, such as Cursor's "is not included in your weekly usage". Credits that ran out ("out of credits", "insufficient credits", "buy credits") stop every model on the account, so they count as a usage limit.
 - A lesson that falls back to the book text after an engine failure carries the failure's message key as `fallbackReason`, and the lesson page shows it with a link to the engine settings.
+
+### How long a usage limit lasts
+
+A usage limit keeps the engine out until it resets, and the reset is kept in the `settings` table (`engine-limited:<provider>`, the time in milliseconds), so a restart does not try that engine first again. `configureSignOuts()` reads the kept limits at launch and forgets the ones whose time has passed. The limit is marked whenever a call or a Prova meets it, also when no other engine can answer and for a model the student pinned, so Settings can say the tool is out of requests and when they are back (`limitedUntil` in `engines.overview`). A call to the engine that answers, having begun after the limit was marked, clears it.
+
+"Until it resets" is the time the tool itself gives, where it gives one:
+
+| Tool     | What ends the wait                                                                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude   | The reset time Claude Code reports with the window it hit: the five-hour window or a weekly one.                                                                                                             |
+| ChatGPT  | The reset time of the full window in Codex's rate-limit snapshot. A bare "usage limit exceeded" has none, so its usage report is asked.                                                                      |
+| Gemini   | Antigravity reports no limit during a run, so its usage report (`/usage`) is asked. It gives a time, the one its first model group is back, once every group is full, and until then the wait is 30 minutes. |
+| Cursor   | Cursor Agent reports no reset time and has no usage report, so Pyxis tries it again after 30 minutes (`DEFAULT_LIMIT_MS`).                                                                                   |
+| API keys | The provider's `retry-after` or rate-limit reset header, else 30 minutes.                                                                                                                                    |
+
+When a failure names no time, `engines.limitChanged` asks CLI Funnel's `rateLimits()` for the tool's usage report once, in the background, and moves the wait to the reset it gives. If the report fails, names no limit or the tool has none, the 30 minutes stand.
+
+### A job whose tool ran out of requests
+
+An automatic task goes on with the next tool by itself, as above, and the student is told once: the finished job's row in Attività says "Gemini ha finito le richieste, quindi ha risposto Claude" and one line in the window says it too. A job stops and asks only when nothing moves it on: the task is set to a model by hand, or every tool of the list is out. Such a job fails with `quota [<tool>]: …` (the tool in brackets, see `jobErrorEngine()`), and while that tool is out of requests Attività shows it under "C'è bisogno di te" as one row for all the jobs that ran out on that tool (`out-of-requests` in `jobGroups.ts`, drawn by `OutOfRequestsCard` in `JobsPanel.tsx`). The row reads the tools through `engines.overview` (`limitedUntil`) and offers:
+
+- **Continua con \<tool\>**, the first connected tool of the student's order, other than the one that ran out, that is in use and has requests left (`nextTool()` in `outOfRequests.ts`). `jobs.retryWith` records the tool for the job (`chooseJobEngine()` in `selection.ts`) and retries it from the step it stopped at. `generate()` then sends every call of that job to the tool, on the model its tier gives for the task (`selectionOn()`), and the finished job carries the same note as an automatic move, without the window's line, since the student just chose it. A task set by hand has no tier recorded, so it takes the tool's mid-tier model. The choice is kept in core's memory: after a restart an interrupted job runs as it was saved.
+- **Aspetta \<when\>** (until a time today, tomorrow, or a day), when the tool's reset time is known. `jobs.wait` holds the failed job until `limitedUntil()` of that tool (`hold()` in the runner, kept in the settings table as `job-wait:<jobId>` with the time and the tool, so a restart goes on with it) and retries it by itself at that time. The hold follows its tool's limit (`onLimitChange()` in `bench.ts`, `retime()` in the runner): when the tool's usage report gives a better time than the first guess, or another failure moves it, the job waits until the new time, and when a call or a Prova that answers clears the limit, the job is retried at once. The row moves to "In corso" with the time and a Stop button that gives the wait up (`jobs.wait` with `wait: false`), after which the row asks again. A retry, a Chiudi or a dismissal ends the wait too.
+- **Strumenti AI**, in place of the first choice, when no other tool can take the job.
+- **Chiudi**, which gives the job up, as on any stopped job.
+
+The row follows the tool: when its requests are back (the time passes, or a call or a Prova that answers clears the limit), the job is an ordinary failed one with Riprova, and the row stops saying the tool is out.
 
 ## What a chat searches
 
