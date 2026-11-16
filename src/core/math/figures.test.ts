@@ -167,3 +167,37 @@ it("offers figures only with a sandbox: the caller's runner, or none when the ru
   // In a test there is no main process to ask, so the runtime counts as missing.
   expect(await figureRunner()).toBeNull();
 });
+
+it("draws a graph from its own text and not from a Python program, and keeps the graph under its own key", async () => {
+  const calls: Array<{ code: string; timeout: number; figure: unknown }> = [];
+  const python: FigureRunner = async (code, timeout, figure) => {
+    calls.push({ code, timeout, figure });
+    return drawsAll(code, timeout);
+  };
+  const dot = "digraph { q0 -> q1 [label=a]; q1 -> q0 [label=b] }";
+  const text = ["Prima.", block(dot, "Un automa.", "graph"), block("plt.plot([1])"), "Dopo."].join("\n\n");
+  const drawn = await drawFigures(text, { python });
+  // The window gets the DOT as it was written, with the limit of its kind and what is being drawn; the plot gets a program.
+  expect(calls[0]).toEqual({ code: dot, timeout: 5000, figure: { kind: "graph", code: dot } });
+  expect(calls[1]!.code).toContain("import matplotlib");
+  expect(calls[1]!.figure).toEqual({ kind: "plot", code: "plt.plot([1])" });
+  expect(Object.keys(drawn.figures)).toEqual([figureKey(dot, "graph"), figureKey("plt.plot([1])")]);
+  expect(figureKey(dot, "graph")).not.toBe(figureKey(dot));
+  expect(drawn.markdown).toBe(text);
+});
+
+it("drops a graph its check refuses without asking any window, and a graph in a workspace that cannot draw graphs", async () => {
+  const calls: string[] = [];
+  const python: FigureRunner = async (code, timeout) => {
+    calls.push(code);
+    return drawsAll(code, timeout);
+  };
+  const refused = ['digraph { a [image="/etc/passwd"] }', 'digraph { a [URL="https://example.com"] }', "digraph { a [label=<<b>x</b>>] }"];
+  const drawn = await drawFigures(["Testo.", ...refused.map((dot, i) => block(dot, `Grafo ${i}`, "graph"))].join("\n\n"), { python });
+  expect(calls).toEqual([]);
+  expect({ ...drawn, markdown: drawn.markdown.trim() }).toEqual({ markdown: "Testo.", figures: {} });
+  // The drawing pack is missing: Python draws plots, and a graph is left out.
+  const plots = await drawFigures([block("digraph { a -> b }", "Un grafo.", "graph"), block("plt.plot([1])")].join("\n\n"), { python, kinds: ["plot"] });
+  expect(calls).toHaveLength(1);
+  expect(Object.keys(plots.figures)).toEqual([figureKey("plt.plot([1])")]);
+});
