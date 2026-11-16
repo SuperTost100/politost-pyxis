@@ -112,7 +112,7 @@ export function GraphPage() {
     setSymbolicBusy(true);
     setNotice(null);
     const runtime = await invoke("tools.runtime", {}).catch(() => null);
-    if (runtime?.phase !== "ready") {
+    if (runtime?.packs.pyodide !== "ready") {
       setSymbolicBusy(false);
       setNotice(t("graph.runtimeNeeded"));
       return;
@@ -195,7 +195,7 @@ export function GraphPage() {
     let cancelled = false;
     void invoke("tools.runtime", {})
       .then((status) => {
-        if (!cancelled && status.phase === "ready") void findSymbolic();
+        if (!cancelled && status.packs.pyodide === "ready") void findSymbolic();
       })
       .catch(() => undefined);
     return () => {

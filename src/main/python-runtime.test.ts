@@ -75,11 +75,15 @@ vi.mock("electron", () => {
 });
 
 const requireRuntime = vi.hoisted(() => vi.fn(async () => undefined));
+const packs = vi.hoisted(() => ({ pyodide: "ready", drawing: "idle" }));
 vi.mock("./runtime-pack", () => ({
   requireRuntime,
-  runtimeManifest: { files: [] },
+  runtimePacks: {
+    pyodide: { files: [] },
+    drawing: { files: [{ name: "circuits.whl" }, { name: "notes.txt" }] },
+  },
   cancelRuntimeDownload: () => undefined,
-  currentRuntimeStatus: async () => ({}),
+  currentRuntimeStatus: async () => ({ packs }),
   downloadRuntime: async () => "",
   verifiedRuntimeFile: async () => undefined,
 }));
@@ -236,6 +240,26 @@ describe("python runtime queue", () => {
     await tick();
     fake.held[1]!.settle({ stdout: "2" });
     await expect(second).resolves.toEqual({ stdout: "2" });
+  });
+
+  it("gives a Python run the drawing pack's wheels only once that pack is downloaded", async () => {
+    const without = handleRuntimeRequest("python", { code: "1", timeoutMs: 8000 });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    expect(fake.held[0]!.script).toBe('window.pyxisRuntime.run("1", 8000, [])');
+    fake.held[0]!.settle({ stdout: "1" });
+    await without;
+    packs.drawing = "ready";
+    try {
+      const withPack = handleRuntimeRequest("python", { code: "2", timeoutMs: 8000 });
+      await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+      expect(fake.held[1]!.script).toBe(
+        'window.pyxisRuntime.run("2", 8000, ["drawing/circuits.whl"])',
+      );
+      fake.held[1]!.settle({ stdout: "2" });
+      await withPack;
+    } finally {
+      packs.drawing = "idle";
+    }
   });
 
   it("sends grading checks through the check lane, after the chat check ahead of them", async () => {

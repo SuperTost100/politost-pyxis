@@ -12,8 +12,8 @@ import { rewriteLessonSection, writeLesson } from "./openLesson";
 
 const PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const figure = (caption: string, code: string) =>
-  ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
+const figure = (caption: string, code: string, kind?: string) =>
+  ["```pyxis-figure", JSON.stringify({ kind, caption, code }), "```"].join("\n");
 const parabola = "x = np.linspace(-2, 2)\nplt.plot(x, x**2)";
 const broken = "plt.plot(undefined_name)";
 
@@ -197,6 +197,26 @@ describe("lesson figures", () => {
     expect(Object.keys(withCircle.figures ?? {}).sort()).toEqual(
       [figureKey(parabola), figureKey(circle)].sort(),
     );
+    db.close();
+  });
+
+  it("draws a circuit with schemdraw and stores it under its own key", async () => {
+    const { db, planId, topicId, run, python, systems, programs, reply } = setup();
+    const rc = "d += elm.SourceV().up().label('V')\nd += elm.Resistor().right().label('R')\nd += elm.Capacitor().down().label('C')\nd += elm.Line().left()";
+    reply(
+      `## Il circuito RC\n\nUn resistore e un condensatore in serie.\n\n${figure("Il circuito RC in serie.", rc, "circuit")}\n\nFine.`,
+    );
+    const lesson = await writeLesson(db, planId, topicId, run, { python });
+    // The prompt offers the kind, and the code runs on the drawing the sandbox prepared.
+    expect(systems[0]).toContain('"circuit"');
+    expect(systems[0]).not.toContain("[figure");
+    expect(programs).toHaveLength(1);
+    expect(programs[0]).toContain("import schemdraw.elements as elm");
+    expect(programs[0]).toContain(rc);
+    expect(lesson.markdown).toContain("Il circuito RC in serie.");
+    // The same code as a plot would have another key, so a circuit never shows a plot's image.
+    expect(lesson.figures).toEqual({ [figureKey(rc, "circuit")]: PNG });
+    expect(figureKey(rc, "circuit")).not.toBe(figureKey(rc));
     db.close();
   });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LINK_MODES, MATERIAL_KINDS, MAX_LINK_PATHS, MAX_SUBJECT_NAME } from "./linked-folders";
 import { FILE_KINDS } from "./file-kind";
+import { runtimePackIds } from "./figure-kinds";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
@@ -406,6 +407,7 @@ const guidedContext = z.object({
   language: z.enum(["it", "en"]),
 });
 
+const runtimePhaseSchema = z.enum(["idle", "downloading", "ready", "failed"]);
 const EducationLevelSchema = z.enum([
   "primary",
   "lower-secondary",
@@ -1832,13 +1834,15 @@ export const requests = {
       reason: z.string().optional(),
     }),
   },
+  // The download as the Python page shows it, over the packs still missing, and each pack on its own in `packs`.
   "tools.runtime": {
     input: z.object({}),
     output: z.object({
-      phase: z.enum(["idle", "downloading", "ready", "failed"]),
+      phase: runtimePhaseSchema,
       bytes: z.number(),
       totalBytes: z.number(),
       error: z.string().optional(),
+      packs: z.record(z.enum(runtimePackIds), runtimePhaseSchema),
     }),
   },
   "tools.runtimeDownload": {

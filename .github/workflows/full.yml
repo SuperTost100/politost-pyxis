@@ -28,6 +28,7 @@ on:
       - scripts/release-sums.mjs
       - scripts/prepare-fixtures.ts
       - resources/pyodide-manifest.json
+      - resources/drawing-manifest.json
 
 permissions:
   contents: read

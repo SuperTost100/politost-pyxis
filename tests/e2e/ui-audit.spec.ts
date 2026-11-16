@@ -33,6 +33,7 @@ import { answerNextMenu } from "./native-menu";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
 import type Database from "better-sqlite3";
 import { partMarkdown, seedOutline, type SeedPart } from "../../src/core/study/test-parts";
+import { figureKey } from "../../src/shared/smart-text";
 
 // Native Electron is required: these routes consume the utility-process IPC port.
 const routes = [
@@ -246,6 +247,8 @@ const routes = [
   ["lesson-part", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-part-answered", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-part-other", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
+  // A part with a plot and a circuit, each on its white card with its caption.
+  ["lesson-part-figures", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=3"],
   ["lesson-part-writing", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-failed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
   ["lesson-part-failed-dismissed", "/plans/audit-parts-plan/lesson/audit-parts-topic?part=4"],
@@ -1296,10 +1299,45 @@ const auditRecapText = [
   "```",
 ].join("\n");
 
+/**
+ * The part's text with a plot after its first section and a circuit after its second, and the two images as core
+ * stores them. The images in tests/fixtures were drawn once by the pinned Python and drawing packs; the code here
+ * only gives each image its key.
+ */
+const auditFigures = (
+  [
+    [
+      "plot",
+      "Aperti e chiusi",
+      "La palla aperta di centro $x_0$ e raggio $r$: il bordo tratteggiato non le appartiene.",
+      "t = np.linspace(0, 2 * np.pi, 200)\nplt.plot(np.cos(t), np.sin(t), ls='--')",
+    ],
+    [
+      "circuit",
+      "Quando non è nessuno dei due",
+      "Un circuito RC in serie con il generatore $V_s$.",
+      "d += elm.SourceV().up().label('$V_s$')\nd += elm.Resistor().right().label('R = 1 kΩ')",
+    ],
+  ] as const
+).map(([kind, after, caption, code]) => ({
+  kind,
+  after,
+  block: ["```pyxis-figure", JSON.stringify({ kind, caption, code }), "```"].join("\n"),
+  key: figureKey(code, kind),
+  image: `data:image/png;base64,${readFileSync(join(process.cwd(), `tests/fixtures/figure-${kind}.png`)).toString("base64")}`,
+}));
+const auditFiguresText = auditFigures.reduce((text, figure) => {
+  const lines = text.split("\n");
+  // After the first paragraph of the section, which is two lines under its heading.
+  lines.splice(lines.indexOf(`## ${figure.after}`) + 3, 0, "", figure.block);
+  return lines.join("\n");
+}, auditPartText);
+
 const PART_STATES = new Set([
   "lesson-part",
   "lesson-part-answered",
   "lesson-part-other",
+  "lesson-part-figures",
   "lesson-part-writing",
   "lesson-part-failed",
   "lesson-part-failed-dismissed",
@@ -1369,7 +1407,7 @@ function prepareLessonParts(name: string) {
       `INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,model_id,model_source,prompt_template,prompt_version,grounding,created_at)
        VALUES(?,'audit-parts-plan',?,'lesson',?,'fixture','fixture-model','reported','lesson.part','part-1','sources',1)`,
     );
-    const write = (partId: string, topicId: string, markdown: string) => {
+    const write = (partId: string, topicId: string, markdown: string, figures?: Record<string, string>) => {
       const itemId = `${partId}-item`;
       item.run(
         itemId,
@@ -1378,6 +1416,7 @@ function prepareLessonParts(name: string) {
           cacheKey: JSON.stringify({ kind: "lesson", scopeId: partId, promptVersion: "part-1|balanced", passageIds: ["audit-passage"] }),
           markdown,
           passageIds: ["audit-passage"],
+          ...(figures ? { figures } : {}),
         }),
       );
       db.prepare("INSERT INTO item_passages(item_id,passage_id) VALUES(?,'audit-passage')").run(itemId);
@@ -1404,7 +1443,14 @@ function prepareLessonParts(name: string) {
             : null,
         done,
       );
-      if (position <= 3) write(`audit-part-${position}`, "audit-parts-topic", auditPartText);
+      if (position === 3 && name === "lesson-part-figures")
+        write(
+          "audit-part-3",
+          "audit-parts-topic",
+          auditFiguresText,
+          Object.fromEntries(auditFigures.map((figure) => [figure.key, figure.image])),
+        );
+      else if (position <= 3) write(`audit-part-${position}`, "audit-parts-topic", auditPartText);
     });
     if (recap) write("audit-part-9", "audit-parts-topic", auditRecapText);
     part.run("audit-one-part", "audit-one-outline", 1, "part", "Formula di Taylor", 6, "Il polinomio di Taylor approssima una funzione vicino a un punto.", null);
@@ -3494,6 +3540,20 @@ async function openState(page: Page, name: string) {
       await expect(failed).toBeVisible();
       // A write that failed is red; one with no error left (its job dismissed) only waits for Riprova, so amber.
       await expect(failed).toHaveClass(name === "lesson-part-failed" ? /\bis-danger\b/ : /\bis-warning\b/);
+      break;
+    }
+    case "lesson-part-figures": {
+      const figures = page.locator("figure.px-figure");
+      await expect(figures).toHaveCount(2);
+      await expect(figures.nth(0).getByRole("img")).toHaveAttribute("alt", /palla aperta/);
+      await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /circuito RC/);
+      // Both images have loaded, so the page is at its final height.
+      await expect
+        .poll(() =>
+          figures.getByRole("img").evaluateAll((images) => images.every((image) => (image as HTMLImageElement).naturalWidth > 0)),
+        )
+        .toBe(true);
+      await figures.nth(1).scrollIntoViewIfNeeded();
       break;
     }
     case "lesson-part-recap": {

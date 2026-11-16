@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BrowserWindow, session, type Session } from "electron";
+import { runtimePackIds, type PackId } from "../shared/figure-kinds";
 import { checkClaimSchema, gradeCheckSchema } from "../shared/math-check";
 import {
   cancelRuntimeDownload,
   currentRuntimeStatus,
   downloadRuntime,
   requireRuntime,
-  runtimeManifest,
+  runtimePacks,
   verifiedRuntimeFile,
 } from "./runtime-pack";
 
@@ -20,9 +21,12 @@ const trusted = new Map([
   ["check-worker.js", "check-worker.js"],
   ["symbolic.py", "symbolic.py"],
 ]);
+// A pack's files are served under its id: `pyodide/pyodide.js`, `drawing/<wheel>`.
 const allowed = new Set([
   ...trusted.keys(),
-  ...runtimeManifest.files.map((file) => `pyodide/${file.name}`),
+  ...runtimePackIds.flatMap((id) =>
+    runtimePacks[id].files.map((file) => `${id}/${file.name}`),
+  ),
 ]);
 const HEADERS = {
   "Content-Security-Policy":
@@ -92,7 +96,8 @@ export function registerRuntimeProtocol(
         )
       : await verifiedRuntimeFile(
           typeof path === "function" ? path() : path,
-          name.slice("pyodide/".length),
+          name.slice(0, name.indexOf("/")) as PackId,
+          name.slice(name.indexOf("/") + 1),
         );
     return bytes
       ? new Response(bytes, {
@@ -196,6 +201,18 @@ function rendererGone(target: BrowserWindow): boolean {
   const frame = target.webContents.mainFrame;
   return !frame || frame.isDestroyed() || frame.detached;
 }
+/**
+ * The wheels of the drawing pack, which a Python run installs before its code, so circuits can import schemdraw. None
+ * while the pack is not downloaded: Python runs the same without it.
+ */
+async function drawingWheels(): Promise<string[]> {
+  const status = await currentRuntimeStatus(workspace);
+  return status.packs.drawing === "ready"
+    ? runtimePacks.drawing.files
+        .filter((file) => file.name.endsWith(".whl"))
+        .map((file) => `drawing/${file.name}`)
+    : [];
+}
 // Covers booting Pyodide (host.js allows 60 s) plus the run itself (at most 11 s). Old Intel Macs take over a minute to boot.
 const RUN_CEILING_MS = 90000;
 async function dispatch(
@@ -206,13 +223,17 @@ async function dispatch(
 ): Promise<unknown> {
   const target = await sandbox();
   if (target.isDestroyed()) throw new Error("runtime-crashed");
+  const extra =
+    operation === "run"
+      ? `, ${timeoutMs}, ${JSON.stringify(await drawingWheels())}`
+      : "";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let onClosed: (() => void) | undefined;
   try {
     return await Promise.race([
       target.webContents
         .executeJavaScript(
-          `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${operation === "run" ? `, ${timeoutMs}` : ""})`,
+          `window.pyxisRuntime.${method}(${JSON.stringify(payload)}${extra})`,
         )
         .catch((error: unknown) => {
           // Since Electron 45 a renderer that dies rejects the pending call at once ("Render frame was disposed before

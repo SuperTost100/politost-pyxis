@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
+import { FIGURE_KINDS, figureKinds } from "../../shared/figure-kinds";
 import { FIGURE_MAX, figureKey } from "../../shared/smart-text";
 import {
-  FIGURE_TIMEOUT_MS,
   drawFigures,
   figureCaptions,
   figureRunner,
@@ -10,8 +10,8 @@ import {
 
 const PNG =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const block = (code: string, caption = "Figura") =>
-  ["```pyxis-figure", JSON.stringify({ caption, code }), "```"].join("\n");
+const block = (code: string, caption = "Figura", kind?: string) =>
+  ["```pyxis-figure", JSON.stringify({ kind, caption, code }), "```"].join("\n");
 const drawsAll: FigureRunner = async () => ({
   stdout: "",
   stderr: "",
@@ -39,9 +39,11 @@ it("runs each figure once with the time limit, up to the cap, and keeps the text
   ].join("\n\n");
   const drawn = await drawFigures(text, { python });
   expect(calls).toHaveLength(FIGURE_MAX);
-  expect(calls.every((call) => call.timeout === FIGURE_TIMEOUT_MS)).toBe(true);
+  expect(
+    calls.every((call) => call.timeout === FIGURE_KINDS.plot.timeoutMs),
+  ).toBe(true);
   expect(Object.keys(drawn.figures)).toEqual(
-    codes.slice(0, FIGURE_MAX).map(figureKey),
+    codes.slice(0, FIGURE_MAX).map((code) => figureKey(code)),
   );
   expect(drawn.markdown.match(/```pyxis-figure/g)).toHaveLength(FIGURE_MAX + 1);
   expect(drawn.markdown).not.toContain(codes.at(-1));
@@ -115,8 +117,52 @@ it("reuses images already drawn, stops when aborted, and turns figures into capt
   expect(figureCaptions(block("x", "La retta"))).toBe("*La retta*");
 });
 
+it("draws a circuit on the drawing d and leaves out a kind the sandbox cannot draw", async () => {
+  const programs: string[] = [];
+  const python: FigureRunner = async (code, timeout) => {
+    programs.push(code);
+    return drawsAll(code, timeout);
+  };
+  const rc = "d += elm.Resistor().right().label('R')\nd += elm.Capacitor().down().label('C')";
+  const text = [block(rc, "Un circuito RC.", "circuit"), block("plt.plot([1])"), "Fine."].join("\n\n");
+  const drawn = await drawFigures(text, { python });
+  expect(Object.keys(drawn.figures)).toEqual([
+    figureKey(rc, "circuit"),
+    figureKey("plt.plot([1])"),
+  ]);
+  // The circuit's elements go on a drawing that exists before the code and is drawn after it.
+  const [circuit, plot] = programs.map((program) => program.split("\n"));
+  expect(circuit!.indexOf("d = schemdraw.Drawing(show=False)")).toBeLessThan(
+    circuit!.indexOf("d += elm.Resistor().right().label('R')"),
+  );
+  expect(circuit!.slice(-3)).toEqual([
+    "if d.elements:",
+    "    d.draw(show=False).getfig()",
+    "plt.show()",
+  ]);
+  expect(plot!.join("\n")).not.toContain("schemdraw");
+
+  // With Python but without the drawing pack only plots draw: the circuit's block goes and nothing runs for it.
+  programs.length = 0;
+  const plots = await drawFigures(text, { python, kinds: ["plot"] });
+  expect(programs).toHaveLength(1);
+  expect(Object.keys(plots.figures)).toEqual([figureKey("plt.plot([1])")]);
+  expect(plots.markdown).not.toContain("Un circuito RC.");
+  // A circuit drawn before keeps its image even then.
+  const kept = await drawFigures(text, {
+    python,
+    kinds: ["plot"],
+    known: { [figureKey(rc, "circuit")]: PNG },
+  });
+  expect(kept.markdown).toContain("Un circuito RC.");
+  expect(Object.keys(kept.figures)).toHaveLength(2);
+});
+
 it("offers figures only with a sandbox: the caller's runner, or none when the runtime cannot be reached", async () => {
-  expect(await figureRunner(drawsAll)).toBe(drawsAll);
+  expect(await figureRunner(drawsAll)).toEqual({
+    run: drawsAll,
+    kinds: figureKinds,
+  });
   expect(await figureRunner(null)).toBeNull();
   // In a test there is no main process to ask, so the runtime counts as missing.
   expect(await figureRunner()).toBeNull();

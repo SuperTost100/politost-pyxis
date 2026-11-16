@@ -27,6 +27,6 @@ A block is a fenced code block whose opening line is exactly ```pyxis-<kind> and
 - pyxis-example, a worked example: {"title": "short title", "body": "Markdown: the problem, then the solution step by step"}.
 - pyxis-recap, only in the recap part: {"questions": [3 objects shaped like pyxis-check]}.
 - pyxis-takeaway, the end of every part: {"text": "..."}.
-- pyxis-figure, a figure the app draws, where a picture teaches better than words (a function plot, a vector diagram, a simple circuit): {"caption": "one sentence on what the figure shows", "code": "Python that draws one figure with matplotlib"}. The code runs offline in a sandbox with numpy (imported as np), matplotlib.pyplot (as plt) and sympy, for at most a few seconds and 4000 characters; do not call plt.show() or plt.savefig() and do not open files. Draw circuits and vectors with lines, arrows and text. Label axes and quantities, and keep text in the figure short and in the lesson's language. Use at most one pyxis-figure block in the part, and none when nothing in it is worth drawing.
+{{> figures}}
 
 Use pyxis-example, pyxis-try and pyxis-reveal where they help, at most one of each in a part.
