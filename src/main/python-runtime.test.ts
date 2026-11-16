@@ -104,6 +104,9 @@ vi.mock("electron", () => {
 });
 
 const requireRuntime = vi.hoisted(() => vi.fn(async () => undefined));
+const downloadRuntime = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ""));
+const cancelRuntimeDownload = vi.hoisted(() => vi.fn((..._args: unknown[]) => undefined));
+const removeRuntimePack = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const packs = vi.hoisted(() => ({ pyodide: "ready", drawing: "idle" }));
 vi.mock("./runtime-pack", () => ({
   requireRuntime,
@@ -111,9 +114,10 @@ vi.mock("./runtime-pack", () => ({
     pyodide: { files: [] },
     drawing: { files: [{ name: "circuits.whl" }, { name: "notes.txt" }] },
   },
-  cancelRuntimeDownload: () => undefined,
+  cancelRuntimeDownload,
   currentRuntimeStatus: async () => ({ packs }),
-  downloadRuntime: async () => "",
+  downloadRuntime,
+  removeRuntimePack,
   verifiedRuntimeFile: async () => undefined,
 }));
 
@@ -483,5 +487,46 @@ describe("python runtime session", () => {
     expect(fake.clearedAtScript.at(-1)).toBeGreaterThanOrEqual(1);
     fake.held[2]!.settle({ stdout: "" });
     await next;
+  });
+});
+
+describe("python runtime pack requests", () => {
+  beforeEach(() => {
+    downloadRuntime.mockClear();
+    cancelRuntimeDownload.mockClear();
+    removeRuntimePack.mockClear();
+    fake.windows.length = 0;
+    fake.held.length = 0;
+    fake.scripts.length = 0;
+    configurePythonRuntime("/workspace-a");
+  });
+  afterEach(() => disposePythonRuntime());
+
+  it("starts, cancels and removes the packs a request names, and every pack when it names none", async () => {
+    await handleRuntimeRequest("download", { packs: ["drawing"] });
+    await handleRuntimeRequest("download", {});
+    await handleRuntimeRequest("download", { packs: [] });
+    expect(downloadRuntime.mock.calls).toEqual([["/workspace-a", ["drawing"]], ["/workspace-a", undefined], ["/workspace-a", undefined]]);
+    await handleRuntimeRequest("cancel-download", { packs: ["pyodide"] });
+    await handleRuntimeRequest("cancel-download", {});
+    expect(cancelRuntimeDownload.mock.calls).toEqual([["/workspace-a", ["pyodide"]], ["/workspace-a", undefined]]);
+    await handleRuntimeRequest("remove", { pack: "drawing" });
+    expect(removeRuntimePack.mock.calls).toEqual([["/workspace-a", "drawing"]]);
+    // A pack that is not one of the two is refused before anything is touched.
+    await expect(handleRuntimeRequest("remove", { pack: "../x" })).rejects.toThrow();
+    await expect(handleRuntimeRequest("download", { packs: ["nope"] })).rejects.toThrow();
+    expect(removeRuntimePack).toHaveBeenCalledTimes(1);
+  });
+
+  it("shuts the Python window when Python is removed, and leaves it open when the drawing pack is", async () => {
+    const running = handleRuntimeRequest("check", claim);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle({ state: "none" });
+    await running;
+    expect(fake.windows[0]!.destroyed).toBe(false);
+    await handleRuntimeRequest("remove", { pack: "drawing" });
+    expect(fake.windows[0]!.destroyed).toBe(false);
+    await handleRuntimeRequest("remove", { pack: "pyodide" });
+    expect(fake.windows[0]!.destroyed).toBe(true);
   });
 });

@@ -47,12 +47,12 @@ export function PythonPage() {
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const { data: jobs = [] } = useJobs();
-  // A download that finished earlier stays in today's list; the one to follow is the one still to finish.
-  const job = jobs.find(
+  // A download of either kind that is waiting or running, whichever page started it: Settings starts one pack on its own.
+  const active = jobs.some(
     (item) =>
-      item.kind === "local-runtime-download" && item.state !== "succeeded",
+      (item.kind === "local-runtime-download" || item.kind === "local-drawings-download") &&
+      (item.state === "queued" || item.state === "running"),
   );
-  const active = job?.state === "queued" || job?.state === "running";
   const runtime = useQuery({
     queryKey: ["python-runtime"],
     queryFn: () => invoke("tools.runtime", {}),
@@ -92,7 +92,14 @@ export function PythonPage() {
     setRunWhenKnown(false);
     if (canRun) void run();
   }, [runWhenKnown, runtime.isPending, canRun]);
-  const megabytes = mb(runtime.data?.totalBytes ?? 0);
+  // What the page offers is what is missing and not on its way already: with only the drawings downloading, Python can
+  // still be asked for, for its own size. What is on its way has its progress and its Annulla here too.
+  const info = runtime.data?.info;
+  const downloading = (["pyodide", "drawing"] as const).filter((pack) => info?.[pack].phase === "downloading");
+  const missing = (["pyodide", "drawing"] as const).filter((pack) => info && info[pack].phase !== "ready" && info[pack].phase !== "downloading");
+  const megabytes = mb(missing.reduce((sum, pack) => sum + (info?.[pack].size ?? 0), 0));
+  const running = downloading.length > 0 || starting;
+  const failed = (["pyodide", "drawing"] as const).some((pack) => info?.[pack].phase === "failed");
   async function download() {
     setStarting(true);
     setNotice("");
@@ -169,26 +176,20 @@ export function PythonPage() {
                 size: megabytes,
               })}
             </p>
-            {active || runtime.data.phase === "downloading" ? (
+            {running ? (
               <div className="px-python-actions">
                 <span className="meta" role="status">
-                  {t(drawings ? "python.drawingsDownload" : "python.download", {
+                  {t(downloading.includes("pyodide") ? "python.download" : "python.drawingsDownload", {
                     current: mb(runtime.data.bytes),
-                    total: megabytes,
+                    total: mb(runtime.data.totalBytes),
                   })}
                 </span>
-                {job ? (
-                  <Button
-                    shape="round"
-                    onClick={() =>
-                      void invoke("jobs.cancel", { jobId: job.id })
-                    }
-                  >
-                    {t("python.cancelDownload")}
-                  </Button>
-                ) : null}
+                <Button shape="round" onClick={() => void invoke("tools.runtimeCancel", {}).then(() => runtime.refetch())}>
+                  {t("python.cancelDownload")}
+                </Button>
               </div>
-            ) : (
+            ) : null}
+            {missing.length > 0 ? (
               <div className="px-python-actions">
                 <Button
                   type="primary"
@@ -196,22 +197,17 @@ export function PythonPage() {
                   loading={starting}
                   onClick={() => void download()}
                 >
-                  {t(
-                    job?.state === "failed" || job?.state === "cancelled"
-                      ? "python.retryDownload"
-                      : drawings
-                        ? "python.drawingsAction"
-                        : "python.downloadAction",
-                    { size: megabytes },
-                  )}
+                  {t(failed ? "python.retryDownload" : drawings ? "python.drawingsAction" : "python.downloadAction", {
+                    size: megabytes,
+                  })}
                 </Button>
-                {job?.state === "failed" ? (
+                {failed && !running ? (
                   <span className="small" role="alert">
                     {t("python.downloadFailed")}
                   </span>
                 ) : null}
               </div>
-            )}
+            ) : null}
           </div>
         ) : null}
         <p className="small">{t("python.sessionFiles")}</p>

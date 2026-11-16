@@ -116,6 +116,9 @@ describe("job update invalidation", () => {
     ]);
     expect(keys(staleFamilies({ kind: "ocr-data-download", state: "queued" }))).toEqual(["jobs", "ocr-data"]);
     expect(keys(staleFamilies({ kind: "embedding-download", state: "running" }))).toEqual(["jobs", "embedding"]);
+    // A pack's download changes its row in Settings and the Python page, whichever page started it.
+    for (const kind of ["local-runtime-download", "local-drawings-download"])
+      expect(keys(staleFamilies({ kind, state: "running" }))).toEqual(["jobs", "python-runtime"]);
   });
 });
 
