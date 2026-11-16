@@ -68,7 +68,8 @@ body {
   background-color: var(--scrollbar-thumb-hover);
 }
 
-/* Same text width as the shell's page column: 768px minus its 24px side padding. */
+/* The column of a page outside the shell (a study page, the error page): the chat's reading width minus a 24px gutter
+   on each side. A shell page sits in the page column instead (.px-shell-container). */
 .column {
   width: min(
     calc(var(--content-width) - var(--space-6) * 2),
@@ -184,9 +185,9 @@ html[data-platform="darwin"] {
   -webkit-app-region: no-drag;
 }
 /* "Riprendi l'esame" while an exam is in progress (Shell.tsx): in the top strip, centred on Attività's row, at the left
-   edge of the page under it. The row takes the page's own width classes, so it lines up with the page's title on every
-   page and with the sidebar folded or not; it has no height, so the page under it keeps its place. A map's page fills
-   the column and pads itself, and its title sits 10px in from that (MapPage.css), so the row starts there too. It
+   edge of the page under it. The row sits in the same column as the page, so it lines up with the page's title on every
+   page and with the sidebar folded or not; it has no height, so the page under it keeps its place. Chiedi runs edge to
+   edge and pads its own head, so the row there starts 10px in from that padding, where the chat's title does. It
    scrolls away with the page, so it never sits over what scrolls under the strip. */
 .px-resume-strip {
   position: relative;
@@ -356,33 +357,39 @@ a.px-brand:hover {
   background: transparent !important;
 }
 
-/* The page column under the top bar, padded as ProLayout's PageContainer was (24px sides, 48px top). A page sets its
-   width with --shell-max. Attività stays in the window's top-right corner (.px-corner-tools), so a page never runs under
-   it: when the column leaves less than --corner-room beside the page, the right padding makes up the rest. */
-.px-shell-container {
-  --shell-max: var(--content-width);
-  box-sizing: border-box;
-  width: 100%;
-  max-width: var(--shell-max);
-  margin-inline: auto;
-  padding: 48px 24px 0;
-  /* 100% is the column's width, so the half of it the page leaves free is the margin on each side. */
-  padding-inline-end: max(24px, calc(var(--corner-room) - max(0px, (100% - var(--shell-max)) / 2)));
+/* The page column: every page of the shell sits in this one (docs/design-system/layout.md#the-page-column), --page-width
+   wide and starting at --page-start, counted from the left edge of the area beside the sidebar. The start is the
+   column's centre where the window has room, never closer than 24px, and it gives way before the column does when
+   Attività, in the window's top-right corner (.px-corner-tools), needs --corner-room at the right: a page never runs
+   under it. The column then keeps its width and starts closer to the sidebar, and below that it narrows. The top
+   padding is the page's 48px under the top bar. */
+:root {
+  --page-start: max(
+    24px,
+    min(
+      calc((100% - var(--page-width)) / 2),
+      calc(100% - var(--page-width) - var(--corner-room))
+    )
+  );
 }
-
-/* Settings is the one page with a sidebar, so it takes a wider column from 960px, where the sidebar appears. */
-@media (min-width: 960px) {
-  .px-shell-container.px-shell-wide {
-    --shell-max: 960px;
-  }
+.px-shell-container {
+  box-sizing: border-box;
+  width: min(
+    var(--page-width),
+    calc(100% - var(--page-start) - var(--corner-room))
+  );
+  margin-inline-start: var(--page-start);
+  padding: 48px 0 0;
 }
 
 /* Chiedi runs edge to edge beside the sidebar (AskPage.css lays it out). */
 .px-shell-container.px-shell-bleed {
-  max-width: none;
+  width: 100%;
+  margin-inline-start: 0;
   padding: 0;
 }
-.px-shell-bleed .shell-page {
+.px-shell-bleed .shell-page,
+.px-shell-fill .shell-page {
   padding-bottom: 0;
 }
 

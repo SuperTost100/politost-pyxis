@@ -371,7 +371,8 @@ async function plainCanvas(page: Page) {
   const session = await page.context().newCDPSession(page);
   try {
     const { visualViewport } = await session.send("Page.getLayoutMetrics");
-    const zoom = visualViewport.zoom ?? 1;
+    // Chromium reports the zoom as a float32 (0.8 as 0.80000001), which grows a canvas whose edges land on whole pixels by one.
+    const zoom = Math.round((visualViewport.zoom ?? 1) * 1e4) / 1e4;
     const clip = await page.evaluate((zoom) => {
       const box = document.querySelector(".px-map-canvas")!.getBoundingClientRect();
       const left = Math.floor(Math.max(0, box.left) * zoom + 1e-6);

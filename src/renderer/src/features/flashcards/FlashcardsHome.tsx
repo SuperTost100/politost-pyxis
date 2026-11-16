@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
+import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { LoadError } from "../../components/LoadError";
@@ -175,7 +176,7 @@ export function FlashcardsHome() {
       </div>
     );
   else if (data.subjects.length === 0)
-    body = <EmptyState body={t("flashcards.emptyBody")} action={newCard("primary")} />;
+    body = <EmptyState centred art={<EmptyArt kind="flashcards" />} body={t("flashcards.emptyBody")} action={newCard("primary")} />;
   else
     body = (
       <div className="px-fc-subjects">

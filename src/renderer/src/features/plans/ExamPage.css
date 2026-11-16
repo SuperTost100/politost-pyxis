@@ -1,9 +1,3 @@
-/* An exam's page: the head with the rings, then Adesso and the path beside a column of sections (Shell.tsx sets
-   px-shell-exam on /plans/:planId). */
-.px-shell-container.px-shell-exam {
-  --shell-max: calc(1068px + 48px);
-}
-
 /* The page is the container the grid answers to: its own width, which the sidebar, the window and the zoom all change,
    not the window's. */
 .px-exam {

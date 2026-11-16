@@ -1,0 +1,60 @@
+/* The drawings of EmptyArt.tsx. Greys come from the page's own ink, so they follow both themes, and the one tinted part
+   takes the primary colour. Strokes keep their width at any size. */
+.ea {
+  --ea-1: color-mix(in srgb, var(--ink) 16%, var(--bg));
+  --ea-2: color-mix(in srgb, var(--ink) 8%, var(--bg));
+  --ea-0: color-mix(in srgb, var(--surface) 70%, var(--bg));
+  --ea-dark: color-mix(in srgb, var(--ink) 30%, var(--bg));
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 7 / 6;
+  overflow: visible;
+}
+.ea * {
+  vector-effect: non-scaling-stroke;
+}
+.ea-card {
+  fill: var(--ea-0);
+  stroke: var(--ea-1);
+  stroke-width: 1;
+}
+.ea-bar {
+  fill: var(--ea-1);
+}
+.ea-bar2 {
+  fill: var(--ea-2);
+}
+.ea-ln {
+  fill: none;
+  stroke: var(--ea-1);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.ea-dk {
+  fill: var(--ea-dark);
+}
+.ea-mk {
+  fill: var(--ea-0);
+  stroke: var(--ea-dark);
+  stroke-width: 1.6;
+}
+.ea-wt {
+  fill: none;
+  stroke: var(--ea-0);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* The tinted part: after the greys, so it wins over a card's own fill. */
+.ea-tn {
+  fill: var(--primary-soft);
+  stroke: color-mix(in srgb, var(--primary-text) 42%, var(--bg));
+  stroke-width: 1;
+}
+.ea-tl {
+  fill: none;
+  stroke: color-mix(in srgb, var(--primary-text) 60%, var(--bg));
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}

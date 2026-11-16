@@ -3,7 +3,6 @@
   flex-direction: column;
   gap: var(--space-3);
   width: 100%;
-  max-width: 680px;
   margin-top: var(--space-5);
 }
 .px-import-review h2,
@@ -11,9 +10,8 @@
 .px-import-review p {
   margin: 0;
 }
-/* In the dialog the card is the frame: no extra top margin and no narrower column. */
+/* In the dialog the card is the frame: no extra top margin. */
 .px-dialog .px-import-review {
-  max-width: none;
   margin-top: 0;
 }
 .px-import-counts {

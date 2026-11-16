@@ -1,9 +1,6 @@
-/* The line and its button start at the page head's left edge, below the head. */
+/* Small: the line and its button start at the page head's left edge, below the head. */
 .px-empty {
   padding-top: var(--space-6);
-}
-.px-empty-art {
-  margin-bottom: var(--space-4);
 }
 .px-empty-line {
   margin: 0;
@@ -16,4 +13,37 @@
 .px-empty-action {
   display: flex;
   margin-top: var(--space-4);
+}
+
+/* Centred: the page whose body this is takes the window's height, so the block has the room under the head to sit in.
+   The page is the shell's page column, whose chrome is the strip above it (--top-height), the column's 48px top padding
+   and the page's own --space-16 bottom padding (global.css). The page gives that bottom padding back, so the room
+   reaches the window's bottom edge, and the block's own padding keeps it off the head and the edge in a short window,
+   where the page grows and scrolls instead. */
+.shell-page > :has(> .px-empty-centred) {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--top-height) - 48px);
+  margin-bottom: calc(-1 * var(--space-16));
+}
+.px-empty-centred {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-4);
+  padding: var(--space-6) 0;
+  text-align: center;
+}
+.px-empty-centred .px-empty-line {
+  max-width: min(460px, 100%);
+}
+.px-empty-centred .px-empty-action {
+  margin-top: 0;
+  justify-content: center;
+}
+/* The drawing is as wide as its room, up to 280px, and no taller than the window can spare. */
+.px-empty-art {
+  width: min(280px, 100%, 42vh);
+  margin-bottom: var(--space-2);
 }
