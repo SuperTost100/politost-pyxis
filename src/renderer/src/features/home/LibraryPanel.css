@@ -279,10 +279,6 @@ select.px-ctl-field.px-library-picker {
   gap: var(--space-2);
 }
 
-/* The Library page is wider than the usual column, so short shelves sit side by side (Shell.tsx sets the class). */
-.px-shell-container.px-shell-library {
-  --shell-max: calc(1140px + 48px);
-}
 /* The page head: the title, and on the right the linked folders and "Aggiungi file". */
 .px-library-head {
   display: flex;
