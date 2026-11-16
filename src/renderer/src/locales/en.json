@@ -2913,11 +2913,6 @@
       "recommended": "Recommended"
     },
     "plan": {},
-    "gap": {
-      "severe": "severe",
-      "minor": "minor",
-      "fill": "Fill"
-    },
     "buttons": {
       "continue": "Continue",
       "newPlan": "New exam",
@@ -2967,12 +2962,6 @@
       "exercises": "Exercises",
       "review": "Review",
       "sim": "Simulation"
-    },
-    "gapSamples": {
-      "severe": "You mix up heat and work in the energy balance sign.",
-      "minor": "You forget to convert angular velocity to rad/s.",
-      "topic1": "Thermodynamics · First law",
-      "topic2": "Kinematics · Circular motion"
     },
     "quizSamples": {
       "a": "Heat is a state function",

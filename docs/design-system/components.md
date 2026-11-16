@@ -66,7 +66,6 @@ A row, tile or card with a three-dots menu uses `ItemMenu`: the dots and a right
 | `MasteryBar`      | A bar from 0 to 100 with an optional target mark                                       |
 | `StatTile`        | A number with its label and a small bar                                                |
 | `QuizOption`      | One answer of a multiple-choice question, before and after the check                   |
-| `GapItem`         | A gap to fill, named after its topic                                                   |
 | `CardFaceFields`  | A flashcard's front and back while it is edited                                        |
 | `MakeCardsDialog` | Makes flashcards from a selection, a reply or a map                                    |
 | `ProposedCards`   | Flashcards Pyxis wrote, to edit or drop before saving, in both card dialogs            |
