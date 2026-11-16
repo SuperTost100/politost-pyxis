@@ -24,9 +24,10 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { drawingPinned, stagePacks as stageOnly } from "./drawing-packs";
 
 // Without a kind the block is a plot, as every figure was before circuits.
-const figure = (caption: string, code: string, kind?: "circuit") =>
+const figure = (caption: string, code: string, kind?: "circuit" | "graph") =>
   ["```pyxis-figure", JSON.stringify({ kind, caption, code }), "```"].join("\n");
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -487,6 +488,130 @@ test("a circuit whose code reaches for the network or the host fails with an err
   }
 });
 
+const automaton = [
+  "digraph automa {",
+  "  rankdir=LR; node [shape=circle fontname=\"Helvetica\"];",
+  "  start [shape=point]; q2 [shape=doublecircle];",
+  "  start -> q0; q0 -> q1 [label=\"a\"]; q1 -> q2 [label=\"b\"]; q2 -> q0 [label=\"c\"]; q1 -> q1 [label=\"a\"];",
+  "}",
+].join("\n");
+const tree = 'digraph albero { node [shape=box fontname="Helvetica"]; Radice -> Sinistra; Radice -> Destra; Sinistra -> "Foglia A"; Sinistra -> "Foglia B"; Destra -> "Foglia C" }';
+
+test("a graph in a lesson and an Ask answer is drawn by the drawing window, with the drawing pack alone", async () => {
+  test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graphs-"));
+  // No Python: a graph is not drawn by it.
+  stageOnly(userData, ["drawing"]);
+  const book = join(userData, "automi.ptsb");
+  writeFileSync(
+    book,
+    makeBook({
+      id: "automi",
+      chapters: [{ title: "Automi", text: "## p1 | Automi\nUn automa a stati finiti ha stati e transizioni.\n" }],
+    }),
+  );
+  const lessonText = [
+    "## Gli automi a stati finiti",
+    "",
+    "Un automa è un insieme di stati e di transizioni etichettate dai simboli che legge.",
+    "",
+    figure("Un automa con tre stati: $q_2$ è lo stato finale.", automaton, "graph"),
+    "",
+    "## Gli alberi",
+    "",
+    "Un albero è un grafo senza cicli, con una radice.",
+    "",
+    figure("Un albero binario con tre foglie.", tree, "graph"),
+    "",
+    ["```pyxis-check", JSON.stringify({ question: "Quanti stati ha l'automa?", options: ["tre", "due", "quattro"], answer: 0, explanation: "q0, q1 e q2." }), "```"].join("\n"),
+  ].join("\n");
+  const replies = {
+    markdown: { markdown: lessonText },
+    questions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        stem: `Che cos'è un automa ${i + 1}?`,
+        options: ["Un modello a stati", "Un albero", "Un numero", "Una lista"],
+        correct: 0,
+        topicIndex: 0,
+        passageIds: ["{{passage:0}}"],
+        explanation: "Ha stati e transizioni.",
+      })),
+    },
+  };
+  const answerText = ["Un albero binario ha al più due figli per nodo.", "", figure("Un albero con tre foglie.", tree, "graph"), "", "Le foglie non hanno figli."].join("\n");
+  const app = await launchPyxis({
+    userData,
+    env: { HOME: userData, PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies), PYXIS_E2E_REPLY: answerText },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const { sourceId } = (await importPickedSource(page, app, book)) as { sourceId: string };
+    await expect
+      .poll(async () => ((await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{ id: string; status: string }>).find((row) => row.id === sourceId)?.status)
+      .toBe("ready");
+    const { planId } = (await page.evaluate(
+      (sourceId) => window.pyxis.invoke("plans.create", { title: "Automi", sourceIds: [sourceId], language: "it" }),
+      sourceId,
+    )) as { planId: string };
+    await expect
+      .poll(async () => ((await page.evaluate((planId) => window.pyxis.invoke("plans.build", { planId }), planId)) as { state: string } | null)?.state, { timeout: 60000 })
+      .toBe("succeeded");
+    const plan = (await page.evaluate((planId) => window.pyxis.invoke("plans.read", { planId }), planId)) as { topics: Array<{ id: string }> };
+    const topicId = plan.topics[0]!.id;
+    await page.evaluate(({ planId, topicId }) => (location.hash = `/plans/${planId}/lesson/${topicId}`), { planId, topicId });
+    const figures = page.locator("figure.px-figure");
+    await expect(figures).toHaveCount(2, { timeout: 120000 });
+    await expect(figures.first().getByRole("img")).toHaveAttribute("alt", /automa con tre stati/);
+    await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /albero binario/);
+    for (const width of await figures.getByRole("img").evaluateAll((images) => images.map((image) => (image as HTMLImageElement).naturalWidth))) {
+      expect(width).toBeGreaterThanOrEqual(150);
+      expect(width).toBeLessThanOrEqual(2000);
+    }
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    await expect(page.getByText("Quanti stati ha l'automa?")).toBeVisible();
+    await expectNoAxeViolations(page);
+    for (const [lang, theme, width] of [
+      ["it", "light", 1280],
+      ["it", "dark", 1280],
+      ["en", "dark", 960],
+      ["en", "light", 960],
+    ] as const) {
+      await look(page, lang, theme, width);
+      await expect(figures).toHaveCount(2);
+      await figures.first().scrollIntoViewIfNeeded();
+      await saveShot(page, `graph/lesson-automaton-${lang}-${theme}-${width}.png`);
+      await figures.nth(1).scrollIntoViewIfNeeded();
+      await saveShot(page, `graph/lesson-tree-${lang}-${theme}-${width}.png`);
+    }
+
+    const asked = (await page.evaluate(() => window.pyxis.invoke("chats.ask", { text: "Com'è fatto un albero binario?", allowGeneral: true }))) as {
+      chatId: string;
+      message: { figures?: Record<string, string> };
+    };
+    expect(Object.keys(asked.message.figures ?? {})).toHaveLength(1);
+    await page.evaluate((chatId) => (location.hash = `/ask/${chatId}`), asked.chatId);
+    await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
+    await expect(page.getByText("Le foglie non hanno figli.")).toBeVisible();
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    for (const [lang, theme, width] of [
+      ["it", "dark", 1280],
+      ["en", "light", 1280],
+    ] as const) {
+      await look(page, lang, theme, width);
+      await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
+      await saveShot(page, `graph/ask-tree-${lang}-${theme}-${width}.png`);
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 const answerWith = (...blocks: string[]) =>
   ["Un partitore di tensione divide la tensione in proporzione alle resistenze.", "", ...blocks, "", "Fine della risposta."].join("\n");
 
@@ -630,6 +755,158 @@ test("when the fix fails too, the figure is dropped and the answer around it is 
         "Fine della risposta.",
       ].join("\n"),
     );
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+// The retry and the drawing window together: a graph is corrected by the same one call as a plot or a circuit, with the
+// drawing pack alone (no Python), and the window's own short error is what the model is told.
+const graphAnswer = (...blocks: string[]) =>
+  ["Un automa a stati finiti ha stati e transizioni.", "", ...blocks, "", "Fine della risposta."].join("\n");
+// The checks pass this text and Graphviz cannot read it: a directed edge in an undirected graph.
+const unreadable = "graph { q0 -> q1; q1 -> q0 }";
+
+test("a graph the drawing window cannot read shows its working state while it is fixed, then shows the fixed graph in place", async () => {
+  test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graph-retry-"));
+  // No Python: a graph is not drawn by it, and the fix call does not need it.
+  stageOnly(userData, ["drawing"]);
+  const release = join(userData, "release-fix");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: graphAnswer(figure("Un automa con due stati.", unreadable, "graph")),
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ code: automaton, hold: release }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Com'è fatto un automa?");
+    // The window fails the first drawing, and the call that corrects it waits for the test: the figure's place holds its
+    // working state, with the text around it, as it does for a plot.
+    const working = page.locator(".px-figure.is-drawing");
+    await expect(working).toBeVisible({ timeout: 120000 });
+    await page.waitForTimeout(4000);
+    await expect(working).toBeVisible();
+    await expect(page.getByText("Fine della risposta.")).toBeVisible();
+    await expect(page.locator("figure.px-figure")).toHaveCount(0);
+    writeFileSync(release, "go");
+    const shown = page.locator("figure.px-figure");
+    await expect(shown).toHaveCount(1, { timeout: 120000 });
+    await expect(working).toHaveCount(0);
+    await expect(shown.getByRole("img")).toHaveAttribute("alt", /automa con due stati/);
+    await expect
+      .poll(() => shown.getByRole("img").evaluate((image) => (image as HTMLImageElement).naturalWidth))
+      .toBeGreaterThanOrEqual(150);
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    // The saved message carries the corrected DOT and its picture, and nothing of the text that could not be read.
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    const saved = (await page.evaluate((chatId) => window.pyxis.invoke("chats.read", { chatId }), chats[0]!.id)) as {
+      messages: Array<{ role: string; body: string; figures?: Record<string, string> }>;
+    };
+    const reply = saved.messages.find((message) => message.role === "assistant")!;
+    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expect(reply.body).toBe(graphAnswer(figure("Un automa con due stati.", automaton, "graph")));
+    expect(reply.body).not.toContain(unreadable);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("when the fix fails too, a graph is dropped and the answer around the others is whole", async () => {
+  test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graph-retry-fails-"));
+  stageOnly(userData, ["drawing"]);
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: graphAnswer(
+        figure("Un grafo che non si legge.", unreadable, "graph"),
+        figure("Un altro che non si legge.", "digraph { a -- b }", "graph"),
+        figure("Un albero che si disegna.", tree, "graph"),
+      ),
+      // The first fix call fails, and the second answers with text the window cannot read either.
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ fail: "the engine is out" }, { code: "graph { x -> y }" }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Com'è fatto un automa?");
+    const shown = page.locator("figure.px-figure");
+    await expect(shown).toHaveCount(1, { timeout: 180000 });
+    await expect(page.locator(".px-figure.is-drawing")).toHaveCount(0);
+    await expect(shown.getByRole("img")).toHaveAttribute("alt", /albero che si disegna/);
+    await expect(page.getByText("Fine della risposta.")).toBeVisible();
+    for (const gone of ["non si legge", "q0 -> q1", "a -- b", "x -> y", "pyxis-"]) await expect(page.getByText(gone)).toHaveCount(0);
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    const saved = (await page.evaluate((chatId) => window.pyxis.invoke("chats.read", { chatId }), chats[0]!.id)) as {
+      messages: Array<{ role: string; body: string; figures?: Record<string, string> }>;
+    };
+    const reply = saved.messages.find((message) => message.role === "assistant")!;
+    expect(Object.keys(reply.figures ?? {})).toHaveLength(1);
+    expect(reply.body).toBe(graphAnswer(figure("Un albero che si disegna.", tree, "graph")));
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("pressing Stop while a graph is being corrected keeps the whole answer, with the graph left out, and the chat", async () => {
+  test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graph-retry-stop-"));
+  stageOnly(userData, ["drawing"]);
+  const never = join(userData, "never-released");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: graphAnswer(figure("Un automa con due stati.", unreadable, "graph")),
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      // The fix call waits for a file nobody creates: only Stop ends it.
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ code: automaton, hold: never }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Com'è fatto un automa?");
+    await expect(page.locator(".px-figure.is-drawing")).toBeVisible({ timeout: 120000 });
+    await page.waitForTimeout(3000);
+    await page.getByRole("button", { name: "Interrompi", exact: true }).click();
+    // The text the student had read stays, the place of the graph is gone, and nothing is waiting any more.
+    await expect(page.locator(".px-figure.is-drawing")).toHaveCount(0, { timeout: 30000 });
+    await expect(page.locator("figure.px-figure")).toHaveCount(0);
+    await expect(page.getByText("Un automa a stati finiti ha stati e transizioni.")).toBeVisible();
+    await expect(page.getByText("Fine della risposta.")).toBeVisible();
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    expect(chats).toHaveLength(1);
+    const saved = (await page.evaluate((chatId) => window.pyxis.invoke("chats.read", { chatId }), chats[0]!.id)) as {
+      messages: Array<{ role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
+    };
+    const reply = saved.messages.find((message) => message.role === "assistant")!;
+    expect(reply.body).toContain("Un automa a stati finiti ha stati e transizioni.");
+    expect(reply.body).toContain("Fine della risposta.");
+    expect(reply.body).not.toContain("pyxis-figure");
+    expect(reply.figures ?? {}).toEqual({});
   } finally {
     await app.close();
     removeTestFolder(userData);

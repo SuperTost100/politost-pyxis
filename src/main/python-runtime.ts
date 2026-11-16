@@ -1,8 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { BrowserWindow, session, type Session } from "electron";
-import { runtimePackIds, type PackId } from "../shared/figure-kinds";
+import { BrowserWindow, session } from "electron";
 import { checkClaimSchema, gradeCheckSchema } from "../shared/math-check";
 import {
   cancelRuntimeDownload,
@@ -10,31 +7,12 @@ import {
   downloadRuntime,
   requireRuntime,
   runtimePacks,
-  verifiedRuntimeFile,
 } from "./runtime-pack";
+import { handleDrawRequest } from "./draw-runtime";
+import { registerRuntimeProtocol, runtimeOrigin, runtimeResourceName } from "./runtime-protocol";
+import { lockSession, lockWindow, rendererGone } from "./runtime-window";
 
-const ORIGIN = "pyxis-runtime://sandbox/";
-const trusted = new Map([
-  ["index.html", "sandbox.html"],
-  ["host.js", "host.js"],
-  ["python-worker.js", "python-worker.js"],
-  ["check-worker.js", "check-worker.js"],
-  ["symbolic.py", "symbolic.py"],
-]);
-// A pack's files are served under its id: `pyodide/pyodide.js`, `drawing/<wheel>`.
-const allowed = new Set([
-  ...trusted.keys(),
-  ...runtimePackIds.flatMap((id) =>
-    runtimePacks[id].files.map((file) => `${id}/${file.name}`),
-  ),
-]);
-const HEADERS = {
-  "Content-Security-Policy":
-    "default-src 'none'; script-src pyxis-runtime: 'wasm-unsafe-eval'; connect-src pyxis-runtime:; worker-src pyxis-runtime:; img-src data:; base-uri 'none'; form-action 'none'",
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Embedder-Policy": "require-corp",
-  "Cross-Origin-Resource-Policy": "same-origin",
-};
+const ORIGIN = runtimeOrigin("sandbox");
 let workspace = "";
 let window: BrowserWindow | null = null;
 let opening: Promise<BrowserWindow> | null = null;
@@ -46,65 +24,22 @@ export function configurePythonRuntime(path: string): void {
     workspace = path;
   }
 }
+/** A handle for the end-to-end tests, which reach it through `app.evaluate`; only a run with PYXIS_E2E=1 installs it. */
+export function pythonTestHandle() {
+  return {
+    windows: () => (window && !window.isDestroyed() ? [window.id] : []),
+    /** Runs a script in the Python window's page, as code in that page would. */
+    evaluate: (script: string) => {
+      if (!window || window.isDestroyed()) throw new Error("no Python window is open");
+      return window.webContents.executeJavaScript(script);
+    },
+  };
+}
 export function disposePythonRuntime(): void {
   generation++;
   window?.destroy();
   window = null;
   opening = null;
-}
-function resourceName(raw: string): string | undefined {
-  try {
-    const url = new URL(raw);
-    if (
-      url.protocol !== "pyxis-runtime:" ||
-      url.hostname !== "sandbox" ||
-      url.search ||
-      url.hash ||
-      url.username ||
-      url.password ||
-      url.port
-    )
-      return undefined;
-    const name = url.pathname.slice(1);
-    return allowed.has(name) ? name : undefined;
-  } catch {
-    return undefined;
-  }
-}
-function mime(name: string): string {
-  if (name.endsWith(".html")) return "text/html";
-  if (name.endsWith(".js") || name.endsWith(".mjs")) return "text/javascript";
-  if (name.endsWith(".wasm")) return "application/wasm";
-  if (name.endsWith(".json")) return "application/json";
-  if (name.endsWith(".py")) return "text/plain";
-  return "application/octet-stream";
-}
-export function registerRuntimeProtocol(
-  target: Session,
-  path: string | (() => string),
-): void {
-  target.protocol.handle("pyxis-runtime", async (request) => {
-    const name = resourceName(request.url);
-    if (!name || request.method !== "GET")
-      return new Response("not found", { status: 404, headers: HEADERS });
-    const asset = trusted.get(name);
-    const bytes = asset
-      ? new Uint8Array(
-          await readFile(
-            join(import.meta.dirname, "../renderer/runtime", asset),
-          ),
-        )
-      : await verifiedRuntimeFile(
-          typeof path === "function" ? path() : path,
-          name.slice(0, name.indexOf("/")) as PackId,
-          name.slice(name.indexOf("/") + 1),
-        );
-    return bytes
-      ? new Response(bytes, {
-          headers: { ...HEADERS, "Content-Type": mime(name) },
-        })
-      : new Response("not found", { status: 404, headers: HEADERS });
-  });
 }
 async function sandbox(): Promise<BrowserWindow> {
   if (!workspace) throw new Error("runtime-workspace-missing");
@@ -119,14 +54,8 @@ async function sandbox(): Promise<BrowserWindow> {
     const partition = session.fromPartition(`pyxis-python-${randomUUID()}`, {
       cache: false,
     });
-    registerRuntimeProtocol(partition, path);
-    partition.webRequest.onBeforeRequest((details, callback) =>
-      callback({ cancel: !resourceName(details.url) }),
-    );
-    partition.setPermissionRequestHandler((_contents, _permission, callback) =>
-      callback(false),
-    );
-    partition.setPermissionCheckHandler(() => false);
+    registerRuntimeProtocol(partition, path, ["sandbox"]);
+    await lockSession(partition, (url) => Boolean(runtimeResourceName(url, "sandbox")));
     const created = new BrowserWindow({
       show: false,
       webPreferences: {
@@ -139,8 +68,7 @@ async function sandbox(): Promise<BrowserWindow> {
       },
     });
     window = created;
-    created.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-    created.webContents.on("will-navigate", (event) => event.preventDefault());
+    lockWindow(created);
     const forget = () => {
       if (window === created) {
         window = null;
@@ -193,13 +121,6 @@ function execute(
   });
   tails[operation] = turn.catch(() => undefined);
   return turn;
-}
-// The sandbox never navigates (will-navigate is refused), so a main frame that is destroyed or detached means its
-// renderer is gone. Electron can dispose the frame before isCrashed() turns true and before render-process-gone.
-function rendererGone(target: BrowserWindow): boolean {
-  if (target.isDestroyed() || target.webContents.isDestroyed() || target.webContents.isCrashed()) return true;
-  const frame = target.webContents.mainFrame;
-  return !frame || frame.isDestroyed() || frame.detached;
 }
 /**
  * The wheels of the drawing pack, which a Python run installs before its code, so circuits can import schemdraw. None
@@ -302,6 +223,8 @@ export async function handleRuntimeRequest(
       return { state: "none", reason: "runtime-unavailable" };
     }
   }
+  // The drawing window draws what is not Python. It is a lane of its own, with its own queue.
+  if (operation === "draw") return handleDrawRequest(payload, deadline);
   if (operation === "python") {
     if (
       !payload ||

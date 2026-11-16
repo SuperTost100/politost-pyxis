@@ -6,6 +6,7 @@ import type { MathCheck } from "../../src/shared/math-check";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { listeners, networkStackScript, resolved } from "./network-probes";
 const manifest = JSON.parse(readFileSync(join(process.cwd(), "resources/pyodide-manifest.json"), "utf8")) as { version: string };
 
 test("MATH-02 MATH-06 Pyodide limits, network isolation and independent SymPy verification", async () => {
@@ -238,7 +239,7 @@ test("the Python page offers both packs as one download, and only the drawing fi
     // A workspace that downloaded Python before the drawing files existed: Python runs, and the rest is on offer.
     stage("pyodide");
     await page.reload();
-    await expect(page.getByText("I disegni dei circuiti richiedono un piccolo download")).toBeVisible();
+    await expect(page.getByText("Circuiti e grafi richiedono un piccolo download")).toBeVisible();
     await expect(page.getByRole("button", { name: `Scarica (${megabytes("drawing")} MB)` })).toBeVisible();
     await expect(page.getByText("Python richiede un download una tantum")).toHaveCount(0);
     await run.click();
@@ -254,6 +255,52 @@ test("the Python page offers both packs as one download, and only the drawing fi
     await expect(page.getByText(/richied(e|ono) un/)).toHaveCount(0);
   } finally {
     await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the Python window's page reaches nothing through the network stack either: WebRTC and preconnect go nowhere", async () => {
+  test.skip(!existsSync(".tmp/pyodide/pyodide.js"), "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.");
+  test.setTimeout(180000);
+  // The Python window runs untrusted code (plots, circuits, the student's own Python), in a worker of its own, and the page
+  // that hosts that worker is the app's. What the session's request filter cannot see is what a compromised page, or
+  // code that got into it, could still do: open WebRTC sockets, or make the network stack connect or look up a name. The
+  // window is locked as the drawing window is, by the same helper, so the same tries are made against it.
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-python-stack-"));
+  const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
+  mkdirSync(pack, { recursive: true });
+  cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
+  const { datagrams, connections, udpPort, tcpPort, close } = await listeners();
+  const host = `leak-${Math.random().toString(36).slice(2)}.example.invalid`;
+  const hintHost = `hint-${Math.random().toString(36).slice(2)}.example.invalid`;
+  const log = join(userData, "net-log.json");
+  const app = await launchPyxis({ userData, env: { HOME: userData } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    // A run opens the window.
+    const run = (await page.evaluate(() => window.pyxis.invoke("tools.python", { code: "print(6 * 7)" }))) as { stdout: string };
+    expect(run.stdout).toContain("42");
+    const handle = (script: string) =>
+      app.evaluate((_, text) => (globalThis as unknown as { pyxisE2ePython: { evaluate: (script: string) => Promise<unknown> } }).pyxisE2ePython.evaluate(text), script);
+    await app.evaluate(async ({ BrowserWindow }, path) => {
+      const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://sandbox/"))!;
+      await target.webContents.session.netLog.startLogging(path, { captureMode: "everything" });
+    }, log);
+    await handle(networkStackScript(host, hintHost, udpPort, tcpPort));
+    await app.evaluate(async ({ BrowserWindow }) => {
+      const target = BrowserWindow.getAllWindows().find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://sandbox/"))!;
+      await target.webContents.session.netLog.stopLogging();
+    });
+    expect({ udp: datagrams.length, tcp: connections.length, dns: resolved(log, host).length }).toEqual({ udp: 0, tcp: 0, dns: 0 });
+    expect({ datagrams, connections }).toEqual({ datagrams: [], connections: [] });
+    // The window still runs Python.
+    const again = (await page.evaluate(() => window.pyxis.invoke("tools.python", { code: "print(1 + 1)" }))) as { stdout: string };
+    expect(again.stdout).toContain("2");
+  } finally {
+    await app.close();
+    await close();
     removeTestFolder(userData);
   }
 });

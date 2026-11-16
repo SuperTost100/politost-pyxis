@@ -16,6 +16,7 @@ import {
   mapFigureBlocks,
   type FigureData,
 } from "../../shared/smart-text";
+import { drawInWindow } from "./draw";
 import { figureProgram } from "./figure-program";
 import { runPython, type PythonRun } from "./python";
 import { runtimeRequest } from "./runtime-client";
@@ -29,10 +30,21 @@ export type FigureFix = (
   error: string,
 ) => Promise<string | null>;
 
+/**
+ * Draws one figure. `code` is what runs: the Python program of a plot or a circuit, or the text itself of a figure that
+ * is not Python (a graph's DOT). `figure` says what is being drawn, for a runner that has more than one place to draw.
+ */
 export type FigureRunner = (
   code: string,
   timeoutMs: number,
+  figure?: { kind: FigureKind; code: string },
 ) => Promise<PythonRun>;
+
+/** The real runner: Python's sandbox for what is Python, the drawing window for the rest. */
+export const runFigure: FigureRunner = (code, timeoutMs, figure) =>
+  figure && FIGURE_KINDS[figure.kind].renderer === "window"
+    ? drawInWindow(figure.kind, figure.code, timeoutMs)
+    : runPython(code, timeoutMs);
 
 /** The runner when there is no sandbox: every new figure fails and is left out. */
 export const noSandbox: FigureRunner = async () => ({
@@ -56,7 +68,7 @@ export async function figureRunner(
   if (python !== undefined)
     return python ? { run: python, kinds: figureKinds } : null;
   const kinds = await availableKinds();
-  return kinds.length ? { run: runPython, kinds } : null;
+  return kinds.length ? { run: runFigure, kinds } : null;
 }
 
 /** A kind is offered to the model only when the sandbox can draw it: every pack it needs is downloaded. */
@@ -160,7 +172,10 @@ async function drawOne(figure: FigureData, python: FigureRunner): Promise<Drawn>
   const problem = figureProblem(figure.figureKind, figure.code);
   if (problem) return { error: problem };
   const { timeoutMs } = FIGURE_KINDS[figure.figureKind];
-  const result = await python(figureProgram(figure), timeoutMs).catch(() => null);
+  // A graph is drawn from its own text by the drawing window, and the rest from a Python program built around their code.
+  const program =
+    FIGURE_KINDS[figure.figureKind].renderer === "window" ? figure.code : figureProgram(figure);
+  const result = await python(program, timeoutMs, { kind: figure.figureKind, code: figure.code }).catch(() => null);
   if (!result) return { error: null };
   if (result.stderr.startsWith("runtime-")) return { error: null };
   if (result.timedOut)
@@ -200,7 +215,7 @@ export async function drawFigures(
     signal?: AbortSignal;
   } = {},
 ): Promise<{ markdown: string; figures: Record<string, string> }> {
-  const python = options.python ?? runPython;
+  const python = options.python ?? runFigure;
   const kinds = options.kinds ?? figureKinds;
   const known = figureImages(options.known);
   const requested: FigureData[] = [];
