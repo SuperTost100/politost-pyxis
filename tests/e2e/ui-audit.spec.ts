@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -5332,12 +5333,52 @@ async function keyboardCheck(page: Page, name: string) {
   }
 }
 
-test("M14 every application route in both languages, themes and supported widths", async () => {
-  test.setTimeout(1500000);
+// One launched app and one seeded workspace serve every part of the audit, so each state must start from what it needs,
+// whatever ran before it. The states are walked in parts of about 80, in their order, each a test of its own: a failure
+// or a timeout names its part and its state and ends only that part, and the next part starts a new app.
+const selectedStates = process.env.PYXIS_UI_STATES?.split(",");
+// PYXIS_UI_RECORD keeps a focused run from overwriting another run's record.
+const recordFile =
+  process.env.PYXIS_UI_RECORD ??
+  (selectedStates
+    ? ".tmp/m14-ui-audit-filter.json"
+    : process.env.PYXIS_UI_LARGE
+      ? ".tmp/m14-ui-audit-large.json"
+      : ".tmp/m14-ui-audit.json");
+const auditRoutes = selectedStates ? routes.filter(([name]) => selectedStates.includes(name)) : routes;
+const records: unknown[] = [];
+const failures: string[] = [];
+const pageErrors: string[] = [];
+/** The state under way, named when a part times out, since a timeout carries no message of its own. */
+let auditNow = "";
+/** What the audit made in the temp folder, removed when the worker ends. */
+const auditFolders: string[] = [];
+
+function writeRecord() {
+  writeFileSync(
+    recordFile,
+    JSON.stringify(
+      {
+        routes,
+        excluded: ["/print, covered by isolated native PDF export test"],
+        records,
+        failures,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+test.beforeAll(async () => {
+  test.setTimeout(180_000);
+  mkdirSync(dirname(recordFile), { recursive: true });
   const userData = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-"));
   auditUserData = userData;
+  auditFolders.push(userData);
   // The e2e seam answers every native picker with this path: a folder of two importable files for the Folder tab.
   const importFolder = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-folder-"));
+  auditFolders.push(importFolder);
   writeFileSync(
     join(importFolder, "appunti.txt"),
     "La forza è massa per accelerazione.",
@@ -5353,6 +5394,7 @@ test("M14 every application route in both languages, themes and supported widths
   // The study folder setup links: three subjects and a folder of holiday paperwork the recorded reply skips.
   auditStudy = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-study-")), "Università");
   auditCourses = join(mkdtempSync(join(tmpdir(), "pyxis-ui-audit-courses-")), "Polito");
+  auditFolders.push(dirname(auditStudy), dirname(auditCourses));
   for (const course of ["Tecnologie Digitali", "Linguaggio cinematografico"])
     mkdirSync(join(auditCourses, course), { recursive: true });
   for (const [folder, file, text] of [
@@ -5366,6 +5408,7 @@ test("M14 every application route in both languages, themes and supported widths
   }
   // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
   const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
+  auditFolders.push(booksSite);
   writeFileSync(
     join(booksSite, "catalog.json"),
     JSON.stringify({
@@ -5448,59 +5491,67 @@ test("M14 every application route in both languages, themes and supported widths
   const app = await launchPyxis({ userData, env });
   auditApp = app;
   auditPicked = importFolder;
-  const records: unknown[] = [];
-  const failures: string[] = [];
-  const selectedStates = process.env.PYXIS_UI_STATES?.split(",");
-  // PYXIS_UI_RECORD keeps a focused run from overwriting another run's record.
-  const recordFile =
-    process.env.PYXIS_UI_RECORD ??
-    (selectedStates
-      ? ".tmp/m14-ui-audit-filter.json"
-      : process.env.PYXIS_UI_LARGE
-        ? ".tmp/m14-ui-audit-large.json"
-        : ".tmp/m14-ui-audit.json");
-  const auditRoutes = selectedStates
-    ? routes.filter(([name]) => selectedStates.includes(name))
-    : routes;
-  expect(auditRoutes.length).toBeGreaterThan(0);
-  mkdirSync(".tmp", { recursive: true });
-  mkdirSync(dirname(recordFile), { recursive: true });
+  const page = await app.firstWindow();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // The first render waits for core to start, which takes far longer than 7 s on a cold hosted Windows runner.
+  await page
+    .getByRole("button", { name: "Salta" })
+    .click({ timeout: 90_000 });
+  page.setDefaultTimeout(7000);
+  await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+  // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
+  await page.evaluate(
+    (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
+    updateTag,
+  );
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "pyxis-board",
+      JSON.stringify([
+        {
+          width: 4,
+          points: [
+            { x: 200, y: 450 },
+            { x: 420, y: 160 },
+            { x: 680, y: 450 },
+          ],
+        },
+      ]),
+    ),
+  );
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
+    timeout: 10000,
+  });
+  seed(db);
+  db.close();
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  // A part that fails or times out ends its worker and the next part starts a new one, which takes up the record where the
+  // last one stopped.
+  if (test.info().workerIndex > 0 && existsSync(recordFile)) {
+    const kept = JSON.parse(readFileSync(recordFile, "utf8")) as { records: unknown[]; failures: string[] };
+    records.push(...kept.records);
+    failures.push(...kept.failures);
+  }
+});
+
+test.afterEach(() => {
+  const info = test.info();
+  if (info.status === "timedOut") console.log(`M14 timed out in ${auditNow}: ${info.title}`);
+});
+
+test.afterAll(async () => {
+  writeRecord();
+  await auditApp?.close();
+  removeTestFolder(auditUserData);
+  for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
+});
+
+/** Every state of one part, in every language, theme and width asked for. A state that fails is named in the failure. */
+async function walk(slice: typeof auditRoutes) {
+  expect(slice.length).toBeGreaterThan(0);
+  const page = await auditApp!.firstWindow();
+  const first = failures.length;
   try {
-    const page = await app.firstWindow();
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    // The first render waits for core to start, which takes far longer than 7 s on a cold hosted Windows runner.
-    await page
-      .getByRole("button", { name: "Salta" })
-      .click({ timeout: 90_000 });
-    page.setDefaultTimeout(7000);
-    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
-    // The fake release keeps its banner closed, so it covers no other state; Settings > Updates still shows it.
-    await page.evaluate(
-      (tag) => localStorage.setItem("pyxis-dismissed-release", tag),
-      updateTag,
-    );
-    await page.evaluate(() =>
-      sessionStorage.setItem(
-        "pyxis-board",
-        JSON.stringify([
-          {
-            width: 4,
-            points: [
-              { x: 200, y: 450 },
-              { x: 420, y: 160 },
-              { x: 680, y: 450 },
-            ],
-          },
-        ]),
-      ),
-    );
-    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), {
-      timeout: 10000,
-    });
-    seed(db);
-    db.close();
-    const pageErrors: string[] = [];
-    page.on("pageerror", (error) => pageErrors.push(error.message));
     for (const language of ["it", "en"] as const)
       for (const theme of ["dark", "light"] as const)
         for (const width of [1280, 960]) {
@@ -5525,9 +5576,10 @@ test("M14 every application route in both languages, themes and supported widths
               }),
             process.env.PYXIS_UI_LARGE ? ("lg" as const) : ("md" as const),
           );
-          for (const [name, route] of auditRoutes) {
+          for (const [name, route] of slice) {
             const key = `${name}-${language}-${theme}-${width}${process.env.PYXIS_UI_LARGE ? "-large" : ""}`;
             const before = pageErrors.length;
+            auditNow = key;
             try {
               prepareState(name);
               await page.evaluate((route) => {
@@ -5760,27 +5812,23 @@ test("M14 every application route in both languages, themes and supported widths
           }
         }
   } finally {
-    writeFileSync(
-      recordFile,
-      JSON.stringify(
-        {
-          routes,
-          excluded: ["/print, covered by isolated native PDF export test"],
-          records,
-          failures,
-        },
-        null,
-        2,
-      ),
-    );
-    await app.close();
-    removeTestFolder(userData);
-    rmSync(importFolder, { recursive: true, force: true });
-    rmSync(dirname(auditStudy), { recursive: true, force: true });
-    rmSync(dirname(auditCourses), { recursive: true, force: true });
-    rmSync(booksSite, { recursive: true, force: true });
-    rmSync(updateFolder, { recursive: true, force: true });
-    rmSync(auditEngines, { recursive: true, force: true });
+    writeRecord();
   }
-  expect(failures, failures.join("\n")).toEqual([]);
-});
+  expect(failures.slice(first), failures.slice(first).join("\n")).toEqual([]);
+}
+
+// A part gets the share of the old 25 minutes for the whole walk that its states are of the list, at least two minutes.
+const STATES_PER_PART = 80;
+const combos = process.env.PYXIS_UI_COMBO ? 1 : 8;
+const parts = Math.max(1, Math.ceil(auditRoutes.length / STATES_PER_PART));
+for (let part = 0; part < parts; part += 1) {
+  const slice = auditRoutes.slice(
+    Math.floor((part * auditRoutes.length) / parts),
+    Math.floor(((part + 1) * auditRoutes.length) / parts),
+  );
+  const range = slice.length ? `, ${slice[0]![0]} to ${slice.at(-1)![0]}` : "";
+  test(`M14 every application route in both languages, themes and supported widths, part ${part + 1} of ${parts}${range}`, async () => {
+    test.setTimeout(Math.max(120_000, Math.round((1_500_000 * slice.length) / routes.length)) * combos);
+    await walk(slice);
+  });
+}

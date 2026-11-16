@@ -120,7 +120,8 @@ jobs:
     # about 10 minutes (11.6 with large text) and 22 on a slow runner. A job makes four runs: about 40 minutes on macOS
     # arm64, 47 with large text, and each slow run adds about 11, so two of them still fit in 75. All eight runs in one
     # job came to 54 and 61 minutes at 207 states and would take about 84 now, so that would leave no room in 90 (45 and 60
-    # cancelled it earlier).
+    # cancelled it earlier). At 290 states in November 2026 a job took 40 to 43 minutes on macOS arm64, 29 to 30 on Windows
+    # and 24 to 29 on Linux. The audit's four parts each get a quarter of the test time, so a hang names its part.
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -149,11 +150,14 @@ jobs:
             export PYXIS_UI_LARGE=1
             suffix="-large"
           fi
+          # A failing run does not stop the others: each combination reports its own states, and the step fails at the end.
+          failed=0
           for combo in ${{ matrix.language }}-dark-1280 ${{ matrix.language }}-dark-960 ${{ matrix.language }}-light-1280 ${{ matrix.language }}-light-960; do
             export PYXIS_UI_COMBO="$combo"
             export PYXIS_UI_RECORD="ci-audit/audit-$combo$suffix.json"
-            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts
+            bash .github/actions/e2e/run.sh tests/e2e/ui-audit.spec.ts || failed=1
           done
+          exit $failed
       - name: Preserve route audit records
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
