@@ -30,6 +30,7 @@ import { NewCardButton } from "./NewCardButton";
 import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
 import { focusInOpenSurface } from "../../lib/pageKeys";
+import { reviewSeconds } from "@shared/review-time";
 import { cardsLine } from "./barLines";
 import { Working } from "../../components/Working";
 
@@ -345,6 +346,8 @@ export function CardsPage() {
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
+  // When the card on screen appeared: a rating reports how long it took, which Oggi counts as study time.
+  const shownAt = useRef(Date.now());
   // The session's end says what comes back later, read from the same cards the session read.
   const dueScope = everywhere
     ? { scope: "everywhere" as const, ...(only ? { only } : {}) }
@@ -373,6 +376,7 @@ export function CardsPage() {
     [learning],
   );
   useEffect(() => {
+    shownAt.current = Date.now();
     setEditing(false);
     stopTurn();
     showBackRef.current = false;
@@ -401,7 +405,12 @@ export function CardsPage() {
     setRatingPending(true);
     setRatingError(false);
     try {
-      const state = await invoke("study.rate", { cardId: card.id, rating });
+      const state = await invoke("study.rate", {
+        cardId: card.id,
+        rating,
+        // A clock that went back sends no time; the rating is saved either way.
+        seconds: reviewSeconds((Date.now() - shownAt.current) / 1000) ?? undefined,
+      });
       setLastAction({
         kind: "rate",
         cardId: card.id,
@@ -411,6 +420,8 @@ export function CardsPage() {
       });
       setPinned(null);
       stopTurn();
+      // The next card, or this one again with no other card between, starts its own time.
+      shownAt.current = Date.now();
       showBackRef.current = false;
       setShowBack(false);
       setFace(false);

@@ -1735,6 +1735,12 @@ export const requests = {
     input: z.object({
       cardId: z.string(),
       rating: z.enum(["again", "hard", "good", "easy"]),
+      /**
+       * How long the card was on screen before the rating; core keeps at most a minute of it as study time
+       * (`reviewSeconds`). Any number is accepted, a negative one or NaN from a clock that went back too, so the
+       * measurement can never refuse the rating.
+       */
+      seconds: z.custom<number>((value) => typeof value === "number").optional(),
     }),
     output: z.object({
       intervalDays: z.number(),
@@ -2329,11 +2335,11 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
-        // Oggi in minutes: what today's steps add up to and the exam's part of the student's goal for the day. Null
-        // whenever `today` is.
+        // Oggi in minutes: all the minutes the student studied today, on any exam and on flashcards, and the goal for
+        // the day. The same on every exam. Null whenever `today` is.
         todayMinutes: z.object({ done: z.number().min(0), target: z.number().min(0) }).nullable(),
-        // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
-        todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
+        // Why Oggi measures nothing: no weekly hours.
+        todayUnmeasured: z.literal("no-goal").nullable(),
         // The path's next step, due cards aside.
         next: z
           .object({

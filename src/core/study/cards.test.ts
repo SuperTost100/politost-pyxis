@@ -17,6 +17,7 @@ import {
   setSuspended,
   undoRating,
 } from "./cards";
+import { MAX_REVIEW_SECONDS } from "../../shared/review-time";
 import { pathState, planGuide } from "../plans/create";
 import { seedCards } from "./test-study";
 
@@ -245,6 +246,30 @@ describe("cards", () => {
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBe(topicId);
     expect(JSON.parse(event.payload_json)).toEqual({ score: 1, cardId });
+  });
+
+  it("keeps how long a review took, up to a minute, and nothing when the time is not given or is not a duration", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const times = [7.4, 600, 3 * 86_400, Infinity, -5, NaN, undefined];
+    const ids = seedCards(db, {
+      planId,
+      topicId,
+      pairs: times.map((_, index) => ({ front: `card ${index}`, back: "x" })),
+    });
+    for (const [index, seconds] of times.entries()) rateCard(db, ids[index]!, "good", T0 + index, seconds);
+    // Rounded to a second; a card left open, even for days, counts a minute; a clock that went back, a NaN and no time
+    // leave the review without one, and every rating is saved.
+    expect(db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").pluck().all()).toEqual([
+      7,
+      MAX_REVIEW_SECONDS,
+      MAX_REVIEW_SECONDS,
+      MAX_REVIEW_SECONDS,
+      null,
+      null,
+      null,
+    ]);
+    expect(MAX_REVIEW_SECONDS).toBe(60);
   });
 
   it("counts new, learning and mastered cards, and skips a suspended one", () => {

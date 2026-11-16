@@ -6,39 +6,40 @@ One SQLite file, `pyxis.db`, in the workspace. WAL and foreign keys are on. `syn
 
 Migrations after the initial schema, applied in one transaction by `src/core/db/migrate.ts`:
 
-| `user_version` | Change                                                                                  |
-| -------------- | --------------------------------------------------------------------------------------- |
-| 2              | `chats.scope_json`                                                                      |
-| 3              | `cards.passage_id`                                                                      |
-| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)        |
-| 5              | `messages.reaction` (`up`, `down`, or empty)                                            |
-| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue             |
-| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again     |
-| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`            |
-| 9              | Stopped message state and chat subject                                                  |
-| 10             | Saved chat context and source library visibility                                        |
-| 11             | Reorderable subject position                                                            |
-| 12             | Topic `tree_json` and dismissible jobs                                                  |
-| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them      |
-| 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis |
-| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table        |
-| 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is        |
-| 17             | Indexes for hot lookups and for every foreign-key child column                          |
-| 18             | `cards.search_text`, the folded text the card browser searches                          |
-| 19             | `messages.figures_json`, the images of the figures an answer drew                       |
-| 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`          |
-| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                 |
-| 22             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                   |
-| 23             | `jobs.fallback_json`, the engine that answered when the chosen one refused              |
-| 24             | `linked_folders`, `linked_subfolders` and `linked_files`, for folders read in place     |
-| 25             | `linked_files.pending` and `sorted_at`, for linked folders read in full                 |
-| 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject     |
-| 27             | The partial index `linked_files_hash`, which finds a file already read by its hash      |
-| 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam   |
-| 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library       |
-| 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash          |
-| 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                |
-| 32             | `lesson_outlines` and `lesson_parts`, a topic's lesson planned as short parts           |
+| `user_version` | Change                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------- |
+| 2              | `chats.scope_json`                                                                          |
+| 3              | `cards.passage_id`                                                                          |
+| 4              | `plans.exam_at`, `plans.target` (default 0.75), `plans.style` (default `decide`)            |
+| 5              | `messages.reaction` (`up`, `down`, or empty)                                                |
+| 6              | `cards.suspended` (`0` or `1`). A suspended card stays out of the due queue                 |
+| 7              | `cards.seed_key` and `cards.removed`. A removed generated card is not created again         |
+| 8              | Source `origin_url`/`fetched_at` and stale citation state in `item_passages`                |
+| 9              | Stopped message state and chat subject                                                      |
+| 10             | Saved chat context and source library visibility                                            |
+| 11             | Reorderable subject position                                                                |
+| 12             | Topic `tree_json` and dismissible jobs                                                      |
+| 13             | `topics.archived_at`. A rebuild archives unmatched topics instead of deleting them          |
+| 14             | `gaps.misconception` and `gaps.severity` (`severe` or `minor`), from the model analysis     |
+| 15             | `gaps.origin`, `gaps.comparison`, `gaps.merged_into` and the `gap_answers` table            |
+| 16             | `sources.catalog_id` and `sources.catalog_version`, the free book a smartbook is            |
+| 17             | Indexes for hot lookups and for every foreign-key child column                              |
+| 18             | `cards.search_text`, the folded text the card browser searches                              |
+| 19             | `messages.figures_json`, the images of the figures an answer drew                           |
+| 20             | `plan_sources.role` (`material` or `past_paper`) and `plan_sources.paper_json`              |
+| 21             | `messages.error`, `messages.passages_json` and the `engine_usage` table                     |
+| 22             | `plan_sessions`, the exam sessions of a plan, and `plans.archived_at`                       |
+| 23             | `jobs.fallback_json`, the engine that answered when the chosen one refused                  |
+| 24             | `linked_folders`, `linked_subfolders` and `linked_files`, for folders read in place         |
+| 25             | `linked_files.pending` and `sorted_at`, for linked folders read in full                     |
+| 26             | `maps.subject_id`, and `maps.plan_id` becomes optional, for maps of a whole subject         |
+| 27             | The partial index `linked_files_hash`, which finds a file already read by its hash          |
+| 28             | `cards.subject_id`, and `cards.plan_id` becomes optional, for flashcards with no exam       |
+| 29             | `sources.subject_sort`, the subject Pyxis chose for a file added from the Library           |
+| 30             | The partial index `sources_blob_sha`, which finds an imported file by its hash              |
+| 31             | `sources.chosen_kind`, the kind of file the student picked from its menu                    |
+| 32             | `lesson_outlines` and `lesson_parts`, a topic's lesson planned as short parts               |
+| 33             | `card_reviews.seconds`, the time a review took, and an index on `card_reviews(reviewed_at)` |
 
 Migration 15 gives each distinct misconception its own gap. `origin` is `answers`, `flag` or `misconception`. `comparison` is `unchecked` while the gap could not be compared with its siblings. `merged_into` names the gap that absorbed a closed gap. `gap_answers` links one wrong answer (attempt id and question id) to the gap it counts for; it is used for ranking and closing. Its rows cascade with the gap and the attempt.
 
@@ -82,6 +83,8 @@ Migration 31 adds `sources.chosen_kind`, empty for every source. It holds a kind
 
 Migration 32 adds two tables for a topic's lesson in short parts and changes no row, so every lesson, answer, step, flashcard and plan reads as before. `lesson_outlines` is the plan of a topic's parts. A topic has at most one live outline (`retired_at` NULL, enforced by the partial unique index `lesson_outlines_live`). `passage_key` is the SHA-256 of the topic's sorted passage IDs when it was planned, so a rebuild that changed the material can be noticed. `origin` is `model` when the AI tool cut the topic, `fallback` when code cut it after the tool's reply failed its checks, and `single` for a topic made one part with no planning call. `wording` is a level the student chose on a part (NULL means the profile's), and `replaces_item_id` names the old lesson an outline rewrote. Only a `model` outline carries engine and prompt provenance. `lesson_parts` holds one row per part in reading order, the recap last with `kind = 'recap'`: its title, `about` (one line on what it teaches), its passages as a JSON list, `minutes` (an estimate until it is written), `item_id` (the written text, an ordinary `lesson` item), `summary`, `done_at` and `write_failed_at` (when the part's last write failed or was cancelled, kept until a write succeeds or the student asks again, so a dismissed failed job does not start the part over in the background). The passages are JSON rather than a link table because `passages` references are `ON DELETE RESTRICT`, and a plan of unwritten parts must never stop a source from being removed. `lesson_parts_item` serves the lookup "is this item a part?". A part written again at another level points at a new item, and its earlier text stays as an item with the template `lesson.part` whose cache key's scope is the part's id. A topic's finished items, the delete confirmation's lesson count (one per lesson in parts) and plan files leave part items out, and so does the rule for lessons written before parts. They all ask one question, `partTextSql` in `src/core/study/partText.ts`: the part points at the item, or the item is a `lesson.part` text whose cache key's scope is the part's id, so the earlier texts stay out too. A part may gather passages that are apart, such as a book chapter and the course slides on the same subject, so that no part teaches again what another teaches: every passage is in exactly one part, a part's passages are in reading order, and parts are ordered by their first passage. The cut made in code when the AI tool's reply fails its checks keeps each part to neighbouring passages. How the parts are planned is in `src/core/study/parts.ts`: a topic of up to 7,000 characters is one part, a larger one gets one part per 6,000 characters, between 2 and 8, and a recap from 3 parts on.
 
+Migration 33 adds `card_reviews.seconds`, how long the card was on screen before the student rated it, and an index on `card_reviews(reviewed_at)` that serves "the reviews of today". The column is NULL for every review made before the migration and for every review that an Anki or plan-file import brings in, and a `CHECK` refuses a negative value. The flashcard page measures from the moment a card appears to the rating, and `rateCard` keeps at most `MAX_REVIEW_SECONDS` (60) of it, so a card left open for ten minutes counts one minute. Oggi adds the seconds of today's reviews to the minutes of the day, for cards with or without an exam (see [exam rings](mastery.md#exam-rings)); a review with no time counts as no minutes. Taking a rating back deletes its review and its time with it.
+
 Current version is 32. A restored backup is migrated on a staging copy before it replaces the workspace. Progress charts bucket events by the student's local midnight, including a week that crosses a daylight-saving change.
 
 | Table             | A row is                                                                                                     |
@@ -107,7 +110,7 @@ Current version is 32. A restored backup is migrated on a staging copy before it
 | items             | A generated lesson, question, or explanation.                                                                |
 | item_passages     | Passages cited by an item. Deleting a passage is restricted.                                                 |
 | cards             | A flashcard of a subject, and optionally of an exam. `passage_id` is the source passage shown on the back.   |
-| card_reviews      | One rating of a card.                                                                                        |
+| card_reviews      | One rating of a card, with the seconds it took.                                                              |
 | attempts          | A quiz or exercise attempt.                                                                                  |
 | attempt_answers   | One answer inside an attempt.                                                                                |
 | gaps              | An open or closed knowledge gap. A topic can have several, one per misconception.                            |

@@ -673,8 +673,8 @@ export function studyHandlers(
     attemptOutcome(input: { attemptId: string }) {
       return attemptOutcome(db, input.attemptId);
     },
-    rate(input: { cardId: string; rating: Rating }) {
-      return rateCard(db, input.cardId, input.rating, Date.now());
+    rate(input: { cardId: string; rating: Rating; seconds?: number }) {
+      return rateCard(db, input.cardId, input.rating, Date.now(), input.seconds);
     },
     undoRate(input: { reviewId: string }) {
       return undoRating(db, input.reviewId);
