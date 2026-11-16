@@ -74,6 +74,17 @@ describe("formulaWords", () => {
     expect(both("x^{12}")).toEqual(["x alla 12", "x to the 12"]);
   });
 
+  it("looks names up as vocabulary only, never as the properties every object has", () => {
+    // A name the student wrote that is not a function is read as written.
+    expect(both("\\operatorname{toString}(x)")).toEqual(["toString di x", "toString of x"]);
+    expect(both("\\operatorname{constructor}")).toEqual(["constructor", "constructor"]);
+    expect(both("\\mathbb{valueOf}")).toEqual(["valueOf", "valueOf"]);
+    // A command that is not one of ours gives no reading, and never an error.
+    for (const latex of ["\\toString", "\\constructor x", "\\hasOwnProperty", "\\__proto__", "x+\\valueOf"])
+      expect([formulaWords(latex, "it"), formulaWords(latex, "en")], latex).toEqual([null, null]);
+    expect(answerReading("$\\operatorname{toString}$ e $\\toString$", "it")).toBeNull();
+  });
+
   it("gives nothing for a sum, an integral or a limit with an upper bound and no lower one", () => {
     for (const latex of ["\\sum^{n} i", "\\prod^{n}i", "\\int^{1}x\\,\\mathrm{d}x", "\\lim^{2}x"])
       expect([formulaWords(latex, "it"), formulaWords(latex, "en")], latex).toEqual([null, null]);

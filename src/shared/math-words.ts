@@ -175,6 +175,10 @@ const WORDS: Record<ReadingLanguage, Words> = {
   },
 };
 
+/** A table's entry for text a student wrote; never a property every object has, such as `toString`. */
+const own = <T>(table: Readonly<Record<string, T>>, key: string): T | undefined =>
+  Object.hasOwn(table, key) ? table[key] : undefined;
+
 /** Signs a student can type or paste as characters, by the command that reads the same. */
 const TYPED: Record<string, string> = {
   "≤": "le", "≥": "ge", "≠": "ne", "≈": "approx", "±": "pm", "∞": "infty", "→": "to", "·": "cdot", "×": "times",
@@ -206,8 +210,9 @@ function tokens(latex: string): Token[] {
   // is put together from them where it is read, so "3,5" and "12" stay whole.
   for (const match of latex.replace(/\{,\}/g, ",").matchAll(/\\([A-Za-z]+)|\\([\s\S])|(\d)|(\s+)|([\s\S])/gu)) {
     const source = match[0];
-    const name = match[1] ? (SAME[match[1]] ?? match[1]) : "";
-    if (BRACKETS[name]) out.push({ kind: "char", text: BRACKETS[name], source });
+    const name = match[1] ? (own(SAME, match[1]) ?? match[1]) : "";
+    const fence = own(BRACKETS, name);
+    if (fence) out.push({ kind: "char", text: fence, source });
     else if (name === "{" || name === "}") out.push({ kind: "literal", text: name, source });
     else if (name) out.push({ kind: "command", text: name, source });
     // `\,`, `\;`, `\:`, `\!` and `\ ` are spacing.
@@ -406,7 +411,8 @@ class Reader {
     }
     if (text === "}" || text === "^" || text === "_") throw new Unreadable();
     if (text === ")" || text === "]") return [{ text, kind: "atom", glue: true }, at + 1];
-    if (TYPED[text]) return this.command(TYPED[text], at, to);
+    const typed = own(TYPED, text);
+    if (typed) return this.command(typed, at, to);
     const words = this.words;
     const link = (word: string): [Term, number] => [{ text: word, kind: "link" }, at + 1];
     if (text === "+") return link(words.plus);
@@ -440,7 +446,7 @@ class Reader {
       case "operatorname": {
         const [from, end, after] = this.argument(at + 1, to);
         const written = this.raw(from, end);
-        return this.applied(written, words.functions[written] ?? written, after, to);
+        return this.applied(written, own(words.functions, written) ?? written, after, to);
       }
       case "mathrm": {
         const [from, end, after] = this.argument(at + 1, to);
@@ -456,7 +462,7 @@ class Reader {
       case "mathbb": {
         const [from, end, after] = this.argument(at + 1, to);
         const letter = this.raw(from, end);
-        return [{ text: DOUBLE_STRUCK[letter] ?? letter, kind: "atom" }, after];
+        return [{ text: own(DOUBLE_STRUCK, letter) ?? letter, kind: "atom" }, after];
       }
       case "vec":
       case "overrightarrow":
@@ -505,7 +511,8 @@ class Reader {
       case "prime":
         return [{ text: words.primes[0]!, kind: "closed" }, at + 1];
     }
-    if (words.functions[name]) return this.applied(name, words.functions[name], at + 1, to);
+    const named = own(words.functions, name);
+    if (named) return this.applied(name, named, at + 1, to);
     if (TEXTS.has(name)) {
       const [from, end, after] = this.argument(at + 1, to);
       const written = this.list.slice(from, end).map((token) => token.source).join("").trim();
@@ -515,7 +522,8 @@ class Reader {
       const [from, end, after] = this.argument(at + 1, to);
       return [this.read(from, end), after];
     }
-    if (SIGNS[name]) return [{ text: SIGNS[name], kind: "atom" }, at + 1];
+    const sign = own(SIGNS, name);
+    if (sign) return [{ text: sign, kind: "atom" }, at + 1];
     throw new Unreadable();
   }
 
@@ -526,7 +534,7 @@ class Reader {
   private differential(from: number, to: number): [Term, number] | null {
     const at = this.skip(from, to);
     const token = at < to ? this.list[at]! : undefined;
-    const named = token?.kind === "command" ? Boolean(SIGNS[token.text]) : token?.kind === "char" && /^\p{L}$/u.test(token.text);
+    const named = token?.kind === "command" ? Boolean(own(SIGNS, token.text)) : token?.kind === "char" && /^\p{L}$/u.test(token.text);
     const then = this.skip(at + 1, to);
     if (!named || this.is(then, to, "char", "^") || this.is(then, to, "char", "_")) return null;
     return [{ text: this.words.differential(this.primary(at, to)[0]!.text), kind: "link" }, at + 1];
