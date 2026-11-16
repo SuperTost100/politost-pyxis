@@ -10,6 +10,7 @@
     "src/core",
     "src/shared",
     "src/renderer/src/**/*.test.ts",
+    "src/sandbox/inspect-dot.test.ts",
     "scripts",
     "electron.vite.config.ts",
     "vitest.config.ts"

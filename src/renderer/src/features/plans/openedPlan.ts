@@ -2,11 +2,13 @@
  * A plan file that reached the window from outside the import screen: a double-click, Open With, a second launch, or a
  * file dropped on the window. Its text waits here until the shared-plan page, which owns the import review, takes it.
  */
-let waiting: string | null = null;
+/** Where a file came from, when it is a file: its name without the folder, and its size in bytes. */
+export type PlanOrigin = { name: string; bytes: number };
+let waiting: { text: string; origin?: PlanOrigin } | null = null;
 const listeners = new Set<() => void>();
 
-export function offerPlanText(text: string): void {
-  waiting = text;
+export function offerPlanText(text: string, origin?: PlanOrigin): void {
+  waiting = { text, ...(origin ? { origin } : {}) };
   for (const listener of listeners) listener();
 }
 
@@ -14,11 +16,11 @@ export function planTextWaiting(): boolean {
   return waiting !== null;
 }
 
-/** The waiting text, once. */
-export function takePlanText(): string | null {
-  const text = waiting;
+/** The waiting file, once. */
+export function takePlan(): { text: string; origin?: PlanOrigin } | null {
+  const plan = waiting;
   waiting = null;
-  return text;
+  return plan;
 }
 
 export function onPlanTextOffered(cb: () => void): () => void {

@@ -870,8 +870,9 @@ export function bindChat(
   workspace = "",
   fixtureReply?: string,
   replyDelayMs = 0,
+  figureFixes?: string,
 ): void {
-  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs);
+  chats = chatHandlers(db, workspace, fixtureReply, replyDelayMs, figureFixes);
   setChecksListener((event) => broadcast("chats.checks", event));
 }
 

@@ -272,7 +272,7 @@ export const mainChannels = {
 /** The most a plan file opened from disk or dropped on the window may hold: as much as a linked plan (`MAX_LINKED_PLAN_BYTES`). */
 export const MAX_OPENED_PLAN_BYTES = 320 * 1024 * 1024;
 
-/** A plan file the system opened with Pyxis, read in main. */
+/** A plan file the system opened with Pyxis, read in main: its name without the folder, and its size in bytes. */
 export type OpenedPlan =
-  | { ok: true; text: string }
+  | { ok: true; text: string; name: string; bytes: number }
   | { ok: false; reason: "not-a-plan-file" | "too-big" | "unreadable" };

@@ -1,10 +1,13 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { FIGURE_KINDS, figureKinds } from "../../shared/figure-kinds";
 import { FIGURE_MAX, figureKey } from "../../shared/smart-text";
 import {
+  FIGURE_ERROR_MAX,
   drawFigures,
   figureCaptions,
+  figureFixer,
   figureRunner,
+  type FigureFix,
   type FigureRunner,
 } from "./figures";
 
@@ -166,4 +169,263 @@ it("offers figures only with a sandbox: the caller's runner, or none when the ru
   expect(await figureRunner(null)).toBeNull();
   // In a test there is no main process to ask, so the runtime counts as missing.
   expect(await figureRunner()).toBeNull();
+});
+
+it("draws a graph from its own text and not from a Python program, and keeps the graph under its own key", async () => {
+  const calls: Array<{ code: string; timeout: number; figure: unknown }> = [];
+  const python: FigureRunner = async (code, timeout, figure) => {
+    calls.push({ code, timeout, figure });
+    return drawsAll(code, timeout);
+  };
+  const dot = "digraph { q0 -> q1 [label=a]; q1 -> q0 [label=b] }";
+  const text = ["Prima.", block(dot, "Un automa.", "graph"), block("plt.plot([1])"), "Dopo."].join("\n\n");
+  const drawn = await drawFigures(text, { python });
+  // The window gets the DOT as it was written, with the limit of its kind and what is being drawn; the plot gets a program.
+  expect(calls[0]).toEqual({ code: dot, timeout: 5000, figure: { kind: "graph", code: dot } });
+  expect(calls[1]!.code).toContain("import matplotlib");
+  expect(calls[1]!.figure).toEqual({ kind: "plot", code: "plt.plot([1])" });
+  expect(Object.keys(drawn.figures)).toEqual([figureKey(dot, "graph"), figureKey("plt.plot([1])")]);
+  expect(figureKey(dot, "graph")).not.toBe(figureKey(dot));
+  expect(drawn.markdown).toBe(text);
+});
+
+it("drops a graph its check refuses without asking any window, and a graph in a workspace that cannot draw graphs", async () => {
+  const calls: string[] = [];
+  const python: FigureRunner = async (code, timeout) => {
+    calls.push(code);
+    return drawsAll(code, timeout);
+  };
+  const refused = ['digraph { a [image="/etc/passwd"] }', 'digraph { a [URL="https://example.com"] }', "digraph { a [label=<<b>x</b>>] }"];
+  const drawn = await drawFigures(["Testo.", ...refused.map((dot, i) => block(dot, `Grafo ${i}`, "graph"))].join("\n\n"), { python });
+  expect(calls).toEqual([]);
+  expect({ ...drawn, markdown: drawn.markdown.trim() }).toEqual({ markdown: "Testo.", figures: {} });
+  // The drawing pack is missing: Python draws plots, and a graph is left out.
+  const plots = await drawFigures([block("digraph { a -> b }", "Un grafo.", "graph"), block("plt.plot([1])")].join("\n\n"), { python, kinds: ["plot"] });
+  expect(calls).toHaveLength(1);
+  expect(Object.keys(plots.figures)).toEqual([figureKey("plt.plot([1])")]);
+});
+
+/** The sandbox stand-in of the retry tests: code that raises fails like Python would, the rest draws. */
+const raises: FigureRunner = async (code) =>
+  code.includes("raise ")
+    ? {
+        stdout: "",
+        stderr: `Traceback (most recent call last):\n  File "<exec>", line 9, in <module>\nValueError: ${/raise ValueError\('(.*?)'\)/.exec(code)?.[1] ?? "boom"}\n`,
+        images: [],
+        timedOut: false,
+        truncated: false,
+      }
+    : drawsAll(code, 0);
+const broken = "raise ValueError('quantity missing')";
+const mended = "plt.plot([1, 2, 3])";
+const noFix = (): { fix: FigureFix; calls: Array<{ code: string; error: string; kind: string; caption: string }> } => {
+  const calls: Array<{ code: string; error: string; kind: string; caption: string }> = [];
+  return {
+    calls,
+    fix: async (figure, error) => {
+      calls.push({ code: figure.code, error, kind: figure.figureKind, caption: figure.caption });
+      return null;
+    },
+  };
+};
+
+it("draws a figure again with the code the fix gives, and the block carries that code", async () => {
+  const calls: Array<{ code: string; error: string; kind: string; caption: string }> = [];
+  const fix: FigureFix = async (figure, error) => {
+    calls.push({ code: figure.code, error, kind: figure.figureKind, caption: figure.caption });
+    return `  ${mended}\n`;
+  };
+  const text = ["Prima.", block(broken, "Una retta."), "Dopo."].join("\n\n");
+  const drawn = await drawFigures(text, { python: raises, fix });
+  // One call, with the block's kind, caption and code and the error the drawing ended with.
+  expect(calls).toEqual([
+    {
+      code: broken,
+      kind: "plot",
+      caption: "Una retta.",
+      error: expect.stringContaining("ValueError: quantity missing"),
+    },
+  ]);
+  // The image is stored for the corrected code, the caption stays as written, and the text around it is untouched.
+  expect(Object.keys(drawn.figures)).toEqual([figureKey(mended)]);
+  expect(drawn.markdown).toBe(
+    ["Prima.", block(mended, "Una retta.").replace('"kind":null,', ""), "Dopo."].join("\n\n"),
+  );
+  expect(drawn.markdown).not.toContain("quantity missing");
+});
+
+it("asks for a circuit's fix as a circuit, and keeps the kind in the corrected block", async () => {
+  const kinds: string[] = [];
+  const fix: FigureFix = async (figure) => {
+    kinds.push(figure.figureKind);
+    return "d += elm.Resistor().right()";
+  };
+  const text = block("raise ValueError('no element')", "Un resistore.", "circuit");
+  const drawn = await drawFigures(text, { python: raises, fix });
+  expect(kinds).toEqual(["circuit"]);
+  expect(Object.keys(drawn.figures)).toEqual([figureKey("d += elm.Resistor().right()", "circuit")]);
+  expect(drawn.markdown).toContain('"kind":"circuit"');
+  expect(drawn.markdown).toContain("d += elm.Resistor().right()");
+});
+
+it("drops a figure that fails again after its fix, and one whose fix call failed, and asks once for each", async () => {
+  const again = vi.fn<FigureFix>(async () => "raise ValueError('still wrong')");
+  const text = ["Prima.", block(broken), "Dopo."].join("\n\n");
+  const twice = await drawFigures(text, { python: raises, fix: again });
+  expect(again).toHaveBeenCalledTimes(1);
+  expect(twice).toEqual({ markdown: "Prima.\n\nDopo.", figures: {} });
+  const none = noFix();
+  expect(await drawFigures(text, { python: raises, fix: none.fix })).toEqual({
+    markdown: "Prima.\n\nDopo.",
+    figures: {},
+  });
+  expect(none.calls).toHaveLength(1);
+  // A fix that gives back the code it was sent has nothing new to draw.
+  let runs = 0;
+  const counting: FigureRunner = (code, timeout) => {
+    runs++;
+    return raises(code, timeout);
+  };
+  const same = await drawFigures(text, { python: counting, fix: async (figure) => figure.code });
+  expect([runs, same.markdown]).toEqual([1, "Prima.\n\nDopo."]);
+});
+
+it("keeps the figures that drew while another one is being fixed, in the order they were written", async () => {
+  const order: string[] = [];
+  const python: FigureRunner = (code, timeout) => {
+    order.push(code);
+    return raises(code, timeout);
+  };
+  const text = [block("plt.plot([0])", "A"), block(broken, "B"), block("plt.plot([9])", "C")].join("\n\n");
+  const drawn = await drawFigures(text, { python, fix: async () => mended });
+  expect(order).toEqual([
+    expect.stringContaining("plt.plot([0])"),
+    expect.stringContaining(broken),
+    expect.stringContaining(mended),
+    expect.stringContaining("plt.plot([9])"),
+  ]);
+  expect(Object.keys(drawn.figures).sort()).toEqual(
+    [figureKey("plt.plot([0])"), figureKey(mended), figureKey("plt.plot([9])")].sort(),
+  );
+});
+
+it("makes no fix call for a kind it cannot draw, a figure it already has, or a runtime that is missing", async () => {
+  const none = noFix();
+  const circuit = block("raise ValueError('x')", "Un circuito.", "circuit");
+  // Python without the drawing pack: the circuit goes, and nobody is asked about it.
+  await drawFigures(circuit, { python: raises, kinds: ["plot"], fix: none.fix });
+  // An image drawn before is kept, whatever its code would do now.
+  const known = { [figureKey(broken)]: PNG };
+  const kept = await drawFigures(block(broken), { python: raises, known, fix: none.fix });
+  expect(Object.keys(kept.figures)).toEqual([figureKey(broken)]);
+  // No sandbox, a crashed one and one that threw: new code would not help.
+  for (const python of [
+    async () => ({ stdout: "", stderr: "runtime-unavailable", images: [], timedOut: false, truncated: false }),
+    async () => ({ stdout: "", stderr: "runtime-crashed", images: [], timedOut: false, truncated: false }),
+    async (): Promise<never> => {
+      throw new Error("runtime-crashed");
+    },
+  ] as FigureRunner[])
+    await drawFigures(block("plt.plot([1])"), { python, fix: none.fix });
+  expect(none.calls).toEqual([]);
+});
+
+it("sends the fix a message the model can act on: the time limit that passed, or that nothing was drawn", async () => {
+  const none = noFix();
+  const slow: FigureRunner = async () => ({ stdout: "", stderr: "", images: [PNG], timedOut: true, truncated: false });
+  await drawFigures(block("while True: pass"), { python: slow, fix: none.fix });
+  expect(none.calls.at(-1)!.error).toMatch(/longer than 8 seconds/);
+  const blank: FigureRunner = async () => ({ stdout: "", stderr: "", images: [], timedOut: false, truncated: false });
+  await drawFigures(block("x = 1"), { python: blank, fix: none.fix });
+  expect(none.calls.at(-1)!.error).toMatch(/drew nothing/);
+});
+
+it("asks for at most four fixes in one text, one per figure", async () => {
+  const none = noFix();
+  const text = Array.from({ length: 7 }, (_, i) => block(`raise ValueError('no ${i}')`, `Figura ${i}`)).join("\n\n");
+  const drawn = await drawFigures(text, { python: raises, fix: none.fix });
+  expect(none.calls.map((call) => call.caption)).toEqual(["Figura 0", "Figura 1", "Figura 2", "Figura 3"]);
+  expect(drawn).toEqual({ markdown: "", figures: {} });
+});
+
+it("stops when the work is stopped during a fix, without drawing or asking again", async () => {
+  const controller = new AbortController();
+  let runs = 0;
+  const python: FigureRunner = (code, timeout) => {
+    runs++;
+    return raises(code, timeout);
+  };
+  const fix: FigureFix = async () => {
+    controller.abort();
+    return mended;
+  };
+  const text = [block(broken, "A"), block("raise ValueError('b')", "B")].join("\n\n");
+  await expect(drawFigures(text, { python, fix, signal: controller.signal })).rejects.toThrow();
+  expect(runs).toBe(1);
+});
+
+const selection = { provider: "claude", model: "fixer" } as const;
+const answer = (code: string) => ({
+  text: JSON.stringify({ code }),
+  structured: { code },
+  provider: "claude",
+  model: "fixer",
+  inputTokens: 1,
+});
+
+it("the fix call is one structured call on the caller's engine with only the block and the error", async () => {
+  const sent: Array<{ system?: string; prompt: string; model: string; hasSchema: boolean }> = [];
+  const run = async (input: { system?: string; prompt: string; selection: { model: string }; responseSchema?: unknown }) => {
+    sent.push({ system: input.system, prompt: input.prompt, model: input.selection.model, hasSchema: Boolean(input.responseSchema) });
+    return answer(mended);
+  };
+  const fix = figureFixer({ selection, run });
+  const traceback = `Traceback (most recent call last):\n${"  File \"<exec>\", line 1\n".repeat(200)}ValueError: quantity missing`;
+  const figure = { figureKind: "circuit", caption: "Un resistore.", code: "d += elm.Nothing()" } as const;
+  expect(await fix(figure, traceback)).toBe(mended);
+  expect(sent).toHaveLength(1);
+  expect(sent[0]!.model).toBe("fixer");
+  expect(sent[0]!.hasSchema).toBe(true);
+  const request = JSON.parse(sent[0]!.prompt) as Record<string, string>;
+  expect(Object.keys(request).sort()).toEqual(["caption", "code", "error", "kind"]);
+  expect(request).toMatchObject({ kind: "circuit", caption: "Un resistore.", code: "d += elm.Nothing()" });
+  // The end of a long traceback, cut at a line start: the part that names the cause.
+  expect(request.error!.length).toBeLessThanOrEqual(FIGURE_ERROR_MAX);
+  expect(request.error!.endsWith("ValueError: quantity missing")).toBe(true);
+  expect(request.error!.startsWith("  File")).toBe(true);
+  // It carries the rules for code of this kind, and the instruction to correct without obeying the code.
+  expect(sent[0]!.system).toContain("could not be drawn");
+  expect(sent[0]!.system).toContain("schemdraw code that adds elements to the drawing d");
+  expect(sent[0]!.system).not.toContain("matplotlib");
+});
+
+it("a fix call that fails leaves the figure unfixed, and one that is stopped stops the work", async () => {
+  const failing = figureFixer({
+    selection,
+    run: async () => {
+      throw new Error("the engine is out");
+    },
+  });
+  const figure = { figureKind: "plot", caption: "x", code: "raise ValueError('x')" } as const;
+  expect(await failing(figure, "ValueError: x")).toBeNull();
+  const controller = new AbortController();
+  const stopped = figureFixer({
+    selection,
+    signal: controller.signal,
+    run: async (input) => {
+      controller.abort();
+      input.signal?.throwIfAborted();
+      return answer(mended);
+    },
+  });
+  await expect(stopped(figure, "ValueError: x")).rejects.toThrow();
+});
+
+it("hands back the corrected code as the model wrote it: an escape inside a Python string is not turned into a line break", async () => {
+  const label = "plt.plot([1, 2])\nplt.ylabel('Voltage\\n(V)')\nplt.xlabel('Time \\t(s)')";
+  const figure = { figureKind: "plot", caption: "x", code: "plt.plot([1])" } as const;
+  // A structured reply, as the providers that support it give it, and a text reply that holds the same JSON.
+  const asText = async () => ({ text: JSON.stringify({ code: label }), provider: "claude", model: "fixer", inputTokens: 1 });
+  for (const run of [async () => answer(label), asText])
+    expect(await figureFixer({ selection, run })(figure, "ValueError: x")).toBe(label);
 });

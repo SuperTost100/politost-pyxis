@@ -1,6 +1,12 @@
 import { appendFileSync, existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import type { GenerateInput } from "./generate";
+import { loadTemplate } from "./prompts";
+
+/** Whether a call is the fix of a figure that could not be drawn, which a recording answers on its own. */
+export function isFigureFixCall(system: string | undefined): boolean {
+  return system?.startsWith(loadTemplate("figure.fix").body.slice(0, 60)) === true;
+}
 
 /** A pattern per recorded question's stem, with its `{{…}}` placeholders matching whatever they were filled with. */
 function recordedStems(questions: unknown[]): RegExp[] {
@@ -26,6 +32,7 @@ export function recordedPlanRun(
   // part differently.
   let calls = 0;
   let texts = 0;
+  let fixes = 0;
   // `"limited": { "codex": { "resetAt": "…", "until": "path" } }` puts a tool out of requests: every call to it fails
   // with the usage limit a CLI reports (with the reset time, when one is given) until the test creates the `until`
   // file. Without `until` it stays out for the whole run.
@@ -67,6 +74,29 @@ export function recordedPlanRun(
       }
       return {
         text: markdown?.markdown ?? "Recorded lesson [P1].",
+        model: "recorded-plan",
+        provider: "fixture",
+        inputTokens: 0,
+      };
+    }
+    // A figure's fix is answered from `figureFix`, as one reply or a list answered in turn, with the same `fail`,
+    // `delayMs` and `hold` keys as the others. Its place in the list follows the fix calls only, not the other
+    // structured calls. Without `figureFix` the call fails by name, and the figure is left out.
+    if (isFigureFixCall(input.system) && replies.figureFix !== undefined) {
+      const listed = replies.figureFix;
+      const entry = (Array.isArray(listed) ? listed[fixes++ % listed.length] : listed) as {
+        code?: string;
+        fail?: string;
+        delayMs?: number;
+        hold?: string;
+      };
+      if (entry.delayMs) await delay(Math.min(Math.max(entry.delayMs, 0), 10000), undefined, { signal: input.signal });
+      while (entry.hold && !existsSync(entry.hold)) await delay(50, undefined, { signal: input.signal });
+      if (typeof entry.fail === "string") throw new Error(entry.fail);
+      const answer = { code: entry.code ?? "" };
+      return {
+        text: JSON.stringify(answer),
+        structured: answer,
         model: "recorded-plan",
         provider: "fixture",
         inputTokens: 0,

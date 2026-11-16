@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
+import { build as viteBuild } from "vite";
 import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 import { rendererCsp } from "./src/main/csp";
@@ -34,12 +35,55 @@ function copySandboxPage(): Plugin {
         ["python-worker.js", "python-worker.js"],
         ["check-worker.js", "check-worker.js"],
         ["symbolic.py", "symbolic.py"],
+        ["draw.html", "draw.html"],
       ] as const) {
         this.emitFile({
           type: "asset",
           fileName: `runtime/${name}`,
           source: readFileSync(resolve(root, "src/sandbox", sourceName)),
         });
+      }
+    },
+  };
+}
+
+/**
+ * The drawing window runs two scripts of the app, each a bundle of its own. The page (src/sandbox/draw-host.ts) holds
+ * DOMPurify and the code that turns a drawing into a picture. The worker (src/sandbox/draw-worker.ts) runs the
+ * downloaded Graphviz, in a context that shares nothing with the page. Both ship with the app, never with the pack.
+ */
+function drawScripts(): Plugin {
+  const scripts = [
+    { entry: "src/sandbox/draw-host.ts", name: "PyxisDrawHost", file: "draw-host.js" },
+    { entry: "src/sandbox/draw-worker.ts", name: "PyxisDrawWorker", file: "draw-worker.js" },
+  ];
+  return {
+    name: "draw-scripts",
+    apply: "build",
+    async generateBundle() {
+      for (const script of scripts) {
+        const built = await viteBuild({
+          configFile: false,
+          logLevel: "silent",
+          root,
+          define: { "process.env.NODE_ENV": JSON.stringify("production") },
+          build: {
+            write: false,
+            minify: "oxc",
+            lib: {
+              entry: resolve(root, script.entry),
+              formats: ["iife"],
+              name: script.name,
+              fileName: () => script.file,
+            },
+          },
+        });
+        const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
+          "output" in result ? result.output : [],
+        );
+        const chunks = outputs.filter((output) => output.type === "chunk");
+        if (chunks.length !== 1) throw new Error(`${script.file} must be one file.`);
+        this.emitFile({ type: "asset", fileName: `runtime/${script.file}`, source: chunks[0]!.code });
       }
     },
   };
@@ -135,7 +179,7 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), katexWoff2Only(), copySandboxPage(), pdfjsImageDecoders(), cspMeta()],
+    plugins: [react(), katexWoff2Only(), copySandboxPage(), drawScripts(), pdfjsImageDecoders(), cspMeta()],
     define: { __PYXIS_COMMIT__: JSON.stringify(buildCommit()) },
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "oxc" },
