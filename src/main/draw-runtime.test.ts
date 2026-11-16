@@ -559,6 +559,33 @@ describe("the drawing window", () => {
     await expect(second).resolves.toEqual({ image: good.png });
   });
 
+  it("makes no window for a request that a disposal overtook while it waited for the storage to be cleared", async () => {
+    const first = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    fake.held[0]!.settle(good);
+    await first;
+    let finish: () => void = () => undefined;
+    fake.clearGate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    fake.windows[0]!.contentsListeners.get("render-process-gone")!();
+    const overtaken = handleDrawRequest({ kind: "graph", code: DOT });
+    await vi.waitFor(() => expect(fake.partitions[0]!.cleared).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(fake.windows).toHaveLength(1);
+    // Disposed meanwhile (another workspace), and a request of the new generation made.
+    configureDrawRuntime("/workspace-b");
+    const current = handleDrawRequest({ kind: "graph", code: DOT });
+    finish();
+    await expect(overtaken).resolves.toEqual({ error: "runtime-disposed" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    // The one window made since is the new request's, and nothing cleared the session under it.
+    expect(fake.windows).toHaveLength(2);
+    expect(fake.partitions[0]!.cleared).toBe(1);
+    fake.held[1]!.settle(good);
+    await expect(current).resolves.toEqual({ image: good.png });
+  });
+
   it("gives up on a window that does not load its page, and destroys it", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
     fake.loadNever = true;
