@@ -504,38 +504,52 @@ test("text in a file is shown as text, and very long values wrap inside the page
 
 test("pictures of the import page in both languages, for the folder PYXIS_SHOTS names", async () => {
   test.skip(!SHOTS, "pictures are saved only when PYXIS_SHOTS names a folder");
-  test.setTimeout(240000);
-  const sizes = [1280, 960];
-  for (const language of ["it", "en"] as const) {
-    const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
-    const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "plans.import=20000" } });
-    try {
-      const page = await app.firstWindow();
-      await skipSetup(page);
-      await page.evaluate((lang) => localStorage.setItem("pyxis.lang", lang), language);
-      await page.reload();
-      const picture = async (state: string) => {
-        for (const width of sizes)
+  test.setTimeout(900000);
+  // The sidebar open and folded, and large text, at the two widths the audit uses.
+  const setups = [
+    { name: "1280-open", width: 1280, fold: false, large: false },
+    { name: "1280-folded", width: 1280, fold: true, large: false },
+    { name: "1280-open-large", width: 1280, fold: false, large: true },
+    { name: "960-folded", width: 960, fold: true, large: false },
+    { name: "960-folded-large", width: 960, fold: true, large: true },
+  ];
+  for (const language of ["it", "en"] as const)
+    for (const setup of setups) {
+      const userData = mkdtempSync(join(tmpdir(), "pyxis-open-plan-"));
+      const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "plans.import=9000" } });
+      try {
+        const page = await app.firstWindow();
+        await skipSetup(page);
+        await page.evaluate(
+          async ({ lang, fold, large }) => {
+            localStorage.setItem("pyxis.lang", lang);
+            localStorage.setItem("pyxis.side", fold ? "folded" : "open");
+            await window.pyxis.invoke("profile.save", { dyslexia: false, textSize: large ? "lg" : "md" });
+          },
+          { lang: language, fold: setup.fold, large: setup.large },
+        );
+        await page.setViewportSize({ width: setup.width, height: 800 });
+        await page.reload();
+        const picture = async (state: string) => {
           for (const theme of ["light", "dark"] as const) {
-            await page.setViewportSize({ width, height: 800 });
             await page.evaluate((source) => window.pyxis.setAppearance(source), theme);
             await animationsSettled(page);
-            await saveShot(page, `import-${state}-${language}-${theme}-${width}.png`, { fullPage: true });
+            await saveShot(page, `import-${state}-${language}-${theme}-${setup.name}.png`, { fullPage: true });
           }
-      };
-      await openReview(page, "Analisi Matematica 2.pyxis", shared("Analisi Matematica 2"));
-      await picture("1-before");
-      await page.locator(".px-import-foot .ant-btn-primary").click();
-      await expect(page.locator(".px-import-foot [role=status]")).toBeVisible();
-      await picture("2-working");
-      await expect(page).toHaveURL(/#\/plans\//, { timeout: 60000 });
-      await expect(page.locator(".px-exam-origin")).toBeVisible();
-      await picture("3-after");
-    } finally {
-      await app.close();
-      removeTestFolder(userData);
+        };
+        await openReview(page, "Analisi Matematica 2.pyxis", shared("Analisi Matematica 2"));
+        await picture("1-before");
+        await page.locator(".px-import-foot .ant-btn-primary").click();
+        await expect(page.locator(".px-import-foot [role=status]")).toBeVisible();
+        await picture("2-working");
+        await expect(page).toHaveURL(/#\/plans\//, { timeout: 60000 });
+        await expect(page.locator(".px-exam-origin")).toBeVisible();
+        await picture("3-after");
+      } finally {
+        await app.close();
+        removeTestFolder(userData);
+      }
     }
-  }
 });
 
 /** The ways back besides the control: Vai > Indietro (which ⌘[ and Alt+Left run), and the mouse's back button. */

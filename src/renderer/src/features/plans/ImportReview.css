@@ -141,6 +141,7 @@
 }
 .px-import-source {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
   min-width: 0;
   padding: var(--space-3) 0;
