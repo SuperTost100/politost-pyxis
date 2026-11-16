@@ -8,6 +8,7 @@ import {
   deleteCard,
   dueCards,
   examlessDecks,
+  MAX_REVIEW_SECONDS,
   newCardsLeftToday,
   newCardsPerDay,
   queueCounts,
@@ -245,6 +246,20 @@ describe("cards", () => {
       .get() as { topic_id: string; payload_json: string };
     expect(event.topic_id).toBe(topicId);
     expect(JSON.parse(event.payload_json)).toEqual({ score: 1, cardId });
+  });
+
+  it("keeps how long a review took, up to a minute, and nothing when the time is not given", () => {
+    const db = openDatabase(":memory:");
+    const { planId, topicId } = planWithTopic(db);
+    const ids = seedCards(db, {
+      planId,
+      topicId,
+      pairs: ["a", "b", "c", "d"].map((front) => ({ front, back: front })),
+    });
+    for (const [index, seconds] of [7.4, 600, -5, undefined].entries()) rateCard(db, ids[index]!, "good", T0 + index, seconds);
+    // Rounded to a second, a card left open counts a minute, and a negative time is none.
+    expect(db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").pluck().all()).toEqual([7, MAX_REVIEW_SECONDS, 0, null]);
+    expect(MAX_REVIEW_SECONDS).toBe(60);
   });
 
   it("counts new, learning and mastered cards, and skips a suspended one", () => {

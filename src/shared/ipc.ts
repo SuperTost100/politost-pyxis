@@ -1723,6 +1723,8 @@ export const requests = {
     input: z.object({
       cardId: z.string(),
       rating: z.enum(["again", "hard", "good", "easy"]),
+      /** How long the card was on screen before the rating; core keeps at most a minute of it as study time. */
+      seconds: z.number().min(0).max(86_400).optional(),
     }),
     output: z.object({
       intervalDays: z.number(),

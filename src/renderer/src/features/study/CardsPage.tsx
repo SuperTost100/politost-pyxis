@@ -349,7 +349,10 @@ export function CardsPage() {
   useEffect(() => {
     if (sessionOver) void finishSession();
   }, [sessionOver]);
+  // When the card on screen appeared: a rating reports how long it took, which Oggi counts as study time.
+  const shownAt = useRef(Date.now());
   useEffect(() => {
+    shownAt.current = Date.now();
     setEditing(false);
     stopTurn();
     showBackRef.current = false;
@@ -379,7 +382,11 @@ export function CardsPage() {
     setRatingPending(true);
     setRatingError(false);
     try {
-      const state = await invoke("study.rate", { cardId: card.id, rating });
+      const state = await invoke("study.rate", {
+        cardId: card.id,
+        rating,
+        seconds: Math.max(0, Math.round((Date.now() - shownAt.current) / 1000)),
+      });
       setLastAction({
         kind: "rate",
         cardId: card.id,

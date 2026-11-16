@@ -279,11 +279,19 @@ export function deckDueCards(
   }));
 }
 
+/** The most seconds one review counts as study time, so a card left open does not count its whole wait. */
+export const MAX_REVIEW_SECONDS = 60;
+
+/**
+ * Rates a card. `seconds` is how long the card was on screen before the rating; it is kept up to
+ * `MAX_REVIEW_SECONDS`, and a review without it (made before the time was recorded) counts as no study minutes.
+ */
 export function rateCard(
   db: Database.Database,
   cardId: string,
   rating: Rating,
   now: number,
+  seconds?: number,
 ): ScheduleState & { reviewId: string } {
   return db.transaction(() => {
     const card = db
@@ -316,9 +324,16 @@ export function rateCard(
 
     const reviewId = uuidv7(now);
     db.prepare(
-      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    ).run(reviewId, cardId, rating, JSON.stringify(next), now);
+      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at, seconds)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      reviewId,
+      cardId,
+      rating,
+      JSON.stringify(next),
+      now,
+      seconds == null ? null : Math.min(MAX_REVIEW_SECONDS, Math.max(0, Math.round(seconds))),
+    );
     // The event is evidence for an exam's mastery and path; a card with no exam has none to feed.
     if (card.plan_id == null) return { ...next, reviewId };
     const score = rating === "again" ? 0 : rating === "hard" ? 0.5 : 1;
