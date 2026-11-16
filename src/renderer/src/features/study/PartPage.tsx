@@ -219,7 +219,7 @@ export function PartPage({
   }
   function moveToContinue(before: Element | null) {
     requestAnimationFrame(() => {
-      if (focusFollowsAnswer(before, document.activeElement, document.body))
+      if (focusFollowsAnswer(before, document.activeElement, document.body, document.querySelector(".px-reader-head h1")))
         continueRef.current?.querySelector<HTMLElement>("button")?.focus();
     });
   }

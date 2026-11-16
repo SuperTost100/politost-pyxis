@@ -71,10 +71,11 @@ export function workingCopy(input: {
 /**
  * Whether the focus moves to Continua once an answer is saved: only when it is still where it was when the student
  * answered (the option, or the page itself for a letter key), or it fell back to the page. A student who moved it on
- * meanwhile keeps it there.
+ * meanwhile keeps it there. The part's title counts as the page: only the page puts the focus there, as it does when the
+ * part being waited for arrives, and an answer given as it arrived must not lose its move to Continua to that.
  */
-export function focusFollowsAnswer(before: unknown, now: unknown, body: unknown): boolean {
-  return now === before || now === body || now === null;
+export function focusFollowsAnswer(before: unknown, now: unknown, body: unknown, title?: unknown): boolean {
+  return now === before || now === body || now === null || (title != null && now === title);
 }
 
 /**

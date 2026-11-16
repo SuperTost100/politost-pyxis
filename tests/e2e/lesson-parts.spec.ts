@@ -550,6 +550,33 @@ test("leaving a lesson before core has chosen its part does not pull the student
   }
 });
 
+test("a letter that answers the last check as the part arrives still moves the focus to Continua", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    // Frames come late, as on a slow computer: what the page does for an arrival in an animation frame (the title takes the
+    // focus) comes after the key that answers, and the focus then goes to Continua only if the title does not count as
+    // where the student left it.
+    await page.evaluate(() => {
+      const original = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) => original(() => void setTimeout(() => callback(performance.now()), 500));
+    });
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    await page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    await page.keyboard.press(await letterOf(page, "La cosa giusta"));
+    await expect(continueButton(page)).toBeFocused();
+  } finally {
+    await close();
+  }
+});
+
 test("while the next part is read, the part before it stays on screen but cannot be answered, and nothing it saves lands on the next part", async () => {
   test.setTimeout(180_000);
   // Part 2 asks the same question as part 1, so both texts give it the same id.
