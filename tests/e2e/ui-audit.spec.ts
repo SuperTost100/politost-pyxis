@@ -330,6 +330,10 @@ const routes = [
   ["graph", "/tools/graph"],
   ["python", "/tools/python"],
   ["jobs-popover", "/exams"],
+  // A job stopped because Cursor ran out of requests, with the choices to go on with Claude or wait; and the same job
+  // while it waits.
+  ["jobs-out-of-requests", "/exams"],
+  ["jobs-waiting", "/exams"],
   // A linked folder's readings as one row, opened on its files; and a map being built, with the working mark.
   ["jobs-group", "/exams"],
   ["map-building", "/plans/audit-ready-plan/map/audit-ready-topic"],
@@ -1777,7 +1781,13 @@ esac`,
 }
 
 /** The states of AI tools that show connected tools. */
-const CONNECTED_TOOLS = ["settings-engines-listed", "engine-details", "engine-menu"];
+const CONNECTED_TOOLS = [
+  "settings-engines-listed",
+  "engine-details",
+  "engine-menu",
+  "jobs-out-of-requests",
+  "jobs-waiting",
+];
 
 /**
  * Setup step 2 and the states of AI tools that show connected tools sign the stand-ins in; every other state finds them
@@ -1791,7 +1801,7 @@ function prepareEngines(name: string) {
   const engines = name.startsWith("onboarding-engines") || CONNECTED_TOOLS.includes(name);
   if (engines) writeFileSync(on, "");
   else rmSync(on, { force: true });
-  if (name === "settings-engines-listed") writeFileSync(limit, "");
+  if (name === "settings-engines-listed" || name.startsWith("jobs-out") || name === "jobs-waiting") writeFileSync(limit, "");
   else rmSync(limit, { force: true });
   withDb((db) => {
     // Debug mode only for its own state, so no other page shows its details.
@@ -2625,7 +2635,8 @@ function prepareState(name: string) {
   // shows them, so the other routes keep their top bar.
   withDb((db) => {
     // The requests that found nothing go too: one stays in every later state's Attività button until it is dismissed.
-    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%' OR id LIKE 'audit-ended-%'");
+    db.exec("DELETE FROM jobs WHERE id LIKE 'audit-running-%' OR id LIKE 'audit-empty-%' OR id LIKE 'audit-ended-%' OR id LIKE 'audit-out-%'");
+    db.exec("DELETE FROM settings WHERE key LIKE 'job-wait:audit-out-%'");
     db.exec(
       "DELETE FROM linked_files WHERE folder_id = 'audit-group-folder'; DELETE FROM linked_folders WHERE id = 'audit-group-folder'",
     );
@@ -2690,6 +2701,23 @@ function prepareState(name: string) {
         now,
         now,
       );
+      return;
+    }
+    if (name === "jobs-out-of-requests" || name === "jobs-waiting") {
+      // The job Cursor stopped, as the runner records an engine failure: the code, the tool in brackets, then its text.
+      db.prepare(
+        "INSERT INTO jobs(id,kind,params_json,state,progress,error,created_at,updated_at) VALUES('audit-out-cards','cards-build',?,'failed',0,?,?,?)",
+      ).run(
+        JSON.stringify({ planId: "audit-plan", topicId: "audit-topic" }),
+        "quota [agent]: You have hit your usage limit.",
+        now,
+        now,
+      );
+      if (name === "jobs-waiting")
+        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('job-wait:audit-out-cards',?,?)").run(
+          JSON.stringify({ until: new Date(new Date().setHours(24 + 6, 0, 0, 0)).getTime(), tool: "agent" }),
+          now,
+        );
       return;
     }
     if (name !== "jobs-popover") return;
@@ -3722,6 +3750,23 @@ async function openState(page: Page, name: string) {
         .check();
       await expect(page.getByRole("spinbutton")).toBeVisible();
       break;
+    // Cursor answers a call with a usage limit, so its jobs stop and ask; Claude is the tool to go on with.
+    case "jobs-out-of-requests":
+    case "jobs-waiting": {
+      if (process.platform === "win32") break;
+      await expect(page.locator("h1:visible").first()).toBeVisible();
+      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "agent" }).catch(() => undefined));
+      await page.getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ }).click();
+      const list = page.getByRole("region", { name: /^(Attività|Background tasks)$/ });
+      await expect(list).toBeVisible();
+      if (name === "jobs-out-of-requests") {
+        await expect(list.getByRole("button", { name: /^(Continua con|Continue with) Claude/ })).toBeVisible();
+        await expect(list.getByRole("button", { name: /^(Aspetta|Wait)/ })).toBeVisible();
+      } else {
+        await expect(list.locator(".px-jobs-waiting")).toHaveCount(1);
+      }
+      break;
+    }
     case "jobs-popover":
       await page
         .getByRole("button", { name: /^(Attività|Background tasks)(:|\s|$)/ })

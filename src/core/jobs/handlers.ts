@@ -6,7 +6,18 @@ import {
 import type Database from "better-sqlite3";
 import { putSetting } from "../settings";
 import { callsOf, clearJobLogs, readJobLog, setDebugOn } from "../debug/log";
+import { limitedUntil, onLimitChange } from "../engine/bench";
+import { chooseJobEngine, selectionOn } from "../engine/selection";
 import type { Runner } from "./runner";
+
+/** The tool a failed job's engine error names ("quota [codex]: …"), when the failure was a usage limit. */
+function limitedToolOf(db: Database.Database, jobId: string): string | undefined {
+  const row = db.prepare("SELECT state, error FROM jobs WHERE id = ?").get(jobId) as
+    | { state: string; error: string | null }
+    | undefined;
+  if (row?.state !== "failed") return undefined;
+  return /^quota \[([\w-]+)\]/.exec(row.error ?? "")?.[1];
+}
 
 /** Whether debug mode is on, as stored. Off until the student turns it on. */
 export function readDebugSetting(db: Database.Database): boolean {
@@ -19,6 +30,9 @@ export function readDebugSetting(db: Database.Database): boolean {
 }
 
 export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database) {
+  // A job held for a tool follows the tool's limit: moved when its time changes (the tool's own usage report gives a
+  // better one than the first guess), and released at once when a call that answers clears it.
+  onLimitChange((tool, until) => runner.retime(tool, until ?? null));
   return {
     list(): RequestOutput<"jobs.list"> {
       return runner.list();
@@ -46,6 +60,31 @@ export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database
     },
     retry(input: RequestInput<"jobs.retry">): RequestOutput<"jobs.retry"> {
       runner.retry(input.jobId);
+      return {};
+    },
+    /**
+     * The job stopped because its tool ran out of requests, and the student has it go on with `provider`. Every model
+     * call of the job goes there from now on, and the job starts again from the step it stopped at.
+     */
+    retryWith(input: RequestInput<"jobs.retryWith">): RequestOutput<"jobs.retryWith"> {
+      if (!selectionOn(input.provider)) throw new IpcError("engine-missing", "engines.errors.engine-missing");
+      chooseJobEngine(input.jobId, input.provider);
+      runner.retry(input.jobId);
+      return {};
+    },
+    /**
+     * The job stopped because its tool ran out of requests, and the student has it wait: it starts again by itself when
+     * the tool's requests are back. Without a known time there is nothing to wait for.
+     */
+    wait(input: RequestInput<"jobs.wait">): RequestOutput<"jobs.wait"> {
+      if (!input.wait) {
+        runner.hold(input.jobId, null);
+        return {};
+      }
+      const tool = db ? limitedToolOf(db, input.jobId) : undefined;
+      const until = tool ? limitedUntil(tool) : undefined;
+      if (until === undefined || !runner.hold(input.jobId, until, tool))
+        throw new IpcError("not-ready", "jobs.actionFailed");
       return {};
     },
     resume(input: RequestInput<"jobs.resume">): RequestOutput<"jobs.resume"> {

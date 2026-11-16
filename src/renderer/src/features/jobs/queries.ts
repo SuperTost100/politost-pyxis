@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { invoke, onBroadcast } from "../../lib/ipc";
+import { enginesQuery } from "../../lib/queries";
 import { staleBatcher, staleFamilies } from "./jobInvalidation";
 
 export function useJobs() {
@@ -43,6 +44,10 @@ export function JobsSync() {
       void client.invalidateQueries({ queryKey: ["subjects"] });
       void client.invalidateQueries({ queryKey: ["linked-folders"] });
     });
+    // A tool ran out of requests, or has them again: the rows that offer another tool read the tools again.
+    const offStatus = onBroadcast("engine.status", () => {
+      void client.invalidateQueries({ queryKey: enginesQuery.queryKey });
+    });
     const offPort = window.pyxis.onPort(() => {
       void client.invalidateQueries({ queryKey: ["jobs"] });
     });
@@ -51,6 +56,7 @@ export function JobsSync() {
       stale.cancel();
       offEvidence();
       offSources();
+      offStatus();
       offPort();
     };
   }, [client]);

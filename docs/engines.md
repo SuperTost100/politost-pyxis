@@ -167,6 +167,17 @@ A usage limit keeps the engine out until it resets, and the reset is kept in the
 
 When a failure names no time, `engines.limitChanged` asks CLI Funnel's `rateLimits()` for the tool's usage report once, in the background, and moves the wait to the reset it gives. If the report fails, names no limit or the tool has none, the 30 minutes stand.
 
+### A job whose tool ran out of requests
+
+An automatic task goes on with the next tool by itself, as above, and the student is told once: the finished job's row in Attività says "Gemini ha finito le richieste, quindi ha risposto Claude" and one line in the window says it too. A job stops and asks only when nothing moves it on: the task is set to a model by hand, or every tool of the list is out. Such a job fails with `quota [<tool>]: …` (the tool in brackets, see `jobErrorEngine()`), and while that tool is out of requests Attività shows it under "C'è bisogno di te" as one row for all the jobs that ran out on that tool (`out-of-requests` in `jobGroups.ts`, drawn by `OutOfRequestsCard` in `JobsPanel.tsx`). The row reads the tools through `engines.overview` (`limitedUntil`) and offers:
+
+- **Continua con \<tool\>**, the first connected tool of the student's order, other than the one that ran out, that is in use and has requests left (`nextTool()` in `outOfRequests.ts`). `jobs.retryWith` records the tool for the job (`chooseJobEngine()` in `selection.ts`) and retries it from the step it stopped at. `generate()` then sends every call of that job to the tool, on the model its tier gives for the task (`selectionOn()`), and the finished job carries the same note as an automatic move, without the window's line, since the student just chose it. A task set by hand has no tier recorded, so it takes the tool's mid-tier model. The choice is kept in core's memory: after a restart an interrupted job runs as it was saved.
+- **Aspetta \<when\>** (until a time today, tomorrow, or a day), when the tool's reset time is known. `jobs.wait` holds the failed job until `limitedUntil()` of that tool (`hold()` in the runner, kept in the settings table as `job-wait:<jobId>` with the time and the tool, so a restart goes on with it) and retries it by itself at that time. The hold follows its tool's limit (`onLimitChange()` in `bench.ts`, `retime()` in the runner): when the tool's usage report gives a better time than the first guess, or another failure moves it, the job waits until the new time, and when a call or a Prova that answers clears the limit, the job is retried at once. The row moves to "In corso" with the time and a Stop button that gives the wait up (`jobs.wait` with `wait: false`), after which the row asks again. A retry, a Chiudi or a dismissal ends the wait too.
+- **Strumenti AI**, in place of the first choice, when no other tool can take the job.
+- **Chiudi**, which gives the job up, as on any stopped job.
+
+The row follows the tool: when its requests are back (the time passes, or a call or a Prova that answers clears the limit), the job is an ordinary failed one with Riprova, and the row stops saying the tool is out.
+
 ## What a chat searches
 
 Pyxis decides where a question looks and files the chat under a subject; the composer has no subject, source or mode control. Each turn searches one of these, in order (`answer()` in `src/core/chat/turn.ts`):

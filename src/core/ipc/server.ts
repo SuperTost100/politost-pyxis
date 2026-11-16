@@ -9,6 +9,7 @@ import { configureSignOuts, setModelRefusalListener } from "../engine/bench";
 import { setModelNamesListener } from "../engine/efforts";
 import { signOutStore } from "../engine/choice";
 import { setFallbackListener } from "../engine/generate";
+import { jobEngine } from "../engine/selection";
 import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
 import type { z } from "zod";
 import {
@@ -301,6 +302,8 @@ const routes = {
   "jobs.retry": ["jobs", "retry"],
   "jobs.resume": ["jobs", "resume"],
   "jobs.dismiss": ["jobs", "dismiss"],
+  "jobs.retryWith": ["jobs", "retryWith"],
+  "jobs.wait": ["jobs", "wait"],
   "jobs.log": ["jobs", "log"],
   "debug.get": ["jobs", "debugGet", "bare"],
   "debug.set": ["jobs", "debugSet"],
@@ -798,9 +801,10 @@ export function bindEngines(
     refusals = setTimeout(refreshAutoEngines, 500);
   });
   setFallbackListener((event) => {
-    broadcast("engine.fallback", event);
     // A call a job made: the finished job tells which engine answered.
     const jobId = currentUsageScope()?.jobId;
+    // The student just chose that tool for the job, so there is nothing to tell them again.
+    if (!jobEngine(jobId)) broadcast("engine.fallback", event);
     if (jobId) jobRunner?.noteFallback(jobId, event);
   });
   setUsageRecorder((usage, where) => {

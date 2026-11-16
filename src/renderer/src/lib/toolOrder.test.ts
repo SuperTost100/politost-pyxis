@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isConnected, limitWhen, movedOrder, shownOrder, toggledUse } from "./toolOrder";
+import type { RequestOutput } from "../../../shared/ipc";
+import { isConnected, limitWhen, limitsOf, movedOrder, nextTool, shownOrder, toggledUse } from "./toolOrder";
 
 const tool = (id: string) => ({ id });
 
@@ -89,5 +90,62 @@ describe("when a tool has requests again", () => {
     // Two hours away, but on the next calendar day.
     expect(limitWhen(new Date(2026, 10, 17, 0, 30).getTime(), now)).toBe("tomorrow");
     expect(limitWhen(new Date(2026, 10, 20, 9, 0).getTime(), now)).toBe("later");
+  });
+});
+
+type Row = RequestOutput<"engines.overview">[number];
+const NOW = 1_000;
+
+const row = (id: string, over: Partial<Row> = {}): Row => ({
+  id,
+  name: id,
+  kind: "cli",
+  installed: true,
+  loggedIn: true,
+  refused: false,
+  disabled: false,
+  version: "1",
+  path: "",
+  withinTestedRange: true,
+  acknowledged: true,
+  allowed: true,
+  refusedModels: [],
+  limitedUntil: null,
+  capabilities: { effort: false, fast: false, signOut: true },
+  ...over,
+});
+
+describe("which tools are out of requests", () => {
+  it("lists the tools whose requests are not back yet, with the time", () => {
+    const rows = [row("claude"), row("codex", { limitedUntil: 5_000 }), row("agent", { limitedUntil: 500 })];
+    expect([...limitsOf(rows, NOW)]).toEqual([["codex", 5_000]]);
+  });
+});
+
+describe("the tool a stopped job goes on with", () => {
+  const rows = [row("claude"), row("codex"), row("agent"), row("antigravity")];
+
+  it("is the first tool of the student's order, other than the one that ran out", () => {
+    expect(nextTool(rows, ["antigravity", "codex", "claude"], "antigravity", NOW)?.id).toBe("codex");
+    expect(nextTool(rows, ["antigravity", "codex", "claude"], "codex", NOW)?.id).toBe("antigravity");
+  });
+
+  it("follows the order the tools were found in when the student never set one", () => {
+    expect(nextTool(rows, null, "claude", NOW)?.id).toBe("codex");
+  });
+
+  it("skips a tool that is out of requests too, turned off, signed out or not installed", () => {
+    const some = [
+      row("claude"),
+      row("codex", { limitedUntil: 9_000 }),
+      row("agent", { allowed: false }),
+      row("antigravity", { loggedIn: false }),
+    ];
+    expect(nextTool(some, null, "claude", NOW)).toBeUndefined();
+    expect(nextTool([...some, row("openai-api", { kind: "api" })], null, "claude", NOW)).toBeUndefined();
+  });
+
+  it("takes a tool whose limit has passed", () => {
+    expect(nextTool([row("claude"), row("codex", { limitedUntil: 500 })], null, "claude", NOW)?.id).toBe("codex");
   });
 });

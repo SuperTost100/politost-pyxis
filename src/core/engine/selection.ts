@@ -103,6 +103,35 @@ export function rememberReady(providers: AutoProvider[]): void {
   ready = providers;
 }
 
+/** Jobs the student told to go on with a given tool: the job's id and the tool, until Pyxis closes. */
+const chosenJobs = new Map<string, string>();
+
+/** The student chose to go on with `provider` for this job, after the tool it ran on was out of requests. */
+export function chooseJobEngine(jobId: string, provider: string): void {
+  chosenJobs.set(jobId, provider);
+}
+
+/** The tool the student chose for this job, if any. */
+export function jobEngine(jobId: string | undefined): string | undefined {
+  return jobId ? chosenJobs.get(jobId) : undefined;
+}
+
+/**
+ * The model of `provider` for a task, or undefined when that tool is not one the last automatic choice could use (not
+ * signed in, turned off, out of requests). `feature` names the task whose tier picks the model; a task the student
+ * pinned has none, so it takes the model of the default one.
+ * shortcut: a pinned task gets the tool's mid-tier model, upgrade by recording the task in the job's params.
+ */
+export function selectionOn(
+  provider: string,
+  feature = "default",
+): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | undefined {
+  const there = ready.find((candidate) => candidate.id === provider);
+  if (!there || isBenched(provider)) return undefined;
+  const choice = planAuto(withoutRefusedModels([there]), undefined, null)[feature as AutoFeature];
+  return choice ? { ...choice, provider: choice.provider as ProviderId } : undefined;
+}
+
 /** The student's order, for the tool a failing task moves to. Set at launch and at once when the student changes it. */
 export function rememberOrder(next: readonly string[] | null): void {
   order = next;
