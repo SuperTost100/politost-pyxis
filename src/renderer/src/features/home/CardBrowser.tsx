@@ -7,6 +7,7 @@ import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { Button as PxButton } from "../../components/Button";
 import { Reveal } from "../../components/Controls";
 import { afterDialog, useConfirm } from "../../components/Dialog";
+import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -512,6 +513,8 @@ export function CardBrowser({
       {ankiDialog}
       {emptyPage ? (
         <EmptyState
+          centred
+          art={<EmptyArt kind="flashcards" />}
           body={t("cardBrowser.emptyBody")}
           action={
             <span ref={newButton} onPointerEnter={() => readPlacesAhead(client)} onFocus={() => readPlacesAhead(client)}>

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
 import { Button } from "../../components/Button";
+import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
 import { emptyRings, ExamRings, useRingText } from "../../components/ExamRings";
 import { Icon } from "../../components/Icon";
@@ -133,7 +134,7 @@ export function ExamsList({
             // Everything is archived: the line says where the exams are, and its button opens them.
             <EmptyState body={t("exams.allArchivedBody")} action={archiveToggle} />
           ) : (
-            <EmptyState body={t("exams.emptyBody")} action={newExam} />
+            <EmptyState centred art={<EmptyArt kind="exams" />} body={t("exams.emptyBody")} action={newExam} />
           )}
           {archived.length > 0 ? (
             <>
