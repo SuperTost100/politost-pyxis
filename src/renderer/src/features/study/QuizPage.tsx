@@ -21,6 +21,7 @@ import { errorProvider, useEngineError } from "../../lib/engineError";
 import { useEngineNames } from "../../lib/useEngineNames";
 import { jobErrorEngine, jobErrorKey } from "../jobs/jobErrors";
 import { invoke } from "../../lib/ipc";
+import { refreshPlan } from "../../lib/refreshPlan";
 import { useStillHere } from "../../lib/useStillHere";
 import { useActiveTime } from "./activeTime";
 import { useDeadlinePassed, useNow } from "./clock";
@@ -592,8 +593,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     mutationFn: (input: { questionId: string; wrong: boolean }) =>
       invoke("study.quizWrong", { attemptId, ...input }),
     onSuccess: (_, input) => {
-      // Marking a question wrong recomputes the exam's gaps, which the results screen's change panel shows.
+      // Marking a question wrong recomputes the exam's gaps, which the results screen's change panel shows, and the end
+      // of a gap's drill says whether the gap is closed now. Only a job ending refreshed them before, a quarter of a
+      // second late and not at all for a student who flagged after that.
       void queryClient.invalidateQueries({ queryKey: ["attempt-outcome", attemptId] });
+      void refreshPlan(queryClient, planId ?? "");
       setWrongMarks((current) => ({
         ...current,
         [input.questionId]: input.wrong,

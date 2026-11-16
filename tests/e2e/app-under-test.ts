@@ -1,5 +1,7 @@
-import { _electron as electron, type ElectronApplication } from "@playwright/test";
+import { _electron as electron, test, type ElectronApplication } from "@playwright/test";
 import { join } from "node:path";
+import { withoutLaunchEnvironment } from "./trace-clean";
+import { saveTrace } from "./trace-save";
 import { removeTestFolder } from "./cleanup";
 
 export type LaunchOptions = {
@@ -54,6 +56,7 @@ export async function launchPyxis({
   );
   try {
     await sizeWindow(app, set.PYXIS_E2E_WINDOW);
+    if (tracing()) await traceUntilClosed(app);
   } catch (error) {
     // The caller never gets this app, so nobody else can close it, and on Windows its open database would make the
     // test's cleanup fail and hide this error.
@@ -61,6 +64,43 @@ export async function launchPyxis({
     throw error;
   }
   return app;
+}
+
+/** Off unless `PYXIS_TRACE=1`, which the macOS test jobs of `full.yml` set: it costs about 10 to 25 % of a short spec. */
+const tracing = () => process.env.PYXIS_TRACE === "1";
+
+/** A trace bigger than this is not kept, so a long test cannot fill the failed job's artifact. */
+const TRACE_MAX_BYTES = 30 * 1024 * 1024;
+
+let launches = 0;
+
+/**
+ * Records a Playwright trace of the app's windows (actions, console and a screenshot of each step, no DOM snapshots) and
+ * saves it when the test closes the app, as an attachment `trace-<n>` of the test. Playwright's own `trace` option does
+ * not reach an app that a spec launches itself. `scripts/keep-failed-traces.ts` deletes the traces of the tests that
+ * passed, so only a failed test leaves one behind.
+ */
+async function traceUntilClosed(app: ElectronApplication) {
+  const context = app.context();
+  const number = ++launches;
+  await context.tracing.start({ screenshots: true, snapshots: false });
+  const close = app.close.bind(app);
+  app.close = async () => {
+    try {
+      const info = test.info();
+      await saveTrace({
+        stop: (path) => context.tracing.stop({ path }),
+        attach: (path) => info.attach(`trace-${number}`, { path, contentType: "application/zip" }),
+        maxBytes: TRACE_MAX_BYTES,
+        clean: withoutLaunchEnvironment,
+      });
+    } catch (error) {
+      // A trace that cannot be saved must not fail the test that asked for the app to close, and one that could not be
+      // cleaned of the launch's environment is not kept.
+      console.error(`trace ${number} not saved: ${(error as Error).message}`);
+    }
+    await close();
+  };
 }
 
 /**

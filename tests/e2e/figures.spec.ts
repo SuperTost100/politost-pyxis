@@ -132,8 +132,10 @@ test("plots and circuits in a lesson and an Ask answer are drawn in the Python s
     !packsPinned(),
     "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.",
   );
-  // Each figure starts a fresh Pyodide worker that loads numpy and matplotlib.
-  test.setTimeout(300000);
+  // Each figure starts a fresh Pyodide worker that loads numpy and matplotlib. The whole test took 44 s on Linux and 165 s
+  // on one core shared with two busy loops (see the lesson step below); 420 s covers the slowest runner with the Ask
+  // answer's two figures and the reloads that follow.
+  test.setTimeout(420000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-"));
   stagePacks(userData);
   const book = join(userData, "fisica.ptsb");
@@ -228,7 +230,11 @@ test("plots and circuits in a lesson and an Ask answer are drawn in the Python s
       { planId, topicId },
     );
     const figures = page.locator("figure.px-figure");
-    await expect(figures).toHaveCount(3, { timeout: 120000 });
+    // The lesson shows its figures together once the four runs (three that draw, one that fails) are done, each starting
+    // Python again. Measured: 26 s on Linux, 110 to 116 s on one core shared with two busy loops, and the Intel Mac shard
+    // of the four-platform run took about 2.8 times the Linux time, which ran past the earlier 120 s once in two runs.
+    // 240 s is twice the slowed measurement, not a wait for something that may never come.
+    await expect(figures).toHaveCount(3, { timeout: 240000 });
     await expect(figures.first().getByRole("img")).toHaveAttribute(
       "alt",
       /La posizione/,
