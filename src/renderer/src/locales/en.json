@@ -421,6 +421,10 @@
     "allArchivedBody": "You'll find them under Archived. To prepare a new one, choose New exam.",
     "due_one": "You have {{count}} flashcard to review today",
     "due_other": "You have {{count}} flashcards to review today",
+    "dueAfterStudy_one": "{{count}} flashcard to review",
+    "dueAfterStudy_other": "{{count}} flashcards to review",
+    "studiedDay_one": "You've studied {{count}} minute of {{target}} today",
+    "studiedDay_other": "You've studied {{count}} minutes of {{target}} today",
     "dueFrom": "{{count}} from {{title}}",
     "dueNoExam": "{{count}} with no exam",
     "dueOthers_one": "{{cards}} from one other exam",
@@ -3871,12 +3875,10 @@
     "hint": {
       "preparation": "The grade you would get today",
       "path": "How much of the path you've done",
-      "today": "Your study minutes today, out of your goal",
+      "today": "All your study minutes today, out of your goal for the day",
       "todayNoGoal": "Measured once you set a study goal"
     },
     "noGoal": "not measured",
-    "noDate": "no date yet",
-    "examDay": "exam day",
     "setGoal": "Set a study goal",
     "todayMinutes": "{{done}} of {{target}} min",
     "todayDone": "done, {{done}} min"

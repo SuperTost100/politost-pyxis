@@ -421,6 +421,10 @@
     "allArchivedBody": "Li trovi sotto Archiviati. Per prepararne uno nuovo, scegli Nuovo esame.",
     "due_one": "Oggi hai {{count}} flashcard da ripassare",
     "due_other": "Oggi hai {{count}} flashcard da ripassare",
+    "dueAfterStudy_one": "{{count}} flashcard da ripassare",
+    "dueAfterStudy_other": "{{count}} flashcard da ripassare",
+    "studiedDay_one": "Oggi hai studiato {{count}} minuto su {{target}}",
+    "studiedDay_other": "Oggi hai studiato {{count}} minuti su {{target}}",
     "dueFrom": "{{count}} di {{title}}",
     "dueNoExam": "{{count}} senza esame",
     "dueOthers_one": "{{cards}} da un altro esame",
@@ -3871,12 +3875,10 @@
     "hint": {
       "preparation": "Il voto che prenderesti oggi",
       "path": "Quanto del percorso hai fatto",
-      "today": "I minuti di studio di oggi, sul tuo obiettivo",
+      "today": "Tutti i minuti di studio di oggi, sull'obiettivo della giornata",
       "todayNoGoal": "Si misura quando imposti un obiettivo di studio"
     },
     "noGoal": "non misurato",
-    "noDate": "manca la data",
-    "examDay": "giorno dell'esame",
     "setGoal": "Imposta obiettivo di studio",
     "todayMinutes": "{{done}} di {{target}} min",
     "todayDone": "fatto, {{done}} min"
