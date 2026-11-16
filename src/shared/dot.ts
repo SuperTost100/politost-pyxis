@@ -18,6 +18,7 @@ export type DotLayout = (typeof DOT_LAYOUTS)[number];
  */
 /** The font names a graph may give: the ones Graphviz has metrics for, drawn in the app's font all the same. */
 const FONT_NAMES = ["arial", "helvetica"];
+const SLOW = new Set(["mclimit", "nslimit", "nslimit1", "searchsize", "maxiter", "epsilon", "damping", "k"]);
 const REFUSED = new Set(["image", "imagepath", "shapefile", "fontpath", "stylesheet", "id", "target"]);
 
 /** `at` is where the token starts in the text. */
@@ -71,7 +72,13 @@ function lex(code: string): Lexed {
         if (i >= code.length) return { tokens: null, problem: 'a string is never closed: close it with a "' };
         const d = code[i]!;
         if (d === "\\" && i + 1 < code.length) {
-          // An escaped quote stays in the string; every other escape is for Graphviz to read.
+          // As Graphviz's lexer reads a quoted string: a backslash that ends a line joins the two lines (so "UR\<newline>L"
+          // is the name URL), an escaped quote is a quote, and every other escape stays for Graphviz to read as it is.
+          // A backslash before a carriage return is not a continuation there, and is not one here.
+          if (code[i + 1] === "\n") {
+            i += 2;
+            continue;
+          }
           value += code[i + 1] === '"' ? '"' : d + code[i + 1];
           i += 2;
           continue;
@@ -128,8 +135,18 @@ class Walker {
   layout: DotLayout | null = null;
   /** Where the graph's body starts: just after its opening brace. */
   body = 0;
+  /**
+   * The nodes of each named subgraph so far. Graphviz keeps one subgraph under a name, and a subgraph named again is that
+   * subgraph with everything it holds, so as the end of an edge it stands for all of its nodes, not for the ones written
+   * where it is named: \`subgraph s {} -> subgraph s {}\` joins every pair.
+   */
+  private readonly subgraphs = new Map<string, Set<string>>();
 
-  constructor(private readonly tokens: Token[]) {}
+  /** `limits` is off for text Graphviz itself wrote, where the counts were taken from Graphviz and only the names matter. */
+  constructor(
+    private readonly tokens: Token[],
+    private readonly limits = true,
+  ) {}
 
   private fail(message: string): never {
     throw new Stop(message);
@@ -157,8 +174,7 @@ class Walker {
     if (this.isKeyword("strict")) this.at++;
     if (!this.isKeyword("graph", "digraph")) this.fail('a DOT text starts with "graph" or "digraph"');
     this.at++;
-    const name = this.peek();
-    if (name && (name.kind === "id" || name.kind === "string")) this.at++;
+    if (this.startsAtom()) this.atom();
     const brace = this.peek();
     this.expect("{");
     this.body = brace!.at + 1;
@@ -191,20 +207,23 @@ class Walker {
       this.attributes();
       return;
     }
-    const first = this.peek()!;
-    // `name = value` sets a graph attribute.
-    const second = this.tokens[this.at + 1];
-    if ((first.kind === "id" || first.kind === "string") && second?.kind === "punct" && second.value === "=") {
-      this.at += 2;
-      this.attribute(first.value, this.value());
-      return;
+    // `name = value` sets a graph attribute. The name is read as Graphviz reads one: quoted strings joined by +.
+    const start = this.at;
+    if (this.startsAtom()) {
+      const name = this.atom();
+      if (this.isPunct("=")) {
+        this.at++;
+        this.attribute(name, this.value());
+        return;
+      }
+      this.at = start;
     }
     let previous = this.operand(named);
     while (this.peek()?.kind === "edgeop") {
       this.at++;
       const following = this.operand(named);
       this.edges += previous * following;
-      if (this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
+      if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
       previous = following;
     }
     while (this.isPunct("[")) this.attributes();
@@ -215,25 +234,30 @@ class Walker {
     if (this.isKeyword("subgraph") || this.isPunct("{")) {
       if (this.isKeyword("subgraph")) {
         this.at++;
-        const name = this.peek();
-        if (name && (name.kind === "id" || name.kind === "string")) this.at++;
-        // A subgraph named but not opened refers to one written elsewhere: one node is the least it can be.
-        if (!this.isPunct("{")) return 1;
+        const name = this.startsAtom() ? this.atom() : "";
+        // A subgraph named but not opened refers to one written elsewhere: what it holds so far is what it stands for.
+        if (!this.isPunct("{")) return Math.max(1, this.subgraphs.get(name)?.size ?? 0);
+        this.expect("{");
+        const inside = this.statements();
+        for (const node of inside) named.add(node);
+        if (name === "") return Math.max(1, inside.size);
+        const members = this.subgraphs.get(name) ?? new Set<string>();
+        for (const node of inside) members.add(node);
+        this.subgraphs.set(name, members);
+        return Math.max(1, members.size);
       }
       this.expect("{");
       const inside = this.statements();
       for (const node of inside) named.add(node);
       return Math.max(1, inside.size);
     }
-    const token = this.next();
-    if (!token || (token.kind !== "id" && token.kind !== "string"))
-      this.fail("expected a node name, a subgraph or an attribute in the DOT text");
-    this.node(token.value, named);
+    if (!this.startsAtom()) this.fail("expected a node name, a subgraph or an attribute in the DOT text");
+    this.node(this.atom(), named);
     // A port: node:port or node:port:compass.
     for (let parts = 0; parts < 2 && this.isPunct(":"); parts++) {
       this.at++;
-      const port = this.next();
-      if (!port || (port.kind !== "id" && port.kind !== "string")) this.fail('expected a port name after ":"');
+      if (!this.startsAtom()) this.fail('expected a port name after ":"');
+      this.atom();
     }
     return 1;
   }
@@ -241,17 +265,22 @@ class Walker {
   private node(name: string, named: Set<string>): void {
     named.add(name);
     this.nodes.add(name);
-    if (this.nodes.size > DOT_NODES_MAX) this.tooMany("nodes", this.nodes.size, DOT_NODES_MAX);
+    if (this.limits && this.nodes.size > DOT_NODES_MAX) this.tooMany("nodes", this.nodes.size, DOT_NODES_MAX);
   }
 
   private tooMany(what: string, count: number, max: number): never {
     this.fail(`the graph has ${count} ${what}: keep it within ${max}`);
   }
 
-  /** A value: an ID or a quoted string, with quoted strings joined by +. */
-  private value(): string {
+  private startsAtom(): boolean {
+    const token = this.peek();
+    return token?.kind === "id" || token?.kind === "string";
+  }
+
+  /** A name or a value: an ID, or quoted strings joined by +, which Graphviz reads as one string wherever a name can be. */
+  private atom(): string {
     const token = this.next();
-    if (!token || (token.kind !== "id" && token.kind !== "string")) this.fail('expected a value after "="');
+    if (!token || (token.kind !== "id" && token.kind !== "string")) this.fail("expected a name or a value in the DOT text");
     let value = token.value;
     while (token.kind === "string" && this.isPunct("+")) {
       this.at++;
@@ -262,19 +291,31 @@ class Walker {
     return value;
   }
 
+  private value(): string {
+    if (!this.startsAtom()) this.fail('expected a value after "="');
+    return this.atom();
+  }
+
   /** `[a=b, c=d; e]`, read from the opening bracket. */
   private attributes(): void {
     this.expect("[");
     for (;;) {
-      const token = this.next();
+      const token = this.peek();
       if (!token) this.fail('a "[" is never closed');
-      if (token.kind === "punct" && token.value === "]") return;
-      if (token.kind === "punct" && (token.value === ";" || token.value === ",")) continue;
-      if (token.kind !== "id" && token.kind !== "string") this.fail("expected an attribute name inside [ ]");
+      if (token.kind === "punct" && token.value === "]") {
+        this.at++;
+        return;
+      }
+      if (token.kind === "punct" && (token.value === ";" || token.value === ",")) {
+        this.at++;
+        continue;
+      }
+      if (!this.startsAtom()) this.fail("expected an attribute name inside [ ]");
+      const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(token.value, this.value());
-      } else this.attribute(token.value, "true");
+        this.attribute(name, this.value());
+      } else this.attribute(name, "true");
     }
   }
 
@@ -286,8 +327,14 @@ class Walker {
       );
     // Graphs are drawn in the app's own font, which Graphviz sizes by the metrics of Arial and Helvetica. Any other name
     // would be measured as Times and look up a font on the machine, so no other name is taken.
-    if (key.endsWith("fontname") && !FONT_NAMES.includes(value.trim().toLowerCase()))
+    // (An empty name is no name: Graphviz writes one for a cluster that sets none.)
+    if (key.endsWith("fontname") && value.trim() !== "" && !FONT_NAMES.includes(value.trim().toLowerCase()))
       this.fail(`${name}=${value} is not allowed: leave ${name} out, graphs are drawn in the app's own font`);
+    // Knobs that only make a layout run for longer: they add nothing to a drawing, and a few seconds of them is the time limit.
+    if (SLOW.has(key))
+      this.fail(`the attribute ${name} is not allowed: it only tunes how long the layout takes, so remove it`);
+    if (key === "charset" && !["utf-8", "utf8"].includes(value.trim().toLowerCase()))
+      this.fail(`charset=${value} is not allowed: the text is UTF-8`);
     if (key === "layout") {
       const layout = value.trim().toLowerCase();
       if (!(DOT_LAYOUTS as readonly string[]).includes(layout))
@@ -324,6 +371,24 @@ export function checkDot(code: string): DotCheck {
     edges: walker.edges,
     body: walker.body,
   };
+}
+
+/**
+ * The first problem with the attributes of a DOT text that Graphviz wrote (`Graph.toDot()`) from the text it understood,
+ * or null. In that text every quoted string is joined, every name is plain and every default is written out where it
+ * applies, so what it names is what Graphviz will act on, however the text it was given spelled it. The counts are not
+ * read here: Graphviz gives those itself (see `inspectDot`).
+ */
+export function checkDotAttributes(code: string): string | null {
+  const lexed = lex(code);
+  if (lexed.problem !== null) return lexed.problem;
+  try {
+    new Walker(lexed.tokens, false).graph();
+  } catch (error) {
+    if (error instanceof Stop) return error.message;
+    throw error;
+  }
+  return null;
 }
 
 /**

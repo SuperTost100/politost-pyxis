@@ -136,6 +136,61 @@ describe("a graph's DOT text", () => {
     expect(figureProblem("graph", 'digraph { a [label="image and URL" color=red tooltip="x"] }')).toBeNull();
   });
 
+  it("reads names and values the way Graphviz's lexer joins them: a backslash and a newline inside a string, and strings joined by +", () => {
+    // Graphviz drops a backslash that ends a line inside a quoted string and joins the two halves, so these name URL, image
+    // and layout. Each of these was passed by the check, and each makes Graphviz write a link, read a file or change its engine.
+    for (const [spelling, text] of Object.entries({
+      "URL split by a continuation": 'digraph { a ["UR\\\nL"="https://example.com/x"] }',
+      "image split by a continuation": 'digraph { a ["ima\\\nge"="/etc/passwd"] }',
+      "href in a node default": 'digraph { node ["hr\\\nef"="x"]; a }',
+      "URL joined by +": 'digraph { a ["UR" + "L"="https://example.com/c"] }',
+      "URL joined by + across lines": 'digraph { a ["UR" +\n  "L"="x"] }',
+      "URL joined by + around a comment": 'digraph { a ["UR" /* c */ + /* c */ "L"="x"] }',
+      "a graph attribute joined by +": 'digraph { "ima" + "ge" = "x"; a }',
+      "URL with a continuation and +": 'digraph { a ["U\\\nR" + "L"="x"] }',
+      "URL in a keyword of another case": 'DiGraph { NODE [URL="x"]; a }',
+      "URL in a subgraph keyword of another case": 'digraph { SubGraph s { Edge [URL="x"]; a -> b } }',
+    }))
+      expect(figureProblem("graph", text), spelling).toMatch(/^the attribute \S+ is not allowed: it reaches for a file, a link or an element name/);
+    expect(figureProblem("graph", 'digraph { "lay\\\nout"=sfdp; a -> b }')).toBe("layout=sfdp is not allowed: use one of dot, neato, circo, fdp, twopi");
+    expect(figureProblem("graph", 'digraph { layout="sf\\\ndp"; a -> b }')).toBe("layout=sfdp is not allowed: use one of dot, neato, circo, fdp, twopi");
+    expect(figureProblem("graph", 'digraph { layout="sf" + "dp"; a -> b }')).toBe("layout=sfdp is not allowed: use one of dot, neato, circo, fdp, twopi");
+    expect(figureProblem("graph", 'digraph { a [fontname="Tim" + "es"] }')).toMatch(/fontname=Times is not allowed/);
+    expect(figureProblem("graph", 'digraph { a [fontname="Ti\\\nmes"] }')).toMatch(/fontname=Times is not allowed/);
+    // Joined, a name that is not one of those is fine, and so is a node named like an attribute.
+    expect(figureProblem("graph", 'digraph { a ["col" + "or"="red"]; "UR" + "L" -> b }')).toBeNull();
+    // A backslash that does not end a line stays a character of the name, as in Graphviz, so it names nothing.
+    expect(figureProblem("graph", 'digraph { a ["UR\\L"="x"] }')).toBeNull();
+  });
+
+  it("counts a subgraph that is named again as the nodes it already has, so no text makes more edges than it shows", () => {
+    const names = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`).join(" ");
+    // The text the review found: 20 nodes named once, then the subgraph named again on both sides of an edge. Graphviz
+    // makes 400 edges from it (checked against the pinned build) and the check said one.
+    const reopened = `digraph { subgraph s { ${names("n", 20)} } subgraph s {} -> subgraph s {} }`;
+    expect(checkDot(reopened)).toEqual({ problem: "the graph has 400 edges: keep it within 300" });
+    // The same text at a size that passes, to show the count: 12 nodes, every pair.
+    expect(checkDot(`digraph { subgraph s { ${names("n", 12)} } subgraph s {} -> subgraph s {} }`)).toMatchObject({ problem: null, nodes: 12, edges: 144 });
+    expect(checkDot(`digraph { subgraph s { ${names("n", 12)} } subgraph s {} -> subgraph s {} -> subgraph s {} }`)).toMatchObject({ problem: null, edges: 288 });
+    expect(checkDot(`digraph { subgraph cluster_x { ${names("n", 12)} } subgraph cluster_x {} -> subgraph cluster_x {} }`)).toMatchObject({ edges: 144 });
+    expect(checkDot(`digraph { subgraph s { ${names("n", 20)} } a -> subgraph s {} }`)).toMatchObject({ nodes: 21, edges: 20 });
+    // A subgraph that grows each time it is named: what it holds so far is what it stands for.
+    expect(checkDot("digraph { subgraph s { a b } subgraph s { c } subgraph s {} -> x }")).toMatchObject({ nodes: 4, edges: 3 });
+    // The names are the same when they are spelled differently.
+    expect(checkDot(`digraph { subgraph "s" { ${names("n", 12)} } SUBGRAPH "s" {} -> subgraph "s" {} }`)).toMatchObject({ edges: 144 });
+    expect(checkDot('digraph { subgraph "s" { a b c } subgraph "" {} -> subgraph s {} }')).toMatchObject({ nodes: 3, edges: 3 });
+    // Nested, and through a subgraph that holds another one.
+    expect(checkDot("digraph { subgraph s { subgraph t { a b c } } subgraph t {} -> subgraph s {} }")).toMatchObject({ nodes: 3, edges: 9 });
+    // Refused over the limit however it is reached.
+    // Counted as it is read, so a text that would make millions of edges is refused at the first pair over the limit.
+    expect(figureProblem("graph", `digraph { subgraph s { ${names("n", 20)} } subgraph s {} -> subgraph s {} -> subgraph s {} -> subgraph s {} }`)).toBe(
+      `the graph has 400 edges: keep it within ${DOT_EDGES_MAX}`,
+    );
+    expect(figureProblem("graph", `digraph { subgraph s { ${names("n", 150)} } ${Array.from({ length: 10 }, () => "subgraph s {}").join(" -> ")} }`)).toMatch(/edges: keep it within 300/);
+    // An edge in a subgraph that is named again is not made again: only the text that is written is run.
+    expect(checkDot("digraph { subgraph s { a -> b } subgraph s { c } subgraph s { } }")).toMatchObject({ nodes: 3, edges: 1 });
+  });
+
   it("refuses HTML-like labels wherever they are, and comments do not hide them", () => {
     const problem = "HTML-like labels (<...>) are not allowed: write the label as a quoted string";
     for (const text of [
@@ -186,6 +241,17 @@ describe("a graph's DOT text", () => {
     expect(styledDot("")).toBe("");
     // CRLF text is styled the same.
     expect(styledDot("digraph {\r\n a -> b\r\n}")).toBe(`digraph { ${DOT_DEFAULTS} \r\n a -> b\r\n}`);
+  });
+
+  it("refuses the knobs that only make a layout slow, and a charset that is not UTF-8", () => {
+    for (const knob of ["mclimit", "nslimit", "nslimit1", "searchsize", "maxiter", "epsilon", "Damping", "K", "MCLIMIT"])
+      for (const text of [`digraph { ${knob}=1000000; a -> b }`, `digraph { graph [${knob}=1000000]; a }`, `digraph { subgraph s { ${knob}=9; a } }`])
+        expect(figureProblem("graph", text), text).toBe(`the attribute ${knob} is not allowed: it only tunes how long the layout takes, so remove it`);
+    // A node named like one is a node.
+    expect(figureProblem("graph", "digraph { K -> maxiter -> epsilon }")).toBeNull();
+    for (const text of ['digraph { charset="latin1"; a }', "digraph { charset=big5; a }"])
+      expect(figureProblem("graph", text), text).toMatch(/^charset=.* is not allowed: the text is UTF-8$/);
+    for (const text of ['digraph { charset="UTF-8"; a }', "digraph { charset=utf8; a }"]) expect(figureProblem("graph", text), text).toBeNull();
   });
 
   it("allows only the five layout engines", () => {
