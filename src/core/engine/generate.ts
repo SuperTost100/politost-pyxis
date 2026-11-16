@@ -25,8 +25,8 @@ import {
   type Selection,
   type TurnInput,
 } from "./funnel";
-import { fallbackSelection, type FallbackReason } from "./selection";
-import { reportUsage, withUsageScope, type UsageScope } from "./usage";
+import { fallbackSelection, jobEngine, selectionOn, type FallbackReason } from "./selection";
+import { currentUsageScope, reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
   prompt: string;
@@ -195,6 +195,13 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
+  // A job the student told to go on with another tool, since the one it ran on was out of requests, runs there from now on.
+  const chosen = jobEngine(currentUsageScope()?.jobId);
+  const chosenSelection =
+    chosen && chosen !== input.selection.provider
+      ? selectionOn(chosen, input.selection.chosenFor)
+      : undefined;
+  if (chosenSelection) return moveOn(input, chosenSelection, "limit");
   // An automatic engine still out after a usage limit, a sign-out or a missing program, or a model the subscription
   // refused, is skipped until it is back.
   const instead = isBenched(input.selection.provider)
