@@ -1903,22 +1903,29 @@ function prepareExamParts(name: string) {
   });
 }
 
-function prepareExamsEmpty(name: string) {
+/**
+ * The exams page with no exam: the plans move to a side table for that state and the notebook of mistakes, and come back
+ * for every other. Foreign keys are off while they move, so their topics and cards stay where they are. The plans come
+ * back first in `prepareState`, before any step records a row that belongs to one, and go after the steps that delete
+ * the subjects and plans of other states, so the side table never holds a plan whose subject is deleted before it returns.
+ */
+function showHiddenExams() {
   withDb((db) => {
     db.exec("PRAGMA foreign_keys = OFF");
-    const hidden = db
-      .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'",
-      )
-      .get();
-    // With no exam there is no mistake either, so the notebook is empty.
-    if (name === "exams-empty" || name === "mistakes-empty") {
-      if (hidden) return;
-      db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
-        DELETE FROM plans;`);
-    } else if (hidden)
+    const hidden = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'audit_hidden_plans'").get();
+    if (hidden)
       db.exec(`INSERT INTO plans SELECT * FROM audit_hidden_plans;
         DROP TABLE audit_hidden_plans;`);
+  });
+}
+
+function prepareExamsEmpty(name: string) {
+  // With no exam there is no mistake either, so the notebook is empty.
+  if (name !== "exams-empty" && name !== "mistakes-empty") return;
+  withDb((db) => {
+    db.exec("PRAGMA foreign_keys = OFF");
+    db.exec(`CREATE TABLE audit_hidden_plans AS SELECT * FROM plans;
+      DELETE FROM plans;`);
   });
 }
 
@@ -2345,6 +2352,9 @@ function prepareBuild(name: string) {
 }
 
 function prepareState(name: string) {
+  // First, so the exams the empty states hid are back before any step below writes a row that belongs to one: the lesson
+  // steps record events on the audit exam, and a state that follows exams-empty in a filtered run would fail on a foreign key.
+  showHiddenExams();
   prepareSessionEnd(name);
   prepareLessonParts(name);
   prepareOldLessons(name);
@@ -2352,7 +2362,6 @@ function prepareState(name: string) {
   prepareNewCards(name);
   prepareAnswerSheet(name);
   prepareEngines(name);
-  prepareExamsEmpty(name);
   prepareExamsArchived(name);
   prepareExamParts(name);
   preparePanelSources(name);
@@ -2361,8 +2370,11 @@ function prepareState(name: string) {
   prepareLibrarySubjects(name);
   prepareLibraryShelf(name);
   prepareLinkedFolders(name);
-  prepareMapsEmpty(name);
   prepareCardBrowser(name);
+  // These two take rows out for their state only, so they run after the steps that delete or seed rows of the same
+  // subjects: a row hidden while its subject is deleted could not come back.
+  prepareMapsEmpty(name);
+  prepareExamsEmpty(name);
   prepareBackupState(name);
   prepareUpdate(name);
   prepareGradingLive(name);
