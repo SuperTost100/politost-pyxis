@@ -84,7 +84,9 @@ describe("prompt templates", () => {
     expect(loadTemplate("plan.diagnostic").version).toBe("6");
     // Version 2 reads the SymPy mathCheck; solve checks now require every real root. Version 4 names the `score` and
     // `explanation` keys: asked for "feedback", a model on Antigravity answered with that key and its reply was shown raw.
-    expect(loadTemplate("quiz.open-grade").version).toBe("4");
+    // Version 5 reads the steps a student wrote under the answer, and says where they first go wrong.
+    expect(loadTemplate("quiz.open-grade").version).toBe("5");
+    expect(loadTemplate("quiz.open-grade").body).toContain("say in your feedback which step first goes wrong");
     // Questions, options and feedback write math as LaTeX in `$`, with backslashes doubled inside JSON (diagnostic 6,
     // quiz-5, simulation questions 3, open-answer and simulation grading 3 and 4), so no formula reaches the student as plain text.
     expect(loadTemplate("simulation.questions").version).toBe("3");

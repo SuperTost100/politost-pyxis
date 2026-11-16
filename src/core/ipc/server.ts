@@ -529,6 +529,7 @@ const explicitRequests = [
   "plans.recommend",
   "plans.today",
   "study.dueEverywhere",
+  "study.dueLater",
   "plans.read",
   "plans.rebuildState",
   "profile.get",
@@ -721,6 +722,8 @@ async function dispatchValidated(
       return plans?.today() ?? { planned: false, behind: [], cards: null, items: [] };
     case "study.dueEverywhere":
       return plans?.dueEverywhere(requests["study.dueEverywhere"].input.parse(input)) ?? [];
+    case "study.dueLater":
+      return plans?.dueLater(requests["study.dueLater"].input.parse(input)) ?? { later: [], next: null };
     case "plans.read":
       return plans?.read(requests["plans.read"].input.parse(input)) ?? null;
     case "plans.rebuildState":

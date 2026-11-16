@@ -68,6 +68,12 @@ describe("turning a tool off and on", () => {
     expect(toggledUse(["claude"], ["claude", "codex"], "codex", true)).toBeNull();
   });
 
+  it("lets a tool be turned on before it works, as when it is connected while the only tool in use is signed out", () => {
+    // Claude, the only allowed tool, is signed out, so nothing works yet. Connecting ChatGPT, which was off, must keep it on.
+    expect(toggledUse(["claude"], [], "codex", true)).toBeNull();
+    expect(toggledUse(["claude"], ["agent"], "codex", true)).toEqual(["claude", "codex"]);
+  });
+
   it("refuses to turn off the only tool in use", () => {
     expect(toggledUse(["claude"], ready, "claude", false)).toBeUndefined();
     expect(toggledUse(null, ["claude"], "claude", false)).toBeUndefined();

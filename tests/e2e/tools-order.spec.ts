@@ -295,3 +295,36 @@ test("Strumenti AI: a tool the student turns off keeps its row and takes no work
     rmSync(tools.bin, { recursive: true, force: true });
   }
 });
+
+test("Strumenti AI: connecting a tool the student had left out puts it back in use, also when no tool works yet", async () => {
+  test.skip(process.platform === "win32", "stand-in tools are shell scripts");
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-tools-connect-"));
+  // Nothing is signed in. The student had left everything but Claude out, and Claude is not signed in either.
+  const tools = standInTools([]);
+  const app = await launchPyxis({ userData, env: tools.env });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await page.evaluate(() => window.pyxis.invoke("engines.choose", { allowed: ["claude"] }));
+    await page.evaluate(() => {
+      localStorage.setItem("pyxis.lang", "it");
+      location.hash = "/settings/engines";
+    });
+    await page.reload();
+    const allowed = () =>
+      page.evaluate(
+        async () => ((await window.pyxis.invoke("engines.choice", {})) as { allowed: string[] | null }).allowed,
+      );
+    expect(await allowed()).toEqual(["claude"]);
+    await page.getByRole("button", { name: "Installa e accedi a ChatGPT" }).click();
+    await expect(page.getByRole("dialog", { name: "Configura ChatGPT" })).toBeVisible();
+    // ChatGPT is in use before its sign-in: the sign-in that follows leaves a tool Pyxis can use.
+    await expect.poll(allowed).toBeNull();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
+  }
+});
