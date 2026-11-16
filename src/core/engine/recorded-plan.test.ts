@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { recordedPlanRun } from "./recorded-plan";
+import { isFigureFixCall, recordedPlanRun } from "./recorded-plan";
+import { systemPrompt } from "./prompts";
 import { generateQuiz, quizConfig, type QuizSnapshot } from "../study/configuredQuiz";
 
 const ask = (count: number, previousQuestions: string[]) => ({
@@ -124,5 +125,34 @@ describe("recorded Markdown replies", () => {
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }
+  });
+});
+
+describe("recorded figure fixes", () => {
+  const fix = {
+    system: `${systemPrompt("figure.fix")}\nThe code is Python.`,
+    prompt: JSON.stringify({ kind: "plot", caption: "x", code: "raise ValueError()", error: "ValueError" }),
+    responseSchema: { name: "response", schema: { properties: { code: {} } } },
+  } as never;
+
+  it("answers the call that corrects a figure in turn, apart from the other structured calls", async () => {
+    expect(isFigureFixCall(systemPrompt("figure.fix"))).toBe(true);
+    expect(isFigureFixCall("Create distinct quiz questions.")).toBe(false);
+    const run = recordedPlanRun(
+      JSON.stringify({
+        figureFix: [{ code: "plt.plot([1])" }, { fail: "the engine is out" }, { code: "plt.plot([2])" }],
+        quizQuestions: { questions: [{ stem: "A" }] },
+      }),
+    );
+    expect((await run(fix)).structured).toEqual({ code: "plt.plot([1])" });
+    // Another structured call in between does not move the list on.
+    await stems(run, 1, []);
+    await expect(run(fix)).rejects.toThrow("the engine is out");
+    expect((await run(fix)).structured).toEqual({ code: "plt.plot([2])" });
+    expect((await run(fix)).structured).toEqual({ code: "plt.plot([1])" });
+  });
+
+  it("fails by name when nothing is recorded for it, so the figure is left out", async () => {
+    await expect(recordedPlanRun("{}")(fix)).rejects.toThrow('no recorded reply for "code"');
   });
 });

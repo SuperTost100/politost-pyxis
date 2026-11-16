@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { endConversation } from "../engine/funnel";
+import { isFigureFixCall, recordedPlanRun } from "../engine/recorded-plan";
 import { exportChat, type ChatExportLanguage } from "./export";
 import { searchChats } from "./search";
 import { chatUsage } from "../engine/usage";
@@ -38,7 +39,18 @@ function recordedReply(text: string, delayMs: number) {
   };
 }
 
-export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string, replyDelayMs = 0) {
+/**
+ * The recorded run of a chat turn: the recorded reply for the tutor, and the recorded `figureFix` replies of the plan
+ * fixture, when there is one, for the call that corrects a figure.
+ */
+function recordedChat(text: string, delayMs: number, figureFixes?: string) {
+  const reply = recordedReply(text, delayMs);
+  const fixes = figureFixes ? recordedPlanRun(figureFixes) : undefined;
+  return ((input: Parameters<typeof reply>[0] & { system?: string }) =>
+    fixes && isFigureFixCall(input.system) ? fixes(input as never) : reply(input)) as unknown as typeof reply;
+}
+
+export function chatHandlers(db: Database.Database, workspace = "", fixtureReply?: string, replyDelayMs = 0, figureFixes?: string) {
   return {
     list() {
       return listChats(db).map((row) => ({
@@ -117,7 +129,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return regenerateTurn(db, {
         ...input,
         workspace,
-        run: fixtureReply ? recordedReply(fixtureReply, replyDelayMs) : undefined,
+        run: fixtureReply ? recordedChat(fixtureReply, replyDelayMs, figureFixes) : undefined,
       });
     },
     ask(input: {
@@ -136,7 +148,7 @@ export function chatHandlers(db: Database.Database, workspace = "", fixtureReply
       return askTurn(db, {
         ...input,
         workspace,
-        run: fixtureReply ? recordedReply(fixtureReply, replyDelayMs) : undefined,
+        run: fixtureReply ? recordedChat(fixtureReply, replyDelayMs, figureFixes) : undefined,
       });
     },
   };

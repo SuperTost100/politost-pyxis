@@ -191,6 +191,8 @@ if (!parent) {
       workspacePath,
       dev ? process.env["PYXIS_E2E_REPLY"] : undefined,
       dev ? Math.min(Number(process.env["PYXIS_E2E_REPLY_DELAY"]) || 0, 15_000) : 0,
+      // The recorded `figureFix` replies, which answer the call that corrects a failed figure in a chat turn too.
+      dev ? process.env["PYXIS_E2E_PLAN_REPLIES"] : undefined,
     );
     // Main keeps a copy of the crash-report switch so it can start the crash reporter before core is up. Core sends
     // the stored value now (a restore or a new workspace can change it) and again after every profile save.
