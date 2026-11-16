@@ -1,4 +1,4 @@
-import type { RequestOutput } from "@shared/ipc";
+import type { RequestOutput } from "../../../../shared/ipc";
 import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
 
 export type Browse = RequestOutput<"study.browse">;
