@@ -280,9 +280,11 @@ function layout(db: Database.Database, plans: Studied[], now: number) {
   const result = planned
     ? spread(exams, (day) => ((weekHours(startOfWeek(addDays(today, day))) ?? 0) * 60) / 7)
     : null;
-  // Oggi measures the student's goal, a seventh of this week's hours, not the pace the planner needs.
-  const goals = planned ? todayGoals(exams, ((weekHours(startOfWeek(today)) ?? 0) * 60) / 7) : null;
-  return { settings, dated, exams, weekHours, result, goals, today };
+  // The student's goal for the day: a seventh of this week's hours, not the pace the planner needs. Oggi's ring measures
+  // it whole, and `goals` splits it among the exams to choose what to suggest next.
+  const goal = planned ? ((weekHours(startOfWeek(today)) ?? 0) * 60) / 7 : null;
+  const goals = goal != null ? todayGoals(exams, goal) : null;
+  return { settings, dated, exams, weekHours, result, goal, goals, today };
 }
 
 /** Round minutes for display, to the nearest 5. */
@@ -424,8 +426,9 @@ function nextStep(state: PlanState) {
 }
 
 /**
- * The minutes Oggi asks of a plan today: its share of the student's goal for the day (see `todayGoals`). Null when
- * nothing measures the day (no hours set, no date, or the exam is today).
+ * The minutes Oggi's list asks of a plan today: its share of the student's goal for the day (see `todayGoals`), which
+ * chooses what to suggest next. Null when nothing measures the day (no hours set, no date, or the exam is today). The
+ * exam rings do not use it: their Oggi is the whole day (`todayRing`).
  */
 function todayMinutes(plan: Studied, goals: Map<string, number> | null): number | null {
   const days = plan.state.daysToExam;
@@ -606,19 +609,18 @@ const measuring = (activity: Activity) => activity !== "intro" && activity !== "
  *   done.
  * - `path`: the share of the path's work done, in the planner's minutes: one minus the work left (`remainingWork`) over
  *   the work the same path had with nothing studied. Null when the exam has no topics, so no path.
- * - `today`: the share of today's goal done, as Oggi counts it: the minutes of today's steps over the exam's part of
- *   the student's goal for the day (`todayGoals`: a seventh of the week's hours, split among the exams in proportion
- *   to what each needs), and `todayMinutes` those two numbers in minutes. Null when nothing measures it, and
- *   `todayUnmeasured` says why: no weekly hours set (`no-goal`, the student is offered to set them), no exam date
- *   (`no-date`) or the exam is today (`exam-day`). Also null, with no reason, when nothing is planned today: an archived
- *   or past exam, a share too small to ask for, or no next step, unless something was done today anyway.
+ * - `today`: the share of the student's whole day done, the same on every exam: all the minutes studied today, on any
+ *   exam and on flashcards with or without one (`studiedDay`), over the goal for the day, a seventh of the week's hours
+ *   (`todayRing`). `todayMinutes` carries those two numbers in minutes, the target as the settings give it. Null when
+ *   nothing measures it, and `todayUnmeasured` says why: no weekly hours set (`no-goal`, the student is offered to set
+ *   them). Also null, with no reason, for an archived exam, and in a week of zero hours until something is studied.
  *
  * `next` is the path's next step without due cards (Oggi lists those apart), and `dueCards` this exam's due cards.
  * Archived exams come after the others, with no Oggi.
  */
 export function examRings(db: Database.Database, now = Date.now()) {
   const active = studyState(db, now);
-  const { result, goals } = layout(db, active, now);
+  const { result, goal } = layout(db, active, now);
   const archived = (
     db
       .prepare(
@@ -627,6 +629,8 @@ export function examRings(db: Database.Database, now = Date.now()) {
       )
       .all() as PlanRow[]
   ).flatMap((row) => studiedPlan(db, row, now) ?? []);
+  // The day belongs to the student, not to an exam: it is counted once, over every exam, and each exam shows it.
+  const day = todayRing(studiedDay(db, [...active, ...archived], now), goal);
   const titles = db.prepare("SELECT title FROM topics WHERE id = ?");
   const ring = (plan: Studied, isArchived: boolean) => {
     const { state } = plan;
@@ -649,15 +653,13 @@ export function examRings(db: Database.Database, now = Date.now()) {
       target: state.target,
     });
     const next = nextStep(state);
-    const minutes = isArchived ? null : todayMinutes(plan, goals);
-    const today = isArchived ? null : todayShare(plan, minutes, next != null);
     return {
       planId: plan.row.id,
       preparation: measured ? plan.mastery : null,
       path: fresh > 0 ? Math.min(1, Math.max(0, 1 - plan.remainingNow / fresh)) : null,
-      today,
-      todayMinutes: today == null || minutes == null ? null : { done: plan.doneMinutes, target: Math.round(minutes) },
-      todayUnmeasured: isArchived ? null : todayUnmeasured(plan, result != null),
+      today: isArchived ? null : day.today,
+      todayMinutes: isArchived ? null : day.todayMinutes,
+      todayUnmeasured: isArchived || result != null ? null : ("no-goal" as const),
       next: next
         ? {
             activity: next.activity,
@@ -673,33 +675,32 @@ export function examRings(db: Database.Database, now = Date.now()) {
   return [...active.map((plan) => ring(plan, false)), ...archived.map((plan) => ring(plan, true))];
 }
 
-/** Oggi's share for one exam, with the same rules as Oggi's item: see `examRings`. */
-export function todayShare(
-  plan: Pick<Studied, "studiedToday" | "doneMinutes"> & { state: Pick<PlanState, "daysToExam"> },
-  minutes: number | null,
-  hasNext: boolean,
-): number | null {
-  const days = plan.state.daysToExam;
-  const did = plan.studiedToday;
-  // Without minutes from the planner nothing measures the day: see `todayUnmeasured`.
-  if (minutes == null || (days != null && days < 0)) return null;
-  if (!did && (!hasNext || minutes < 2.5)) return null;
-  if (todayComplete(plan, minutes)) return 1;
-  // Not complete: some minutes short of today's share, or nothing done yet.
-  return did ? Math.min(plan.doneMinutes / minutes, 0.99) : 0;
+/**
+ * The minutes the student studied today, counted once across every exam (archived ones too) and the flashcards with no
+ * exam: each exam's steps and lesson parts (`studiedPlan`: a step's estimate, a lesson in parts by its parts' minutes,
+ * never both) and the seconds recorded on today's card reviews. A review made before the time was recorded has none.
+ */
+function studiedDay(db: Database.Database, plans: Studied[], now: number): number {
+  const cardSeconds = db
+    .prepare("SELECT COALESCE(SUM(seconds), 0) FROM card_reviews WHERE reviewed_at >= ?")
+    .pluck()
+    .get(startOfDay(now)) as number;
+  return plans.reduce((sum, plan) => sum + plan.doneMinutes, 0) + cardSeconds / 60;
 }
 
 /**
- * Why Oggi measures nothing for an exam that is still ahead: no weekly hours (`no-goal`), no date to spread them over
- * (`no-date`), or the exam is today, which gets no study time (`exam-day`). Null when Oggi measures, or the exam is past.
+ * Oggi on an exam's rings: the day studied over the goal for the day, the same for every exam. Null without a goal (no
+ * weekly hours). The target is the goal in whole minutes, as the settings give it. The ring closes once the whole minutes
+ * studied reach the whole minutes of the goal, so the label never reads "43 of 43" with the ring open, and until then
+ * stays just short of full. A week of zero hours has no goal to measure: nothing planned until something is studied.
  */
-export function todayUnmeasured(
-  plan: { state: Pick<PlanState, "daysToExam"> },
-  planned: boolean,
-): "no-goal" | "no-date" | "exam-day" | null {
-  const days = plan.state.daysToExam;
-  if (days != null && days < 0) return null;
-  if (!planned) return "no-goal";
-  if (days == null) return "no-date";
-  return days === 0 ? "exam-day" : null;
+export function todayRing(
+  minutes: number,
+  goal: number | null,
+): { today: number | null; todayMinutes: { done: number; target: number } | null } {
+  if (goal == null) return { today: null, todayMinutes: null };
+  if (goal <= 0) return minutes > 0 ? { today: 1, todayMinutes: { done: minutes, target: 0 } } : { today: null, todayMinutes: null };
+  const target = Math.round(goal);
+  const complete = minutes > 0 && Math.round(minutes) >= target;
+  return { today: complete ? 1 : Math.min(minutes / goal, 0.99), todayMinutes: { done: minutes, target } };
 }
