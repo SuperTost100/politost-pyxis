@@ -49,6 +49,11 @@ function downloadStep(label: string, packsOf: (params: unknown) => PackId[] | un
       signal.addEventListener("abort", cancel, { once: true });
       try {
         return await runtimeRequest("download", { packs }, 30 * 60 * 1000);
+      } catch (error) {
+        // A pack stopped on its own row ends the job as cancelled, as stopping the job does.
+        if (error instanceof Error && error.message === "runtime-download-cancelled")
+          throw new DOMException("The download was stopped.", "AbortError");
+        throw error;
       } finally {
         signal.removeEventListener("abort", cancel);
       }
@@ -100,6 +105,11 @@ export function toolHandlers(workspace = "", runner?: Runner) {
         return { jobId: existing.id };
       }
       return { jobId: runner.start(kind, params) };
+    },
+    /** Stops the download of one pack, or of every pack that is downloading. The other's goes on. */
+    async runtimeCancel(input: { pack?: PackId }) {
+      await runtimeRequest("cancel-download", { packs: input.pack ? [input.pack] : undefined });
+      return {};
     },
     /** Takes one pack off the disk. What it drew stays in the lessons and answers, which store their pictures. */
     async runtimeRemove(input: { pack: PackId }) {

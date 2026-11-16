@@ -1891,6 +1891,12 @@ export const requests = {
     input: z.object({ pack: z.enum(runtimePackIds).optional() }),
     output: z.object({ jobId: z.string() }),
   },
+  // Stops the download of one pack, or of every pack that is downloading when none is named. The other pack's download,
+  // when there is one, goes on, whoever started it.
+  "tools.runtimeCancel": {
+    input: z.object({ pack: z.enum(runtimePackIds).optional() }),
+    output: z.object({}),
+  },
   // Takes one pack off the disk: its files go, and what it draws is unavailable from then on.
   "tools.runtimeRemove": {
     input: z.object({ pack: z.enum(runtimePackIds) }),

@@ -294,7 +294,13 @@ export async function handleRuntimeRequest(
   };
   if (operation === "download") {
     if (!workspace) throw new Error("runtime-workspace-missing");
-    await downloadRuntime(workspace, named());
+    try {
+      await downloadRuntime(workspace, named());
+    } catch (error) {
+      // Stopped by the student: told as such, so the job that asked ends as cancelled and not as failed.
+      if (error instanceof Error && error.name === "AbortError") throw new Error("runtime-download-cancelled");
+      throw error;
+    }
     return currentRuntimeStatus(workspace);
   }
   if (operation === "cancel-download") {

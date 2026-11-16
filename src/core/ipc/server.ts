@@ -389,6 +389,7 @@ const routes = {
   "tools.check": ["tools", "check"],
   "tools.runtime": ["tools", "runtime", "bare"],
   "tools.runtimeDownload": ["tools", "runtimeDownload"],
+  "tools.runtimeCancel": ["tools", "runtimeCancel"],
   "tools.runtimeRemove": ["tools", "runtimeRemove"],
   "tools.python": ["tools", "python"],
   "maps.list": ["maps", "list"],

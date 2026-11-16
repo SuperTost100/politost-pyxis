@@ -291,11 +291,14 @@ export async function downloadRuntime(
   workspace: string,
   only: readonly PackId[] = runtimePackIds,
 ): Promise<void> {
-  const state = stateOf(workspace);
-  for (const id of only) state.chain.add(id);
   const results = await Promise.allSettled(only.map((id) => downloadPack(workspace, id)));
-  const failed = results.find((result) => result.status === "rejected");
-  if (failed?.status === "rejected") throw failed.reason;
+  const rejected = results.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []));
+  // A pack that failed is the failure to report; one that was only stopped is reported when nothing else went wrong.
+  const failure = rejected.find((reason) => !isAbortReason(reason)) ?? rejected[0];
+  if (rejected.length) throw failure;
+}
+function isAbortReason(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === "AbortError";
 }
 function downloadPack(workspace: string, id: PackId): Promise<void> {
   const k = key(workspace, id);
@@ -304,15 +307,17 @@ function downloadPack(workspace: string, id: PackId): Promise<void> {
   const controller = new AbortController();
   controllers.set(k, controller);
   const state = stateOf(workspace);
-  // Set at once, before the look at the disk, so a status asked meanwhile already says it is downloading.
-  state.packs[id] = { phase: "downloading", bytes: 0, totalBytes: runtimePacks[id].totalBytes };
-  const own = state.packs[id];
+  let own: PackState = fresh(id);
   const promise = (async () => {
     controller.signal.throwIfAborted();
     if (await packOnDisk(workspace, id)) {
       state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
       return;
     }
+    // Only now is it a download: a pack that was already there is no part of the transfer's total or its progress.
+    own = { phase: "downloading", bytes: 0, totalBytes: runtimePacks[id].totalBytes };
+    state.packs[id] = own;
+    state.chain.add(id);
     await installPack(workspace, id, controller.signal, own);
     state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
     state.outdated[id] = false;

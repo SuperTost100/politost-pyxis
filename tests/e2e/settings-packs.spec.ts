@@ -273,6 +273,69 @@ test("Python downloads on its own, and with it the drawings row says that circui
   }
 });
 
+test("Annulla on one row stops that pack only, even when the Python page started one download for both", async () => {
+  test.skip(!pinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(180000);
+  const setup = await start();
+  const { page, server } = setup;
+  try {
+    const python = row(page, "pyodide");
+    const drawings = row(page, "drawing");
+    // Both packs have one file held back, so both are on their way.
+    server.hold.add(manifest("pyodide").files[0]!.name);
+    server.hold.add(manifest("drawing").files[1]!.name);
+    await page.evaluate(() => {
+      location.hash = "/tools/python";
+    });
+    const all = new Intl.NumberFormat("it", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(
+      (bytes("pyodide") + bytes("drawing")) / 1e6,
+    );
+    await page.getByRole("button", { name: `Scarica Python (${all} MB)` }).click();
+    await openPacks(page);
+    await expect(python).toHaveAttribute("data-phase", "downloading");
+    await expect(drawings).toHaveAttribute("data-phase", "downloading");
+    // Stopping the drawings leaves Python's download as it was.
+    await drawings.getByRole("button", { name: "Annulla", exact: true }).click();
+    await expect(drawings).toHaveAttribute("data-phase", "idle", { timeout: 30000 });
+    await expect(python).toHaveAttribute("data-phase", "downloading");
+    await expect(python.locator(".px-pack-progress")).toBeVisible();
+    // Python then arrives, and the drawings are still to be asked for.
+    server.hold.clear();
+    await expect(python).toHaveAttribute("data-phase", "ready", { timeout: 120000 });
+    await expect(drawings.getByRole("button", { name: /^Scarica i disegni/ })).toBeVisible();
+    expect((await runtimeStatus(page)).packs).toEqual({ pyodide: "ready", drawing: "idle" });
+  } finally {
+    await finish(setup);
+  }
+});
+
+test("the Python page knows a download started from Settings: it still offers Python, and what is running can be cancelled", async () => {
+  test.skip(!pinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(180000);
+  const setup = await start();
+  const { page, server } = setup;
+  try {
+    const drawings = row(page, "drawing");
+    server.hold.add(manifest("drawing").files[1]!.name);
+    await drawings.getByRole("button", { name: /^Scarica i disegni/ }).click();
+    await expect(drawings).toHaveAttribute("data-phase", "downloading");
+    await page.evaluate(() => {
+      location.hash = "/tools/python";
+    });
+    // Only the drawings are downloading, so Python can still be asked for, for its own size, and the download that runs
+    // has its progress and its Annulla on this page too.
+    const python = new Intl.NumberFormat("it", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bytes("pyodide") / 1e6);
+    await expect(page.getByRole("button", { name: `Scarica Python (${python} MB)` })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /^Scarico · .+ di .+ MB$/ })).toBeVisible();
+    await page.getByRole("button", { name: "Annulla", exact: true }).click();
+    await openPacks(page);
+    await expect(drawings).toHaveAttribute("data-phase", "idle", { timeout: 30000 });
+    expect((await runtimeStatus(page)).packs).toEqual({ pyodide: "idle", drawing: "idle" });
+  } finally {
+    await finish(setup);
+  }
+});
+
 /** The row's three dots, or a right-click on the row, open the same menu; it holds actions only. */
 async function openMenu(page: Page, pack: "pyodide" | "drawing", how: "dots" | "right-click" | "keyboard") {
   const target = row(page, pack);

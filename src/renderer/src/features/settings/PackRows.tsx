@@ -44,15 +44,15 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
   const info = status.info[pack];
   const name = pack === "pyodide" ? "python" : "drawings";
   const size = formatBytes(info.size, i18n.language);
-  // The job to stop: the pack's own, or the one the Python page started for every pack that was missing.
+  // The job that downloads this pack alone, which stopping the pack ends as cancelled. A job the Python page started for
+  // every missing pack is not this row's to stop: it holds the other pack too.
   const job = jobs.find(
     (item) =>
       (item.state === "queued" || item.state === "running") &&
       (pack === "drawing"
-        ? item.kind === "local-drawings-download" || (item.kind === "local-runtime-download" && item.ref === "missing")
-        : item.kind === "local-runtime-download" && (item.ref === "pyodide" || item.ref === "missing")),
+        ? item.kind === "local-drawings-download"
+        : item.kind === "local-runtime-download" && item.ref === "pyodide"),
   );
-  // The download of the pack is under way, or its job has been asked for and has not begun to fetch yet.
   const downloading = info.phase === "downloading" || starting || (Boolean(job) && info.phase !== "ready");
   const ready = info.phase === "ready";
   const percent = info.totalBytes ? Math.min(100, Math.round((info.bytes / info.totalBytes) * 100)) : 0;
@@ -71,6 +71,14 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
       void client.invalidateQueries({ queryKey: packStatusKey });
       void client.invalidateQueries({ queryKey: ["jobs"] });
     }
+  }
+  /** Stops this pack's download and no other, whoever started it. */
+  async function cancel() {
+    // Its own job, still waiting for a place, is stopped with it; a job that holds the other pack as well goes on for that pack.
+    if (job) await invoke("jobs.cancel", { jobId: job.id }).catch(() => undefined);
+    await invoke("tools.runtimeCancel", { pack }).catch(() => undefined);
+    void client.invalidateQueries({ queryKey: packStatusKey });
+    void client.invalidateQueries({ queryKey: ["jobs"] });
   }
   async function remove() {
     const answer = await confirm({
@@ -155,8 +163,8 @@ function PackRow({ pack, status }: { pack: Pack; status: Status }) {
               <span className="visually-hidden" role="status" aria-live="polite">
                 {t(`settings.packs.${name}.progress`, { percent: announced })}
               </span>
-              {job ? (
-                <Button size="small" type="text" onClick={() => void invoke("jobs.cancel", { jobId: job.id })}>
+              {info.phase === "downloading" || job ? (
+                <Button size="small" type="text" onClick={() => void cancel()}>
                   {t("settings.packs.cancel")}
                 </Button>
               ) : null}

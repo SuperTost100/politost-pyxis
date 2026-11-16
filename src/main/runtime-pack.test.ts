@@ -80,10 +80,11 @@ it("missing runtime and status never fetch; only explicit installation downloads
   await downloadRuntime(path);
   await requireRuntime(path);
   expect((await currentRuntimeStatus(path)).phase).toBe("ready");
-  // One request per file: Python's from its CDN folder, the drawing pack's from the URL its manifest names.
-  expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-    "https://runtime.example/runtime.js",
+  // One request per file, each to its pinned place: Python's from its CDN folder, the drawing pack's from the URL its
+  // manifest names. The packs download at the same time, so there is no order between them.
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual([
     "https://files.example/circuits.whl",
+    "https://runtime.example/runtime.js",
   ]);
   const runtimeFile = join(path, "runtimes/pyodide/test/runtime.js");
   writeFileSync(runtimeFile, "bad");
@@ -466,4 +467,32 @@ it("takes the files of an end-to-end run from the server that stands in for the 
   await downloadRuntime(path, ["drawing"]);
   expect(fetch.mock.calls[1]![0]).toBe("http://127.0.0.1:9999/packs/drawing/circuits.whl");
   vi.unstubAllEnvs();
+});
+
+it("counts only the packs it is fetching in a transfer's total and progress, not one that was already there", async () => {
+  const path = workspace();
+  // Python is installed; only the drawing pack is missing, and its file is held back.
+  mkdirSync(join(path, "runtimes/pyodide/test"), { recursive: true });
+  writeFileSync(join(path, "runtimes/pyodide/test/runtime.js"), "abc");
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      await held;
+      return published(url);
+    }),
+  );
+  // What is offered is what is missing.
+  expect(await currentRuntimeStatus(path)).toMatchObject({ phase: "idle", totalBytes: 5 });
+  // The download that asks for every pack skips Python, which is there, and its transfer is the drawing pack's alone.
+  const installing = downloadRuntime(path);
+  await vi.waitFor(async () =>
+    expect(await currentRuntimeStatus(path)).toMatchObject({ phase: "downloading", bytes: 0, totalBytes: 5 }),
+  );
+  release();
+  await installing;
+  expect(await currentRuntimeStatus(path)).toMatchObject({ phase: "ready", bytes: 8, totalBytes: 8 });
 });
