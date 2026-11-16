@@ -471,6 +471,8 @@ test("When the file that holds the focus is removed after the list changed besid
   const { app, page, userData } = await start({ PYXIS_E2E_PLAN_REPLIES: sortAnswer("") });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
+    // The page has loaded when the shelf has drawn its five covers; reading them before that finds none.
+    await expect(shelf(page, CINEMA).locator(".px-cover")).toHaveCount(5);
     const ids = await shelf(page, CINEMA).locator(".px-cover").evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.sourceId ?? ""));
     expect(ids).toHaveLength(5);
     const titles = await shelf(page, CINEMA).locator(".px-cover-open").evaluateAll((nodes) => nodes.map((node) => node.textContent?.trim() ?? ""));
