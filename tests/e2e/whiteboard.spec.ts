@@ -203,6 +203,9 @@ test("the board follows a change of screen density that leaves its size as it wa
       location.hash = "/tools/whiteboard";
     });
     await draw(page);
+    // The measurements below read the canvas inside the page, where a canvas that is not there throws; routing can
+    // replace it, so the first one waits for it to be on the page.
+    await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
     const canvas = () =>
       page.evaluate(() => {
         const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;
@@ -251,6 +254,9 @@ test("a screen twice as dense under a board half as big keeps the canvas' pixel 
     const window0 = { width: 1280, height: 880 };
     await emulate(window0.width, window0.height, 1);
     await expect.poll(() => page.evaluate(() => devicePixelRatio)).toBe(1);
+    // The board is measured inside the page, where a canvas that is not there yet throws and an exception in a poll's
+    // callback fails the poll instead of trying again: the first measurement waits for the canvas to be on the page.
+    await expect(page.locator(".px-whiteboard canvas")).toBeVisible();
     const board = () =>
       page.evaluate(() => {
         const element = document.querySelector<HTMLCanvasElement>(".px-whiteboard canvas")!;

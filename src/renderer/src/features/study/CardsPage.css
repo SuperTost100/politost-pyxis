@@ -195,6 +195,24 @@
   font-size: 14px;
   white-space: nowrap;
 }
+/* The four answers keep one colour from the card to the end of the session, where it fills the answer's bar. Danger,
+   warning, ok and the Facile blue each pass 3:1 as a shape on every ground (token-contrast.test.ts). */
+[data-rate="again"] {
+  --rate: var(--danger);
+}
+[data-rate="hard"] {
+  --rate: var(--warning);
+}
+[data-rate="good"] {
+  --rate: var(--ok);
+}
+[data-rate="easy"] {
+  --rate: var(--rate-easy);
+}
+/* The colour is a 3px edge along the button's bottom, the same colour as the answer's bar at the end. No tint, no dot. */
+.px-cards .px-cards-actions .ant-btn.px-rate {
+  box-shadow: inset 0 -3px 0 var(--rate);
+}
 .px-cards .px-cards-hint {
   margin: -6px 0 0;
   color: var(--ink-subtle);

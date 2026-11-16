@@ -1,69 +1,37 @@
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  Button,
-  type MenuProps,
-  Pagination,
-  Select,
-  Skeleton,
-} from "antd";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Select, Skeleton, type MenuProps } from "antd";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
-import type { RequestOutput } from "@shared/ipc";
+import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { Button as PxButton } from "../../components/Button";
-import { Dialog, useConfirm } from "../../components/Dialog";
+import { Reveal } from "../../components/Controls";
+import { afterDialog, useConfirm } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
-import { MarkdownView } from "../../components/MarkdownView";
 import { Notice } from "../../components/Notice";
-import { Tag } from "../../components/Tag";
-import {
-  ListToolbar,
-  ToolbarSearch,
-} from "../../components/ListToolbar";
-import { clozeAnswer, isCloze } from "../../../../core/study/cloze";
+import { ListToolbar, ToolbarSearch } from "../../components/ListToolbar";
 import { invoke } from "../../lib/ipc";
 import { usePlans } from "../../lib/queries";
-import { i18n } from "../../locales/i18n";
 import { NewCardDialog } from "../flashcards/NewCardDialog";
 import { AnkiDialog } from "./AnkiDialog";
+import { CardEditor, CardTile, type CardActions, type Draft } from "./CardTile";
+import {
+  cardName,
+  expandRequest,
+  PER_SUBJECT,
+  sectionsOf,
+  type BrowsedCard,
+  type SubjectSection,
+} from "./cardBrowserLogic";
 import "./CardBrowser.css";
-import { CardFaceFields } from "../../components/CardFaceFields";
 
-const PAGE_SIZE = 25;
 /** The exam filter's value for the cards with no exam. */
 const NO_EXAM = "none";
 
 type Status = "all" | "due" | "suspended" | "removed" | "leech";
-type Browse = RequestOutput<"study.browse">;
-type Card = Browse["cards"][number];
-
-/** The card as written: a cloze shows its sentence with the hidden words filled in. */
-const frontText = (card: Card) =>
-  isCloze(card.front) ? clozeAnswer(card.front) : card.front;
-
-/** A short plain-text name for a card, so each button in the list says which card it acts on. */
-const cardName = (card: Card) =>
-  frontText(card)
-    .replace(/[*$_`#]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 60);
-
-function dateText(at: number) {
-  const date = new Date(at);
-  const year = date.getFullYear() === new Date().getFullYear();
-  return new Intl.DateTimeFormat(i18n.language, {
-    day: "numeric",
-    month: "short",
-    ...(year ? {} : { year: "numeric" }),
-  }).format(date);
-}
+type Card = BrowsedCard;
 
 /**
  * `planId`: the exam the browser opens filtered to, such as when that exam's page opened it. `back` and `title` make
@@ -87,12 +55,22 @@ export function CardBrowser({
   const [planId, setPlanId] = useState(initialPlanId);
   const [topicId, setTopicId] = useState("");
   const [status, setStatus] = useState<Status>("all");
-  const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<Card | null>(null);
-  const [draftFront, setDraftFront] = useState("");
-  const [draftBack, setDraftBack] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
+  /** The subjects the student has opened past their first eight, by `subjectKey`. */
+  const [expanded, setExpanded] = useState<string[]>([]);
+  /** The card being edited where it stands. */
+  const [editing, setEditing] = useState<{ card: Card } | null>(null);
+  // What the functions below read when they run, which may be after the render they were made in: an answer that comes
+  // back, a question that is answered, a save that ends.
+  const editingNow = useRef(editing);
+  editingNow.current = editing;
+  /** What has been typed into it, which no redraw of the list can drop, and where the card was, which it grows out of. */
+  const draft = useRef<Draft | null>(null);
+  const grow = useRef<DOMRect | null>(null);
+  /** The card whose save is under way, and that save. */
+  const [saving, setSaving] = useState<string | null>(null);
+  const savingNow = useRef<string | null>(null);
+  const pendingSave = useRef<Promise<void> | null>(null);
+  const [saveFailed, setSaveFailed] = useState<string | null>(null);
   const [actionFailed, setActionFailed] = useState(false);
   const [done, setDone] = useState("");
   const [anki, setAnki] = useState<"import" | "export" | null>(null);
@@ -101,30 +79,39 @@ export function CardBrowser({
   const newButton = useRef<HTMLSpanElement>(null);
   const summary = useRef<HTMLParagraphElement>(null);
 
-  // The search waits for a pause in typing, then goes back to the first page.
+  // The search waits for a pause in typing, then starts again from each subject's first eight. With typing in a card's
+  // edit that the search would drop, it asks first, and staying puts the search back.
   useEffect(() => {
-    const timer = window.setTimeout(() => setQuery(text), 200);
+    if (text === query) return;
+    const timer = window.setTimeout(
+      () =>
+        void startOver(
+          () => setQuery(text),
+          () => setText(query),
+        ),
+      200,
+    );
     return () => window.clearTimeout(timer);
-  }, [text]);
-  useEffect(() => setPage(1), [query]);
+  }, [text, query]);
 
+  const open = useMemo(() => new Set(expanded), [expanded]);
   const list = useQuery({
-    queryKey: ["card-browse", query, planId, topicId, status, page],
+    queryKey: ["card-browse", query, planId, topicId, status, expandRequest(expanded)],
     queryFn: () =>
       invoke("study.browse", {
         query: query.trim() || undefined,
         planId: planId === NO_EXAM ? null : planId || undefined,
         topicId: topicId || undefined,
         status,
-        offset: (page - 1) * PAGE_SIZE,
-        limit: PAGE_SIZE,
+        perSubject: PER_SUBJECT,
+        expand: expandRequest(expanded),
+        // The card being edited stays in the answer wherever a change in the list ranks it.
+        keep: editingNow.current ? [editingNow.current.card.id] : undefined,
       }),
     placeholderData: keepPreviousData,
   });
   const data = list.data;
-  const filtered = Boolean(
-    query.trim() || planId || topicId || status !== "all",
-  );
+  const filtered = Boolean(query.trim() || planId || topicId || status !== "all");
   // No flashcard at all, and nothing filtering: the page is empty, not a search with no result. A removed card is still a
   // card: its exam, or the cards with no exam, keep the page and its "Rimosse" filter.
   const emptyPage = Boolean(data && data.total === 0 && !filtered && data.plans.length === 0 && !data.examless);
@@ -141,11 +128,13 @@ export function CardBrowser({
     }
   }, [emptyPage, data, newCard]);
 
-  // A page that emptied after a delete steps back instead of showing nothing.
+  // A card that is no longer there, deleted or archived behind the page's back, takes its edit with it: the answer holds
+  // the card being edited wherever it ranks (`keep`), so one missing from it is gone, and there is nothing to save to.
   useEffect(() => {
-    if (data && data.cards.length === 0 && data.total > 0 && page > 1)
-      setPage(Math.ceil(data.total / PAGE_SIZE));
-  }, [data, page]);
+    if (!editing || !data || list.isPlaceholderData || savingNow.current === editing.card.id) return;
+    if (!data.cards.some((card) => card.id === editing.card.id)) setEdit(null);
+  }, [data, editing, list.isPlaceholderData]);
+
   // The browser lists only exams that hold cards, so the exam it was opened for is looked up among all of them: an
   // exam with no flashcards yet keeps its filter and shows an empty result, and one that does not exist is dropped.
   const exams = usePlans();
@@ -160,19 +149,14 @@ export function CardBrowser({
         : !data.plans.some((plan) => plan.id === planId) && !requested && (planId !== initialPlanId || exams.isSuccess))
     )
       setPlanId("");
-    if (topicId && !data.topics.some((topic) => topic.id === topicId))
-      setTopicId("");
+    if (topicId && !data.topics.some((topic) => topic.id === topicId)) setTopicId("");
   }, [data, planId, topicId, requested, exams.isSuccess]);
 
   const refresh = () =>
     Promise.all(
-      [
-        "card-browse",
-        "cards",
-        "card-queue",
-        "card-suspended",
-        "review-session",
-      ].map((key) => client.invalidateQueries({ queryKey: [key] })),
+      ["card-browse", "cards", "card-queue", "card-suspended", "review-session"].map((key) =>
+        client.invalidateQueries({ queryKey: [key] }),
+      ),
     );
 
   /** Import and export sit in the page's menu; with no flashcard to export, import alone. */
@@ -216,13 +200,7 @@ export function CardBrowser({
       body: (
         <>
           <p>{cardName(card)}</p>
-          <p>
-            {t(
-              card.handMade
-                ? "cardBrowser.deleteHandMade"
-                : "cardBrowser.deleteSeeded",
-            )}
-          </p>
+          <p>{t(card.handMade ? "cardBrowser.deleteHandMade" : "cardBrowser.deleteSeeded")}</p>
         </>
       ),
       confirm: t("cards.deleteConfirm"),
@@ -230,45 +208,142 @@ export function CardBrowser({
       run: async () => {
         deleted = await change(
           invoke("study.remove", { cardId: card.id }),
-          t(
-            card.handMade
-              ? "cardBrowser.deletedForever"
-              : "cardBrowser.deleted",
-          ),
+          t(card.handMade ? "cardBrowser.deletedForever" : "cardBrowser.deleted"),
         );
       },
-      // The card's row is gone, so the focus goes to the list's summary line once the dialog has closed. After Annulla
-      // or a failed delete the card is still there, and the focus goes back to what opened the dialog.
+      // The card is gone, so the focus goes to the list's summary line once the dialog has closed. After Annulla or a
+      // failed delete the card is still there, and the focus goes back to what opened the dialog.
       onClosed: () => {
         if (deleted) summary.current?.focus();
       },
     });
   }
 
-  async function save() {
-    if (!editing) return;
-    setSaving(true);
-    setSaveFailed(false);
-    try {
-      // Saving an existing card needs only its id; the exam, when it has one, has to match.
-      await invoke("study.save", {
-        planId: editing.planId ?? undefined,
-        cardId: editing.id,
-        front: draftFront,
-        back: draftBack,
-      });
-      setEditing(null);
-      await refresh();
-    } catch {
-      setSaveFailed(true);
-    } finally {
-      setSaving(false);
-    }
+  /** Puts the focus back on a card's own button once the list has drawn it again, after an edit or a cancelled one. */
+  function focusCard(id: string) {
+    let tries = 0;
+    const go = () => {
+      const node = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] .px-ct-open`);
+      if (node) node.focus();
+      else if (++tries < 20) requestAnimationFrame(go);
+    };
+    // The page behind a question is inert until the question has gone, and a focus placed then is lost.
+    afterDialog(() => requestAnimationFrame(go));
   }
 
-  const topics = (data?.topics ?? []).filter(
-    (topic) => topic.planId === planId,
+  /** Opens or closes the edit for the functions that run next, which read `editingNow` before the page is drawn again. */
+  function setEdit(next: { card: Card } | null) {
+    editingNow.current = next;
+    setEditing(next);
+  }
+
+  /** Whether the typing in the edit open now differs from the card as it is saved. */
+  const typed = () => {
+    const open = editingNow.current;
+    const held = draft.current;
+    return Boolean(open && held && held.id === open.card.id && (held.front !== open.card.front || held.back !== open.card.back));
+  };
+
+  /**
+   * Whether the edit open now may close. It holds typing to lose only when it differs from the card, and the student is
+   * asked then; one whose save is under way keeps nothing to lose, since the save has what was typed.
+   */
+  async function mayDropEdit() {
+    const open = editingNow.current;
+    if (!open || savingNow.current === open.card.id || !typed()) return true;
+    const answer = await confirm({
+      title: t("leave.title"),
+      body: t("cardBrowser.leaveEdit"),
+      cancel: t("leave.stay"),
+      confirm: t("leave.go"),
+      tone: "danger",
+    });
+    return answer === "confirm";
+  }
+  // Leaving the page asks the same question while an edit holds typing.
+  useLeaveGuard({ dirty: () => typed() && savingNow.current !== editingNow.current?.card.id, body: t("cardBrowser.leaveEdit") });
+  // The draft goes with the edit it belonged to.
+  useEffect(() => {
+    if (!editing) draft.current = null;
+  }, [editing]);
+
+  async function openEdit(card: Card, from: DOMRect | null) {
+    if (editingNow.current?.card.id === card.id) return;
+    // A save that is under way ends first, so what it does to the page cannot reach the card opened now.
+    await pendingSave.current;
+    if (editingNow.current?.card.id === card.id) return;
+    if (!(await mayDropEdit())) return;
+    setSaveFailed(null);
+    setDone("");
+    draft.current = { id: card.id, front: card.front, back: card.back, field: "front" };
+    grow.current = from;
+    setEdit({ card });
+  }
+
+  async function cancelEdit() {
+    const open = editingNow.current;
+    if (!open) return;
+    if (!(await mayDropEdit())) return;
+    // Closing is for the edit that was asked about, not for another opened while the question was open.
+    if (editingNow.current !== open) return;
+    setEdit(null);
+    focusCard(open.card.id);
+  }
+
+  function save(front: string, back: string) {
+    const mine = editingNow.current;
+    if (!mine) return;
+    const { card } = mine;
+    const run = (async () => {
+      savingNow.current = card.id;
+      setSaving(card.id);
+      setSaveFailed(null);
+      try {
+        // Saving an existing card needs only its id; the exam, when it has one, has to match.
+        await invoke("study.save", { planId: card.planId ?? undefined, cardId: card.id, front, back });
+        await refresh();
+        // The save ends the edit that started it, and only that one: the student may have opened another card since.
+        if (editingNow.current === mine) {
+          setEdit(null);
+          focusCard(card.id);
+        }
+      } catch {
+        if (editingNow.current === mine) setSaveFailed(card.id);
+        else setActionFailed(true);
+      } finally {
+        savingNow.current = null;
+        setSaving(null);
+      }
+    })();
+    pendingSave.current = run;
+    void run.then(() => {
+      if (pendingSave.current === run) pendingSave.current = null;
+    });
+  }
+
+  // The card's buttons call these through one object that never changes, so a keystroke in an editor, or a card being
+  // changed, redraws that card and not the thousand around it.
+  const latest = useRef<CardActions>(null as unknown as CardActions);
+  latest.current = {
+    edit: (card, from) => void openEdit(card, from),
+    suspend: (card) => void change(invoke("study.suspend", { cardId: card.id, suspended: !card.suspended }), ""),
+    remove: ask,
+    restore: (card) => void change(invoke("study.restore", { cardId: card.id }), t("cardBrowser.restored")),
+    openSource: (card) =>
+      openSourceViewer({ passageId: card.passageId ?? undefined, sourceId: card.sourceId ?? undefined }),
+  };
+  const actions = useMemo<CardActions>(
+    () => ({
+      edit: (card, from) => latest.current.edit(card, from),
+      suspend: (card) => latest.current.suspend(card),
+      remove: (card) => latest.current.remove(card),
+      restore: (card) => latest.current.restore(card),
+      openSource: (card) => latest.current.openSource(card),
+    }),
+    [],
   );
+
+  const topics = (data?.topics ?? []).filter((topic) => topic.planId === planId);
   const planGroups: Array<{
     label: string;
     options: Array<{ value: string; label: string }>;
@@ -290,22 +365,27 @@ export function CardBrowser({
     else planGroups.push({ label, options: [option] });
   }
 
-  function reset() {
-    setText("");
-    setQuery("");
-    setPlanId("");
-    setTopicId("");
-    setStatus("all");
-    setPage(1);
+  /** A filter changes what the page shows, so it starts again from each subject's first eight. */
+  async function startOver(change: () => void, stay?: () => void) {
+    if (!(await mayDropEdit())) return stay?.();
+    setEdit(null);
+    change();
+    setExpanded([]);
     setDone("");
+  }
+  function reset() {
+    void startOver(() => {
+      setText("");
+      setQuery("");
+      setPlanId("");
+      setTopicId("");
+      setStatus("all");
+    });
   }
   const filter =
     <T,>(set: (value: T) => void) =>
-    (value: T) => {
-      set(value);
-      setPage(1);
-      setDone("");
-    };
+    (value: T) =>
+      void startOver(() => set(value));
 
   // Where the list failed to load, the head has no menu.
   const plainHead = (
@@ -331,186 +411,96 @@ export function CardBrowser({
       </>
     );
 
-  // The page arrives in order, so a heading opens wherever the subject, or the exam and topic, changes.
-  const sections: Array<{
-    subjectId: string | null;
-    subjectName: string | null;
-    runs: Array<{
-      key: string;
-      planTitle: string | null;
-      topicTitle: string | null;
-      cards: Card[];
-    }>;
-  }> = [];
-  for (const card of data?.cards ?? []) {
-    let section = sections.at(-1);
-    if (!section || section.subjectId !== card.subjectId) {
-      section = {
-        subjectId: card.subjectId,
-        subjectName: card.subjectName,
-        runs: [],
-      };
-      sections.push(section);
+  const sections = data ? sectionsOf(data, open, editing?.card.id) : [];
+
+  /** Opens a subject past its first eight, or closes it again. */
+  async function toggle(section: SubjectSection) {
+    if (!open.has(section.key)) {
+      setExpanded((current) => [...current, section.key]);
+      return;
     }
-    const key = `${card.subjectId ?? "none"}-${card.planId ?? "none"}-${card.topicId ?? "none"}`;
-    let run = section.runs.at(-1);
-    if (!run || run.key !== key) {
-      run = {
-        key,
-        planTitle: card.planTitle,
-        topicTitle: card.topicTitle,
-        cards: [],
-      };
-      section.runs.push(run);
+    // Closing hides the cards past the eighth: an edit open in one of them is asked about first.
+    const editedNow = editingNow.current;
+    if (editedNow && section.more.some((card) => card.id === editedNow.card.id)) {
+      if (!(await mayDropEdit())) return;
+      setEdit(null);
     }
-    run.cards.push(card);
-  }
-  /** One compact row: the front, a line of the back, when it comes up next, Edit, and the rest in a menu. */
-  function renderCard(card: Card) {
-    const name = cardName(card);
-    const label = (key: string) =>
-      t("cardBrowser.action", { action: t(key), card: name });
-    // The three-dots menu, which a right-click on the row opens too. A removed card has none, only Restore.
-    const menu: MenuProps = {
-      items: [
-        ...(card.leech && card.passageId
-          ? [
-              {
-                key: "source",
-                label: t("cardBrowser.openSource"),
-              },
-            ]
-          : []),
-        {
-          key: "suspend",
-          label: t(card.suspended ? "cards.resume" : "cards.suspend"),
-        },
-        { type: "divider" },
-        { key: "delete", label: t("cards.delete"), danger: true },
-      ],
-      onClick: ({ key }) => {
-        if (key === "delete") ask(card);
-        else if (key === "source")
-          openSourceViewer({
-            passageId: card.passageId ?? undefined,
-            sourceId: card.sourceId ?? undefined,
-          });
-        else
-          void change(
-            invoke("study.suspend", {
-              cardId: card.id,
-              suspended: !card.suspended,
-            }),
-            "",
-          );
-      },
-    };
-    return (
-      <MenuItemArea
-        key={card.id}
-        menu={menu}
-        region={t("cardBrowser.moreActions")}
-        disabled={card.removed}
-        className={
-          card.suspended || card.removed || card.leech
-            ? "px-cardbrowser-row has-tags"
-            : "px-cardbrowser-row"
-        }
-      >
-        <div className="px-cardbrowser-text">
-          <div className="px-cardbrowser-front">
-            <span className="visually-hidden">
-              {t("cardBrowser.frontText")}
-            </span>
-            <MarkdownView variant="body">{frontText(card)}</MarkdownView>
-          </div>
-          <div className="px-cardbrowser-back">
-            <span className="visually-hidden">{t("cardBrowser.backText")}</span>
-            <MarkdownView variant="body">{card.back}</MarkdownView>
-          </div>
-          {card.leech && !card.removed ? (
-            <p className="small px-cardbrowser-leech">
-              {t(
-                card.passageId
-                  ? "cardBrowser.leechHint"
-                  : "cardBrowser.leechHintNoSource",
-                { count: card.lapses },
-              )}
-            </p>
-          ) : null}
-        </div>
-        <div className="px-cardbrowser-state">
-          <span className="small">
-            {card.state === "new"
-              ? t("cardBrowser.stateNew")
-              : card.state === "due"
-                ? t("cardBrowser.stateDue")
-                : t("cardBrowser.stateNext", {
-                    date: dateText(card.dueAt ?? 0),
-                  })}
-          </span>
-          {card.leech && !card.removed ? (
-            <Tag tone="general">{t("cardBrowser.tagLeech")}</Tag>
-          ) : null}
-          {card.suspended ? <Tag>{t("cardBrowser.tagSuspended")}</Tag> : null}
-          {card.removed ? <Tag>{t("cardBrowser.tagRemoved")}</Tag> : null}
-        </div>
-        <div className="px-cardbrowser-actions">
-          {card.removed ? (
-            <Button
-              size="small"
-              shape="round"
-              aria-label={label("cardBrowser.restore")}
-              onClick={() =>
-                void change(
-                  invoke("study.restore", { cardId: card.id }),
-                  t("cardBrowser.restored"),
-                )
-              }
-            >
-              {t("cardBrowser.restore")}
-            </Button>
-          ) : (
-            <>
-              <Button
-                size="small"
-                shape="round"
-                type="text"
-                aria-label={label(
-                  card.leech ? "cardBrowser.rewrite" : "cards.edit",
-                )}
-                onClick={() => {
-                  setDraftFront(card.front);
-                  setDraftBack(card.back);
-                  setSaveFailed(false);
-                  setEditing(card);
-                }}
-              >
-                {t(card.leech ? "cardBrowser.rewrite" : "cards.edit")}
-              </Button>
-              <MenuButton
-                size="sm"
-                menu={menu}
-                label={label("cardBrowser.moreActions")}
-                region={t("cardBrowser.moreActions")}
-              />
-            </>
-          )}
-        </div>
-      </MenuItemArea>
-    );
+    setExpanded((current) => current.filter((key) => key !== section.key));
   }
 
-  const groupCount = new Map(
-    (data?.groups ?? []).map((group) => [group.subjectId, group.count]),
-  );
+  /** Arrow keys move between the cards of a subject: left and right along a row, up and down by the card above or below. */
+  function moveByArrow(event: KeyboardEvent<HTMLElement>) {
+    const key = event.key;
+    if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "ArrowUp" && key !== "ArrowDown") return;
+    const here = event.target;
+    if (!(here instanceof HTMLElement) || !here.matches(".px-ct-open")) return;
+    const all = [...event.currentTarget.querySelectorAll<HTMLElement>(".px-ct-open")];
+    const at = all.indexOf(here);
+    let next: HTMLElement | undefined;
+    if (key === "ArrowLeft" || key === "ArrowRight") next = all[at + (key === "ArrowRight" ? 1 : -1)];
+    else {
+      const rect = here.getBoundingClientRect();
+      const centre = rect.left + rect.width / 2;
+      const step = key === "ArrowDown" ? 1 : -1;
+      for (let index = at + step; index >= 0 && index < all.length; index += step) {
+        const other = all[index]!.getBoundingClientRect();
+        const beyond = step > 0 ? other.top > rect.top + 4 : other.top < rect.top - 4;
+        if (beyond && other.left <= centre && centre <= other.right) {
+          next = all[index];
+          break;
+        }
+      }
+    }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  }
+
+  const tiles = (cards: Card[], lazy = false) =>
+    cards.map((card) =>
+      editing?.card.id === card.id ? (
+        <CardEditor
+          key={card.id}
+          card={editing.card}
+          draft={draft}
+          grow={grow}
+          saving={saving === card.id}
+          failed={saveFailed === card.id}
+          onSave={(front, back) => save(front, back)}
+          onCancel={() => void cancelEdit()}
+        />
+      ) : (
+        <CardTile key={card.id} card={card} actions={actions} lazy={lazy} />
+      ),
+    );
+
+  // One line under the title: how many flashcards and of how many subjects, or the exam's own when it is the filter.
+  const named = data?.groups.filter((group) => group.subjectId !== null).length ?? 0;
+  const examTitle =
+    planId && planId !== NO_EXAM && !query.trim() && !topicId && status === "all"
+      ? (data?.plans.find((plan) => plan.id === planId)?.title ?? requested?.title)
+      : undefined;
+  const cards = data ? t("cardBrowser.count", { count: data.total }) : "";
+  const lead =
+    !data || data.total === 0
+      ? ""
+      : examTitle
+        ? t("cardBrowser.leadExam", { count: data.total, exam: examTitle })
+        : named > 0
+          ? t("cardBrowser.lead", { cards, subjects: t("cardBrowser.subjectsCount", { count: named }) })
+          : t("cardBrowser.leadOnly", { cards });
 
   return (
     <div className="px-cardbrowser">
       <div className="px-cardbrowser-head">
         {back}
         <MenuItemArea as="header" className="px-subpage-head" menu={ankiMenu} region={t("cardBrowser.more")}>
-          <h1 className="title-1">{title}</h1>
+          <div className="px-cardbrowser-title">
+            <h1 className="title-1">{title}</h1>
+            {/* The line keeps its room while the list loads or a search finds nothing, so the toolbar stays where it is. */}
+            {emptyPage ? null : <p className="px-cardbrowser-lead">{lead || "\u00a0"}</p>}
+          </div>
           <MenuButton rightClick menu={ankiMenu} label={t("cardBrowser.more")} />
         </MenuItemArea>
       </div>
@@ -546,8 +536,10 @@ export function CardBrowser({
                   value={planId}
                   popupMatchSelectWidth={false}
                   onChange={(value) => {
-                    filter(setPlanId)(value);
-                    setTopicId("");
+                    void startOver(() => {
+                      setPlanId(value);
+                      setTopicId("");
+                    });
                   }}
                   options={[
                     { value: "", label: t("cardBrowser.allExams") },
@@ -576,162 +568,111 @@ export function CardBrowser({
                   value={status}
                   popupMatchSelectWidth={false}
                   onChange={filter(setStatus)}
-                  options={(["all", "due", "leech", "suspended", "removed"] as const).map(
-                    (value) => ({ value, label: t(`cardBrowser.status.${value}`) }),
-                  )}
+                  options={(["all", "due", "leech", "suspended", "removed"] as const).map((value) => ({
+                    value,
+                    label: t(`cardBrowser.status.${value}`),
+                  }))}
                 />
+                <p className="small px-cardbrowser-summary" role="status" tabIndex={-1} ref={summary}>
+                  {done || (data ? t("cardBrowser.count", { count: data.total }) : " ")}
+                </p>
               </>
             }
+            primary={
+              filtered && data && data.total > 0 ? (
+                <PxButton variant="ghost" size="sm" className="px-cardbrowser-clear" onClick={reset}>
+                  {t("cardBrowser.clear")}
+                </PxButton>
+              ) : undefined
+            }
           />
-
-          <div className="px-cardbrowser-summary">
-            <p className="small" role="status" tabIndex={-1} ref={summary}>
-              {done ||
-                (data
-                  ? t(
-                      data.total === 0
-                        ? "cardBrowser.noMatch"
-                        : "cardBrowser.count",
-                      { count: data.total },
-                    )
-                  : "\u00a0")}
-            </p>
-            {filtered ? (
-              <Button
-                type="text"
-                shape="round"
-                size="small"
-                className="linkish"
-                onClick={reset}
-              >
-                {t("cardBrowser.clear")}
-              </Button>
-            ) : null}
-          </div>
-          {actionFailed ? (
-            <Notice tone="danger">{t("cards.actionFailed")}</Notice>
-          ) : null}
+          {actionFailed ? <Notice tone="danger">{t("cards.actionFailed")}</Notice> : null}
 
           {!data ? (
-            <ul className="px-list-surface" aria-hidden>
-              {[0, 1, 2].map((key) => (
-                <li key={key} className="px-cardbrowser-row">
-                  <Skeleton active title={false} paragraph={{ rows: 2 }} />
+            <ul className="px-ct-grid" aria-hidden>
+              {[0, 1, 2, 3].map((key) => (
+                <li key={key} className="px-ct is-loading">
+                  <Skeleton active title={false} paragraph={{ rows: 4 }} />
                 </li>
               ))}
             </ul>
-          ) : data.total === 0 ? null : (
-            <>
-              {sections.map((section) => (
+          ) : data.total === 0 ? (
+            <div className="px-cardbrowser-none">
+              <p>{query.trim() ? t("cardBrowser.noMatchQuery", { query: query.trim() }) : t("cardBrowser.noMatch")}</p>
+              {filtered ? (
+                <PxButton variant="secondary" onClick={reset}>
+                  {t("cardBrowser.clear")}
+                </PxButton>
+              ) : null}
+            </div>
+          ) : (
+            sections.map((section, index) => {
+              const isOpen = open.has(section.key);
+              const loadingMore = isOpen && section.hidden > 0;
+              return (
                 <section
-                  key={section.subjectId ?? "none"}
+                  key={section.key}
                   className="px-cardbrowser-subject"
-                  aria-labelledby={`card-subject-${section.subjectId ?? "none"}`}
+                  aria-labelledby={`card-subject-${section.key}`}
+                  onKeyDown={moveByArrow}
                 >
                   <header>
-                    <h2
-                      className="title-3"
-                      id={`card-subject-${section.subjectId ?? "none"}`}
-                    >
-                      {section.subjectName ?? t("cardBrowser.noSubject")}
+                    <h2 className="title-3" id={`card-subject-${section.key}`}>
+                      {section.name ?? t("cardBrowser.noSubject")}
                     </h2>
-                    <span className="small">
-                      {t("cardBrowser.count", {
-                        count: groupCount.get(section.subjectId) ?? 0,
-                      })}
-                    </span>
+                    <span className="small">{t("cardBrowser.count", { count: section.count })}</span>
+                    {/* A subject's cards with no exam can be reviewed on their own. */}
+                    {section.subjectId && section.noExam > 0 ? (
+                      <PxButton
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t("cardBrowser.reviewSubject", { subject: section.name ?? "" })}
+                        onClick={() => navigate(`/cards/subject/${section.subjectId}`)}
+                      >
+                        {t("cardBrowser.reviewNoExam")}
+                      </PxButton>
+                    ) : null}
                   </header>
-                  {section.runs.map((run) => (
-                    <div key={run.key} className="px-cardbrowser-run">
-                      {run.planTitle == null ? (
-                        // A subject's cards with no exam can be reviewed on their own.
-                        <div className="px-cardbrowser-runhead">
-                          <h3
-                            className="small px-cardbrowser-topic"
-                            id={`card-run-${run.key}`}
-                          >
-                            {t("cardBrowser.noExam")}
-                          </h3>
-                          {section.subjectId ? (
-                            <Button
-                              size="small"
-                              shape="round"
-                              type="text"
-                              aria-label={t("cardBrowser.reviewSubject", {
-                                subject: section.subjectName ?? "",
-                              })}
-                              onClick={() => navigate(`/cards/subject/${section.subjectId}`)}
-                            >
-                              {t("cardBrowser.review")}
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <h3
-                          className="small px-cardbrowser-topic"
-                          id={`card-run-${run.key}`}
-                        >
-                          {run.planTitle} ·{" "}
-                          {run.topicTitle ?? t("cardBrowser.noTopic")}
-                        </h3>
-                      )}
-                      <ul aria-labelledby={`card-run-${run.key}`}>
-                        {run.cards.map((card) => renderCard(card))}
+                  <ul className="px-ct-grid" aria-labelledby={`card-subject-${section.key}`}>
+                    {/* The first subject's cards are drawn at once; the others draw as they come near the window. */}
+                    {tiles(section.shown, index > 0)}
+                  </ul>
+                  {/* The card being edited, when a change in the list ranked it past the eight: it stays, with its typing. */}
+                  {section.pinned ? <ul className="px-ct-grid">{tiles([section.pinned])}</ul> : null}
+                  {section.more.length > 0 ? (
+                    <Reveal className="px-cardbrowser-more">
+                      <ul className="px-ct-grid" aria-labelledby={`card-subject-${section.key}`}>
+                        {tiles(section.more, true)}
                       </ul>
-                    </div>
-                  ))}
+                    </Reveal>
+                  ) : null}
+                  {section.count > PER_SUBJECT ? (
+                    <button
+                      type="button"
+                      className="px-cardbrowser-showmore"
+                      aria-expanded={isOpen}
+                      aria-busy={loadingMore || undefined}
+                      // Not `disabled`: a disabled button drops the focus, and the button keeps it as it unfolds.
+                      aria-disabled={loadingMore || undefined}
+                      onClick={() => {
+                        if (!loadingMore) void toggle(section);
+                      }}
+                    >
+                      {loadingMore
+                        ? t("cardBrowser.loadingMore")
+                        : isOpen
+                          ? t("cardBrowser.showFewer")
+                          : t("cardBrowser.showMore", { count: section.count - section.shown.length })}
+                      <span className="px-chevron" aria-hidden />
+                    </button>
+                  ) : null}
                 </section>
-              ))}
-              {data.total > PAGE_SIZE ? (
-                <Pagination
-                  className="px-cardbrowser-pages"
-                  align="center"
-                  current={page}
-                  total={data.total}
-                  pageSize={PAGE_SIZE}
-                  showSizeChanger={false}
-                  onChange={(next) => {
-                    setPage(next);
-                    summary.current?.scrollIntoView({ block: "start" });
-                  }}
-                />
-              ) : null}
-            </>
+              );
+            })
           )}
         </>
       )}
 
-      <Dialog
-        open={editing !== null}
-        width="md"
-        title={t("cardBrowser.editTitle")}
-        busy={saving}
-        // The edit written so far would be lost by a stray click.
-        outside="none"
-        onClose={() => setEditing(null)}
-        actions={[
-          {
-            label: t("cards.save"),
-            disabled: !draftFront.trim() || !draftBack.trim(),
-            working: saving,
-            onClick: () => void save(),
-          },
-        ]}
-      >
-        <div className="px-cardbrowser-edit">
-          <p className="small">{t("cardBrowser.editHint")}</p>
-          <CardFaceFields
-            idPrefix="browse"
-            front={draftFront}
-            back={draftBack}
-            onFront={setDraftFront}
-            onBack={setDraftBack}
-          />
-          {saveFailed ? (
-            <Notice tone="danger">{t("cards.actionFailed")}</Notice>
-          ) : null}
-        </div>
-      </Dialog>
       <NewCardDialog
         open={newCard}
         side="hand"

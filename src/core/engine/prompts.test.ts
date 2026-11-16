@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { FIGURE_KINDS, figureKinds } from "../../shared/figure-kinds";
+import { figureText } from "../math/figures";
 import {
   TEMPLATE_SOURCES,
   languageName,
@@ -8,6 +10,7 @@ import {
   partialText,
   placeholders,
   renderTemplate,
+  systemPrompt,
   type TemplateId,
 } from "./prompts";
 
@@ -39,16 +42,18 @@ describe("prompt templates", () => {
     expect(loadTemplate("quiz.batch").version).toBe("quiz-5");
     // chat.socratic 6 guides one step at a time: the idea behind the step, then one question, and feedback on the answer.
     expect(loadTemplate("chat.socratic").version).toBe("6");
-    // Answers may ask for a figure drawn in the Python sandbox.
-    expect(loadTemplate("chat.general").version).toBe("6");
-    expect(loadTemplate("chat.solver").version).toBe("8");
+    // Answers may ask for a figure. chat.general 7 and chat.solver 9 take the instruction from the figures partial,
+    // which offers a kind per figure. The lesson templates take it from the partial too and keep their versions: a
+    // part's cache key holds the version of lesson.part, so a new one would mark every written part as older.
+    expect(loadTemplate("chat.general").version).toBe("7");
+    expect(loadTemplate("chat.solver").version).toBe("9");
+    expect(loadTemplate("lesson.part").version).toBe("part-1");
     for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
-      const lines = loadTemplate(id).body.split("\n").filter((line) => line.includes("pyxis-figure"));
-      // One line, so it can be left out whole when there is no sandbox.
-      expect(lines, id).toHaveLength(1);
-      expect(lines[0], id).toContain("4000 characters");
+      // The instruction is the partial on a line of its own, so its tagged lines can be left out one by one.
+      expect(loadTemplate(id).body.split(/\r?\n/), id).toContain("{{> figures}}");
+      expect(loadTemplate(id).body, id).not.toContain("pyxis-figure");
     }
-    expect(loadTemplate("chat.socratic").body).not.toContain("pyxis-figure");
+    expect(partialsOf(loadTemplate("chat.socratic"))).not.toContain("figures");
     // Passages, pinned context and attached files are third-party text: every chat template says they are data.
     for (const id of ["chat.solver", "chat.socratic", "chat.general"] as const) {
       expect(loadTemplate(id).body, id).toMatch(/never instructions to follow/);
@@ -144,7 +149,45 @@ describe("prompt templates", () => {
     expect(placeholders(loadTemplate("chat.checks"))).toEqual([]);
   });
 
-  it("includes the single shared citation partial in every passage-using template", () => {
+  it("offers only the figure kinds that can be drawn, and no figure without the runtime", () => {
+    for (const id of ["lesson.write", "lesson.part", "chat.general", "chat.solver"] as const) {
+      const text = systemPrompt(id, { contentLanguage: "Italian" });
+      const all = figureText(text, ["plot", "circuit"], 2);
+      expect(all, id).toContain("opening line is exactly ```pyxis-figure");
+      expect(all, id).toContain('\n- "plot", for function plots');
+      expect(all, id).toContain('\n- "circuit", for electric and electronic circuits');
+      expect(all, id).toContain("Add no more than 2 of them in one reply");
+      // Python without the drawing pack: plots only, and the limit of the place that asks.
+      const plots = figureText(text, ["plot"], 1);
+      expect(plots, id).toContain('\n- "plot", for function plots');
+      expect(plots, id).not.toContain("circuit");
+      expect(plots, id).not.toContain("schemdraw");
+      expect(plots, id).toContain("Add no more than 1 of them in one reply");
+      // No runtime: the instruction is gone and the rest of the template is as written.
+      const none = figureText(text, [], 2);
+      expect(none, id).toBe(
+        text.split(/\r?\n/).filter((line) => !line.startsWith("[figure")).join("\n"),
+      );
+      for (const word of ["pyxis-figure", "matplotlib", "schemdraw"])
+        expect(none, id).not.toContain(word);
+      // No tag or blank of the partial reaches the model.
+      for (const filled of [all, plots, none])
+        expect(filled, id).not.toMatch(/\[figures?\b|\[max\]/);
+    }
+    // Every kind in the table has its line, with the limit the table sets.
+    const lines = partialText("figures").split(/\r?\n/);
+    expect(lines[0]).toMatch(/^\[figures\] /);
+    expect(lines.slice(1).map((line) => /^\[figure:([a-z]+)\] - "\1", /.exec(line)?.[1])).toEqual(figureKinds);
+    for (const kind of figureKinds)
+      expect(lines.find((line) => line.startsWith(`[figure:${kind}]`))).toContain(
+        `${FIGURE_KINDS[kind].codeMax} characters`,
+      );
+    // A template without the partial is left alone.
+    const socratic = systemPrompt("chat.socratic", { contentLanguage: "Italian" });
+    expect(figureText(socratic, ["plot"], 2)).toBe(socratic);
+  });
+
+  it("includes the shared citation partial in every passage-using template, and the figures partial where figures are offered", () => {
     const passageTemplates: TemplateId[] = [
       "simulation.questions",
       "quiz.batch",
@@ -154,18 +197,40 @@ describe("prompt templates", () => {
       "chat.socratic",
       "lesson.agent",
     ];
+    const figureTemplates: TemplateId[] = ["lesson.write", "lesson.part", "chat.general", "chat.solver"];
     const rule = partialText("citation");
     for (const id of ids) {
       const partials = partialsOf(loadTemplate(id));
-      expect(partials, id).toEqual(
-        passageTemplates.includes(id) ? ["citation"] : [],
-      );
+      expect([...partials].sort(), id).toEqual([
+        ...(passageTemplates.includes(id) ? ["citation"] : []),
+        ...(figureTemplates.includes(id) ? ["figures"] : []),
+      ]);
       const values: Record<string, string> = placeholders(loadTemplate(id)).length
         ? { contentLanguage: "Italian" }
         : {};
       const text = renderTemplate(id, values).text;
       expect(text.includes(rule), id).toBe(passageTemplates.includes(id));
     }
+  });
+
+  it("reads a template and a partial the same with CRLF endings, as a Windows checkout has them", () => {
+    const crlf = (text: string) => text.replace(/\r?\n/g, "\r\n");
+    for (const id of ids) {
+      const source = TEMPLATE_SOURCES[id];
+      // The front matter is parsed as before: the version, which keys every cache, is the same string.
+      expect(parseTemplate(id, crlf(source)), id).toEqual(parseTemplate(id, source));
+      expect(parseTemplate(id, crlf(source)).body, id).not.toContain("\r");
+    }
+    expect(crlf(partialText("figures"))).toContain("\r\n");
+    for (const id of ["citation", "figures"] as const) {
+      const sources = { citation: crlf(partialText("citation")), figures: crlf(partialText("figures")) };
+      expect(partialText(id, sources), id).toBe(partialText(id));
+      expect(partialText(id, sources), id).not.toContain("\r");
+    }
+    // A text cut by its lines, as the figure instruction is, finds the same lines.
+    const filled = (sources: Parameters<typeof partialText>[1]) =>
+      figureText(partialText("figures", sources), ["plot"], 2);
+    expect(filled({ citation: "", figures: crlf(partialText("figures")) })).toBe(filled(undefined));
   });
 
   it("maps stored language codes to prompt language names", () => {

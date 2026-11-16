@@ -7,6 +7,7 @@ import { systemPrompt, templateVersion } from "../engine/prompts";
 import { selectionFor } from "../engine/selection";
 import { interestsLine } from "../profile/context";
 import { retrieve } from "../sources/retrieve";
+import type { FigureKind } from "../../shared/figure-kinds";
 import { figureRunner, type FigureRunner } from "../math/figures";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { smartSections } from "../../shared/smart-text";
@@ -321,7 +322,7 @@ export function citeLesson(markdown: string, citable: (label: string) => string 
 const NO_CITES =
   'Do not cite sources, passages or page numbers, and do not mention "the material", "the passages" or "the book": the student reads a lesson, not a commentary on it.';
 
-export function agentSystem(context: ReturnType<typeof modelContext>, figures: boolean): string {
+export function agentSystem(context: ReturnType<typeof modelContext>, figures: readonly FigureKind[]): string {
   const rules = lessonSystem(context, true, figures);
   if (!rules.includes(NO_CITES)) throw new Error("lesson-agent-rules");
   return [
@@ -374,8 +375,8 @@ export async function agentLesson(
   const context = modelContext(db, planId, topicId, options.wording);
   const tools = studyTools(db, planId, topicId, limits);
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").get(topicId) as { title: string };
-  const python = await figureRunner(options.python);
-  const system = [agentSystem(context, python != null), interestsLine(db)].filter(Boolean).join("\n");
+  const drawer = await figureRunner(options.python);
+  const system = [agentSystem(context, drawer?.kinds ?? []), interestsLine(db)].filter(Boolean).join("\n");
   const selection = selectionFor(db, "lesson");
   const stats: AgentStats = {
     modelCalls: 0,
@@ -483,7 +484,7 @@ export async function agentLesson(
   if (lesson == null) throw new IpcError("agent-limit", "errors.invalidOutput", {}, "The model did not write the lesson within the tool and turn limits.");
   if (!lesson) throw new IpcError("invalid-output", "errors.invalidOutput", {}, "The model wrote an empty lesson.");
   const cited = citeLesson(lesson, tools.citable);
-  const drawn = await withFigures(cited.markdown, python, { signal });
+  const drawn = await withFigures(cited.markdown, drawer, { signal });
   const itemId = saveLesson(db, {
     planId,
     topicId,
