@@ -324,6 +324,47 @@ describe("figure blocks", () => {
     ]);
   });
 
+  it("keeps a block without a kind a plot under the key it had before figures had kinds", () => {
+    const old = parseFigure('{"caption": "Una parabola", "code": "  x = np.linspace(-2, 2)\\nplt.plot(x, x**2)\\n"}');
+    expect(old).toEqual({
+      caption: "Una parabola",
+      code: "x = np.linspace(-2, 2)\nplt.plot(x, x**2)",
+      figureKind: "plot",
+    });
+    // The keys of images stored by earlier versions, written out so a change to the hash or its input shows here.
+    expect(figureKey(old!.code, old!.figureKind)).toBe("figure-26u91xjajpr");
+    expect(figureKey("  x = np.linspace(-2, 2)\nplt.plot(x, x**2)\n")).toBe("figure-26u91xjajpr");
+    expect(figureKey("plt.plot([1, 2])")).toBe("figure-2dhfyi0ovmd");
+    expect(figureKey("plt.plot([1, 2])", "plot")).toBe("figure-2dhfyi0ovmd");
+  });
+
+  it("reads the kind of a figure, keys its image by kind and code, and drops a kind it does not know", () => {
+    const code = "d += elm.Resistor().right().label('R1')";
+    const circuit = parseFigure(JSON.stringify({ kind: " Circuit ", title: "Un resistore", source: code }));
+    expect(circuit).toEqual({ caption: "Un resistore", code, figureKind: "circuit" });
+    expect(parseFigure(JSON.stringify({ kind: "plot", caption: "a", code }))!.figureKind).toBe("plot");
+    expect(figureKey(code, "circuit")).toMatch(/^figure-[0-9a-z]{1,16}$/);
+    expect(figureKey(code, "circuit")).not.toBe(figureKey(code));
+    expect(figureKey(`  ${code}\n`, "circuit")).toBe(figureKey(code, "circuit"));
+    // A kind from a later Pyxis, or one the model made up, is not a figure here: it is not run as a plot.
+    expect(parseFigure(JSON.stringify({ kind: "molecule", caption: "Etanolo", code: "CCO" }))).toBeNull();
+    const [block] = parseSmartText(
+      ["```pyxis-figure", JSON.stringify({ kind: "circuit", caption: "Un resistore", code }), "```"].join("\n"),
+    ).flatMap((segment) => (segment.type === "block" ? [segment.block] : []));
+    expect(block).toMatchObject({ kind: "figure", figureKind: "circuit", code });
+  });
+
+  it("stores code written as a JSON object as compact JSON with sorted keys", () => {
+    const spec = { signal: [{ wave: "p...", name: "clk" }], config: { hscale: 2 } };
+    const figure = parseFigure(JSON.stringify({ caption: "Un clock", code: spec }));
+    expect(figure!.code).toBe('{"config":{"hscale":2},"signal":[{"name":"clk","wave":"p..."}]}');
+    // The same spec with its keys in another order is the same figure.
+    const reordered = { config: { hscale: 2 }, signal: [{ name: "clk", wave: "p..." }] };
+    expect(parseFigure(JSON.stringify({ caption: "Un clock", code: reordered }))!.code).toBe(figure!.code);
+    expect(parseFigure(JSON.stringify({ caption: "Vuoto", code: {} }))!.code).toBe("{}");
+    expect(parseFigure(JSON.stringify({ caption: "Troppo", code: { x: "y".repeat(FIGURE_CODE_MAX) } }))).toBeNull();
+  });
+
   it("rewrites figure blocks outside other code and leaves one blank line where one is removed", () => {
     const quoted = ["````markdown", loose, "````"].join("\n");
     const text = ["Prima.", "", loose, "", "Dopo.", "", quoted].join("\n");

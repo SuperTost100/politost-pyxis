@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { seededRandom, shuffleChoices } from "./choices";
+import { figureKind, type FigureKind } from "./figure-kinds";
 import { mapOutsideCode } from "./math-delimiters";
 
 /**
@@ -53,9 +54,10 @@ const exampleSchema = z.object({
 });
 
 /**
- * A figure is matplotlib code that core runs once in the Pyodide sandbox, never anywhere else, and the caption shown
- * under the image. Images are stored next to the text that asked for them, by `figureKey(code)`; a figure whose code
- * failed is removed from the text before it is saved.
+ * A figure is code that core draws once in a sandbox, never anywhere else, and the caption shown under the image. Its
+ * kind (`figure-kinds.ts`) says what the code is: matplotlib code for a plot, schemdraw code for a circuit. Images are
+ * stored next to the text that asked for them, by `figureKey(code, kind)`; a figure whose code failed is removed from
+ * the text before it is saved.
  */
 export const FIGURE_CODE_MAX = 4000;
 /** Figures drawn for one lesson or answer; later figure blocks are left out. */
@@ -66,7 +68,10 @@ const figureSchema = z.object({
   caption: field(300),
   code: field(FIGURE_CODE_MAX),
 });
-export type FigureData = z.infer<typeof figureSchema>;
+/** `figureKind` is the block's `kind`. It has another name here because a smart block's own `kind` is "figure". */
+export type FigureData = z.infer<typeof figureSchema> & {
+  figureKind: FigureKind;
+};
 const figureImageSchema = z
   .string()
   .max(FIGURE_IMAGE_MAX)
@@ -261,14 +266,38 @@ function repairCheck(raw: unknown): CheckData | null {
   return parsed.success ? parsed.data : null;
 }
 
+/** A JSON value with the keys of every object in order, so one spec has one text however its keys were written. */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([key, item]) => [key, sortedKeys(item)]),
+  );
+}
+
+/** A figure's code as text. Code written as a JSON object is kept as compact JSON with sorted keys. */
+function asCode(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return asText(value);
+  try {
+    return JSON.stringify(sortedKeys(value));
+  } catch {
+    // An object nested too deep to walk is not a figure.
+    return undefined;
+  }
+}
+
 function repairFigure(raw: unknown): FigureData | null {
   const value = record(raw);
   if (!value) return null;
+  const kind = figureKind(value.kind);
+  if (!kind) return null;
   const parsed = figureSchema.safeParse({
     caption: asText(pick(value, "caption", "title", "alt")),
-    code: asText(pick(value, "code", "python", "source")),
+    code: asCode(pick(value, "code", "python", "source")),
   });
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? { ...parsed.data, figureKind: kind } : null;
 }
 
 /** The figure in a ```pyxis-figure body, or null when it is not one. */
@@ -276,9 +305,13 @@ export function parseFigure(body: string): FigureData | null {
   return repairFigure(parseLooseJson(body));
 }
 
-/** Where a figure's image is stored: the same code always maps to the same key, whatever its caption. */
-export function figureKey(code: string): string {
-  return `figure-${hash(code.trim())}`;
+/**
+ * Where a figure's image is stored: the same kind and code always map to the same key, whatever the caption. A plot's
+ * key is the hash of its code alone, as it was before figures had kinds, so the images stored then are still found.
+ */
+export function figureKey(code: string, kind: FigureKind = "plot"): string {
+  const text = code.trim();
+  return `figure-${hash(kind === "plot" ? text : `${kind}\n${text}`)}`;
 }
 
 /** Stored images that are well-formed PNG data URLs under known keys; anything else is dropped, not shown. */
