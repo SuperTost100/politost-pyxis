@@ -1100,11 +1100,13 @@ test("the figures a stopped answer kept are still there after it is continued, s
     const chatId = chats[0]!.id;
     const readReply = async () => {
       const saved = (await page.evaluate((id) => window.pyxis.invoke("chats.read", { chatId: id }), chatId)) as {
-        messages: Array<{ role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
+        messages: Array<{ id: string; role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
       };
       return saved.messages.filter((message) => message.role === "assistant");
     };
     expect(await readReply()).toHaveLength(1);
+    // Each continuation replaces the reply with a new one, so its id says which stop the page is looking at.
+    const firstStop = (await readReply())[0]!.id;
 
     // The page offers Continua for a reply that failed, not for one the student stopped, so the continuation is asked of core
     // as the button would: it keeps the saved pictures, tells them at once, and waits for the correction again.
@@ -1116,12 +1118,14 @@ test("the figures a stopped answer kept are still there after it is continued, s
     await expect
       .poll(() => page.evaluate(() => (window as unknown as { continuation: { events: Array<{ type?: string; image?: unknown }> } }).continuation.events.filter((event) => event.type === "figure" && typeof event.image === "string").length))
       .toBe(2);
-    // Stopped again while the correction waits.
+    // Stopped again while the correction waits, and settled before anything else is asked: the call is over, and the reply
+    // it saved is not the first stop's.
     await page.evaluate(() => (window as unknown as { continuation: { handle: { cancel: () => void } } }).continuation.handle.cancel());
     await page.evaluate(() => (window as unknown as { continuation: { handle: { result: Promise<unknown> } } }).continuation.handle.result.catch(() => undefined));
-    await expect.poll(async () => (await readReply()).at(-1)?.stopped).toBe(true);
+    await expect.poll(async () => (await readReply()).at(-1)?.id).not.toBe(firstStop);
     const stoppedAgain = await readReply();
     expect(stoppedAgain).toHaveLength(1);
+    expect(stoppedAgain[0]!.stopped).toBe(true);
     expect(Object.keys(stoppedAgain[0]!.figures ?? {})).toHaveLength(2);
 
     // Continued once more and let finish: the two pictures are kept without being drawn again, and the corrected circuit joins.
@@ -1129,6 +1133,7 @@ test("the figures a stopped answer kept are still there after it is continued, s
     await page.evaluate((id) => window.pyxis.invoke("chats.regenerate", { chatId: id, resume: true }), chatId);
     const finished = await readReply();
     expect(finished).toHaveLength(1);
+    expect(finished[0]!.id).not.toBe(stoppedAgain[0]!.id);
     expect(finished[0]!.stopped).toBeFalsy();
     expect(Object.keys(finished[0]!.figures ?? {})).toHaveLength(3);
     // A reload shows all three, and none is still being drawn.

@@ -42,7 +42,7 @@ import {
   SourcesFooter,
   useOpenNext,
 } from "./Reader";
-import { showsLiveText } from "./lessonLive";
+import { shownFigures, showsLiveText } from "./lessonLive";
 import { lessonLine, sectionFailedKey } from "./partView";
 import { usePlan } from "../../lib/queries";
 import { returnTo, type BackTarget } from "../../app/usePlace";
@@ -483,7 +483,7 @@ export function LegacyLessonPage({
       <SelectionMenu planId={planId} topicId={topicId} passageIds={fromLive ? livePassages : data?.passageIds} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
         <SmartText
           streaming={writing}
-          figures={{ ...liveFigures, ...data?.figures }}
+          figures={shownFigures({ fromLive, live: liveFigures, saved: data?.figures })}
           answers={data?.answers}
           onAnswer={
             readOnly ? undefined : writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined

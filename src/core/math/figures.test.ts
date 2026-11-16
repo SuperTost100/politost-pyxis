@@ -550,3 +550,72 @@ it("returns at once with what it has when the stop comes while a figure is still
   expect(drawn.stopped).toBe(true);
   expect(Object.keys(drawn.figures)).toEqual([figureKey("plt.plot([1])")]);
 });
+
+it("tells that a block past the limit is left out, once, and tells nothing once the work is stopped", async () => {
+  const blocks = Array.from({ length: FIGURE_MAX + 2 }, (_, i) => block(`plt.plot([${i}])`, `Figura ${i}`));
+  const seen: Array<{ key: string; image: string | null }> = [];
+  const text = [...blocks, blocks[FIGURE_MAX + 1]!].join("\n\n");
+  const drawn = await drawFigures(text, { python: drawsAll, onFigure: (figure) => seen.push(figure) });
+  // The first FIGURE_MAX are drawn, the two after them are removed and told as left out, and a repeated block is told once.
+  expect(seen.filter((figure) => figure.image !== null)).toHaveLength(FIGURE_MAX);
+  expect(seen.filter((figure) => figure.image === null).map((figure) => figure.key).sort()).toEqual(
+    [figureKey(`plt.plot([${FIGURE_MAX}])`), figureKey(`plt.plot([${FIGURE_MAX + 1}])`)].sort(),
+  );
+  expect(seen).toHaveLength(FIGURE_MAX + 2);
+  expect(Object.keys(drawn.figures)).toHaveLength(FIGURE_MAX);
+  // Stopped before it began: nothing is told, over the limit or not.
+  const controller = new AbortController();
+  controller.abort();
+  const told: unknown[] = [];
+  await drawFigures(text, { python: drawsAll, signal: controller.signal, onFigure: (figure) => told.push(figure) });
+  expect(told).toEqual([]);
+});
+
+it("keeps the pictures it was given when the stop comes before it begins, as it does when the stop comes after", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const known = { [figureKey("plt.plot([1])")]: PNG };
+  let runs = 0;
+  const python: FigureRunner = async (code, timeout) => {
+    runs++;
+    return drawsAll(code, timeout);
+  };
+  const drawn = await drawFigures(["Prima.", block("plt.plot([1])", "Nota."), block("plt.plot([2])", "Nuova."), "Dopo."].join("\n\n"), {
+    python,
+    known,
+    signal: controller.signal,
+  });
+  expect(drawn.stopped).toBe(true);
+  // The figure that already had its picture stays with it; the new one, never started, is left out.
+  expect(drawn.figures).toEqual({ [figureKey("plt.plot([1])")]: PNG });
+  expect(drawn.markdown).toContain("plt.plot([1])");
+  expect(drawn.markdown).not.toContain("plt.plot([2])");
+  expect(drawn.markdown).toContain("Dopo.");
+  expect(runs).toBe(0);
+});
+
+it("tells nothing after it has rejected, and lets go of the signal", async () => {
+  const controller = new AbortController();
+  const removed = vi.spyOn(controller.signal, "removeEventListener");
+  const held = gate();
+  const python: FigureRunner = async (code, timeout) => {
+    if (code.includes("plt.plot([2])")) await held.promise;
+    return drawsAll(code, timeout);
+  };
+  let calls = 0;
+  const drawing = drawFigures([block("plt.plot([1])"), block("plt.plot([2])")].join("\n\n"), {
+    python,
+    signal: controller.signal,
+    onFigure: () => {
+      calls++;
+      throw new Error("the page could not take it");
+    },
+  });
+  await expect(drawing).rejects.toThrow("the page could not take it");
+  expect(calls).toBe(1);
+  // The other figure is drawn after the rejection and tells nobody.
+  held.release();
+  await vi.waitFor(() => expect(removed).toHaveBeenCalled());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(calls).toBe(1);
+});
