@@ -336,10 +336,13 @@ class Walker {
     if (key === "charset" && !["utf-8", "utf8"].includes(value.trim().toLowerCase()))
       this.fail(`charset=${value} is not allowed: the text is UTF-8`);
     if (key === "layout") {
-      const layout = value.trim().toLowerCase();
-      if (!(DOT_LAYOUTS as readonly string[]).includes(layout))
-        this.fail(`layout=${value} is not allowed: use one of ${DOT_LAYOUTS.join(", ")}`);
-      this.layout = layout as DotLayout;
+      // Exactly as Graphviz reads it: it takes the attribute's value over the engine it is given, and looks the engine up by
+      // its lower-case name, with no spaces. `NEATO` or ` neato` would pass a check that folded them and then not draw.
+      if (!(DOT_LAYOUTS as readonly string[]).includes(value)) {
+        const spelling = (DOT_LAYOUTS as readonly string[]).includes(value.trim().toLowerCase());
+        this.fail(`layout=${value} is not allowed: use one of ${DOT_LAYOUTS.join(", ")}${spelling ? ", in lower case with no spaces" : ""}`);
+      }
+      this.layout = value as DotLayout;
     }
   }
 }

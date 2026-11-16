@@ -344,6 +344,8 @@ test.describe("the drawing window", () => {
         ["stylesheet", 'digraph { stylesheet="http://127.0.0.1/x.css"; a }'],
         ["an HTML-like label", 'digraph { a [label=<<TABLE HREF="http://x"><TR><TD><IMG SRC="/etc/passwd"/></TD></TR></TABLE>>] }'],
         ["layout=sfdp", "digraph { layout=sfdp; a -> b }"],
+        // Graphviz reads the layout exactly and takes it over the engine it is given, so this one would not draw.
+        ["layout=NEATO", "digraph { layout=NEATO; a -> b }"],
         ["more than 150 nodes", `digraph { ${Array.from({ length: 151 }, (_, i) => `n${i}`).join("; ")} }`],
         ["more than 300 edges", `digraph { ${Array.from({ length: 301 }, () => "a -> b").join("; ")} }`],
         ["more than 4000 characters", `digraph { a [label="${"x".repeat(4000)}"] }`],
