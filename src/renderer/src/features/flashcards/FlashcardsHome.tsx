@@ -17,6 +17,7 @@ import { useStillHere } from "../../lib/useStillHere";
 import { stepPath } from "../plans/reopen";
 import { AnkiDialog } from "../home/AnkiDialog";
 import { NewCardDialog, type NewCardSide } from "./NewCardDialog";
+import { readPlacesAhead, whenPlacesRead } from "./newCardPlaces";
 import "./FlashcardsHome.css";
 
 type Sections = RequestOutput<"study.cardSections">;
@@ -105,16 +106,24 @@ export function FlashcardsHome() {
     if (!stillHere()) return;
     // Asked once per history entry: Back and Forward to this entry, or a reload of it, do not open the dialog again.
     if (!claimOnce(sessionOf(), "new-card", location.key)) return;
-    setDialog({ side, subjectId: params.get("subject") ?? undefined });
-    setParams(
-      (next) => {
-        next.delete("new");
-        next.delete("subject");
-        return next;
-      },
-      { replace: true },
-    );
+    const subjectId = params.get("subject") ?? undefined;
+    // The dialog opens once its subjects are read, so it starts in its first field; the address is cleaned then too.
+    whenPlacesRead(client, () => {
+      if (!stillHere()) return;
+      setDialog({ side, subjectId });
+      setParams(
+        (next) => {
+          next.delete("new");
+          next.delete("subject");
+          return next;
+        },
+        { replace: true },
+      );
+    });
   }, [params]);
+  // The subjects are read as the page opens, and again when the pointer or the focus reaches a button that opens the
+  // dialog, so the dialog finds them when it opens.
+  useEffect(() => readPlacesAhead(client, 0), []);
   // The subject that just got flashcards is tinted for a moment, and a screen reader hears how many.
   const [landed, setLanded] = useState<{ subjectId: string; at: number } | null>(null);
   const [said, setSaid] = useState("");
@@ -128,8 +137,13 @@ export function FlashcardsHome() {
   }
   useEffect(() => () => window.clearTimeout(sayTimer.current), []);
   const newCard = (variant: "primary" | "secondary") => (
-    <span className="px-fc-new" ref={newButton}>
-      <Button variant={variant} icon="plus" onClick={() => setDialog({ side: "hand" })}>
+    <span
+      className="px-fc-new"
+      ref={newButton}
+      onPointerEnter={() => readPlacesAhead(client)}
+      onFocus={() => readPlacesAhead(client)}
+    >
+      <Button variant={variant} icon="plus" onClick={() => whenPlacesRead(client, () => setDialog({ side: "hand" }))}>
         {t("flashcards.new.action")}
       </Button>
     </span>

@@ -82,12 +82,10 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("radio", { name: "Scrivila tu" })).toHaveAttribute("aria-checked", "true");
-    // With no subject at all it starts on "Nuova materia…", its name field offered, and no exam to choose. The focus
-    // stays in Fronte, where the dialog put it as it opened.
+    // With no subject at all it starts on "Nuova materia…", its name field focused, and no exam to choose.
     await expect(dialog.getByRole("combobox", { name: "Materia" })).toHaveValue("\u0000new");
     const name = dialog.getByRole("textbox", { name: "Nome della nuova materia" });
-    await expect(name).toBeVisible();
-    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
+    await expect(name).toBeFocused();
     await expect(dialog.getByRole("combobox", { name: /^Esame/ })).toBeHidden();
 
     // Enter in the one-line name field saves nothing.
@@ -341,9 +339,9 @@ test("keys typed the moment the dialog opens go into Fronte while the subjects a
   }
 });
 
-test("with nothing typed, the focus starts in Fronte and stays there once the subjects are known", async () => {
-  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-idle-"));
-  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2000" } });
+test("the dialog starts in the subject every time, with the subjects as they are when it opens", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-start-"));
+  const app = await launchPyxis({ userData });
   try {
     const page = await app.firstWindow();
     await page.getByRole("button", { name: "Salta" }).click();
@@ -351,19 +349,45 @@ test("with nothing typed, the focus starts in Fronte and stays there once the su
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
     try {
-      seedSubjects(db, [{ id: "ana", name: "Analisi 1" }]);
+      seedSubjects(db, [
+        { id: "ana", name: "Analisi 1" },
+        { id: "phys", name: "Fisica 2" },
+      ]);
     } finally {
       db.close();
     }
     await toFlashcards(page);
-    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     const subject = dialog.getByRole("combobox", { name: "Materia" });
-    await expect(subject).toBeDisabled();
-    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
-    await expect(subject).toBeEnabled({ timeout: 10_000 });
-    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
+    const subjects = () => subject.locator("option").allTextContents();
+    // The button reads the subjects before it opens the dialog, so the first open starts in the subject, with the
+    // list there at once, and so does the second.
+    for (const again of [false, true]) {
+      await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await expect(subject).toBeEnabled();
+      await expect(subject).toBeFocused();
+      await expect(subject).toHaveValue("ana");
+      if (!again) await page.keyboard.press("Escape");
+      if (!again) await expect(dialog).toHaveCount(0);
+    }
+    expect(await subjects()).toEqual(["Analisi 1", "Fisica 2", "Nuova materia…"]);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+
+    // A subject renamed and one removed elsewhere, then the page again: the dialog lists them as they are, and still
+    // starts in the subject.
+    await page.evaluate(async () => {
+      await window.pyxis.invoke("subjects.rename", { id: "ana", name: "Analisi 2" });
+      await window.pyxis.invoke("subjects.remove", { id: "phys" });
+      location.hash = "/exams/library";
+    });
+    await expect(page).toHaveURL(/#\/exams\/library$/);
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await expect(subject).toBeFocused();
+    expect(await subjects()).toEqual(["Analisi 2", "Nuova materia…"]);
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -479,7 +503,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await open.click();
     const subject = dialog.getByRole("combobox", { name: "Materia" });
     await expect(subject).toHaveValue("ana");
-    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
+    await expect(subject).toBeFocused();
     const exam = dialog.getByRole("combobox", { name: /^Esame/ });
     await expect(exam).toHaveValue("");
     await exam.selectOption({ label: "Appello del 14 gennaio" });
