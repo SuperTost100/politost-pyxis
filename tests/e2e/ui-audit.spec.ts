@@ -347,6 +347,10 @@ const routes = [
   ["review-interrupted", "/plans/audit-review-plan/review"],
   ["review-cancelled", "/plans/audit-review-plan/review"],
   ["review-cards-waiting", "/plans/audit-review-plan/review/cards"],
+  // The card phase of a Ripasso after its cards were answered: the way on to the questions, or the notice that they are
+  // still being prepared.
+  ["review-cards-end-questions", "/plans/audit-review-plan/review/cards"],
+  ["review-cards-end-waiting", "/plans/audit-review-plan/review/cards"],
   [
     "review-quiz-pending",
     "/plans/audit-review-plan/review/questions?attempt=audit-review-attempt",
@@ -1633,7 +1637,9 @@ function prepareCardBrowser(name: string) {
  */
 function prepareSessionEnd(name: string) {
   withDb((db) => {
-    db.exec(`DELETE FROM card_reviews WHERE id NOT LIKE 'audit-%';
+    db.exec(`DELETE FROM card_reviews WHERE card_id LIKE 'audit-review-card-%';
+      DELETE FROM cards WHERE id LIKE 'audit-review-card-%';
+      DELETE FROM card_reviews WHERE id NOT LIKE 'audit-%';
       DELETE FROM learning_events WHERE id NOT LIKE 'audit-%'
         AND (kind = 'card_rated' OR (kind = 'lesson_completed' AND payload_json LIKE '%"cards"%'));
       DELETE FROM card_reviews WHERE card_id = 'audit-end-later';
@@ -2424,6 +2430,8 @@ function prepareState(name: string) {
     "review-cancelled": "cancelled",
     "review-cards-waiting": "running",
     "review-quiz-pending": "running",
+    "review-cards-end-questions": "running",
+    "review-cards-end-waiting": "running",
   };
   if (name in drills) {
     withDb((db) => {
@@ -2435,7 +2443,28 @@ function prepareState(name: string) {
       const withQuestion =
         name === "review-cancelled" ||
         name === "review-quiz-pending" ||
+        name === "review-cards-end-questions" ||
         name === "review-skipped";
+      // The end states have four cards of the review answered, one with each answer, after the review began.
+      const answered = name.startsWith("review-cards-end");
+      if (answered) {
+        const fronts = ["Che cos’è la velocità media?", "Come si calcola l’accelerazione?", "Che cosa dice il primo principio?", "Che cos’è un sistema inerziale?"];
+        fronts.forEach((front, index) => {
+          db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES(?,'audit-review-plan','audit-review-topic',?,'Retro.',?,'sources',?)").run(
+            `audit-review-card-${index}`,
+            front,
+            `audit-review-card-${index}`,
+            index + 1,
+          );
+          db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,?,?,?)").run(
+            `audit-review-card-review-${index}`,
+            `audit-review-card-${index}`,
+            ["again", "hard", "good", "easy"][index]!,
+            JSON.stringify({ intervalDays: 3, ease: 2.5, dueAt: now + 3 * 86_400_000 }),
+            now + 10 + index,
+          );
+        });
+      }
       const questions = withQuestion
         ? [
             {
@@ -2465,7 +2494,7 @@ function prepareState(name: string) {
         "INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('audit-review-session','audit-review-plan','review_session',?,'sources',?)",
       ).run(
         JSON.stringify({
-          cardIds: [],
+          cardIds: answered ? [0, 1, 2, 3].map((index) => `audit-review-card-${index}`) : [],
           attemptId: "audit-review-attempt",
           drills: [
             {
@@ -3112,6 +3141,15 @@ async function openState(page: Page, name: string) {
       ).toHaveCount(
         name === "review-failed" || name === "review-interrupted" ? 1 : 0,
       );
+      break;
+    case "review-cards-end-questions":
+    case "review-cards-end-waiting":
+      await expect(
+        page.getByRole("heading", { level: 2, name: both("Hai finito le flashcard", "You've finished the flashcards") }),
+      ).toBeVisible();
+      if (name === "review-cards-end-questions")
+        await expect(page.getByRole("button", { name: both("Vai alle domande", "Continue to questions") })).toBeVisible();
+      else await expect(page.getByRole("button", { name: both("Vedi lo stato", "See status") })).toBeVisible();
       break;
     case "review-cards-waiting":
       await expect(
