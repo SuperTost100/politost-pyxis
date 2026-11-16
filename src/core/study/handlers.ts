@@ -356,8 +356,8 @@ export function studyHandlers(
     review(input: { planId: string; count?: number; fromAttemptId?: string }) {
       return startReview(db, input.planId, { count: input.count, runner, fromAttemptId: input.fromAttemptId });
     },
-    reviewSession(input: { planId: string }) {
-      return readReview(db, input.planId);
+    reviewSession(input: { planId: string; finished?: boolean }) {
+      return readReview(db, input.planId, Date.now(), input.finished);
     },
     reviewDiscard(input: { planId: string }) {
       return discardReview(db, input.planId);

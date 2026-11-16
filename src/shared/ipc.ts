@@ -1259,7 +1259,9 @@ export const requests = {
     output: reviewSessionSchema,
   },
   "study.reviewSession": {
-    input: z.object({ planId: z.string() }),
+    // The unfinished review. With `finished` also the one whose cards are all answered and that has nothing left to ask
+    // (its `answers` are what the end of the card phase lists), while it is within its time to live.
+    input: z.object({ planId: z.string(), finished: z.boolean().optional() }),
     output: reviewSessionSchema.nullable(),
   },
   "study.reviewDiscard": {

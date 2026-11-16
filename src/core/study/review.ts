@@ -351,11 +351,13 @@ export function readReview(
   db: Database.Database,
   planId: string,
   now = Date.now(),
+  /** Also return a review that is finished: its cards answered and nothing left to ask. */
+  finished = false,
 ): ReviewSession | null {
   const row = latestSession(db, planId);
   if (!row || now - row.created_at > SESSION_TTL) return null;
   const session = view(db, planId, row);
-  return session.next === "done" ? null : session;
+  return session.next === "done" && !finished ? null : session;
 }
 
 /**

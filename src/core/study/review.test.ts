@@ -158,6 +158,24 @@ describe("mixed review (LES-13)", () => {
     expect(after.cards.map((card) => card.id)).toContain(b!.id);
   });
 
+  it("keeps the answers of a finished review, for the end of its card phase to list", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    seedCards(db, {
+      planId,
+      topicId: topics[0]!,
+      pairs: ["a", "b", "c"].map((front) => ({ front, back: front })),
+    });
+    const session = startReview(db, planId, { count: 3 });
+    const ids = session.cards.map((card) => card.id);
+    ids.forEach((id, index) => rateCard(db, id, "good", Date.now() + index));
+    expect(readReview(db, planId)!.answers).toHaveLength(3);
+    // Finished: nothing to resume, but the finished review still names the three answers.
+    finalizeAttempt(db, session.attemptId, {});
+    expect(readReview(db, planId)).toBeNull();
+    expect(readReview(db, planId, Date.now(), true)!.answers.map((item) => item.cardId)).toEqual(ids);
+  });
+
   it("asks about open gaps and the path's frontier, not the latest weak score", () => {
     const fx = setup();
     const { db, planId, topics } = fx;

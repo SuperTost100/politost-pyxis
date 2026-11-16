@@ -16,6 +16,7 @@ import { errorDetails } from "../../lib/errorDetails";
 import { invoke } from "../../lib/ipc";
 import { useActiveTime } from "./activeTime";
 import { ReviewProgress, useReviewSession } from "./ReviewProgress";
+import { reviewSessionKey } from "./reviewSession";
 import { nextLearningDue, trackLearning, type LearningCards } from "./learningCards";
 import { SessionEnd, type Upcoming } from "./SessionEnd";
 import { RATINGS, type RatingName, type SeenCard } from "./sessionSummary";
@@ -367,11 +368,25 @@ export function CardsPage() {
       ? { status: "loading" }
       : { status: "ready", ...dueLater.data };
   // The answers the end lists. A Ripasso reads them from its stored reviews, so they are still there after the student
-  // leaves and comes back; its last answer can end the review at once, which leaves no stored session to read.
-  const answers = reviewing ? (reviewQueue.data?.answers ?? seen) : seen;
+  // leaves and comes back. Once its last card is answered a review with nothing else to ask is finished and has no
+  // session to resume, so the end reads the finished one instead: the page's own count would miss the answers given
+  // before the page was opened again.
+  const readFinished = reviewing && reviewQueue.isSuccess && !reviewQueue.data && !card;
+  const finishedReview = useQuery({
+    queryKey: [...reviewSessionKey(planId), "finished"],
+    enabled: readFinished,
+    gcTime: 0,
+    queryFn: () => invoke("study.reviewSession", { planId: planId ?? "", finished: true }),
+  });
+  const answers = reviewing
+    ? (reviewQueue.data?.answers ?? (readFinished ? finishedReview.data?.answers : undefined) ?? seen)
+    : seen;
   // The session is on its last screen: a card waits for its next learning step, or nothing is due any more; in a Ripasso
-  // the cards are done.
-  const ended = answers.length > 0 && !card && (reviewing ? reviewQueue.isSuccess : deck.isSuccess);
+  // the cards are done, once the finished review's answers are read.
+  const ended =
+    answers.length > 0 &&
+    !card &&
+    (reviewing ? reviewQueue.isSuccess && !(readFinished && finishedReview.isFetching) : deck.isSuccess);
   const waitingCards = useMemo(
     () => (reviewing ? [] : Object.entries(learning).map(([cardId, dueAt]) => ({ cardId, dueAt }))),
     [learning, reviewing],
