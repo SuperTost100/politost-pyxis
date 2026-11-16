@@ -410,12 +410,29 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
         .locator(".px-map-canvas")
         .evaluate((el) => getComputedStyle(el).backgroundColor);
       const rgb = color.match(/\d+/g)!.slice(0, 3).map(Number);
-      // Match a blank canvas pixel: catches old dark-only repaint exports. The pixel is 20 CSS pixels from the top and
-      // from the right edge, in whole pixels: a ratio such as 4/3 makes 20 * ratio a fraction, and the byte offset
-      // would then start inside another pixel.
-      const margin = Math.round(20 * ratio);
-      const offset = (margin * png.width + (png.width - margin)) * 4;
-      expect([...png.data.slice(offset, offset + 3)]).toEqual(rgb);
+      // Match a blank canvas pixel: catches old dark-only repaint exports. The pixel is the first one, going in from 20 CSS
+      // pixels under the top edge and from the right edge, that has no node, line or tool over it: the map is fitted to
+      // its canvas, and on the Apple silicon runner the canvas began about 30 px lower, so a fixed corner pixel sat under
+      // the top right node and read white. Where it is in the picture is rounded to a whole pixel,
+      // as a ratio such as 4/3 makes the product a fraction and the byte offset would start inside another pixel.
+      const blank = await page.locator(".px-map-canvas").evaluate((canvas) => {
+        const box = canvas.getBoundingClientRect();
+        const left = Math.max(0, box.left);
+        const top = Math.max(0, box.top);
+        const right = Math.min(visualViewport!.width, box.right);
+        const busy = ".react-flow__node, .react-flow__edge, .react-flow__edgelabel-renderer *, .react-flow__panel, .react-flow__controls, .react-flow__minimap";
+        for (let dy = 20; dy <= 120; dy += 10)
+          for (let dx = 20; dx <= 200; dx += 10) {
+            const x = right - dx;
+            const y = top + dy;
+            if (!document.elementsFromPoint(x, y).some((el) => el.closest(busy))) return { x: x - left, y: y - top };
+          }
+        return null;
+      });
+      expect(blank, "a point of the canvas with nothing on it").not.toBeNull();
+      const at = { x: Math.round(blank!.x * ratio), y: Math.round(blank!.y * ratio) };
+      const offset = (at.y * png.width + at.x) * 4;
+      expect([...png.data.slice(offset, offset + 3)], `the pixel at ${at.x}, ${at.y} of ${png.width}x${png.height}`).toEqual(rgb);
     }
     expect(errors).toEqual([]);
     if (process.env.PYXIS_LIVE_MAP)
