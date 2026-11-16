@@ -82,10 +82,12 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("radio", { name: "Scrivila tu" })).toHaveAttribute("aria-checked", "true");
-    // With no subject at all it starts on "Nuova materia…", its name field focused, and no exam to choose.
+    // With no subject at all it starts on "Nuova materia…", its name field offered, and no exam to choose. The focus
+    // stays in Fronte, where the dialog put it as it opened.
     await expect(dialog.getByRole("combobox", { name: "Materia" })).toHaveValue("\u0000new");
     const name = dialog.getByRole("textbox", { name: "Nome della nuova materia" });
-    await expect(name).toBeFocused();
+    await expect(name).toBeVisible();
+    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
     await expect(dialog.getByRole("combobox", { name: /^Esame/ })).toBeHidden();
 
     // Enter in the one-line name field saves nothing.
@@ -257,13 +259,41 @@ test("text typed before the subjects arrive stays in Fronte, and so does the foc
     );
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     const front = dialog.getByRole("textbox", { name: "Fronte" });
-    // The subjects have arrived once the new subject's name is offered; the dialog places its focus a frame after that.
+    // The subjects have arrived once the new subject's name is offered; a frame later the focus has still not moved.
     await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toBeVisible();
     await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     await expect(front).toBeFocused();
     await page.keyboard.type(" la velocità?");
     await expect(front).toHaveValue("Che cos'è la velocità?");
     await expect(dialog.getByRole("textbox", { name: "Nome della nuova materia" })).toHaveValue("");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("text that arrives with no key or click goes into the field that has the focus, also when the subjects arrive just before it", async () => {
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-insert-"));
+  // Voice dictation, a screen reader and Playwright's `fill` focus a field and insert into it later, and nothing in
+  // between is a key or a click. The subjects arrive between the two steps: the held read stands for that moment.
+  const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2000" } });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await expect(page).toHaveURL(/#\/ask$/);
+    await toFlashcards(page);
+    await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
+    const front = dialog.getByRole("textbox", { name: "Fronte" });
+    const name = dialog.getByRole("textbox", { name: "Nome della nuova materia" });
+    await front.focus();
+    // The workspace has no subject, so the arrival offers the new subject's name and used to take the focus there.
+    await expect(name).toBeVisible({ timeout: 10_000 });
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(front).toBeFocused();
+    await page.keyboard.insertText("Che cos'è la velocità?");
+    await expect(front).toHaveValue("Che cos'è la velocità?");
+    await expect(name).toHaveValue("");
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -311,7 +341,7 @@ test("keys typed the moment the dialog opens go into Fronte while the subjects a
   }
 });
 
-test("with nothing typed, the focus starts in Fronte and moves to the subject once the subjects are known", async () => {
+test("with nothing typed, the focus starts in Fronte and stays there once the subjects are known", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-new-flashcard-idle-"));
   const app = await launchPyxis({ userData, env: { PYXIS_E2E_READ_DELAY: "study.newCardPlaces=2000" } });
   try {
@@ -332,7 +362,8 @@ test("with nothing typed, the focus starts in Fronte and moves to the subject on
     await expect(subject).toBeDisabled();
     await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
     await expect(subject).toBeEnabled({ timeout: 10_000 });
-    await expect(subject).toBeFocused();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -448,7 +479,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await open.click();
     const subject = dialog.getByRole("combobox", { name: "Materia" });
     await expect(subject).toHaveValue("ana");
-    await expect(subject).toBeFocused();
+    await expect(dialog.getByRole("textbox", { name: "Fronte" })).toBeFocused();
     const exam = dialog.getByRole("combobox", { name: /^Esame/ });
     await expect(exam).toHaveValue("");
     await exam.selectOption({ label: "Appello del 14 gennaio" });

@@ -4695,7 +4695,7 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") }).click();
       const dialog = page.getByRole("dialog", { name: both("Nuova flashcard", "New flashcard") });
       const subject = dialog.getByRole("combobox", { name: both("Materia", "Subject") });
-      await expect(subject).toBeFocused();
+      await expect(dialog.getByRole("textbox", { name: both("Fronte", "Front") })).toBeFocused();
       if (name === "flashcards-new-hand") {
         await expect(dialog.getByRole("combobox", { name: both("Esame facoltativo", "Exam optional") })).toBeVisible();
         await dialog
@@ -4830,7 +4830,7 @@ async function openState(page: Page, name: string) {
     case "flashcards-new-leave": {
       await page.getByRole("button", { name: both("Nuova flashcard", "New flashcard") }).click();
       const card = page.getByRole("dialog", { name: both("Nuova flashcard", "New flashcard") });
-      await expect(card.getByRole("combobox", { name: both("Materia", "Subject") })).toBeFocused();
+      await expect(card.getByRole("textbox", { name: both("Fronte", "Front") })).toBeFocused();
       await card.getByRole("textbox", { name: both("Fronte", "Front") }).fill("Che cos'è il numero atomico?");
       await page.keyboard.press("Escape");
       await expect(

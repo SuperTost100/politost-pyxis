@@ -158,15 +158,10 @@ export function NewCardDialog({
     cancel.current = null;
   }
 
-  // Whether the student has typed, pressed a key or clicked inside the dialog since it opened: the focus it was given
-  // while the subjects were still being read is theirs from then on.
-  const touched = useRef(false);
-
   // Everything starts again each time it opens, on the side and the subject it was asked for.
   useEffect(() => {
     if (!open) return;
     opening.current += 1;
-    touched.current = false;
     setSide(openSide);
     setSubjectId(openSubject ?? "");
     setPlanId("");
@@ -209,28 +204,13 @@ export function NewCardDialog({
     [],
   );
 
-  // The dialog gives the focus to a field the moment it opens (`firstControl`), so a fast typist loses no keys. Once the
-  // subjects are known the field it would choose may be another one: the focus moves there only while the student has
-  // pressed no key and clicked nowhere in the dialog, so neither what they typed nor where they went is taken from them.
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!open) {
-      focused.current = false;
-      return;
-    }
-    if (focused.current || !places.data || !subjectId) return;
-    focused.current = true;
-    requestAnimationFrame(() => {
-      // A key or a click inside the dialog since it opened: wherever the focus is now, it is the student's.
-      if (touched.current) return;
-      firstField()?.focus();
-    });
-  }, [open, places.data, subjectId]);
-
   /**
-   * The field the focus goes to: the first one of the side on show that can take it. While the subjects are still being
-   * read the subject's own list is off, so a card written by hand starts in Fronte, the first field a student can type
-   * in; with no subject in the workspace it is the new subject's name.
+   * The field the focus goes to as the dialog opens: the first one of the side on show that can take it. While the
+   * subjects are still being read the subject's own list is off, so a card written by hand starts in Fronte, the first
+   * field a student can type in, and the focus stays there when the subjects arrive. Typing, dictation and a screen
+   * reader's insertion all go to the field that has the focus, and nothing tells the dialog that one has begun until the
+   * text lands, so a focus moved by the dialog could always take the text to another field. A dialog that opens again
+   * with the subjects already known, and none in the workspace, starts in the new subject's name.
    */
   function firstField(): HTMLElement | null {
     const pane = card.current?.querySelector(`[data-pane="${side}"]`);
@@ -541,8 +521,7 @@ export function NewCardDialog({
           : { label: t("flashcards.new.make"), disabled: !canMake, onClick: () => void make() },
     ];
 
-  // Where the focus goes as it opens: the first field of the side on show, whether or not the subjects are known yet, and
-  // the effect above moves it once they are, unless the student has already typed or gone to a field of their own.
+  // Where the focus goes as it opens: the first field of the side on show, whether or not the subjects are known yet.
   const firstControl = useMemo(
     () => ({
       get current() {
@@ -571,13 +550,7 @@ export function NewCardDialog({
       onClosed={onClosed}
       actions={actions}
     >
-      <div
-        ref={card}
-        className="px-nc-card"
-        onKeyDownCapture={() => (touched.current = true)}
-        onPointerDownCapture={() => (touched.current = true)}
-        onInputCapture={() => (touched.current = true)}
-      >
+      <div ref={card} className="px-nc-card">
         {reviewing ? null : working ? (
           // What Pyxis was asked, while it works; its proposals then say it in their own line.
           <p className="small px-nc-summary">
