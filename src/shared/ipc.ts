@@ -2439,8 +2439,8 @@ export const requests = {
   "study.dueLater": {
     // When the reviewed cards a card session reads, and that are not due yet, come back. `scope` is what the session
     // reads: the daily review (`only` narrows it like study.dueEverywhere), a subject's cards with no exam, or a topic.
-    // `later` lists each card due before tomorrow with its subject; `next` is the first day after today that has any
-    // card due, and how many come back that day.
+    // `later` counts the cards due before tomorrow per subject with the time of the first, the soonest first; `next` is
+    // the first day after today that has any card due, and how many come back that day.
     input: z.discriminatedUnion("scope", [
       z.object({
         scope: z.literal("everywhere"),
@@ -2455,7 +2455,7 @@ export const requests = {
       z.object({ scope: z.literal("topic"), planId: z.string(), topicId: z.string() }),
     ]),
     output: z.object({
-      later: z.array(z.object({ at: z.number(), subject: z.string().nullable() })),
+      later: z.array(z.object({ at: z.number(), subject: z.string().nullable(), count: z.number().int() })),
       next: z.object({ at: z.number(), count: z.number().int() }).nullable(),
     }),
   },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barShare, countdownText, groupSeen, laterBySubject, minutesLeft, rateCounts, type SeenCard } from "./sessionEnd";
+import { barShare, countdownText, groupSeen, minutesLeft, rateCounts, type SeenCard } from "./sessionEnd";
 
 const card = (cardId: string, rating: SeenCard["rating"], reviewId = `${cardId}-${rating}`): SeenCard => ({
   cardId,
@@ -59,21 +59,5 @@ describe("session end", () => {
     expect(minutesLeft(5 * 60_000 + 1)).toBe(6);
     expect(minutesLeft(10_000)).toBe(1);
     expect(minutesLeft(-10_000)).toBe(1);
-  });
-
-  it("groups the cards coming back today by subject, the soonest first", () => {
-    expect(
-      laterBySubject([
-        { at: 300, subject: "Fisica" },
-        { at: 100, subject: "Analisi" },
-        { at: 200, subject: "Fisica" },
-        { at: 150, subject: "Analisi" },
-        { at: 120, subject: null },
-      ]),
-    ).toEqual([
-      { subject: "Analisi", count: 2, at: 100 },
-      { subject: null, count: 1, at: 120 },
-      { subject: "Fisica", count: 2, at: 200 },
-    ]);
   });
 });

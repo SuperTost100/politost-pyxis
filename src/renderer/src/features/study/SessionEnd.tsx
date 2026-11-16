@@ -12,7 +12,6 @@ import {
   barShare,
   countdownText,
   groupSeen,
-  laterBySubject,
   minutesLeft,
   rateCounts,
   type RatingName,
@@ -24,7 +23,7 @@ export type Upcoming =
   | { status: "loading" | "failed" }
   | {
       status: "ready";
-      later: Array<{ at: number; subject: string | null }>;
+      later: Array<{ at: number; subject: string | null; count: number }>;
       next: { at: number; count: number } | null;
     };
 
@@ -77,6 +76,7 @@ export function SessionEnd({
   const dayName = new Intl.DateTimeFormat(i18n.language, { weekday: "long", day: "numeric", month: "long" });
   const later = upcoming.status === "ready" ? upcoming.later : [];
   const next = upcoming.status === "ready" ? upcoming.next : null;
+  const laterTotal = later.reduce((sum, row) => sum + row.count, 0);
   const phase = soonest != null ? "waiting" : later.length > 0 ? "later" : "done";
   // A card still to come needs no read; a finished session waits for what comes back later before it words its ending.
   const ready = phase === "waiting" || upcoming.status !== "loading";
@@ -88,7 +88,7 @@ export function SessionEnd({
       : [
           t("cards.endGave", { count: seen.length }),
           phase === "later"
-            ? t("cards.endLater", { count: later.length, time: clock.format(later[0]!.at) })
+            ? t("cards.endLater", { count: laterTotal, time: clock.format(later[0]!.at) })
             : next
               ? t("cards.endNext", {
                   count: next.count,
@@ -173,8 +173,8 @@ export function SessionEnd({
           </Group>
         ) : null}
         {phase === "later" ? (
-          <Group title={t("cards.endToday")} count={later.length}>
-            {laterBySubject(later).map((row) => (
+          <Group title={t("cards.endToday")} count={laterTotal}>
+            {later.map((row) => (
               <li key={row.subject ?? ""} className="px-end-row">
                 <span className="px-end-front">
                   {row.subject

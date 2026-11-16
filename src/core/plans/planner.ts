@@ -602,9 +602,10 @@ export type DueLaterScope =
   | { scope: "topic"; planId: string; topicId: string };
 
 /**
- * When the reviewed cards of a session's scope that are not due yet come back: each one due before tomorrow with the
- * subject it belongs to, and the first day after today that has any, with how many come back that day. A card never
- * reviewed has no time, so the new cards past today's limit are not counted.
+ * When the reviewed cards of a session's scope that are not due yet come back: the ones due before tomorrow, counted per
+ * subject with the time of the first, the soonest subject first, and the first day after today that has any, with how
+ * many come back that day. Every card is counted, however many there are. A card never reviewed has no time, so the new
+ * cards past today's limit are not counted.
  */
 export function dueLater(db: Database.Database, now: number, input: DueLaterScope) {
   const decks: Array<{ deck: CardDeck; topicId?: string; subject: string | null }> =
@@ -628,17 +629,24 @@ export function dueLater(db: Database.Database, now: number, input: DueLaterScop
             ];
           })();
   const tomorrow = addDays(now, 1);
-  const later = decks
-    .flatMap(({ deck, topicId, subject }) => deckDueTimes(db, deck, now, tomorrow - 1, topicId).map((at) => ({ at, subject })))
-    .sort((a, b) => a.at - b.at);
+  const bySubject = new Map<string | null, { subject: string | null; count: number; at: number }>();
+  for (const { deck, topicId, subject } of decks) {
+    const times = deckDueTimes(db, deck, now, tomorrow - 1, topicId);
+    if (times.length === 0) continue;
+    const row = bySubject.get(subject);
+    if (row) {
+      row.count += times.length;
+      row.at = Math.min(row.at, times[0]!);
+    } else bySubject.set(subject, { subject, count: times.length, at: times[0]! });
+  }
+  const later = [...bySubject.values()].sort((a, b) => a.at - b.at);
   // The first day after today with a card due, then how many come back that day.
   const firsts = decks.flatMap(({ deck, topicId }) => deckDueTimes(db, deck, tomorrow - 1, Number.MAX_SAFE_INTEGER, topicId, 1));
   if (firsts.length === 0) return { later, next: null };
   const first = Math.min(...firsts);
   const dayEnd = addDays(first, 1) - 1;
   const count = decks.reduce(
-    // shortcut: a deck's count for that day reads at most 10,000 times, far above any real deck, so raise it if one grows past that.
-    (sum, { deck, topicId }) => sum + deckDueTimes(db, deck, startOfDay(first) - 1, dayEnd, topicId, 10_000).length,
+    (sum, { deck, topicId }) => sum + deckDueTimes(db, deck, startOfDay(first) - 1, dayEnd, topicId).length,
     0,
   );
   return { later, next: { at: first, count } };

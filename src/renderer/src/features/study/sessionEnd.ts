@@ -56,16 +56,3 @@ export function countdownText(ms: number): string {
 export function minutesLeft(ms: number): number {
   return Math.max(1, Math.ceil(ms / 60_000));
 }
-
-/** The cards coming back later today, one row per subject with its first time, the soonest subject first. */
-export function laterBySubject(later: Array<{ at: number; subject: string | null }>) {
-  const rows = new Map<string | null, { subject: string | null; count: number; at: number }>();
-  for (const item of later) {
-    const row = rows.get(item.subject);
-    if (row) {
-      row.count += 1;
-      row.at = Math.min(row.at, item.at);
-    } else rows.set(item.subject, { subject: item.subject, count: 1, at: item.at });
-  }
-  return [...rows.values()].sort((a, b) => a.at - b.at);
-}

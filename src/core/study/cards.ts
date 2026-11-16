@@ -178,8 +178,8 @@ export function countDueCards(
 
 /**
  * When the reviewed cards of a deck come back, soonest first, for those due after `after` and no later than `until`.
- * A card never reviewed has no time, so a new card past today's limit is not among them. `limit` caps what one deck
- * returns.
+ * A card never reviewed has no time, so a new card past today's limit is not among them. Without `limit` every card
+ * is returned.
  */
 export function deckDueTimes(
   db: Database.Database,
@@ -187,7 +187,7 @@ export function deckDueTimes(
   after: number,
   until: number,
   topicId?: string,
-  limit = 200,
+  limit?: number,
 ): number[] {
   const where = deckWhere(deck);
   return (
@@ -201,7 +201,7 @@ export function deckDueTimes(
              AND (? IS NULL OR COALESCE(c.topic_id, '') = ?)
          ) WHERE due_at > ? AND due_at <= ? ORDER BY due_at LIMIT ?`,
       )
-      .all(...where.params, topicId ?? null, topicId ?? null, after, until, limit) as Array<{ due_at: number }>
+      .all(...where.params, topicId ?? null, topicId ?? null, after, until, limit ?? -1) as Array<{ due_at: number }>
   ).map((row) => row.due_at);
 }
 
