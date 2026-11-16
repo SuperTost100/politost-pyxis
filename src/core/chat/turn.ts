@@ -1011,13 +1011,13 @@ async function answer(
   const template = chatTemplateId({ way, general: !searches && !thisTurnFile && !kept });
   const where = chatPrompt(db, planId);
   // A guided step asks the student to do the next part, so only solved answers offer figures.
-  const python = way === "guided" ? null : await figureRunner(input.python);
+  const drawer = way === "guided" ? null : await figureRunner(input.python);
   const system = [
     chatSystemPrompt(
       template,
       where.language,
       profile?.followups !== false,
-      python != null,
+      drawer?.kinds ?? [],
     ),
     profileContext(db, planId, profile),
     where.planLine,
@@ -1124,7 +1124,11 @@ async function answer(
   const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
-  const drawn = await drawFigures(parsed.body, { python: python ?? noSandbox, signal: input.signal });
+  const drawn = await drawFigures(parsed.body, {
+    python: drawer?.run ?? noSandbox,
+    kinds: drawer?.kinds ?? [],
+    signal: input.signal,
+  });
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
 

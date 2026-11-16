@@ -31,11 +31,13 @@ import foldersSubjects from "../../../resources/prompts/folders.subjects.md?raw"
 import foldersSort from "../../../resources/prompts/folders.sort.md?raw";
 import librarySort from "../../../resources/prompts/library.sort.md?raw";
 import citationPartial from "../../../resources/prompts/partials/citation.md?raw";
+import figuresPartial from "../../../resources/prompts/partials/figures.md?raw";
 import type Database from "better-sqlite3";
 
 /** Templates and partials are bundled as raw strings, so there is no runtime file path. */
 const PARTIAL_SOURCES = {
   citation: citationPartial,
+  figures: figuresPartial,
 } as const;
 
 export type PartialId = keyof typeof PARTIAL_SOURCES;
