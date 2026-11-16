@@ -14,8 +14,42 @@ import "./BookReaderBar.css";
  * book is in the Library and, when it is not, adds it. `subjectId` is the shelf an add puts it on: the subject whose row
  * opened it; without one the subject is found by name.
  */
-export function openBook(bookId: string, options: { subjectId?: string } = {}): void {
-  openSourceViewer({ bookId }, { bar: () => <LibraryBookBar bookId={bookId} subjectId={options.subjectId} /> });
+export function openBook(bookId: string, options: { subjectId?: string; choice?: BookChoice } = {}): void {
+  const { choice } = options;
+  openSourceViewer(
+    { bookId },
+    { bar: () => (choice ? <ChoiceBookBar choice={choice} /> : <LibraryBookBar bookId={bookId} subjectId={options.subjectId} />) },
+  );
+}
+
+/**
+ * A book the student has ticked to come along with something else, an exam's sources or a subject's first file. The reader
+ * says whether it is ticked and toggles it. `on` is read each time the reader draws; call `refreshSourceViewer` when the
+ * tick changes elsewhere.
+ */
+export type BookChoice = {
+  words: "exam" | "subject";
+  on: () => boolean;
+  set: (on: boolean) => void;
+  /** What the choice is for is being made, so the choice no longer changes: the reader says so and takes it away. */
+  locked: () => boolean;
+};
+
+function ChoiceBookBar({ choice }: { choice: BookChoice }) {
+  const { t } = useTranslation();
+  const on = choice.on();
+  const locked = choice.locked();
+  return (
+    <div className={on ? "px-book-bar is-in" : "px-book-bar"}>
+      <p className="px-book-bar-text" role="status">
+        {on ? <Check size={15} aria-hidden /> : null}
+        <span>{t(`books.choice.${choice.words}${locked ? "Locked" : ""}${on ? "In" : "Out"}`)}</span>
+      </p>
+      <Button size="sm" variant={on ? "secondary" : "primary"} disabled={locked} onClick={() => choice.set(!on)}>
+        {t(`books.choice.${choice.words}${on ? "Remove" : "Add"}`)}
+      </Button>
+    </div>
+  );
 }
 
 /** The row under the reader's head for a free book. After an add the reader stays open and says where the book went. */

@@ -16,25 +16,13 @@ import { formatBytes } from "@shared/format-bytes";
 import { Logo } from "./Logo";
 
 type Book = RequestOutput<"sources.books">[number];
-export type AddedBook = { sourceId: string; title: string; subject: string };
 
 /**
  * The free PoliTost smartbooks from books.politost.it. Pyxis reads the list only while this dialog is open. A book the
  * student does not have opens in the reader before it is added. Adding a book downloads it, checks it against the
- * catalog and imports it; a book already in the library is not downloaded again. `added` lists the source ids the
- * caller already holds, such as the sources of the exam being created.
+ * catalog and imports it; a book already in the library is not downloaded again.
  */
-export function FreeBooks({
-  open,
-  onClose,
-  onAdded,
-  added = [],
-}: {
-  open: boolean;
-  onClose: () => void;
-  onAdded?: (book: AddedBook) => void;
-  added?: string[];
-}) {
+export function FreeBooks({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const books = useFreeBooks(open);
@@ -47,11 +35,8 @@ export function FreeBooks({
 
   async function add(book: Book) {
     setFailed(null);
-    // Added to the Library, the book goes on the shelf its name says; added for an exam, it only joins the exam.
-    const result = await addBook(client, book.id, {
-      subjectId: onAdded ? undefined : subjectForBook(subjects.data ?? [], book),
-    });
-    if (result) onAdded?.(result);
+    // The book goes on the shelf its name says, or waits in "Da sistemare" when no subject has that name.
+    await addBook(client, book.id, { subjectId: subjectForBook(subjects.data ?? [], book) });
   }
 
   async function update(book: Book) {
@@ -77,11 +62,10 @@ export function FreeBooks({
           {t("books.updating")}
         </span>
       );
-    // A newer version updates the copy in the library. A caller that still needs the book can add the copy as it is.
+    // A newer version updates the copy in the library.
     if (sourceId && book.update === "available")
       return (
         <span className="px-books-actions">
-          {onAdded && !added.includes(sourceId) ? addButton(book) : null}
           <Button
             shape="round"
             type="primary"
@@ -97,30 +81,28 @@ export function FreeBooks({
           </Button>
         </span>
       );
-    // In the library already. Without a caller to add it to, there is nothing to do.
-    if (sourceId && (!onAdded || added.includes(sourceId)))
+    // In the library already: there is nothing to do.
+    if (sourceId)
       return (
         <span className="small px-books-state">
           <Check size={14} aria-hidden />
-          {t(onAdded ? "books.added" : "books.inLibrary")}
+          {t("books.inLibrary")}
         </span>
       );
     return (
       <span className="px-books-actions">
-        {sourceId || onAdded ? null : (
-          <Button
-            shape="round"
-            type="text"
-            disabled={busy}
-            aria-label={t("books.openShortNamed", { title: book.title })}
-            onClick={() => {
-              reading.current = book.id;
-              onClose();
-            }}
-          >
-            {t("books.openShort")}
-          </Button>
-        )}
+        <Button
+          shape="round"
+          type="text"
+          disabled={busy}
+          aria-label={t("books.openShortNamed", { title: book.title })}
+          onClick={() => {
+            reading.current = book.id;
+            onClose();
+          }}
+        >
+          {t("books.openShort")}
+        </Button>
         {addButton(book)}
       </span>
     );

@@ -24,6 +24,7 @@ import { Icon } from "../../components/Icon";
 import { MenuButton, useItemMenu } from "../../components/ItemMenu";
 import { Logo } from "../../components/Logo";
 import type { SourceMenu } from "../../components/SourceViewer";
+import { sameName } from "@shared/book-match";
 import { addBook, subjectForBook, useBookAdding } from "../../lib/bookAdding";
 import { hideBookRow, useHiddenBookRows } from "../../lib/hiddenBooks";
 import { invoke } from "../../lib/ipc";
@@ -410,6 +411,12 @@ export function LibraryShelf({
     if (bookAdding.adding.has(book.id)) addingOn.set(subjectId, book);
     else if (!book.sourceId && !bookOf.has(subjectId)) bookOf.set(subjectId, book);
   }
+  /** The free book offered with a new subject's first file: named like the typed name, not owned, and no file there yet. */
+  const firstFileBook = (name: string): FreeBook | undefined => {
+    const existing = subjects.find((subject) => sameName(subject.name, name));
+    if (existing && (counts.get(existing.id) ?? 0) > 0) return undefined;
+    return (books ?? []).find((book) => !book.sourceId && subjectForBook([{ id: "", name }], book) !== undefined);
+  };
   /** Adds a book from its row: the cover grows out of the row's picture, and focus follows it if it was on the row. */
   function addFromRow(book: FreeBook, subject: Subject) {
     const row = root.current?.querySelector<HTMLElement>(`[data-book-offer="${CSS.escape(book.id)}"]`);
@@ -443,9 +450,12 @@ export function LibraryShelf({
       <NewSubjectDialog
         source={naming}
         onClose={() => setNaming(null)}
-        onMove={async (source, name) => {
+        bookFor={firstFileBook}
+        onMove={async (source, name, book) => {
           const focus = isUnsorted(source) || !source.subjectId ? afterUnsorted(source) : "cover";
-          await move(source, { name }, focus, true);
+          const subject = await move(source, { name }, focus, true);
+          // The book that came with the first file goes on the same shelf. If it fails, the shelf's own row offers it again.
+          if (book && subject) void addBook(client, book.id, { subjectId: subject.id });
         }}
       />
       {unsorted.length || goneRows.length ? (

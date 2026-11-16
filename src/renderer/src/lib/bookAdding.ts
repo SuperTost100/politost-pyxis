@@ -75,3 +75,6 @@ export function subjectForBook(
 ): string | undefined {
   return subjects.find((subject) => booksNamed([subject.name], [book]).length > 0)?.id;
 }
+
+/** The message key the last add of a book failed with, or undefined. */
+export const addFailure = (bookId: string): string | undefined => state.failed.get(bookId);

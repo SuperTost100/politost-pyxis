@@ -443,10 +443,8 @@ export function LibraryPanel({
   });
   const sources = list.data ?? [];
   // New versions of free books are checked only while the Library is open, and only when it holds a smartbook.
-  // The catalog is read while the Library is open and holds a smartbook or a subject, which a book can be offered for.
-  const freeBooks = useFreeBooks(
-    !importOnly && (sources.some((source) => source.kind === "smartbook") || (subjects.data?.length ?? 0) > 0),
-  );
+  // The catalog is read while the Library is open and holds a file or a subject, which a book can be offered for.
+  const freeBooks = useFreeBooks(!importOnly && (sources.length > 0 || (subjects.data?.length ?? 0) > 0));
   const newVersions = new Map(
     (freeBooks.data ?? []).flatMap((book) =>
       book.sourceId && book.update === "available"

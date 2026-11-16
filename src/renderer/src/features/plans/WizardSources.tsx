@@ -2,10 +2,21 @@ import { Button, Input } from "antd";
 import { FileText, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { BookChoiceRow } from "../../components/BookChoiceRow";
 import { Dialog } from "../../components/Dialog";
 import { ScanNotice, scanPending } from "../../components/ScanNotice";
+import type { RequestOutput } from "@shared/ipc";
 import { searchMatcher } from "../../lib/search";
 import { LibraryPanel } from "../home/LibraryPanel";
+
+/** The free book offered for the exam: ticked unless the student left it out. */
+export type BookOffer = {
+  book: RequestOutput<"sources.books">[number];
+  on: boolean;
+  busy: boolean;
+  onToggle: (on: boolean) => void;
+  onOpen: () => void;
+};
 
 export type WizardSource = {
   id: string;
@@ -46,7 +57,7 @@ export function WizardSources({
   onPick,
   onRemove,
   onGuided,
-  onFreeBooks,
+  offer,
   blocked,
 }: {
   library: WizardSource[];
@@ -55,8 +66,8 @@ export function WizardSources({
   onPick: (sourceIds: string[]) => void;
   onRemove: (sourceId: string) => void;
   onGuided: () => void;
-  /** Opens the free PoliTost books. */
-  onFreeBooks: () => void;
+  /** A free PoliTost book about the exam, offered as one more source. */
+  offer?: BookOffer;
   blocked: boolean;
 }) {
   const { t } = useTranslation();
@@ -68,10 +79,11 @@ export function WizardSources({
   const inPlan = picked
     .map((id) => library.find((source) => source.id === id))
     .filter((source): source is WizardSource => source != null);
+  const count = inPlan.length + (offer?.on ? 1 : 0);
   return (
     <>
       <p className="small ink-muted" role="status">
-        {t("wizard.sourcesInPlan", { count: inPlan.length })}
+        {t("wizard.sourcesInPlan", { count })}
       </p>
       {inPlan.length ? (
         <ul
@@ -94,6 +106,9 @@ export function WizardSources({
             </li>
           ))}
         </ul>
+      ) : null}
+      {offer ? (
+        <BookChoiceRow book={offer.book} on={offer.on} busy={offer.busy} onToggle={offer.onToggle} onOpen={offer.onOpen} />
       ) : null}
       <div
         className={dragging ? "px-wizard-drop is-dragging" : "px-wizard-drop"}
@@ -134,12 +149,9 @@ export function WizardSources({
           <Button shape="round" onClick={() => setPicking(true)}>
             {t("wizard.fromLibrary")}
           </Button>
-          <Button shape="round" onClick={onFreeBooks}>
-            {t("books.open")}
-          </Button>
         </div>
       </div>
-      {inPlan.length === 0 ? (
+      {count === 0 ? (
         <p className="small">
           {t("wizard.noMaterial")}{" "}
           <Button type="link" size="small" onClick={onGuided}>
