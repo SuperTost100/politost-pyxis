@@ -174,9 +174,17 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     });
     await page.reload();
     await expect(page.locator("html")).toHaveAttribute("data-text", "lg");
-    const rows = page.locator(".px-cardbrowser-row");
+    // Fourteen cards in one subject: eight show and the rest unfolds. The card to point at is the lowest of the rightmost
+    // column, which is where a menu has the least room.
+    await page.getByRole("button", { name: /^Mostra le altre/ }).click();
+    const rows = page.locator(".px-ct");
     await expect(rows).toHaveCount(14);
-    await rightClickInCorner(page, rows.nth(10));
+    const corner = await rows.evaluateAll((nodes) => {
+      const boxes = nodes.map((node) => node.getBoundingClientRect());
+      const right = Math.max(...boxes.map((box) => box.right));
+      return boxes.map((box, index) => [box.right, index] as const).filter(([edge]) => edge === right).at(-1)![1];
+    });
+    await rightClickInCorner(page, rows.nth(corner));
     await expectMenuInWindow(page, open);
     await open.getByRole("menuitem").last().click();
     await expect(
