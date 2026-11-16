@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { showsLiveText } from "./lessonLive";
+import { shownFigures, showsLiveText } from "./lessonLive";
 
 describe("showsLiveText", () => {
   it("shows the saved lesson while a regenerate has not streamed yet", () => {
@@ -60,5 +60,22 @@ describe("showsLiveText", () => {
         cancelled: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("shownFigures", () => {
+  const old = { "figure-a": "data:image/png;base64,OLD", "figure-b": "data:image/png;base64,OLDB" };
+
+  it("shows only the figures told for the lesson being written, so a figure that fails now does not get the saved lesson's picture", () => {
+    // The same block as before is drawn again and fails: told as empty, and the saved picture must not take its place.
+    expect(shownFigures({ fromLive: true, live: { "figure-a": "" }, saved: old })).toEqual({ "figure-a": "" });
+    expect(shownFigures({ fromLive: true, live: { "figure-a": "data:image/png;base64,NEW" }, saved: old })).toEqual({
+      "figure-a": "data:image/png;base64,NEW",
+    });
+  });
+
+  it("shows the saved lesson's figures when the saved lesson is what shows", () => {
+    expect(shownFigures({ fromLive: false, live: { "figure-a": "data:image/png;base64,NEW" }, saved: old })).toEqual(old);
+    expect(shownFigures({ fromLive: false, live: {}, saved: undefined })).toEqual({});
   });
 });

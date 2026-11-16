@@ -100,6 +100,7 @@ const FINISHED_LABELS: Record<string, string> = {
   "ocr-data-download": "jobs.done.ocrData",
   "embedding-download": "jobs.done.embedding",
   "local-runtime-download": "jobs.done.python",
+  "local-drawings-download": "jobs.done.drawings",
   "library-sort": "jobs.done.librarySort",
 };
 

@@ -1,0 +1,112 @@
+/* Settings › Studio, "Disegni e Python": a row per downloaded pack (PackRows.tsx). */
+.px-pack-row {
+  align-items: flex-start;
+}
+.px-pack-row > .px-ctl-text {
+  gap: 2px;
+}
+.px-pack-acts {
+  flex-wrap: nowrap;
+  align-items: center;
+  align-self: center;
+  justify-content: flex-end;
+}
+.px-pack-buttons,
+.px-pack-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A line under the row's text grows in where it lands: its height first (a row that expands), then its text fades in. */
+.px-pack-line {
+  display: grid;
+  grid-template-rows: 1fr;
+  color: var(--ink-subtle);
+  font-size: 13px;
+  line-height: 1.4;
+  animation: px-pack-line-in var(--duration-small) var(--ease-out) both;
+}
+.px-pack-line > span {
+  min-height: 0;
+  overflow: hidden;
+}
+.px-pack-line.is-error {
+  color: var(--danger);
+}
+@keyframes px-pack-line-in {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+/* The progress takes the place of the button it came from, growing out of the button's edge. */
+.px-pack-progress {
+  transform-origin: right center;
+  animation: px-pack-progress-in var(--duration-small) var(--ease-out) both;
+}
+/* The bar over what it has fetched, as the drawing has it, with Annulla beside them. */
+.px-pack-meter {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  width: 132px;
+}
+.px-pack-meter > .ant-progress {
+  width: 100%;
+  margin: 0;
+  line-height: 1;
+}
+.px-pack-stat {
+  color: var(--ink-subtle);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@keyframes px-pack-progress-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The three dots and the button in their place when a state changes: a short fade, no travel. */
+.px-pack-buttons {
+  animation: px-pack-buttons-in var(--duration-micro) var(--ease-out) both;
+}
+@keyframes px-pack-buttons-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* A narrow window or large text puts the actions under the text instead of squeezing it. */
+@media (max-width: 760px) {
+  .px-pack-row {
+    flex-wrap: wrap;
+  }
+  .px-pack-row > .px-ctl-text {
+    flex-basis: 100%;
+  }
+  .px-pack-acts {
+    margin-left: auto;
+  }
+}
+[data-text="lg"] .px-pack-row {
+  flex-wrap: wrap;
+}
+[data-text="lg"] .px-pack-row > .px-ctl-text {
+  flex-basis: 100%;
+}
+[data-text="lg"] .px-pack-acts {
+  margin-left: auto;
+}

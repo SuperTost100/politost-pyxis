@@ -388,7 +388,9 @@ const routes = {
   "study.active": ["study", "active"],
   "tools.check": ["tools", "check"],
   "tools.runtime": ["tools", "runtime", "bare"],
-  "tools.runtimeDownload": ["tools", "runtimeDownload", "bare"],
+  "tools.runtimeDownload": ["tools", "runtimeDownload"],
+  "tools.runtimeCancel": ["tools", "runtimeCancel"],
+  "tools.runtimeRemove": ["tools", "runtimeRemove"],
   "tools.python": ["tools", "python"],
   "maps.list": ["maps", "list"],
   "maps.scope": ["maps", "scope"],
@@ -652,6 +654,7 @@ async function dispatchValidated(
       return study?.lesson(requests["study.lesson"].input.parse(input), {
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passageIds, citations) => emit?.({ type: "sources", passageIds, citations }),
       });
     case "study.reviewSession":
@@ -741,6 +744,7 @@ async function dispatchValidated(
         ...requests["chats.ask"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
         onQuestion: (id, chatId) => emit?.({ type: "question", id, chatId }),
       });
@@ -749,6 +753,7 @@ async function dispatchValidated(
         ...requests["chats.regenerate"].input.parse(input),
         signal,
         onDelta: (text) => emit?.({ type: "text", text }),
+        onFigure: (figure) => emit?.({ type: "figure", ...figure }),
         onPassages: (passages) => emit?.({ type: "passages", passages }),
       });
     case "sources.books":

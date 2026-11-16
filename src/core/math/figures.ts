@@ -196,6 +196,13 @@ function figureBlock(figure: FigureData, code: string): string {
   return ["```pyxis-figure", JSON.stringify({ ...kind, caption: figure.caption, code }), "```"].join("\n");
 }
 
+/** What a drawing tells the one who asked: a figure's picture the moment it is drawn, or that the figure is left out. */
+export type FigureEvent = {
+  /** The key of the block as the model wrote it (`figureKey` of its code), which is how the text finds its picture. */
+  key: string;
+  image: string | null;
+};
+
 /**
  * Draws the figures a lesson or an answer asks for, one sandbox run each, and removes every figure block that did not
  * give an image, so the rest of the text is saved as written. A block is removed when its kind is not in `kinds`
@@ -204,6 +211,12 @@ function figureBlock(figure: FigureData, code: string): string {
  * `fix` once with the error, and drawn again with the code it returns. The block then carries the corrected code, which
  * is the code its image is stored for. `known` holds images already drawn for the same kind and code, which are kept
  * without running it again. `kinds` are the kinds the runner can draw: every kind when left out.
+ *
+ * The figures are drawn together, each as soon as it can be and none waiting for another, so a figure that is being
+ * corrected does not hold back the ones that are fine. `onFigure` hears each figure as it is settled: its picture under
+ * the key of its block as written, or `null` when it is left out. When `signal` ends the work it does not wait for what
+ * is still going: it returns what was drawn so far, with `stopped` set, the blocks of the figures still in progress
+ * removed, and tells nothing more.
  */
 export async function drawFigures(
   markdown: string,
@@ -213,8 +226,9 @@ export async function drawFigures(
     fix?: FigureFix;
     known?: Record<string, string>;
     signal?: AbortSignal;
+    onFigure?: (event: FigureEvent) => void;
   } = {},
-): Promise<{ markdown: string; figures: Record<string, string> }> {
+): Promise<{ markdown: string; figures: Record<string, string>; stopped?: true }> {
   const python = options.python ?? runFigure;
   const kinds = options.kinds ?? figureKinds;
   const known = figureImages(options.known);
@@ -226,35 +240,81 @@ export async function drawFigures(
   const figures: Record<string, string> = {};
   /** By the key of the code as written: the code that was drawn, or null when the figure is left out. */
   const settled = new Map<string, string | null>();
-  for (const figure of requested) {
-    const asked = figureKey(figure.code, figure.figureKind);
-    if (settled.has(asked)) continue;
-    if (settled.size === FIGURE_MAX) break;
-    settled.set(asked, null);
-    options.signal?.throwIfAborted();
-    if (known[asked]) {
-      figures[asked] = known[asked];
-      settled.set(asked, figure.code);
-      continue;
-    }
-    if (!kinds.includes(figure.figureKind)) continue;
+  /** Set when the result is handed back, so work still in the air changes nothing and tells nothing. */
+  let closed = false;
+  const tell = (event: FigureEvent) => {
+    // Nothing is told after the result is handed back, or once the work is stopped.
+    if (!closed && !options.signal?.aborted) options.onFigure?.(event);
+  };
+  const work: Array<Promise<void>> = [];
+  async function draw(figure: FigureData, asked: string): Promise<void> {
+    if (!kinds.includes(figure.figureKind)) return tell({ key: asked, image: null });
     let code = figure.code;
     let drawn = await drawOne(figure, python);
     if (!("image" in drawn) && drawn.error !== null && options.fix) {
       const fixed = await options.fix(figure, drawn.error);
-      options.signal?.throwIfAborted();
+      // Stopped while the fix was out: the corrected code is not drawn.
+      if (closed || options.signal?.aborted) return;
       if (fixed?.trim() && fixed.trim() !== figure.code) {
         code = fixed.trim();
         drawn = await drawOne({ ...figure, code }, python);
       }
     }
+    if (closed) return;
     if ("image" in drawn) {
       figures[figureKey(code, figure.figureKind)] = drawn.image;
       settled.set(asked, code);
-    }
+      tell({ key: asked, image: drawn.image });
+    } else tell({ key: asked, image: null });
   }
-  options.signal?.throwIfAborted();
-  return {
+  const signal = options.signal;
+  let onAbort = () => {};
+  let stopped: boolean;
+  // One guard for the whole function: however it ends, the loop included (a callback that throws there leaves work
+  // already started), work still in the air tells nobody and changes nothing, and the signal is let go.
+  try {
+    /** The blocks past the limit, which are removed and told as left out once each. */
+    const overLimit = new Set<string>();
+    for (const figure of requested) {
+      const asked = figureKey(figure.code, figure.figureKind);
+      if (settled.has(asked) || overLimit.has(asked)) continue;
+      if (settled.size === FIGURE_MAX) {
+        overLimit.add(asked);
+        tell({ key: asked, image: null });
+        continue;
+      }
+      settled.set(asked, null);
+      // A figure that already has its picture keeps it, stopped or not.
+      if (known[asked]) {
+        figures[asked] = known[asked];
+        settled.set(asked, figure.code);
+        tell({ key: asked, image: known[asked] });
+        continue;
+      }
+      // Work that was stopped before it began is not started.
+      if (!options.signal?.aborted) work.push(draw(figure, asked));
+    }
+    const stop = new Promise<void>((resolve) => {
+      onAbort = resolve;
+      if (signal?.aborted) resolve();
+      else signal?.addEventListener("abort", onAbort, { once: true });
+    });
+    // A figure's work ends in a stop when the fix call it waits on is stopped; any other failure is not ours to hide.
+    const done = Promise.all(
+      work.map((task) =>
+        task.catch((error: unknown) => {
+          if (!signal?.aborted) throw error;
+        }),
+      ),
+    );
+    stopped = await Promise.race([done.then(() => false), stop.then(() => true)]);
+  } finally {
+    closed = true;
+    signal?.removeEventListener("abort", onAbort);
+    // Work started before a throw in the loop has no handler yet, and its failure is not ours to report once we have rejected.
+    for (const task of work) task.catch(() => undefined);
+  }
+  const result = {
     markdown: mapFigureBlocks(markdown, (figure) => {
       if (!figure) return "";
       const code = settled.get(figureKey(figure.code, figure.figureKind));
@@ -263,6 +323,7 @@ export async function drawFigures(
     }),
     figures,
   };
+  return stopped || signal?.aborted ? { ...result, stopped: true } : result;
 }
 
 /** A figure as plain text, for the model's view of earlier turns, search and exports. */

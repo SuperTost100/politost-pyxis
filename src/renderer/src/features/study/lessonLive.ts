@@ -11,3 +11,16 @@ export function showsLiveText(input: {
   if (input.writing) return input.live !== "";
   return input.saved === undefined && input.cancelled;
 }
+
+/**
+ * The figures the lesson page shows, from the same source as its text: the ones told while the lesson is written when the
+ * streamed text shows, the saved lesson's when that shows. Merged, a figure of the new text that failed (told as empty)
+ * would take the picture the saved version of that block had.
+ */
+export function shownFigures(input: {
+  fromLive: boolean;
+  live: Record<string, string>;
+  saved: Record<string, string> | undefined;
+}): Record<string, string> {
+  return input.fromLive ? input.live : (input.saved ?? {});
+}

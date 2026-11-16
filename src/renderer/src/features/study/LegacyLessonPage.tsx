@@ -42,7 +42,7 @@ import {
   SourcesFooter,
   useOpenNext,
 } from "./Reader";
-import { showsLiveText } from "./lessonLive";
+import { shownFigures, showsLiveText } from "./lessonLive";
 import { lessonLine, sectionFailedKey } from "./partView";
 import { usePlan } from "../../lib/queries";
 import { returnTo, type BackTarget } from "../../app/usePlace";
@@ -81,6 +81,8 @@ export function LegacyLessonPage({
   const client = useQueryClient();
   const confirm = useConfirm();
   const [live, setLive] = useState("");
+  /** The lesson's figures as they are drawn, by the key of their block as written (`""` for one left out). */
+  const [liveFigures, setLiveFigures] = useState<Record<string, string>>({});
   const [livePassages, setLivePassages] = useState<string[]>([]);
   const [liveCitations, setLiveCitations] = useState<string[]>([]);
   // Known from the first event, before any text: the lesson is written from the model's own knowledge, not sources.
@@ -111,6 +113,7 @@ export function LegacyLessonPage({
     retry: false,
     queryFn: async ({ signal }) => {
       setLive("");
+      setLiveFigures({});
       setLivePassages([]);
       setLiveCitations([]);
       setLiveGeneral(false);
@@ -128,7 +131,12 @@ export function LegacyLessonPage({
           ...(reopened && reading.current ? { itemId: reopened } : {}),
         },
         (event) => {
-          const data = event as { text?: string; passageIds?: string[]; citations?: string[] };
+          const data = event as { type?: string; text?: string; passageIds?: string[]; citations?: string[]; key?: string; image?: string | null };
+          // A figure of the lesson, drawn while the others are: shown in its place at once.
+          if (data.type === "figure" && typeof data.key === "string") {
+            const { key: at, image } = data;
+            setLiveFigures((now) => ({ ...now, [at]: image ?? "" }));
+          }
           if (Array.isArray(data.passageIds)) {
             setLivePassages(data.passageIds);
             setLiveGeneral(data.passageIds.length === 0);
@@ -475,7 +483,7 @@ export function LegacyLessonPage({
       <SelectionMenu planId={planId} topicId={topicId} passageIds={fromLive ? livePassages : data?.passageIds} onAsk={(chatId) => navigate(`/ask/${chatId}`)}>
         <SmartText
           streaming={writing}
-          figures={data?.figures}
+          figures={shownFigures({ fromLive, live: liveFigures, saved: data?.figures })}
           answers={data?.answers}
           onAnswer={
             readOnly ? undefined : writing ? (live ? answer : undefined) : model && data?.itemId ? answer : undefined

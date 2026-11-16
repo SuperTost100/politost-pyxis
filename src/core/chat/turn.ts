@@ -5,6 +5,7 @@ import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import {
   figureImages,
+  figureKey,
   mapFigureBlocks,
   splitCitationGroups,
 } from "../../shared/smart-text";
@@ -12,6 +13,7 @@ import {
   drawFigures,
   figureCaptions,
   figureFixer,
+  type FigureEvent,
   figureRunner,
   noSandbox,
   type FigureRunner,
@@ -125,6 +127,8 @@ type AskInput = {
   embed?: Embedder | null;
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
+  /** Hears each figure of the answer as it is drawn (its picture), or as it is left out (`null`), while the others go on. */
+  onFigure?: (event: FigureEvent) => void;
   /** The passages this turn's reply may cite, by number, before it streams. A stored reply labels them the same way. */
   onPassages?: (passages: Array<{ index: number; label: string }>) => void;
   /** The stored message that is this turn's question, new or reused, and its chat (new for a first question), before the reply streams. */
@@ -138,7 +142,13 @@ type AskInput = {
    * Continue: the reply that was cut short. The model writes only the rest, appended to its text, from the passages it
    * was written with (null for a reply saved before they were recorded, which retrieves them again).
    */
-  resumeFrom?: { text: string; passages: KeptPassage[] | null; widened?: boolean };
+  resumeFrom?: {
+    text: string;
+    passages: KeptPassage[] | null;
+    widened?: boolean;
+    /** The pictures the stopped reply had saved, by the key of the figure block each is for, which the continuation keeps. */
+    figures?: Record<string, string>;
+  };
 };
 
 /** A passage a stopped reply was written with, and the P-number it had. */
@@ -1056,22 +1066,33 @@ async function answer(
       : null;
   const skippedImages = saved?.skipped.length ? { skippedImages: saved.skipped } : {};
   /** What arrived, saved as a reply that stopped early: marked stopped, or with the failure, and offering Continue. */
-  const stopReply = (text: string, error: string | null) => ({
-    ...finishReply(db, chatId, text, {
-      messageId,
-      provider: answering.provider,
-      model: answering.model,
-      selected,
-      attached: thisTurnFile,
-      widened: widened || Boolean(input.resumeFrom?.widened),
-      within,
-      searched,
-      template,
-      citations,
-      stopped: true,
-      error,
-      now,
-    }),
+  const stopReply = (
+    text: string,
+    error: string | null,
+    drawn?: { markdown: string; figures: Record<string, string> },
+  ) => ({
+    ...finishReply(
+      db,
+      chatId,
+      text,
+      {
+        messageId,
+        provider: answering.provider,
+        model: answering.model,
+        selected,
+        attached: thisTurnFile,
+        widened: widened || Boolean(input.resumeFrom?.widened),
+        within,
+        searched,
+        template,
+        citations,
+        stopped: true,
+        error,
+        now,
+      },
+      drawn,
+      input.resumeFrom?.figures,
+    ),
     ...skippedImages,
   });
   try {
@@ -1126,8 +1147,9 @@ async function answer(
   const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
-  // Stop pressed while the figures are drawn or corrected: the whole answer is already read, so it is kept as a stopped
-  // reply with no figures, like any other stop, and the chat stays.
+  // The figures are drawn together and each is told as it is drawn (`onFigure`), so the page shows it in its place without
+  // waiting for the others. Stop pressed meanwhile: the whole answer is already read, so it is kept as a stopped reply
+  // with the figures that were drawn before the stop, and the ones still in progress are left out. The chat stays.
   let drawn;
   try {
     drawn = await drawFigures(parsed.body, {
@@ -1136,12 +1158,19 @@ async function answer(
       // The fix call is counted with this chat's tokens and stops with the turn.
       fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
       signal: input.signal,
+      // A continued reply keeps the pictures its figures already had, drawn again by nobody.
+      known: input.resumeFrom?.figures,
+      onFigure: input.onFigure,
     });
   } catch (err) {
     requireTutorAvailable(db);
     if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
       return stopReply(resume + result.text, null);
     throw err;
+  }
+  if (drawn.stopped) {
+    requireTutorAvailable(db);
+    return stopReply(resume + result.text, null, drawn);
   }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
@@ -1192,11 +1221,30 @@ function finishReply(
   chatId: string,
   text: string,
   meta: Omit<SavedReply, "figures">,
+  /** The text with the figures that were drawn before the stop and their pictures, when the stop came while they were. */
+  drawn?: { markdown: string; figures: Record<string, string> },
+  /** The pictures a continued reply had saved: its figure blocks that have one stay, with their pictures. */
+  carried?: Record<string, string>,
 ): AskResult {
+  if (drawn)
+    return saveReply(
+      db,
+      chatId,
+      { body: drawn.markdown, followups: [] },
+      { ...meta, ...(Object.keys(drawn.figures).length ? { figures: drawn.figures } : {}) },
+    );
   const parsed = splitFollowups(text);
-  // Nothing draws a stopped reply's figures, so their blocks go.
-  parsed.body = mapFigureBlocks(parsed.body, () => "");
-  return saveReply(db, chatId, { body: parsed.body, followups: [] }, meta);
+  // A reply stopped while it was written has nothing drawn of its own, so its figure blocks go. A continued one keeps the
+  // blocks that already had a picture, with it, as the reply it continues did.
+  const figures: Record<string, string> = {};
+  parsed.body = mapFigureBlocks(parsed.body, (figure) => {
+    const key = figure ? figureKey(figure.code, figure.figureKind) : "";
+    const image = carried?.[key];
+    if (!image) return "";
+    figures[key] = image;
+    return null;
+  });
+  return saveReply(db, chatId, { body: parsed.body, followups: [] }, { ...meta, ...(Object.keys(figures).length ? { figures } : {}) });
 }
 
 type SavedReply = {
@@ -1324,7 +1372,7 @@ export async function regenerateTurn(
   requireIdle(input.chatId);
   const last = db
     .prepare(
-      `SELECT id, role, body, stopped, passages_json, grounding, prompt_template FROM messages
+      `SELECT id, role, body, stopped, passages_json, figures_json, grounding, prompt_template FROM messages
        WHERE chat_id = ? ORDER BY created_at DESC LIMIT 1`,
     )
     .get(input.chatId) as
@@ -1334,6 +1382,7 @@ export async function regenerateTurn(
         body: string;
         stopped: number;
         passages_json: string | null;
+        figures_json: string | null;
         grounding: string | null;
         prompt_template: string | null;
       }
@@ -1354,6 +1403,7 @@ export async function regenerateTurn(
           text: splitFollowups(splitChecks(last.body).body).body,
           passages: last.passages_json ? (JSON.parse(last.passages_json) as KeptPassage[]) : null,
           widened: last.grounding === "mixed",
+          ...(last.figures_json ? { figures: figureImages(JSON.parse(last.figures_json)) } : {}),
         }
       : undefined;
   // Regenerate and Continue answer the same way as the reply they replace, unless the student asked for the other way.

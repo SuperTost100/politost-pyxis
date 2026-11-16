@@ -11,6 +11,22 @@ describe("the Ask page's turn", () => {
     vi.useRealTimers();
   });
 
+  it("keeps each figure of the reply as it is told, a picture or an empty one for a figure left out, apart from the text", () => {
+    const turn = turns.start("chat-1", "Domanda")!;
+    expect(turn.figures.get()).toEqual({});
+    const seen: Array<Record<string, string>> = [];
+    turn.figures.subscribe(() => seen.push(turn.figures.get()));
+    turn.onEvent({ type: "figure", key: "figure-a", image: "data:image/png;base64,AAAA" });
+    turn.onEvent({ type: "text", text: "Il testo continua." });
+    turn.onEvent({ type: "figure", key: "figure-b", image: null });
+    expect(turn.figures.get()).toEqual({ "figure-a": "data:image/png;base64,AAAA", "figure-b": "" });
+    // Each told figure is a change of its own, and the earlier ones stay as they were.
+    expect(seen).toEqual([{ "figure-a": "data:image/png;base64,AAAA" }, { "figure-a": "data:image/png;base64,AAAA", "figure-b": "" }]);
+    // The next turn starts with none.
+    turns.end(turn);
+    expect(turns.start("chat-1", "Altra")!.figures.get()).toEqual({});
+  });
+
   it("runs one at a time and tells its subscribers when it starts and ends", () => {
     const seen: Array<string | null> = [];
     const off = turns.subscribe(() => seen.push(turns.get()?.from ?? null));

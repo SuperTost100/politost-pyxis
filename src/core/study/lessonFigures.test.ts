@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createPlan, readPlan } from "../plans/create";
 import { exportPlan, importPlan } from "../plans/file";
@@ -279,6 +279,46 @@ describe("lesson figures", () => {
     const again = await writeLesson(db, planId, topicId, run, { python });
     expect(systems.length).toBe(written + 1);
     expect(again.markdown).toContain("La velocità è lo spostamento diviso il tempo.");
+    db.close();
+  });
+
+  it("tells each figure of a lesson as it is drawn, so the one that is fine does not wait for the one being corrected", async () => {
+    const { db, planId, topicId, run, python } = setup();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let asked!: () => void;
+    const fixAsked = new Promise<void>((resolve) => {
+      asked = resolve;
+    });
+    const mended = "x = np.linspace(-1, 1)\nplt.plot(x, x)";
+    const seen: Array<{ key: string; image: string | null }> = [];
+    const writing = writeLesson(
+      db,
+      planId,
+      topicId,
+      async (input) => {
+        if (isFigureFixCall(input.system)) {
+          asked();
+          await held;
+          return { text: JSON.stringify({ code: mended }), structured: { code: mended }, provider: "claude", model: "fixer", inputTokens: 1 };
+        }
+        return run(input);
+      },
+      { python, onFigure: (figure) => seen.push(figure) },
+    );
+    await fixAsked;
+    // The fix is out: the parabola is already drawn and told, and the one being corrected is not.
+    await vi.waitFor(() => expect(seen).toEqual([{ key: figureKey(parabola), image: PNG }]));
+    release();
+    const lesson = await writing;
+    expect(seen).toEqual([
+      { key: figureKey(parabola), image: PNG },
+      { key: figureKey(broken), image: PNG },
+    ]);
+    // Saved as before: the images under the code each block carries.
+    expect(lesson.figures).toEqual({ [figureKey(parabola)]: PNG, [figureKey(mended)]: PNG });
     db.close();
   });
 

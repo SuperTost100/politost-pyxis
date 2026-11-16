@@ -31,6 +31,7 @@ import { cardPlaces, proposeCards, saveProposedCards } from "./cardsFromText";
 import { newCardPlaces, proposeSubjectCards, type SubjectCardsInput } from "./cardsForSubject";
 import { enqueueGapDrill, readGapDrill, readGapDrillJob, registerGapJobs } from "./gapDrill";
 import { registerGapInsightJobs } from "./gapInsight";
+import type { FigureEvent } from "../math/figures";
 import { exerciseView, topicExercises } from "./exercises";
 import {
   enqueueExercises,
@@ -216,6 +217,8 @@ export function studyHandlers(
         onDelta?: (text: string) => void;
         /** The passages the lesson is written from, with their chip labels, before the text streams. */
         onPassages?: (passageIds: string[], citations: string[]) => void;
+        /** Each figure of the lesson as it is drawn, or left out, while the others go on. */
+        onFigure?: (event: FigureEvent) => void;
       },
     ) {
       const onPassages = options?.onPassages;
