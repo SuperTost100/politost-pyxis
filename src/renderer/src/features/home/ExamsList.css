@@ -1,8 +1,3 @@
-/* Esami: a 828px column of exam rows in one white card (Shell.tsx sets px-shell-exams on /exams). */
-.px-shell-container.px-shell-exams {
-  --shell-max: calc(828px + 48px);
-}
-
 .px-exams-head {
   display: flex;
   align-items: center;

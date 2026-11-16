@@ -27,7 +27,7 @@ export function DevGallery() {
   const localeValue: Locale = i18n.language === "en" ? "en" : "it";
 
   return (
-    <div className="column gallery-page shell-page">
+    <div className="gallery-page shell-page">
       <p className="label">{t("dev.kicker")}</p>
       <h1 className="title-1">{t("dev.title")}</h1>
       <p className="body">{t("dev.intro")}</p>
