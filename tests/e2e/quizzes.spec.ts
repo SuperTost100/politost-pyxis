@@ -622,6 +622,88 @@ test("open answer: written with formulas, graded by the AI tool after Consegna w
   }
 });
 
+test("open answer: its formula is read back in words, and the optional steps are saved, handed in and shown in the results", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    const address = `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`;
+    await go(page, address);
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    const steps = page.getByRole("textbox", { name: "Passaggi (facoltativi, aiutano la correzione)" });
+    const reads = page.locator(".px-quiz-reads.is-shown");
+    const spoken = page.locator(".px-quiz-open [role=status]");
+    // An answer in plain words reads as it is typed, so nothing is read back.
+    await answer.fill("La velocità vale ");
+    await expect(reads).toHaveCount(0);
+    await expect(spoken).toHaveText("");
+    // A formula is read back in words under the field, and said to a screen reader once the typing pauses.
+    await page.getByRole("button", { name: "Inserisci formula nella risposta" }).click();
+    const keys = page.getByRole("group", { name: "Tastiera per formule" });
+    await keys.getByRole("button", { name: "Frazione" }).click();
+    await keys.getByRole("button", { name: "1", exact: true }).click();
+    await keys.getByRole("button", { name: "Sposta a destra" }).click();
+    await keys.getByRole("button", { name: "2", exact: true }).click();
+    await expect(reads).toHaveText("Si leggeLa velocità vale 1 fratto 2");
+    await saveShot(page, "quiz-open-reading-keys-it-light.png", { animations: "disabled" });
+    await keys.getByRole("button", { name: "Fatto", exact: true }).click();
+    await expect(reads).toHaveText("Si leggeLa velocità vale 1 fratto 2");
+    await expect(spoken).toHaveText("Si legge: La velocità vale 1 fratto 2");
+    await expect(answer).toBeFocused();
+    // One formula keyboard at a time: opening the one of the steps closes the answer's, and leaves the answer as it was.
+    await page.getByRole("button", { name: "Inserisci formula nella risposta" }).click();
+    await expect(keys).toHaveCount(1);
+    await page.getByRole("button", { name: "Inserisci formula nei passaggi" }).click();
+    await expect(keys).toHaveCount(1);
+    await expect(page.locator(".px-quiz-open-part").nth(1).getByRole("group", { name: "Tastiera per formule" })).toBeVisible();
+    await keys.getByRole("button", { name: "Fatto", exact: true }).click();
+    await expect(keys).toHaveCount(0);
+    await expect(reads).toHaveText("Si leggeLa velocità vale 1 fratto 2");
+    await steps.fill("Divido lo spostamento per il tempo.");
+    await axe(page);
+    // Leaving saves both fields, and coming back shows them as they were left.
+    await go(page, "/exams");
+    await expect(page.locator(".px-qz-sheet")).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const read = await invoke<{ draft?: { steps?: Record<string, string> } }>(page, "study.quizRead", {
+          attemptId: quiz.attemptId,
+        });
+        return Object.values(read.draft?.steps ?? {});
+      })
+      .toEqual(["Divido lo spostamento per il tempo."]);
+    await go(page, address);
+    await expect(answer).toHaveText(/^La velocità vale /);
+    await expect(answer.locator(".px-mathchip")).toHaveCount(1);
+    await expect(steps).toHaveText("Divido lo spostamento per il tempo.");
+    await expect(reads).toHaveText("Si leggeLa velocità vale 1 fratto 2");
+    // Handed in, the steps sit under the answer they led to; a question left blank has none.
+    await sheet(page).getByRole("button", { name: "Consegna", exact: true }).click();
+    await page.getByRole("group", { name: /^Consegni con 9 domande vuote/ }).getByRole("button", { name: "Consegna" }).click();
+    await expect(score(page)).toContainText(/0,6 punt[io] su 10\./, { timeout: 15000 });
+    const first = page.locator(".px-res-q").first();
+    await expect(first.locator(".px-res-answer.is-yours")).toContainText("La velocità vale");
+    await expect(first.locator(".px-res-ans")).toContainText("I tuoi passaggi");
+    await expect(page.locator(".px-res-answer.is-steps")).toHaveText(["Divido lo spostamento per il tempo."]);
+    const read = await invoke<{ result?: { steps?: Record<string, string> } }>(page, "study.quizRead", {
+      attemptId: quiz.attemptId,
+    });
+    expect(Object.values(read.result?.steps ?? {})).toEqual(["Divido lo spostamento per il tempo."]);
+    await axe(page);
+  } finally {
+    await done();
+  }
+});
+
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);
@@ -699,7 +781,7 @@ test("quiz screens in both languages and themes", async () => {
         })
         .toBe("succeeded");
       await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
-      await page.locator(".px-quiz-open").getByRole("textbox").fill(
+      await page.getByRole("textbox", { name: lang === "it" ? "La tua risposta" : "Your answer" }).fill(
         lang === "it" ? "È lo spostamento diviso il tempo." : "Displacement over time.",
       );
       await shoot("open");

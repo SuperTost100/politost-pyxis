@@ -269,6 +269,9 @@ const routes = [
   ["cards-new", "/plans/audit-plan/cards/audit-topic"],
   // The answer sheet: an open answer with the formula keys, and Consegna's question with blank and marked answers.
   ["quiz-open", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
+  // The open answer with a formula, read back in words under it, and the steps that led to it; then both in the results.
+  ["quiz-open-steps", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
+  ["quiz-steps-results", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
   ["quiz-handin", "/plans/audit-plan/quiz/audit-topic?attempt=audit-sheet-attempt"],
   ["simulation-setup", "/plans/audit-plan/simulation"],
   // A simulation being answered, on the same sheet, with one question marked for later.
@@ -2061,7 +2064,8 @@ function prepareAnswerSheet(name: string) {
       "INSERT INTO items(id,plan_id,topic_id,kind,body_json,engine_provider,grounding,created_at) VALUES(?,'audit-plan','audit-topic',?,?,'fixture','sources',?)",
     );
     const attempt = db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES(?,'audit-plan',?,?)");
-    if (name === "quiz-open" || name === "quiz-handin") {
+    const withSteps = name === "quiz-open-steps" || name === "quiz-steps-results";
+    if (name === "quiz-open" || name === "quiz-handin" || withSteps) {
       const questions = [
         {
           id: "sheet-mcq",
@@ -2092,18 +2096,50 @@ function prepareAnswerSheet(name: string) {
         now,
       );
       attempt.run("audit-sheet-attempt", "audit-sheet-quiz", now);
+      const written = withSteps
+        ? {
+            picks: { "sheet-open": "La legge oraria è $x(t)=t^{3}-t^{2}$" },
+            steps: { "sheet-open": "Integro la velocità: $\\int\\left(3t^{2}-2t\\right)\\,\\mathrm{d}t=t^{3}-t^{2}$" },
+          }
+        : { picks: {} };
       db.prepare(
         "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-sheet-draft','audit-sheet-attempt',?,?)",
       ).run(
         JSON.stringify({
           draft: {
-            picks: { "sheet-mcq": "0", "sheet-tf": "" },
-            index: name === "quiz-open" ? 1 : 0,
+            picks: { "sheet-mcq": "0", "sheet-tf": "", ...written.picks },
+            ...(written.steps ? { steps: written.steps } : {}),
+            index: name === "quiz-open" || withSteps ? 1 : 0,
             marked: ["sheet-blank"],
           },
         }),
         now,
       );
+      if (name === "quiz-steps-results") {
+        // Handed in and graded: the open answer forgot the starting position, and its steps show where.
+        db.prepare("UPDATE attempts SET submitted_at = ? WHERE id = 'audit-sheet-attempt'").run(now);
+        db.prepare(
+          "INSERT INTO attempt_answers(id,attempt_id,payload_json,created_at) VALUES('audit-sheet-result','audit-sheet-attempt',?,?)",
+        ).run(
+          JSON.stringify({
+            score: 0.375,
+            picks: { "sheet-mcq": "0", "sheet-blank": "", "sheet-tf": "", ...written.picks },
+            steps: written.steps,
+            results: [
+              { id: "sheet-mcq", score: 1, expected: "$F=ma$", explanation: "Seconda legge di Newton." },
+              {
+                id: "sheet-open",
+                score: 0.5,
+                expected: "$x(t) = t^3 - t^2 + 1$",
+                explanation: "L'integrale è giusto, ma manca la costante: con $x(0)=1$ la legge è $x(t)=t^{3}-t^{2}+1$.",
+              },
+              { id: "sheet-blank", score: 0, expected: "m/s^2", explanation: "Seconda legge di Newton." },
+              { id: "sheet-tf", score: 0, expected: "true", explanation: "Seconda legge di Newton." },
+            ],
+          }),
+          now + 1,
+        );
+      }
     }
     if (name === "simulation-run") {
       item.run(
@@ -2795,6 +2831,15 @@ async function openState(page: Page, name: string) {
     case "quiz-handin":
       await page.locator(".px-qz-handin > .px-btn").click();
       await expect(page.locator(".px-qz-confirm")).toBeVisible();
+      break;
+    case "quiz-open-steps":
+      await expect(page.locator(".px-quiz-reads.is-shown")).toContainText(
+        /x\(t\) uguale a t al cubo meno t al quadrato|x\(t\) equals t cubed minus t squared/,
+      );
+      await expect(page.getByRole("textbox", { name: /^(Passaggi|Steps) \(/ })).toContainText("Integro la velocità");
+      break;
+    case "quiz-steps-results":
+      await expect(page.locator(".px-res-answer.is-steps")).toContainText("Integro la velocità");
       break;
     case "onboarding-material":
     case "onboarding-material-folder":
