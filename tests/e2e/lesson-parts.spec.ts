@@ -550,6 +550,109 @@ test("leaving a lesson before core has chosen its part does not pull the student
   }
 });
 
+/**
+ * Holds the page's animation frames in a queue until `release` is called, and logs each focus move with its time.
+ * The part page puts the focus on its title in an animation frame when a part arrives, and on Continua in one after an
+ * answer is saved; holding the frames orders the two by the test and not by how long the runner takes between lines.
+ */
+async function holdFrames(page: Page) {
+  await page.evaluate(() => {
+    const held: FrameRequestCallback[] = [];
+    const log: Array<{ at: number; on: string }> = [];
+    const original = window.requestAnimationFrame.bind(window);
+    const state = { holding: true };
+    window.requestAnimationFrame = (callback) => {
+      if (!state.holding) return original(callback);
+      held.push(callback);
+      return 0;
+    };
+    document.addEventListener("focusin", (event) => log.push({ at: performance.now(), on: (event.target as Element).tagName }), true);
+    Object.assign(window, {
+      frames: {
+        pending: () => held.length,
+        mark: () => performance.now(),
+        log: () => log,
+        release: () => {
+          state.holding = false;
+          for (const callback of held.splice(0)) original(callback);
+        },
+      },
+    });
+  });
+}
+
+test("a letter that answers the last check as the part arrives still moves the focus to Continua", async () => {
+  test.setTimeout(120_000);
+  // The answer takes 2.5 s to be saved, so nothing after the key can come before the frames are released.
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    { PYXIS_E2E_READ_DELAY: "study.lessonAnswer=2500" },
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await holdFrames(page);
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    await page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    // The part has arrived and its focus on the title waits in a held frame: the answer is given before it runs.
+    await expect.poll(() => page.evaluate(() => (window as unknown as { frames: { pending: () => number } }).frames.pending())).toBeGreaterThan(0);
+    const letter = await letterOf(page, "La cosa giusta");
+    const pressed = await page.evaluate(() => (window as unknown as { frames: { mark: () => number } }).frames.mark());
+    await page.keyboard.press(letter);
+    // The key press has run the handler, which has taken the focus as it is and sent the answer. The title takes the focus
+    // now, while the answer is still on its way, and Continua after it is saved.
+    await page.evaluate(() => (window as unknown as { frames: { release: () => void } }).frames.release());
+    await expect(page.getByRole("heading", { level: 1, name: /Intorni e distanza/ })).toBeFocused();
+    await expect(continueButton(page)).toBeFocused({ timeout: 20_000 });
+    const log = await page.evaluate(() => (window as unknown as { frames: { log: () => Array<{ at: number; on: string }> } }).frames.log());
+    const moves = log.filter((move) => move.at >= pressed).map((move) => move.on);
+    expect(moves, "the title took the focus after the key, then Continua").toEqual(["H1", "BUTTON"]);
+  } finally {
+    await close();
+  }
+});
+
+test("a click on the title while an answer is saved keeps the focus there", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await start(
+    [{ markdown: partText("Intorni") }, { markdown: partText("Frontiera") }],
+    [{ id: "t-funzioni", title: "Funzioni di più variabili", passages }],
+    { PYXIS_E2E_READ_DELAY: "study.lessonAnswer=2500" },
+  );
+  try {
+    await page.evaluate(() => (location.hash = "/plans/p-an2"));
+    await expect(page.getByRole("heading", { level: 1, name: "Analisi Matematica 2" })).toBeVisible();
+    await page.locator(".px-xpath-list").getByRole("button", { name: /^Funzioni di più variabili/ }).click();
+    await page.getByRole("list", { name: "Passi di Funzioni di più variabili" }).getByRole("button", { name: /^Lezione/ }).click();
+    const title = page.getByRole("heading", { level: 1, name: /Intorni e distanza/ });
+    await expect(title).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Fine della parte 1")).toBeVisible();
+    // The student clicks the right option, which takes the focus, and then the title while the answer is being saved.
+    const options = page.getByRole("region", { name: "Verifica" }).locator(".px-opt");
+    const right = (await letterOf(page, "La cosa giusta")).charCodeAt(0) - 97;
+    await options.nth(right).click();
+    await title.click();
+    await expect(title).toBeFocused();
+    // Both clicks came while the answer was on its way, and the part is not done yet: if a slow runner took longer than the
+    // answer's 2.5 s, this fails instead of passing without having tested the case.
+    const done = page.locator(".px-reader-side li[data-done]");
+    await expect(done).toHaveCount(0);
+    // The answer is saved and the part is read again as done, which is when the page moves the focus to Continua, in the
+    // animation frame after it: three frames later it has had its turn.
+    await expect(done.first()).toBeVisible({ timeout: 20_000 });
+    await expect(continueButton(page)).toContainText("Continua: Interno, esterno, frontiera");
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
+    );
+    await expect(title).toBeFocused();
+  } finally {
+    await close();
+  }
+});
+
 test("while the next part is read, the part before it stays on screen but cannot be answered, and nothing it saves lands on the next part", async () => {
   test.setTimeout(180_000);
   // Part 2 asks the same question as part 1, so both texts give it the same id.
