@@ -1,5 +1,26 @@
 import type { RequestInput } from "../../../../shared/ipc";
 
+/** The value of the "Nuova materia…" option, which no subject id can be. */
+export const NEW_SUBJECT = "\u0000new";
+
+/**
+ * The subject the dialog has chosen once its subjects are known: the one asked for (or already chosen) if it exists, a new
+ * subject being named stays, else the first subject, else a new one to name (by hand) or none (Pyxis writes for a subject
+ * that exists). The first subject stands in for a missing one only once a read has confirmed it is gone: with `unconfirmed`
+ * (the list may be older than the subject, which was made a moment ago elsewhere) the missing subject stays, so a card is
+ * never filed under another subject than the one the student asked for.
+ */
+export function chosenSubject(
+  subjects: Array<{ id: string }>,
+  current: string,
+  side: "hand" | "pyxis",
+  unconfirmed = false,
+): string {
+  if (current === NEW_SUBJECT && side === "hand") return current;
+  if (current && (unconfirmed || subjects.some((item) => item.id === current))) return current;
+  return subjects[0]?.id ?? (side === "hand" ? NEW_SUBJECT : "");
+}
+
 /** What closing the dialog would lose: Pyxis at work, proposals not saved, or text the student typed. */
 export type Loss = "working" | "review" | "typed";
 

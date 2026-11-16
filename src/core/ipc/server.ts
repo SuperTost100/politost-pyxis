@@ -308,6 +308,7 @@ const routes = {
   "engines.acknowledge": ["engines", "acknowledge"],
   "engines.choice": ["engines", "choice", "bare"],
   "engines.choose": ["engines", "choose"],
+  "engines.reorder": ["engines", "reorder"],
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
   "engines.names": ["engines", "names", "bare"],
@@ -775,10 +776,15 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
-  // A refused sign-in outlasts a restart. When one starts or ends, Settings shows it and the automatic plan follows.
-  configureSignOuts(signOutStore(db), (provider) => {
+  // A refused sign-in and a usage limit outlast a restart. When one starts or ends, Settings shows it, and for a
+  // sign-in the automatic plan follows.
+  configureSignOuts(signOutStore(db), (provider, change) => {
     broadcast("engine.status", { provider });
-    void engines?.signInChanged().catch(() => undefined);
+    // A limit leaves the plan as it is: its tasks go to the next tool until it resets, and the tool's own usage report
+    // may know when that is. A program that is gone has its detection read again.
+    if (change === "limit") void engines?.limitChanged(provider).catch(() => undefined);
+    else if (change === "missing") void engines?.installChanged(provider).catch(() => undefined);
+    else void engines?.signInChanged().catch(() => undefined);
   });
   // A model the subscription refused leaves the automatic choice, so the tasks that used it move now, a job's retry
   // starts on the next model, and Settings shows the engine without it.

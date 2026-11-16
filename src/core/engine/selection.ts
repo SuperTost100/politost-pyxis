@@ -96,9 +96,16 @@ export function strongestSelection(db: Database.Database): StoredSelection {
 
 /** The engines the last automatic choice could use, with their models. */
 let ready: AutoProvider[] = [];
+/** The order the student put their tools in, or null while they never set one (see `planAuto`). */
+let order: readonly string[] | null = null;
 
 export function rememberReady(providers: AutoProvider[]): void {
   ready = providers;
+}
+
+/** The student's order, for the tool a failing task moves to. Set at launch and at once when the student changes it. */
+export function rememberOrder(next: readonly string[] | null): void {
+  order = next;
 }
 
 /**
@@ -112,18 +119,23 @@ export function keepAllowed(allowed: readonly string[] | null): void {
   );
 }
 
+/** Why a task moves to another tool: a failure the next tool would not share. */
+export type FallbackReason = "limit" | "signed-out" | "model" | "not-installed";
+
 /**
- * The engine an automatic selection switches to when its own hit a usage limit, was signed out or refused the model:
+ * The engine an automatic selection switches to when its own hit a usage limit, was signed out, was not installed or
+ * refused the model:
  * the choice the automatic plan makes for the same task without that engine, or without the refused models for a
  * refusal. The result is not automatic itself. A selection the student pinned gets none.
  */
 export function fallbackSelection(
   selection: { provider: string; chosenFor?: string },
-  reason?: "limit" | "signed-out" | "model",
+  reason?: FallbackReason,
 ): Omit<StoredSelection, "auto" | "effortChoice" | "chosenFor"> | undefined {
   const feature = selection.chosenFor;
   if (!feature) return undefined;
-  // A refused model leaves its engine's other models usable; a limit or a sign-out takes the whole engine out.
+  // A refused model leaves its engine's other models usable; a limit, a sign-out or a missing program takes the whole
+  // engine out. With the student's order the plan gives the task to the next tool of their list.
   const choice = planAuto(
     withoutRefusedModels(
       ready.filter(
@@ -132,6 +144,8 @@ export function fallbackSelection(
           !isBenched(provider.id),
       ),
     ),
+    undefined,
+    order,
   )[feature as AutoFeature];
   return choice
     ? { ...choice, provider: choice.provider as ProviderId }

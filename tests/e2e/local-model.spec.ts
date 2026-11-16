@@ -221,7 +221,7 @@ test("LOCAL-02 a capable computer gets the suggestion, links to Ollama, download
         timeout: 15_000,
       });
       await shoot(page, `ready-${theme}`, ".px-local");
-      await shoot(page, `disclosure-${theme}`, ".engines-panel > .px-notice");
+      await shoot(page, `disclosure-${theme}`, ".engines-terms");
     }
     // The summary names the local model once it has tasks.
     await expect(page.locator(".engines-summary")).toContainText("Ollama");

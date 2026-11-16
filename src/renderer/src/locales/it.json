@@ -3052,9 +3052,6 @@
     "notInstalled": "Non installato",
     "install": "Installa",
     "cliDocs": "Istruzioni di CLI Funnel",
-    "add": "Aggiungi strumento AI",
-    "cliPath": "Programma installato",
-    "apiPath": "Chiave API",
     "provider": "Fornitore",
     "apiKey": "Chiave API",
     "saveAndTest": "Salva e prova",
@@ -3064,7 +3061,6 @@
     "effort": "Livello di ragionamento",
     "fast": "Modalità veloce",
     "useDefault": "Usa come predefinito",
-    "signOut": "Esci dall'account",
     "signOutUnsupported": "Questo strumento non ha un comando per uscire. Per uscire, apri il programma e usa il menu dell'account.",
     "update": "Aggiorna",
     "remove": "Rimuovi",
@@ -3096,7 +3092,6 @@
     "searchFoldersUnavailable": "Questa versione di CLI Funnel non comunica le cartelle cercate. I percorsi dei programmi rilevati sono elencati sopra.",
     "modelAdvice": "Per creare gli esami e per la valutazione, scegli un modello di fascia media o superiore.",
     "terminalInstructions": "Esegui questo comando nel terminale per completare l'accesso.",
-    "termsLink": "Condizioni del fornitore",
     "termsDetail": "Le condizioni, i limiti d'uso e l'informativa sulla privacy del fornitore si applicano a ogni chiamata. Pyxis non include un abbonamento AI.",
     "usage": {
       "title": "Questa settimana",
@@ -3111,7 +3106,6 @@
     },
     "cancel": "Annulla",
     "keyRemoved": "Chiave API rimossa. Scegli un altro strumento predefinito se necessario.",
-    "title": "Strumenti",
     "terms": "Una prova invia una frase corta al fornitore scelto.",
     "disclosure": "Il testo, i brani recuperati e gli allegati escono da questo computer e arrivano al fornitore dello strumento.",
     "disclosureLocal": "Tutte le attività usano il modello su questo computer, quindi non esce nulla.",
@@ -3141,9 +3135,10 @@
     "code": "Codice di accesso",
     "sendCode": "Invia",
     "fallback": {
-      "limit": "{{from}} ha raggiunto il limite di utilizzo, quindi ha risposto {{to}}.",
+      "limit": "{{from}} ha finito le richieste, quindi ha risposto {{to}}.",
       "signed-out": "{{from}} non ha più l'accesso, quindi ha risposto {{to}}.",
-      "model": "Il tuo abbonamento a {{from}} non include questo modello, quindi ha risposto {{to}}."
+      "model": "Il tuo abbonamento a {{from}} non include questo modello, quindi ha risposto {{to}}.",
+      "not-installed": "{{from}} non è più installato, quindi ha risposto {{to}}."
     },
     "errors": {
       "not-installed": "Il programma non è installato.",
@@ -3173,18 +3168,16 @@
       "vision": "Immagini"
     },
     "perFeature": "Strumenti per funzione",
-    "advanced": "Opzioni avanzate",
-    "allEngines": "Tutti gli strumenti",
+    "advanced": "Avanzate",
     "automatic": "Automatico",
     "backToAuto": "Torna alla scelta automatica",
-    "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Premi Installa accanto all'AI che paghi già, poi accedi. Il modello lo sceglie Pyxis.",
+    "installHelp": "Pyxis ha bisogno di uno strumento AI per rispondere. Collega qui sopra l'AI che paghi già: il modello lo sceglie Pyxis.",
     "auto": {
-      "title": "Scelta automatica",
       "summary": "Pyxis sceglie da solo lo strumento adatto a ogni lavoro, tra {{names}}, e usa il modello più economico che basta.",
       "single": "Pyxis usa {{name}} per tutto, con il modello più economico che basta.",
       "none": "Nessuno strumento è pronto.",
-      "pinned_one": "{{count}} funzione è fissata a mano nelle opzioni avanzate.",
-      "pinned_other": "{{count}} funzioni sono fissate a mano nelle opzioni avanzate."
+      "pinned_one": "{{count}} funzione è fissata a mano in Avanzate.",
+      "pinned_other": "{{count}} funzioni sono fissate a mano in Avanzate."
     },
     "task": {
       "chat": "la chat",
@@ -3195,7 +3188,6 @@
       "vision": "le foto",
       "grading": "le correzioni"
     },
-    "allCliAdded": "Tutti gli strumenti AI supportati sono già elencati nelle Impostazioni. Apri i dettagli per collegarli o configurarli.",
     "local": {
       "suggestTitle": "Questo computer può far girare un modello da solo",
       "suggestBody": "Pyxis ti consiglia {{model}}. Gira qui tramite Ollama, un programma gratuito: funziona offline, non costa niente e il tuo materiale resta su questo computer.",
@@ -3250,7 +3242,9 @@
       "ready": "Pronto",
       "limited": "Pronto, con limiti",
       "signedOut": "Serve l'accesso",
-      "refused": "Accesso scaduto"
+      "refused": "Accesso scaduto",
+      "connected": "Collegato",
+      "outOfRequests": "Richieste finite"
     },
     "choice": {
       "title": "Quali strumenti può usare Pyxis",
@@ -3264,7 +3258,8 @@
     },
     "testErrors": {
       "modelNotIncluded": "Il tuo abbonamento a {{name}} non include il modello scelto. Scegline un altro nei dettagli dello strumento.",
-      "other": "Prova di {{name}}: {{message}}"
+      "other": "Prova di {{name}}: {{message}}",
+      "quota": "{{name}} ha finito le richieste. Finché non tornano, Pyxis continua con lo strumento successivo."
     },
     "signInTo": "Accedi a {{name}}",
     "chooseModel": "Scegli un altro modello",
@@ -3273,7 +3268,57 @@
     "debug": "Mostra dettagli tecnici e debug",
     "debugHint": "Pyxis tiene su questo computer il registro di ogni chiamata all'AI dei lavori in Attività: quale AI e modello, quanto è durata, la richiesta e la risposta. Chiavi e token sono nascosti, e niente viene inviato.",
     "debugFailed": "Non è stato possibile salvare questa scelta. Riprova.",
-    "perFeatureHint": "Pyxis sceglie da solo lo strumento e il livello di ragionamento per ogni funzione. Qui puoi cambiarli una per una."
+    "perFeatureHint": "Pyxis sceglie da solo lo strumento e il livello di ragionamento per ogni funzione. Qui puoi cambiarli una per una.",
+    "intro": {
+      "listed": "Pyxis usa il primo della lista. Se finisce le richieste del giorno, passa al successivo."
+    },
+    "connected": {
+      "title": "Collegati",
+      "none": "Nessuno strumento collegato. Collegane uno qui sotto per iniziare."
+    },
+    "toConnect": {
+      "title": "Da collegare",
+      "install": "Installa e accedi",
+      "installNamed": "Installa e accedi a {{name}}"
+    },
+    "order": {
+      "hint": "Trascinali per cambiare l'ordine.",
+      "hintShared": "Trascinali per decidere tu quale usa per primo.",
+      "reset": "Lascia decidere a Pyxis",
+      "reorder": "Riordina {{name}}",
+      "place": ", posizione {{position}}",
+      "instructions": "Premi Spazio per prendere lo strumento, usa le frecce su e giù per spostarlo e premi Spazio per posarlo. Premi Esc per annullare.",
+      "picked": "{{name}} preso, posizione {{position}} di {{count}}.",
+      "moved": "{{name}}, posizione {{position}} di {{count}}.",
+      "dropped": "{{name}} è in posizione {{position}} di {{count}}.",
+      "cancelled": "Riordino annullato, {{name}} torna dov'era.",
+      "up": "Sposta su",
+      "down": "Sposta giù",
+      "failed": "Non è stato possibile salvare la modifica. Riprova."
+    },
+    "tool": {
+      "actions": "Azioni su {{name}}",
+      "stopUsing": "Non usare",
+      "useAgain": "Usa di nuovo",
+      "off": "Non in uso"
+    },
+    "limit": {
+      "today": "Le richieste tornano alle {{time}}.",
+      "tomorrow": "Le richieste tornano domani alle {{time}}.",
+      "later": "Le richieste tornano {{day}}."
+    },
+    "testing": "Provo…",
+    "disconnecting": "Scollego…",
+    "disconnect": "Scollega",
+    "disconnectNamed": "Scollega {{name}}",
+    "signOutConfirm": {
+      "title": "Scollegare {{name}}?",
+      "body": "Pyxis esce dal tuo account {{name}} su questo computer e non lo usa finché non accedi di nuovo."
+    },
+    "key": {
+      "hint": "Per chi paga un servizio a consumo. La chiave resta su questo computer.",
+      "add": "Aggiungi una chiave"
+    }
   },
   "graph": {
     "title": "Grafico",

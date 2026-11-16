@@ -7,6 +7,8 @@ export type EngineState = {
   disabled: boolean;
   /** Models the engine's subscription refused today. It still works on its other models. */
   refusedModels?: readonly string[];
+  /** When its usage limit resets, in milliseconds since the epoch, while it is out of requests. */
+  limitedUntil?: number | null;
 };
 
 export type EngineStatus = {
@@ -19,11 +21,11 @@ export type EngineStatus = {
 };
 
 /**
- * One reading of an engine's state for setup and Settings: ready, ready without some models (its subscription refused
- * one), signed out, sign-in refused (the CLI says signed in but the provider turned a call away), not installed, or not
+ * One reading of an engine's state for setup and Settings: ready, out of requests for now, ready without some models
+ * (its subscription refused one), signed out, sign-in refused (the CLI says signed in but the provider turned a call away), not installed, or not
  * offered by this build.
  */
-export function engineStatus(row: EngineState): EngineStatus {
+export function engineStatus(row: EngineState, now = Date.now()): EngineStatus {
   if (row.disabled)
     return { tone: "idle", label: "engines.unavailable", fix: null };
   if (!row.installed)
@@ -45,6 +47,9 @@ export function engineStatus(row: EngineState): EngineStatus {
       label: "engines.state.signedOut",
       fix: row.kind === "cli" ? "signIn" : null,
     };
+  // Signed in, but out of requests until its limit resets: Pyxis goes on with the next tool meanwhile.
+  if (row.limitedUntil && row.limitedUntil > now)
+    return { tone: "warn", label: "engines.state.outOfRequests", fix: null };
   // Signed in and working, but a call or a test was refused for its model: "Ready" alone would hide that.
   if (row.refusedModels?.length)
     return { tone: "warn", label: "engines.state.limited", fix: null };
