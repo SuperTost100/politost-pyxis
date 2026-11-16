@@ -25,6 +25,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { docx } from "./source-panel-fixture";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { atRest } from "./settled";
 import { SHOTS, saveShot } from "./shots";
@@ -401,6 +402,12 @@ const routes = [
   // A free book with a newer version in the catalog: the Library row and the books list offer the update.
   ["library-book-update", "/exams/library"],
   ["library-books-update", "/exams/library"],
+  // A free book about the subject, which the student does not have: its row on the shelf, the reader on it, the reader
+  // after the add, and the full list with its Open buttons.
+  ["library-book-offer", "/exams/library"],
+  ["library-book-reader", "/exams/library"],
+  ["library-book-reader-added", "/exams/library"],
+  ["library-books-open", "/exams/library"],
   ["shell-exam-active", "/exams"],
   // The same, over the map's page, which fills the window, and over the Library: Resume sits in the top strip and the
   // page keeps its height.
@@ -2610,8 +2617,9 @@ function prepareState(name: string) {
     db.prepare(
       "INSERT OR IGNORE INTO sources(id,kind,title,blob_sha,mime,status,library,catalog_id,catalog_version,created_at,updated_at) VALUES('audit-free-book','smartbook','Fisica di prova',?,'application/vnd.politost.ptsb','ready',0,'fisica-demo','1.0.0',2,2)",
     ).run("a".repeat(64));
+    // The book states add it and place it, so each state starts with it hidden and on no shelf.
     db.prepare(
-      "UPDATE sources SET library = ? WHERE id = 'audit-free-book'",
+      "UPDATE sources SET library = ?, subject_id = NULL, subject_sort = NULL WHERE id = 'audit-free-book'",
     ).run(
       name.includes("book-update") || name.includes("books-update") ? 1 : 0,
     );
@@ -4342,6 +4350,34 @@ async function openState(page: Page, name: string) {
         ),
       ).toBeVisible();
       break;
+    case "library-book-offer": {
+      const offer = page.getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") });
+      await expect(offer).toBeVisible();
+      await expect(offer.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })).toBeVisible();
+      break;
+    }
+    case "library-book-reader":
+    case "library-book-reader-added": {
+      await page
+        .getByRole("group", { name: both("C'è un libro PoliTost per questa materia", "There is a PoliTost book for this subject") })
+        .getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") })
+        .click();
+      const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+      await expect(reader.getByText(both("Non è ancora nella tua Libreria.", "It's not in your Library yet."))).toBeVisible();
+      await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      if (name === "library-book-reader-added") {
+        await reader.getByRole("button", { name: both("Aggiungi alla Libreria", "Add to Library") }).click();
+        await expect(reader.getByText(both("È nella tua Libreria, sullo scaffale di Fisica.", "It's in your Library, on the Fisica shelf."))).toBeVisible();
+      }
+      break;
+    }
+    case "library-books-open": {
+      await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
+      await page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") }).click();
+      await dialog.getByRole("button", { name: both("Apri Fisica di prova", "Open Fisica di prova") }).click();
+      await expect(page.getByRole("complementary", { name: "Fisica di prova" }).getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      break;
+    }
     case "library-books-update":
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
       await page
@@ -5350,6 +5386,19 @@ test("M14 every application route in both languages, themes and supported widths
   }
   // books.politost.it as a folder: the catalog lists the seeded free book at a newer version. Nothing is downloaded.
   const booksSite = mkdtempSync(join(tmpdir(), "pyxis-ui-audit-books-"));
+  // The package is real, so the reader can open the book; adding it takes the hidden copy that is already there.
+  const auditBook = makeBook({
+    id: "fisica-demo",
+    title: "Fisica di prova",
+    version: "1.1.0",
+    chapters: [
+      { title: "Moti", text: "## p1 | Velocità\nLa velocità media è lo spazio percorso diviso il tempo impiegato, $v = s / t$.\n\n## p2 | Accelerazione\nL'accelerazione è la variazione di velocità nel tempo.\n" },
+      { title: "Forze", text: "## p1 | Dinamica\nLa forza risultante è uguale alla massa per l'accelerazione.\n" },
+      { title: "Energia", text: "## p1 | Lavoro\nIl lavoro è forza per spostamento.\n" },
+    ],
+  });
+  mkdirSync(join(booksSite, "books"));
+  writeFileSync(join(booksSite, "books", "fisica-demo@1.1.0.ptsb"), auditBook);
   writeFileSync(
     join(booksSite, "catalog.json"),
     JSON.stringify({
@@ -5363,8 +5412,8 @@ test("M14 every application route in both languages, themes and supported widths
           version: "1.1.0",
           chapters: 3,
           package: "books/fisica-demo@1.1.0.ptsb",
-          bytes: 1024,
-          sha256: "b".repeat(64),
+          bytes: auditBook.byteLength,
+          sha256: createHash("sha256").update(auditBook).digest("hex"),
         },
       ],
     }),
