@@ -3635,11 +3635,15 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "lesson-part-popover": {
+      // The page is still loading when its first heading shows, and it has neither the title button (narrow windows) nor
+      // the parts column (wide ones) until it has read the part, so wait for whichever this width has before choosing.
       const title = page.locator(".px-studybar-title-menu");
+      const column = page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") });
+      await expect(title.or(column)).toBeVisible();
       if (await title.isVisible()) {
         await title.click();
         await expect(page.getByRole("dialog", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
-      } else await expect(page.getByRole("navigation", { name: both("Parti del capitolo", "Parts of the chapter") })).toBeVisible();
+      }
       break;
     }
     case "lesson-part-planning":
