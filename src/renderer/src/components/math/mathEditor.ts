@@ -385,7 +385,7 @@ export class MathEditor {
         run = "";
       };
       for (const key of edit.pending) {
-        if (key === "{" || key === "}") flush();
+        if (key === "{" || key === "}" || /^\d$/.test(key)) flush();
         if (!edit.braces.key(field, key)) run += key;
       }
       flush();
