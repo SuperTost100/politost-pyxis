@@ -112,7 +112,16 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
       // Easy moves a new card out of today's learning steps, so the session ends.
       await page.getByRole("button", { name: "Easy", exact: true }).click();
     }
-    await expect(page.getByText("No flashcards are due.")).toBeVisible();
+    // Both cards were rated and none is left, so the session ends: the end screen counts the two answers and no card
+    // is on show.
+    await expect(page.getByRole("heading", { level: 2, name: "You're done for today" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Your answers" }).getByRole("listitem")).toHaveText([
+      "Didn't know it0",
+      "Hard0",
+      "Knew it0",
+      "Easy2",
+    ]);
+    await expect(page.locator("article.px-card")).toHaveCount(0);
     // Each plan's path gets a cards step on the topic it rated.
     await expect
       .poll(() =>

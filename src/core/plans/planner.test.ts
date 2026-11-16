@@ -9,6 +9,7 @@ import { seedOutline } from "../study/test-parts";
 import { dayKey, startOfWeek } from "../../shared/local-day";
 import {
   dueEverywhere,
+  dueLater,
   examRings,
   examlessDue,
   finishDays,
@@ -409,6 +410,67 @@ describe("Oggi", () => {
       ["b-loose", "b"],
     ]);
     expect(dueEverywhere(db, now, { planId: "a" }).map((card) => card.id)).toEqual(["a1"]);
+  });
+
+  it("says when reviewed cards that are not due yet come back: today, and the next day that has any", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    addPlan(db, "b", { examIn: 9 });
+    db.exec("INSERT INTO subjects (id, name, position, created_at) VALUES ('s-b', 'Fisica', 0, 1); UPDATE plans SET subject_id = 's-b' WHERE id = 'b'");
+    const reviewed = (id: string, planId: string, dueAt: number | null) => {
+      dueCard(db, id, planId, `${planId}-t0`);
+      if (dueAt != null)
+        db.prepare("INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES (?, ?, 'good', ?, 1)").run(
+          `r-${id}`,
+          id,
+          JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt }),
+        );
+    };
+    reviewed("due-now", "a", now - 60_000);
+    reviewed("a-17", "a", day(0, 17));
+    reviewed("a-21", "a", day(0, 21));
+    reviewed("b-18", "b", day(0, 18));
+    reviewed("a-next-1", "a", day(2, 8));
+    reviewed("a-next-2", "a", day(2, 20));
+    reviewed("b-next", "b", day(2, 9));
+    reviewed("b-after", "b", day(5, 9));
+    reviewed("never", "b", null);
+    const everywhere = dueLater(db, now, { scope: "everywhere" });
+    // The two cards of exam a (no subject) group together; b's is the one of Fisica.
+    expect(everywhere.later).toEqual([
+      { at: day(0, 17), subject: null, count: 2 },
+      { at: day(0, 18), subject: "Fisica", count: 1 },
+    ]);
+    // Tomorrow has none, so the next day is the one two days on, with its three cards.
+    expect(everywhere.next).toEqual({ at: day(2, 8), count: 3 });
+    expect(dueLater(db, now, { scope: "everywhere", only: { planId: "b" } })).toEqual({
+      later: [{ at: day(0, 18), subject: "Fisica", count: 1 }],
+      next: { at: day(2, 9), count: 1 },
+    });
+    expect(dueLater(db, now, { scope: "topic", planId: "a", topicId: "a-t1" })).toEqual({ later: [], next: null });
+    expect(dueLater(db, now, { scope: "topic", planId: "a", topicId: "a-t0" }).later).toEqual([
+      { at: day(0, 17), subject: null, count: 2 },
+    ]);
+    // Nothing later at all.
+    expect(dueLater(openDatabase(":memory:"), now, { scope: "everywhere" })).toEqual({ later: [], next: null });
+  });
+
+  it("counts every card that comes back later today and on the next day, however many there are", () => {
+    const db = openDatabase(":memory:");
+    addPlan(db, "a", { examIn: 4 });
+    const insert = db.prepare("INSERT INTO cards (id, plan_id, topic_id, front, back, created_at) VALUES (?, 'a', 'a-t0', 'Front', 'Back', 1)");
+    const review = db.prepare("INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at) VALUES (?, ?, 'good', ?, 1)");
+    db.transaction(() => {
+      for (let i = 0; i < 201; i += 1) {
+        insert.run(`today-${i}`);
+        review.run(`r-today-${i}`, `today-${i}`, JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt: day(0, 12) + i * 1000 }));
+        insert.run(`next-${i}`);
+        review.run(`r-next-${i}`, `next-${i}`, JSON.stringify({ intervalDays: 2, ease: 2.5, dueAt: day(2, 9) + i * 1000 }));
+      }
+    })();
+    const result = dueLater(db, now, { scope: "everywhere" });
+    expect(result.later).toEqual([{ at: day(0, 12), subject: null, count: 201 }]);
+    expect(result.next).toEqual({ at: day(2, 9), count: 201 });
   });
 
   it("applies the daily limit of new cards to each plan on its own", () => {

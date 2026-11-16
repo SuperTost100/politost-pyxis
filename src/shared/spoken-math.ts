@@ -1,7 +1,7 @@
 import { repairLatexOutsideCode } from "./latex-repair";
 import { mathSpans, resolveBookRefs } from "./math-delimiters";
 
-const SIGNS: Record<string, string> = {
+export const SIGNS: Record<string, string> = {
   cdot: "·", times: "×", div: "÷", pm: "±", mp: "∓", leq: "≤", le: "≤", geq: "≥", ge: "≥", neq: "≠", ne: "≠",
   approx: "≈", sim: "∼", equiv: "≡", propto: "∝", infty: "∞", to: "→", rightarrow: "→", leftarrow: "←",
   Rightarrow: "⇒", Leftrightarrow: "⇔", sum: "∑", prod: "∏", int: "∫", partial: "∂", nabla: "∇", circ: "°",
