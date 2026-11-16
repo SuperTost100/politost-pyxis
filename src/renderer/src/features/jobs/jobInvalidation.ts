@@ -29,6 +29,8 @@ export function staleFamilies(job: Pick<JobView, "kind" | "state">): StaleFamily
   if (job.kind === "lesson-part" && finished.has(job.state)) keys.push("recommend");
   if (job.kind === "ocr-data-download") keys.push("ocr-data");
   if (job.kind === "embedding-download") keys.push("embedding");
+  // The Python and drawing downloads change what each pack's row in Settings and the Python page say.
+  if (job.kind === "local-runtime-download" || job.kind === "local-drawings-download") keys.push("python-runtime");
   // Choosing the subjects of Library files can make new subjects, and a source job that ends (a folder read again
   // included) adds or drops the files that decide whether a subject is in use.
   if (job.kind === "library-sort" || (sourceKinds.has(job.kind) && finished.has(job.state))) keys.push("subjects");

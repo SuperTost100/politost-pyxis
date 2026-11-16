@@ -2,6 +2,7 @@ import { AboutPanel } from "./AboutPanel";
 import { UpdatesPanel } from "./UpdatesPanel";
 import { DataPanel } from "./DataPanel";
 import { ProfilePanel, type ProfilePatch } from "./ProfilePanel";
+import { PackRows } from "./PackRows";
 import { RemindersPanel } from "./RemindersPanel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "antd";
@@ -49,7 +50,7 @@ type PageKey = "profile" | "engines" | "study" | "appearance" | "data" | "about"
 const PAGES: Array<{ key: PageKey; icon: LucideIcon; sections: string[] }> = [
   { key: "profile", icon: UserRound, sections: ["profile"] },
   { key: "engines", icon: Plug, sections: ["engines"] },
-  { key: "study", icon: GraduationCap, sections: ["tutor", "reading", "flashcards", "reminders"] },
+  { key: "study", icon: GraduationCap, sections: ["tutor", "packs", "reading", "flashcards", "reminders"] },
   { key: "appearance", icon: Sun, sections: ["appearance", "language"] },
   // Data draws its four groups itself (backups, privacy and wipe have their own ids), so a link to one still lands there.
   { key: "data", icon: Shield, sections: ["data"] },
@@ -166,6 +167,7 @@ export function SettingsPage() {
     reading: t("settings.reading"),
     flashcards: t("settings.flashcards"),
     reminders: t("settings.reminders.title"),
+    packs: t("settings.packs.title"),
     appearance: t("settings.theme"),
     language: t("settings.language"),
     updates: t("updates.title"),
@@ -249,6 +251,7 @@ export function SettingsPage() {
         </ControlRow>
       </ControlList>
     ),
+    packs: <PackRows />,
     reminders: <RemindersPanel />,
     data: (
       <DataPanel

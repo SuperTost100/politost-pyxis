@@ -48,6 +48,7 @@ import {
   downloadRuntime,
   invalidatePack,
   invalidateRuntime,
+  removeRuntimePack,
   requireRuntime,
   verifiedRuntimeFile,
 } from "./runtime-pack";
@@ -66,6 +67,7 @@ afterEach(async () => {
     rmSync(path, { recursive: true, force: true });
   }
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 it("missing runtime and status never fetch; only explicit installation downloads hash-verified files", async () => {
@@ -103,6 +105,8 @@ it("a cancelled download can retry without trusting a corrupt response", async (
   const fetch = vi.fn(
     (_url: string, input: RequestInit) =>
       new Promise<Response>((_, reject) => {
+        // As fetch does: a signal that has already ended rejects at once.
+        if (input.signal!.aborted) return reject(input.signal!.reason);
         input.signal!.addEventListener(
           "abort",
           () => reject(input.signal!.reason),
@@ -154,7 +158,7 @@ it("keeps Python running in a workspace without the drawing pack, and fetches on
   writeFileSync(join(path, "runtimes/pyodide/test/runtime.js"), "abc");
   const fetch = vi.fn(async (url: string) => published(url));
   vi.stubGlobal("fetch", fetch);
-  expect(await currentRuntimeStatus(path)).toEqual({
+  expect(await currentRuntimeStatus(path)).toMatchObject({
     phase: "idle",
     bytes: 0,
     totalBytes: 5,
@@ -167,7 +171,7 @@ it("keeps Python running in a workspace without the drawing pack, and fetches on
   await downloadRuntime(path);
   expect(fetch.mock.calls.map(([url]) => url)).toEqual(["https://files.example/circuits.whl"]);
   await requireRuntime(path, "drawing");
-  expect(await currentRuntimeStatus(path)).toEqual({
+  expect(await currentRuntimeStatus(path)).toMatchObject({
     phase: "ready",
     bytes: 8,
     totalBytes: 8,
@@ -193,7 +197,7 @@ it("downloads both packs in one go with one progress, and a drawing pack that fa
   const failed = expect(installing).rejects.toThrow("runtime-download-503");
   // Python is in place and usable while the drawing pack is still on its way; the progress counts both.
   await vi.waitFor(async () =>
-    expect(await currentRuntimeStatus(path)).toEqual({
+    expect(await currentRuntimeStatus(path)).toMatchObject({
       phase: "downloading",
       bytes: 3,
       totalBytes: 8,
@@ -203,7 +207,7 @@ it("downloads both packs in one go with one progress, and a drawing pack that fa
   await requireRuntime(path);
   release();
   await failed;
-  expect(await currentRuntimeStatus(path)).toEqual({
+  expect(await currentRuntimeStatus(path)).toMatchObject({
     phase: "failed",
     bytes: 0,
     totalBytes: 5,
@@ -280,4 +284,186 @@ it("makes the drawing pack not ready again when a window could not load its file
   writeFileSync(wheel, "wheel");
   await requireRuntime(path, "drawing");
   expect((await currentRuntimeStatus(path)).packs).toEqual({ pyodide: "ready", drawing: "ready" });
+});
+
+it("downloads one pack on its own: the other pack is neither fetched nor changed", async () => {
+  const path = workspace();
+  const fetch = vi.fn(async (url: string) => published(url));
+  vi.stubGlobal("fetch", fetch);
+  await downloadRuntime(path, ["drawing"]);
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(["https://files.example/circuits.whl"]);
+  const status = await currentRuntimeStatus(path);
+  expect(status.packs).toEqual({ pyodide: "idle", drawing: "ready" });
+  expect(status.info.drawing).toEqual({ phase: "ready", bytes: 5, totalBytes: 5, size: 5, version: "d2", outdated: false });
+  expect(status.info.pyodide).toEqual({ phase: "idle", bytes: 0, totalBytes: 3, size: 3, version: "test", outdated: false });
+  await expect(requireRuntime(path, "pyodide")).rejects.toThrow("runtime-missing");
+  // And the other way round.
+  await downloadRuntime(path, ["pyodide"]);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect((await currentRuntimeStatus(path)).phase).toBe("ready");
+});
+
+it("keeps each pack's progress, failure and cancellation to itself while both are downloading", async () => {
+  const path = workspace();
+  let releaseDrawing!: () => void;
+  const drawingHeld = new Promise<void>((resolve) => {
+    releaseDrawing = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, input: RequestInit) => {
+      if (url.endsWith("circuits.whl")) {
+        await drawingHeld;
+        return new Response("nope", { status: 503 });
+      }
+      // Python's file never answers until it is cancelled.
+      return new Promise<Response>((_, reject) => {
+        if (input.signal!.aborted) return reject(input.signal!.reason);
+        input.signal!.addEventListener("abort", () => reject(input.signal!.reason), { once: true });
+      });
+    }),
+  );
+  const drawing = downloadRuntime(path, ["drawing"]);
+  const python = downloadRuntime(path, ["pyodide"]);
+  const drawingFailed = expect(drawing).rejects.toThrow("runtime-download-503");
+  const pythonCancelled = expect(python).rejects.toThrow();
+  await vi.waitFor(async () => {
+    const { info } = await currentRuntimeStatus(path);
+    expect([info.drawing.phase, info.pyodide.phase]).toEqual(["downloading", "downloading"]);
+  });
+  // Stopping Python leaves the drawing pack's download on its way.
+  cancelRuntimeDownload(path, ["pyodide"]);
+  await pythonCancelled;
+  let { info } = await currentRuntimeStatus(path);
+  expect([info.drawing.phase, info.pyodide.phase]).toEqual(["downloading", "idle"]);
+  // The drawing pack fails: it is failed and says why, and Python is not touched by it.
+  releaseDrawing();
+  await drawingFailed;
+  ({ info } = await currentRuntimeStatus(path));
+  expect([info.drawing.phase, info.pyodide.phase]).toEqual(["failed", "idle"]);
+  expect(info.drawing.error).toBe("runtime-download-503");
+  expect(info.pyodide.error).toBeUndefined();
+});
+
+it("joins a pack that is already downloading instead of fetching it twice", async () => {
+  const path = workspace();
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fetch = vi.fn(async (url: string) => {
+    await held;
+    return published(url);
+  });
+  vi.stubGlobal("fetch", fetch);
+  const first = downloadRuntime(path, ["drawing"]);
+  const joined = downloadRuntime(path);
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  release();
+  await Promise.all([first, joined]);
+  // Each file was asked for once: the drawing pack by the first call, and Python's by the second.
+  expect(fetch.mock.calls.map(([url]) => url).sort()).toEqual(["https://files.example/circuits.whl", "https://runtime.example/runtime.js"]);
+  expect((await currentRuntimeStatus(path)).phase).toBe("ready");
+});
+
+it("says how far a download got when it stopped, and a tampered file as an integrity failure", async () => {
+  const path = workspace();
+  // The pack's size is 5 bytes in one file: a file that arrives with other bytes is refused whole.
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("wheeX")));
+  await expect(downloadRuntime(path, ["drawing"])).rejects.toThrow("runtime-integrity-failed");
+  let { info } = await currentRuntimeStatus(path);
+  expect(info.drawing).toMatchObject({ phase: "failed", error: "runtime-integrity-failed", bytes: 0 });
+  expect(existsSync(join(path, "runtimes/drawing/d2/circuits.whl"))).toBe(false);
+  // A retry starts the count again, and a good file ends the failure.
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path, ["drawing"]);
+  ({ info } = await currentRuntimeStatus(path));
+  expect(info.drawing).toEqual({ phase: "ready", bytes: 5, totalBytes: 5, size: 5, version: "d2", outdated: false });
+});
+
+it("removes one pack at once: its files go, nothing serves them and the other pack stays", async () => {
+  const path = workspace();
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => published(url)));
+  await downloadRuntime(path);
+  expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeDefined();
+  await removeRuntimePack(path, "drawing");
+  // Gone from the disk, from what is served, and from what is ready, before anything looks at the disk again.
+  expect(existsSync(join(path, "runtimes/drawing"))).toBe(false);
+  expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeUndefined();
+  await expect(requireRuntime(path, "drawing")).rejects.toThrow("runtime-missing");
+  const status = await currentRuntimeStatus(path);
+  expect(status.packs).toEqual({ pyodide: "ready", drawing: "idle" });
+  expect(status.info.drawing).toMatchObject({ phase: "idle", bytes: 0, outdated: false });
+  await requireRuntime(path, "pyodide");
+  expect(existsSync(join(path, "runtimes/pyodide/test/runtime.js"))).toBe(true);
+  // Removing what is not there is not an error, and the pack can be downloaded again.
+  await removeRuntimePack(path, "drawing");
+  await downloadRuntime(path, ["drawing"]);
+  await requireRuntime(path, "drawing");
+});
+
+it("removes every version of a pack, and stops a download of it that is under way", async () => {
+  const path = workspace();
+  for (const folder of ["runtimes/pyodide/older", "runtimes/pyodide/test"]) {
+    mkdirSync(join(path, folder), { recursive: true });
+    writeFileSync(join(path, folder, "runtime.js"), "abc");
+  }
+  await removeRuntimePack(path, "pyodide");
+  expect(existsSync(join(path, "runtimes/pyodide"))).toBe(false);
+  // A download of the pack that is running when it is removed ends, and nothing is left behind by it.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      (_url: string, input: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          if (input.signal!.aborted) return reject(input.signal!.reason);
+          input.signal!.addEventListener("abort", () => reject(input.signal!.reason), { once: true });
+        }),
+    ),
+  );
+  const installing = downloadRuntime(path, ["drawing"]);
+  const ended = expect(installing).rejects.toThrow();
+  await vi.waitFor(async () => expect((await currentRuntimeStatus(path)).info.drawing.phase).toBe("downloading"));
+  await removeRuntimePack(path, "drawing");
+  await ended;
+  expect((await currentRuntimeStatus(path)).info.drawing.phase).toBe("idle");
+  expect(existsSync(join(path, "runtimes/drawing"))).toBe(false);
+});
+
+it("offers an update for a pack the workspace holds in an older version, runs nothing from it and fetches nothing by itself", async () => {
+  const path = workspace();
+  // The drawing pack of an earlier app (version d1), and Python of the current one.
+  mkdirSync(join(path, "runtimes/drawing/d1"), { recursive: true });
+  writeFileSync(join(path, "runtimes/drawing/d1/circuits.whl"), "wheel");
+  mkdirSync(join(path, "runtimes/pyodide/test"), { recursive: true });
+  writeFileSync(join(path, "runtimes/pyodide/test/runtime.js"), "abc");
+  const fetch = vi.fn(async (url: string) => published(url));
+  vi.stubGlobal("fetch", fetch);
+  const status = await currentRuntimeStatus(path);
+  expect(status.packs).toEqual({ pyodide: "ready", drawing: "idle" });
+  expect(status.info.drawing).toMatchObject({ phase: "idle", outdated: true, version: "d2" });
+  expect(status.info.pyodide.outdated).toBe(false);
+  // The old files are not run: the current manifest cannot vouch for them, even when their bytes match.
+  await expect(requireRuntime(path, "drawing")).rejects.toThrow("runtime-missing");
+  expect(await verifiedRuntimeFile(path, "drawing", "circuits.whl")).toBeUndefined();
+  expect(fetch).not.toHaveBeenCalled();
+  // Updating fetches this version, which replaces the older one, and the pack is no longer out of date.
+  await downloadRuntime(path, ["drawing"]);
+  expect(existsSync(join(path, "runtimes/drawing/d1"))).toBe(false);
+  expect((await currentRuntimeStatus(path)).info.drawing).toMatchObject({ phase: "ready", outdated: false });
+});
+
+it("takes the files of an end-to-end run from the server that stands in for the CDN, and only in that run", async () => {
+  const path = workspace();
+  const fetch = vi.fn(async (url: string) => published(url));
+  vi.stubGlobal("fetch", fetch);
+  vi.stubEnv("PYXIS_E2E_PACK_BASE", "http://127.0.0.1:9999/packs/");
+  // Without PYXIS_E2E=1 the variable is ignored.
+  await downloadRuntime(path, ["drawing"]);
+  expect(fetch.mock.calls[0]![0]).toBe("https://files.example/circuits.whl");
+  await removeRuntimePack(path, "drawing");
+  vi.stubEnv("PYXIS_E2E", "1");
+  await downloadRuntime(path, ["drawing"]);
+  expect(fetch.mock.calls[1]![0]).toBe("http://127.0.0.1:9999/packs/drawing/circuits.whl");
+  vi.unstubAllEnvs();
 });

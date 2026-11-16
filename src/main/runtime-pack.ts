@@ -54,9 +54,27 @@ export const runtimePacks: Record<PackId, Pack> = {
   drawing: pack(drawing.version, drawing.files, true, true),
 };
 export type PackPhase = "idle" | "downloading" | "ready" | "failed";
+/** One pack as the Settings rows show it. */
+export type PackInfo = {
+  phase: PackPhase;
+  /** The bytes of the download that is running or stopped, or the whole pack when it is ready. */
+  bytes: number;
+  /** The bytes this pack's download fetches: the pack's size. */
+  totalBytes: number;
+  /** The pack's size on disk once downloaded (the sum of its files, as its manifest pins them). */
+  size: number;
+  /** The version this app's manifest pins. */
+  version: string;
+  /**
+   * The workspace holds an older version of this pack and not this one. Files of an older version cannot be checked
+   * against this app's manifest, so they are never run: the pack is not ready until it is downloaded again.
+   */
+  outdated: boolean;
+  error?: string;
+};
 /**
- * `packs` is each pack on its own. The rest describes the download as the Python page shows it: `ready` when every
- * pack is there, and otherwise the bytes of the packs still missing, which is what Download fetches.
+ * `packs` and `info` describe each pack on its own. The rest describes the downloads as the Python page shows them:
+ * `ready` when every pack is there, and otherwise the bytes of the packs still missing, which is what Download fetches.
  */
 export type RuntimeStatus = {
   phase: PackPhase;
@@ -64,48 +82,74 @@ export type RuntimeStatus = {
   totalBytes: number;
   error?: string;
   packs: Record<PackId, PackPhase>;
+  info: Record<PackId, PackInfo>;
 };
-/** `bytes` and `totalBytes` count the download that is running, over every pack it fetches. */
-type State = {
-  packs: Record<PackId, PackPhase>;
-  bytes: number;
-  totalBytes: number;
-  error?: string;
-};
+type PackState = { phase: PackPhase; bytes: number; totalBytes: number; error?: string };
+/** Each pack's own state, so one pack's download, failure or removal never touches the other's. */
+type State = { packs: Record<PackId, PackState>; outdated: Record<PackId, boolean>; chain: Set<PackId> };
 const states = new Map<string, State>();
+/** The download of one pack in one workspace, and the way to stop it. Keyed by `key`. */
 const installs = new Map<string, Promise<void>>();
 const controllers = new Map<string, AbortController>();
+const key = (workspace: string, id: PackId) => `${workspace}\0${id}`;
 const everyByte = runtimePackIds.reduce(
   (sum, id) => sum + runtimePacks[id].totalBytes,
   0,
 );
+const fresh = (id: PackId): PackState => ({ phase: "idle", bytes: 0, totalBytes: runtimePacks[id].totalBytes });
 function stateOf(workspace: string): State {
   let state = states.get(workspace);
   if (!state) {
-    state = { packs: { pyodide: "idle", drawing: "idle" }, bytes: 0, totalBytes: 0 };
+    state = {
+      packs: Object.fromEntries(runtimePackIds.map((id) => [id, fresh(id)])) as Record<PackId, PackState>,
+      outdated: Object.fromEntries(runtimePackIds.map((id) => [id, false])) as Record<PackId, boolean>,
+      chain: new Set(),
+    };
     states.set(workspace, state);
   }
   return state;
 }
 function summary(state: State): RuntimeStatus {
-  const packs = { ...state.packs };
-  const missing = runtimePackIds.filter((id) => packs[id] !== "ready");
+  const phases = Object.fromEntries(runtimePackIds.map((id) => [id, state.packs[id].phase])) as Record<PackId, PackPhase>;
+  const info = Object.fromEntries(
+    runtimePackIds.map((id) => {
+      const own = state.packs[id];
+      return [
+        id,
+        {
+          phase: own.phase,
+          bytes: own.phase === "ready" ? runtimePacks[id].totalBytes : own.bytes,
+          totalBytes: runtimePacks[id].totalBytes,
+          size: runtimePacks[id].totalBytes,
+          version: runtimePacks[id].version,
+          outdated: state.outdated[id],
+          ...(own.error ? { error: own.error } : {}),
+        } satisfies PackInfo,
+      ];
+    }),
+  ) as Record<PackId, PackInfo>;
+  const missing = runtimePackIds.filter((id) => phases[id] !== "ready");
   const totalBytes = missing.reduce(
     (sum, id) => sum + runtimePacks[id].totalBytes,
     0,
   );
-  if (missing.some((id) => packs[id] === "downloading"))
+  if (missing.some((id) => phases[id] === "downloading")) {
+    // One download over every pack that started together, so the progress does not run backwards as one finishes.
+    const together = runtimePackIds.filter((id) => phases[id] === "downloading" || state.chain.has(id));
     return {
       phase: "downloading",
-      bytes: state.bytes,
-      totalBytes: state.totalBytes,
-      packs,
+      bytes: together.reduce((sum, id) => sum + (phases[id] === "ready" ? runtimePacks[id].totalBytes : state.packs[id].bytes), 0),
+      totalBytes: together.reduce((sum, id) => sum + runtimePacks[id].totalBytes, 0),
+      packs: phases,
+      info,
     };
+  }
   if (!missing.length)
-    return { phase: "ready", bytes: everyByte, totalBytes: everyByte, packs };
-  if (missing.some((id) => packs[id] === "failed"))
-    return { phase: "failed", bytes: 0, totalBytes, error: state.error, packs };
-  return { phase: "idle", bytes: 0, totalBytes, packs };
+    return { phase: "ready", bytes: everyByte, totalBytes: everyByte, packs: phases, info };
+  const failed = missing.find((id) => phases[id] === "failed");
+  if (failed)
+    return { phase: "failed", bytes: 0, totalBytes, error: state.packs[failed].error, packs: phases, info };
+  return { phase: "idle", bytes: 0, totalBytes, packs: phases, info };
 }
 /**
  * Runtime files whose hash matched, by path, with the size, modification time and inode they had then. Every Python run
@@ -178,25 +222,32 @@ async function packOnDisk(workspace: string, id: PackId): Promise<boolean> {
   );
   return files.every(Boolean);
 }
+/** Whether the workspace holds a folder of another version of the pack, which this app's manifest cannot vouch for. */
+async function hasOtherVersion(workspace: string, id: PackId): Promise<boolean> {
+  const entries = await readdir(join(workspace, "runtimes", id), { withFileTypes: true }).catch(() => []);
+  return entries.some((entry) => entry.isDirectory() && entry.name !== runtimePacks[id].version);
+}
 /**
  * Disk truth for every pack that is not being downloaded. Never downloads. A pack whose download failed stays failed
- * until its files are there.
+ * until its files are there. A pack whose files are not there but whose folder of an older version is, is `outdated`: it
+ * is offered as an update, and nothing is fetched or run until the student asks.
  */
 export async function currentRuntimeStatus(
   workspace: string,
 ): Promise<RuntimeStatus> {
   const state = stateOf(workspace);
-  const idle = runtimePackIds.filter((id) => state.packs[id] !== "downloading");
+  const idle = runtimePackIds.filter((id) => state.packs[id].phase !== "downloading");
   const onDisk = await Promise.all(idle.map((id) => packOnDisk(workspace, id)));
+  const older = await Promise.all(idle.map((id, index) => (onDisk[index] ? false : hasOtherVersion(workspace, id))));
   idle.forEach((id, index) => {
+    const own = state.packs[id];
     // A download that started during the look owns the pack's phase.
-    if (state.packs[id] === "downloading") return;
-    state.packs[id] = onDisk[index]
-      ? "ready"
-      : state.packs[id] === "failed"
-        ? "failed"
-        : "idle";
+    if (own.phase === "downloading") return;
+    state.outdated[id] = older[index]!;
+    if (onDisk[index]) state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
+    else if (own.phase === "ready") state.packs[id] = fresh(id);
   });
+  if (!runtimePackIds.some((id) => state.packs[id].phase === "downloading")) state.chain.clear();
   return summary(state);
 }
 /** Execution entry: the pack must already be installed by explicit consent. */
@@ -204,7 +255,7 @@ export async function requireRuntime(
   workspace: string,
   id: PackId = "pyodide",
 ): Promise<void> {
-  if (stateOf(workspace).packs[id] === "ready") return;
+  if (stateOf(workspace).packs[id].phase === "ready") return;
   if ((await currentRuntimeStatus(workspace)).packs[id] !== "ready")
     throw new Error("runtime-missing");
 }
@@ -215,81 +266,106 @@ export async function requireRuntime(
  */
 export function invalidatePack(workspace: string, id: PackId): void {
   const state = states.get(workspace);
-  if (state && state.packs[id] === "ready") state.packs[id] = "idle";
+  if (state && state.packs[id].phase === "ready") state.packs[id] = fresh(id);
   for (const file of runtimePacks[id].files) verified.delete(join(packRoot(workspace, id), file.name));
 }
-export function cancelRuntimeDownload(workspace: string): void {
-  controllers.get(workspace)?.abort();
+/** Stops the downloads of these packs (every pack when none is named). */
+export function cancelRuntimeDownload(workspace: string, only: readonly PackId[] = runtimePackIds): void {
+  for (const id of only) controllers.get(key(workspace, id))?.abort();
 }
 /**
- * Fetches every pack that is not on disk. Only the explicit local-runtime-download job calls this, so a workspace that
- * has Python but lacks a newer pack gets that pack when the student presses Download on the Python page, never on its
- * own.
+ * Where a file comes from: the URL its manifest names. An end-to-end run (PYXIS_E2E=1 with PYXIS_E2E_PACK_BASE) gets
+ * it from a local server that stands in for the CDN, as `<base>/<pack>/<file>`. Unset outside those runs.
  */
-export function downloadRuntime(workspace: string): Promise<void> {
-  const existing = installs.get(workspace);
+function fileUrl(id: PackId, file: PackFile): string {
+  const base = process.env["PYXIS_E2E"] === "1" ? process.env["PYXIS_E2E_PACK_BASE"] : undefined;
+  return base ? `${base.replace(/\/$/, "")}/${id}/${file.name}` : file.url;
+}
+/**
+ * Fetches the packs named (every pack when none is), each on its own, so one that fails or is cancelled leaves the others
+ * as they were. Only the explicit runtime download jobs call this, so a workspace that has Python but lacks a newer pack
+ * gets that pack when the student asks for it, never on its own. A pack that is already on its way is joined, not
+ * started again. Rejects with the first failure after every pack has settled.
+ */
+export async function downloadRuntime(
+  workspace: string,
+  only: readonly PackId[] = runtimePackIds,
+): Promise<void> {
+  const state = stateOf(workspace);
+  for (const id of only) state.chain.add(id);
+  const results = await Promise.allSettled(only.map((id) => downloadPack(workspace, id)));
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+}
+function downloadPack(workspace: string, id: PackId): Promise<void> {
+  const k = key(workspace, id);
+  const existing = installs.get(k);
   if (existing) return existing;
   const controller = new AbortController();
-  controllers.set(workspace, controller);
-  const promise = install(workspace, controller.signal).catch(
-    (error: unknown) => {
-      installs.delete(workspace);
-      const state = stateOf(workspace);
+  controllers.set(k, controller);
+  const state = stateOf(workspace);
+  // Set at once, before the look at the disk, so a status asked meanwhile already says it is downloading.
+  state.packs[id] = { phase: "downloading", bytes: 0, totalBytes: runtimePacks[id].totalBytes };
+  const own = state.packs[id];
+  const promise = (async () => {
+    controller.signal.throwIfAborted();
+    if (await packOnDisk(workspace, id)) {
+      state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
+      return;
+    }
+    await installPack(workspace, id, controller.signal, own);
+    state.packs[id] = { ...fresh(id), phase: "ready", bytes: runtimePacks[id].totalBytes };
+    state.outdated[id] = false;
+    if (runtimePacks[id].replacesOlder) await removeOlderVersions(workspace, id);
+  })()
+    .catch((error: unknown) => {
       const cancelled = controller.signal.aborted;
-      for (const id of runtimePackIds)
-        if (state.packs[id] === "downloading")
-          state.packs[id] = cancelled ? "idle" : "failed";
-      state.error = cancelled
-        ? undefined
-        : error instanceof Error
-          ? error.message
-          : "runtime-download-failed";
+      // A stopped download keeps how far it got, so the row can say where it stopped; a cancelled one starts over.
+      state.packs[id] = cancelled
+        ? fresh(id)
+        : {
+            phase: "failed",
+            bytes: own.bytes,
+            totalBytes: runtimePacks[id].totalBytes,
+            error: error instanceof Error ? error.message : "runtime-download-failed",
+          };
       throw error;
-    },
-  );
-  void promise.then(
-    () => {
-      controllers.delete(workspace);
-      installs.delete(workspace);
-    },
-    () => controllers.delete(workspace),
-  );
-  installs.set(workspace, promise);
+    })
+    .finally(() => {
+      installs.delete(k);
+      controllers.delete(k);
+    });
+  installs.set(k, promise);
   return promise;
+}
+/**
+ * Removes a pack: stops its download, forgets its files at once, so nothing is served or run from them from here on, and
+ * deletes the folders of every version of it. The other pack is left alone.
+ */
+export async function removeRuntimePack(workspace: string, id: PackId): Promise<void> {
+  const k = key(workspace, id);
+  controllers.get(k)?.abort();
+  await installs.get(k)?.catch(() => undefined);
+  const state = stateOf(workspace);
+  state.packs[id] = fresh(id);
+  state.outdated[id] = false;
+  const root = join(workspace, "runtimes", id);
+  for (const path of [...verified.keys()]) if (path.startsWith(root + sep)) verified.delete(path);
+  await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }
 /** Stop writes before a restore or wipe replaces this workspace. */
 export async function invalidateRuntime(workspace: string): Promise<void> {
-  controllers.get(workspace)?.abort();
-  await installs.get(workspace)?.catch(() => undefined);
-  installs.delete(workspace);
-  controllers.delete(workspace);
+  const mine = runtimePackIds.map((id) => key(workspace, id));
+  for (const k of mine) controllers.get(k)?.abort();
+  await Promise.all(mine.map((k) => installs.get(k)?.catch(() => undefined)));
+  for (const k of mine) {
+    installs.delete(k);
+    controllers.delete(k);
+  }
   states.delete(workspace);
   const root = join(workspace, "runtimes") + sep;
   for (const path of [...verified.keys()])
     if (path.startsWith(root)) verified.delete(path);
-}
-async function install(workspace: string, signal: AbortSignal): Promise<void> {
-  signal.throwIfAborted();
-  const state = stateOf(workspace);
-  // A pack that is already there is left alone, so Python keeps running while another pack downloads.
-  const missing: PackId[] = [];
-  for (const id of runtimePackIds) {
-    if (await packOnDisk(workspace, id)) state.packs[id] = "ready";
-    else missing.push(id);
-  }
-  signal.throwIfAborted();
-  state.bytes = 0;
-  state.totalBytes = missing.reduce(
-    (sum, id) => sum + runtimePacks[id].totalBytes,
-    0,
-  );
-  state.error = undefined;
-  for (const id of missing) state.packs[id] = "downloading";
-  for (const id of missing) {
-    await installPack(workspace, id, signal, state);
-    state.packs[id] = "ready";
-    if (runtimePacks[id].replacesOlder) await removeOlderVersions(workspace, id);
-  }
 }
 /** Deletes the folders of a pack's earlier versions, which nothing reads once this version is verified. */
 async function removeOlderVersions(workspace: string, id: PackId): Promise<void> {
@@ -312,7 +388,7 @@ async function installPack(
   workspace: string,
   id: PackId,
   signal: AbortSignal,
-  state: State,
+  state: PackState,
 ): Promise<void> {
   const root = packRoot(workspace, id);
   const { files } = runtimePacks[id];
@@ -324,7 +400,7 @@ async function installPack(
       files.slice(offset, offset + 4).map(async (file) => {
         signal.throwIfAborted();
         if (!(await runtimeFileReady(workspace, id, file.name))) {
-          const response = await fetch(file.url, {
+          const response = await fetch(fileUrl(id, file), {
             signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
           });
           if (!response.ok || !response.body)

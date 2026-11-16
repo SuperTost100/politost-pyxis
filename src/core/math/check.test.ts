@@ -112,32 +112,63 @@ describe("checkClaim", () => {
     }
   });
 
-  it("starts one explicit runtime download job and reuses it", () => {
-    const jobs: Array<{ id: string; kind: string; state: string }> = [];
-    const calls: string[] = [];
+  /** A runner that records what is started, and lists the jobs with the `ref` the registered kinds would give them. */
+  function recordingRunner() {
+    const jobs: Array<{ id: string; kind: string; state: string; ref?: string }> = [];
+    const calls: Array<string | [string, unknown]> = [];
     const runner = {
       register: () => undefined,
-      start: (kind: string) => {
-        jobs.push({ id: "job-1", kind, state: "queued" });
-        calls.push("start");
-        return "job-1";
+      start: (kind: string, params?: { packs?: string[] }) => {
+        const id = `job-${jobs.length + 1}`;
+        jobs.push({
+          id,
+          kind,
+          state: "queued",
+          ref: kind === "local-runtime-download" ? (params?.packs?.join(",") ?? "missing") : undefined,
+        });
+        calls.push(["start", { kind, params }]);
+        return id;
       },
-      retry: () => calls.push("retry"),
-      resume: () => calls.push("resume"),
+      retry: (id: string) => calls.push(`retry ${id}`),
+      resume: (id: string) => calls.push(`resume ${id}`),
       list: () => jobs,
     } as unknown as Parameters<typeof toolHandlers>[1];
-    const tools = toolHandlers("", runner);
+    return { jobs, calls, tools: toolHandlers("", runner) };
+  }
+
+  it("starts one explicit runtime download job and reuses it", () => {
+    const { jobs, calls, tools } = recordingRunner();
     expect(tools.runtimeDownload()).toEqual({ jobId: "job-1" });
     expect(tools.runtimeDownload()).toEqual({ jobId: "job-1" });
     jobs[0]!.state = "failed";
     tools.runtimeDownload();
-    expect(calls).toEqual(["start", "retry"]);
+    expect(calls).toEqual([["start", { kind: "local-runtime-download", params: undefined }], "retry job-1"]);
     // A download that finished is over: asking again starts a new one, which fetches what the workspace lacks now.
     jobs[0]!.state = "succeeded";
     tools.runtimeDownload();
-    expect(calls).toEqual(["start", "retry", "start"]);
+    expect(calls).toHaveLength(3);
     expect(() => toolHandlers().runtimeDownload()).toThrow(
       /runtime-unavailable/,
     );
+  });
+
+  it("gives each pack its own download job, so Settings can start, stop and retry one without the other", () => {
+    const { jobs, calls, tools } = recordingRunner();
+    const python = tools.runtimeDownload({ pack: "pyodide" });
+    const drawings = tools.runtimeDownload({ pack: "drawing" });
+    const missing = tools.runtimeDownload({});
+    expect(new Set([python.jobId, drawings.jobId, missing.jobId]).size).toBe(3);
+    expect(calls).toEqual([
+      ["start", { kind: "local-runtime-download", params: { packs: ["pyodide"] } }],
+      ["start", { kind: "local-drawings-download", params: undefined }],
+      ["start", { kind: "local-runtime-download", params: undefined }],
+    ]);
+    // Asking again for a pack joins its job, and the other jobs stay as they are.
+    expect(tools.runtimeDownload({ pack: "drawing" })).toEqual(drawings);
+    expect(tools.runtimeDownload({ pack: "pyodide" })).toEqual(python);
+    // A drawing download that failed is the only one retried.
+    jobs.find((job) => job.id === drawings.jobId)!.state = "failed";
+    tools.runtimeDownload({ pack: "drawing" });
+    expect(calls.slice(3)).toEqual([`retry ${drawings.jobId}`]);
   });
 });

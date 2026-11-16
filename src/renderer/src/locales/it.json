@@ -2404,6 +2404,47 @@
       "unsupported": "Questo computer non mostra le notifiche di Pyxis. Consentile nelle impostazioni di sistema.",
       "valueOff": "Disattivato"
     },
+    "packs": {
+      "title": "Disegni e Python",
+      "python": {
+        "title": "Python",
+        "about": "Per fare i calcoli nelle risposte, eseguire il tuo codice e disegnare grafici e circuiti.",
+        "download": "Scarica Python ({{size}})",
+        "more": "Altro su Python",
+        "remove": "Rimuovi Python",
+        "consent": "Scaricato una volta sola da jsDelivr, solo quando lo chiedi. Non viene inviato niente di te.",
+        "onDisk": "{{size}} sul disco.",
+        "outdated": "Serve Python aggiornato, versione {{version}} ({{size}}): quello sul disco è di una versione precedente e finché non lo aggiorni non si usa.",
+        "progress": "Scaricamento di Python: {{percent}}%",
+        "removeTitle": "Rimuovere Python?",
+        "removeBody": "Python ({{size}}) viene tolto da questo spazio di lavoro. Senza Python non si fanno i calcoli nelle risposte, non si esegue il tuo codice e non si disegnano grafici e circuiti. I disegni già fatti restano nelle lezioni e nelle risposte. Puoi scaricarlo di nuovo quando vuoi."
+      },
+      "drawings": {
+        "title": "Disegni",
+        "about": "Grafi, alberi e automi nelle lezioni e nelle risposte.",
+        "withPython": "Con Python disegna anche i circuiti.",
+        "withoutPython": "Senza Python disegna tutto tranne i circuiti.",
+        "download": "Scarica i disegni ({{size}})",
+        "more": "Altro sui disegni",
+        "remove": "Rimuovi i disegni",
+        "consent": "Scaricati una volta sola da jsDelivr e da PyPI, solo quando lo chiedi. Non viene inviato niente di te.",
+        "onDisk": "{{size}} sul disco · versione {{version}}.",
+        "outdated": "Servono i disegni aggiornati, versione {{version}} ({{size}}): quelli sul disco sono di una versione precedente e finché non li aggiorni non si usano.",
+        "progress": "Scaricamento dei disegni: {{percent}}%",
+        "removeTitle": "Rimuovere i disegni?",
+        "removeBody": "I disegni ({{size}}) vengono tolti da questo spazio di lavoro, e con loro i circuiti. Pyxis smette di fare nuovi grafi e circuiti, mentre quelli già fatti restano nelle lezioni e nelle risposte. Puoi scaricarli di nuovo quando vuoi."
+      },
+      "transfer": "{{current}} di {{total}}",
+      "cancel": "Annulla",
+      "retry": "Riprova",
+      "update": "Aggiorna",
+      "removeConfirm": "Rimuovi",
+      "removeFailed": "Non sono riuscito a rimuovere i file. Chiudi quello che li usa e riprova.",
+      "stoppedAt": "Lo scaricamento si è fermato a {{done}}. Controlla la connessione.",
+      "notStarted": "Lo scaricamento non è partito. Controlla la connessione.",
+      "tampered": "I file arrivati non erano quelli attesi e sono stati scartati. Riprova.",
+      "startFailed": "Non sono riuscito a far partire lo scaricamento. Riprova."
+    },
     "restoreFailed": "Il file non è una copia valida.",
     "restoreRolledBack": "Il ripristino non è riuscito a finire, quindi Pyxis è tornato ai dati che avevi prima. Della copia non è stato tenuto nulla.",
     "restoreRecoveryRequired": "Pyxis non è riuscito né a finire né ad annullare il ripristino, quindi si è fermato per non mettere a rischio i tuoi dati. Esci da Pyxis e riaprilo per riavere i dati che avevi prima del ripristino.",
@@ -2587,7 +2628,8 @@
       "ocrData": "Dati di lettura delle scansioni scaricati",
       "embedding": "Modello di ricerca scaricato",
       "python": "Python scaricato",
-      "librarySort": "Materie scelte"
+      "librarySort": "Materie scelte",
+      "drawings": "Disegni scaricati"
     },
     "cancel": "Annulla",
     "stop": "Ferma",
@@ -2747,7 +2789,8 @@
       "stopWaiting": "Smetti di aspettare"
     },
     "waiting_one": "{{count}} in attesa",
-    "waiting_other": "{{count}} in attesa"
+    "waiting_other": "{{count}} in attesa",
+    "drawingsDownload": "Scarica i disegni"
   },
   "errors": {
     "coreRestarted": "Il motore interno si è riavviato",
@@ -3404,11 +3447,11 @@
     "code": "Codice Python",
     "sessionFiles": "Ogni esecuzione ha i propri file temporanei.",
     "consentTitle": "Python richiede un download una tantum",
-    "consentBody": "Pyxis scarica il runtime Python ({{size}} MB) in questo spazio di lavoro. Non scarica nulla finché non lo chiedi.",
+    "consentBody": "Pyxis scarica il runtime di Python e i file dei disegni ({{size}} MB) in questo spazio di lavoro, da jsDelivr e da PyPI, una volta sola. Non scarica nulla finché non lo chiedi e non invia niente di te.",
     "downloadAction": "Scarica Python ({{size}} MB)",
     "retryDownload": "Riprova il download ({{size}} MB)",
     "drawingsTitle": "Circuiti e grafi richiedono un piccolo download",
-    "drawingsBody": "Pyxis scarica i file che disegnano circuiti e grafi ({{size}} MB) in questo spazio di lavoro. Non scarica nulla finché non lo chiedi.",
+    "drawingsBody": "Pyxis scarica i file che disegnano circuiti e grafi ({{size}} MB) in questo spazio di lavoro, da jsDelivr e da PyPI, una volta sola. Non scarica nulla finché non lo chiedi e non invia niente di te.",
     "drawingsAction": "Scarica ({{size}} MB)",
     "drawingsDownload": "Scarico · {{current}} di {{total}} MB",
     "cancelDownload": "Annulla",

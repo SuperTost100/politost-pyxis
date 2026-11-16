@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -25,6 +26,7 @@ import { imageOnlyPdf } from "./scanned-pdf-fixture";
 import { docx } from "./source-panel-fixture";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
+import { packServer } from "./pack-server";
 import { AuditRecord } from "./audit-record";
 import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
@@ -125,6 +127,9 @@ const routes = [
   ["settings-engines-listed", "/settings/engines"],
   ["settings-engines-advanced", "/settings/engines"],
   ["settings-engines-debug", "/settings/engines"],
+  // The "Disegni e Python" card of Studio: nothing downloaded, the drawings alone (and their menu), a download part of the
+  // way, one that failed, and a drawing pack older than the app's.
+  ...["", "-drawings", "-menu", "-downloading", "-failed", "-update"].map((state) => [`settings-study-pack${state}`, "/settings/packs"] as const),
   ["gallery", "/dev/gallery"],
   // The one dialog in its three kinds, from the gallery: a confirmation that deletes, a form, one that only informs.
   ["gallery-dialog-confirm", "/dev/gallery"],
@@ -2370,7 +2375,37 @@ function prepareBuild(name: string) {
   });
 }
 
+/** The packs of the "Disegni e Python" states: each starts from nothing, then from what it shows. */
+let auditPacks: Awaited<ReturnType<typeof packServer>> | undefined;
+/** Whether the last state left packs in the workspace that the next one must not find. */
+let packsMoved = false;
+async function resetPacks(page: Page, name: string) {
+  const mine = name.startsWith("settings-study-pack");
+  if (!mine && !packsMoved) return;
+  for (const pack of ["pyodide", "drawing"] as const)
+    await page.evaluate((pack) => window.pyxis.invoke("tools.runtimeRemove", { pack }), pack);
+  packsMoved = mine;
+  auditPacks?.hold.clear();
+  auditPacks?.fail.clear();
+}
+function preparePacks(name: string) {
+  const drawing = JSON.parse(readFileSync("resources/drawing-manifest.json", "utf8")) as { version: string };
+  const folder = join(auditUserData, "workspace", "runtimes", "drawing");
+  if (["settings-study-pack-drawings", "settings-study-pack-menu"].includes(name)) {
+    mkdirSync(join(folder, drawing.version), { recursive: true });
+    cpSync(".tmp/drawing", join(folder, drawing.version), { recursive: true });
+  }
+  if (name === "settings-study-pack-update") {
+    mkdirSync(join(folder, "1"), { recursive: true });
+    writeFileSync(join(folder, "1", "graphviz.js"), "old");
+  }
+  // graphviz.js is held back after the wheel arrives, or refused, for the two states that show a download on its way.
+  if (name === "settings-study-pack-downloading") auditPacks?.hold.add("graphviz.js");
+  if (name === "settings-study-pack-failed") auditPacks?.fail.add("graphviz.js");
+}
+
 function prepareState(name: string) {
+  preparePacks(name);
   // First, so the exams the empty states hid are back before any step below writes a row that belongs to one: the lesson
   // steps record events on the audit exam, and a state that follows exams-empty in a filtered run would fail on a foreign key.
   showHiddenExams();
@@ -3137,6 +3172,23 @@ async function openState(page: Page, name: string) {
       await expect(page.getByRole("region", { name: both("Questa settimana", "This week") })).toBeVisible();
       break;
     // The download state lives in main and outlasts a reload, so the plain route starts from no download.
+    case "settings-study-pack":
+    case "settings-study-pack-drawings":
+    case "settings-study-pack-update":
+      await expect(page.locator('li[data-pack="drawing"]')).toBeVisible();
+      break;
+    case "settings-study-pack-menu":
+      await page.getByRole("button", { name: /^(Altro sui disegni|More about the drawings)$/ }).click();
+      await expect(page.getByRole("menuitem")).toBeVisible();
+      break;
+    case "settings-study-pack-downloading":
+      await page.getByRole("button", { name: /^(Scarica i disegni|Download the drawings)/ }).click();
+      await expect(page.locator(".px-pack-stat")).toBeVisible({ timeout: 30000 });
+      break;
+    case "settings-study-pack-failed":
+      await page.getByRole("button", { name: /^(Scarica i disegni|Download the drawings)/ }).click();
+      await expect(page.locator('li[data-pack="drawing"] [role=alert]')).toBeVisible({ timeout: 30000 });
+      break;
     case "settings-updates":
       await page.evaluate(() => window.pyxis.cancelUpdate());
       // The installed version is written once, under "Versione e licenze", as the About text writes it ("0.5.0 dev.10"),
@@ -5516,8 +5568,10 @@ test.beforeAll(async () => {
       ],
     }),
   );
+  auditPacks = await packServer();
   const env = {
     ...fakeEngines(),
+    PYXIS_E2E_PACK_BASE: auditPacks.base,
     PYXIS_E2E_BOOKS: booksSite,
     PYXIS_E2E_FILE: importFolder,
     ...updateEnv(),
@@ -5623,6 +5677,7 @@ test.afterEach(() => {
 test.afterAll(async () => {
   record.write();
   await auditApp?.close();
+  auditPacks?.close();
   removeTestFolder(auditUserData);
   for (const folder of [...auditFolders, updateFolder, auditEngines]) rmSync(folder, { recursive: true, force: true });
 });
@@ -5662,6 +5717,7 @@ async function walk(slice: typeof auditRoutes) {
             const before = pageErrors.length;
             auditNow = key;
             try {
+              await resetPacks(page, name);
               prepareState(name);
               await page.evaluate((route) => {
                 location.hash = route;

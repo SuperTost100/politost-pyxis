@@ -1870,11 +1870,31 @@ export const requests = {
       totalBytes: z.number(),
       error: z.string().optional(),
       packs: z.record(z.enum(runtimePackIds), runtimePhaseSchema),
+      // Each pack for its row in Settings: how far its download is, its size, the version this app pins, and whether the
+      // workspace holds an older one that is offered as an update.
+      info: z.record(
+        z.enum(runtimePackIds),
+        z.object({
+          phase: runtimePhaseSchema,
+          bytes: z.number(),
+          totalBytes: z.number(),
+          size: z.number(),
+          version: z.string(),
+          outdated: z.boolean(),
+          error: z.string().optional(),
+        }),
+      ),
     }),
   },
+  // Starts, or joins, the download of one pack (Settings), or of every pack that is missing (the Python page).
   "tools.runtimeDownload": {
-    input: z.object({}),
+    input: z.object({ pack: z.enum(runtimePackIds).optional() }),
     output: z.object({ jobId: z.string() }),
+  },
+  // Takes one pack off the disk: its files go, and what it draws is unavailable from then on.
+  "tools.runtimeRemove": {
+    input: z.object({ pack: z.enum(runtimePackIds) }),
+    output: z.object({}),
   },
   "tools.python": {
     input: z.object({ code: z.string().max(8000) }),
