@@ -162,7 +162,7 @@ test("every page of the shell starts in the same place and ends at the same edge
     await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
     // PYXIS_COLUMN_THEME=dark takes the pictures in the dark theme.
-    const theme = process.env.PYXIS_COLUMN_THEME === "dark" ? "dark" : "light";
+    const theme: "dark" | "light" = process.env.PYXIS_COLUMN_THEME === "dark" ? "dark" : "light";
     await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
     const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
     seed(db);
@@ -202,8 +202,9 @@ test("every page of the shell starts in the same place and ends at the same edge
       // Each part lands on one x across the pages, and nothing runs sideways.
       const across = (part: "back" | "title" | "lead" | "headRight") => {
         const values = Object.entries(seen).flatMap(([name, value]) => (value[part] === null ? [] : [[name, Math.round(value[part]!)] as const]));
+        const [reference] = values;
         for (const [name, x] of values)
-          if (Math.abs(x - values[0][1]) > 1) failures.push(`${setup.name}: ${part} of ${name} at ${x}, ${values[0][0]} at ${values[0][1]}`);
+          if (reference && Math.abs(x - reference[1]) > 1) failures.push(`${setup.name}: ${part} of ${name} at ${x}, ${reference[0]} at ${reference[1]}`);
       };
       for (const part of ["back", "title", "lead", "headRight"] as const) across(part);
       for (const [name, value] of Object.entries(seen)) {

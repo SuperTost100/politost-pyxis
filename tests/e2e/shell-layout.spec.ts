@@ -148,7 +148,7 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
       }
       widths.push(Math.round((await container.boundingBox())!.width));
     }
-    expect(widths).toEqual([920, 920, 920, 920, 920]);
+    expect(widths).toEqual(Array(6).fill(920));
     expect([...sideBoxes]).toEqual(["0,0,260,760"]);
 
     // Folded, the sidebar is a column of icons whose links keep their names, and it stays folded after a reload.
