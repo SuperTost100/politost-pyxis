@@ -157,9 +157,31 @@ export function PartPage({
     if (move.scroll === "block")
       workRef.current?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
     const title = () => document.querySelector<HTMLElement>(".px-reader-head h1");
-    if (move.focus === "title" && move.scroll === "title") requestAnimationFrame(() => title()?.focus({ preventScroll: false }));
-    else if (move.focus === "title") title()?.focus({ preventScroll: true });
+    const focusTitle = (preventScroll: boolean) => {
+      const element = title();
+      if (!element) return;
+      element.focus({ preventScroll });
+      // Remembered as the page's own doing, until the student presses or clicks anything or another answer starts.
+      pageFocus.current = document.activeElement === element ? element : null;
+    };
+    if (move.focus === "title" && move.scroll === "title") requestAnimationFrame(() => focusTitle(false));
+    else if (move.focus === "title") focusTitle(true);
   };
+  // The title the page itself put the focus on as a part opened or arrived. Anything the student presses or clicks after
+  // that makes the focus theirs, and an answer being saved forgets it, so an answer's move to Continua leaves the focus
+  // alone only when the student put it on the title (the heading takes a click's focus).
+  const pageFocus = useRef<Element | null>(null);
+  useEffect(() => {
+    const theirs = () => {
+      pageFocus.current = null;
+    };
+    document.addEventListener("pointerdown", theirs, true);
+    document.addEventListener("keydown", theirs, true);
+    return () => {
+      document.removeEventListener("pointerdown", theirs, true);
+      document.removeEventListener("keydown", theirs, true);
+    };
+  }, []);
   /** Whether the focus is in the working block that is going, or nowhere. */
   const focusInBlock = () => {
     const active = document.activeElement;
@@ -208,6 +230,7 @@ export function PartPage({
     const itemId = lesson?.itemId;
     if (!itemId) return;
     const before = document.activeElement;
+    pageFocus.current = null;
     const result = await invoke("study.lessonAnswer", { planId, itemId, blockId, pick });
     client.setQueryData<PartData>(queryKey, (current) => withAnswer(current, itemId, blockId, result.pick));
     void client.invalidateQueries({ queryKey: ["series", planId] });
@@ -219,7 +242,7 @@ export function PartPage({
   }
   function moveToContinue(before: Element | null) {
     requestAnimationFrame(() => {
-      if (focusFollowsAnswer(before, document.activeElement, document.body, document.querySelector(".px-reader-head h1")))
+      if (focusFollowsAnswer(before, document.activeElement, document.body, pageFocus.current))
         continueRef.current?.querySelector<HTMLElement>("button")?.focus();
     });
   }
