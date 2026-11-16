@@ -1,4 +1,7 @@
 import { daysBetween } from "../../../shared/local-day";
+import type { RequestOutput } from "../../../shared/ipc";
+
+type Tool = RequestOutput<"engines.overview">[number];
 
 /** The fields of an `engines.overview` row that decide where a tool sits in Settings. */
 type ToolRow = {
@@ -66,7 +69,42 @@ export function toggledUse(
 }
 
 /** How to say when a tool has requests again: later today, tomorrow, or on another day. */
-export function limitWhen(until: number, now: number): "today" | "tomorrow" | "later" {
+export function limitWhen(
+  until: number,
+  now: number,
+): "today" | "tomorrow" | "later" {
   const days = daysBetween(now, until);
   return days <= 0 ? "today" : days === 1 ? "tomorrow" : "later";
+}
+
+/** When each tool that is out of requests has them again, in ms since the epoch. A tool with requests left is not in it. */
+export function limitsOf(
+  rows: readonly Pick<Tool, "id" | "limitedUntil">[],
+  now: number,
+): Map<string, number> {
+  return new Map(
+    rows.flatMap((row) =>
+      row.limitedUntil && row.limitedUntil > now
+        ? [[row.id, row.limitedUntil] as const]
+        : [],
+    ),
+  );
+}
+
+/**
+ * The tool a stopped job can go on with: the first connected tool of the student's order, other than `failed`, that is
+ * in use and has requests left. Without an order, the tools in the order Pyxis found them.
+ */
+export function nextTool(
+  rows: readonly Tool[],
+  order: readonly string[] | null,
+  failed: string | undefined,
+  now: number,
+): Tool | undefined {
+  return shownOrder(rows.filter(isConnected), order).find(
+    (row) =>
+      row.id !== failed &&
+      row.allowed &&
+      !(row.limitedUntil && row.limitedUntil > now),
+  );
 }
