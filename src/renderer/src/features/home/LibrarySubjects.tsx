@@ -1,12 +1,16 @@
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import type { RequestOutput } from "@shared/ipc";
+import { BookChoiceRow } from "../../components/BookChoiceRow";
+import { openBook } from "../../components/BookReaderBar";
 import { Dialog } from "../../components/Dialog";
+import { refreshSourceViewer } from "../../components/SourceViewer";
 import { mixedReasons, unsortedReasons } from "./shelf";
 
 type LibrarySource = RequestOutput<"sources.list">[number];
 type Subject = RequestOutput<"subjects.list">[number];
+type FreeBook = RequestOutput<"sources.books">[number];
 
 const messageKeyOf = (err: unknown): string =>
   err && typeof err === "object" && "messageKey" in err
@@ -99,18 +103,40 @@ export function SubjectPicker({
   );
 }
 
-/** Names a new subject and moves the source into it (`onMove`). A name the student already has is that subject. */
+/**
+ * Names a new subject and moves the source into it (`onMove`). A name the student already has is that subject. When a
+ * free PoliTost book is named like the subject and the subject has no file yet, the book is offered with this first file,
+ * ticked; `bookFor` finds it from the name typed so far, and `onMove` gets it when it is still ticked.
+ */
 export function NewSubjectDialog({
   source,
+  bookFor,
   onClose,
   onMove,
 }: {
   source: LibrarySource | null;
+  bookFor: (name: string) => FreeBook | undefined;
   onClose: () => void;
-  onMove: (source: LibrarySource, name: string) => Promise<void>;
+  onMove: (source: LibrarySource, name: string, book?: FreeBook) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
+  const offered = bookFor(name);
+  const [leftOut, setLeftOut] = useState<ReadonlySet<string>>(() => new Set());
+  const ticked = offered !== undefined && !leftOut.has(offered.id);
+  const tick = (on: boolean) => {
+    if (!offered) return;
+    setLeftOut((current) => {
+      const next = new Set(current);
+      if (on) next.delete(offered.id);
+      else next.add(offered.id);
+      return next;
+    });
+  };
+  // The reader opened on the book follows the tick made in the dialog.
+  const latest = useRef(ticked);
+  latest.current = ticked;
+  useEffect(() => refreshSourceViewer(), [ticked]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fieldId = useId();
@@ -119,7 +145,7 @@ export function NewSubjectDialog({
     setSaving(true);
     setError(null);
     try {
-      await onMove(source, name.trim());
+      await onMove(source, name.trim(), offered && ticked ? offered : undefined);
       onClose();
     } catch (err) {
       setError(messageKeyOf(err));
@@ -138,6 +164,7 @@ export function NewSubjectDialog({
       onClosed={() => {
         setName("");
         setError(null);
+        setLeftOut(new Set());
       }}
       actions={[
         { label: t("sources.sort.newSubjectMove"), disabled: !name.trim(), working: saving, onClick: () => void save() },
@@ -163,6 +190,15 @@ export function NewSubjectDialog({
           onChange={(event) => setName(event.target.value)}
         />
         {error ? <p className="small px-library-flag">{t(error)}</p> : null}
+        {offered ? (
+          <BookChoiceRow
+            book={offered}
+            on={ticked}
+            busy={saving}
+            onToggle={tick}
+            onOpen={() => openBook(offered.id, { choice: { words: "subject", on: () => latest.current, set: tick } })}
+          />
+        ) : null}
       </form>
     </Dialog>
   );

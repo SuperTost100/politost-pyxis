@@ -408,6 +408,11 @@ const routes = [
   ["library-book-reader", "/exams/library"],
   ["library-book-reader-added", "/exams/library"],
   ["library-books-open", "/exams/library"],
+  // The same book offered as a ticked source: in a new exam named like it, read first from there, and with the first file
+  // of a new subject.
+  ["wizard-book-offer", "/plans/new"],
+  ["wizard-book-reader", "/plans/new"],
+  ["library-book-first-file", "/exams/library"],
   ["shell-exam-active", "/exams"],
   // The same, over the map's page, which fills the window, and over the Library: Resume sits in the top strip and the
   // page keeps its height.
@@ -1953,12 +1958,12 @@ function prepareLibrarySubjects(name: string) {
     db.exec(`DELETE FROM jobs WHERE id = 'audit-sort-job';
       DELETE FROM sources WHERE id LIKE 'audit-sort-%';
       DELETE FROM subjects WHERE id = 'audit-sort-made';`);
-    if (!["library-sorting", "library-unsorted", "library-move-menu"].includes(name)) return;
+    if (!["library-sorting", "library-unsorted", "library-move-menu", "library-book-first-file"].includes(name)) return;
     const now = Date.now();
     const source = db.prepare(
       "INSERT INTO sources(id,kind,title,status,subject_id,subject_sort,created_at,updated_at) VALUES(?,'pdf',?,?,?,?,?,?)",
     );
-    if (name === "library-unsorted") {
+    if (name === "library-unsorted" || name === "library-book-first-file") {
       source.run("audit-sort-board", "Lavagna 6 novembre", "ready", null, "no-ai", now, now);
       source.run("audit-sort-mixed", "Esercizi misti", "ready", null, "unsure", now + 1, now);
       // A file the Library never asked about has no reason to say Pyxis could not place it.
@@ -4369,6 +4374,29 @@ async function openState(page: Page, name: string) {
         await reader.getByRole("button", { name: both("Aggiungi alla Libreria", "Add to Library") }).click();
         await expect(reader.getByText(both("È nella tua Libreria, sullo scaffale di Fisica.", "It's in your Library, on the Fisica shelf."))).toBeVisible();
       }
+      break;
+    }
+    case "wizard-book-offer":
+    case "wizard-book-reader": {
+      await page.getByRole("textbox", { name: both("Nome dell'esame", "Exam name"), exact: true }).fill("Fisica di prova");
+      await page.getByRole("button", { name: both("Non ho ancora la data", "I don't have the date yet") }).click();
+      await page.getByRole("button", { name: /Continua|Continue/, exact: true }).click();
+      const choice = page.locator("[data-book-choice]");
+      await expect(choice.getByRole("checkbox")).toBeChecked();
+      if (name === "wizard-book-reader") {
+        await choice.getByRole("button", { name: both("Apri il libro Fisica di prova", "Open the book Fisica di prova") }).click();
+        const reader = page.getByRole("complementary", { name: "Fisica di prova" });
+        await expect(reader.getByText(both("È tra le fonti di questo esame.", "It's among this exam's sources."))).toBeVisible();
+        await expect(reader.getByText("La velocità media è lo spazio percorso")).toBeVisible();
+      }
+      break;
+    }
+    case "library-book-first-file": {
+      // "Nuova materia…" is the picker's last choice, whose value is not a subject's id.
+      await page.locator('[data-unsorted-id="audit-sort-board"]').getByRole("combobox").selectOption({ value: "\u0000new" });
+      const naming = page.getByRole("dialog");
+      await naming.getByRole("textbox").fill("Fisica di prova");
+      await expect(naming.locator("[data-book-choice]").getByRole("checkbox")).toBeChecked();
       break;
     }
     case "library-books-open": {
