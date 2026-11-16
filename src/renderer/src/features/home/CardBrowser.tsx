@@ -6,7 +6,7 @@ import { useNavigate } from "react-router";
 import { useLeaveGuard } from "../../app/useLeaveGuard";
 import { Button as PxButton } from "../../components/Button";
 import { Reveal } from "../../components/Controls";
-import { useConfirm } from "../../components/Dialog";
+import { afterDialog, useConfirm } from "../../components/Dialog";
 import { EmptyState } from "../../components/EmptyState";
 import { MenuButton, MenuItemArea } from "../../components/ItemMenu";
 import { openSourceViewer } from "../../components/SourceViewer";
@@ -201,7 +201,8 @@ export function CardBrowser({
       if (node) node.focus();
       else if (++tries < 20) requestAnimationFrame(go);
     };
-    requestAnimationFrame(go);
+    // The page behind a question is inert until the question has gone, and a focus placed then is lost.
+    afterDialog(() => requestAnimationFrame(go));
   }
 
   /** Whether the edit open now may close: it holds typing only when it differs from the card, and the student is asked then. */
@@ -580,8 +581,11 @@ export function CardBrowser({
                       className="px-cardbrowser-showmore"
                       aria-expanded={isOpen}
                       aria-busy={loadingMore || undefined}
-                      disabled={loadingMore}
-                      onClick={() => void toggle(section)}
+                      // Not `disabled`: a disabled button drops the focus, and the button keeps it as it unfolds.
+                      aria-disabled={loadingMore || undefined}
+                      onClick={() => {
+                        if (!loadingMore) void toggle(section);
+                      }}
                     >
                       {loadingMore
                         ? t("cardBrowser.loadingMore")

@@ -247,11 +247,11 @@
   cursor: pointer;
   transition: background-color var(--duration-micro) var(--ease-out);
 }
-.px-cardbrowser-showmore:hover:not(:disabled) {
+.px-cardbrowser-showmore:hover:not([aria-disabled]) {
   background: var(--surface-raised);
   color: var(--ink);
 }
-.px-cardbrowser-showmore:disabled {
+.px-cardbrowser-showmore[aria-disabled] {
   cursor: progress;
 }
 
