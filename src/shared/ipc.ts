@@ -298,6 +298,8 @@ export const JobView = z.object({
   updatedAt: z.number(),
   /** Set when an automatic engine refused a call of this job and another engine did the work. */
   fallback: JobFallback.optional(),
+  /** Set while the student has the job wait for a tool's requests to come back: the time it retries by itself. */
+  waitingUntil: z.number().optional(),
   /**
    * The request the job came from when that request made several jobs of one kind, such as the files of a linked
    * folder: the jobs list shows them as one row. `folder` names the folder they come from; `waiting` counts the files
@@ -574,6 +576,16 @@ export const requests = {
   },
   "jobs.dismiss": {
     input: z.object({ jobId: z.string() }),
+    output: z.object({}),
+  },
+  /** A job that stopped because its tool ran out of requests goes on with another tool the student chose. */
+  "jobs.retryWith": {
+    input: z.object({ jobId: z.string(), provider: z.enum(installableProviders) }),
+    output: z.object({}),
+  },
+  /** The student has such a job wait until its tool's requests are back (`wait`), or gives the wait up. */
+  "jobs.wait": {
+    input: z.object({ jobId: z.string(), wait: z.boolean() }),
     output: z.object({}),
   },
   /** Debug mode's record of a job's AI calls, masked, or null when it has none (debug mode was off, or no AI ran). */

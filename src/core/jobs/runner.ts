@@ -5,6 +5,7 @@ import { uuidv7 } from "../../shared/ids";
 import { IpcError, isAbort, type JobView } from "../../shared/ipc";
 import { withUsageScope } from "../engine/usage";
 import { removeJobLog } from "../debug/log";
+import { putSetting } from "../settings";
 
 export type JobClass = "model-cli" | "model-api" | "local" | "demo";
 
@@ -149,6 +150,12 @@ export type Runner = {
    * clearing it must reach every job.
    */
   finished: (now?: number) => JobView[];
+  /**
+   * Holds a failed job until `until` (ms since the epoch), when it is retried by itself: the student chose to wait for a
+   * tool's requests to come back. Says whether it did. `null` gives the wait up and leaves the job failed, for the
+   * student to decide again. The wait is kept in the workspace, so a restart goes on with it.
+   */
+  hold: (jobId: string, until: number | null) => boolean;
   /** Notes that another engine answered a call of this job, for the job's list entry. The latest one is kept. */
   noteFallback: (
     jobId: string,
@@ -198,6 +205,37 @@ export function createRunner(
     `SELECT name, label, state FROM job_steps WHERE job_id = ? ORDER BY position`,
   );
 
+  const waitKey = (jobId: string) => `job-wait:${jobId}`;
+  const waitStmt = db.prepare(`SELECT value_json FROM settings WHERE key = ?`);
+  /** Timers of the jobs held until a tool has requests again. They never keep the process alive. */
+  const holds = new Map<string, ReturnType<typeof setTimeout>>();
+
+  function heldUntil(jobId: string): number | undefined {
+    const row = waitStmt.get(waitKey(jobId)) as { value_json: string } | undefined;
+    const until: unknown = row ? JSON.parse(row.value_json) : undefined;
+    return typeof until === "number" ? until : undefined;
+  }
+
+  /** Ends the wait of a job, if it has one, and says whether it had. */
+  function release(jobId: string): boolean {
+    clearTimeout(holds.get(jobId));
+    holds.delete(jobId);
+    return db.prepare(`DELETE FROM settings WHERE key = ?`).run(waitKey(jobId)).changes > 0;
+  }
+
+  function scheduleHold(jobId: string, until: number): void {
+    clearTimeout(holds.get(jobId));
+    // setTimeout holds at most about 24 days; a longer wait looks again then.
+    const timer = setTimeout(() => {
+      if (closed()) return;
+      if (Date.now() < until) return scheduleHold(jobId, until);
+      release(jobId);
+      retry(jobId);
+    }, Math.min(Math.max(until - Date.now(), 0), 2 ** 31 - 1));
+    timer.unref();
+    holds.set(jobId, timer);
+  }
+
   /** Work tracked for requests, while it runs. Finished work is a job row like any other. */
   const tracked = new Map<string, JobView>();
   let countWaiting: (() => Map<string, number>) | undefined;
@@ -235,6 +273,7 @@ export function createRunner(
       ...(job.fallback_json
         ? { fallback: JSON.parse(job.fallback_json) as JobView["fallback"] }
         : {}),
+      ...(job.state === "failed" && heldUntil(job.id) !== undefined ? { waitingUntil: heldUntil(job.id)! } : {}),
       ...(group ? { group: { id: group.id, ...(group.folder ? { folder: group.folder } : {}) } } : {}),
     };
   }
@@ -486,6 +525,7 @@ export function createRunner(
       )
       .run(Date.now(), jobId);
     if (changed.changes === 0) return false;
+    release(jobId);
     db.prepare(
       `UPDATE job_steps SET state = 'pending', error = NULL
        WHERE job_id = ? AND output_json IS NULL`,
@@ -522,6 +562,14 @@ export function createRunner(
   db.prepare(
     `UPDATE jobs SET state = 'interrupted', updated_at = ? WHERE state = 'running'`,
   ).run(Date.now());
+
+  // A wait the student chose goes on after a restart.
+  for (const row of db
+    .prepare(`SELECT key, value_json FROM settings WHERE key LIKE 'job-wait:%'`)
+    .all() as Array<{ key: string; value_json: string }>) {
+    const until: unknown = JSON.parse(row.value_json);
+    if (typeof until === "number") scheduleHold(row.key.slice("job-wait:".length), until);
+  }
 
   return {
     activate() {
@@ -561,6 +609,7 @@ export function createRunner(
     },
     cancel,
     discard(jobId) {
+      release(jobId);
       const hidden = db
         .prepare(`UPDATE jobs SET dismissed = ${GIVEN_UP} WHERE id = ? AND state <> 'succeeded'`)
         .run(jobId);
@@ -625,8 +674,24 @@ export function createRunner(
       }
       return resumed;
     },
+    hold(jobId, until) {
+      if (until === null) {
+        const had = release(jobId);
+        if (had) publish(jobId);
+        return had;
+      }
+      const failed = db
+        .prepare(`SELECT 1 FROM jobs WHERE id = ? AND state = 'failed' AND dismissed < ${GIVEN_UP}`)
+        .get(jobId);
+      if (!failed) return false;
+      putSetting(db, waitKey(jobId), until);
+      scheduleHold(jobId, until);
+      publish(jobId);
+      return true;
+    },
     dismiss(jobId) {
       if (active.has(jobId)) return;
+      release(jobId);
       const view = viewOf(jobId);
       if (
         (view?.kind === "cards-build" ||
