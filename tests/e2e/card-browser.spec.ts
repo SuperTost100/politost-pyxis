@@ -109,7 +109,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
       "Chimica",
       "No subject",
     ]);
-    await expect(page.locator(".px-fc-topic")).toHaveText([
+    await expect(page.locator(".px-ct-topic")).toHaveText([
       "Dinamica",
       "Dinamica",
       "Cinematica",
@@ -124,7 +124,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     ).toHaveCount(0);
     // Math is rendered; a cloze shows its sentence with the answer filled in.
     await expect(
-      page.locator(".px-fc .katex").first(),
+      page.locator(".px-ct .katex").first(),
     ).toBeVisible();
     await expect(
       page
@@ -374,7 +374,7 @@ test("the flashcard grid shows eight cards of a subject, unfolds the rest from i
     await page.reload();
 
     // Eight of the eleven physics cards and all three chemistry cards, with the rest offered under the eight.
-    const tiles = page.locator(".px-fc");
+    const tiles = page.locator(".px-ct");
     await expect(tiles).toHaveCount(11);
     await expect(page.getByRole("status")).toHaveText("14 flashcards");
     await expect(page.getByText("14 flashcards in 2 subjects.")).toBeVisible();

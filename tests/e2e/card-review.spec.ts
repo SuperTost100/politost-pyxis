@@ -694,13 +694,15 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     await expect(page.getByRole("status")).toHaveText("1 flashcard");
     const card = page.getByRole("listitem");
     await expect(card).toContainText("Often forgotten");
-    await expect(card).toContainText("Forgotten 7 times.");
-    // Open source sits in the row's menu, next to Suspend and Delete.
+    // Open source sits in the card's menu, next to Edit, Suspend and Delete.
     await card.getByRole("button", { name: /^More actions: Seconda legge/ }).click();
     await expect(page.getByRole("menuitem", { name: "Open source" })).toBeVisible();
     await page.keyboard.press("Escape");
+    // Rewriting opens the card where it stands, and says what a card forgotten this often needs.
     await card.getByRole("button", { name: /^Rewrite: Seconda legge/ }).click();
-    await expect(page.getByRole("dialog", { name: "Edit flashcard" })).toBeVisible();
+    const editor = page.getByRole("group", { name: "Edit flashcard" });
+    await expect(editor).toBeVisible();
+    await expect(editor).toContainText("Forgotten 7 times.");
   } finally {
     await app.close();
     removeTestFolder(userData);

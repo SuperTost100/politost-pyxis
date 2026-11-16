@@ -63,8 +63,11 @@ const routes = [
   ["library-empty", "/exams/library"],
   // Passage search: the same field with the Content scope, its results and the local model offer.
   ["library-search", "/exams/library"],
-  // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
+  // The flashcard browser: cards grouped by subject, a subject unfolded past its first eight, a card's menu, a card being
+  // edited where it stands, no cards at all, a search with no match, and the delete question.
   ["cards-browser", "/flashcards/all"],
+  ["cards-browser-more", "/flashcards/all"],
+  ["cards-browser-card-menu", "/flashcards/all"],
   ["cards-browser-empty", "/flashcards/all"],
   ["cards-browser-none", "/flashcards/all"],
   ["cards-browser-edit", "/flashcards/all"],
@@ -1580,6 +1583,14 @@ function prepareCardBrowser(name: string) {
     db.prepare(
       "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
     ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+    // Chimica with more than eight cards, so its button unfolds the rest.
+    if (name === "cards-browser-more") {
+      const more = db.prepare(
+        "INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES(?,'audit-chem-plan','audit-atoms',?,?,?,'sources',?)",
+      );
+      for (let index = 1; index <= 9; index++)
+        more.run(`audit-card-more-${index}`, `Che cos’è la ${index}ª energia di ionizzazione?`, "L’energia per togliere un elettrone all’atomo.", `m${index}`, 10 + index);
+    }
     if (!name.startsWith("flashcards")) return;
     // A subject with a long name and flashcards with no exam only.
     seedSubjects(db, [{ id: "audit-gal", name: "Geometria e algebra lineare per l’ingegneria dell’informazione", position: 2 }]);
@@ -4285,6 +4296,12 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Altro sulle flashcard", "More for flashcards") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
+    case "cards-browser-card-menu":
+      await page
+        .getByRole("button", { name: /^(Altre azioni|More actions): Che cos’è il numero atomico/ })
+        .click();
+      await expect(page.getByRole("menuitem", { name: both("Sospendi", "Suspend") })).toBeVisible();
+      break;
     case "library-sorting":
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
       // The notice that Pyxis made a subject, not the "New subject…" choice of the pickers beside it.
@@ -4668,10 +4685,17 @@ async function openState(page: Page, name: string) {
           name: both("Nessuna materia", "No subject"),
         }),
       ).toBeVisible();
-      await expect(
-        page.locator(".px-cardbrowser-row .katex").first(),
-      ).toBeVisible();
+      await expect(page.locator(".px-ct .katex").first()).toBeVisible();
       break;
+    case "cards-browser-more": {
+      // Chimica has thirteen cards: eight show, and the button unfolds the other five.
+      const chemistry = page.locator(".px-cardbrowser-subject").filter({ has: page.getByRole("heading", { level: 2, name: "Chimica" }) });
+      await expect(chemistry.locator(".px-ct")).toHaveCount(8);
+      await chemistry.getByRole("button", { name: /^(Mostra le altre|Show the other) \d+/ }).click();
+      await expect(chemistry.locator(".px-ct")).toHaveCount(13);
+      await expect(chemistry.getByRole("button", { name: both("Mostra meno", "Show fewer") })).toBeVisible();
+      break;
+    }
     case "flashcards":
       await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
       await expect(page.getByRole("heading", { level: 3, name: "Chimica generale" })).toBeVisible();
@@ -4739,7 +4763,7 @@ async function openState(page: Page, name: string) {
         })
         .fill("zzzz");
       await expect(
-        page.getByText(both("Nessuna flashcard corrisponde.", "No flashcard matches.")),
+        page.getByText(both("Nessuna flashcard contiene «zzzz».", "No flashcard contains “zzzz”.")),
       ).toBeVisible();
       break;
     case "cards-browser-edit":
@@ -4748,7 +4772,7 @@ async function openState(page: Page, name: string) {
           name: /^(Modifica|Edit): Che cos’è il numero atomico/,
         })
         .click();
-      await expect(dialog).toBeVisible();
+      await expect(page.getByRole("group", { name: both("Modifica la flashcard", "Edit flashcard") })).toBeVisible();
       break;
     case "cards-browser-delete":
       await page
@@ -5332,6 +5356,7 @@ test("M14 every application route in both languages, themes and supported widths
                   name === "plan-menu" ||
                   name === "library-menu" ||
                   name === "cards-browser-menu" ||
+                  name === "cards-browser-card-menu" ||
                   name === "map-menu" ||
                   name === "map-export" ||
                   name === "map-switcher" ||

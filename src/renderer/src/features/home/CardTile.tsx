@@ -139,18 +139,18 @@ function PendingTile({ card, ref }: { card: BrowsedCard; ref: Ref<HTMLLIElement>
   const { t } = useTranslation();
   const foot = useFootText();
   return (
-    <li className="px-fc" data-card-id={card.id} ref={ref}>
-      <span className="px-fc-topic">{topicOf(card, t)}</span>
-      <div className="px-fc-front">
+    <li className="px-ct" data-card-id={card.id} ref={ref}>
+      <span className="px-ct-topic">{topicOf(card, t)}</span>
+      <div className="px-ct-front">
         <span className="visually-hidden">{t("cardBrowser.frontText")}</span>
         <PlainText>{frontText(card)}</PlainText>
       </div>
-      <div className="px-fc-lower">
-        <div className="px-fc-back">
+      <div className="px-ct-lower">
+        <div className="px-ct-back">
           <span className="visually-hidden">{t("cardBrowser.backText")}</span>
           <PlainText>{card.back}</PlainText>
         </div>
-        <p className={isFlagged(card) ? "px-fc-state is-flag" : "px-fc-state"}>{foot(card)}</p>
+        <p className={isFlagged(card) ? "px-ct-state is-flag" : "px-ct-state"}>{foot(card)}</p>
       </div>
     </li>
   );
@@ -192,23 +192,23 @@ function LiveTile({ card, actions }: { card: BrowsedCard; actions: CardActions }
       menu={menu}
       region={t("cardBrowser.moreActions")}
       disabled={card.removed}
-      className={["px-fc", open ? "is-pointed" : "", card.removed ? "is-removed" : ""].filter(Boolean).join(" ")}
+      className={["px-ct", open ? "is-pointed" : "", card.removed ? "is-removed" : ""].filter(Boolean).join(" ")}
       data-card-id={card.id}
     >
-      <span className="px-fc-topic">{topicOf(card, t)}</span>
-      <div className="px-fc-front">
+      <span className="px-ct-topic">{topicOf(card, t)}</span>
+      <div className="px-ct-front">
         <span className="visually-hidden">{t("cardBrowser.frontText")}</span>
         <MarkdownView variant="body">{frontText(card)}</MarkdownView>
       </div>
-      <div className="px-fc-lower">
-        <div className="px-fc-back">
+      <div className="px-ct-lower">
+        <div className="px-ct-back">
           <span className="visually-hidden">{t("cardBrowser.backText")}</span>
           <MarkdownView variant="body">{card.back}</MarkdownView>
         </div>
-        <p className={isFlagged(card) ? "px-fc-state is-flag" : "px-fc-state"}>{foot(card)}</p>
+        <p className={isFlagged(card) ? "px-ct-state is-flag" : "px-ct-state"}>{foot(card)}</p>
       </div>
       {card.removed ? (
-        <div className="px-fc-corner">
+        <div className="px-ct-corner">
           <PxButton variant="secondary" size="sm" aria-label={label("cardBrowser.restore")} onClick={() => actions.restore(card)}>
             {t("cardBrowser.restore")}
           </PxButton>
@@ -217,11 +217,11 @@ function LiveTile({ card, actions }: { card: BrowsedCard; actions: CardActions }
         <>
           <button
             type="button"
-            className="px-fc-open"
+            className="px-ct-open"
             aria-label={label(editKey)}
             onClick={() => actions.edit(card, rect())}
           />
-          <div className="px-fc-corner">
+          <div className="px-ct-corner">
             <MenuButton
               size="sm"
               menu={menu}
@@ -291,7 +291,7 @@ export function CardEditor({
 
   return (
     <li
-      className="px-fc is-editing"
+      className="px-ct is-editing"
       data-card-id={card.id}
       ref={root}
       onKeyDown={(event) => {
@@ -302,7 +302,7 @@ export function CardEditor({
         }
       }}
     >
-      <div className="px-fc-edit" role="group" aria-label={t("cardBrowser.editTitle")}>
+      <div className="px-ct-edit" role="group" aria-label={t("cardBrowser.editTitle")}>
         <label className="label" htmlFor={`browse-${card.id}-front`}>
           {t("cards.front")}
         </label>
@@ -322,7 +322,7 @@ export function CardEditor({
           onChange={(event) => setBack(event.target.value)}
         />
         {failed ? <Notice tone="danger">{t("cards.actionFailed")}</Notice> : null}
-        <div className="px-fc-editfoot">
+        <div className="px-ct-editfoot">
           <p className="small">
             {card.leech
               ? t(card.passageId ? "cardBrowser.leechHint" : "cardBrowser.leechHintNoSource", { count: card.lapses })

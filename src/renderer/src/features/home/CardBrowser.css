@@ -67,7 +67,7 @@
   margin-inline-start: auto;
 }
 
-.px-fc-grid {
+.px-ct-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(206px, 1fr));
   gap: var(--space-3);
@@ -81,7 +81,7 @@
 }
 
 /* One flashcard: the topic, the front, and under them the back and the state on a tinted ground. */
-.px-fc {
+.px-ct {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -96,11 +96,11 @@
   content-visibility: auto;
   contain-intrinsic-size: auto 204px;
 }
-.px-fc:hover,
-.px-fc.is-pointed {
+.px-ct:hover,
+.px-ct.is-pointed {
   box-shadow: var(--shadow-raised);
 }
-.px-fc-topic {
+.px-ct-topic {
   padding: var(--space-3) 14px 0;
   overflow: hidden;
   color: var(--ink-muted);
@@ -110,43 +110,43 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.px-fc-front {
+.px-ct-front {
   flex: 1;
   padding: 6px 14px var(--space-3);
   overflow-wrap: anywhere;
   font-weight: 500;
 }
-.px-fc-lower {
+.px-ct-lower {
   background: var(--surface-sunken);
   border-top: 1px solid var(--border);
 }
-.px-fc-back {
+.px-ct-back {
   padding: 10px 14px 2px;
   overflow-wrap: anywhere;
   color: var(--ink-muted);
 }
 /* The front stops at four lines and the back at two; the edit shows both in full. */
-.px-fc-front > .px-markdown,
-.px-fc-back > .px-markdown {
+.px-ct-front > .px-markdown,
+.px-ct-back > .px-markdown {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
 }
-.px-fc-back > .px-markdown {
+.px-ct-back > .px-markdown {
   -webkit-line-clamp: 2;
 }
-.px-fc .px-fc-front .px-markdown.is-body {
+.px-ct .px-ct-front .px-markdown.is-body {
   font: 500 calc(14px * var(--text-scale, 1)) / 1.4 var(--font-sans);
 }
-.px-fc .px-fc-back .px-markdown.is-body {
+.px-ct .px-ct-back .px-markdown.is-body {
   font: 400 calc(13px * var(--text-scale, 1)) / 1.45 var(--font-sans);
 }
-.px-fc .px-markdown > * {
+.px-ct .px-markdown > * {
   margin-top: 0;
   margin-bottom: 0;
 }
-.px-fc-state {
+.px-ct-state {
   box-sizing: border-box;
   min-height: 38px;
   margin: 0;
@@ -159,15 +159,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.px-fc.is-removed .px-fc-state {
+.px-ct.is-removed .px-ct-state {
   padding-inline-end: 110px;
 }
-.px-fc-state.is-flag {
+.px-ct-state.is-flag {
   color: var(--ink);
   font-weight: 600;
 }
 /* The whole card is the button that edits it, under the dots. */
-.px-fc-open {
+.px-ct-open {
   position: absolute;
   inset: 0;
   padding: 0;
@@ -176,22 +176,22 @@
   background: transparent;
   cursor: pointer;
 }
-.px-fc-open:focus-visible {
+.px-ct-open:focus-visible {
   outline-offset: -3px;
 }
-.px-fc-corner {
+.px-ct-corner {
   position: absolute;
   right: 4px;
   bottom: 4px;
   display: flex;
   align-items: center;
 }
-.px-fc.is-loading {
+.px-ct.is-loading {
   padding: var(--space-4);
 }
 
 /* A card being edited takes two columns, or the whole row where there is room for one column. */
-.px-fc.is-editing {
+.px-ct.is-editing {
   grid-column: span 2;
   min-height: 0;
   background: var(--surface);
@@ -201,28 +201,28 @@
   content-visibility: visible;
 }
 @container (max-width: 470px) {
-  .px-fc.is-editing {
+  .px-ct.is-editing {
     grid-column: 1 / -1;
   }
 }
-.px-fc-edit {
+.px-ct-edit {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
 }
-.px-fc-edit .label {
+.px-ct-edit .label {
   color: var(--ink-muted);
   font-weight: 600;
 }
-.px-fc-editfoot {
+.px-ct-editfoot {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-1);
 }
-.px-fc-editfoot p {
+.px-ct-editfoot p {
   flex: 1 1 160px;
   margin: 0;
   color: var(--ink-muted);

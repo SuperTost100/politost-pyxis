@@ -197,7 +197,7 @@ export function CardBrowser({
   function focusCard(id: string) {
     let tries = 0;
     const go = () => {
-      const node = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] .px-fc-open`);
+      const node = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] .px-ct-open`);
       if (node) node.focus();
       else if (++tries < 20) requestAnimationFrame(go);
     };
@@ -365,8 +365,8 @@ export function CardBrowser({
     const key = event.key;
     if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "ArrowUp" && key !== "ArrowDown") return;
     const here = event.target;
-    if (!(here instanceof HTMLElement) || !here.matches(".px-fc-open")) return;
-    const all = [...event.currentTarget.querySelectorAll<HTMLElement>(".px-fc-open")];
+    if (!(here instanceof HTMLElement) || !here.matches(".px-ct-open")) return;
+    const all = [...event.currentTarget.querySelectorAll<HTMLElement>(".px-ct-open")];
     const at = all.indexOf(here);
     let next: HTMLElement | undefined;
     if (key === "ArrowLeft" || key === "ArrowRight") next = all[at + (key === "ArrowRight" ? 1 : -1)];
@@ -520,9 +520,9 @@ export function CardBrowser({
           {actionFailed ? <Notice tone="danger">{t("cards.actionFailed")}</Notice> : null}
 
           {!data ? (
-            <ul className="px-fc-grid" aria-hidden>
+            <ul className="px-ct-grid" aria-hidden>
               {[0, 1, 2, 3].map((key) => (
-                <li key={key} className="px-fc is-loading">
+                <li key={key} className="px-ct is-loading">
                   <Skeleton active title={false} paragraph={{ rows: 4 }} />
                 </li>
               ))}
@@ -564,13 +564,13 @@ export function CardBrowser({
                       </PxButton>
                     ) : null}
                   </header>
-                  <ul className="px-fc-grid" aria-labelledby={`card-subject-${section.key}`}>
+                  <ul className="px-ct-grid" aria-labelledby={`card-subject-${section.key}`}>
                     {/* The first subject's cards are drawn at once; the others draw as they come near the window. */}
                     {tiles(section.shown, index > 0)}
                   </ul>
                   {section.more.length > 0 ? (
                     <Reveal className="px-cardbrowser-more">
-                      <ul className="px-fc-grid" aria-labelledby={`card-subject-${section.key}`}>
+                      <ul className="px-ct-grid" aria-labelledby={`card-subject-${section.key}`}>
                         {tiles(section.more, true)}
                       </ul>
                     </Reveal>
