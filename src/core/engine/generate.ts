@@ -34,6 +34,12 @@ export type GenerateInput = {
   /** `chosenFor` marks a selection Pyxis chose itself (see `selectionFor`); the engine never receives it. */
   selection: Omit<Selection, "cwd" | "access"> & { chosenFor?: string };
   schema?: z.ZodType;
+  /**
+   * Keys of the structured reply whose strings are kept exactly as the model wrote them. Every other string has the
+   * LaTeX it lost restored (see `repairModelStrings`), which turns the `\n` of a Python string into a line break, so
+   * the field that holds code is named here.
+   */
+  verbatim?: readonly string[];
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   attachments?: Array<{
@@ -126,9 +132,9 @@ function lock(node: unknown): void {
   }
 }
 
-function parsed(schema: z.ZodType, result: EngineResult): unknown {
+function parsed(schema: z.ZodType, result: EngineResult, verbatim?: readonly string[]): unknown {
   const value =
-    result.structured == null ? tryJson(result.text) : repairModelStrings(result.structured);
+    result.structured == null ? tryJson(result.text, verbatim) : repaired(result.structured, verbatim);
   const check = schema.safeParse(withoutOptionalNulls(value, plainSchema(schema)));
   return check.success ? check.data : null;
 }
@@ -181,9 +187,18 @@ function branches(node: unknown): Array<Record<string, unknown>> {
  * The value a text holds as JSON, or undefined when it holds none. LaTeX a model wrote with single backslashes is
  * restored here and in every structured answer, so no feature shows "m", a tab and "heta" for `m\theta`.
  */
-export function tryJson(text: string): unknown {
+export function tryJson(text: string, verbatim?: readonly string[]): unknown {
   const value = parseLooseJson(text);
-  return value === undefined ? undefined : repairModelStrings(value);
+  return value === undefined ? undefined : repaired(value, verbatim);
+}
+
+/** `repairModelStrings`, except for the strings under the top-level keys named in `verbatim`. */
+function repaired(value: unknown, verbatim?: readonly string[]): unknown {
+  if (!verbatim?.length || !value || typeof value !== "object" || Array.isArray(value))
+    return repairModelStrings(value);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, verbatim.includes(key) ? item : repairModelStrings(item)]),
+  );
 }
 
 /**
@@ -367,11 +382,11 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
       cache: input.cache,
     });
     if (!input.schema) return result;
-    let data = parsed(input.schema, result);
+    let data = parsed(input.schema, result, input.verbatim);
     for (let repair = 0; data == null && repair < 2; repair += 1) {
       const issues =
         result.structuredError ??
-        input.schema.safeParse(withoutOptionalNulls(tryJson(result.text), plainSchema(input.schema))).error
+        input.schema.safeParse(withoutOptionalNulls(tryJson(result.text, input.verbatim), plainSchema(input.schema))).error
           ?.message ??
         result.text;
       result = await run({
@@ -389,7 +404,7 @@ async function generateOnce(input: GenerateInput): Promise<GenerateOutput> {
             }
           : undefined,
       });
-      data = parsed(input.schema, result);
+      data = parsed(input.schema, result, input.verbatim);
     }
     if (data == null) {
       throw new IpcError(
