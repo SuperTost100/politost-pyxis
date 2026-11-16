@@ -1,7 +1,8 @@
 .px-onboarding {
-  /* The page container shrinks to its content, so the width is set here to keep every step the same size. */
+  /* The steps keep their own widths, centred in the page column: setup is a closed flow with no sidebar. */
   width: min(720px, calc(100vw - var(--space-12)));
   max-width: 100%;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: 26px;

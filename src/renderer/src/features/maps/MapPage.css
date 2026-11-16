@@ -8,9 +8,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  height: calc(100vh - var(--top-height));
+  /* The window's height under the shell's own top padding, so the card ends 16px above the window's foot. */
+  height: calc(100vh - var(--top-height) - 48px);
   min-height: 520px;
-  padding: 52px var(--space-4) var(--space-4);
+  padding-bottom: var(--space-4);
 }
 [data-theme="light"] .px-map-page {
   --map-canvas: var(--surface-sunken);
@@ -18,9 +19,9 @@
   --map-node-shadow: var(--shadow-raised);
 }
 
-/* The way back sits over the head, its arrow 10px in like the title, with only the page's gap under it. */
+/* The way back sits over the head with only the page's gap under it. */
 .px-map-page > .px-back.is-page {
-  margin: 0 0 calc(var(--space-1) - var(--space-3)) 0;
+  margin-bottom: calc(var(--space-1) - var(--space-3));
 }
 
 /* The head: the title with the map switcher beside it, the map's actions on
@@ -31,7 +32,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-1) var(--space-3);
-  padding: 2px var(--space-1) 0 10px;
+  padding-top: 2px;
   container: map-head / inline-size;
 }
 .px-map-title-row {
@@ -146,11 +147,6 @@
 }
 .px-map-notice {
   margin: 0;
-  padding-inline: 10px;
-}
-/* How the last build ended is a notice over the map, as wide as the map's card under it. */
-.px-map-notice.px-map-recover {
-  padding-inline: 0;
 }
 
 .px-map-error {
