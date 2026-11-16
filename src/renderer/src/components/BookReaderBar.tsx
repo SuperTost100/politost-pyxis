@@ -85,7 +85,8 @@ function LibraryBookBar({ bookId, subjectId }: { bookId: string; subjectId?: str
     if (!sourceId || !added.current) return;
     added.current = false;
     const active = document.activeElement;
-    if (!active || active === document.body || !active.closest(".source-panel")) text.current?.focus({ preventScroll: true });
+    // Only a focus that is lost moves; one the student put somewhere else in the meantime stays there.
+    if (!active || active === document.body) text.current?.focus({ preventScroll: true });
   }, [sourceId]);
   return (
     <div className={sourceId ? "px-book-bar is-in" : "px-book-bar"}>

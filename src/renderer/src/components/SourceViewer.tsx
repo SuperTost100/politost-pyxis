@@ -713,6 +713,8 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
     }
   }, [opening]);
   const close = useCallback(() => {
+    // A second close while the panel is leaving would find its targets already used and send the focus to the heading.
+    if (leavingAnimation.current) return;
     const element = panel.current;
     const back = trigger.current;
     const after = focusAfter.current;
@@ -720,7 +722,9 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
     trigger.current = null;
     focusAfter.current = null;
     // The exit ends this opening only: a source opened while it ran keeps its panel, and keeps the focus.
+    let exit: Animation | null = null;
     const done = () => {
+      if (exit && leavingAnimation.current === exit) leavingAnimation.current = null;
       if (counter.current !== closing) return;
       setOpening(null);
       setLeaving(false);
@@ -735,6 +739,7 @@ export function SourceViewer({ watch }: { watch?: (listener: () => void) => () =
           duration: 220,
           easing: "cubic-bezier(0.23, 1, 0.32, 1)",
         });
+    exit = out;
     leavingAnimation.current = out;
     out.onfinish = done;
     out.oncancel = done;
