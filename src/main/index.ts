@@ -49,8 +49,9 @@ import {
   configurePythonRuntime,
   disposePythonRuntime,
   handleRuntimeRequest,
-  registerRuntimeProtocol,
 } from "./python-runtime";
+import { configureDrawRuntime, disposeDrawRuntime, drawTestHandle } from "./draw-runtime";
+import { registerRuntimeProtocol } from "./runtime-protocol";
 import {
   app,
   crashReporter,
@@ -563,6 +564,8 @@ function removeSourceCopies(): void {
 /** Tests only: the files "Apri il file" would have handed to the system, read through app.evaluate. */
 const openedSourceFiles: Array<{ sourceId: string; name: string; stored: boolean; path: string }> = [];
 if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eOpenedFiles: () => openedSourceFiles });
+// The drawing window's handle, for the specs that check what it does with hostile text (tests/e2e/drawing.spec.ts).
+if (e2eSeam() && process.env["PYXIS_E2E"] === "1") Object.assign(globalThis, { pyxisE2eDraw: drawTestHandle() });
 
 /** Asks core for the cards due now. null: core is not up, so the check runs again in a minute. */
 function askCoreForReminder(): Promise<{ summary: ReminderSummary | null } | null> {
@@ -884,6 +887,7 @@ function startCore(strict = false): Promise<void> {
   coreChild = child;
   coreConsent.started(child);
   configurePythonRuntime(workspacePath);
+  configureDrawRuntime(workspacePath);
   watchCoreExit(child);
   let childExited = false;
   child.once("exit", () => {
@@ -1100,6 +1104,7 @@ function killCore(child: UtilityProcess): void {
 function pauseCore(): Promise<void> {
   holdCore = true;
   disposePythonRuntime();
+  disposeDrawRuntime();
   const child = coreChild;
   const stopped =
     !child || coreExited(child)
@@ -2048,6 +2053,7 @@ app.on("before-quit", (event) => {
   }
   quitting = true;
   disposePythonRuntime();
+  disposeDrawRuntime();
   coreChild?.postMessage({ type: "shutdown" });
 });
 

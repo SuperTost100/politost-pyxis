@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
+import { build as viteBuild } from "vite";
 import react from "@vitejs/plugin-react";
 import type { Plugin } from "vite";
 import { rendererCsp } from "./src/main/csp";
@@ -34,6 +35,7 @@ function copySandboxPage(): Plugin {
         ["python-worker.js", "python-worker.js"],
         ["check-worker.js", "check-worker.js"],
         ["symbolic.py", "symbolic.py"],
+        ["draw.html", "draw.html"],
       ] as const) {
         this.emitFile({
           type: "asset",
@@ -41,6 +43,41 @@ function copySandboxPage(): Plugin {
           source: readFileSync(resolve(root, "src/sandbox", sourceName)),
         });
       }
+    },
+  };
+}
+
+/**
+ * The drawing window's script is a bundle of its own: it holds DOMPurify and the code that turns a drawing into a picture
+ * (src/sandbox/draw-host.ts), so the sanitiser ships with the app and never with the downloaded pack.
+ */
+function drawHost(): Plugin {
+  return {
+    name: "draw-host",
+    apply: "build",
+    async generateBundle() {
+      const built = await viteBuild({
+        configFile: false,
+        logLevel: "silent",
+        root,
+        define: { "process.env.NODE_ENV": JSON.stringify("production") },
+        build: {
+          write: false,
+          minify: "oxc",
+          lib: {
+            entry: resolve(root, "src/sandbox/draw-host.ts"),
+            formats: ["iife"],
+            name: "PyxisDrawHost",
+            fileName: () => "draw-host.js",
+          },
+        },
+      });
+      const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
+        "output" in result ? result.output : [],
+      );
+      const chunks = outputs.filter((output) => output.type === "chunk");
+      if (chunks.length !== 1) throw new Error("The drawing window's script must be one file.");
+      this.emitFile({ type: "asset", fileName: "runtime/draw-host.js", source: chunks[0]!.code });
     },
   };
 }
@@ -135,7 +172,7 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), katexWoff2Only(), copySandboxPage(), pdfjsImageDecoders(), cspMeta()],
+    plugins: [react(), katexWoff2Only(), copySandboxPage(), drawHost(), pdfjsImageDecoders(), cspMeta()],
     define: { __PYXIS_COMMIT__: JSON.stringify(buildCommit()) },
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "oxc" },
