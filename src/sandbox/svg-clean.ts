@@ -54,7 +54,15 @@ export function cleanSvg(purify: DOMPurify, text: string): CleanSvg {
   for (const element of [svg, ...Array.from(svg.querySelectorAll("*"))])
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
-      const value = attribute.value.replace(/[\u0000- ]+/g, "").toLowerCase();
+      // An attribute of a drawing is read as CSS, where `u\72l(` is `url(`: escapes are read, and spaces and comments go,
+      // before the value is looked at.
+      const value = attribute.value
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n\r\f0-9a-f])/gi, (_, hex: string | undefined, other: string | undefined) =>
+          hex ? String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff) || 0xfffd) : (other ?? ""),
+        )
+        .replace(/[\u0000-\u0020]+/g, "")
+        .toLowerCase();
       if (
         name.startsWith("on") ||
         name.endsWith("href") ||

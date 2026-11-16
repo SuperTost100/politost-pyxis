@@ -5,9 +5,14 @@ import { cleanSvg } from "./svg-clean";
 
 /**
  * The page of the drawing window (see main/draw-runtime.ts). It draws one figure at a time and answers with one value,
- * `{ok: true, png}` or `{ok: false, error}`, which main checks again. The renderers come from the downloaded pack and
- * run on text from an AI, so this page holds everything that matters for safety: the sanitiser, the refusing of loads,
- * the rasterising and the size checks. It has no network (the session refuses it) and no way to run a string.
+ * `{ok: true, png}` or `{ok: false, error}`, which main checks again.
+ *
+ * What runs where: Graphviz, which comes from the downloaded pack and reads text from an AI, runs in a worker of its own
+ * (draw-worker.ts), where it has no DOM and shares nothing with this page. This page, the app's own script, holds the
+ * sanitiser, the font and the rasterising, and treats what the worker sends as text to be cleaned: a worker that were
+ * tampered with could send any text, and the cleaning, the size checks and main's check of the picture are what stand
+ * after it. The window has no network (the session refuses it, and sends the network stack's own work to a proxy that is
+ * not there) and no way to run a string.
  */
 const BASE = "pyxis-runtime://draw/";
 /**
@@ -23,18 +28,39 @@ const FONT_FACE = `@font-face { font-family: "Figtree"; src: url(${figtree}) for
 const ENGINES = ["dot", "neato", "circo", "fdp", "twopi"];
 
 type Answer = { ok: true; png: string } | { ok: false; error: string };
-type GraphvizModule = { Graphviz: { load: () => Promise<{ layout: (dot: string, format: "svg", engine: string) => string }> } };
+type Laid = { ok: true; svg: string } | { ok: false; error: string };
 
-let graphviz: Promise<GraphvizModule["Graphviz"] extends { load: () => Promise<infer T> } ? T : never> | undefined;
+let worker: Worker | undefined;
+let counter = 0;
 
-/** The library is loaded when the first graph is drawn, once for the life of this window. */
-function loadGraphviz() {
-  graphviz ??= (async () => {
-    // The pack's file is served by main after its hash is checked again; this page asks for nothing else.
-    const module = (await import(/* @vite-ignore */ `${BASE}drawing/graphviz.js`)) as GraphvizModule;
-    return module.Graphviz.load();
-  })();
-  return graphviz;
+/**
+ * Graphviz runs in a worker of its own, the one file `worker-src` allows, so the code of the pack shares nothing with this
+ * page: not the sanitiser, not the canvas, not the DOM. What it sends back is text and is read as text. A worker that
+ * failed is ended and the next drawing gets a new one, with a new instance of the library.
+ */
+function layout(code: string, engine: string): Promise<Laid> {
+  worker ??= new Worker(`${BASE}draw-worker.js`);
+  const running = worker;
+  const id = ++counter;
+  const end = (reply: Laid): Laid => {
+    running.onmessage = null;
+    running.onerror = null;
+    if (!reply.ok && worker === running) {
+      running.terminate();
+      worker = undefined;
+    }
+    return reply;
+  };
+  return new Promise<Laid>((resolve) => {
+    running.onmessage = (event: MessageEvent) => {
+      const data = event.data as { id?: unknown; ok?: unknown; svg?: unknown; error?: unknown } | null;
+      if (data?.id !== id) return;
+      if (data.ok === true && typeof data.svg === "string") resolve(end({ ok: true, svg: data.svg }));
+      else resolve(end({ ok: false, error: typeof data.error === "string" ? data.error.slice(0, 500) : "runtime-draw-failed" }));
+    };
+    running.onerror = () => resolve(end({ ok: false, error: "runtime-draw-failed" }));
+    running.postMessage({ id, code, engine });
+  });
 }
 
 function fail(error: unknown): Answer {
@@ -108,25 +134,10 @@ async function draw(request: { kind: string; code: string; engine: string }): Pr
     // The text, with the look every graph starts from put in front (see styledDot in shared/dot.ts).
     if (typeof request.code !== "string" || request.code.length > 8000) return { ok: false, error: "the code is too long" };
     if (!ENGINES.includes(request.engine)) return { ok: false, error: "that layout is not allowed" };
-    let library;
-    try {
-      library = await loadGraphviz();
-    } catch {
-      // A pack file that would not load (it failed its check when served, or is not there) is no fault of the figure.
-      // Main reads the `runtime-` prefix so, and replaces this window, which would not try that file again.
-      graphviz = undefined;
-      return { ok: false, error: "runtime-draw-library-missing" };
-    }
-    let svg: string;
-    try {
-      svg = library.layout(request.code, "svg", request.engine);
-    } catch (error) {
-      // A failed layout can leave the WebAssembly instance in a state of its own (an abort, a memory limit), so the next
-      // drawing gets a new one. The library's file is already loaded, so this takes a moment.
-      graphviz = undefined;
-      return fail(error);
-    }
-    return await fromSvg(svg);
+    // A pack file that would not load comes back as `runtime-draw-library-missing`, which main reads as no fault of the
+    // figure and replaces this window for, since it would not try that file again.
+    const laid = await layout(request.code, request.engine);
+    return laid.ok ? await fromSvg(laid.svg) : { ok: false, error: laid.error };
   } catch (error) {
     return fail(error);
   }

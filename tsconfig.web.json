@@ -9,6 +9,6 @@
       "@shared/*": ["./src/shared/*"]
     }
   },
-  "include": ["src/renderer/src", "src/shared", "src/sandbox/draw-host.ts", "src/sandbox/svg-clean.ts"],
+  "include": ["src/renderer/src", "src/shared", "src/sandbox/draw-host.ts", "src/sandbox/draw-worker.ts", "src/sandbox/inspect-dot.ts", "src/sandbox/svg-clean.ts"],
   "exclude": ["src/**/*.test.ts"]
 }
