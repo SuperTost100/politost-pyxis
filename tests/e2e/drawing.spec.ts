@@ -69,12 +69,12 @@ const automaton = [
 const ring = (n: number, layout = "dot") =>
   `digraph { layout=${layout}; ${Array.from({ length: n }, (_, i) => `a${i} -> a${(i + 1) % n}; a${i} -> a${(i + 7) % n}`).join("; ")} }`;
 
-/** 150 nodes and 300 edges joined at random, the same every time, with the node attributes given: the most the checks allow. */
-function scatter(nodeAttributes: string): string {
+/** 150 nodes and 300 edges joined at random, the same every time, with the attributes given: the most the checks allow. */
+function scatter(nodeAttributes: string, graphAttributes = ""): string {
   let state = 1;
   const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) >> 4;
   const edges = Array.from({ length: 300 }, () => `a${next() % 150} -> a${next() % 150}`);
-  return `digraph { node [${nodeAttributes}]; ${edges.join("; ")} }`;
+  return `digraph { ${graphAttributes ? `${graphAttributes}; ` : ""}node [${nodeAttributes}]; ${edges.join("; ")} }`;
 }
 
 async function start(extra: { env?: Record<string, string> } = {}) {
@@ -778,15 +778,17 @@ test.describe("the drawing window", () => {
   });
 
   test("holds the layouts that run longest to the time limit, with the attributes that the checks allow and that make them long", async () => {
-    // Measured on the pack's Graphviz, at the limits of 150 nodes and 300 edges: a very large `sides` or `peripheries`
-    // makes a layout of seconds that writes tens of megabytes of SVG. These pass the checks, so they run inside the layout,
-    // where the time limit of the kind has to stop them. Each is given less time than it takes, so the stop is certain.
+    // Measured on the pack's Graphviz, at the limits of 150 nodes and 300 edges: a very large `peripheries` runs for more
+    // than 20 seconds, a very large `sides` for 7 and writes 155 MB of SVG, and `splines=curved` on `neato` runs for more
+    // than 20 as well. These pass the checks, so they run inside the layout, where the time limit of the kind has to stop
+    // them. Each is given less time than it takes, so the stop is certain.
     const { app, userData } = await start();
     try {
       expectPicture(await draw(app, automaton), "the window is open");
       const heavy: Array<[string, string, number]> = [
+        ["peripheries=100000", scatter("peripheries=100000"), 1500],
         ["sides=100000", scatter("shape=polygon sides=100000"), 1500],
-        ["sides, peripheries, skew and distortion", scatter("shape=polygon sides=1000 peripheries=50 skew=1 distortion=1"), 1000],
+        ["splines=curved on neato", scatter("", "layout=neato; splines=curved"), 1500],
       ];
       for (const [name, code, timeoutMs] of heavy) {
         expect(figureProblem("graph", code), `${name} passes the checks`).toBeNull();
