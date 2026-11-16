@@ -138,6 +138,7 @@ import {
   handleDrawRequest,
   readAnswer,
 } from "./draw-runtime";
+import { styledDot } from "../shared/dot";
 import { FIGURE_IMAGE_MAX } from "../shared/smart-text";
 
 const DOT = "digraph { a -> b }";
@@ -197,7 +198,11 @@ describe("the drawing window", () => {
     expect(partition!.handled).toEqual(["pyxis-runtime"]);
     expect(window!.loaded).toEqual(["pyxis-runtime://draw/index.html"]);
     // The drawing is asked for with one call, and the answer is read as one value.
-    expect(fake.scripts[0]).toMatch(/^window\.pyxisDraw\.draw\(\{"kind":"graph","code":"digraph \{ a -> b \}","engine":"dot","timeoutMs":5000\}\)$/);
+    expect(fake.scripts[0]).toBe(
+      `window.pyxisDraw.draw(${JSON.stringify({ kind: "graph", code: styledDot(DOT), engine: "dot", timeoutMs: 5000 })})`,
+    );
+    // The graph's default look is in the text, ahead of the text's own statements.
+    expect(styledDot(DOT).indexOf("graph [fontname")).toBeLessThan(styledDot(DOT).indexOf("a -> b"));
     fake.held[0]!.settle(good);
     await expect(result).resolves.toEqual({ image: good.png });
   });

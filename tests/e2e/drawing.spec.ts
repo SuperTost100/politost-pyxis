@@ -1,4 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -134,6 +135,80 @@ test.describe("the drawing window", () => {
     }
   });
 
+  test("draws every label in the app's own font, which the picture carries inside itself, and the same text the same way every time", async () => {
+    const { app, userData } = await start();
+    try {
+      // The mechanism, in the window: an SVG shown as an image loads no font of its page, so the font is inside the SVG as
+      // a data URL. With it the text is drawn in the font and without it in the fallback, and the first drawing is as
+      // good as the later ones, so nothing needs to wait for the font to arrive.
+      const font = readFileSync("src/renderer/src/design-system/fonts/Figtree-Variable.woff2").toString("base64");
+      await draw(app, automaton);
+      const probe = await inWindow<Record<string, { first: string; second: string; ink: number }>>(
+        app,
+        `(async () => {
+          const face = '@font-face{font-family:"Probe";src:url(data:font/woff2;base64,${font}) format("woff2");font-weight:300 900}';
+          const svg = (withFace) => '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="70"><style>' + (withFace ? face : '') + '</style><text x="5" y="48" font-size="36" font-family="Probe">Rag gy iltr 0123</text></svg>';
+          const sample = async (text) => {
+            const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml" }));
+            const image = new Image();
+            image.src = url;
+            await image.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = 400; canvas.height = 70;
+            const context = canvas.getContext("2d");
+            const paint = () => { context.fillStyle = "#fff"; context.fillRect(0, 0, 400, 70); context.drawImage(image, 0, 0); return canvas.toDataURL("image/png"); };
+            const first = paint();
+            await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 30)));
+            const second = paint();
+            const data = context.getImageData(0, 0, 400, 70).data;
+            let ink = 0;
+            for (let i = 0; i < data.length; i += 4) if (data[i] < 128) ink++;
+            return { first, second, ink };
+          };
+          return { without: await sample(svg(false)), withFont: await sample(svg(true)), again: await sample(svg(true)) };
+        })()`,
+      );
+      expect(probe.withFont!.ink).not.toBe(probe.without!.ink);
+      expect(probe.withFont!.first).not.toBe(probe.without!.first);
+      expect(probe.withFont!.first).toBe(probe.withFont!.second);
+      expect(probe.again!.second).toBe(probe.withFont!.second);
+
+      // The drawing itself: the same graph drawn again and again is the same picture, byte for byte, so the font was there
+      // each time, and the picture is not the one the fallback font would make.
+      const hashes = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const result = await draw(app, automaton);
+        hashes.add(createHash("sha256").update((result as { image: string }).image).digest("hex"));
+      }
+      expect(hashes.size).toBe(1);
+      // A window made new draws it the same, as a replaced window does after a crash.
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((candidate) => candidate.webContents.getURL().startsWith("pyxis-runtime://draw/"))
+          ?.webContents.forcefullyCrashRenderer();
+      });
+      await expect.poll(() => windows(app)).toEqual([]);
+      const fresh = await draw(app, automaton);
+      expect(createHash("sha256").update((fresh as { image: string }).image).digest("hex")).toBe([...hashes][0]);
+
+      // Labels of every kind are drawn: nodes, edges, graph and cluster labels, with accents, and none is clipped by the
+      // picture's edge (the drawing has a margin of its own all round).
+      const labelled = await draw(
+        app,
+        'digraph { label="Titolo del grafo"; subgraph cluster_0 { label="Sistema à è ì ò ù"; a [label="Nodo molto lungo di prova"]; a -> b [label="un\'etichetta lunga"] } b -> c [headlabel="testa" taillabel="coda"] }',
+      );
+      expectPicture(labelled, "every kind of label");
+      const decoded = PNG.sync.read(Buffer.from((labelled as { image: string }).image.split(",")[1]!, "base64"));
+      const inkAt = (x: number, y: number) => decoded.data[(y * decoded.width + x) * 4]! < 160;
+      let edgeInk = 0;
+      for (let x = 0; x < decoded.width; x++) edgeInk += Number(inkAt(x, 0)) + Number(inkAt(x, decoded.height - 1));
+      for (let y = 0; y < decoded.height; y++) edgeInk += Number(inkAt(0, y)) + Number(inkAt(decoded.width - 1, y));
+      expect(edgeInk, "no ink on the picture's edge").toBe(0);
+    } finally {
+      await finish(app, userData);
+    }
+  });
+
   test("refuses the text its checks refuse before any window sees it", async () => {
     const { app, userData } = await start();
     try {
@@ -197,6 +272,8 @@ test.describe("the drawing window", () => {
         id: `digraph { id="x\\"><script src=\\"${leak}/s.js\\"></script>"; a [id="<img src=${leak}/id>"] -> b }`,
         label: `digraph { a [label="<img src=${leak}/l> &lt;script&gt; \\"><svg onload=fetch('${leak}/x')>"] }`,
         tooltip: `digraph { a [tooltip="${leak}/t" comment="${leak}/c" target="_blank" URL="javascript:fetch('${leak}/j')"] }`,
+        fonts: `digraph { fontpath="${leak}"; fontname="${leak}/font.ttf"; labelfontname="${leak}/l.ttf"; fontnames="svg"; a [fontname="${leak}/a.ttf" label="x"] -> b [fontname="file:///etc/passwd"] }`,
+        fontFamily: `digraph { a [fontname="Arial;}</style><script>window.__pwned=1</script><style>x{" label="y"] }`,
         windowsPaths: 'digraph { a [image="C:\\\\Windows\\\\win.ini"]; b [image="\\\\\\\\server\\\\share\\\\x.png"] ; c [image="/etc/passwd"] }',
       };
       for (const [name, code] of Object.entries(hostile)) expectPictureOrFailure(await drawUnchecked(app, code), name);
@@ -343,6 +420,11 @@ test.describe("the drawing window", () => {
           out.image = await load("img", { src: ${JSON.stringify(leak + "/image.png")} });
           out.script = await load("script", { src: ${JSON.stringify(leak + "/script.js")} });
           out.stylesheet = await load("link", { rel: "stylesheet", href: ${JSON.stringify(leak + "/style.css")} });
+          // Fonts: a page loading one from the network, or from a file, and the app's own font through the scheme.
+          out.fontRemote = await settle(new FontFace("Remote", "url(" + ${JSON.stringify(leak + "/font.woff2")} + ")").load());
+          out.fontFile = await settle(new FontFace("File", "url(file:///etc/hostname)").load());
+          out.fontOtherHost = await settle(new FontFace("Other", "url(pyxis-runtime://sandbox/host.js)").load());
+          out.fontAppFile = await settle(new FontFace("App", "url(pyxis-runtime://draw/fonts/Figtree-Variable.woff2)").load());
           out.otherHostScript = await load("script", { src: "pyxis-runtime://sandbox/host.js" });
           out.packWheel = await settle(import("pyxis-runtime://draw/drawing/schemdraw-0.23-py3-none-any.whl"));
           out.pythonFile = await settle(import("pyxis-runtime://draw/pyodide/pyodide.js"));
@@ -384,6 +466,10 @@ test.describe("the drawing window", () => {
         image: "blocked",
         script: "blocked",
         stylesheet: "blocked",
+        fontRemote: "blocked",
+        fontFile: "blocked",
+        fontOtherHost: "blocked",
+        fontAppFile: "blocked",
         otherHostScript: "blocked",
         packWheel: "blocked",
         pythonFile: "blocked",

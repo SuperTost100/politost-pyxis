@@ -1,4 +1,6 @@
 import DOMPurify from "dompurify";
+// The app's own text font, as a data URL inside this script: it comes from the app, not from the pack or the network.
+import figtree from "../renderer/src/design-system/fonts/Figtree-Variable.woff2?inline";
 import { cleanSvg } from "./svg-clean";
 
 /**
@@ -8,9 +10,16 @@ import { cleanSvg } from "./svg-clean";
  * the rasterising and the size checks. It has no network (the session refuses it) and no way to run a string.
  */
 const BASE = "pyxis-runtime://draw/";
-/** The longest side of the picture, in pixels, and the longest a stored picture may be as a data URL. */
+/**
+ * The longest side of the picture, in pixels, and the longest a stored picture may be as a data URL. A drawing is
+ * rasterised at 120 pixels to the inch, as the plots and circuits are, so its text and lines are the size theirs are.
+ */
 const SIDE_MAX = 2000;
+/** 120 pixels to the inch against the 96 a point is drawn at (see `pixels` in svg-clean.ts). */
+const DENSITY = 120 / 96;
 const IMAGE_MAX = 700_000;
+/** A picture is an SVG shown as an image, which loads no font of the page: the font is part of the SVG. */
+const FONT_FACE = `@font-face { font-family: "Figtree"; src: url(${figtree}) format("woff2"); font-weight: 300 900; font-style: normal; }`;
 const ENGINES = ["dot", "neato", "circo", "fdp", "twopi"];
 
 type Answer = { ok: true; png: string } | { ok: false; error: string };
@@ -45,9 +54,16 @@ async function rasterise(svg: string, width: number, height: number, scale: numb
     await image.decode();
     const context = canvas.getContext("2d");
     if (!context) throw new Error("the picture could not be made");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const paint = () => {
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    };
+    // The picture's font loads from its own data URL while it is decoded and first drawn. The second drawing, one
+    // frame later, is the one that is kept, so the text is never the fallback font.
+    paint();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 30)));
+    paint();
     return canvas.toDataURL("image/png");
   } finally {
     URL.revokeObjectURL(url);
@@ -71,8 +87,12 @@ async function fromSvg(text: string): Promise<Answer> {
   try {
     const cleaned = cleanSvg(DOMPurify, text);
     if (!cleaned.ok) return { ok: false, error: cleaned.error };
+    // The font is added after the cleaning, which removes every `style` of the text it is given.
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    style.textContent = FONT_FACE;
+    cleaned.svg.insertBefore(style, cleaned.svg.firstChild);
     const svg = new XMLSerializer().serializeToString(cleaned.svg);
-    for (const scale of [2, 1]) {
+    for (const scale of [DENSITY, 1]) {
       const png = await rasterise(svg, cleaned.width, cleaned.height, scale);
       if (png.length <= IMAGE_MAX) return { ok: true, png };
     }
@@ -85,7 +105,8 @@ async function fromSvg(text: string): Promise<Answer> {
 async function draw(request: { kind: string; code: string; engine: string }): Promise<Answer> {
   try {
     if (request.kind !== "graph") return { ok: false, error: "this window does not draw that kind" };
-    if (typeof request.code !== "string" || request.code.length > 4000) return { ok: false, error: "the code is too long" };
+    // The text, with the look every graph starts from put in front (see styledDot in shared/dot.ts).
+    if (typeof request.code !== "string" || request.code.length > 8000) return { ok: false, error: "the code is too long" };
     if (!ENGINES.includes(request.engine)) return { ok: false, error: "that layout is not allowed" };
     let library;
     try {

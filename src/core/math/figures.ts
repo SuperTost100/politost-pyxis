@@ -87,7 +87,7 @@ export function figureProgram(figure: FigureData): string {
       "import schemdraw.elements as elm",
       "schemdraw.use('matplotlib')",
       "d = schemdraw.Drawing(show=False)",
-      "d.config(inches_per_unit=0.8, fontsize=15, lw=1.8, color='#15181e')",
+      "d.config(inches_per_unit=0.8, fontsize=12, lw=1.8, color='#15181e')",
       figure.code,
       "if d.elements:",
       "    d.draw(show=False).getfig()",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DOT_EDGES_MAX, DOT_NODES_MAX, checkDot } from "./dot";
+import { DOT_DEFAULTS, DOT_EDGES_MAX, DOT_NODES_MAX, checkDot, styledDot } from "./dot";
 import {
   FIGURE_KINDS,
   drawableKinds,
@@ -50,7 +50,7 @@ const chain = (n: number) => `digraph { ${Array.from({ length: n }, (_, i) => `n
 describe("a graph's DOT text", () => {
   it("passes when it is one graph within the limits, and says which layout to draw with", () => {
     expect(figureProblem("graph", automaton)).toBeNull();
-    expect(checkDot(automaton)).toEqual({ problem: null, layout: "dot", nodes: 3, edges: 3 });
+    expect(checkDot(automaton)).toEqual({ problem: null, layout: "dot", nodes: 3, edges: 3, body: automaton.indexOf("{") + 1 });
     for (const text of [
       "graph { a -- b -- c }",
       "strict digraph G { a -> b; b -> a }",
@@ -61,7 +61,8 @@ describe("a graph's DOT text", () => {
       "digraph {\r\n  a -> b;\r\n  b -> c;\r\n}\r\n",
       "digraph { 1 -> 2; -3.5 -> .5 }",
       'digraph { "my node" -> "other" [label="a" + "b"] }',
-      "digraph { a [shape=box fontname=\"Figtree\", color=red] }",
+      "digraph { a [shape=box fontname=\"Arial\", color=red] }",
+      'digraph { node [fontname=Helvetica]; edge [labelfontname="helvetica"]; a -> b }',
     ])
       expect(figureProblem("graph", text), text).toBeNull();
     expect(checkDot("digraph { layout=neato; a -> b }")).toMatchObject({ layout: "neato" });
@@ -146,6 +147,45 @@ describe("a graph's DOT text", () => {
       expect(figureProblem("graph", text), text).toBe(problem);
     // A < inside a quoted string or a comment is text.
     expect(figureProblem("graph", 'digraph { a [label="<b>x</b>"] /* <i> */ // <u>\n }')).toBeNull();
+  });
+
+  it("allows only the font names Graphviz has metrics for, in every place a font can be named", () => {
+    for (const name of ["Arial", "arial", "Helvetica", "HELVETICA", '"Arial"'])
+      for (const text of [`digraph { a [fontname=${name}] }`, `digraph { graph [fontname=${name}]; a }`, `digraph { a -> b [labelfontname=${name}] }`])
+        expect(figureProblem("graph", text), text).toBeNull();
+    for (const name of ["Times", "Figtree", "Courier", '"sans-serif"', '"../../fonts/x.ttf"', '"C:\\\\Windows\\\\Fonts\\\\x.ttf"', '"Arial, Helvetica"', "true"])
+      for (const attribute of ["fontname", "labelfontname", "FONTNAME"])
+        for (const text of [`digraph { a [${attribute}=${name}] }`, `digraph { graph [${attribute}=${name}]; a }`, `digraph { subgraph cluster_0 { ${attribute}=${name}; a } }`]) {
+          const written = name.replaceAll('"', "");
+          expect(figureProblem("graph", text), text).toBe(
+            `${attribute}=${written} is not allowed: leave ${attribute} out, graphs are drawn in the app's own font`,
+          );
+        }
+    // fontpath is refused with the other attributes that name a file, and a font name inside a label is only text.
+    expect(figureProblem("graph", 'digraph { fontpath="/usr/share/fonts"; a }')).toMatch(/fontpath is not allowed/);
+    expect(figureProblem("graph", 'digraph { a [label="fontname=Times"] }')).toBeNull();
+  });
+
+  it("puts the graph's default look first, so the text's own attributes win, and finds the brace in any text", () => {
+    const styled = styledDot('strict digraph "a { b" { /* { */ q0 -> q1 [fontsize=20] }');
+    expect(styled.startsWith('strict digraph "a { b" { ')).toBe(true);
+    // The defaults come before the first statement, and the text's own statements after them.
+    expect(styled.indexOf(DOT_DEFAULTS)).toBeLessThan(styled.indexOf("/* { */"));
+    expect(styled.indexOf(DOT_DEFAULTS)).toBeLessThan(styled.indexOf("q0 -> q1 [fontsize=20]"));
+    expect(styled.endsWith("q0 -> q1 [fontsize=20] }")).toBe(true);
+    expect(checkDot(styled)).toMatchObject({ problem: null, nodes: 2, edges: 1 });
+    // The defaults pass the checks themselves, set Arial metrics, the ink of the circuits and a size like a plot's.
+    expect(checkDot(`digraph { ${DOT_DEFAULTS} }`)).toMatchObject({ problem: null, nodes: 0 });
+    expect(DOT_DEFAULTS).toContain('fontname="Arial"');
+    expect(DOT_DEFAULTS).toContain('color="#15181e"');
+    expect(DOT_DEFAULTS).toContain('size="6.4,5"');
+    expect(DOT_DEFAULTS).not.toContain("!");
+    // A text the check cannot read still gets them after its first brace, and one with no brace gets none.
+    expect(styledDot("digraph {a -> ")).toBe(`digraph { ${DOT_DEFAULTS} a -> `);
+    expect(styledDot("not a graph")).toBe("not a graph");
+    expect(styledDot("")).toBe("");
+    // CRLF text is styled the same.
+    expect(styledDot("digraph {\r\n a -> b\r\n}")).toBe(`digraph { ${DOT_DEFAULTS} \r\n a -> b\r\n}`);
   });
 
   it("allows only the five layout engines", () => {

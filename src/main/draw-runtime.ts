@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, session, type Session } from "electron";
 import { z } from "zod";
+import { styledDot } from "../shared/dot";
 import { FIGURE_KINDS, figureProblem, graphLayout } from "../shared/figure-kinds";
 import { FIGURE_IMAGE_MAX } from "../shared/smart-text";
 import { requireRuntime } from "./runtime-pack";
@@ -278,7 +279,7 @@ export async function handleDrawRequest(
   // The clock never runs longer than the kind's limit, whatever a request asks for.
   const timeoutMs = Math.max(50, Math.min(rules.timeoutMs, parsed.data.timeoutMs ?? rules.timeoutMs));
   try {
-    return await execute({ kind, code, engine: graphLayout(code) ?? "dot", timeoutMs }, deadline);
+    return await execute({ kind, code: styledDot(code), engine: graphLayout(code) ?? "dot", timeoutMs }, deadline);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     return { error: message.startsWith("runtime-") ? message : "runtime-draw-failed" };

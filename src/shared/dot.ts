@@ -16,13 +16,16 @@ export type DotLayout = (typeof DOT_LAYOUTS)[number];
  * drawing or give an element a name the page can find. Compared in lower case. Every name that ends in `url` or `href`
  * (URL, labelURL, headhref and the rest) is refused too.
  */
+/** The font names a graph may give: the ones Graphviz has metrics for, drawn in the app's font all the same. */
+const FONT_NAMES = ["arial", "helvetica"];
 const REFUSED = new Set(["image", "imagepath", "shapefile", "fontpath", "stylesheet", "id", "target"]);
 
+/** `at` is where the token starts in the text. */
 type Token =
-  | { kind: "id"; value: string }
-  | { kind: "string"; value: string }
-  | { kind: "edgeop" }
-  | { kind: "punct"; value: string };
+  | { kind: "id"; value: string; at: number }
+  | { kind: "string"; value: string; at: number }
+  | { kind: "edgeop"; at: number }
+  | { kind: "punct"; value: string; at: number };
 
 type Lexed = { tokens: Token[]; problem: null } | { tokens: null; problem: string };
 
@@ -61,6 +64,7 @@ function lex(code: string): Lexed {
       continue;
     }
     if (c === '"') {
+      const start = i;
       let value = "";
       i++;
       for (;;) {
@@ -77,7 +81,7 @@ function lex(code: string): Lexed {
         i++;
       }
       i++;
-      tokens.push({ kind: "string", value });
+      tokens.push({ kind: "string", value, at: start });
       continue;
     }
     // An HTML-like label, <...>, can hold tables, links and images. None is needed to draw a graph, so none is read.
@@ -87,25 +91,25 @@ function lex(code: string): Lexed {
         problem: "HTML-like labels (<...>) are not allowed: write the label as a quoted string",
       };
     if ((c === "-" && code[i + 1] === ">") || (c === "-" && code[i + 1] === "-")) {
-      tokens.push({ kind: "edgeop" });
+      tokens.push({ kind: "edgeop", at: i });
       i += 2;
       continue;
     }
     if ("{}[];,=:+".includes(c)) {
-      tokens.push({ kind: "punct", value: c });
+      tokens.push({ kind: "punct", value: c, at: i });
       i++;
       continue;
     }
     const number = /^-?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)/.exec(code.slice(i, i + 64));
     if (number) {
-      tokens.push({ kind: "id", value: number[0] });
+      tokens.push({ kind: "id", value: number[0], at: i });
       i += number[0].length;
       continue;
     }
     if (ID_START.test(c)) {
       let end = i + 1;
       while (end < code.length && ID_PART.test(code[end]!)) end++;
-      tokens.push({ kind: "id", value: code.slice(i, end) });
+      tokens.push({ kind: "id", value: code.slice(i, end), at: i });
       i = end;
       continue;
     }
@@ -122,6 +126,8 @@ class Walker {
   readonly nodes = new Set<string>();
   edges = 0;
   layout: DotLayout | null = null;
+  /** Where the graph's body starts: just after its opening brace. */
+  body = 0;
 
   constructor(private readonly tokens: Token[]) {}
 
@@ -153,7 +159,9 @@ class Walker {
     this.at++;
     const name = this.peek();
     if (name && (name.kind === "id" || name.kind === "string")) this.at++;
+    const brace = this.peek();
     this.expect("{");
+    this.body = brace!.at + 1;
     this.statements();
     if (this.peek()) this.fail("only one graph is allowed: remove what follows its closing }");
   }
@@ -276,6 +284,10 @@ class Walker {
       this.fail(
         `the attribute ${name} is not allowed: it reaches for a file, a link or an element name, so remove it`,
       );
+    // Graphs are drawn in the app's own font, which Graphviz sizes by the metrics of Arial and Helvetica. Any other name
+    // would be measured as Times and look up a font on the machine, so no other name is taken.
+    if (key.endsWith("fontname") && !FONT_NAMES.includes(value.trim().toLowerCase()))
+      this.fail(`${name}=${value} is not allowed: leave ${name} out, graphs are drawn in the app's own font`);
     if (key === "layout") {
       const layout = value.trim().toLowerCase();
       if (!(DOT_LAYOUTS as readonly string[]).includes(layout))
@@ -285,7 +297,9 @@ class Walker {
   }
 }
 
-export type DotCheck = { problem: string } | { problem: null; layout: DotLayout; nodes: number; edges: number };
+export type DotCheck =
+  | { problem: string }
+  | { problem: null; layout: DotLayout; nodes: number; edges: number; body: number };
 
 /**
  * Whether a DOT text may be drawn, in words for the model that wrote it. It passes when it is one graph of at most
@@ -308,5 +322,28 @@ export function checkDot(code: string): DotCheck {
     layout: walker.layout ?? "dot",
     nodes: walker.nodes.size,
     edges: walker.edges,
+    body: walker.body,
   };
+}
+
+/**
+ * What a graph looks like unless it says otherwise, to sit on the same white card as a plot and a circuit: the ink of
+ * the circuits, thin lines, small arrowheads, the plots' 11 point text, and a drawing no bigger than a plot (6.4 inches
+ * across; a smaller graph is not enlarged). Text is measured as Arial, which Figtree, the font it is drawn in, matches
+ * within a few percent, so labels fit their nodes. The statements come first in the graph, so every attribute the text
+ * sets afterwards wins.
+ */
+export const DOT_DEFAULTS =
+  'graph [fontname="Arial" fontsize=11 fontcolor="#15181e" size="6.4,5" pad=0.2 nodesep=0.35 ranksep=0.45]; ' +
+  'node [fontname="Arial" fontsize=11 fontcolor="#15181e" color="#15181e" penwidth=1.2 margin="0.14,0.07"]; ' +
+  'edge [fontname="Arial" fontsize=10 fontcolor="#15181e" color="#15181e" penwidth=1.2 arrowsize=0.7];';
+
+/**
+ * The text to give Graphviz: the graph with its defaults put first. A text the check cannot read (a test that skips the
+ * check) gets them after its first brace, and one with no brace gets none.
+ */
+export function styledDot(code: string): string {
+  const check = checkDot(code);
+  const at = check.problem === null ? check.body : code.indexOf("{") + 1;
+  return at > 0 ? `${code.slice(0, at)} ${DOT_DEFAULTS} ${code.slice(at)}` : code;
 }

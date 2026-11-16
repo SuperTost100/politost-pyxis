@@ -1309,7 +1309,7 @@ const auditFigures = (
       "graph",
       "Quando non è nessuno dei due",
       "Il grafo delle definizioni: dall'intorno all'insieme aperto, dalla frontiera all'insieme chiuso.",
-      'digraph { rankdir=LR; node [shape=box fontname="Helvetica"]; "Intorno" -> "Punto interno" -> "Insieme aperto"; "Frontiera" -> "Insieme chiuso" }',
+      'digraph { rankdir=LR; node [shape=box]; "Intorno" -> "Punto interno" -> "Insieme aperto"; "Frontiera" -> "Insieme chiuso" }',
     ],
   ] as const
 ).map(([kind, after, caption, code]) => ({

@@ -13,6 +13,9 @@ const ELEMENTS = new Set([
   "tspan", "lineargradient", "radialgradient", "stop", "clippath",
 ]);
 
+/** What every text of a drawing is set in. The font itself is embedded in the picture by the page (see draw-host.ts). */
+export const FONT_FAMILY = "Figtree, sans-serif";
+
 export type CleanSvg = { ok: true; svg: Element; width: number; height: number } | { ok: false; error: string };
 
 const SIZE = /^\s*([0-9]*\.?[0-9]+)\s*(pt|px)?\s*$/;
@@ -46,6 +49,8 @@ export function cleanSvg(purify: DOMPurify, text: string): CleanSvg {
   if (roots.length !== 1 || !svg) return { ok: false, error: "the drawing is not one SVG picture" };
   for (const element of Array.from(svg.querySelectorAll("*")))
     if (!ELEMENTS.has(element.localName.toLowerCase())) element.remove();
+  // Graphviz measured the text as Arial; it is drawn in the app's font, whatever name the text gave.
+  for (const text of Array.from(svg.querySelectorAll("text, tspan"))) text.setAttribute("font-family", FONT_FAMILY);
   for (const element of [svg, ...Array.from(svg.querySelectorAll("*"))])
     for (const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase();
