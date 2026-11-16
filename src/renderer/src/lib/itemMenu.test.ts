@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clampedBy, isMenuKey, keepsSystemMenu, menuTrigger, movedBy, pointBelow } from "./itemMenu";
+import { clampedBy, isMenuKey, keepsSystemMenu, menuTrigger, movedBy, pendingItem, pointBelow, type MenuMoveKey } from "./itemMenu";
 
 const plain = { closest: () => null };
 const field = { closest: (selector: string) => (selector.includes("textarea") ? {} : null) };
@@ -286,5 +286,36 @@ describe("whether the page, and not the student, scrolled", () => {
   it("reads the horizontal position the same way", () => {
     expect(clampedBy(was(0, 200), { ...scroller(0, 900), scrollLeft: 40, scrollWidth: 1000 })).toBe(true);
     expect(clampedBy(was(0, 200), { ...scroller(0, 900), scrollLeft: 100, scrollWidth: 1300 })).toBe(false);
+  });
+});
+
+describe("keys pressed before a menu has the focus", () => {
+  const down: MenuMoveKey = "ArrowDown";
+  const up: MenuMoveKey = "ArrowUp";
+
+  it("lands the first press on the item at the edge it points to", () => {
+    expect(pendingItem([down], 3)).toBe(0);
+    expect(pendingItem([up], 3)).toBe(2);
+  });
+
+  it("moves one item on for each press after it, so three presses down reach the third item", () => {
+    expect(pendingItem([down, down, down], 3)).toBe(2);
+    expect(pendingItem([up, up], 3)).toBe(1);
+  });
+
+  it("goes round the ring in both directions, as the menu's own keys do", () => {
+    expect(pendingItem([down, down, down, down], 3)).toBe(0);
+    expect(pendingItem([down, up], 3)).toBe(2);
+  });
+
+  it("sends Home to the first item and End to the last, and goes on from there", () => {
+    expect(pendingItem(["End"], 4)).toBe(3);
+    expect(pendingItem([down, down, "Home"], 4)).toBe(0);
+    expect(pendingItem(["End", up], 4)).toBe(2);
+    expect(pendingItem(["Home", down], 4)).toBe(1);
+  });
+
+  it("has no item to land on in a menu with none", () => {
+    expect(pendingItem([down], 0)).toBe(-1);
   });
 });
