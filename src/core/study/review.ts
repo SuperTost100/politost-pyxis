@@ -4,7 +4,7 @@ import type { Runner } from "../jobs/runner";
 import { readSteps } from "../plans/steps";
 import { planSeries } from "../plans/progress";
 import { QUIZ_MAX_QUESTIONS, questionFlagged, saveQuiz, startAttempt, withoutAnswer, type QuizQuestion } from "./attempt";
-import { dueCards } from "./cards";
+import { dueCards, latestReview } from "./cards";
 import { topicExercises } from "./exercises";
 import { flaggedIds } from "./flags";
 import type { Grade } from "./grade";
@@ -208,6 +208,26 @@ function view(db: Database.Database, planId: string, found: Row) {
       .get(JSON.stringify(body.cardIds), row.created_at) as { n: number }
   ).n;
   const cardsTotal = cardsDone + cards.length;
+  const subject = db
+    .prepare("SELECT s.name FROM plans p JOIN subjects s ON s.id = p.subject_id WHERE p.id = ?")
+    .pluck()
+    .get(planId) as string | undefined;
+  // Each card's latest answer since the review began; a card answered again after an Undo shows its new one.
+  const cardAnswers = (
+    db
+      .prepare(
+        `SELECT c.id AS cardId, r.id AS reviewId, r.rating, c.front FROM cards c
+         JOIN card_reviews r ON r.id = ${latestReview("id")}
+         WHERE c.id IN (SELECT value FROM json_each(?)) AND r.reviewed_at >= ?
+         ORDER BY r.reviewed_at, r.rowid`,
+      )
+      .all(JSON.stringify(body.cardIds), row.created_at) as Array<{
+      cardId: string;
+      reviewId: string;
+      rating: "again" | "hard" | "good" | "easy";
+      front: string;
+    }>
+  ).map((item) => ({ ...item, subject: subject ?? null }));
   const attempt = body.attemptId
     ? (db
         .prepare(
@@ -252,6 +272,7 @@ function view(db: Database.Database, planId: string, found: Row) {
     sessionId: row.id,
     fromAttemptId: body.fromAttemptId,
     cards,
+    answers: cardAnswers,
     attemptId: attempt ? body.attemptId : "",
     questions: stored.map(withoutAnswer),
     progress: {
@@ -308,6 +329,7 @@ const emptyReview: ReviewSession = {
   sessionId: "",
   fromAttemptId: undefined,
   cards: [],
+  answers: [],
   attemptId: "",
   questions: [],
   progress: {

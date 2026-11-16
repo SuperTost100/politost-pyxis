@@ -160,6 +160,17 @@ const reviewSessionSchema = z.object({
   // The quiz attempt whose wrong answers this review starts from, when the student asked to review its mistakes.
   fromAttemptId: z.string().optional(),
   cards: z.array(dueCardSchema),
+  // The cards of this review the student has answered, oldest first, each with its latest answer: the end of the
+  // card phase lists them under the answer given, and they survive leaving the page.
+  answers: z.array(
+    z.object({
+      cardId: z.string(),
+      reviewId: z.string(),
+      rating: z.enum(["again", "hard", "good", "easy"]),
+      front: z.string(),
+      subject: z.string().nullable(),
+    }),
+  ),
   attemptId: z.string(),
   questions: z.array(
     quizQuestionSchema,

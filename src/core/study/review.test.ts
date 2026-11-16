@@ -7,7 +7,7 @@ import { createPlan } from "../plans/create";
 import { recordStep } from "../plans/steps";
 import { importSmartbook } from "../sources/smartbook";
 import { saveQuiz, startAttempt } from "./attempt";
-import { dueCards, rateCard } from "./cards";
+import { dueCards, rateCard, undoRating } from "./cards";
 import { studyHandlers } from "./handlers";
 import { flagTarget } from "./flags";
 import { saveQuizDraft } from "./quizJobs";
@@ -129,6 +129,33 @@ describe("mixed review (LES-13)", () => {
     finalizeAttempt(db, session.attemptId, { [first]: "x" });
     expect(readReview(db, planId)).toBeNull();
     expect(startReview(db, planId).sessionId).not.toBe(session.sessionId);
+  });
+
+  it("lists the cards answered with their latest answer, oldest first, and takes one back with its Undo", () => {
+    const fx = setup();
+    const { db, planId, topics } = fx;
+    openGap(fx, topics[2]!);
+    db.exec("INSERT INTO subjects (id, name, position, created_at) VALUES ('s', 'Fisica', 0, 1)");
+    db.prepare("UPDATE plans SET subject_id = 's' WHERE id = ?").run(planId);
+    seedCards(db, {
+      planId,
+      topicId: topics[0]!,
+      pairs: ["a", "b", "c"].map((front) => ({ front, back: front })),
+    });
+    const session = startReview(db, planId, { count: 3 });
+    expect(session.answers).toEqual([]);
+    const [a, b] = session.cards;
+    const first = rateCard(db, a!.id, "again", Date.now());
+    const second = rateCard(db, b!.id, "easy", Date.now() + 1);
+    expect(readReview(db, planId)!.answers).toEqual([
+      { cardId: a!.id, reviewId: first.reviewId, rating: "again", front: a!.front, subject: "Fisica" },
+      { cardId: b!.id, reviewId: second.reviewId, rating: "easy", front: b!.front, subject: "Fisica" },
+    ]);
+    // Taking the last answer back removes it, and the card is to be answered again.
+    undoRating(db, second.reviewId);
+    const after = readReview(db, planId)!;
+    expect(after.answers.map((item) => item.cardId)).toEqual([a!.id]);
+    expect(after.cards.map((card) => card.id)).toContain(b!.id);
   });
 
   it("asks about open gaps and the path's frontier, not the latest weak score", () => {
