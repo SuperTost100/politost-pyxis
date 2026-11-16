@@ -320,6 +320,139 @@ test("the card phase of a Review that still waits for questions ends with the no
   }
 });
 
+/** A plan with three flashcards and nothing else to ask, so a Ripasso of it is only those cards. */
+async function reviewOfThreeCards(userData: string) {
+  const app = await launchPyxis({ userData });
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Salta" }).click();
+  await fromChiediToExams(page);
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+  ["Prima carta?", "Seconda carta?", "Terza carta?"].forEach((front, index) =>
+    db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'p','t',?,'Retro.',?,?)").run(`c${index + 1}`, front, `c${index + 1}`, index + 1),
+  );
+  db.close();
+  await page.evaluate(() => window.pyxis.invoke("study.review", { planId: "p", count: 3 }));
+  await page.evaluate(() => {
+    location.hash = "#/plans/p/review/cards";
+  });
+  await page.reload();
+  return { app, page };
+}
+
+test("a Ripasso of only flashcards, reloaded before its last card, ends with every answer the student gave", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-reload-"));
+  const { app, page } = await reviewOfThreeCards(userData);
+  try {
+    const front = page.locator("article.px-card .px-card-front");
+    const rate = async (key: string) => {
+      await page.keyboard.press("Space");
+      await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+      await page.keyboard.press(key);
+    };
+    const bars = page.locator(".px-end").getByRole("list", { name: "Le tue risposte" }).getByRole("listitem");
+    await expect(front).toHaveText("Prima carta?");
+    await rate("1");
+    await expect(front).toHaveText("Seconda carta?");
+    await rate("4");
+    await expect(front).toHaveText("Terza carta?");
+    // The page is mounted again with two answers stored, and the last card ends the review at once.
+    await page.reload();
+    await expect(front).toHaveText("Terza carta?");
+    await rate("3");
+    await expect(page.locator(".px-end").getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Il ripasso è finito.");
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile0", "La sapevo1", "Facile1"]);
+    await expect(page.locator(".px-end-row")).toHaveCount(3);
+    // Annulla l'ultima brings the third card back with two answers, and answering it again gives three once more.
+    await page.getByRole("banner").getByRole("button", { name: "Annulla l'ultima", exact: true }).click();
+    await expect(front).toHaveText("Terza carta?");
+    await rate("2");
+    await expect(page.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Il ripasso è finito.");
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile1", "La sapevo0", "Facile1"]);
+    // Leaving the page and coming back reads the same three from the stored reviews.
+    await page.reload();
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile1", "La sapevo0", "Facile1"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a Ripasso with questions after its cards, reloaded at its last card, ends with every answer and the way on", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-reload-q-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+    const now = Date.now();
+    ["Prima carta?", "Seconda carta?", "Terza carta?"].forEach((front, index) =>
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'p','t',?,'Retro.',?,?)").run(`c${index + 1}`, front, `c${index + 1}`, index + 1),
+    );
+    // Two cards answered after the review began; the third is the one left, and a question follows.
+    ["c1", "c2"].forEach((id, index) =>
+      db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,?,?,?)").run(
+        `r-${id}`,
+        id,
+        index === 0 ? "hard" : "easy",
+        JSON.stringify({ intervalDays: 3, ease: 2.5, dueAt: now + 3 * 86_400_000 }),
+        now + 10 + index,
+      ),
+    );
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,engine_provider,grounding,created_at) VALUES('review-item','p','review',?,'fixture','sources',?)").run(
+      JSON.stringify({
+        questions: [
+          {
+            id: "q1",
+            topicId: "t",
+            stem: "Quale formula descrive la velocità?",
+            options: ["$v=s/t$", "$v=st$", "$v=s+t$", "$v=t/s$"],
+            explanation: "Spazio diviso tempo.",
+            answer: { kind: "mcq", correct: 0, picked: -1 },
+          },
+        ],
+        config: { count: 5, feedback: false },
+        complete: true,
+      }),
+      now,
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('review-attempt','p','review-item',?)").run(now + 1);
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('review-session','p','review_session',?,'sources',?)").run(
+      JSON.stringify({ cardIds: ["c1", "c2", "c3"], attemptId: "review-attempt", drills: [] }),
+      now,
+    );
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/review/cards";
+    });
+    await page.reload();
+    const front = page.locator("article.px-card .px-card-front");
+    await expect(front).toHaveText("Terza carta?");
+    await page.keyboard.press("Space");
+    await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+    await page.keyboard.press("3");
+    const end = page.locator(".px-end");
+    await expect(end.getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    await expect(end.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Restano le domande del ripasso.");
+    await expect(end.getByRole("list", { name: "Le tue risposte" }).getByRole("listitem")).toHaveText([
+      "Non la sapevo0",
+      "Difficile1",
+      "La sapevo1",
+      "Facile1",
+    ]);
+    await expect(end.locator(".px-end-row")).toHaveCount(3);
+    await expect(page.getByRole("button", { name: "Vai alle domande" })).toBeVisible();
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
 test("MATH-03 a tutor Python block runs in the sandbox, drops stale output and keeps output focusable", async () => {
   test.skip(
     !existsSync(".tmp/pyodide/pyodide.js"),
