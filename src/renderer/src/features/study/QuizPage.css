@@ -138,6 +138,60 @@
 .px-quiz-open textarea {
   font: 400 calc(17px * var(--text-scale, 1)) / 1.6 var(--font-sans);
 }
+/* An open answer: the answer with its reading, then the optional steps, each under its label. */
+.px-quiz-open,
+.px-quiz-open-part {
+  display: grid;
+  min-width: 0;
+}
+.px-quiz-open {
+  gap: var(--space-4);
+}
+.px-quiz-open-part {
+  gap: var(--space-2);
+}
+.px-quiz-open-part > .label {
+  color: var(--ink-muted);
+}
+/* "Si legge": the answer's formulas in words. It opens out of the field above it when the answer gets a formula and
+   folds back when the last one goes; closed, it also takes back the gap the field's column gives it. */
+.px-quiz-reads {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: calc(-1 * var(--space-2));
+  opacity: 0;
+  transition:
+    grid-template-rows var(--duration-small) var(--ease-out),
+    margin-top var(--duration-small) var(--ease-out),
+    opacity var(--duration-small) var(--ease-out);
+}
+.px-quiz-reads.is-shown {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+.px-quiz-reads p {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 0;
+  margin: 0;
+  padding: 0 var(--space-4);
+  overflow: hidden;
+  font: 400 calc(15px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.px-quiz-reads span {
+  flex: none;
+  font: 500 calc(12.5px * var(--text-scale, 1)) / 1.45 var(--font-sans);
+  color: var(--ink-subtle);
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-quiz-reads {
+    transition: none;
+  }
+}
 .px-quiz-available {
   display: inline-flex;
   align-items: center;

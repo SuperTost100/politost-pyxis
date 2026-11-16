@@ -91,6 +91,7 @@ import {
   registerQuizGradingJobs,
   submitQuiz,
   timedPicks,
+  timedSteps,
 } from "./quizGrading";
 import { attemptOutcome } from "./outcome";
 import { startConfiguredQuiz, type QuizInput } from "./configuredQuiz";
@@ -376,6 +377,7 @@ export function studyHandlers(
       attemptId: string;
       planId?: string;
       picks: Record<string, string>;
+      steps?: Record<string, string>;
       index: number;
       skipped?: string[];
       marked?: string[];
@@ -389,6 +391,7 @@ export function studyHandlers(
         undefined,
         input.skipped,
         input.marked,
+        input.steps,
       );
     },
     quizRead(input: { attemptId: string; planId?: string }) {
@@ -429,7 +432,7 @@ export function studyHandlers(
     quizWrong(input: { attemptId: string; questionId: string; wrong: boolean }) {
       return markWrongQuestion(db, runner, input);
     },
-    quizSubmit(input: { attemptId: string; picks: Record<string, string> }) {
+    quizSubmit(input: { attemptId: string; picks: Record<string, string>; steps?: Record<string, string> }) {
       const gate = db
         .prepare(
           `SELECT a.started_at, a.submitted_at, i.kind, i.body_json
@@ -453,19 +456,20 @@ export function studyHandlers(
         gate?.kind === "review";
       // Model grading is a persistent job; the page watches it through quizGrading.
       if (runner && modelGraded)
-        return submitQuiz(db, runner, input.attemptId, input.picks);
+        return submitQuiz(db, runner, input.attemptId, input.picks, undefined, input.steps);
       // ponytail: without a runner (unit tests) grade inline; the app always has one.
       const submittedAt = Date.now();
       const picks = timedPicks(db, input.attemptId, input.picks, submittedAt);
+      const steps = timedSteps(db, input.attemptId, input.steps, submittedAt);
       const finalize = (
         graded?: Awaited<ReturnType<typeof gradeConfiguredAttempt>>,
-      ) => finalizeAttempt(db, input.attemptId, picks, graded, submittedAt);
+      ) => finalizeAttempt(db, input.attemptId, picks, graded, submittedAt, steps);
       if (gate?.kind === "quiz" && JSON.parse(gate.body_json).config)
-        return gradeConfiguredAttempt(db, input.attemptId, picks, run).then(
+        return gradeConfiguredAttempt(db, input.attemptId, picks, run, steps).then(
           finalize,
         );
       if (modelGraded)
-        return gradeOpenAnswers(db, input.attemptId, picks, run).then(finalize);
+        return gradeOpenAnswers(db, input.attemptId, picks, run, steps).then(finalize);
       return finalize();
     },
     quizGrading(input: { attemptId: string }) {
