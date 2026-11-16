@@ -163,6 +163,17 @@ const reviewSessionSchema = z.object({
   // The quiz attempt whose wrong answers this review starts from, when the student asked to review its mistakes.
   fromAttemptId: z.string().optional(),
   cards: z.array(dueCardSchema),
+  // The cards of this review the student has answered, oldest first, each with its latest answer: the end of the
+  // card phase lists them under the answer given, and they survive leaving the page.
+  answers: z.array(
+    z.object({
+      cardId: z.string(),
+      reviewId: z.string(),
+      rating: z.enum(["again", "hard", "good", "easy"]),
+      front: z.string(),
+      subject: z.string().nullable(),
+    }),
+  ),
   attemptId: z.string(),
   questions: z.array(
     quizQuestionSchema,
@@ -270,7 +281,7 @@ const jobProgressSchema = z.object({
 const JobFallback = z.object({
   from: z.string(),
   to: z.string(),
-  reason: z.enum(["limit", "signed-out", "model"]),
+  reason: z.enum(["limit", "signed-out", "model", "not-installed"]),
 });
 
 export const JobView = z.object({
@@ -638,6 +649,8 @@ export const requests = {
         allowed: z.boolean(),
         /** Models its subscription refused today. The engine still works on its other models. */
         refusedModels: z.array(z.string()),
+        /** When its usage limit resets, in milliseconds since the epoch. Null while it has requests left. */
+        limitedUntil: z.number().nullable(),
         capabilities: z.object({
           effort: z.boolean(),
           fast: z.boolean(),
@@ -665,10 +678,23 @@ export const requests = {
     }),
     output: z.object({ ok: z.literal(true) }),
   },
-  /** The engines the student lets Pyxis use. Null is automatic: every engine that is ready, now or later. */
+  /**
+   * The engines the student lets Pyxis use (null is automatic: every engine that is ready, now or later) and the order
+   * they put their tools in, first to last (null while they never set one, and Pyxis shares the work among them).
+   */
   "engines.choice": {
     input: z.object({}),
-    output: z.object({ allowed: z.array(z.string()).nullable() }),
+    output: z.object({
+      allowed: z.array(z.string()).nullable(),
+      order: z.array(z.string()).nullable(),
+    }),
+  },
+  /** Saves the order of the student's tools. Null hands the sharing of the work back to Pyxis. */
+  "engines.reorder": {
+    input: z.object({
+      order: z.array(z.enum(installableProviders)).min(1).max(installableProviders.length).nullable(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "engines.choose": {
     input: z.object({
@@ -1250,7 +1276,9 @@ export const requests = {
     output: reviewSessionSchema,
   },
   "study.reviewSession": {
-    input: z.object({ planId: z.string() }),
+    // The unfinished review. With `finished` also the one whose cards are all answered and that has nothing left to ask
+    // (its `answers` are what the end of the card phase lists), while it is within its time to live.
+    input: z.object({ planId: z.string(), finished: z.boolean().optional() }),
     output: reviewSessionSchema.nullable(),
   },
   "study.reviewDiscard": {
@@ -1616,7 +1644,8 @@ export const requests = {
   },
   "study.browse": {
     // Cards across every exam and subject, in subject order, one page at a time. `query` matches the front or the back,
-    // ignoring case and accents. `planId: null` keeps the cards with no exam.
+    // ignoring case and accents. `planId: null` keeps the cards with no exam. With `perSubject` the cards are not a page:
+    // each subject gives its first `perSubject` cards, and all of them when `expand` lists it (`null` is "No subject").
     input: z.object({
       query: z.string().max(200).optional(),
       planId: z.string().nullable().optional(),
@@ -1624,6 +1653,10 @@ export const requests = {
       status: z.enum(["all", "due", "suspended", "removed", "leech"]).optional(),
       offset: z.number().int().min(0).optional(),
       limit: z.number().int().min(1).max(100).optional(),
+      perSubject: z.number().int().min(1).max(100).optional(),
+      expand: z.array(z.string().nullable()).max(500).optional(),
+      // Cards that stay in the result wherever they rank, when they match: the one being edited.
+      keep: z.array(z.string()).max(20).optional(),
     }),
     output: z.object({
       total: z.number().int(),
@@ -1654,6 +1687,7 @@ export const requests = {
           subjectId: z.string().nullable(),
           subject: z.string().nullable(),
           count: z.number().int(),
+          noExam: z.number().int(),
         }),
       ),
       plans: z.array(
@@ -1731,6 +1765,12 @@ export const requests = {
     input: z.object({
       cardId: z.string(),
       rating: z.enum(["again", "hard", "good", "easy"]),
+      /**
+       * How long the card was on screen before the rating; core keeps at most a minute of it as study time
+       * (`reviewSeconds`). Any number is accepted, a negative one or NaN from a clock that went back too, so the
+       * measurement can never refuse the rating.
+       */
+      seconds: z.custom<number>((value) => typeof value === "number").optional(),
     }),
     output: z.object({
       intervalDays: z.number(),
@@ -2327,11 +2367,11 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
-        // Oggi in minutes: what today's steps add up to and the exam's part of the student's goal for the day. Null
-        // whenever `today` is.
+        // Oggi in minutes: all the minutes the student studied today, on any exam and on flashcards, and the goal for
+        // the day. The same on every exam. Null whenever `today` is.
         todayMinutes: z.object({ done: z.number().min(0), target: z.number().min(0) }).nullable(),
-        // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
-        todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
+        // Why Oggi measures nothing: no weekly hours.
+        todayUnmeasured: z.literal("no-goal").nullable(),
         // The path's next step, due cards aside.
         next: z
           .object({
@@ -2445,6 +2485,29 @@ export const requests = {
     output: z.array(
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),
+  },
+  "study.dueLater": {
+    // When the reviewed cards a card session reads, and that are not due yet, come back. `scope` is what the session
+    // reads: the daily review (`only` narrows it like study.dueEverywhere), a subject's cards with no exam, or a topic.
+    // `later` counts the cards due before tomorrow per subject with the time of the first, the soonest first; `next` is
+    // the first day after today that has any card due, and how many come back that day.
+    input: z.discriminatedUnion("scope", [
+      z.object({
+        scope: z.literal("everywhere"),
+        only: z
+          .union([
+            z.object({ subjectId: z.string().nullable(), examless: z.boolean().optional() }),
+            z.object({ planId: z.string(), noTopic: z.boolean().optional() }),
+          ])
+          .optional(),
+      }),
+      z.object({ scope: z.literal("subject"), subjectId: z.string() }),
+      z.object({ scope: z.literal("topic"), planId: z.string(), topicId: z.string() }),
+    ]),
+    output: z.object({
+      later: z.array(z.object({ at: z.number(), subject: z.string().nullable(), count: z.number().int() })),
+      next: z.object({ at: z.number(), count: z.number().int() }).nullable(),
+    }),
   },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),
@@ -3526,11 +3589,11 @@ const broadcasts = {
   "engine.names": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
-  // The automatic engine hit a usage limit or was signed out, and another engine answered.
+  // The automatic engine hit a usage limit, was signed out or was not installed, and another engine answered.
   "engine.fallback": z.object({
     from: z.string(),
     to: z.string(),
-    reason: z.enum(["limit", "signed-out", "model"]),
+    reason: z.enum(["limit", "signed-out", "model", "not-installed"]),
   }),
   // Download and check progress of the local model.
   "engine.local": z.object({

@@ -163,7 +163,8 @@ describe("backupWorkspace / restoreWorkspace", { timeout: 30_000 }, () => {
     try {
       const rows = (db: Database.Database) => ({
         cards: db.prepare("SELECT id, plan_id, topic_id, front, removed, suspended FROM cards ORDER BY id").all(),
-        reviews: db.prepare("SELECT * FROM card_reviews ORDER BY id").all(),
+        // Without `seconds`, which a workspace from before migration 33 does not have.
+        reviews: db.prepare("SELECT id, card_id, rating, state_json, reviewed_at FROM card_reviews ORDER BY id").all(),
       });
       const seed = (db: Database.Database) =>
         db.exec(`INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1);

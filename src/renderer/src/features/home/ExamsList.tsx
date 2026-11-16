@@ -61,6 +61,8 @@ export function ExamsList({
   const active = all.filter((plan) => !plan.archived);
   const archived = all.filter((plan) => plan.archived);
   const ringOf = new Map(rings.data?.map((ring) => [ring.planId, ring]));
+  // Oggi is the student's whole day, so every exam's ring carries the same minutes: the first one tells the day.
+  const day = active.map((plan) => ringOf.get(plan.id)?.todayMinutes).find((minutes) => minutes != null) ?? null;
   // With no exam at all, "Nuovo esame" is the empty page's own button and leaves the head, so it shows once.
   const noExams = plans.isSuccess && all.length === 0;
   const newExam = (
@@ -104,7 +106,7 @@ export function ExamsList({
         <ExamsSkeleton label={t("components.loading")} />
       ) : (
         <>
-          <DueLine plans={active} rings={rings.data} examless={examless.data?.count ?? 0} />
+          <DueLine plans={active} rings={rings.data} examless={examless.data?.count ?? 0} day={day} />
           {rings.isError ? (
             <div className="px-exams-error">
               <Notice
@@ -116,9 +118,15 @@ export function ExamsList({
             </div>
           ) : null}
           {active.length > 0 ? (
-            <ul className="px-exams-list" aria-label={t("exams.listLabel")}>
+            <ul className={day ? "px-exams-list has-day" : "px-exams-list"} aria-label={t("exams.listLabel")}>
               {active.map((plan) => (
-                <ExamRow key={plan.id} plan={plan} ring={ringOf.get(plan.id)} ringsPending={rings.isPending} />
+                <ExamRow
+                  key={plan.id}
+                  plan={plan}
+                  ring={ringOf.get(plan.id)}
+                  ringsPending={rings.isPending}
+                  showDay={day != null}
+                />
               ))}
             </ul>
           ) : archived.length > 0 ? (
@@ -149,16 +157,19 @@ export function ExamsList({
 
 /**
  * "Oggi hai 17 flashcard da ripassare", which exams they come from, and one button to review them all. It counts what
- * the daily review will show: the exams' flashcards and the ones with no exam, even when there is no exam at all.
+ * the daily review will show: the exams' flashcards and the ones with no exam, even when there is no exam at all. Once
+ * the student has studied today it says so first, "Oggi hai studiato 24 minuti su 60 · 17 flashcard da ripassare".
  */
 function DueLine({
   plans,
   rings,
   examless,
+  day,
 }: {
   plans: Plan[];
   rings: Ring[] | undefined;
   examless: number;
+  day: NonNullable<Ring["todayMinutes"]> | null;
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -177,10 +188,14 @@ function DueLine({
     );
   if (examless > 0) named.push(t("exams.dueNoExam", { count: examless }));
   const split = new Intl.ListFormat(i18n.language, { type: "conjunction" }).format(named);
+  // Under a minute reads as nothing studied, and a week with no hours has no goal to say it against.
+  const studied = day && day.target > 0 && Math.round(day.done) >= 1 ? Math.round(day.done) : null;
   return (
     <div className="px-exams-due">
       <p>
-        {t("exams.due", { count: total })}
+        {studied != null
+          ? `${t("exams.studiedDay", { count: studied, target: day!.target })} · ${t("exams.dueAfterStudy", { count: total })}`
+          : t("exams.due", { count: total })}
         {named.length > 1 ? <span>{split}</span> : null}
       </p>
       <Button variant="secondary" onClick={() => navigate("/cards/due")}>
@@ -190,10 +205,21 @@ function DueLine({
   );
 }
 
-function ExamRow({ plan, ring, ringsPending }: { plan: Plan; ring: Ring | undefined; ringsPending: boolean }) {
+function ExamRow({
+  plan,
+  ring,
+  ringsPending,
+  showDay,
+}: {
+  plan: Plan;
+  ring: Ring | undefined;
+  ringsPending: boolean;
+  /** The list has the day's minutes to show: every row keeps the column, so the rows line up. */
+  showDay: boolean;
+}) {
   const { t } = useTranslation();
   const when = useExamWhen();
-  const { label } = useRingText(ring);
+  const { label, text } = useRingText(ring);
   const building = plan.status === "building";
   const next = ring?.next;
   return (
@@ -212,6 +238,16 @@ function ExamRow({ plan, ring, ringsPending }: { plan: Plan; ring: Ring | undefi
           <span className="px-exams-title">{plan.title}</span>
           <span className="px-exams-date">{when(plan)}</span>
         </span>
+        {showDay ? (
+          <span className="px-exams-today">
+            {ring?.todayMinutes ? (
+              <>
+                <span className="px-exams-kicker">{t("rings.today")}</span>
+                {text.today}
+              </>
+            ) : null}
+          </span>
+        ) : null}
         <span className="px-exams-next">
           {building ? (
             <>

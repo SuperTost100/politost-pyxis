@@ -69,6 +69,14 @@ const automaton = [
 const ring = (n: number, layout = "dot") =>
   `digraph { layout=${layout}; ${Array.from({ length: n }, (_, i) => `a${i} -> a${(i + 1) % n}; a${i} -> a${(i + 7) % n}`).join("; ")} }`;
 
+/** 150 nodes and 300 edges joined at random, the same every time, with the attributes given: the most the checks allow. */
+function scatter(nodeAttributes: string, graphAttributes = ""): string {
+  let state = 1;
+  const next = () => (state = (state * 1103515245 + 12345) & 0x7fffffff) >> 4;
+  const edges = Array.from({ length: 300 }, () => `a${next() % 150} -> a${next() % 150}`);
+  return `digraph { ${graphAttributes ? `${graphAttributes}; ` : ""}node [${nodeAttributes}]; ${edges.join("; ")} }`;
+}
+
 async function start(extra: { env?: Record<string, string> } = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-drawing-"));
   // Only the drawing pack: a graph needs no Python.
@@ -207,11 +215,42 @@ test.describe("the drawing window", () => {
       expect(pngSize((first as { image: string }).image)).toEqual(pngSize((second as { image: string }).image));
       expect(await windows(app)).toHaveLength(1);
       // A text Graphviz cannot read comes back as a failure with its message, which the model can act on.
-      const syntax = await draw(app, "digraph { a -> b [label=] }");
-      expect(syntax).toHaveProperty("error");
-      expect((syntax as { error: string }).error).toMatch(/\S/);
+      // (Sent with the text checks skipped: the ones the checks catch first have messages of their own.)
+      const syntax = await drawUnchecked(app, "digraph { a -> b [label=] }");
+      expect(syntax).toEqual({ error: 'syntax error in line 1, near "]"' });
+      // With the line, and the token cleaned of markup, not Graphviz's message as it wrote it.
+      expect(await drawUnchecked(app, "digraph {\n  a -> b\n  c -> -> d [label=<x>]\n}")).toEqual({ error: 'syntax error in line 3, near "-"' });
       // A failed drawing does not spoil the next one, which is drawn with a new instance of the library.
       expectPicture(await draw(app, automaton), "after a failed drawing");
+    } finally {
+      await finish(app, userData);
+    }
+  });
+
+  test("starts a new worker for every drawing and ends it after, whether the drawing succeeded or failed", async () => {
+    const { app, userData } = await start();
+    try {
+      expectPicture(await draw(app, automaton), "the window is open");
+      // The page makes its worker when it draws, so a count of the workers it makes and ends can be kept from here on.
+      await inWindow(
+        app,
+        `(() => {
+          const Real = window.Worker;
+          const log = [];
+          window.pyxisWorkerLog = log;
+          window.Worker = class extends Real {
+            constructor(...args) { super(...args); log.push("new"); }
+            terminate() { log.push("end"); super.terminate(); }
+          };
+          return true;
+        })()`,
+      );
+      expectPicture(await draw(app, automaton), "first");
+      expectPicture(await draw(app, "graph { a -- b }"), "second");
+      expect(await drawUnchecked(app, "digraph { a -> b [label=] }")).toHaveProperty("error");
+      expectPicture(await draw(app, automaton), "after a failure");
+      expect(await inWindow<string[]>(app, "window.pyxisWorkerLog")).toEqual(["new", "end", "new", "end", "new", "end", "new", "end"]);
+      expect(await windows(app)).toHaveLength(1);
     } finally {
       await finish(app, userData);
     }
@@ -733,6 +772,36 @@ test.describe("the drawing window", () => {
       }
       expect(await windows(app)).toHaveLength(1);
       expectPicture(await draw(app, automaton), "after them all");
+    } finally {
+      await finish(app, userData);
+    }
+  });
+
+  test("holds the layouts that run longest to the time limit, with the attributes that the checks allow and that make them long", async () => {
+    // Measured on the pack's Graphviz, at the limits of 150 nodes and 300 edges: a very large `peripheries` runs for more
+    // than 20 seconds, a very large `sides` for 7 and writes 155 MB of SVG, and `splines=curved` on `neato` runs for more
+    // than 20 as well. These pass the checks, so they run inside the layout, where the time limit of the kind has to stop
+    // them. Each is given less time than it takes, so the stop is certain.
+    const { app, userData } = await start();
+    try {
+      expectPicture(await draw(app, automaton), "the window is open");
+      const heavy: Array<[string, string, number]> = [
+        ["peripheries=100000", scatter("peripheries=100000"), 1500],
+        ["sides=100000", scatter("shape=polygon sides=100000"), 1500],
+        ["splines=curved on neato", scatter("", "layout=neato; splines=curved"), 1500],
+      ];
+      for (const [name, code, timeoutMs] of heavy) {
+        expect(figureProblem("graph", code), `${name} passes the checks`).toBeNull();
+        const started = Date.now();
+        const result = await draw(app, code, { timeoutMs });
+        const took = Date.now() - started;
+        expect(result, name).toMatchObject({ timedOut: true });
+        // Stopped at the limit, not when the layout would have ended on its own.
+        expect(took, name).toBeLessThan(timeoutMs + 3000);
+        // The window that ran it is gone, and the next drawing gets a new one and a picture.
+        expect(await windows(app), name).toEqual([]);
+        expectPicture(await draw(app, automaton), `after ${name}`);
+      }
     } finally {
       await finish(app, userData);
     }

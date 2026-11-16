@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { startOfDay } from "../../shared/local-day";
+import { reviewSeconds } from "../../shared/review-time";
 import { putSetting } from "../settings";
 import {
   isMastered,
@@ -177,6 +178,35 @@ export function countDueCards(
 }
 
 /**
+ * When the reviewed cards of a deck come back, soonest first, for those due after `after` and no later than `until`.
+ * A card never reviewed has no time, so a new card past today's limit is not among them. Without `limit` every card
+ * is returned.
+ */
+export function deckDueTimes(
+  db: Database.Database,
+  deck: CardDeck,
+  after: number,
+  until: number,
+  topicId?: string,
+  limit?: number,
+): number[] {
+  const where = deckWhere(deck);
+  return (
+    db
+      .prepare(
+        `SELECT due_at FROM (
+           SELECT CAST(json_extract(${latestReview("state_json")}, '$.dueAt') AS INTEGER) AS due_at
+           FROM cards c
+           WHERE ${where.sql}
+             AND ${ACTIVE}
+             AND (? IS NULL OR COALESCE(c.topic_id, '') = ?)
+         ) WHERE due_at > ? AND due_at <= ? ORDER BY due_at LIMIT ?`,
+      )
+      .all(...where.params, topicId ?? null, topicId ?? null, after, until, limit ?? -1) as Array<{ due_at: number }>
+  ).map((row) => row.due_at);
+}
+
+/**
  * The decks of cards with no exam that hold any card that could come up, in subject order, the cards without a subject
  * last. Archived topics cannot hold such cards, since a card with a topic has an exam.
  */
@@ -279,11 +309,17 @@ export function deckDueCards(
   }));
 }
 
+/**
+ * Rates a card. `seconds` is how long the card was on screen before the rating; `reviewSeconds` keeps up to a minute
+ * of it, and a review without a usable time (made before the time was recorded, or a clock that went back) counts as
+ * no study minutes. The rating is saved either way.
+ */
 export function rateCard(
   db: Database.Database,
   cardId: string,
   rating: Rating,
   now: number,
+  seconds?: number,
 ): ScheduleState & { reviewId: string } {
   return db.transaction(() => {
     const card = db
@@ -316,9 +352,16 @@ export function rateCard(
 
     const reviewId = uuidv7(now);
     db.prepare(
-      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    ).run(reviewId, cardId, rating, JSON.stringify(next), now);
+      `INSERT INTO card_reviews (id, card_id, rating, state_json, reviewed_at, seconds)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      reviewId,
+      cardId,
+      rating,
+      JSON.stringify(next),
+      now,
+      reviewSeconds(seconds),
+    );
     // The event is evidence for an exam's mastery and path; a card with no exam has none to feed.
     if (card.plan_id == null) return { ...next, reviewId };
     const score = rating === "again" ? 0 : rating === "hard" ? 0.5 : 1;

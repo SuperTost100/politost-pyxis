@@ -400,7 +400,13 @@ test("a source row, a flashcard row and a row of Da finire open and stay open on
 
     // The flashcard browser.
     await go(page, "/flashcards/all");
-    const row = page.locator(".px-cardbrowser-row").last();
+    // Thirty cards in one subject: the page shows eight, and the rest unfolds under them. A card far down is drawn when it
+    // comes near the window, so the last one is scrolled to first.
+    await page.getByRole("button", { name: /^Mostra le altre/ }).click();
+    const cards = page.locator(".px-ct");
+    await expect(cards).toHaveCount(30);
+    const row = cards.last();
+    await row.evaluate((node) => node.scrollIntoView({ block: "end" }));
     await expect(row).toBeVisible();
     const cardDots = row.getByRole("button", { name: /^Altre azioni/ });
     await scrollDownTo(cardDots);

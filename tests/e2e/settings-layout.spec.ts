@@ -152,16 +152,15 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await expect(sidebar.getByRole("button", { name: "Dati e privacy" })).toHaveAttribute("aria-current", "page");
     await expect(page.getByRole("heading", { level: 2, name: "Privacy" })).toBeInViewport();
 
-    // Crossing 960px re-lays the page out without remounting the open section, so an open drawer stays open.
+    // Crossing 960px re-lays the page out without remounting the open section, so a dialog opened from it stays open.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
         providers: ["claude", "codex", "agent", "antigravity"],
       }),
     );
     await sidebar.getByRole("button", { name: "Strumenti AI" }).click();
-    await page.getByRole("switch", { name: "Opzioni avanzate" }).click();
-    await page.getByRole("button", { name: /^Claude/ }).click();
-    const drawer = page.getByRole("dialog", { name: "Claude", exact: true });
+    await page.getByRole("button", { name: "Installa e accedi a Claude" }).click();
+    const drawer = page.getByRole("dialog", { name: "Configura Claude", exact: true });
     await expect(drawer).toBeVisible();
     await page.setViewportSize({ width: 800, height: 800 });
     await expect(sidebar).toHaveCount(0);

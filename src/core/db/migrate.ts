@@ -418,6 +418,13 @@ CREATE TABLE lesson_parts (
 );
 CREATE INDEX lesson_parts_item ON lesson_parts(item_id) WHERE item_id IS NOT NULL;`,
   },
+  // The seconds a flashcard review took, so Oggi can count the day's flashcard time. NULL for every review made before
+  // this step and for imported ones: they count as no minutes. The index serves "the reviews of today".
+  {
+    version: 33,
+    sql: `ALTER TABLE card_reviews ADD COLUMN seconds INTEGER CHECK (seconds IS NULL OR seconds >= 0);
+CREATE INDEX card_reviews_day ON card_reviews(reviewed_at);`,
+  },
 ] satisfies Array<{ version: number; sql: string; foreignKeysOff?: { check: string[] } }>;
 
 /** The newest schema version this build knows. */

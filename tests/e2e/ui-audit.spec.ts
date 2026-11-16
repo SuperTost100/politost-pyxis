@@ -64,8 +64,11 @@ const routes = [
   ["library-empty", "/exams/library"],
   // Passage search: the same field with the Content scope, its results and the local model offer.
   ["library-search", "/exams/library"],
-  // The flashcard browser: cards grouped by subject, no cards at all, a search with no match, and its two dialogs.
+  // The flashcard browser: cards grouped by subject, a subject unfolded past its first eight, a card's menu, a card being
+  // edited where it stands, no cards at all, a search with no match, and the delete question.
   ["cards-browser", "/flashcards/all"],
+  ["cards-browser-more", "/flashcards/all"],
+  ["cards-browser-card-menu", "/flashcards/all"],
   ["cards-browser-empty", "/flashcards/all"],
   ["cards-browser-none", "/flashcards/all"],
   ["cards-browser-edit", "/flashcards/all"],
@@ -90,6 +93,12 @@ const routes = [
   // The due flashcards from every plan, as the exam list's line opens them.
   ["cards-due", "/cards/due"],
   ["cards-due-delete", "/cards/due"],
+  // The end of today's session: the last card with its four answers, then the end with a card counting down, with
+  // nothing left today and with more coming back later today.
+  ["cards-end-last", "/cards/due"],
+  ["cards-end-waiting", "/cards/due"],
+  ["cards-end-done", "/cards/due"],
+  ["cards-end-later", "/cards/due"],
   ["library-vision", "/exams/library"],
   ["shared", "/exams/get"],
   ["import-review", "/exams/get"],
@@ -109,7 +118,9 @@ const routes = [
     "about",
     "diagnostics",
   ].map((section) => [`settings-${section}`, `/settings/${section}`] as const),
-  // AI tools with the advanced options open (which engines Pyxis may use), then in debug mode (the week's tokens).
+  // AI tools with two tools connected and put in order, the first of them out of requests; with the model of each task
+  // open under Advanced; then in debug mode (the week's tokens).
+  ["settings-engines-listed", "/settings/engines"],
   ["settings-engines-advanced", "/settings/engines"],
   ["settings-engines-debug", "/settings/engines"],
   ["gallery", "/dev/gallery"],
@@ -210,9 +221,9 @@ const routes = [
   ["source-panel-pdf", "/exams/library"],
   ["source-panel-text", "/exams/library"],
   ["source-panel-missing", "/exams/library"],
+  // A connected tool's details and its menu, and the dialog that adds an API key.
   ["engine-details", "/settings/engines"],
-  ["engine-details-disabled", "/settings/engines"],
-  ["engine-add-cli", "/settings/engines"],
+  ["engine-menu", "/settings/engines"],
   ["engine-add-key", "/settings/engines"],
   ["export-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["export-cards", "/plans/audit-plan/cards/audit-topic"],
@@ -341,6 +352,10 @@ const routes = [
   ["review-interrupted", "/plans/audit-review-plan/review"],
   ["review-cancelled", "/plans/audit-review-plan/review"],
   ["review-cards-waiting", "/plans/audit-review-plan/review/cards"],
+  // The card phase of a Ripasso after its cards were answered: the way on to the questions, or the notice that they are
+  // still being prepared.
+  ["review-cards-end-questions", "/plans/audit-review-plan/review/cards"],
+  ["review-cards-end-waiting", "/plans/audit-review-plan/review/cards"],
   [
     "review-quiz-pending",
     "/plans/audit-review-plan/review/questions?attempt=audit-review-attempt",
@@ -1125,13 +1140,18 @@ async function openDetails(page: Page, title: string) {
   await page.getByRole("menuitem", { name: both("Dettagli della fonte", "Source details") }).click();
 }
 
+/** Advanced in AI tools, opened if a state before this one left it closed. */
 async function openAdvancedEngines(page: Page) {
-  const toggle = page.getByRole("switch", {
-    name: /^(Opzioni avanzate|Advanced options)$/,
-  });
-  await expect(toggle).toBeVisible();
-  if ((await toggle.getAttribute("aria-checked")) !== "true")
-    await toggle.click();
+  const advanced = page.locator(".engines-advanced");
+  await expect(advanced).toBeVisible();
+  if ((await advanced.getAttribute("open")) === null) await advanced.locator("> summary").click();
+  await expect(advanced).toHaveAttribute("open", "");
+}
+
+/** Waits for the two signed-in stand-ins in the list of connected tools, and for Pyxis to have planned with them. */
+async function connectedTools(page: Page) {
+  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+  await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
 
 async function openAddSources(page: Page, tab?: RegExp) {
@@ -1632,6 +1652,14 @@ function prepareCardBrowser(name: string) {
     db.prepare(
       "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-review-z','audit-card-z','good',?,1)",
     ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+    // Chimica with more than eight cards, so its button unfolds the rest.
+    if (name === "cards-browser-more") {
+      const more = db.prepare(
+        "INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES(?,'audit-chem-plan','audit-atoms',?,?,?,'sources',?)",
+      );
+      for (let index = 1; index <= 9; index++)
+        more.run(`audit-card-more-${index}`, `Che cos’è la ${index}ª energia di ionizzazione?`, "L’energia per togliere un elettrone all’atomo.", `m${index}`, 10 + index);
+    }
     if (!name.startsWith("flashcards")) return;
     // A subject with a long name and flashcards with no exam only.
     seedSubjects(db, [{ id: "audit-gal", name: "Geometria e algebra lineare per l’ingegneria dell’informazione", position: 2 }]);
@@ -1658,6 +1686,30 @@ function prepareCardBrowser(name: string) {
         `INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at)
          SELECT 'audit-later-' || id, id, 'good', ?, 2 FROM cards WHERE id NOT IN (SELECT card_id FROM card_reviews)`,
       ).run(JSON.stringify({ intervalDays: 9, ease: 2, dueAt: later }));
+  });
+}
+
+/**
+ * The end-of-session states answer the audit exam's one due card, which stores a review and, once the session is over,
+ * a cards step on the exam's path. Every state first takes those back, so each one starts from the seed; the later
+ * state also gets a card reviewed before and due again this afternoon.
+ */
+function prepareSessionEnd(name: string) {
+  withDb((db) => {
+    db.exec(`DELETE FROM card_reviews WHERE card_id LIKE 'audit-review-card-%';
+      DELETE FROM cards WHERE id LIKE 'audit-review-card-%';
+      DELETE FROM card_reviews WHERE id NOT LIKE 'audit-%';
+      DELETE FROM learning_events WHERE id NOT LIKE 'audit-%'
+        AND (kind = 'card_rated' OR (kind = 'lesson_completed' AND payload_json LIKE '%"cards"%'));
+      DELETE FROM card_reviews WHERE card_id = 'audit-end-later';
+      DELETE FROM cards WHERE id = 'audit-end-later'`);
+    if (name !== "cards-end-later") return;
+    const at = Math.min(Date.now() + 2 * 3_600_000, new Date().setHours(24, 0, 0, 0) - 1000);
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at)
+      VALUES('audit-end-later','audit-plan','audit-topic','Che cos’è il flusso del campo elettrico?','La carica racchiusa divisa per ε₀.','audit-end-later','sources',2)`);
+    db.prepare(
+      "INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES('audit-end-later-review','audit-end-later','good',?,1)",
+    ).run(JSON.stringify({ intervalDays: 1, ease: 2.5, dueAt: at }));
   });
 }
 
@@ -1699,6 +1751,7 @@ function fakeEngines(): Record<string, string> {
   // The stand-ins are POSIX shell scripts. On Windows setup step 2 shows the computer with no engine instead.
   if (process.platform === "win32") return {};
   const on = join(auditEngines, "on");
+  const limit = join(auditEngines, "limit");
   const fake = (name: string, body: string) => {
     const path = join(auditEngines, name);
     writeFileSync(path, `#!/bin/sh\n${body}\n`);
@@ -1722,22 +1775,30 @@ function fakeEngines(): Record<string, string> {
   status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
   about) echo '{}';;
   --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
-  *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
+  *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),
     CLI_FUNNEL_AGY_BIN: join(auditEngines, "not-installed"),
   };
 }
 
+/** The states of AI tools that show connected tools. */
+const CONNECTED_TOOLS = ["settings-engines-listed", "engine-details", "engine-menu"];
+
 /**
- * Setup step 2 signs the stand-ins in; every other state finds them signed out and nothing chosen or confirmed. The
- * pinned default engine of the recorded replies stays: the guided flow and the chats answer through it.
+ * Setup step 2 and the states of AI tools that show connected tools sign the stand-ins in; every other state finds them
+ * signed out and nothing chosen, put in order or confirmed. The pinned default engine of the recorded replies stays:
+ * the guided flow and the chats answer through it. In the ordered list Cursor answers a call with a usage limit
+ * instead of a refused sign-in.
  */
 function prepareEngines(name: string) {
   const on = join(auditEngines, "on");
-  const engines = name.startsWith("onboarding-engines");
+  const limit = join(auditEngines, "limit");
+  const engines = name.startsWith("onboarding-engines") || CONNECTED_TOOLS.includes(name);
   if (engines) writeFileSync(on, "");
   else rmSync(on, { force: true });
+  if (name === "settings-engines-listed") writeFileSync(limit, "");
+  else rmSync(limit, { force: true });
   withDb((db) => {
     // Debug mode only for its own state, so no other page shows its details.
     db.exec("DELETE FROM settings WHERE key = 'debug'");
@@ -1747,7 +1808,20 @@ function prepareEngines(name: string) {
         Date.now(),
       );
     db.exec(`DELETE FROM feature_engines WHERE json_extract(selection_json, '$.auto') = 1;
-      DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%' OR key = 'engines.allowed';`);
+      DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%'
+        OR key LIKE 'engine-limited:%' OR key IN ('engines.allowed', 'engines.order');`);
+    // What the signed-in tools receive is already confirmed, so their notice covers none of these states.
+    if (CONNECTED_TOOLS.includes(name))
+      for (const provider of ["claude", "agent"])
+        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)").run(
+          `engine-disclosure:${provider}`,
+          Date.now(),
+        );
+    if (name === "settings-engines-listed")
+      db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(
+        JSON.stringify(["agent", "claude"]),
+        Date.now(),
+      );
     if (name === "onboarding-engines-chosen")
       db.prepare(
         "INSERT INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)",
@@ -2267,6 +2341,7 @@ function prepareBuild(name: string) {
 }
 
 function prepareState(name: string) {
+  prepareSessionEnd(name);
   prepareLessonParts(name);
   prepareOldLessons(name);
   prepareRadialMaps(name);
@@ -2436,6 +2511,8 @@ function prepareState(name: string) {
     "review-cancelled": "cancelled",
     "review-cards-waiting": "running",
     "review-quiz-pending": "running",
+    "review-cards-end-questions": "running",
+    "review-cards-end-waiting": "running",
   };
   if (name in drills) {
     withDb((db) => {
@@ -2447,7 +2524,28 @@ function prepareState(name: string) {
       const withQuestion =
         name === "review-cancelled" ||
         name === "review-quiz-pending" ||
+        name === "review-cards-end-questions" ||
         name === "review-skipped";
+      // The end states have four cards of the review answered, one with each answer, after the review began.
+      const answered = name.startsWith("review-cards-end");
+      if (answered) {
+        const fronts = ["Che cos’è la velocità media?", "Come si calcola l’accelerazione?", "Che cosa dice il primo principio?", "Che cos’è un sistema inerziale?"];
+        fronts.forEach((front, index) => {
+          db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES(?,'audit-review-plan','audit-review-topic',?,'Retro.',?,'sources',?)").run(
+            `audit-review-card-${index}`,
+            front,
+            `audit-review-card-${index}`,
+            index + 1,
+          );
+          db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,?,?,?)").run(
+            `audit-review-card-review-${index}`,
+            `audit-review-card-${index}`,
+            ["again", "hard", "good", "easy"][index]!,
+            JSON.stringify({ intervalDays: 3, ease: 2.5, dueAt: now + 3 * 86_400_000 }),
+            now + 10 + index,
+          );
+        });
+      }
       const questions = withQuestion
         ? [
             {
@@ -2477,7 +2575,7 @@ function prepareState(name: string) {
         "INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('audit-review-session','audit-review-plan','review_session',?,'sources',?)",
       ).run(
         JSON.stringify({
-          cardIds: [],
+          cardIds: answered ? [0, 1, 2, 3].map((index) => `audit-review-card-${index}`) : [],
           attemptId: "audit-review-attempt",
           drills: [
             {
@@ -2955,17 +3053,30 @@ async function openState(page: Page, name: string) {
         ).toBeChecked();
       break;
     }
-    // The plain page has the advanced options closed, whatever a state before it left open.
-    case "settings-engines": {
-      const toggle = page.getByRole("switch", { name: /^(Opzioni avanzate|Advanced options)$/ });
-      await expect(toggle).toBeVisible();
-      if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
-      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toHaveCount(0);
+    // The plain page: no tool is signed in, so each waits under "Da collegare", and Advanced is open as it starts.
+    case "settings-engines":
+      await openAdvancedEngines(page);
+      await expect(page.getByRole("region", { name: both("Da collegare", "To connect") })).toBeVisible();
+      await expect(page.locator(".engines-section")).not.toHaveAttribute("open");
+      break;
+    // Two tools in the student's order, each with its place. Cursor, the first, answers a call with a usage limit, so
+    // its row says it is out of requests and when they are back.
+    case "settings-engines-listed": {
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2"]);
+      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "agent" }).catch(() => undefined));
+      await expect(page.locator('.engines-tool[data-tool="agent"] .engines-tool-state')).toHaveText(
+        both("Richieste finite", "Out of requests"),
+        { timeout: 30000 },
+      );
       break;
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toBeVisible();
+      await page.locator(".engines-section > summary").click();
+      await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+      await expect(page.locator(".engines-feature-row").first()).toBeVisible();
       break;
     case "settings-engines-debug":
       await openAdvancedEngines(page);
@@ -3124,6 +3235,15 @@ async function openState(page: Page, name: string) {
       ).toHaveCount(
         name === "review-failed" || name === "review-interrupted" ? 1 : 0,
       );
+      break;
+    case "review-cards-end-questions":
+    case "review-cards-end-waiting":
+      await expect(
+        page.getByRole("heading", { level: 2, name: both("Hai finito le flashcard", "You've finished the flashcards") }),
+      ).toBeVisible();
+      if (name === "review-cards-end-questions")
+        await expect(page.getByRole("button", { name: both("Vai alle domande", "Continue to questions") })).toBeVisible();
+      else await expect(page.getByRole("button", { name: both("Vedi lo stato", "See status") })).toBeVisible();
       break;
     case "review-cards-waiting":
       await expect(
@@ -3413,6 +3533,21 @@ async function openState(page: Page, name: string) {
       });
       await expect(got).toHaveAttribute("aria-pressed", "true");
       await expect(missed).toHaveAttribute("aria-pressed", "false");
+      break;
+    }
+    case "cards-end-last":
+    case "cards-end-waiting":
+    case "cards-end-done":
+    case "cards-end-later": {
+      await expect(page.locator("article.px-card .px-card-front")).toBeVisible();
+      await page.keyboard.press("Space");
+      await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+      if (name === "cards-end-last") break;
+      // Not knowing it sends the card to learning, so the end counts down; Easy ends the session.
+      await page.keyboard.press(name === "cards-end-waiting" ? "1" : "4");
+      await expect(page.locator(".px-end-text")).toBeVisible();
+      if (name === "cards-end-waiting") await expect(page.getByRole("timer")).toBeVisible();
+      else await expect(page.getByRole("heading", { level: 2, name: both("Per oggi hai finito|Per ora hai finito", "You're done for today|You're done for now") })).toBeVisible();
       break;
     }
     case "cards-new": {
@@ -4352,6 +4487,12 @@ async function openState(page: Page, name: string) {
       await page.getByRole("button", { name: both("Altro sulle flashcard", "More for flashcards") }).click();
       await expect(page.getByRole("menuitem").first()).toBeVisible();
       break;
+    case "cards-browser-card-menu":
+      await page
+        .getByRole("button", { name: /^(Altre azioni|More actions): Che cos’è il numero atomico/ })
+        .click();
+      await expect(page.getByRole("menuitem", { name: both("Sospendi", "Suspend") })).toBeVisible();
+      break;
     case "library-sorting":
       await expect(page.getByText(both("Scelgo la materia", "Choosing its subject"))).toBeVisible();
       // The notice that Pyxis made a subject, not the "New subject…" choice of the pickers beside it.
@@ -4669,42 +4810,32 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "engine-details":
-      await openAdvancedEngines(page);
-      await page
-        .locator(".px-engine-open")
-        .first()
-        .click();
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await page.getByRole("button", { name: both("Azioni su Claude", "Actions on Claude") }).click();
+      await page.getByRole("menuitem", { name: both("Dettagli", "Details") }).click();
       await expect(dialog).toBeVisible();
       break;
-    case "engine-details-disabled":
-      await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: /^Gemini/ })
-        .click();
-      await expect(dialog).toBeVisible();
+    case "engine-menu":
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await page.getByRole("button", { name: both("Azioni su Claude", "Actions on Claude") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Prova", "Test") })).toBeVisible();
       break;
-    case "engine-add-cli":
+    // The key's dialog where this computer can keep a key; elsewhere the row says why it can't.
+    case "engine-add-key": {
       await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
-        .click();
-      await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
+      const add = page.getByRole("button", { name: both("Aggiungi una chiave", "Add a key") });
+      const unavailable = page.getByText(
+        /L'archiviazione sicura delle chiavi non è disponibile|Secure key storage is unavailable/,
+      );
+      await expect(add.or(unavailable)).toBeVisible();
+      if (await add.isVisible()) {
+        await add.click();
+        await expect(dialog.locator("input[type=password]")).toBeVisible();
+      }
       break;
-    case "engine-add-key":
-      await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
-        .click();
-      await dialog
-        .getByRole("tab", { name: both("Chiave API", "API key") })
-        .click();
-      await expect(
-        dialog.getByRole("tab", {
-          name: both("Chiave API", "API key"),
-          selected: true,
-        }),
-      ).toBeVisible();
-      break;
+    }
     case "export-lesson":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -4735,10 +4866,17 @@ async function openState(page: Page, name: string) {
           name: both("Nessuna materia", "No subject"),
         }),
       ).toBeVisible();
-      await expect(
-        page.locator(".px-cardbrowser-row .katex").first(),
-      ).toBeVisible();
+      await expect(page.locator(".px-ct .katex").first()).toBeVisible();
       break;
+    case "cards-browser-more": {
+      // Chimica has thirteen cards: eight show, and the button unfolds the other five.
+      const chemistry = page.locator(".px-cardbrowser-subject").filter({ has: page.getByRole("heading", { level: 2, name: "Chimica" }) });
+      await expect(chemistry.locator(".px-ct")).toHaveCount(8);
+      await chemistry.getByRole("button", { name: /^(Mostra le altre|Show the other) \d+/ }).click();
+      await expect(chemistry.locator(".px-ct")).toHaveCount(13);
+      await expect(chemistry.getByRole("button", { name: both("Mostra meno", "Show fewer") })).toBeVisible();
+      break;
+    }
     case "flashcards":
       await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toBeVisible();
       await expect(page.getByRole("heading", { level: 3, name: "Chimica generale" })).toBeVisible();
@@ -4806,7 +4944,7 @@ async function openState(page: Page, name: string) {
         })
         .fill("zzzz");
       await expect(
-        page.getByText(both("Nessuna flashcard corrisponde.", "No flashcard matches.")),
+        page.getByText(both("Nessuna flashcard contiene «zzzz».", "No flashcard contains “zzzz”.")),
       ).toBeVisible();
       break;
     case "cards-browser-edit":
@@ -4815,7 +4953,7 @@ async function openState(page: Page, name: string) {
           name: /^(Modifica|Edit): Che cos’è il numero atomico/,
         })
         .click();
-      await expect(dialog).toBeVisible();
+      await expect(page.getByRole("group", { name: both("Modifica la flashcard", "Edit flashcard") })).toBeVisible();
       break;
     case "cards-browser-delete":
       await page
@@ -5390,6 +5528,7 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  (name === "engine-menu" && process.platform !== "win32") ||
                   name === "library-kind-menu" ||
                   name === "plan-unfinished-menu" ||
                   name === "plan-now-other" ||
@@ -5399,6 +5538,7 @@ test("M14 every application route in both languages, themes and supported widths
                   name === "plan-menu" ||
                   name === "library-menu" ||
                   name === "cards-browser-menu" ||
+                  name === "cards-browser-card-menu" ||
                   name === "map-menu" ||
                   name === "map-export" ||
                   name === "map-switcher" ||

@@ -24,7 +24,7 @@ function percent(share: number, locale: string): string {
 
 /**
  * Each ring's value as the student reads it: Preparazione as the grade on their scale, Percorso as a percentage, Oggi
- * as minutes done of its target, and a few words when there is nothing to show.
+ * as the day's minutes done of the day's goal (the same on every exam), and a few words when there is nothing to show.
  */
 export function useRingText(values: RingValues | undefined) {
   const { t, i18n } = useTranslation();
@@ -43,11 +43,7 @@ export function useRingText(values: RingValues | undefined) {
             })
         : values?.todayUnmeasured === "no-goal"
           ? t("rings.noGoal")
-          : values?.todayUnmeasured === "no-date"
-            ? t("rings.noDate")
-            : values?.todayUnmeasured === "exam-day"
-              ? t("rings.examDay")
-              : t("rings.nothingToday"),
+          : t("rings.nothingToday"),
   };
   return {
     text,
@@ -102,7 +98,7 @@ export function ExamRings({
 }
 
 /**
- * The legend beside the large rings: each ring's colour, its name and its value, with what it means on hover. Without a
+ * The legend beside the large rings: each ring's name in its colour, and its value, with what it means on hover. Without a
  * study goal, Oggi measures nothing and its value is the way to set one (`onSetGoal`).
  */
 export function RingLegend({ values, onSetGoal }: { values: RingValues; onSetGoal?: () => void }) {
@@ -113,8 +109,7 @@ export function RingLegend({ values, onSetGoal }: { values: RingValues; onSetGoa
     <ul className="px-rings-legend" aria-label={t("rings.legend")}>
       {KEYS.map((key) => (
         <li key={key} title={t(key === "today" && setGoal ? "rings.hint.todayNoGoal" : `rings.hint.${key}`)}>
-          <i className={`px-rings-key is-${key}`} aria-hidden />
-          <span>{t(`rings.${key}`)}</span>
+          <span className={`px-rings-name is-${key}`}>{t(`rings.${key}`)}</span>
           {key === "today" && setGoal ? (
             <span className="px-rings-value is-action">
               <span className="visually-hidden">{text.today}. </span>

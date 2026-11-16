@@ -16,6 +16,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { seedPlan } from "./seed";
 
 // The built app can be pointed at another output folder so a test run never races a rebuild of out/.
 
@@ -153,6 +154,46 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     expect(new Set(seen).size).toBe(5);
     expect(seen).not.toContain("Carta nuova");
 
+    // The card phase ends like a flashcard session: the five answers as bars, the cards under the answer given, and the
+    // way on to the questions where "Per oggi basta" sits. The answers are read from the stored reviews, so a reload
+    // keeps them.
+    const end = page.locator(".px-end");
+    await expect(end.getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    // Annulla l'ultima works from here: the last card comes back and its answer leaves the count.
+    await page.getByRole("banner").getByRole("button", { name: "Annulla l'ultima", exact: true }).click();
+    await expect(progress).toHaveText(new RegExp(`^4 di ${total} fatti`));
+    await expect(end).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Gira/ })).toBeVisible();
+    await rate("1");
+    await expect(progress).toHaveText(new RegExp(`^5 di ${total} fatti`));
+    for (const reloaded of [false, true]) {
+      if (reloaded) await page.reload();
+      await expect(end.getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+      await expect(end.locator(".px-end-kicker")).toHaveText("Ripasso");
+      await expect(end.locator(".px-end-text")).toHaveText("Hai dato 5 risposte. Restano le domande del ripasso.");
+      await expect(end.getByRole("list", { name: "Le tue risposte" }).getByRole("listitem")).toHaveText([
+        "Non la sapevo5",
+        "Difficile0",
+        "La sapevo0",
+        "Facile0",
+      ]);
+      await expect(end.locator(".px-end-group")).toHaveCount(1);
+      await expect(end.locator(".px-end-group").getByRole("heading")).toHaveText("Non la sapevo5");
+      await expect(end.locator(".px-end-row")).toHaveCount(3);
+      await expect(end.getByRole("button", { name: "Altre 2" })).toBeVisible();
+      // The old closing lines and the dots are gone.
+      await expect(page.getByText(/^Viste \d/)).toHaveCount(0);
+      await expect(page.getByText("Nessuna flashcard in scadenza.")).toHaveCount(0);
+      await expect(page.locator(".px-end .gd")).toHaveCount(0);
+    }
+    await expectNoAxeViolations(page);
+    // Its progress line stays above, and the one way on is the button in the left column.
+    await expect(progress).toHaveText(new RegExp(`^5 di ${total} fatti`));
+    await expect(page.getByRole("button", { name: "Vai alle domande" })).toHaveCount(1);
+    await page.getByRole("button", { name: "Vai alle domande" }).click();
+    await expect(page).toHaveURL(/\/review\/questions\?attempt=/);
+    await expect(page.getByText(`6 di ${total}`)).toBeVisible();
+
     // Reopening Review resumes the same session instead of building another.
     await goto(`/plans/${planId}/review`);
     await expect(page.getByText("Hai un ripasso in corso")).toBeVisible();
@@ -205,6 +246,207 @@ test("LES-13 mixed Review keeps one stored queue across reloads and shows one pr
     expect(mistakes.questions.map((question) => question.stem)).toEqual(
       diagnostic.questions.map((question) => question.stem),
     );
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the card phase of a Review that still waits for questions ends with the notice kept", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-cards-end-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+    const now = Date.now();
+    // A review of two cards, both answered after it began, and a gap drill that has not delivered its questions.
+    const rows = [
+      ["c1", "Seconda legge di Newton?", "good"],
+      ["c2", "Unità della forza?", "easy"],
+    ] as const;
+    rows.forEach(([id, front, rating], index) => {
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'p','t',?,'Retro.',?,?)").run(id, front, id, index + 1);
+      db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,?,?,?)").run(
+        `r-${id}`,
+        id,
+        rating,
+        JSON.stringify({ intervalDays: 3, ease: 2.5, dueAt: now + 3 * 86_400_000 }),
+        now + 10 + index,
+      );
+    });
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,engine_provider,grounding,created_at) VALUES('review-item','p','review',?,'fixture','sources',?)").run(
+      JSON.stringify({ questions: [], config: { count: 5, feedback: false }, complete: true }),
+      now,
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('review-attempt','p','review-item',?)").run(now + 1);
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('review-session','p','review_session',?,'sources',?)").run(
+      JSON.stringify({ cardIds: ["c1", "c2"], attemptId: "review-attempt", drills: [{ topicId: "t", jobId: "drill", want: 3 }] }),
+      now,
+    );
+    db.prepare("INSERT INTO jobs(id,kind,params_json,state,progress,created_at,updated_at) VALUES('drill','gap-drill',?,'running',0,?,?)").run(
+      JSON.stringify({ planId: "p", topicId: "t" }),
+      now,
+      now,
+    );
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/review/cards";
+    });
+    await page.reload();
+    const end = page.locator(".px-end");
+    await expect(end.getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    await expect(end.locator(".px-end-text")).toHaveText("Hai dato 2 risposte. Le domande del ripasso non sono ancora pronte.");
+    await expect(end.getByRole("list", { name: "Le tue risposte" }).getByRole("listitem")).toHaveText([
+      "Non la sapevo0",
+      "Difficile0",
+      "La sapevo1",
+      "Facile1",
+    ]);
+    // The notice that the questions are being prepared sits in the left column, with its way to the status, and there is
+    // no way on to questions yet.
+    await expect(end.getByText("Altre 3 domande sono in preparazione.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Vai alle domande" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Vedi lo stato" })).toHaveCount(1);
+    await expectNoAxeViolations(page);
+    await page.getByRole("button", { name: "Vedi lo stato" }).click();
+    await expect(page).toHaveURL(/#\/plans\/p\/review$/);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+/** A plan with three flashcards and nothing else to ask, so a Ripasso of it is only those cards. */
+async function reviewOfThreeCards(userData: string) {
+  const app = await launchPyxis({ userData });
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Salta" }).click();
+  await fromChiediToExams(page);
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+  ["Prima carta?", "Seconda carta?", "Terza carta?"].forEach((front, index) =>
+    db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'p','t',?,'Retro.',?,?)").run(`c${index + 1}`, front, `c${index + 1}`, index + 1),
+  );
+  db.close();
+  await page.evaluate(() => window.pyxis.invoke("study.review", { planId: "p", count: 3 }));
+  await page.evaluate(() => {
+    location.hash = "#/plans/p/review/cards";
+  });
+  await page.reload();
+  return { app, page };
+}
+
+test("a Ripasso of only flashcards, reloaded before its last card, ends with every answer the student gave", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-reload-"));
+  const { app, page } = await reviewOfThreeCards(userData);
+  try {
+    const front = page.locator("article.px-card .px-card-front");
+    const rate = async (key: string) => {
+      await page.keyboard.press("Space");
+      await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+      await page.keyboard.press(key);
+    };
+    const bars = page.locator(".px-end").getByRole("list", { name: "Le tue risposte" }).getByRole("listitem");
+    await expect(front).toHaveText("Prima carta?");
+    await rate("1");
+    await expect(front).toHaveText("Seconda carta?");
+    await rate("4");
+    await expect(front).toHaveText("Terza carta?");
+    // The page is mounted again with two answers stored, and the last card ends the review at once.
+    await page.reload();
+    await expect(front).toHaveText("Terza carta?");
+    await rate("3");
+    await expect(page.locator(".px-end").getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    await expect(page.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Il ripasso è finito.");
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile0", "La sapevo1", "Facile1"]);
+    await expect(page.locator(".px-end-row")).toHaveCount(3);
+    // Annulla l'ultima brings the third card back with two answers, and answering it again gives three once more.
+    await page.getByRole("banner").getByRole("button", { name: "Annulla l'ultima", exact: true }).click();
+    await expect(front).toHaveText("Terza carta?");
+    await rate("2");
+    await expect(page.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Il ripasso è finito.");
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile1", "La sapevo0", "Facile1"]);
+    // Leaving the page and coming back reads the same three from the stored reviews.
+    await page.reload();
+    await expect(bars).toHaveText(["Non la sapevo1", "Difficile1", "La sapevo0", "Facile1"]);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a Ripasso with questions after its cards, reloaded at its last card, ends with every answer and the way on", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-review-reload-q-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seedPlan(db, { id: "p", title: "Fisica 1", language: "it", topics: [{ id: "t", title: "Dinamica" }] });
+    const now = Date.now();
+    ["Prima carta?", "Seconda carta?", "Terza carta?"].forEach((front, index) =>
+      db.prepare("INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,created_at) VALUES(?,'p','t',?,'Retro.',?,?)").run(`c${index + 1}`, front, `c${index + 1}`, index + 1),
+    );
+    // Two cards answered after the review began; the third is the one left, and a question follows.
+    ["c1", "c2"].forEach((id, index) =>
+      db.prepare("INSERT INTO card_reviews(id,card_id,rating,state_json,reviewed_at) VALUES(?,?,?,?,?)").run(
+        `r-${id}`,
+        id,
+        index === 0 ? "hard" : "easy",
+        JSON.stringify({ intervalDays: 3, ease: 2.5, dueAt: now + 3 * 86_400_000 }),
+        now + 10 + index,
+      ),
+    );
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,engine_provider,grounding,created_at) VALUES('review-item','p','review',?,'fixture','sources',?)").run(
+      JSON.stringify({
+        questions: [
+          {
+            id: "q1",
+            topicId: "t",
+            stem: "Quale formula descrive la velocità?",
+            options: ["$v=s/t$", "$v=st$", "$v=s+t$", "$v=t/s$"],
+            explanation: "Spazio diviso tempo.",
+            answer: { kind: "mcq", correct: 0, picked: -1 },
+          },
+        ],
+        config: { count: 5, feedback: false },
+        complete: true,
+      }),
+      now,
+    );
+    db.prepare("INSERT INTO attempts(id,plan_id,item_id,started_at) VALUES('review-attempt','p','review-item',?)").run(now + 1);
+    db.prepare("INSERT INTO items(id,plan_id,kind,body_json,grounding,created_at) VALUES('review-session','p','review_session',?,'sources',?)").run(
+      JSON.stringify({ cardIds: ["c1", "c2", "c3"], attemptId: "review-attempt", drills: [] }),
+      now,
+    );
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "#/plans/p/review/cards";
+    });
+    await page.reload();
+    const front = page.locator("article.px-card .px-card-front");
+    await expect(front).toHaveText("Terza carta?");
+    await page.keyboard.press("Space");
+    await expect(page.locator("article.px-card")).toHaveAttribute("data-face", "back");
+    await page.keyboard.press("3");
+    const end = page.locator(".px-end");
+    await expect(end.getByRole("heading", { level: 2, name: "Hai finito le flashcard" })).toBeVisible();
+    await expect(end.locator(".px-end-text")).toHaveText("Hai dato 3 risposte. Restano le domande del ripasso.");
+    await expect(end.getByRole("list", { name: "Le tue risposte" }).getByRole("listitem")).toHaveText([
+      "Non la sapevo0",
+      "Difficile1",
+      "La sapevo1",
+      "Facile1",
+    ]);
+    await expect(end.locator(".px-end-row")).toHaveCount(3);
+    await expect(page.getByRole("button", { name: "Vai alle domande" })).toBeVisible();
   } finally {
     await app.close();
     removeTestFolder(userData);

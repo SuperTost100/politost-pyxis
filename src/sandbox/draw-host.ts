@@ -30,25 +30,21 @@ const ENGINES = ["dot", "neato", "circo", "fdp", "twopi"];
 type Answer = { ok: true; png: string } | { ok: false; error: string };
 type Laid = { ok: true; svg: string } | { ok: false; error: string };
 
-let worker: Worker | undefined;
 let counter = 0;
 
 /**
  * Graphviz runs in a worker of its own, the one file `worker-src` allows, so the code of the pack shares nothing with this
- * page: not the sanitiser, not the canvas, not the DOM. What it sends back is text and is read as text. A worker that
- * failed is ended and the next drawing gets a new one, with a new instance of the library.
+ * page: not the sanitiser, not the canvas, not the DOM. What it sends back is text and is read as text. Every drawing gets
+ * a new worker with a new instance of the library, and the worker is ended after it, whatever came back: a text that
+ * corrupted the library's memory cannot change the next picture.
  */
 function layout(code: string, engine: string): Promise<Laid> {
-  worker ??= new Worker(`${BASE}draw-worker.js`);
-  const running = worker;
+  const running = new Worker(`${BASE}draw-worker.js`);
   const id = ++counter;
   const end = (reply: Laid): Laid => {
     running.onmessage = null;
     running.onerror = null;
-    if (!reply.ok && worker === running) {
-      running.terminate();
-      worker = undefined;
-    }
+    running.terminate();
     return reply;
   };
   return new Promise<Laid>((resolve) => {
