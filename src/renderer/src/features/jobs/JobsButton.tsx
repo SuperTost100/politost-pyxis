@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PdfPasswordDialog } from "../../components/PdfPassword";
 import { groupJobs } from "./jobGroups";
+import { useToolLimits } from "./outOfRequests";
 import { JobsPanel } from "./JobsPanel";
 import { useFinishedJobs, useJobs } from "./queries";
 
@@ -26,7 +27,8 @@ export function JobsButton({
   const { t } = useTranslation();
   const { data: jobs = [] } = useJobs();
   const { data: done = [], refetch } = useFinishedJobs();
-  const groups = useMemo(() => groupJobs(jobs, done), [jobs, done]);
+  const tools = useToolLimits();
+  const groups = useMemo(() => groupJobs(jobs, done, tools.limits), [jobs, done, tools.limits]);
   const [open, setOpen] = useState(false);
   const [unlocking, setUnlocking] = useState<{
     jobId: string;
@@ -38,10 +40,10 @@ export function JobsButton({
   const dialog = (
     <PdfPasswordDialog target={unlocking} onClose={() => setUnlocking(null)} />
   );
-  const { problems, finished } = groups;
+  const { problems, finished, waiting } = groups;
   // A request's jobs, such as a folder's files, count as the one row the list shows for them.
   const running = groups.runningItems;
-  const empty = problems.length + running.length + finished.length === 0;
+  const empty = problems.length + running.length + waiting.length + finished.length === 0;
   // The button leaves with its last job; it should not reopen the list by itself when a job comes back.
   useEffect(() => {
     if (empty && !keep) setOpen(false);
@@ -51,7 +53,8 @@ export function JobsButton({
     parts: [
       running.length > 0 && t("jobs.running", { count: running.length }),
       problems.length > 0 && t("jobs.toFix", { count: problems.length }),
-      running.length + problems.length === 0 &&
+      waiting.length > 0 && t("jobs.waiting", { count: waiting.length }),
+      running.length + problems.length + waiting.length === 0 &&
         (empty ? t("jobs.none") : t("jobs.doneToday", { count: finished.length })),
     ]
       .filter(Boolean)
@@ -88,6 +91,7 @@ export function JobsButton({
           <JobsPanel
             ref={panel}
             groups={groups}
+            tools={tools}
             leave={leave}
             blocked={blocked}
             onUnlock={(job) =>

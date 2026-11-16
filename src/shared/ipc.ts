@@ -281,7 +281,7 @@ const jobProgressSchema = z.object({
 const JobFallback = z.object({
   from: z.string(),
   to: z.string(),
-  reason: z.enum(["limit", "signed-out", "model"]),
+  reason: z.enum(["limit", "signed-out", "model", "not-installed"]),
 });
 
 export const JobView = z.object({
@@ -312,6 +312,8 @@ export const JobView = z.object({
   updatedAt: z.number(),
   /** Set when an automatic engine refused a call of this job and another engine did the work. */
   fallback: JobFallback.optional(),
+  /** Set while the student has the job wait for a tool's requests to come back: the time it retries by itself. */
+  waitingUntil: z.number().optional(),
   /**
    * The request the job came from when that request made several jobs of one kind, such as the files of a linked
    * folder: the jobs list shows them as one row. `folder` names the folder they come from; `waiting` counts the files
@@ -591,6 +593,16 @@ export const requests = {
     input: z.object({ jobId: z.string() }),
     output: z.object({}),
   },
+  /** A job that stopped because its tool ran out of requests goes on with another tool the student chose. */
+  "jobs.retryWith": {
+    input: z.object({ jobId: z.string(), provider: z.enum(installableProviders) }),
+    output: z.object({}),
+  },
+  /** The student has such a job wait until its tool's requests are back (`wait`), or gives the wait up. */
+  "jobs.wait": {
+    input: z.object({ jobId: z.string(), wait: z.boolean() }),
+    output: z.object({}),
+  },
   /** Debug mode's record of a job's AI calls, masked, or null when it has none (debug mode was off, or no AI ran). */
   "jobs.log": {
     input: z.object({ jobId: z.string() }),
@@ -649,6 +661,8 @@ export const requests = {
         allowed: z.boolean(),
         /** Models its subscription refused today. The engine still works on its other models. */
         refusedModels: z.array(z.string()),
+        /** When its usage limit resets, in milliseconds since the epoch. Null while it has requests left. */
+        limitedUntil: z.number().nullable(),
         capabilities: z.object({
           effort: z.boolean(),
           fast: z.boolean(),
@@ -676,10 +690,23 @@ export const requests = {
     }),
     output: z.object({ ok: z.literal(true) }),
   },
-  /** The engines the student lets Pyxis use. Null is automatic: every engine that is ready, now or later. */
+  /**
+   * The engines the student lets Pyxis use (null is automatic: every engine that is ready, now or later) and the order
+   * they put their tools in, first to last (null while they never set one, and Pyxis shares the work among them).
+   */
   "engines.choice": {
     input: z.object({}),
-    output: z.object({ allowed: z.array(z.string()).nullable() }),
+    output: z.object({
+      allowed: z.array(z.string()).nullable(),
+      order: z.array(z.string()).nullable(),
+    }),
+  },
+  /** Saves the order of the student's tools. Null hands the sharing of the work back to Pyxis. */
+  "engines.reorder": {
+    input: z.object({
+      order: z.array(z.enum(installableProviders)).min(1).max(installableProviders.length).nullable(),
+    }),
+    output: z.object({ ok: z.literal(true) }),
   },
   "engines.choose": {
     input: z.object({
@@ -3574,11 +3601,11 @@ const broadcasts = {
   "engine.names": z.object({ provider: z.string() }),
   // A saved reply's math check ended: its badges, if any, are in the message now.
   "chats.checks": z.object({ chatId: z.string(), messageId: z.string() }),
-  // The automatic engine hit a usage limit or was signed out, and another engine answered.
+  // The automatic engine hit a usage limit, was signed out or was not installed, and another engine answered.
   "engine.fallback": z.object({
     from: z.string(),
     to: z.string(),
-    reason: z.enum(["limit", "signed-out", "model"]),
+    reason: z.enum(["limit", "signed-out", "model", "not-installed"]),
   }),
   // Download and check progress of the local model.
   "engine.local": z.object({

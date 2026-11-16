@@ -7,6 +7,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { MAP_INSTRUCTION_MAX, type MapAddress, type MapEntry } from "@shared/concept-map";
 import { takeArrivalNote } from "../../app/arrival-note";
 import { afterDialog, Dialog } from "../../components/Dialog";
+import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -202,10 +203,12 @@ export function MapsHome() {
   else if (data.length === 0 && !query)
     body =
       (subjects.data?.length ?? 0) > 0 ? (
-        <EmptyState body={t("maps.emptyBody")} action={newMap} />
+        <EmptyState centred art={<EmptyArt kind="maps" />} body={t("maps.emptyBody")} action={newMap} />
       ) : (
         // A map needs a subject's material, so without any subject the one action is to link where it lives.
         <EmptyState
+          centred
+          art={<EmptyArt kind="maps" />}
           body={t("maps.emptyNoSubjects")}
           action={
             <Button

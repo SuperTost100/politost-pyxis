@@ -6,18 +6,22 @@
   gap: var(--space-3);
   width: 100%;
   min-width: 0;
+  margin-top: var(--space-5);
 }
 .px-import-review h2,
 .px-import-review h3,
 .px-import-review p {
   margin: 0;
 }
-/* The page is as wide as an exam's page. */
-.px-shell-container:has(.px-import-page) {
-  --shell-max: calc(920px + 48px);
+/* In the dialog the card is the frame: no extra top margin. */
+.px-dialog .px-import-review {
+  margin-top: 0;
 }
+/* The page sits in the shared page column (--page-width): no width or start of its own, and its head starts where the
+   back control does. */
 .px-import-page {
   display: block;
+  margin-top: 0;
 }
 .px-import-page h1 {
   margin: 0;
@@ -213,10 +217,6 @@ html:has(.px-import-foot) {
   margin-left: auto;
 }
 
-/* In the dialog the card is the frame: no narrower column. */
-.px-dialog .px-import-review {
-  max-width: none;
-}
 .px-import-review .ant-btn {
   white-space: nowrap;
 }

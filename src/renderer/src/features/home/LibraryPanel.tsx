@@ -21,6 +21,7 @@ import { FILE_KINDS } from "@shared/file-kind";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router";
+import { EmptyArt } from "../../components/EmptyArt";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadError } from "../../components/LoadError";
 import { Notice } from "../../components/Notice";
@@ -1163,16 +1164,24 @@ export function LibraryPanel({
           {t("sources.loadFailed")}
         </LoadError>
       ) : empty ? (
-        <EmptyState
-          body={t("sources.shelf.emptyBody")}
-          action={
-            <div ref={linkButton}>
-              <PxButton icon="folder-plus" onClick={linkFolder}>
-                {t("sources.shelf.linkFolder")}
-              </PxButton>
-            </div>
-          }
-        />
+        // Its size waits for the subjects: with none, the empty page is the whole body and sits in the middle; with some,
+        // the shelf of subjects goes on showing under a small line, as before. The placeholder holds the place meanwhile.
+        subjects.isPending && !subjectsFailed ? (
+          <SkeletonRows label={t("components.loading")} />
+        ) : (
+          <EmptyState
+            centred={subjectList.length === 0}
+            art={<EmptyArt kind="library" />}
+            body={t("sources.shelf.emptyBody")}
+            action={
+              <div ref={linkButton}>
+                <PxButton icon="folder-plus" onClick={linkFolder}>
+                  {t("sources.shelf.linkFolder")}
+                </PxButton>
+              </div>
+            }
+          />
+        )
       ) : list.isPending ? null : (
         <ListToolbar
           search={

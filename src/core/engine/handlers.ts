@@ -28,16 +28,28 @@ import {
   type ProviderId,
 } from "./funnel";
 import {
+  benchEngine,
   benchModel,
+  clearLimitBefore,
+  clearMissingBefore,
   clearSignOut,
   clearSignOutBefore,
   engineClock,
+  isMissing,
   isSignedOut,
+  limitedUntil,
+  limitIsGuess,
   markSignedOut,
   refusedModelsOf,
   signedOutSince,
 } from "./bench";
-import { isAllowed, readAllowed, writeAllowed } from "./choice";
+import {
+  isAllowed,
+  readAllowed,
+  readOrder,
+  writeAllowed,
+  writeOrder,
+} from "./choice";
 import { TOOL_NAMES } from "../../shared/tool-names";
 import {
   effortsOf,
@@ -48,6 +60,7 @@ import {
 import { isInstallable, runInstaller } from "./install";
 import {
   keepAllowed,
+  rememberOrder,
   rememberReady,
   withoutRefusedModels,
   type StoredSelection,
@@ -197,7 +210,14 @@ async function scanProviders(): Promise<OverviewRow[]> {
     reportedSignedIn.set(row.id, row.loggedIn);
     if (!row.loggedIn) seenSignedOut.set(row.id, started);
     const refused = row.loggedIn && isSignedOut(row.id);
-    return { ...row, loggedIn: row.loggedIn && !refused, refused };
+    // A call that found the program gone is newer news than a detection read before it.
+    if (row.installed) clearMissingBefore(row.id, started);
+    return {
+      ...row,
+      installed: row.installed && !isMissing(row.id),
+      loggedIn: row.loggedIn && !refused,
+      refused,
+    };
   });
 }
 
@@ -299,17 +319,23 @@ export async function autoConfigureEngines(
     const provider = listed[index]!;
     if (
       provider.kind !== "local" &&
-      (!isAllowed(allowedNow, provider.id) || isSignedOut(provider.id))
+      (!isAllowed(allowedNow, provider.id) ||
+        isSignedOut(provider.id) ||
+        isMissing(provider.id))
     )
       listed.splice(index, 1);
   }
+  // The student's order, read after the model lists so a change made meanwhile counts. A task whose tool fails moves
+  // down the same list.
+  const order = readOrder(db);
+  rememberOrder(order);
   // A failed model listing is not proof that the engine went away. Keep the
   // current choices rather than blanking them.
   const unreadable = failed > 0 && listed.length === 0;
   // A task whose engine hits a usage limit switches to the next one from this list.
   if (!unreadable) rememberReady(listed);
   // A model the student's subscription refused today is left out, so the task moves to one that answers.
-  const plan = planAuto(withoutRefusedModels(listed));
+  const plan = planAuto(withoutRefusedModels(listed), undefined, order);
   const doubtful =
     !unreadable && listed.length === 0 && hadEngines.get(db) === true;
   if (!unreadable) hadEngines.set(db, listed.length > 0);
@@ -566,6 +592,8 @@ export function engineHandlers(
         allowed: isAllowed(allowed, row.id),
         // Models its subscription refused today: the engine still works, but not on these.
         refusedModels: refusedModelsOf(row.id),
+        // Out of requests until then: automatic tasks go to the next tool meanwhile.
+        limitedUntil: limitedUntil(row.id) ?? null,
       }));
     },
     /**
@@ -580,9 +608,63 @@ export function engineHandlers(
         models: modelNames(),
       };
     },
-    /** The engines the student lets Pyxis use: null means automatic, every engine that is ready. */
+    /**
+     * The engines the student lets Pyxis use (null means automatic, every engine that is ready) and the order they put
+     * their tools in (null while they never set one).
+     */
     choice() {
-      return { allowed: readAllowed(db) };
+      return { allowed: readAllowed(db), order: readOrder(db) };
+    },
+    /**
+     * Saves the order of the student's tools, first to last, or null to let Pyxis share the work among them again.
+     * The automatic tasks move to the first tool of the list that can do them; tasks pinned to a model stay.
+     */
+    reorder(input: { order: string[] | null }) {
+      if (
+        input.order &&
+        (input.order.length === 0 ||
+          input.order.some((id) => !providers.has(id) || kindOf(id) !== "cli"))
+      )
+        throw invalidSelection();
+      writeOrder(db, input.order);
+      // A task that fails before the plan is worked out again already moves down the new list.
+      rememberOrder(readOrder(db));
+      // A chat that talked to the old first tool starts over with the new one.
+      endConversations();
+      lastAuto = Date.now();
+      void reconfigure();
+      return { ok: true as const };
+    },
+    /**
+     * A call found an engine's program gone: its detection is read again, since CLI Funnel caches it for a minute, and
+     * the automatic plan follows.
+     */
+    installChanged(provider: string) {
+      try {
+        getFunnel().refresh(provider as ProviderId);
+      } catch {
+        // The next scan reads it anyway.
+      }
+      hadEngines.delete(db);
+      lastAuto = Date.now();
+      return reconfigure();
+    },
+    /**
+     * An engine hit a usage limit. When the failure named no reset time, the engine's own usage report is asked for
+     * it (Claude, ChatGPT and Gemini have one), so the engine stays out until then instead of Pyxis's 30 minutes.
+     */
+    async limitChanged(provider: string) {
+      if (!limitIsGuess(provider)) return;
+      try {
+        const usage = await getFunnel().rateLimits(provider as ProviderId, {
+          signal: AbortSignal.timeout(30_000),
+        });
+        // Still the same guess: a call that answered meanwhile, or a limit with its own time, wins.
+        if (usage.limit?.resetAt && limitIsGuess(provider))
+          benchEngine(provider, "limit", { resetAt: usage.limit.resetAt });
+      } catch {
+        // No usage report (Cursor, an API key) or it failed: the guess stands.
+      }
     },
     /**
      * Saves which engines Pyxis may use, or null for automatic. Tasks pinned to an engine left out lose the pin, since
@@ -813,8 +895,9 @@ export function engineHandlers(
             ? AbortSignal.any([signal, deadline.signal])
             : deadline.signal,
         });
-        // The engine answered, so a sign-in refused earlier works again.
+        // The engine answered, so a sign-in refused earlier works again and it has requests left.
         clearSignOutBefore(input.provider, startedAt);
+        clearLimitBefore(input.provider, startedAt);
         // The first successful confirmation becomes the default, unless the student left this engine out. INSERT OR
         // IGNORE preserves a choice made while this asynchronous test ran.
         if (isAllowed(readAllowed(db), input.provider))
@@ -844,6 +927,15 @@ export function engineHandlers(
         // A refused sign-in or key: the engine reads signed out and leaves the automatic plan until it is back.
         if (translated.code === "not-logged-in" || translated.code === "refused")
           markSignedOut(input.provider);
+        // Out of requests: the row says so, and automatic tasks go to the next tool until the limit resets.
+        if (translated.code === "quota")
+          benchEngine(
+            input.provider,
+            "limit",
+            err && typeof err === "object" && "limit" in err
+              ? (err.limit as { resetAt?: string; retryAfterMs?: number })
+              : undefined,
+          );
         // A model the subscription leaves out: the engine works, but the plan and the next test skip that model.
         if (translated.code === "model-not-included" && tested)
           benchModel(input.provider, tested, Date.now(), suggestedModel(err));

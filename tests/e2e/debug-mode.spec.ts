@@ -22,9 +22,13 @@ test("debug mode: the switch in AI tools, Advanced, and each job's AI calls in A
       location.hash = "/settings/engines";
     });
     const debugSwitch = page.getByRole("switch", { name: "Mostra dettagli tecnici e debug" });
-    await expect(page.getByRole("switch", { name: "Opzioni avanzate" })).toBeVisible();
-    await expect(debugSwitch).toHaveCount(0);
-    await page.getByRole("switch", { name: "Opzioni avanzate" }).click();
+    // Advanced is open until the student closes it; closed, it folds the switch away.
+    const advanced = page.locator(".engines-advanced");
+    await expect(advanced).toHaveAttribute("open", "");
+    await expect(debugSwitch).toBeVisible();
+    await advanced.locator("> summary").click();
+    await expect(debugSwitch).toBeHidden();
+    await advanced.locator("> summary").click();
     await expect(debugSwitch).not.toBeChecked();
     await debugSwitch.click();
     await expect(debugSwitch).toBeChecked();
