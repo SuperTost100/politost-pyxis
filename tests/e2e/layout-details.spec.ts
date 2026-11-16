@@ -469,3 +469,37 @@ test("LAYOUT-06 Attività sits in the top-right corner, and a long list stays in
     removeTestFolder(userData);
   }
 });
+
+test("LAYOUT-07 a button keeps its size under the pointer, so a head that just fits one line does not flip between two", async () => {
+  test.setTimeout(120_000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-layout-details-"));
+  const app = await launchPyxis({ userData });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+    const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
+    seed(db);
+    db.close();
+    await page.evaluate(() => {
+      location.hash = "/plans/plan-a";
+    });
+    const settings = page.locator(".px-exam-head").getByRole("button", { name: /^(Impostazioni dell'esame|Exam settings)$/ });
+    const secondary = page.locator(".px-btn-secondary").first();
+    await expect(settings).toBeVisible();
+    for (const button of [settings, secondary]) {
+      await page.mouse.move(2, 2);
+      const idle = (await button.boundingBox())!;
+      const centre = { x: idle.x + idle.width / 2, y: idle.y + idle.height / 2 };
+      await page.mouse.move(centre.x, centre.y);
+      await expect(button).toHaveCSS("border-top-width", "0px");
+      const hovered = (await button.boundingBox())!;
+      expect({ width: hovered.width, height: hovered.height }).toEqual({ width: idle.width, height: idle.height });
+    }
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
