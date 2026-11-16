@@ -119,6 +119,29 @@ test("A new exam named like a PoliTost book offers it as a ticked source, readab
   }
 });
 
+test("Once the exam is being created the choice is locked in the reader too, and says why", async () => {
+  test.setTimeout(180_000);
+  const run = await start({ PYXIS_E2E_BOOKS_DELAY: "4000" });
+  const { page, userData } = run;
+  try {
+    await toMaterial(page, "Fisica 1");
+    await expect(row(page)).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
+    // The book is downloading: the tick is locked, and the reader opened now cannot take the book out either.
+    await expect(row(page).getByRole("checkbox")).toBeDisabled();
+    await row(page).getByRole("button", { name: "Apri il libro Fisica 1" }).click();
+    // The reader is still downloading the book itself, so it has no name yet: it is found as the panel.
+    const panel = page.locator("aside.source-panel");
+    await expect(panel.getByText("L'esame si sta creando con questo libro.")).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Togli dalle fonti" })).toBeDisabled();
+    await expect(row(page).getByRole("checkbox")).toBeChecked();
+    // And the exam is made with the book, as the page said.
+    await expect.poll(() => db<{ title: string }>(userData, "SELECT s.title FROM plan_sources ps JOIN sources s ON s.id = ps.source_id"), { timeout: 30_000 }).toEqual([{ title: "Fisica 1" }]);
+  } finally {
+    await finish(run);
+  }
+});
+
 test("Leaving the book out downloads nothing and the exam goes on without it", async () => {
   test.setTimeout(120_000);
   const run = await start();

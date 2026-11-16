@@ -387,7 +387,10 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   // The reader opened on the offered book says whether it is ticked, and follows the tick made on this page.
   const latestOn = useRef(draft.bookOn);
   latestOn.current = draft.bookOn;
-  useEffect(() => refreshSourceViewer(), [draft.bookOn]);
+  // Once the exam is being created the choice is made: the reader shows it locked, as the page does.
+  const latestStarting = useRef(draft.starting);
+  latestStarting.current = draft.starting;
+  useEffect(() => refreshSourceViewer(), [draft.bookOn, draft.starting]);
   return (
     <>
       <WizardSources
@@ -407,7 +410,7 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
                   const book = draft.offered;
                   if (book)
                     openBook(book.id, {
-                      choice: { words: "exam", on: () => latestOn.current, set: draft.setBookOn },
+                      choice: { words: "exam", on: () => latestOn.current, set: draft.setBookOn, locked: () => latestStarting.current },
                     });
                 },
               }

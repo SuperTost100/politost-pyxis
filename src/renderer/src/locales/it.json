@@ -3934,7 +3934,11 @@
       "subjectIn": "Va nella Libreria con questo file.",
       "subjectOut": "Non va nella Libreria.",
       "subjectRemove": "Non aggiungerlo",
-      "subjectAdd": "Aggiungilo"
+      "subjectAdd": "Aggiungilo",
+      "examLockedIn": "L'esame si sta creando con questo libro.",
+      "examLockedOut": "L'esame si sta creando senza questo libro.",
+      "subjectLockedIn": "Sto spostando il file con questo libro.",
+      "subjectLockedOut": "Sto spostando il file senza questo libro."
     },
     "reader": {
       "opening": "Scarico il libro…",

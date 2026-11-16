@@ -139,6 +139,10 @@ export function NewSubjectDialog({
   useEffect(() => refreshSourceViewer(), [ticked]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The reader opened on the book shows the choice locked while the file is being moved.
+  const latestSaving = useRef(saving);
+  latestSaving.current = saving;
+  useEffect(() => refreshSourceViewer(), [saving]);
   const fieldId = useId();
   const save = async () => {
     if (!source || !name.trim() || saving) return;
@@ -196,7 +200,7 @@ export function NewSubjectDialog({
             on={ticked}
             busy={saving}
             onToggle={tick}
-            onOpen={() => openBook(offered.id, { choice: { words: "subject", on: () => latest.current, set: tick } })}
+            onOpen={() => openBook(offered.id, { choice: { words: "subject", on: () => latest.current, set: tick, locked: () => latestSaving.current } })}
           />
         ) : null}
       </form>

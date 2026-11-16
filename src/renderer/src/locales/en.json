@@ -3934,7 +3934,11 @@
       "subjectIn": "It goes into the Library with this file.",
       "subjectOut": "It doesn't go into the Library.",
       "subjectRemove": "Don't add it",
-      "subjectAdd": "Add it"
+      "subjectAdd": "Add it",
+      "examLockedIn": "The exam is being created with this book.",
+      "examLockedOut": "The exam is being created without this book.",
+      "subjectLockedIn": "The file is being moved with this book.",
+      "subjectLockedOut": "The file is being moved without this book."
     },
     "reader": {
       "opening": "Downloading the book…",

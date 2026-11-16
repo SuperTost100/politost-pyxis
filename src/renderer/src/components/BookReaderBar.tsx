@@ -27,18 +27,25 @@ export function openBook(bookId: string, options: { subjectId?: string; choice?:
  * says whether it is ticked and toggles it. `on` is read each time the reader draws; call `refreshSourceViewer` when the
  * tick changes elsewhere.
  */
-export type BookChoice = { words: "exam" | "subject"; on: () => boolean; set: (on: boolean) => void };
+export type BookChoice = {
+  words: "exam" | "subject";
+  on: () => boolean;
+  set: (on: boolean) => void;
+  /** What the choice is for is being made, so the choice no longer changes: the reader says so and takes it away. */
+  locked: () => boolean;
+};
 
 function ChoiceBookBar({ choice }: { choice: BookChoice }) {
   const { t } = useTranslation();
   const on = choice.on();
+  const locked = choice.locked();
   return (
     <div className={on ? "px-book-bar is-in" : "px-book-bar"}>
       <p className="px-book-bar-text" role="status">
         {on ? <Check size={15} aria-hidden /> : null}
-        <span>{t(`books.choice.${choice.words}${on ? "In" : "Out"}`)}</span>
+        <span>{t(`books.choice.${choice.words}${locked ? "Locked" : ""}${on ? "In" : "Out"}`)}</span>
       </p>
-      <Button size="sm" variant={on ? "secondary" : "primary"} onClick={() => choice.set(!on)}>
+      <Button size="sm" variant={on ? "secondary" : "primary"} disabled={locked} onClick={() => choice.set(!on)}>
         {t(`books.choice.${choice.words}${on ? "Remove" : "Add"}`)}
       </Button>
     </div>
