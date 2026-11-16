@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { uuidv7 } from "../../shared/ids";
 import { startOfDay } from "../../shared/local-day";
+import { reviewSeconds } from "../../shared/review-time";
 import { putSetting } from "../settings";
 import {
   isMastered,
@@ -279,12 +280,10 @@ export function deckDueCards(
   }));
 }
 
-/** The most seconds one review counts as study time, so a card left open does not count its whole wait. */
-export const MAX_REVIEW_SECONDS = 60;
-
 /**
- * Rates a card. `seconds` is how long the card was on screen before the rating; it is kept up to
- * `MAX_REVIEW_SECONDS`, and a review without it (made before the time was recorded) counts as no study minutes.
+ * Rates a card. `seconds` is how long the card was on screen before the rating; `reviewSeconds` keeps up to a minute
+ * of it, and a review without a usable time (made before the time was recorded, or a clock that went back) counts as
+ * no study minutes. The rating is saved either way.
  */
 export function rateCard(
   db: Database.Database,
@@ -332,7 +331,7 @@ export function rateCard(
       rating,
       JSON.stringify(next),
       now,
-      seconds == null ? null : Math.min(MAX_REVIEW_SECONDS, Math.max(0, Math.round(seconds))),
+      reviewSeconds(seconds),
     );
     // The event is evidence for an exam's mastery and path; a card with no exam has none to feed.
     if (card.plan_id == null) return { ...next, reviewId };

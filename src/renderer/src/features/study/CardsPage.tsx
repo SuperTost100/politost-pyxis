@@ -28,6 +28,7 @@ import { NewCardButton } from "./NewCardButton";
 import { BarTool, StudyLayout } from "./StudyBar";
 import { usePlace } from "../../app/usePlace";
 import { focusInOpenSurface } from "../../lib/pageKeys";
+import { reviewSeconds } from "@shared/review-time";
 import { cardsLine } from "./barLines";
 import { Working } from "../../components/Working";
 
@@ -385,7 +386,8 @@ export function CardsPage() {
       const state = await invoke("study.rate", {
         cardId: card.id,
         rating,
-        seconds: Math.max(0, Math.round((Date.now() - shownAt.current) / 1000)),
+        // A clock that went back sends no time; the rating is saved either way.
+        seconds: reviewSeconds((Date.now() - shownAt.current) / 1000) ?? undefined,
       });
       setLastAction({
         kind: "rate",

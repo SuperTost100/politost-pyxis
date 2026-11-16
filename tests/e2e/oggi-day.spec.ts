@@ -58,6 +58,20 @@ async function openApp() {
   };
 }
 
+/** Lets a spec move the page's clock, so a card seems to have been on screen for as long as it likes. */
+async function installClock(page: Page) {
+  await page.evaluate(() => {
+    const real = Date.now.bind(Date);
+    const skew = { ms: 0 };
+    (window as unknown as { skew: typeof skew }).skew = skew;
+    Date.now = () => real() + skew.ms;
+  });
+}
+const moveClock = (page: Page, ms: number) =>
+  page.evaluate((by) => {
+    (window as unknown as { skew: { ms: number } }).skew.ms += by;
+  }, ms);
+
 const openExam = async (page: Page, planId: string) => {
   await page.evaluate((id) => {
     location.hash = `/plans/${id}`;
@@ -100,19 +114,12 @@ test("reviewing flashcards moves Oggi on every exam page and in the Esami list, 
 
     // Review all five. The page's clock is moved before each rating, so the card seems to have been on screen for
     // 30 seconds, and for the last one ten minutes, which counts one.
-    await page.evaluate(() => {
-      const real = Date.now.bind(Date);
-      const skew = { ms: 0 };
-      (window as unknown as { skew: typeof skew }).skew = skew;
-      Date.now = () => real() + skew.ms;
-    });
+    await installClock(page);
     await page.getByRole("button", { name: "Review 5", exact: true }).click();
     await expect(page).toHaveURL(/#\/cards\/due$/);
     for (const [index, minutes] of [0.5, 0.5, 0.5, 0.5, 10].entries()) {
       await expect(page.getByRole("button", { name: /Flip/ })).toBeVisible();
-      await page.evaluate((ms) => {
-        (window as unknown as { skew: { ms: number } }).skew.ms += ms;
-      }, minutes * 60_000);
+      await moveClock(page, minutes * 60_000);
       await page.getByRole("button", { name: /Flip/ }).click();
       await page.getByRole("button", { name: "Easy", exact: true }).click();
       if (index < 4) await expect(page.getByText(`${index + 2} of 5`).first()).toBeVisible();
@@ -145,6 +152,42 @@ test("reviewing flashcards moves Oggi on every exam page and in the Esami list, 
     await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
     await page.reload();
     await expect(page.locator(".px-exam-rings").getByRole("img")).toHaveAccessibleName(/, Oggi 3 di 60 min$/);
+  } finally {
+    await done();
+  }
+});
+
+test("a rating is never lost to the time measured: a card open for days, or a clock that went back, is still rated", async () => {
+  test.setTimeout(120_000);
+  const { page, db, done } = await openApp();
+  try {
+    db.exec(`INSERT INTO cards(id,plan_id,topic_id,front,back,created_at) VALUES
+      ('c1','p-near','t-p-near','Prima','a',1), ('c2','p-near','t-p-near','Seconda','b',2), ('c3','p-near','t-p-near','Terza','c',3);`);
+    await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: 7 }));
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+    await page.reload();
+    await installClock(page);
+    await openExams(page);
+    await page.getByRole("button", { name: "Review 3", exact: true }).click();
+    await expect(page).toHaveURL(/#\/cards\/due$/);
+    // The laptop slept for three days with the first card open; the clock then went back an hour on the second; the
+    // third is rated after half a minute.
+    for (const [index, ms] of [3 * 86_400_000, -3_600_000, 30_000].entries()) {
+      await expect(page.getByRole("button", { name: /Flip/ })).toBeVisible();
+      await moveClock(page, ms);
+      await page.getByRole("button", { name: /Flip/ }).click();
+      await page.getByRole("button", { name: "Easy", exact: true }).click();
+      if (index < 2) await expect(page.getByText(`${index + 2} of 3`).first()).toBeVisible();
+    }
+    await expect(page.getByText("No flashcards are due.")).toBeVisible();
+    await expect(page.getByText("The flashcard could not be rated")).toHaveCount(0);
+    const seconds = db.prepare("SELECT seconds FROM card_reviews ORDER BY reviewed_at").all() as Array<{ seconds: number | null }>;
+    // All three are saved: a minute, no time, and about half a minute.
+    expect(seconds).toHaveLength(3);
+    expect(seconds[0]!.seconds).toBe(60);
+    expect(seconds[1]!.seconds).toBeNull();
+    expect(seconds[2]!.seconds).toBeGreaterThanOrEqual(30);
+    expect(seconds[2]!.seconds).toBeLessThan(40);
   } finally {
     await done();
   }
