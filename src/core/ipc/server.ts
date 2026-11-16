@@ -465,6 +465,8 @@ const routes = {
   "sources.sortSubjects": ["sources", "sortSubjects"],
   "sources.move": ["sources", "move"],
   "sources.importBook": ["sources", "importBook", "signal"],
+  "sources.bookPreview": ["sources", "bookPreview", "signal"],
+  "sources.bookChapter": ["sources", "bookChapter", "signal"],
   "sources.updateBook": ["sources", "updateBook", "signal"],
   "sources.scanFolder": ["sources", "scanFolder", "signal"],
   "sources.linkFolders": ["sources", "linkFolders", "signal"],

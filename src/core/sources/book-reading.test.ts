@@ -1,0 +1,207 @@
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { strToU8, zipSync } from "fflate";
+import { afterEach, describe, expect, it } from "vitest";
+import { openDatabase } from "../db/connection";
+import { createRunner } from "../jobs/runner";
+import { addSubject } from "../plans/subjects";
+import { folderTransport, type BooksTransport } from "./books";
+import { createBookReading } from "./book-reading";
+import { sourceHandlers } from "./handlers";
+import { markStoppedImport, registerSourceJobs } from "./jobs";
+import { parseSmartbook } from "./smartbook";
+
+const dirs: string[] = [];
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
+const temp = (prefix: string) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  dirs.push(dir);
+  return dir;
+};
+
+const SPEED = "La velocità media è lo spazio percorso diviso il tempo.";
+const MARKUP = '<script>alert("x")</script> e <b>grassetto</b>';
+
+function pack(): Uint8Array {
+  return zipSync({
+    "smartbook.json": strToU8(
+      JSON.stringify({
+        id: "fisica-demo",
+        title: "Fisica di prova",
+        version: "1.0.0",
+        access: "public",
+        chapters: [
+          { id: "moti", number: 1, title: "Moti", file: "01.md" },
+          { id: "forze", number: 2, title: "Forze", file: "02.md" },
+        ],
+      }),
+    ),
+    "chapters/01.md": strToU8(`## p1 | Velocità\n${SPEED}\n\n## p2 | Altro\n${MARKUP}\n`),
+    "chapters/02.md": strToU8("## p1 | Dinamica\nLa forza è massa per accelerazione.\n"),
+  });
+}
+
+/** A folder laid out like books.politost.it, and a transport that counts the package downloads. */
+function site(options: { tamper?: boolean } = {}) {
+  const dir = temp("pyxis-book-reading-site-");
+  const bytes = pack();
+  mkdirSync(join(dir, "books"));
+  writeFileSync(join(dir, "books", "fisica-demo@1.0.0.ptsb"), bytes);
+  const sha = createHash("sha256").update(bytes).digest("hex");
+  writeFileSync(
+    join(dir, "catalog.json"),
+    JSON.stringify({
+      catalogVersion: 1,
+      books: [
+        {
+          id: "fisica-demo",
+          title: "Fisica di prova",
+          subject: "Fisica",
+          authors: ["PoliTost"],
+          version: "1.0.0",
+          chapters: 2,
+          package: "books/fisica-demo@1.0.0.ptsb",
+          bytes: bytes.byteLength,
+          sha256: options.tamper ? sha.replace(/^./, sha[0] === "0" ? "1" : "0") : sha,
+        },
+      ],
+    }),
+  );
+  const inner = folderTransport(dir);
+  const downloads = { packages: 0, catalogs: 0 };
+  const transport: BooksTransport = (url, max, signal, progress) => {
+    if (url.endsWith(".ptsb")) downloads.packages += 1;
+    else downloads.catalogs += 1;
+    return inner(url, max, signal, progress);
+  };
+  return { transport, downloads };
+}
+
+function setup(options: { tamper?: boolean } = {}) {
+  const workspace = temp("pyxis-book-reading-");
+  const db = openDatabase(":memory:");
+  const runner = createRunner(db, (job) => markStoppedImport(db, job));
+  const books = site(options);
+  const handlers = sourceHandlers(db, workspace, runner, undefined, undefined, books.transport);
+  registerSourceJobs(db, workspace, runner, (async (input: { path: string }) => ({
+    book: parseSmartbook(new Uint8Array(readFileSync(input.path))),
+  })) as never);
+  return { workspace, db, runner, handlers, downloads: books.downloads };
+}
+
+const count = (db: ReturnType<typeof openDatabase>, table: string) =>
+  (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+
+describe("reading a free book before it is added", () => {
+  it("shows its chapters and text and stores nothing, in the database or the workspace", async () => {
+    const ctx = setup();
+    const before = readdirSync(ctx.workspace);
+    const preview = await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    expect(preview.chapters).toEqual([
+      { number: 1, title: "Moti" },
+      { number: 2, title: "Forze" },
+    ]);
+    const first = await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1 });
+    expect(first.map((row) => row.text)).toEqual([SPEED, MARKUP]);
+    expect(new Set(first.map((row) => row.id)).size).toBe(2);
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 2 }))[0]?.text).toContain("massa per accelerazione");
+    expect(await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 9 })).toEqual([]);
+    for (const table of ["sources", "passages", "source_documents", "smartbooks", "exercises"]) expect(count(ctx.db, table)).toBe(0);
+    expect(readdirSync(ctx.workspace)).toEqual(before);
+    // The books list still says the student does not have it.
+    expect(await ctx.handlers.books()).toEqual([expect.objectContaining({ id: "fisica-demo", sourceId: null })]);
+    expect(ctx.downloads.packages).toBe(1);
+    ctx.db.close();
+  });
+
+  it("is not downloaded again when the student adds it after reading, and the add puts it on the chosen shelf", async () => {
+    const ctx = setup();
+    const subject = addSubject(ctx.db, "Fisica 1");
+    await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    const added = await ctx.handlers.importBook({ id: "fisica-demo", subjectId: subject.id });
+    expect(ctx.downloads.packages).toBe(1);
+    expect(ctx.db.prepare("SELECT subject_id AS subject, subject_sort AS sort, library FROM sources WHERE id = ?").get(added.sourceId)).toEqual({
+      subject: subject.id,
+      sort: "manual",
+      library: 1,
+    });
+    await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    ctx.db.close();
+  });
+
+  it("adds a book that was never read with one download, and refuses an unknown shelf before downloading anything", async () => {
+    const ctx = setup();
+    await expect(ctx.handlers.importBook({ id: "fisica-demo", subjectId: "gone" })).rejects.toMatchObject({ messageKey: "sources.sort.subjectMissing" });
+    expect(ctx.downloads.packages).toBe(0);
+    expect(count(ctx.db, "sources")).toBe(0);
+    await ctx.handlers.importBook({ id: "fisica-demo" });
+    expect(ctx.downloads.packages).toBe(1);
+    ctx.db.close();
+  });
+
+  it("refuses a package that does not match the catalog, and an id the catalog does not list", async () => {
+    const ctx = setup({ tamper: true });
+    await expect(ctx.handlers.bookPreview({ id: "fisica-demo" })).rejects.toMatchObject({ messageKey: "sources.books.integrity" });
+    await expect(ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1 })).rejects.toMatchObject({ messageKey: "sources.books.integrity" });
+    await expect(ctx.handlers.bookPreview({ id: "nessuno" })).rejects.toMatchObject({ messageKey: "sources.books.missing" });
+    expect(count(ctx.db, "sources")).toBe(0);
+    ctx.db.close();
+  });
+});
+
+describe("the book held in memory", () => {
+  const book = (() => {
+    const bytes = pack();
+    return {
+      book: {
+        id: "fisica-demo",
+        title: "Fisica di prova",
+        subject: "Fisica",
+        authors: [],
+        version: "1.0.0",
+        chapters: 2,
+        package: "books/fisica-demo@1.0.0.ptsb",
+        bytes: bytes.byteLength,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      },
+      bytes,
+    };
+  })();
+
+  it("shares one download between calls made at the same time, and lets go after its time", async () => {
+    let downloads = 0;
+    const transport: BooksTransport = async () => {
+      downloads += 1;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return book.bytes;
+    };
+    const reading = createBookReading(60);
+    await Promise.all([1, 2, 3].map(() => reading.open(book.book, transport, 10_000_000)));
+    expect(downloads).toBe(1);
+    expect(reading.bytesOf(book.book)).not.toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(reading.bytesOf(book.book)).toBeNull();
+    await reading.open(book.book, transport, 10_000_000);
+    expect(downloads).toBe(2);
+    reading.drop();
+  });
+
+  it("lets a caller stop waiting without cancelling the download for the others", async () => {
+    const transport: BooksTransport = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return book.bytes;
+    };
+    const reading = createBookReading();
+    const stop = new AbortController();
+    const waiting = reading.open(book.book, transport, 10_000_000, stop.signal);
+    const other = reading.open(book.book, transport, 10_000_000);
+    stop.abort();
+    await expect(waiting).rejects.toBeDefined();
+    await expect(other).resolves.toBeDefined();
+    reading.drop();
+  });
+});
