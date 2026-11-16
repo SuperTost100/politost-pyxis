@@ -1066,6 +1066,42 @@ describe("figures in a part", () => {
     expect(body.markdown).not.toContain("no axis");
   });
 
+  it("draws a part's figure with the code as the model wrote it, escapes of its Python strings included", async () => {
+    const db = await planned();
+    const labelled = "plt.plot([0, 1])\nplt.ylabel('Voltage\\n(V)')";
+    const programs: string[] = [];
+    const recording: FigureRunner = async (code, timeoutMs) => {
+      programs.push(code);
+      return python(code, timeoutMs);
+    };
+    const { run } = engineFor(withFigure("1", labelled), mended);
+    const outline = await writePart(db, { planId: "p", topicId: "t", position: 1, run, python: recording });
+    expect(programs.some((program) => program.includes("plt.ylabel('Voltage\\n(V)')"))).toBe(true);
+    const body = JSON.parse(
+      (db.prepare("SELECT body_json FROM items WHERE id = ?").get(outline.parts[0]!.itemId) as { body_json: string }).body_json,
+    ) as { markdown: string; figures: Record<string, string> };
+    expect(body.figures).toEqual({ [figureKey(labelled)]: PNG });
+    expect(body.markdown).toContain(figureBlock(labelled));
+  });
+
+  it("saves nothing when Stop is pressed while a figure is being corrected, and leaves the part to be written again", async () => {
+    const db = await planned();
+    const stop = new AbortController();
+    const { run } = engineFor(withFigure("1", broken), mended);
+    const stopping: GenerateInput["run"] = async (input) => {
+      if (!isFigureFixCall(input.system)) return run(input);
+      stop.abort();
+      throw new DOMException("aborted", "AbortError");
+    };
+    await expect(
+      writePart(db, { planId: "p", topicId: "t", position: 1, run: stopping, python, signal: stop.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(db.prepare("SELECT COUNT(*) FROM lesson_parts WHERE item_id IS NOT NULL").pluck().get()).toBe(0);
+    // The part is written the next time it is asked for.
+    const outline = await writePart(db, { planId: "p", topicId: "t", position: 1, run, python });
+    expect(outline.parts[0]!.itemId).toBeTruthy();
+  });
+
   it("drops a figure whose fix failed and saves the part with its text whole", async () => {
     const db = await planned();
     const { fixes, run } = engineFor(withFigure("1", broken), new Error("the engine is out"));

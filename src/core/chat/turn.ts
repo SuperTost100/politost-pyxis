@@ -1055,6 +1055,25 @@ async function answer(
       ? await savedImages(db, input.workspace, chatId, input.signal)
       : null;
   const skippedImages = saved?.skipped.length ? { skippedImages: saved.skipped } : {};
+  /** What arrived, saved as a reply that stopped early: marked stopped, or with the failure, and offering Continue. */
+  const stopReply = (text: string, error: string | null) => ({
+    ...finishReply(db, chatId, text, {
+      messageId,
+      provider: answering.provider,
+      model: answering.model,
+      selected,
+      attached: thisTurnFile,
+      widened: widened || Boolean(input.resumeFrom?.widened),
+      within,
+      searched,
+      template,
+      citations,
+      stopped: true,
+      error,
+      now,
+    }),
+    ...skippedImages,
+  });
   try {
     result = await generate({
       prompt,
@@ -1096,26 +1115,8 @@ async function answer(
     // limit), as a reply marked with the failure that offers Continue. A regenerated reply that fails keeps the earlier
     // one instead, and a Continue that added nothing leaves the reply as it was.
     const kept = streamed.trim() !== "" && streamed !== resume;
-    if (kept && (aborted || !replacing || resume)) {
-      return {
-        ...finishReply(db, chatId, streamed, {
-          messageId,
-          provider: answering.provider,
-          model: answering.model,
-          selected,
-          attached: thisTurnFile,
-          widened: widened || Boolean(input.resumeFrom?.widened),
-          within,
-          searched,
-          template,
-          citations,
-          stopped: true,
-          error: aborted ? null : toIpcError(err).messageKey,
-          now,
-        }),
-        ...skippedImages,
-      };
-    }
+    if (kept && (aborted || !replacing || resume))
+      return stopReply(streamed, aborted ? null : toIpcError(err).messageKey);
     throw err;
   }
   // The prompts no longer ask for it, but a model or an older prompt can still answer NOT_COVERED: nothing is stored.
@@ -1125,13 +1126,23 @@ async function answer(
   const parsed = splitFollowups(resume + result.text);
   if (profile?.followups === false) parsed.followups = [];
   // A figure that fails is left out. The math check runs after the reply is saved (startChecks), on the final text.
-  const drawn = await drawFigures(parsed.body, {
-    python: drawer?.run ?? noSandbox,
-    kinds: drawer?.kinds ?? [],
-    // The fix call is counted with this chat's tokens and stops with the turn.
-    fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
-    signal: input.signal,
-  });
+  // Stop pressed while the figures are drawn or corrected: the whole answer is already read, so it is kept as a stopped
+  // reply with no figures, like any other stop, and the chat stays.
+  let drawn;
+  try {
+    drawn = await drawFigures(parsed.body, {
+      python: drawer?.run ?? noSandbox,
+      kinds: drawer?.kinds ?? [],
+      // The fix call is counted with this chat's tokens and stops with the turn.
+      fix: figureFixer({ selection, run: input.run, signal: input.signal, usage: { chatId, messageId, kind: "chat" } }),
+      signal: input.signal,
+    });
+  } catch (err) {
+    requireTutorAvailable(db);
+    if (isAbort(err) || (err instanceof Error && err.name === "AbortError"))
+      return stopReply(resume + result.text, null);
+    throw err;
+  }
   parsed.body = drawn.markdown;
   const figures = Object.keys(drawn.figures).length ? drawn.figures : undefined;
 

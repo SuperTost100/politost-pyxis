@@ -253,6 +253,35 @@ describe("lesson figures", () => {
     db.close();
   });
 
+  it("draws a figure's code as the model wrote it: the escapes of its Python strings reach the sandbox unchanged, in the saved block too", async () => {
+    const { db, planId, topicId, run, python, programs, reply } = setup();
+    const labelled = "plt.plot([1, 2])\nplt.ylabel('Voltage\\n(V)')\nplt.xlabel(r'$\\theta$ \\nu')";
+    reply(`## Velocità\n\nUn grafico.\n\n${figure("Con etichette.", labelled)}\n`);
+    const lesson = await writeLesson(db, planId, topicId, run, { python });
+    expect(programs.some((program) => program.includes("plt.ylabel('Voltage\\n(V)')"))).toBe(true);
+    expect(programs.some((program) => program.includes("plt.xlabel(r'$\\theta$ \\nu')"))).toBe(true);
+    expect(lesson.figures).toEqual({ [figureKey(labelled)]: PNG });
+    expect(lesson.markdown).toContain(figure("Con etichette.", labelled));
+    db.close();
+  });
+
+  it("saves nothing and ends as stopped when Stop is pressed while a figure is being corrected, and writes the lesson again afterwards", async () => {
+    const { db, planId, topicId, run, python, systems } = setup();
+    const stop = new AbortController();
+    const stopping: typeof run = async (input) => {
+      if (!isFigureFixCall(input.system)) return run(input);
+      stop.abort();
+      throw new DOMException("aborted", "AbortError");
+    };
+    await expect(writeLesson(db, planId, topicId, stopping, { python, signal: stop.signal })).rejects.toMatchObject({ name: "AbortError" });
+    // Nothing of the lesson was kept: opening it again asks the model again, and draws.
+    const written = systems.length;
+    const again = await writeLesson(db, planId, topicId, run, { python });
+    expect(systems.length).toBe(written + 1);
+    expect(again.markdown).toContain("La velocità è lo spostamento diviso il tempo.");
+    db.close();
+  });
+
   it("asks for no fix when no sandbox can draw, and for one at most per failed figure in a rewritten section", async () => {
     const { db, planId, topicId, run, python, fixCalls, reply } = setup();
     await writeLesson(db, planId, topicId, run, { python: null });
