@@ -54,10 +54,12 @@ export const httpsTransport: BooksTransport = async (url, max, signal, progress)
   }
 };
 
-/** Tests serve the site from a folder laid out like books.politost.it. */
-export function folderTransport(dir: string): BooksTransport {
-  return async (url, max) => {
+/** Tests serve the site from a folder laid out like books.politost.it. `delayMs` slows each package, so a run can look at a download. */
+export function folderTransport(dir: string, delayMs = 0): BooksTransport {
+  return async (url, max, signal) => {
     const path = new URL(url).pathname.replace(/^\/+/, "");
+    if (delayMs && path.endsWith(".ptsb")) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    signal.throwIfAborted();
     const bytes = readFileSync(join(dir, ...path.split("/")));
     if (bytes.byteLength > max) throw new Error("books-too-big");
     return new Uint8Array(bytes);

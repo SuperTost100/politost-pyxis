@@ -7,6 +7,7 @@ import { importSmartbook } from "../sources/smartbook";
 import { exportMarkdown } from "../share/markdown";
 import { planFileSchema } from "../../shared/plan-file";
 import { figureKey } from "../../shared/smart-text";
+import { isFigureFixCall } from "../engine/recorded-plan";
 import type { FigureRunner } from "../math/figures";
 import { rewriteLessonSection, writeLesson } from "./openLesson";
 
@@ -61,8 +62,17 @@ function setup() {
   });
   const topicId = readPlan(db, planId)!.topics[0]!.id;
   const systems: string[] = [];
+  // The calls that correct a figure, and their answers in turn: a corrected code, or none to leave the code as it was.
+  const fixes: Array<string | null> = [];
+  const fixCalls: Array<{ model: string; request: Record<string, string> }> = [];
   let text = recorded;
   const run: Parameters<typeof writeLesson>[3] = async (input) => {
+    if (isFigureFixCall(input.system)) {
+      const request = JSON.parse(input.prompt) as Record<string, string>;
+      fixCalls.push({ model: input.selection.model, request });
+      const code = fixes[fixCalls.length - 1] ?? request.code!;
+      return { text: JSON.stringify({ code }), structured: { code }, provider: "claude", model: "fixer", inputTokens: 1 };
+    }
     systems.push(input.system ?? "");
     return { text, provider: "claude", model: "m", inputTokens: 1 };
   };
@@ -94,6 +104,8 @@ function setup() {
     python,
     systems,
     programs,
+    fixes,
+    fixCalls,
     reply: (next: string) => {
       text = next;
     },
@@ -217,6 +229,72 @@ describe("lesson figures", () => {
     // The same code as a plot would have another key, so a circuit never shows a plot's image.
     expect(lesson.figures).toEqual({ [figureKey(rc, "circuit")]: PNG });
     expect(figureKey(rc, "circuit")).not.toBe(figureKey(rc));
+    db.close();
+  });
+
+  it("corrects a figure that failed once, keeps the fixed one in the cached lesson and never asks about it again", async () => {
+    const { db, planId, topicId, run, python, programs, fixes, fixCalls } = setup();
+    const mended = "x = np.linspace(-1, 1)\nplt.plot(x, x)";
+    fixes.push(mended);
+    const lesson = await writeLesson(db, planId, topicId, run, { python });
+    // The call named the lesson's engine and held the block and the error.
+    expect(fixCalls).toHaveLength(1);
+    expect(fixCalls[0]!.model).toBe("m");
+    expect(fixCalls[0]!.request).toMatchObject({ kind: "plot", caption: "Un grafico che non si disegna.", code: broken });
+    expect(fixCalls[0]!.request.error).toContain("NameError");
+    // Both figures are in the lesson, the second under the corrected code, and its block carries that code.
+    expect(lesson.figures).toEqual({ [figureKey(parabola)]: PNG, [figureKey(mended)]: PNG });
+    expect(lesson.markdown).toContain(figure("Un grafico che non si disegna.", mended));
+    expect(lesson.markdown).not.toContain("undefined_name");
+    expect(programs).toHaveLength(3);
+    // Opening it again reads the cache: no model call, no fix, no drawing.
+    await writeLesson(db, planId, topicId, run, { python });
+    expect([fixCalls.length, programs.length]).toEqual([1, 3]);
+    db.close();
+  });
+
+  it("draws a figure's code as the model wrote it: the escapes of its Python strings reach the sandbox unchanged, in the saved block too", async () => {
+    const { db, planId, topicId, run, python, programs, reply } = setup();
+    const labelled = "plt.plot([1, 2])\nplt.ylabel('Voltage\\n(V)')\nplt.xlabel(r'$\\theta$ \\nu')";
+    reply(`## Velocità\n\nUn grafico.\n\n${figure("Con etichette.", labelled)}\n`);
+    const lesson = await writeLesson(db, planId, topicId, run, { python });
+    expect(programs.some((program) => program.includes("plt.ylabel('Voltage\\n(V)')"))).toBe(true);
+    expect(programs.some((program) => program.includes("plt.xlabel(r'$\\theta$ \\nu')"))).toBe(true);
+    expect(lesson.figures).toEqual({ [figureKey(labelled)]: PNG });
+    expect(lesson.markdown).toContain(figure("Con etichette.", labelled));
+    db.close();
+  });
+
+  it("saves nothing and ends as stopped when Stop is pressed while a figure is being corrected, and writes the lesson again afterwards", async () => {
+    const { db, planId, topicId, run, python, systems } = setup();
+    const stop = new AbortController();
+    const stopping: typeof run = async (input) => {
+      if (!isFigureFixCall(input.system)) return run(input);
+      stop.abort();
+      throw new DOMException("aborted", "AbortError");
+    };
+    await expect(writeLesson(db, planId, topicId, stopping, { python, signal: stop.signal })).rejects.toMatchObject({ name: "AbortError" });
+    // Nothing of the lesson was kept: opening it again asks the model again, and draws.
+    const written = systems.length;
+    const again = await writeLesson(db, planId, topicId, run, { python });
+    expect(systems.length).toBe(written + 1);
+    expect(again.markdown).toContain("La velocità è lo spostamento diviso il tempo.");
+    db.close();
+  });
+
+  it("asks for no fix when no sandbox can draw, and for one at most per failed figure in a rewritten section", async () => {
+    const { db, planId, topicId, run, python, fixCalls, reply } = setup();
+    await writeLesson(db, planId, topicId, run, { python: null });
+    expect(fixCalls).toEqual([]);
+    await writeLesson(db, planId, topicId, run, { python, regenerate: true });
+    // The unfixed failure above (a fix that changed nothing) is one call; a rewritten section with two new failures
+    // adds one call for each.
+    expect(fixCalls).toHaveLength(1);
+    reply(
+      `## Accelerazione\n\nDue grafici.\n\n${figure("Uno.", "plt.plot(undefined_name_one)")}\n\n${figure("Due.", "plt.plot(undefined_name_two)")}`,
+    );
+    await rewriteLessonSection(db, planId, topicId, run, { section: 1, python });
+    expect(fixCalls.map((call) => call.request.caption)).toEqual(["Un grafico che non si disegna.", "Uno.", "Due."]);
     db.close();
   });
 

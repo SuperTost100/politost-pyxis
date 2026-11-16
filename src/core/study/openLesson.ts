@@ -12,8 +12,10 @@ import {
   drawFigures,
   figureRunner,
   figureText,
+  figureFixer,
   noSandbox,
   type FigureDrawer,
+  type FigureFix,
   type FigureRunner,
 } from "../math/figures";
 
@@ -194,7 +196,7 @@ function readerContext(context: { school: string; course: string }) {
 export function withFigures(
   markdown: string,
   drawer: FigureDrawer | null,
-  options: { known?: Record<string, string>; signal?: AbortSignal },
+  options: { known?: Record<string, string>; signal?: AbortSignal; fix?: FigureFix },
 ) {
   return drawFigures(markdown, {
     ...options,
@@ -440,6 +442,7 @@ export async function writeLesson(
     // A figure that fails is left out; the lesson is saved with the ones that drew.
     drawn = await withFigures(written.join("\n\n"), drawer, {
       signal: options?.signal,
+      fix: figureFixer({ selection, run, signal: options?.signal }),
     });
   } catch (error) {
     // An engine that failed or is signed out falls back to the book, like any other failed call; the rest end the lesson.
@@ -573,6 +576,7 @@ export async function rewriteLessonSection(
   const grounded = context.all.length > 0;
   const note = options.note?.replace(/\s+/g, " ").trim().slice(0, 500);
   const drawer = await figureRunner(options.python);
+  const selection = selectionFor(db, "lesson");
   const result = await generate({
     signal: options.signal,
     prompt: [
@@ -588,7 +592,7 @@ export async function rewriteLessonSection(
     system: [lessonSystem(context, grounded, drawer?.kinds ?? []), interestsLine(db)]
       .filter(Boolean)
       .join("\n"),
-    selection: selectionFor(db, "lesson"),
+    selection,
     run,
   });
   options.signal?.throwIfAborted();
@@ -599,7 +603,11 @@ export async function rewriteLessonSection(
   const { markdown, figures } = await withFigures(
     replaceSection(cached.markdown, options.section, text),
     drawer,
-    { known: cached.figures, signal: options.signal },
+    {
+      known: cached.figures,
+      signal: options.signal,
+      fix: figureFixer({ selection, run, signal: options.signal }),
+    },
   );
   const itemId = db.transaction(() => {
     if (itemBody(db, cached.itemId) !== body) throw new Error("lesson-changed");

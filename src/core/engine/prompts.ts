@@ -6,6 +6,7 @@ import cardsSubject from "../../../resources/prompts/cards.subject.md?raw";
 import gapDrill from "../../../resources/prompts/gap.drill.md?raw";
 import gapExplain from "../../../resources/prompts/gap.explain.md?raw";
 import gapInsight from "../../../resources/prompts/gap.insight.md?raw";
+import figureFix from "../../../resources/prompts/figure.fix.md?raw";
 import chatChecks from "../../../resources/prompts/chat.checks.md?raw";
 import chatGeneral from "../../../resources/prompts/chat.general.md?raw";
 import chatSocratic from "../../../resources/prompts/chat.socratic.md?raw";
@@ -51,6 +52,7 @@ export const TEMPLATE_SOURCES = {
   "gap.drill": gapDrill,
   "gap.explain": gapExplain,
   "gap.insight": gapInsight,
+  "figure.fix": figureFix,
   "chat.checks": chatChecks,
   "chat.general": chatGeneral,
   "chat.socratic": chatSocratic,
