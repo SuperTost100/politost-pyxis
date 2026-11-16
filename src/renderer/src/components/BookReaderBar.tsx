@@ -1,0 +1,64 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { addBook, subjectForBook, useBookAdding } from "../lib/bookAdding";
+import { useSources, useSubjects } from "../lib/queries";
+import { Button } from "./Button";
+import { useFreeBooks } from "../lib/freeBooks";
+import { Logo } from "./Logo";
+import { openSourceViewer } from "./SourceViewer";
+import "./BookReaderBar.css";
+
+/**
+ * Opens the source reader on a free book that may not be in the Library yet. Under its head the reader says whether the
+ * book is in the Library and, when it is not, adds it. `subjectId` is the shelf an add puts it on: the subject whose row
+ * opened it; without one the subject is found by name.
+ */
+export function openBook(bookId: string, options: { subjectId?: string } = {}): void {
+  openSourceViewer({ bookId }, { bar: () => <LibraryBookBar bookId={bookId} subjectId={options.subjectId} /> });
+}
+
+/** The row under the reader's head for a free book. After an add the reader stays open and says where the book went. */
+function LibraryBookBar({ bookId, subjectId }: { bookId: string; subjectId?: string }) {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const books = useFreeBooks(true);
+  const sources = useSources();
+  const subjects = useSubjects();
+  const state = useBookAdding();
+  const book = books.data?.find((item) => item.id === bookId);
+  const sourceId = book?.sourceId ?? null;
+  const adding = state.adding.has(bookId);
+  const failed = state.failed.get(bookId);
+  const source = sourceId ? sources.data?.find((item) => item.id === sourceId) : undefined;
+  const where = !source
+    ? t("books.reader.inLibrary")
+    : source.subject
+      ? t("books.reader.inShelf", { subject: source.subject })
+      : t("books.reader.inUnsorted");
+  // Until the catalog answers, the reader has nothing to add: it can read the book from the address alone.
+  const target = subjectId ?? (book ? subjectForBook(subjects.data ?? [], book) : undefined);
+  return (
+    <div className={sourceId ? "px-book-bar is-in" : "px-book-bar"}>
+      <p className="px-book-bar-text" role="status">
+        {sourceId ? <Check size={15} aria-hidden /> : null}
+        <span>{sourceId ? where : t("books.reader.notInLibrary")}</span>
+      </p>
+      {!sourceId && book ? (
+        <Button
+          size="sm"
+          disabled={adding}
+          onClick={() => void addBook(client, bookId, { subjectId: target })}
+        >
+          {adding ? <Logo working decorative size={14} /> : null}
+          {t(adding ? "books.adding" : "books.reader.addToLibrary")}
+        </Button>
+      ) : null}
+      {failed ? (
+        <p className="small px-book-bar-error" role="alert">
+          {t(failed)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
