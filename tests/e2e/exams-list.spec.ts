@@ -71,11 +71,14 @@ test("Esami lists each exam with its rings, date and next step, the due flashcar
     await expect(rows.nth(2).getByRole("img")).toHaveAccessibleName(
       /^Preparation not measured yet, Path [1-9]\d?%, Today not measured$/,
     );
-    // With weekly hours, the dated exam measures today's minutes; the one without a date says what it lacks.
+    // With weekly hours, Today is the whole day on every exam, the one without a date too: 7 hours is 60 minutes, and
+    // the lesson read above took 30 of them.
     await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: 7 }));
     await page.reload();
-    await expect(rows.nth(0).getByRole("img")).toHaveAccessibleName(/, Today \d+ of \d+ min$/);
-    await expect(rows.nth(2).getByRole("img")).toHaveAccessibleName(/, Today no date yet$/);
+    for (const row of [0, 1, 2]) {
+      await expect(rows.nth(row).getByRole("img")).toHaveAccessibleName(/, Today 30 of 60 min$/);
+      await expect(rows.nth(row)).toContainText("Today30 of 60 min");
+    }
     await page.evaluate(() => window.pyxis.invoke("plans.plannerHours", { hours: null }));
 
     // Archived exams wait behind their toggle, which grows the list out of itself.
