@@ -46,7 +46,7 @@ import {
   deleteLoosePassages,
   removeUnreferencedBlobs,
 } from "../chat/delete";
-import { dueEverywhere, examRings, examlessDue, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
+import { type DueLaterScope, dueEverywhere, dueLater, examRings, examlessDue, planSchedule, savePlannerHours, sessionPlan, todayPlan } from "./planner";
 import { exportCalendar } from "../share/calendar";
 import { listSimulations } from "../study/simulation";
 import { gapState, openGaps } from "../study/openGaps";
@@ -352,6 +352,9 @@ export function planHandlers(
             ? undefined
             : { subjectId: input.subjectId, examless: input.examless },
       );
+    },
+    dueLater(input: DueLaterScope) {
+      return dueLater(db, Date.now(), input);
     },
     complete(input: {
       planId: string;

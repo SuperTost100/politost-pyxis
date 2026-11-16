@@ -216,6 +216,9 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await aside.getByRole("button", { name: "Browse all" }).click();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
     await expect(page.locator("#card-exam").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("Fisica I");
+    // The head says it is the exam's cards, and the filter can be cleared.
+    await expect(page.getByText("The only flashcard of Fisica I.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
     await page.getByRole("button", { name: "Back to Fisica I" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis$/);
     // An exam with no flashcards yet keeps its filter and shows an empty result, not another exam's cards.

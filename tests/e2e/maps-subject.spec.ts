@@ -210,13 +210,13 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
       window.location.hash = "/flashcards/all";
     });
     const physics = page.locator(".px-cardbrowser-subject").filter({ has: page.getByRole("heading", { name: "Fisica I" }) });
-    await expect(physics.getByRole("heading", { level: 3 })).toHaveText(["Senza esame"]);
-    await expect(physics.locator(".px-cardbrowser-row")).toHaveCount(2);
+    await expect(physics.locator(".px-ct-topic")).toHaveText(["Senza esame", "Senza esame"]);
+    await expect(physics.locator(".px-ct")).toHaveCount(2);
     await saveShot(page, "maps-subject/cards-browser-no-exam.png");
     await page.locator("#card-exam").click();
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Senza esame"]').click();
     await expect(page.locator(".px-cardbrowser-summary")).toContainText("2 flashcard");
-    await physics.getByRole("button", { name: "Ripassa le flashcard senza esame di Fisica I" }).click();
+    await physics.getByRole("button", { name: "Ripassa quelle senza esame di Fisica I" }).click();
     await expect(page).toHaveURL(/#\/cards\/subject\/phys$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Fisica I");
     await expect(card).toContainText("Accelerazione");
