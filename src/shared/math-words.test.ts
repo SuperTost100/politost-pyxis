@@ -64,6 +64,14 @@ describe("formulaWords", () => {
     expect(both("\\vec{F}=m\\vec{a}")).toEqual(["vettore F uguale a m vettore a", "vector F equals m vector a"]);
   });
 
+  it("gives nothing for a sum, an integral or a limit with an upper bound and no lower one", () => {
+    for (const latex of ["\\sum^{n} i", "\\prod^{n}i", "\\int^{1}x\\,\\mathrm{d}x", "\\lim^{2}x"])
+      expect([formulaWords(latex, "it"), formulaWords(latex, "en")], latex).toEqual([null, null]);
+    // With both bounds, or the lower one alone, the reading keeps them.
+    expect(formulaWords("\\sum_{i=1}^{n} i", "en")).toBe("sum from i equals 1 to n of i");
+    expect(formulaWords("\\int_{0}x\\,\\mathrm{d}x", "en")).toBe("integral over 0 of x dx");
+  });
+
   it("gives nothing for a formula it cannot read, instead of a wrong reading", () => {
     expect(formulaWords("\\begin{matrix}1&2\\end{matrix}", "it")).toBeNull();
     expect(formulaWords("\\frac{a}{", "it")).toBeNull();

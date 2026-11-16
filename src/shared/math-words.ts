@@ -597,6 +597,8 @@ class Reader {
       else high = text;
       next = after;
     }
+    // An upper bound with no lower one has no wording here: a reading without it would be a wrong one.
+    if (high && (!low || name === "lim")) throw new Unreadable();
     const words = this.words;
     const text =
       name === "lim"
