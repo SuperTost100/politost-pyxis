@@ -261,7 +261,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
 
     const answer = page.getByRole("textbox", { name: "La tua risposta" });
     await answer.fill("La velocità vale ");
-    await page.getByRole("button", { name: "Inserisci formula" }).click();
+    await page.getByRole("button", { name: "Inserisci formula nella risposta" }).click();
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await typeHalf(page);
     await keys.getByRole("button", { name: "Fatto", exact: true }).click();
@@ -269,7 +269,7 @@ test("Quiz: an open answer takes a formula from the keyboard inline", async () =
     await expect(answer).toHaveText(/^La velocità vale /);
     await expect(answer.locator(".px-mathchip .katex .mfrac")).toBeVisible();
     expect(await answer.innerText()).not.toContain("frac");
-    await saveShot(page.locator(".px-mathinput"), "math-input-quiz.png");
+    await saveShot(page.locator(".px-mathinput").first(), "math-input-quiz.png");
   } finally {
     await app.close();
     removeTestFolder(userData);

@@ -15,9 +15,12 @@ import {
   registerQuizGradingJobs,
   submitQuiz,
   timedPicks,
+  timedSteps,
 } from "./quizGrading";
-import { saveQuizDraft } from "./quizJobs";
+import { readQuiz, saveQuizDraft } from "./quizJobs";
 import { readSteps } from "../plans/steps";
+import { requests } from "../../shared/ipc";
+import { studyHandlers } from "./handlers";
 import { receiveRuntimeReply, setRuntimeSender } from "../math/runtime-client";
 
 type Db = ReturnType<typeof openDatabase>;
@@ -820,7 +823,7 @@ describe("SymPy in quiz grading", () => {
     expect(done.result!.results[0]!.score).toBe(0.3);
     expect(checkedAnswer(db, attemptId, "a")!.prompt).toEqual({
       template: "quiz.open-grade",
-      version: "4",
+      version: "5",
     });
     db.close();
   });
@@ -876,6 +879,170 @@ describe("SymPy in quiz grading", () => {
     );
     const checked = await gradeQuizQuestion(db, attemptId, "cfg", "x ≥ 2");
     expect(checked).toMatchObject({ score: 1, pick: "x ≥ 2" });
+    db.close();
+  });
+});
+
+describe("the steps of an open answer", () => {
+  type RuntimeRequest = { id: string; payload: { answer: string } };
+  afterEach(() => setRuntimeSender(() => undefined));
+  const payloads = (db: Db, attemptId: string) =>
+    (
+      db
+        .prepare("SELECT payload_json FROM attempt_answers WHERE attempt_id = ? ORDER BY created_at")
+        .all(attemptId) as Array<{ payload_json: string }>
+    ).map((row) => JSON.parse(row.payload_json) as Record<string, unknown>);
+
+  it("sends the steps to the grader with their answer and saves them with the result", async () => {
+    const { db, attemptId } = fixture([open("a"), open("b"), open("blank"), mcq], "diagnostic");
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(0.5);
+    });
+    submitQuiz(
+      db,
+      runner,
+      attemptId,
+      { a: "ten", b: "nine", blank: "", m: "0" },
+      undefined,
+      // Steps count only beside a written open answer: a blank answer's, a choice's and an empty field's are dropped.
+      { a: "5 + 5 = 10", b: "   ", blank: "I tried 3 + 3", m: "not an open answer" },
+    );
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toMatchObject({ answer: "ten", steps: "5 + 5 = 10" });
+    expect(prompts[1]).toMatchObject({ answer: "nine" });
+    expect(prompts[1]).not.toHaveProperty("steps");
+    expect(done.result!.steps).toEqual({ a: "5 + 5 = 10" });
+    expect(readQuiz(db, attemptId).result!.steps).toEqual({ a: "5 + 5 = 10" });
+    db.close();
+  });
+
+  it("leaves the prompt, the job and the saved result as they were when no steps are written", async () => {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(1);
+    });
+    const { jobId } = submitQuiz(db, runner, attemptId, { a: "ten" }, undefined, { a: "" });
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(Object.keys(prompts[0]!).sort()).toEqual(["answer", "question", "reference", "rubric"]);
+    const params = db.prepare("SELECT params_json FROM jobs WHERE id = ?").get(jobId) as { params_json: string };
+    expect(JSON.parse(params.params_json)).not.toHaveProperty("steps");
+    expect(done.result).not.toHaveProperty("steps");
+    expect(payloads(db, attemptId).find((row) => Array.isArray(row.results))).not.toHaveProperty("steps");
+    db.close();
+  });
+
+  it("has SymPy read the steps before the answer, so the first wrong step is one of them", async () => {
+    const asked: string[] = [];
+    setRuntimeSender((message) => {
+      const request = message as RuntimeRequest;
+      asked.push(request.payload.answer);
+      receiveRuntimeReply({
+        id: request.id,
+        result: {
+          final: { state: "failed", numbers: [5, 2] },
+          steps: 3,
+          firstWrong: { index: 2, previous: "2x + 3 = 7", step: "2x = 10" },
+        },
+      });
+    });
+    const { db, attemptId } = fixture([open("a", "x = 2")], "quiz");
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(0.3);
+    });
+    submitQuiz(db, runner, attemptId, { a: "x = 5" }, undefined, { a: "2x + 3 = 7\n2x = 10" });
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(asked).toEqual(["2x + 3 = 7\n2x = 10\nx = 5"]);
+    expect(prompts[0]).toMatchObject({
+      answer: "x = 5",
+      steps: "2x + 3 = 7\n2x = 10",
+      mathCheck: { firstWrongStep: { number: 2, text: "2x = 10" } },
+    });
+    db.close();
+  });
+
+  it("keeps the steps in the draft, and refuses those of a question the quiz does not have", () => {
+    const { db, attemptId } = fixture([open("a"), open("b")], "diagnostic");
+    saveQuizDraft(db, attemptId, { a: "ten" }, 0, "plan", undefined, [], [], { a: "5 + 5", b: "no answer yet" });
+    expect(readQuiz(db, attemptId).draft).toEqual({
+      picks: { a: "ten" },
+      index: 0,
+      steps: { a: "5 + 5", b: "no answer yet" },
+    });
+    // Emptied fields leave no trace in the draft.
+    saveQuizDraft(db, attemptId, { a: "ten" }, 1, "plan", undefined, [], [], { a: "", b: "  " });
+    expect(readQuiz(db, attemptId).draft).toEqual({ picks: { a: "ten" }, index: 1 });
+    expect(() => saveQuizDraft(db, attemptId, {}, 0, "plan", undefined, [], [], { other: "x" })).toThrow(
+      "question-missing",
+    );
+    db.close();
+  });
+
+  it("carries the steps through the contract and the handlers, from the draft to the results", async () => {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    const prompts: Array<Record<string, unknown>> = [];
+    const run: GenerateInput["run"] = async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(0.5);
+    };
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, run);
+    const study = studyHandlers(db, runner, run);
+    const sheet = { attemptId, picks: { a: "ten" }, steps: { a: "5 + 5" } };
+    study.quizDraft(requests["study.quizDraft"].input.parse({ ...sheet, index: 0 }));
+    expect(requests["study.quizRead"].output.parse(study.quizRead({ attemptId })).draft?.steps).toEqual(sheet.steps);
+    await study.quizSubmit(requests["study.quizSubmit"].input.parse(sheet));
+    await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(prompts[0]).toMatchObject({ answer: "ten", steps: "5 + 5" });
+    expect(requests["study.quizGrading"].output.parse(study.quizGrading({ attemptId })).result?.steps).toEqual(sheet.steps);
+    expect(requests["study.quizRead"].output.parse(study.quizRead({ attemptId })).result?.steps).toEqual(sheet.steps);
+    db.close();
+  });
+
+  it("grades with the steps when the answers are graded without the job runner", async () => {
+    const { db, attemptId } = fixture([open("a")], "diagnostic");
+    const prompts: Array<Record<string, unknown>> = [];
+    const study = studyHandlers(db, undefined, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(0.5);
+    });
+    await study.quizSubmit({ attemptId, picks: { a: "ten" }, steps: { a: "5 + 5" } });
+    expect(prompts[0]).toMatchObject({ answer: "ten", steps: "5 + 5" });
+    expect(readQuiz(db, attemptId).result!.steps).toEqual({ a: "5 + 5" });
+    db.close();
+  });
+
+  it("grades a timed quiz's saved steps, not the ones sent after the time is up", async () => {
+    const { db, attemptId } = fixture([open("cfg")], "quiz");
+    const item = db.prepare("SELECT id, body_json FROM items WHERE kind = 'quiz'").get() as {
+      id: string;
+      body_json: string;
+    };
+    const body = JSON.parse(item.body_json);
+    body.config.timerMinutes = 1;
+    db.prepare("UPDATE items SET body_json = ? WHERE id = ?").run(JSON.stringify(body), item.id);
+    saveQuizDraft(db, attemptId, { cfg: "saved" }, 0, undefined, 0, [], [], { cfg: "saved steps" });
+    expect(timedSteps(db, attemptId, { cfg: "late steps" }, 60_000 + 3_000)).toEqual({ cfg: "late steps" });
+    expect(timedSteps(db, attemptId, { cfg: "late steps" }, 60_000 + 6_000)).toEqual({ cfg: "saved steps" });
+    const prompts: Array<Record<string, unknown>> = [];
+    const runner = createRunner(db, () => {});
+    registerQuizGradingJobs(db, runner, async (input) => {
+      prompts.push(JSON.parse(input.prompt) as Record<string, unknown>);
+      return reply(1);
+    });
+    submitQuiz(db, runner, attemptId, { cfg: "late" }, 60_000 + 6_000, { cfg: "late steps" });
+    const done = await until(db, attemptId, (view) => view.state === "succeeded");
+    expect(prompts[0]).toMatchObject({ answer: "saved", steps: "saved steps" });
+    expect(done.result!.steps).toEqual({ cfg: "saved steps" });
     db.close();
   });
 });

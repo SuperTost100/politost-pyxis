@@ -139,6 +139,7 @@ export function readQuiz(
         score: number;
         results: AttemptResult[];
         picks: Record<string, string>;
+        steps?: Record<string, string>;
       })
     : undefined;
   const saved = db
@@ -148,7 +149,13 @@ export function readQuiz(
     .get(attemptId) as { payload_json: string } | undefined;
   const savedBody = saved
     ? (JSON.parse(saved.payload_json) as {
-        draft: { picks: Record<string, string>; index: number; skipped?: string[]; marked?: string[] };
+        draft: {
+          picks: Record<string, string>;
+          steps?: Record<string, string>;
+          index: number;
+          skipped?: string[];
+          marked?: string[];
+        };
         deadlineAt?: number;
       })
     : undefined;
@@ -190,6 +197,8 @@ export function saveQuizDraft(
   skipped: string[] = [],
   /** Questions marked "Segna per dopo". */
   marked: string[] = [],
+  /** The optional steps under open answers, by question id; a draft keeps them with or without the answer. */
+  steps: Record<string, string> = {},
 ) {
   const row = db
     .prepare(
@@ -216,6 +225,7 @@ export function saveQuizDraft(
   if (
     Object.keys(picks).length > 100 ||
     Object.keys(picks).some((id) => !ids.has(id)) ||
+    Object.keys(steps).some((id) => !ids.has(id)) ||
     skipped.some((id) => !ids.has(id)) ||
     marked.some((id) => !ids.has(id))
   )
@@ -238,9 +248,11 @@ export function saveQuizDraft(
   // Answers typed after the deadline (beyond a short save grace) are not kept.
   if (deadlineAt != null && now > deadlineAt + DRAFT_GRACE_MS)
     throw new Error("attempt-closed");
+  const written = Object.fromEntries(Object.entries(steps).filter(([, text]) => text.trim()));
   const payload = JSON.stringify({
     draft: {
       picks,
+      ...(Object.keys(written).length ? { steps: written } : {}),
       index: Math.min(index, Math.max(0, body.questions.length - 1)),
       ...(skipped.length ? { skipped } : {}),
       ...(marked.length ? { marked: [...new Set(marked)] } : {}),

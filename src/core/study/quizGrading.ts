@@ -57,7 +57,7 @@ export function quizDraft(db: Database.Database, attemptId: string) {
     .get(attemptId) as { payload_json: string } | undefined;
   return row
     ? (JSON.parse(row.payload_json) as {
-        draft: { picks: Record<string, string> };
+        draft: { picks: Record<string, string>; steps?: Record<string, string> };
         deadlineAt?: number;
       })
     : undefined;
@@ -80,6 +80,15 @@ export function timedPicks(
   return quizExpired(db, attemptId, now)
     ? (quizDraft(db, attemptId)?.draft.picks ?? {})
     : picks;
+}
+/** The steps that go with `timedPicks`: after the deadline the saved draft's, whatever the caller sends. */
+export function timedSteps(
+  db: Database.Database,
+  attemptId: string,
+  steps: Record<string, string> | undefined,
+  now = Date.now(),
+): Record<string, string> {
+  return (quizExpired(db, attemptId, now) ? quizDraft(db, attemptId)?.draft.steps : steps) ?? {};
 }
 function quizAttempt(db: Database.Database, attemptId: string) {
   const row = db
@@ -116,18 +125,24 @@ export function graderReply(text: string): boolean {
   // object member starts; feedback quoting a broken example of its own does neither.
   return /^\{\s*"(?:score|explanation|feedback)"\s*:/.test(body) || /[{,]\s*"score"\s*:/.test(body);
 }
-/** Model-grade one free/open answer; undefined for other kinds or blank answers. */
+/**
+ * Model-grade one free/open answer; undefined for other kinds or blank answers. `steps` is what the student wrote in
+ * the optional field under the answer: the grader reads it beside the answer, and blank steps change nothing.
+ */
 async function gradeOpen(
   db: Database.Database,
   question: StoredQuestion,
   pick: string,
   run?: GenerateInput["run"],
   engine: Engine = {},
+  steps?: string,
 ) {
   if (question.answer.kind !== "open" || !pick.trim()) return undefined;
+  const work = steps?.trim() ? steps : undefined;
   // SymPy's verdict on the final answer and the first wrong step, when it could read them; the model still grades.
+  // It reads a solution line by line and takes the last line as the result, so the steps go before the answer.
   const mathCheck = await checkMath(
-    pick,
+    work ? `${work}\n${pick}` : pick,
     question.answer.reference,
     engine.signal,
   );
@@ -158,6 +173,7 @@ async function gradeOpen(
         "Reasoning or mathematical working where requested",
       ],
       answer: pick,
+      ...(work ? { steps: work } : {}),
       ...(mathCheck ? { mathCheck } : {}),
     }),
   });
@@ -196,6 +212,7 @@ export async function gradeOpenAnswers(
   attemptId: string,
   picks: Record<string, string>,
   run?: GenerateInput["run"],
+  steps: Record<string, string> = {},
 ): Promise<Map<string, CheckedAnswer> | undefined> {
   const attempt = quizAttempt(db, attemptId);
   if (
@@ -208,7 +225,7 @@ export async function gradeOpenAnswers(
   for (const question of attempt.body.questions) {
     const pick = picks[question.id];
     if (typeof pick !== "string") continue;
-    const graded = await gradeOpen(db, question, pick, run);
+    const graded = await gradeOpen(db, question, pick, run, {}, steps[question.id]);
     if (!graded) continue;
     grades.set(question.id, {
       id: question.id,
@@ -231,6 +248,8 @@ export async function gradeQuizQuestion(
   pick: string,
   run?: GenerateInput["run"],
   engine: Engine = {},
+  /** The steps under an open answer, for an answer graded at hand-in. */
+  steps?: string,
 ): Promise<CheckedAnswer> {
   const attempt = quizAttempt(db, attemptId);
   const stored = checkedAnswer(db, attemptId, questionId);
@@ -252,7 +271,7 @@ export async function gradeQuizQuestion(
   // An empty pick is the student's "I don't know": 0 for every kind, whatever the question would accept as blank.
   if (!pick.trim()) score = 0;
   engine.signal?.throwIfAborted();
-  const modelGrade = await gradeOpen(db, question, pick, run, engine);
+  const modelGrade = await gradeOpen(db, question, pick, run, engine, steps);
   engine.signal?.throwIfAborted();
   if (modelGrade) {
     ({ score, explanation } = modelGrade);
@@ -285,6 +304,7 @@ export async function gradeConfiguredAttempt(
   attemptId: string,
   picks: Record<string, string>,
   run?: GenerateInput["run"],
+  steps: Record<string, string> = {},
 ): Promise<Map<string, CheckedAnswer> | undefined> {
   const attempt = quizAttempt(db, attemptId);
   if (attempt.kind !== "quiz" || !attempt.body.config) return undefined;
@@ -295,7 +315,7 @@ export async function gradeConfiguredAttempt(
     const pick = picks[question.id] ?? checked?.pick ?? "";
     grades.set(
       question.id,
-      await gradeQuizQuestion(db, attemptId, question.id, pick, run),
+      await gradeQuizQuestion(db, attemptId, question.id, pick, run, {}, steps[question.id]),
     );
   }
   return grades;
@@ -305,7 +325,8 @@ export async function gradeConfiguredAttempt(
  * Closes the attempt and records mastery evidence. `graded` holds model or
  * configured grades; every other answer is scored locally by submitAttempt.
  * `submittedAt` is when the answers were frozen: the attempt, its evidence and
- * its path step carry that time, however long grading took.
+ * its path step carry that time, however long grading took. `steps` are saved
+ * with the answers they were written under.
  */
 export function finalizeAttempt(
   db: Database.Database,
@@ -313,11 +334,12 @@ export function finalizeAttempt(
   picks: Record<string, string>,
   graded?: Map<string, CheckedAnswer>,
   submittedAt = Date.now(),
+  steps?: Record<string, string>,
 ) {
   return db.transaction(() => {
     const frozen = { ...picks };
     if (graded) for (const [id, checked] of graded) frozen[id] ??= checked.pick;
-    const scored = submitAttempt(db, attemptId, frozen, submittedAt, graded);
+    const scored = submitAttempt(db, attemptId, frozen, submittedAt, graded, steps);
     const row = db
       .prepare(
         `SELECT a.plan_id, i.topic_id, i.kind, i.body_json FROM attempts a
@@ -457,6 +479,8 @@ type GradeParams = {
   credits?: Record<string, number>;
   /** Answers frozen at submit; later edits cannot change what is graded. */
   picks: Record<string, string>;
+  /** The steps written under open answers, frozen with them; absent when none were written. */
+  steps?: Record<string, string>;
   /** Running/resumed grading pins its engine; explicit retry refreshes it for unfinished answers. */
   selection?: StoredSelection;
   /** Open questions that still need a model call, in order. */
@@ -515,10 +539,14 @@ export function registerQuizGradingJobs(
             );
             if (!question) throw new Error("question-missing");
             const pick = params.picks[id] ?? "";
-            const graded = await gradeOpen(db, question, pick, run, {
-              signal: ctx.signal,
-              selection: params.selection,
-            });
+            const graded = await gradeOpen(
+              db,
+              question,
+              pick,
+              run,
+              { signal: ctx.signal, selection: params.selection },
+              params.steps?.[id],
+            );
             ctx.signal.throwIfAborted();
             if (!graded) throw new Error("grade-missing");
             // Checkpoint: the grade and the cursor commit together, so no completed grade is lost or repeated.
@@ -640,7 +668,7 @@ function finishGrading(db: Database.Database, params: GradeParams) {
       if (configured || question.answer.kind === "open" || credit != null)
         graded.set(question.id, local);
     }
-    finalizeAttempt(db, params.attemptId, params.picks, graded, params.submittedAt);
+    finalizeAttempt(db, params.attemptId, params.picks, graded, params.submittedAt, params.steps);
   })();
 }
 
@@ -654,6 +682,7 @@ export function submitQuiz(
   attemptId: string,
   sentPicks: Record<string, string>,
   now = Date.now(),
+  sentSteps?: Record<string, string>,
 ): { jobId: string } {
   const existing = gradingJob(db, attemptId);
   if (existing) {
@@ -694,9 +723,13 @@ export function submitQuiz(
       pending.push(question.id);
   }
   const deadlineAt = quizDraft(db, attemptId)?.deadlineAt;
+  const steps = Object.fromEntries(
+    Object.entries(timedSteps(db, attemptId, sentSteps, now)).filter(([, text]) => text.trim()),
+  );
   const params: GradeParams = {
     attemptId,
     picks,
+    ...(Object.keys(steps).length ? { steps } : {}),
     selection: pending.length ? selectionFor(db, "grading") : undefined,
     pending,
     next: 0,
@@ -792,6 +825,7 @@ export function readQuizGrading(db: Database.Database, attemptId: string) {
     ? (JSON.parse(final.payload_json) as {
         score: number;
         picks: Record<string, string>;
+        steps?: Record<string, string>;
         results: AttemptResult[];
       })
     : undefined;
@@ -805,7 +839,12 @@ export function readQuizGrading(db: Database.Database, attemptId: string) {
     provider: last?.provider,
     model: last?.model,
     result: result
-      ? { score: result.score, picks: result.picks, results: result.results }
+      ? {
+          score: result.score,
+          picks: result.picks,
+          ...(result.steps ? { steps: result.steps } : {}),
+          results: result.results,
+        }
       : undefined,
   };
 }

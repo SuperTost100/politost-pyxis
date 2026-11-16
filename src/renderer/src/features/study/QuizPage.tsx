@@ -12,7 +12,6 @@ import { QuizOption, type QuizOptionState } from "../../components/QuizOption";
 import { StepLines } from "../../components/StepLines";
 import { Tag } from "../../components/Tag";
 import { InlineMarkdown } from "../../components/InlineMarkdown";
-import { MathInput } from "../../components/MathInput";
 import { MarkdownView } from "../../components/MarkdownView";
 import { Download } from "lucide-react";
 import { MenuButton } from "../../components/ItemMenu";
@@ -37,6 +36,7 @@ import { GapSentence } from "./GapSentence";
 import { useMenuLock } from "../../app/menu-state";
 import { usePlace } from "../../app/usePlace";
 import { HandInConfirm, QuizColumn, type HandInFrom } from "./QuizColumn";
+import { OpenAnswer } from "./OpenAnswer";
 import { Button as PxButton } from "../../components/Button";
 import { SkeletonRows } from "../../components/Skeleton";
 import {
@@ -193,6 +193,8 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   const timerReady = !timerOn || Boolean(timerMinutes);
   const [index, setIndex] = useState(0);
   const [picks, setPicks] = useState<Record<string, string>>({});
+  // The optional steps written under open answers, by question; saved with the draft and handed in with the answers.
+  const [steps, setSteps] = useState<Record<string, string>>({});
   // Answers corrected one by one before 0.5, read back with the attempt: they stay as they were checked.
   const [checked, setChecked] = useState<Record<string, QuizAnswer>>({});
   const [wrongMarks, setWrongMarks] = useState<Record<string, boolean>>({});
@@ -311,6 +313,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     if (restoring) {
       restoredAttempt.current = attemptId;
       const draft = session.data.draft;
+      setSteps(draft?.steps ?? {});
       const asked = session.data.questions.map((row) => ({ id: row.id, kind: row.grade.kind }));
       const handedIn = session.data.submittedAt != null;
       setSkipped(handedIn ? (draft?.skipped ?? []) : []);
@@ -353,6 +356,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       invoke("study.quizSubmit", {
         attemptId,
         picks: handInPicks(asked, picks),
+        steps,
       }),
     onSuccess: () => void grading.refetch(),
   });
@@ -420,6 +424,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       attemptId: string;
       planId?: string;
       picks: Record<string, string>;
+      steps: Record<string, string>;
       index: number;
       marked: string[];
     }) => {
@@ -447,7 +452,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       !expired &&
       session.data?.submittedAt == null
     ) {
-      const draft = { attemptId, planId, picks, index, marked };
+      const draft = { attemptId, planId, picks, steps, index, marked };
       const json = JSON.stringify(draft);
       if (opened.current?.attemptId !== attemptId) {
         opened.current = { attemptId, json };
@@ -459,6 +464,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
     attemptId,
     hydratedAttempt,
     picks,
+    steps,
     index,
     marked,
     finalResult,
@@ -492,6 +498,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
   }, [question?.id, hydratedAttempt]);
   function pick(value: string) {
     if (question && !locked) setPicks((current) => editedPicks(current, question.id, question.grade.kind, value));
+  }
+  /** The steps under the open answer on screen; an emptied field leaves none. */
+  function writeSteps(value: string) {
+    if (!question || locked) return;
+    setSteps((current) => {
+      const { [question.id]: _, ...rest } = current;
+      return value.trim() ? { ...rest, [question.id]: value } : rest;
+    });
   }
   function goTo(next: number) {
     setConfirmFrom(null);
@@ -542,6 +556,11 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
         .join("; ");
     return raw;
   }
+  /** The steps beside a written open answer: the handed-in ones once there is a result. */
+  function stepsText(id: string): string | undefined {
+    const written = (finalResult ? finalResult.steps : steps)?.[id];
+    return written?.trim() && picks[id]?.trim() ? written : undefined;
+  }
   function expectedText(answer: QuizAnswer): string {
     const item = questions.find((row) => row.id === answer.id);
     return item?.grade.kind === "tf"
@@ -555,7 +574,13 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       const seeded = await invoke("chats.seed", {
         kind: "answer",
         title: item.stem.slice(0, 80),
-        body: `${t("quiz.question")}: ${item.stem}\n${t("quiz.yourAnswer")}: ${answerText(answer.id)}\n${t("quiz.expected")}: ${expectedText(answer)}\n${answer.explanation}`,
+        body: [
+          `${t("quiz.question")}: ${item.stem}`,
+          `${t("quiz.yourAnswer")}: ${answerText(answer.id)}`,
+          ...(stepsText(answer.id) ? [`${t("quiz.yourSteps")}: ${stepsText(answer.id)}`] : []),
+          `${t("quiz.expected")}: ${expectedText(answer)}`,
+          answer.explanation,
+        ].join("\n"),
       });
       navigate(`/ask/${seeded.chatId}`);
     } catch {
@@ -861,6 +886,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
       value: row.score,
       ...(mark === "partial" ? { score: t("quiz.questionPoints", { points: questionPoints(row.score, i18n.language) }) } : {}),
       answer: answerText(row.id),
+      steps: stepsText(row.id),
       typed: answerSource(item?.grade.kind ?? ""),
       long,
       expected: expectedText(row),
@@ -912,6 +938,7 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
           topic: topicTitle(item.id),
           mark,
           answer: answerText(item.id),
+          steps: stepsText(item.id),
           typed: answerSource(item.grade.kind),
           long: item.grade.kind === "open",
           expectedLabel: t("quiz.expected"),
@@ -1131,15 +1158,14 @@ export function QuizPage({ redo = false, review: reviewRoute = false }: { redo?:
             ))}
           </div>
         ) : (
-          <div className="px-quiz-open">
-            <MathInput
-              ariaLabel={t("quiz.yourAnswer")}
-              rows={6}
-              disabled={locked}
-              value={rawPick ?? ""}
-              onChange={pick}
-            />
-          </div>
+          <OpenAnswer
+            key={row.id}
+            answer={rawPick ?? ""}
+            steps={steps[row.id] ?? ""}
+            disabled={locked}
+            onAnswer={pick}
+            onSteps={writeSteps}
+          />
         )}
         {result ? <p className="px-qz-said">{t("quiz.sheet.checkedBefore")}</p> : null}
         <div className="px-qz-acts">
