@@ -8,7 +8,7 @@ import { selectionFor } from "../engine/selection";
 import { interestsLine } from "../profile/context";
 import { retrieve } from "../sources/retrieve";
 import type { FigureKind } from "../../shared/figure-kinds";
-import { figureRunner, type FigureRunner } from "../math/figures";
+import { figureRunner, type FigureEvent, type FigureRunner } from "../math/figures";
 import { IpcError, isAbort } from "../../shared/ipc";
 import { smartSections } from "../../shared/smart-text";
 import { cacheKey, loadLesson, saveLesson } from "./lesson";
@@ -347,6 +347,8 @@ export type AgentLessonOptions = {
   signal?: AbortSignal;
   onDelta?: (text: string) => void;
   onPassages?: (passageIds: string[]) => void;
+  /** Hears each figure of the lesson as it is drawn, or left out, while the others go on. */
+  onFigure?: (event: FigureEvent) => void;
   wording?: Wording;
   regenerate?: boolean;
   python?: FigureRunner | null;
@@ -484,7 +486,7 @@ export async function agentLesson(
   if (lesson == null) throw new IpcError("agent-limit", "errors.invalidOutput", {}, "The model did not write the lesson within the tool and turn limits.");
   if (!lesson) throw new IpcError("invalid-output", "errors.invalidOutput", {}, "The model wrote an empty lesson.");
   const cited = citeLesson(lesson, tools.citable);
-  const drawn = await withFigures(cited.markdown, drawer, { signal });
+  const drawn = await withFigures(cited.markdown, drawer, { signal, onFigure: options.onFigure });
   const itemId = saveLesson(db, {
     planId,
     topicId,

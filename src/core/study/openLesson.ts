@@ -13,6 +13,7 @@ import {
   figureRunner,
   figureText,
   figureFixer,
+  type FigureEvent,
   noSandbox,
   type FigureDrawer,
   type FigureFix,
@@ -193,16 +194,19 @@ function readerContext(context: { school: string; course: string }) {
  * Without a drawer no new figure draws, and a drawer draws only its kinds: the other blocks are dropped, and figures
  * drawn before keep their images.
  */
-export function withFigures(
+export async function withFigures(
   markdown: string,
   drawer: FigureDrawer | null,
-  options: { known?: Record<string, string>; signal?: AbortSignal; fix?: FigureFix },
+  options: { known?: Record<string, string>; signal?: AbortSignal; fix?: FigureFix; onFigure?: (event: FigureEvent) => void },
 ) {
-  return drawFigures(markdown, {
+  const drawn = await drawFigures(markdown, {
     ...options,
     python: drawer?.run ?? noSandbox,
     kinds: drawer?.kinds ?? [],
   });
+  // A lesson or a part that is stopped is not saved, so what it drew is not kept: the stop ends the job as it did.
+  if (drawn.stopped) options.signal?.throwIfAborted();
+  return { markdown: drawn.markdown, figures: drawn.figures };
 }
 
 /**
@@ -364,6 +368,8 @@ export async function writeLesson(
     python?: FigureRunner | null;
     /** Called once a model starts writing, which a saved lesson or the book text never does. */
     onWriting?: () => void;
+    /** Hears each figure of the lesson as it is drawn, or left out, while the others go on. */
+    onFigure?: (event: FigureEvent) => void;
   },
 ): Promise<LessonResult> {
   const context = modelContext(db, planId, topicId, options?.wording);
@@ -443,6 +449,7 @@ export async function writeLesson(
     drawn = await withFigures(written.join("\n\n"), drawer, {
       signal: options?.signal,
       fix: figureFixer({ selection, run, signal: options?.signal }),
+      onFigure: options?.onFigure,
     });
   } catch (error) {
     // An engine that failed or is signed out falls back to the book, like any other failed call; the rest end the lesson.

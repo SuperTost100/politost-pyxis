@@ -246,6 +246,7 @@ function StreamingReply({
 }) {
   const text = useSyncExternalStore(turn.live.subscribe, turn.live.get);
   const passages = useSyncExternalStore(turn.passages.subscribe, turn.passages.get);
+  const figures = useSyncExternalStore(turn.figures.subscribe, turn.figures.get);
   // Only the passages retrieved for this turn link, with the labels the saved reply will show.
   const citationResolver = useCallback(
     (index: number) => passages.find((passage) => passage.index === index)?.label,
@@ -254,7 +255,7 @@ function StreamingReply({
   useEffect(() => onGrow(), [text, onGrow]);
   return text ? (
     <ChatMessage role="tutor" streaming>
-      <MarkdownView drawing citationResolver={citationResolver}>
+      <MarkdownView drawing figures={figures} citationResolver={citationResolver}>
         {text}
       </MarkdownView>
     </ChatMessage>

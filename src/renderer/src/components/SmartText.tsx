@@ -161,7 +161,7 @@ export function SmartText({
             key={segment.block.id}
             caption={segment.block.caption}
             image={figures[figureKey(segment.block.code, segment.block.figureKind)]}
-            drawing={streaming}
+            drawing={streaming && figures[figureKey(segment.block.code, segment.block.figureKind)] === undefined}
           />
         ) : (
           <Block key={segment.block.id} block={segment.block} answers={state} />

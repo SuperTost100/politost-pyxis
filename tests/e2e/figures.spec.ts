@@ -626,8 +626,15 @@ async function askFromPage(page: Page, text: string) {
   await page.evaluate(() => {
     location.hash = "/ask";
   });
+  // The new chat's page, not the one that was open: a message typed before it replaces the page is lost.
+  await expect(page).toHaveURL(/#\/ask$/);
+  await expect(page.locator(".px-msg")).toHaveCount(0);
   const box = page.getByRole("textbox", { name: "Messaggio" });
-  await box.fill(text);
+  // The composer restores its own draft as the page settles, which can empty what was typed a moment before.
+  await expect(async () => {
+    await box.fill(text);
+    expect(await box.innerText()).toContain(text);
+  }).toPass();
   await box.press("Enter");
 }
 
@@ -913,6 +920,233 @@ test("pressing Stop while a graph is being corrected keeps the whole answer, wit
     expect(reply.body).toContain("Fine della risposta.");
     expect(reply.body).not.toContain("pyxis-figure");
     expect(reply.figures ?? {}).toEqual({});
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+// Each figure of an answer is shown as soon as it is drawn, in its own place: a plot, a circuit that needs correcting and
+// a graph in one answer. The two that are fine are on the page while the circuit is still being corrected, which keeps its
+// working state until its correction comes or fails, and a stop keeps what had been drawn.
+const plotCode = "x = np.linspace(0, 4)\nplt.plot(x, x**2)";
+const threeFigures = answerWith(
+  figure("Una parabola.", plotCode),
+  figure("Un partitore di tensione.", divider.replace("elm.Dot(open=True)", "elm.DotOpen()"), "circuit"),
+  figure("Un automa con tre stati.", automaton, "graph"),
+);
+
+test("the figures that are fine are shown while another is being corrected, which keeps its working state, and a stop keeps them", async () => {
+  test.skip(!packsPinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-ready-"));
+  stagePacks(userData);
+  const never = join(userData, "never-released");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: threeFigures,
+      // The answer streams for a moment, so the page shows its text while the figures are drawn after it.
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ code: divider, hold: never }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Come funziona un partitore di tensione?");
+    // The plot and the graph are drawn while the circuit waits for its correction, which has not come (and will not).
+    const shown = page.locator(".px-msg figure.px-figure");
+    const working = page.locator(".px-msg .px-figure.is-drawing");
+    await expect(shown).toHaveCount(2, { timeout: 180000 });
+    await expect(working).toHaveCount(1);
+    await expect(page.getByText("Disegno la figura…")).toHaveCount(1);
+    await expect(shown.nth(0).getByRole("img")).toHaveAttribute("alt", /parabola/);
+    await expect(shown.nth(1).getByRole("img")).toHaveAttribute("alt", /automa con tre stati/);
+    // Each in its own place, in the order written: the working state sits between them.
+    const places = await page.locator(".px-msg .px-figure").evaluateAll((nodes) => nodes.map((node) => node.classList.contains("is-drawing")));
+    expect(places).toEqual([false, true, false]);
+    // The working state in each theme and at both widths, without a reload, which would end the turn's live view.
+    for (const [theme, width] of [
+      ["light", 1280],
+      ["dark", 1280],
+      ["light", 960],
+      ["dark", 960],
+    ] as const) {
+      await page.evaluate((theme) => window.pyxis.setAppearance(theme), theme);
+      await page.setViewportSize({ width, height: 900 });
+      await expect(working).toHaveCount(1);
+      await saveShot(page, `as-ready/working-it-${theme}-${width}.png`);
+    }
+    await page.evaluate(() => window.pyxis.setAppearance("light"));
+    await page.setViewportSize({ width: 1280, height: 900 });
+
+    // Stopped: the working state goes, the text stays, and the two figures that were drawn stay with it.
+    await page.getByRole("button", { name: "Interrompi", exact: true }).click();
+    await expect(working).toHaveCount(0, { timeout: 30000 });
+    await expect(shown).toHaveCount(2);
+    await expect(page.getByText("Fine della risposta.")).toBeVisible();
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    // What was shown is what was saved: a reload shows the same two, and the chat is there.
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    expect(chats).toHaveLength(1);
+    for (const [language, theme, width] of [
+      ["it", "light", 1280],
+      ["it", "dark", 960],
+      ["en", "dark", 1280],
+      ["en", "light", 960],
+    ] as const) {
+      await page.evaluate(
+        async ({ language, theme }) => {
+          localStorage.setItem("pyxis.lang", language);
+          await window.pyxis.setAppearance(theme);
+        },
+        { language, theme },
+      );
+      await page.setViewportSize({ width, height: 900 });
+      await page.reload();
+      await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(2);
+      await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(0);
+      await saveShot(page, `as-ready/stopped-${language}-${theme}-${width}.png`);
+    }
+    await page.evaluate(() => localStorage.setItem("pyxis.lang", "it"));
+    const saved = (await page.evaluate((chatId) => window.pyxis.invoke("chats.read", { chatId }), chats[0]!.id)) as {
+      messages: Array<{ role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
+    };
+    const reply = saved.messages.find((message) => message.role === "assistant")!;
+    expect(reply.stopped).toBe(true);
+    expect(Object.keys(reply.figures ?? {})).toHaveLength(2);
+    expect(reply.body).toContain("parabola");
+    expect(reply.body).toContain("automa con tre stati");
+    expect(reply.body).not.toContain("DotOpen");
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("a figure whose correction fails loses its working state at once, while the others stay, and the answer is saved with them", async () => {
+  test.skip(!packsPinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-ready-fails-"));
+  stagePacks(userData);
+  const release = join(userData, "release-fix");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: threeFigures,
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      // The fix is held, then fails.
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ fail: "the engine is out", hold: release }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Come funziona un partitore di tensione?");
+    const shown = page.locator(".px-msg figure.px-figure");
+    const working = page.locator(".px-msg .px-figure.is-drawing");
+    await expect(shown).toHaveCount(2, { timeout: 180000 });
+    await expect(working).toHaveCount(1);
+    writeFileSync(release, "go");
+    // The correction failed: its place is gone, and the other two did not move.
+    await expect(working).toHaveCount(0, { timeout: 60000 });
+    await expect(shown).toHaveCount(2);
+    await expect(page.getByText("Fine della risposta.")).toBeVisible();
+    await page.reload();
+    await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(2);
+    await expect(page.getByText("DotOpen")).toHaveCount(0);
+  } finally {
+    await app.close();
+    removeTestFolder(userData);
+  }
+});
+
+test("the figures a stopped answer kept are still there after it is continued, stopped again, and let finish", async () => {
+  test.skip(!packsPinned(), "Requires the pinned Pyodide and drawing fixtures in .tmp/pyodide and .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-figures-continue-"));
+  stagePacks(userData);
+  const release = join(userData, "release-fix");
+  const app = await launchPyxis({
+    userData,
+    env: {
+      HOME: userData,
+      PYXIS_E2E_REPLY: threeFigures,
+      PYXIS_E2E_REPLY_DELAY: "1500",
+      // The correction waits for a file the test creates at the end; until then only a stop ends it.
+      PYXIS_E2E_PLAN_REPLIES: JSON.stringify({ figureFix: [{ code: divider, hold: release }] }),
+    },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    await askFromPage(page, "Come funziona un partitore di tensione?");
+    const shown = page.locator(".px-msg figure.px-figure");
+    await expect(shown).toHaveCount(2, { timeout: 180000 });
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(1);
+    await page.getByRole("button", { name: "Interrompi", exact: true }).click();
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(0, { timeout: 30000 });
+    await expect(shown).toHaveCount(2);
+    const chats = (await page.evaluate(() => window.pyxis.invoke("chats.list", {}))) as Array<{ id: string }>;
+    const chatId = chats[0]!.id;
+    const readReply = async () => {
+      const saved = (await page.evaluate((id) => window.pyxis.invoke("chats.read", { chatId: id }), chatId)) as {
+        messages: Array<{ id: string; role: string; body: string; stopped?: boolean; figures?: Record<string, string> }>;
+      };
+      return saved.messages.filter((message) => message.role === "assistant");
+    };
+    expect(await readReply()).toHaveLength(1);
+    // Each continuation replaces the reply with a new one, so its id says which stop the page is looking at.
+    const firstStop = (await readReply())[0]!.id;
+
+    // The page offers Continua for a reply that failed, not for one the student stopped, so the continuation is asked of core
+    // as the button would: it keeps the saved pictures, tells them at once, and waits for the correction again.
+    await page.evaluate((id) => {
+      const events: unknown[] = [];
+      const handle = window.pyxis.stream("chats.regenerate", { chatId: id, resume: true }, (event) => events.push(event));
+      Object.assign(window, { continuation: { events, handle } });
+    }, chatId);
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { continuation: { events: Array<{ type?: string; image?: unknown }> } }).continuation.events.filter((event) => event.type === "figure" && typeof event.image === "string").length))
+      .toBe(2);
+    // Stopped again while the correction waits, and settled before anything else is asked: the call is over, and the reply
+    // it saved is not the first stop's.
+    await page.evaluate(() => (window as unknown as { continuation: { handle: { cancel: () => void } } }).continuation.handle.cancel());
+    await page.evaluate(() => (window as unknown as { continuation: { handle: { result: Promise<unknown> } } }).continuation.handle.result.catch(() => undefined));
+    await expect.poll(async () => (await readReply()).at(-1)?.id).not.toBe(firstStop);
+    const stoppedAgain = await readReply();
+    expect(stoppedAgain).toHaveLength(1);
+    expect(stoppedAgain[0]!.stopped).toBe(true);
+    expect(Object.keys(stoppedAgain[0]!.figures ?? {})).toHaveLength(2);
+
+    // Continued once more and let finish: the two pictures are kept without being drawn again, and the corrected circuit joins.
+    writeFileSync(release, "go");
+    await page.evaluate((id) => window.pyxis.invoke("chats.regenerate", { chatId: id, resume: true }), chatId);
+    const finished = await readReply();
+    expect(finished).toHaveLength(1);
+    expect(finished[0]!.id).not.toBe(stoppedAgain[0]!.id);
+    expect(finished[0]!.stopped).toBeFalsy();
+    expect(Object.keys(finished[0]!.figures ?? {})).toHaveLength(3);
+    // A reload shows all three, and none is still being drawn.
+    await page.evaluate((id) => {
+      location.hash = `/ask/${id}`;
+    }, chatId);
+    await page.reload();
+    // (The recorded reply answers every continuation with the whole answer again, so the text holds each figure's block
+    // more than once; every block shows its picture and none is left drawing.)
+    const blocks = (finished[0]!.body.match(/```pyxis-figure/g) ?? []).length;
+    expect(blocks).toBeGreaterThanOrEqual(3);
+    await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(blocks);
+    await expect(page.locator(".px-msg .px-figure.is-drawing")).toHaveCount(0);
   } finally {
     await app.close();
     removeTestFolder(userData);
