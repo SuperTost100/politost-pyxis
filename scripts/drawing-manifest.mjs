@@ -8,6 +8,54 @@ import { readFile, writeFile } from "node:fs/promises";
 import { unzipSync, strFromU8 } from "fflate";
 
 const manifestPath = "resources/drawing-manifest.json";
+
+// The licence texts of the pack's files that are not wheels, with the places they were read from. A wheel carries its own
+// texts, which this script extracts; these files do not, so each is named here with its upstream and pinned by version.
+// Graphviz (inside the WebAssembly of @hpcc-js/wasm-graphviz) is under the Eclipse Public License 2.0, which asks that the
+// licence text and where the source can be had come with the program, so a statement of that is written from this table.
+// `Graphviz.version()` says 16.1.0 for @hpcc-js/wasm-graphviz 1.30.0. The build also links Expat, whose version it does not state.
+const GRAPHVIZ = { version: "16.1.0", commit: "e41c710710be080ad37af1b51c6e2f8beffa9ee5" };
+const WRAPPER = { name: "@hpcc-js/wasm-graphviz", version: "1.30.0" };
+const EXPAT = { release: "R_2_10_0", commit: "a70841d9ffa64ddde29ab824ed6305035ebe4c47" };
+const NOTICES = {
+  "graphviz.js": [
+    {
+      name: WRAPPER.name,
+      version: WRAPPER.version,
+      license: "Apache-2.0",
+      texts: [
+        { file: "LICENSE", source: `https://cdn.jsdelivr.net/npm/${WRAPPER.name}@${WRAPPER.version}/LICENSE` },
+      ],
+    },
+    {
+      name: "Graphviz",
+      version: GRAPHVIZ.version,
+      license: "EPL-2.0",
+      texts: [
+        { file: "LICENSE", source: `https://gitlab.com/graphviz/graphviz/-/raw/${GRAPHVIZ.commit}/LICENSE` },
+        {
+          file: "SOURCE",
+          source: `https://gitlab.com/graphviz/graphviz/-/tree/${GRAPHVIZ.commit}`,
+          text: [
+            `Graphviz ${GRAPHVIZ.version} is made available under the terms of the Eclipse Public License, Version 2.0, whose text is above.`,
+            `Its source code is available from https://gitlab.com/graphviz/graphviz (tag ${GRAPHVIZ.version}, commit ${GRAPHVIZ.commit}).`,
+            `Pyxis downloads it compiled to WebAssembly by ${WRAPPER.name} ${WRAPPER.version}, whose build files are at https://github.com/hpcc-systems/hpcc-js-wasm.`,
+            "Pyxis does not change it.",
+            "",
+          ].join("\n"),
+        },
+      ],
+    },
+    {
+      name: "Expat (linked into Graphviz's WebAssembly build)",
+      version: `not stated by the build; text of release ${EXPAT.release}`,
+      license: "MIT",
+      texts: [
+        { file: "COPYING", source: `https://raw.githubusercontent.com/libexpat/libexpat/${EXPAT.commit}/expat/COPYING` },
+      ],
+    },
+  ],
+};
 const noticesPath = "resources/third-party-notices.json";
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const LICENCE_FILE = /\.dist-info\/(licenses\/.+|(LICEN[CS]E|COPYING|NOTICE)[^/]*)$/i;
@@ -22,7 +70,25 @@ for (const file of manifest.files) {
   file.size = bytes.length;
   file.sha256 = sha256(bytes);
   if (!file.name.endsWith(".whl")) {
-    console.log(`${file.name}: pinned. It is not a wheel, so add its notice by hand.`);
+    const sources = NOTICES[file.name];
+    if (!sources) throw new Error(`No notice sources for ${file.name}: add them to NOTICES.`);
+    for (const source of sources) {
+      const texts = [];
+      for (const text of source.texts) {
+        let body = text.text;
+        if (body === undefined) {
+          const reply = await fetch(text.source, { signal: AbortSignal.timeout(60_000) });
+          if (!reply.ok) throw new Error(`HTTP ${reply.status}: ${text.source}`);
+          body = await reply.text();
+        }
+        texts.push({ file: text.file, text: body, source: text.source, sha256: sha256(Buffer.from(body)), artifactSha256: file.sha256 });
+      }
+      const record = { name: source.name, version: source.version, license: source.license, texts, runtime: true };
+      const at = notices.findIndex((notice) => notice.name === record.name);
+      if (at >= 0) notices[at] = record;
+      else notices.push(record);
+    }
+    console.log(`${file.name}: pinned, ${sources.map((source) => source.name).join(", ")}.`);
     continue;
   }
   const entries = unzipSync(bytes, {

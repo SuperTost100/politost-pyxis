@@ -1,11 +1,17 @@
 {
-  "version": "1",
+  "version": "2",
   "files": [
     {
       "name": "schemdraw-0.23-py3-none-any.whl",
       "url": "https://files.pythonhosted.org/packages/97/f6/7efb3798e44868e09e8ce8a4329ac21acd134a3d5fd59792f97a7feccc2a/schemdraw-0.23-py3-none-any.whl",
       "size": 152475,
       "sha256": "b6af33cf175fb7692ed3f71b5d2702c400e009ae26efe76c6fa4f85d34e0fac5"
+    },
+    {
+      "name": "graphviz.js",
+      "url": "https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@1.30.0/dist/index.js",
+      "size": 820107,
+      "sha256": "77d45a274928484dd1daccd55ab3e41ddda5b4262e29240e205f7188839d9d5d"
     }
   ]
 }
