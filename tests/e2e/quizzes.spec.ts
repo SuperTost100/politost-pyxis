@@ -644,6 +644,8 @@ test("open answer: its formula is read back in words, and the optional steps are
     const spoken = page.locator(".px-quiz-open [role=status]");
     // An answer in plain words reads as it is typed, so nothing is read back.
     await answer.fill("La velocità vale ");
+    await answer.fill("x".repeat(20_001));
+    await expect(answer).toHaveText("La velocità vale ");
     await expect(reads).toHaveCount(0);
     await expect(spoken).toHaveText("");
     // A formula is read back in words under the field, and said to a screen reader once the typing pauses.
@@ -669,6 +671,10 @@ test("open answer: its formula is read back in words, and the optional steps are
     await expect(keys).toHaveCount(0);
     await expect(reads).toHaveText("Si leggeLa velocità vale 1 fratto 2");
     await steps.fill("Divido lo spostamento per il tempo.");
+    // The contract takes at most 20,000 characters per field: a longer text is refused as it is typed, so the draft that
+    // holds it can always be saved and handed in.
+    await steps.fill("x".repeat(20_001));
+    await expect(steps).toHaveText("Divido lo spostamento per il tempo.");
     await axe(page);
     // Leaving saves both fields, and coming back shows them as they were left.
     await go(page, "/exams");

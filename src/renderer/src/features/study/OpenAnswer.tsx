@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import { answerReading } from "@shared/math-words";
 import { MathInput } from "../../components/MathInput";
 
+/** What the contract takes of one field of a draft; a longer text is refused as it is typed, so a draft always saves. */
+const FIELD_MAX = 20_000;
+
 /** `value` once it has stayed the same for `delay` ms. */
 function useSettled<T>(value: T, delay: number): T {
   const [settled, setSettled] = useState(value);
@@ -51,6 +54,7 @@ export function OpenAnswer({
           formulaLabel={t("quiz.formulaInAnswer")}
           keysGroup="quiz-open"
           rows={4}
+          maxLength={FIELD_MAX}
           disabled={disabled}
           value={answer}
           onChange={onAnswer}
@@ -76,6 +80,7 @@ export function OpenAnswer({
           formulaLabel={t("quiz.formulaInSteps")}
           keysGroup="quiz-open"
           rows={3}
+          maxLength={FIELD_MAX}
           disabled={disabled}
           value={steps}
           onChange={onSteps}
