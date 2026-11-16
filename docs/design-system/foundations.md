@@ -28,6 +28,7 @@ Targets are measured against the weakest ground a colour sits on: 4.5:1 for text
 | `--danger`                                                         | A wrong answer, an error line, the label of a destructive button                                            |
 | `--star`, `--star-text`                                            | The star in the mark and the app icon                                                                       |
 | `--ring-prep`, `--ring-path`, `--ring-today`                       | The three exam rings and their legend                                                                       |
+| `--danger`, `--warning`, `--ok`, `--rate-easy`                     | The four flashcard answers: Non la sapevo, Difficile, La sapevo, Facile. A tint or an edge and a bar, never a dot |
 | `--cover-1` to `--cover-6`, `--on-cover`                           | A subject's book covers in the Library, picked from the subject's id, and the title printed on them (4.5:1) |
 | `--cover-none`                                                     | A book or handout with no subject yet                                                                       |
 | `--kind-slides`, `--kind-exam`, `--kind-notes`, `--kind-exercises` | The colour of each kind of file's cover, with `--on-cover` marks on it (3:1)                                |
