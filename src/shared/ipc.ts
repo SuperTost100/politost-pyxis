@@ -142,6 +142,8 @@ const masteryPartSchema = z.object({
 const quizResultSchema = z.object({
   score: z.number(),
   picks: z.record(z.string(), z.string()),
+  // The steps written under an open answer, by question id; only the questions that have some.
+  steps: z.record(z.string(), z.string()).optional(),
   results: z.array(
     z.object({
       id: z.string(),
@@ -1122,6 +1124,8 @@ export const requests = {
       attemptId: z.string(),
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
+      // The optional steps under an open answer, by question id.
+      steps: z.record(z.string(), z.string().max(20000)).optional(),
       index: z.number().int().min(0).max(99),
       // Skipped questions in the order they were skipped, from the quiz screen before 0.5; read back, not written.
       skipped: z.array(z.string()).max(100).optional(),
@@ -1138,6 +1142,7 @@ export const requests = {
       draft: z
         .object({
           picks: z.record(z.string(), z.string()),
+          steps: z.record(z.string(), z.string()).optional(),
           index: z.number(),
           skipped: z.array(z.string()).optional(),
           marked: z.array(z.string()).optional(),
@@ -1205,6 +1210,7 @@ export const requests = {
     input: z.object({
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
+      steps: z.record(z.string(), z.string().max(20000)).optional(),
     }),
     // A grading job id means results are not final; follow it with study.quizGrading.
     output: z.object({
@@ -1623,7 +1629,8 @@ export const requests = {
   },
   "study.browse": {
     // Cards across every exam and subject, in subject order, one page at a time. `query` matches the front or the back,
-    // ignoring case and accents. `planId: null` keeps the cards with no exam.
+    // ignoring case and accents. `planId: null` keeps the cards with no exam. With `perSubject` the cards are not a page:
+    // each subject gives its first `perSubject` cards, and all of them when `expand` lists it (`null` is "No subject").
     input: z.object({
       query: z.string().max(200).optional(),
       planId: z.string().nullable().optional(),
@@ -1631,6 +1638,10 @@ export const requests = {
       status: z.enum(["all", "due", "suspended", "removed", "leech"]).optional(),
       offset: z.number().int().min(0).optional(),
       limit: z.number().int().min(1).max(100).optional(),
+      perSubject: z.number().int().min(1).max(100).optional(),
+      expand: z.array(z.string().nullable()).max(500).optional(),
+      // Cards that stay in the result wherever they rank, when they match: the one being edited.
+      keep: z.array(z.string()).max(20).optional(),
     }),
     output: z.object({
       total: z.number().int(),
@@ -1661,6 +1672,7 @@ export const requests = {
           subjectId: z.string().nullable(),
           subject: z.string().nullable(),
           count: z.number().int(),
+          noExam: z.number().int(),
         }),
       ),
       plans: z.array(
@@ -2450,6 +2462,29 @@ export const requests = {
     output: z.array(
       dueCardSchema.extend({ planId: z.string().nullable(), planTitle: z.string().nullable(), subject: z.string().nullable() }),
     ),
+  },
+  "study.dueLater": {
+    // When the reviewed cards a card session reads, and that are not due yet, come back. `scope` is what the session
+    // reads: the daily review (`only` narrows it like study.dueEverywhere), a subject's cards with no exam, or a topic.
+    // `later` counts the cards due before tomorrow per subject with the time of the first, the soonest first; `next` is
+    // the first day after today that has any card due, and how many come back that day.
+    input: z.discriminatedUnion("scope", [
+      z.object({
+        scope: z.literal("everywhere"),
+        only: z
+          .union([
+            z.object({ subjectId: z.string().nullable(), examless: z.boolean().optional() }),
+            z.object({ planId: z.string(), noTopic: z.boolean().optional() }),
+          ])
+          .optional(),
+      }),
+      z.object({ scope: z.literal("subject"), subjectId: z.string() }),
+      z.object({ scope: z.literal("topic"), planId: z.string(), topicId: z.string() }),
+    ]),
+    output: z.object({
+      later: z.array(z.object({ at: z.number(), subject: z.string().nullable(), count: z.number().int() })),
+      next: z.object({ at: z.number(), count: z.number().int() }).nullable(),
+    }),
   },
   "plans.simulations": {
     input: z.object({ planId: z.string() }),

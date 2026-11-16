@@ -64,6 +64,9 @@ const controls = [
   "ring-prep",
   "ring-path",
   "ring-today",
+  // The four flashcard answers: the edge of a button and the bar of the result. Danger and ok pass 4.5:1 above.
+  "warning",
+  "rate-easy",
 ];
 
 describe("token contrast", () => {

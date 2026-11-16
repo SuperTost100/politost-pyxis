@@ -1,0 +1,256 @@
+/* The end of a flashcard session: the summary on the left, the cards seen under their answers on the right. Like the quiz
+   results, the page is the container the grid answers to, so the window, large text and zoom move the point where the
+   two columns become one. */
+.focus-main .column:has(> .px-cards > .px-end) {
+  width: min(1040px, calc(100% - 56px));
+}
+.px-cards:has(> .px-end) {
+  container: px-end / inline-size;
+}
+.px-end {
+  display: grid;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 560px);
+  gap: 44px;
+  justify-content: center;
+  align-items: start;
+  padding-top: var(--space-4);
+}
+.px-end-summary {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  min-width: 0;
+}
+.px-end-summary > * {
+  margin: 0;
+}
+.px-end-kicker {
+  color: var(--ink-muted);
+}
+.px-end-title {
+  font: 400 calc(30px * var(--text-scale, 1)) / 1.15 var(--font-display);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+/* The text font, not the display one: its digits are all as wide, so the countdown does not shift as it counts. */
+.px-end-clock {
+  font: 650 calc(46px * var(--text-scale, 1)) / 1.1 var(--font-sans);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.px-end-text {
+  color: var(--ink-muted);
+  font-size: calc(15px * var(--text-scale, 1));
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+/* What the headline says depends on a count that is still being read: its place is kept, its words wait. */
+.px-end-title[data-ready="false"],
+.px-end-text[data-ready="false"] {
+  visibility: hidden;
+}
+
+/* The four answers. The bar carries the colour, as the button did. */
+.px-end-bars {
+  display: grid;
+  gap: 11px;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.px-end-bars li {
+  display: grid;
+  grid-template-columns: minmax(7.5em, max-content) minmax(0, 1fr) 2ch;
+  align-items: center;
+  gap: 10px;
+  font-size: calc(13.5px * var(--text-scale, 1));
+  color: var(--ink-muted);
+}
+.px-end-label {
+  white-space: nowrap;
+}
+.px-end-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+.px-end-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--rate);
+}
+.px-end-bars b {
+  color: var(--ink);
+  font: 700 calc(14px * var(--text-scale, 1)) / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.px-end-stop {
+  display: grid;
+  justify-items: stretch;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.px-end-stop > .ant-btn {
+  width: 100%;
+}
+.px-end-fine {
+  color: var(--ink-subtle);
+  font-size: calc(13px * var(--text-scale, 1));
+  line-height: 1.5;
+}
+
+/* The cards seen, under the answer given. */
+.px-end-seen {
+  display: grid;
+  gap: var(--space-5);
+  min-width: 0;
+}
+/* A group's name sits on a quiet tint of its answer's colour. The ink stays the text colour, so contrast holds in both
+   themes. The groups that are not an answer (coming back) have no tint. */
+.px-end-group h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  color: var(--ink);
+  font: 650 calc(13.5px * var(--text-scale, 1)) / 1.3 var(--font-sans);
+}
+.px-end-chip {
+  padding: 4px 9px;
+  border-radius: 6px;
+}
+.px-end-group[data-rate] .px-end-chip {
+  background: color-mix(in srgb, var(--rate) 18%, var(--bg));
+}
+.px-end-group:not([data-rate]) .px-end-chip {
+  padding-inline: 0;
+}
+.px-end-count {
+  color: var(--ink-subtle);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.px-end-list {
+  margin: 0;
+  padding: 2px var(--space-2);
+  list-style: none;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+.px-end-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-2);
+  font-size: calc(14px * var(--text-scale, 1));
+}
+.px-end-row + .px-end-row {
+  border-top: 1px solid var(--border);
+}
+.px-end-front {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.px-end-front .px-markdown {
+  font-size: inherit;
+  line-height: 1.4;
+}
+.px-end-front .px-markdown > * {
+  margin: 0;
+}
+.px-end-subject,
+.px-end-aside {
+  flex: none;
+  color: var(--ink-subtle);
+  font-size: calc(12.5px * var(--text-scale, 1));
+}
+.px-end-subject {
+  max-width: 14em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.px-end-aside {
+  color: var(--ink);
+  font-weight: 650;
+  font-size: calc(14px * var(--text-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+.px-end-more {
+  padding: 0 0 var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.px-end-more button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-sm);
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  font: 500 calc(13px * var(--text-scale, 1)) / 1 var(--font-sans);
+  cursor: pointer;
+}
+.px-end-more button:hover {
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.px-end-more button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.px-end-more svg {
+  transition: transform 0.15s ease-out;
+}
+.px-end-more svg.is-open {
+  transform: rotate(180deg);
+}
+
+/* The bars grow out of where the buttons were, one after the other, and their counts come in with them. */
+@media (prefers-reduced-motion: no-preference) {
+  .px-end-bar > i {
+    transform-origin: left center;
+    animation: px-end-grow 0.42s cubic-bezier(0.23, 1, 0.32, 1) both;
+    animation-delay: calc(var(--i) * 70ms);
+  }
+  .px-end-bars b,
+  .px-end-label {
+    animation: px-end-in 0.3s ease-out both;
+    animation-delay: calc(var(--i) * 70ms);
+  }
+}
+@keyframes px-end-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+@keyframes px-end-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .px-end-more svg {
+    transition: none;
+  }
+}
+
+/* Narrow page (small window, large text, zoom): the summary goes over the cards. */
+@container px-end (max-width: 62em) {
+  .px-end {
+    grid-template-columns: minmax(0, 640px);
+    gap: var(--space-6);
+  }
+}
