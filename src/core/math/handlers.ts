@@ -65,10 +65,17 @@ export function toolHandlers(workspace = "", runner?: Runner) {
     runtime() {
       return runtimeRequest("status", {});
     },
-    /** Starts, or re-attaches to, the one explicit runtime download job. */
+    /**
+     * Starts, or re-attaches to, the one explicit runtime download job, which fetches every pack the workspace lacks.
+     * This is the only place a download starts, and only the Python page calls it: a workspace that has Python but
+     * lacks a newer pack is not given that pack on its own. A download that finished earlier is not re-attached to,
+     * so pressing Download again fetches what is missing now.
+     */
     runtimeDownload() {
       if (!runner) throw new Error("runtime-unavailable");
-      const existing = runner.list().find((job) => job.kind === RUNTIME_JOB);
+      const existing = runner
+        .list()
+        .find((job) => job.kind === RUNTIME_JOB && job.state !== "succeeded");
       if (existing) {
         if (existing.state === "interrupted") runner.resume(existing.id);
         else if (["failed", "cancelled"].includes(existing.state))

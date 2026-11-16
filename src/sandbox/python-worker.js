@@ -16,6 +16,10 @@ self.onmessage = async (event) => {
     } catch (error) { send({ type: "load-error", error: String(error) }); }
   } else if (data.type === "run") {
     currentId = data.id;
+    // A wheel that does not install only leaves its import failing in the code below, with Python's own error.
+    for (const wheel of Array.isArray(data.wheels) ? data.wheels : []) {
+      try { python.unpackArchive(await (await fetch("pyxis-runtime://sandbox/" + wheel)).arrayBuffer(), "wheel"); } catch { /* See above. */ }
+    }
     try {
       const value = await python.runPythonAsync(String(data.payload));
       if (value !== undefined && value !== null) send({ type: "output", id: currentId, stream: "stdout", text: String(value) + "\n" });
