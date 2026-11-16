@@ -6,7 +6,7 @@ import {
 import type Database from "better-sqlite3";
 import { putSetting } from "../settings";
 import { callsOf, clearJobLogs, readJobLog, setDebugOn } from "../debug/log";
-import { limitedUntil } from "../engine/bench";
+import { limitedUntil, onLimitChange } from "../engine/bench";
 import { chooseJobEngine, selectionOn } from "../engine/selection";
 import type { Runner } from "./runner";
 
@@ -30,6 +30,9 @@ export function readDebugSetting(db: Database.Database): boolean {
 }
 
 export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database) {
+  // A job held for a tool follows the tool's limit: moved when its time changes (the tool's own usage report gives a
+  // better one than the first guess), and released at once when a call that answers clears it.
+  onLimitChange((tool, until) => runner.retime(tool, until ?? null));
   return {
     list(): RequestOutput<"jobs.list"> {
       return runner.list();
@@ -80,7 +83,7 @@ export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database
       }
       const tool = db ? limitedToolOf(db, input.jobId) : undefined;
       const until = tool ? limitedUntil(tool) : undefined;
-      if (until === undefined || !runner.hold(input.jobId, until))
+      if (until === undefined || !runner.hold(input.jobId, until, tool))
         throw new IpcError("not-ready", "jobs.actionFailed");
       return {};
     },

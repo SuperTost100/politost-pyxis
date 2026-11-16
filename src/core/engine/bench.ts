@@ -41,6 +41,18 @@ export type SignOutStore = {
  */
 export type BenchChange = "sign-in" | "missing" | "limit";
 let store: SignOutStore | undefined;
+/** Who follows an engine's usage limit: told when it is marked, moved to another time or cleared (`until` undefined). */
+const limitListeners = new Set<(provider: string, until: number | undefined) => void>();
+
+/** Calls `listener` whenever an engine's usage limit is marked, moved or cleared. Returns how to stop. */
+export function onLimitChange(listener: (provider: string, until: number | undefined) => void): () => void {
+  limitListeners.add(listener);
+  return () => void limitListeners.delete(listener);
+}
+
+function limitChanged(provider: string, until: number | undefined): void {
+  for (const listener of [...limitListeners]) listener(provider, until);
+}
 let onChange: ((provider: string, change: BenchChange) => void) | undefined;
 
 /**
@@ -88,6 +100,7 @@ export function benchEngine(
   });
   store?.saveLimit(provider, until);
   onChange?.(provider, "limit");
+  limitChanged(provider, until);
 }
 
 /** When this engine's usage limit resets, in milliseconds since the epoch, or undefined while it has requests left. */
@@ -107,6 +120,7 @@ export function limitIsGuess(provider: string): boolean {
 function forgetLimit(provider: string): boolean {
   if (!limited.delete(provider)) return false;
   store?.saveLimit(provider, null);
+  limitChanged(provider, undefined);
   return true;
 }
 
@@ -257,6 +271,7 @@ export function isModelBenched(
 /** Tests start from a clean slate. */
 export function clearBench(): void {
   limited.clear();
+  limitListeners.clear();
   signedOut.clear();
   missing.clear();
   refusedModels.clear();

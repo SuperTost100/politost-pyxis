@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -11,9 +11,19 @@ import { jobsNow, makeCards, RECORDED_CARDS, seedChimica, standInTools, useTools
 /** Starts Pyxis with the given tools signed in and ChatGPT out of requests, as its program reports it. */
 async function start(
   tools: readonly ToolId[],
-  options: { resetAt: string; until?: string; order?: string[]; pin?: boolean },
+  options: { resetAt: string; until?: string; order?: string[]; pin?: boolean; codexQuota?: boolean },
 ) {
   const stand = standInTools(tools);
+  // A ChatGPT that turns every call away with a usage limit and no time, as Codex does with a bare "usage limit".
+  if (options.codexQuota) {
+    const path = join(stand.bin, "codex-quota");
+    writeFileSync(
+      path,
+      `#!/bin/sh\ncase "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) echo "Error: You have hit your usage limit." >&2; exit 1;; esac\n`,
+    );
+    chmodSync(path, 0o755);
+    stand.env.CLI_FUNNEL_CODEX_BIN = path;
+  }
   const userData = mkdtempSync(join(tmpdir(), "pyxis-out-of-requests-"));
   const app = await launchPyxis({
     userData,
@@ -224,6 +234,45 @@ test("Attività: when the work goes on by itself with the next tool, the student
     await expect.poll(async () => (await jobState(page, second))?.state, { timeout: 30_000 }).toBe("succeeded");
     expect((await jobState(page, second))?.fallback).toBeUndefined();
     await expect(told).toHaveCount(1);
+  } finally {
+    await close();
+  }
+});
+
+test("Attività: a wait follows its tool's limit, and a Chiudi at the row's right lets the job go", async () => {
+  test.skip(process.platform === "win32", "stand-in tools are shell scripts");
+  test.setTimeout(240_000);
+  const { page, close } = await start(["claude", "codex"], {
+    resetAt: tomorrow().toISOString(),
+    pin: true,
+    codexQuota: true,
+  });
+  try {
+    const id = await makeCards(page, "legami");
+    await expect.poll(async () => (await jobState(page, id))?.state, { timeout: 30_000 }).toBe("failed");
+    const list = await openActivity(page);
+    const row = list.locator(".px-jobs-out");
+    // The way to let the job go is at the row's right, on the title's line, and last in the focus order.
+    const title = await row.locator(".px-jobs-what").boundingBox();
+    const dismiss = row.getByRole("button", { name: /^Chiudi: / });
+    const box = await dismiss.boundingBox();
+    const edge = await row.boundingBox();
+    expect(box!.y).toBeLessThan(title!.y + title!.height);
+    expect(box!.x + box!.width).toBeGreaterThan(edge!.x + edge!.width - 24);
+    await row.getByRole("button", { name: /^Aspetta domani/ }).click();
+    const waiting = list.locator(".px-jobs-waiting .px-jobs-sub");
+    await expect(waiting).toHaveText("Riparto da sola quando tornano le richieste di ChatGPT, domani alle 06:00");
+    // ChatGPT turns a call away again, with no time this time: its limit is now Pyxis's half hour, and the wait follows.
+    await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "codex" }).catch(() => undefined));
+    await expect(waiting).toHaveText(/^Riparto da sola quando tornano le richieste di ChatGPT, (domani )?alle \d\d:\d\d$/);
+    await expect(waiting).not.toContainText("06:00");
+    expect((await jobState(page, id))?.state).toBe("failed");
+    // Smetti di aspettare, then the × lets the job go.
+    await list.getByRole("button", { name: /^Smetti di aspettare/ }).click();
+    await expect(row).toHaveCount(1);
+    await row.getByRole("button", { name: /^Chiudi: / }).click();
+    await expect(row).toHaveCount(0);
+    await expect.poll(async () => (await jobState(page, id)) === undefined).toBe(true);
   } finally {
     await close();
   }

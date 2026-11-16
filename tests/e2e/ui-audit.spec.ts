@@ -2640,7 +2640,7 @@ function prepareState(name: string) {
       );
       if (name === "jobs-waiting")
         db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('job-wait:audit-out-cards',?,?)").run(
-          String(new Date(new Date().setHours(24 + 6, 0, 0, 0)).getTime()),
+          JSON.stringify({ until: new Date(new Date().setHours(24 + 6, 0, 0, 0)).getTime(), tool: "agent" }),
           now,
         );
       return;

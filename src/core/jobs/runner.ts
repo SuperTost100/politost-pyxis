@@ -151,11 +151,16 @@ export type Runner = {
    */
   finished: (now?: number) => JobView[];
   /**
-   * Holds a failed job until `until` (ms since the epoch), when it is retried by itself: the student chose to wait for a
-   * tool's requests to come back. Says whether it did. `null` gives the wait up and leaves the job failed, for the
+   * Holds a failed job until `until` (ms since the epoch), when it is retried by itself: the student chose to wait for
+   * `tool`'s requests to come back. Says whether it did. `null` gives the wait up and leaves the job failed, for the
    * student to decide again. The wait is kept in the workspace, so a restart goes on with it.
    */
-  hold: (jobId: string, until: number | null) => boolean;
+  hold: (jobId: string, until: number | null, tool?: string) => boolean;
+  /**
+   * `tool`'s limit changed: the jobs held for it wait until the new time (`until`), or, when the limit is cleared
+   * (`null`), are retried at once.
+   */
+  retime: (tool: string, until: number | null) => void;
   /** Notes that another engine answered a call of this job, for the job's list entry. The latest one is kept. */
   noteFallback: (
     jobId: string,
@@ -210,10 +215,18 @@ export function createRunner(
   /** Timers of the jobs held until a tool has requests again. They never keep the process alive. */
   const holds = new Map<string, ReturnType<typeof setTimeout>>();
 
-  function heldUntil(jobId: string): number | undefined {
+  type Hold = { until: number; tool?: string };
+
+  function heldBy(jobId: string): Hold | undefined {
     const row = waitStmt.get(waitKey(jobId)) as { value_json: string } | undefined;
-    const until: unknown = row ? JSON.parse(row.value_json) : undefined;
-    return typeof until === "number" ? until : undefined;
+    return row ? holdOf(row.value_json) : undefined;
+  }
+
+  function holdOf(json: string): Hold | undefined {
+    const value = JSON.parse(json) as Partial<Hold> | null;
+    return value && typeof value.until === "number"
+      ? { until: value.until, ...(typeof value.tool === "string" ? { tool: value.tool } : {}) }
+      : undefined;
   }
 
   /** Ends the wait of a job, if it has one, and says whether it had. */
@@ -273,7 +286,7 @@ export function createRunner(
       ...(job.fallback_json
         ? { fallback: JSON.parse(job.fallback_json) as JobView["fallback"] }
         : {}),
-      ...(job.state === "failed" && heldUntil(job.id) !== undefined ? { waitingUntil: heldUntil(job.id)! } : {}),
+      ...(job.state === "failed" && heldBy(job.id) ? { waitingUntil: heldBy(job.id)!.until } : {}),
       ...(group ? { group: { id: group.id, ...(group.folder ? { folder: group.folder } : {}) } } : {}),
     };
   }
@@ -567,8 +580,8 @@ export function createRunner(
   for (const row of db
     .prepare(`SELECT key, value_json FROM settings WHERE key LIKE 'job-wait:%'`)
     .all() as Array<{ key: string; value_json: string }>) {
-    const until: unknown = JSON.parse(row.value_json);
-    if (typeof until === "number") scheduleHold(row.key.slice("job-wait:".length), until);
+    const held = holdOf(row.value_json);
+    if (held) scheduleHold(row.key.slice("job-wait:".length), held.until);
   }
 
   return {
@@ -674,7 +687,7 @@ export function createRunner(
       }
       return resumed;
     },
-    hold(jobId, until) {
+    hold(jobId, until, tool) {
       if (until === null) {
         const had = release(jobId);
         if (had) publish(jobId);
@@ -684,10 +697,29 @@ export function createRunner(
         .prepare(`SELECT 1 FROM jobs WHERE id = ? AND state = 'failed' AND dismissed < ${GIVEN_UP}`)
         .get(jobId);
       if (!failed) return false;
-      putSetting(db, waitKey(jobId), until);
+      putSetting(db, waitKey(jobId), { until, ...(tool ? { tool } : {}) });
       scheduleHold(jobId, until);
       publish(jobId);
       return true;
+    },
+    retime(tool, until) {
+      const rows = db
+        .prepare(`SELECT key, value_json FROM settings WHERE key LIKE 'job-wait:%'`)
+        .all() as Array<{ key: string; value_json: string }>;
+      for (const row of rows) {
+        const held = holdOf(row.value_json);
+        if (held?.tool !== tool) continue;
+        const jobId = row.key.slice("job-wait:".length);
+        if (until === null) {
+          // The requests are back: nothing to wait for.
+          release(jobId);
+          retry(jobId);
+        } else if (until !== held.until) {
+          putSetting(db, waitKey(jobId), { until, tool });
+          scheduleHold(jobId, until);
+          publish(jobId);
+        }
+      }
     },
     dismiss(jobId) {
       if (active.has(jobId)) return;

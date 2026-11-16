@@ -573,16 +573,24 @@
     max-height: 200px;
   }
 }
+/*
+ * The way to let the job go sits at the row's right, on the title's line, as a finished row's does: the title takes the
+ * first row of the grid beside the mark, the button the last column of that row, and the reason and the choices run
+ * under both.
+ */
 .px-jobs-out {
-  position: relative;
-}
-.px-jobs-out-x {
-  position: absolute;
-  top: 4px;
-  right: 8px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
 }
 .px-jobs-out > .px-jobs-what {
-  padding-right: 32px;
+  grid-row: 1;
+}
+.px-jobs-out > :is(.px-jobs-why, .px-jobs-acts) {
+  grid-column: 2 / -1;
+}
+.px-jobs-out > .px-jobs-out-x {
+  grid-column: 3;
+  grid-row: 1;
+  margin: -6px -8px 0 0;
 }
 .px-jobs-out,
 .px-jobs-waiting {

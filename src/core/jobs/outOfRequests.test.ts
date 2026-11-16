@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { IpcError, type JobView } from "../../shared/ipc";
 import { openDatabase } from "../db/connection";
 import type { AutoProvider } from "../engine/auto";
-import { benchEngine, clearBench } from "../engine/bench";
+import { benchEngine, clearBench, clearLimitBefore, engineClock } from "../engine/bench";
 import { generate, setFallbackListener } from "../engine/generate";
 import { rememberReady } from "../engine/selection";
 import { currentUsageScope } from "../engine/usage";
@@ -211,4 +211,68 @@ describe("a job whose tool ran out of requests", () => {
     expect(second.answered).toEqual([]);
   });
 
+});
+
+describe("a held job follows its tool's limit", () => {
+  const pinned = { provider: "codex" as const, model: "gpt-5.6-terra" };
+  const fakeTimers = () => vi.useFakeTimers({ now: Date.parse("2026-11-16T22:00:00Z"), toFake: ["Date", "setTimeout", "clearTimeout"] });
+
+  /** A job ChatGPT turned away, held until `resetAt`, on a tool that answers once `fail` is false. */
+  async function held(resetAt: string) {
+    const database = db();
+    rememberReady(ready("codex"));
+    const flags = { fail: true };
+    const asked = asking(database, pinned, (provider) => {
+      if (flags.fail) throw limit;
+      return provider;
+    });
+    const handlers = jobHandlers(asked.runner, false, database);
+    const id = asked.runner.start("asks", {});
+    await vi.waitFor(() => expect(stateOf(database, id)).toBe("failed"));
+    benchEngine("codex", "limit", { resetAt });
+    handlers.wait({ jobId: id, wait: true });
+    const view = () => asked.runner.list().find((job) => job.id === id) as JobView;
+    return { database, id, view, flags, ...asked };
+  }
+
+  it("moves the wait when the tool's limit is given another time, and keeps the new time after a restart", async () => {
+    fakeTimers();
+    const { database, id, view, flags, answered } = await held("2026-11-17T01:00:00Z");
+    expect(view().waitingUntil).toBe(Date.parse("2026-11-17T01:00:00Z"));
+    // The tool's own usage report says the requests are back later than the first guess.
+    benchEngine("codex", "limit", { resetAt: "2026-11-17T06:00:00Z" });
+    expect(view().waitingUntil).toBe(Date.parse("2026-11-17T06:00:00Z"));
+    // The first time passes: the job still waits for the new one.
+    flags.fail = false;
+    await vi.advanceTimersByTimeAsync(4 * 3_600_000);
+    expect(stateOf(database, id)).toBe("failed");
+    expect(answered).toEqual(["codex"]);
+    // A new launch reads the new time, not the first.
+    const second = asking(database, pinned, () => "ok");
+    expect((second.runner.list().find((job) => job.id === id) as JobView).waitingUntil).toBe(
+      Date.parse("2026-11-17T06:00:00Z"),
+    );
+    await vi.advanceTimersByTimeAsync(5 * 3_600_000);
+    await vi.waitFor(() => expect(stateOf(database, id)).toBe("succeeded"));
+  });
+
+  it("releases the job at once when a call to the tool answers and clears its limit", async () => {
+    fakeTimers();
+    const { database, id, flags, answered } = await held("2026-11-18T06:00:00Z");
+    flags.fail = false;
+    // A call that began after the limit was marked answered, so the tool has requests again.
+    clearLimitBefore("codex", engineClock());
+    await vi.waitFor(() => expect(stateOf(database, id)).toBe("succeeded"));
+    expect(answered).toEqual(["codex", "codex"]);
+    expect(database.prepare("SELECT 1 FROM settings WHERE key = ?").get(`job-wait:${id}`)).toBeUndefined();
+  });
+
+  it("leaves a job held for another tool alone", async () => {
+    fakeTimers();
+    const { id, view, runner } = await held("2026-11-17T06:00:00Z");
+    runner.retime("claude", null);
+    runner.retime("claude", Date.parse("2026-11-20T00:00:00Z"));
+    expect(view().waitingUntil).toBe(Date.parse("2026-11-17T06:00:00Z"));
+    expect(runner.list().some((job) => job.id === id)).toBe(true);
+  });
 });

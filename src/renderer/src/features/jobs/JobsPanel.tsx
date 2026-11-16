@@ -405,14 +405,17 @@ function OutOfRequestsCard({
           </Button>
         ) : null}
       </div>
-      {/* The way to let the job go sits in the row's corner, as a finished row's does, so the two choices keep the line. */}
+      {/* The way to let the job go, at the row's right on the title's line, as a finished row's is; last in the focus order. */}
       <span className="px-jobs-out-x">
         <IconButton
           icon="x"
           size="sm"
           variant="ghost"
           disabled={busy}
-          label={many ? t("jobs.dismissAll") : t("jobs.actionOn", { action: t("jobs.dismiss"), name: nameOf(first) })}
+          label={t("jobs.actionOn", {
+            action: t("jobs.dismiss"),
+            name: many ? t("jobs.problem.many.failed", { count: jobs.length }) : nameOf(first),
+          })}
           onClick={() => act("jobs.dismiss", jobs)}
         />
       </span>
