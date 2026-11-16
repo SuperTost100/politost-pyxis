@@ -118,7 +118,9 @@ const routes = [
     "about",
     "diagnostics",
   ].map((section) => [`settings-${section}`, `/settings/${section}`] as const),
-  // AI tools with the advanced options open (which engines Pyxis may use), then in debug mode (the week's tokens).
+  // AI tools with two tools connected and put in order, the first of them out of requests; with the model of each task
+  // open under Advanced; then in debug mode (the week's tokens).
+  ["settings-engines-listed", "/settings/engines"],
   ["settings-engines-advanced", "/settings/engines"],
   ["settings-engines-debug", "/settings/engines"],
   ["gallery", "/dev/gallery"],
@@ -219,9 +221,9 @@ const routes = [
   ["source-panel-pdf", "/exams/library"],
   ["source-panel-text", "/exams/library"],
   ["source-panel-missing", "/exams/library"],
+  // A connected tool's details and its menu, and the dialog that adds an API key.
   ["engine-details", "/settings/engines"],
-  ["engine-details-disabled", "/settings/engines"],
-  ["engine-add-cli", "/settings/engines"],
+  ["engine-menu", "/settings/engines"],
   ["engine-add-key", "/settings/engines"],
   ["export-lesson", "/plans/audit-plan/lesson/audit-topic"],
   ["export-cards", "/plans/audit-plan/cards/audit-topic"],
@@ -1138,13 +1140,18 @@ async function openDetails(page: Page, title: string) {
   await page.getByRole("menuitem", { name: both("Dettagli della fonte", "Source details") }).click();
 }
 
+/** Advanced in AI tools, opened if a state before this one left it closed. */
 async function openAdvancedEngines(page: Page) {
-  const toggle = page.getByRole("switch", {
-    name: /^(Opzioni avanzate|Advanced options)$/,
-  });
-  await expect(toggle).toBeVisible();
-  if ((await toggle.getAttribute("aria-checked")) !== "true")
-    await toggle.click();
+  const advanced = page.locator(".engines-advanced");
+  await expect(advanced).toBeVisible();
+  if ((await advanced.getAttribute("open")) === null) await advanced.locator("> summary").click();
+  await expect(advanced).toHaveAttribute("open", "");
+}
+
+/** Waits for the two signed-in stand-ins in the list of connected tools, and for Pyxis to have planned with them. */
+async function connectedTools(page: Page) {
+  await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2, { timeout: 30000 });
+  await page.evaluate(() => window.pyxis.invoke("engines.autoConfigure", {}));
 }
 
 async function openAddSources(page: Page, tab?: RegExp) {
@@ -1738,6 +1745,7 @@ function fakeEngines(): Record<string, string> {
   // The stand-ins are POSIX shell scripts. On Windows setup step 2 shows the computer with no engine instead.
   if (process.platform === "win32") return {};
   const on = join(auditEngines, "on");
+  const limit = join(auditEngines, "limit");
   const fake = (name: string, body: string) => {
     const path = join(auditEngines, name);
     writeFileSync(path, `#!/bin/sh\n${body}\n`);
@@ -1761,22 +1769,30 @@ function fakeEngines(): Record<string, string> {
   status) if [ -f "${on}" ]; then echo '{"isAuthenticated":true}'; else echo '{"isAuthenticated":false}'; fi;;
   about) echo '{}';;
   --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\n';;
-  *) echo "Error: request failed with status 401 Unauthorized" >&2; exit 1;;
+  *) if [ -f "${limit}" ]; then echo "Error: You have hit your usage limit." >&2; else echo "Error: request failed with status 401 Unauthorized" >&2; fi; exit 1;;
 esac`,
     ),
     CLI_FUNNEL_AGY_BIN: join(auditEngines, "not-installed"),
   };
 }
 
+/** The states of AI tools that show connected tools. */
+const CONNECTED_TOOLS = ["settings-engines-listed", "engine-details", "engine-menu"];
+
 /**
- * Setup step 2 signs the stand-ins in; every other state finds them signed out and nothing chosen or confirmed. The
- * pinned default engine of the recorded replies stays: the guided flow and the chats answer through it.
+ * Setup step 2 and the states of AI tools that show connected tools sign the stand-ins in; every other state finds them
+ * signed out and nothing chosen, put in order or confirmed. The pinned default engine of the recorded replies stays:
+ * the guided flow and the chats answer through it. In the ordered list Cursor answers a call with a usage limit
+ * instead of a refused sign-in.
  */
 function prepareEngines(name: string) {
   const on = join(auditEngines, "on");
-  const engines = name.startsWith("onboarding-engines");
+  const limit = join(auditEngines, "limit");
+  const engines = name.startsWith("onboarding-engines") || CONNECTED_TOOLS.includes(name);
   if (engines) writeFileSync(on, "");
   else rmSync(on, { force: true });
+  if (name === "settings-engines-listed") writeFileSync(limit, "");
+  else rmSync(limit, { force: true });
   withDb((db) => {
     // Debug mode only for its own state, so no other page shows its details.
     db.exec("DELETE FROM settings WHERE key = 'debug'");
@@ -1786,7 +1802,20 @@ function prepareEngines(name: string) {
         Date.now(),
       );
     db.exec(`DELETE FROM feature_engines WHERE json_extract(selection_json, '$.auto') = 1;
-      DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%' OR key = 'engines.allowed';`);
+      DELETE FROM settings WHERE key LIKE 'engine-disclosure:%' OR key LIKE 'engine-signed-out:%'
+        OR key LIKE 'engine-limited:%' OR key IN ('engines.allowed', 'engines.order');`);
+    // What the signed-in tools receive is already confirmed, so their notice covers none of these states.
+    if (CONNECTED_TOOLS.includes(name))
+      for (const provider of ["claude", "agent"])
+        db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES(?,'true',?)").run(
+          `engine-disclosure:${provider}`,
+          Date.now(),
+        );
+    if (name === "settings-engines-listed")
+      db.prepare("INSERT INTO settings(key,value_json,updated_at) VALUES('engines.order',?,?)").run(
+        JSON.stringify(["agent", "claude"]),
+        Date.now(),
+      );
     if (name === "onboarding-engines-chosen")
       db.prepare(
         "INSERT INTO settings(key,value_json,updated_at) VALUES('engines.allowed',?,?)",
@@ -3018,17 +3047,30 @@ async function openState(page: Page, name: string) {
         ).toBeChecked();
       break;
     }
-    // The plain page has the advanced options closed, whatever a state before it left open.
-    case "settings-engines": {
-      const toggle = page.getByRole("switch", { name: /^(Opzioni avanzate|Advanced options)$/ });
-      await expect(toggle).toBeVisible();
-      if ((await toggle.getAttribute("aria-checked")) === "true") await toggle.click();
-      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toHaveCount(0);
+    // The plain page: no tool is signed in, so each waits under "Da collegare", and Advanced is open as it starts.
+    case "settings-engines":
+      await openAdvancedEngines(page);
+      await expect(page.getByRole("region", { name: both("Da collegare", "To connect") })).toBeVisible();
+      await expect(page.locator(".engines-section")).not.toHaveAttribute("open");
+      break;
+    // Two tools in the student's order, each with its place. Cursor, the first, answers a call with a usage limit, so
+    // its row says it is out of requests and when they are back.
+    case "settings-engines-listed": {
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2"]);
+      await page.evaluate(() => window.pyxis.invoke("engines.test", { provider: "agent" }).catch(() => undefined));
+      await expect(page.locator('.engines-tool[data-tool="agent"] .engines-tool-state')).toHaveText(
+        both("Richieste finite", "Out of requests"),
+        { timeout: 30000 },
+      );
       break;
     }
     case "settings-engines-advanced":
       await openAdvancedEngines(page);
-      await expect(page.getByRole("radiogroup", { name: both("Quali strumenti può usare Pyxis", "Which AI tools Pyxis may use") })).toBeVisible();
+      await page.locator(".engines-section > summary").click();
+      await expect(page.locator(".engines-feature-row")).toHaveCount(8);
+      await expect(page.locator(".engines-feature-row").first()).toBeVisible();
       break;
     case "settings-engines-debug":
       await openAdvancedEngines(page);
@@ -4761,42 +4803,32 @@ async function openState(page: Page, name: string) {
       break;
     }
     case "engine-details":
-      await openAdvancedEngines(page);
-      await page
-        .locator(".px-engine-open")
-        .first()
-        .click();
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await page.getByRole("button", { name: both("Azioni su Claude", "Actions on Claude") }).click();
+      await page.getByRole("menuitem", { name: both("Dettagli", "Details") }).click();
       await expect(dialog).toBeVisible();
       break;
-    case "engine-details-disabled":
-      await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: /^Gemini/ })
-        .click();
-      await expect(dialog).toBeVisible();
+    case "engine-menu":
+      if (process.platform === "win32") break;
+      await connectedTools(page);
+      await page.getByRole("button", { name: both("Azioni su Claude", "Actions on Claude") }).click();
+      await expect(page.getByRole("menuitem", { name: both("Prova", "Test") })).toBeVisible();
       break;
-    case "engine-add-cli":
+    // The key's dialog where this computer can keep a key; elsewhere the row says why it can't.
+    case "engine-add-key": {
       await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
-        .click();
-      await expect(dialog.getByRole("tab", { selected: true })).toBeVisible();
+      const add = page.getByRole("button", { name: both("Aggiungi una chiave", "Add a key") });
+      const unavailable = page.getByText(
+        /L'archiviazione sicura delle chiavi non è disponibile|Secure key storage is unavailable/,
+      );
+      await expect(add.or(unavailable)).toBeVisible();
+      if (await add.isVisible()) {
+        await add.click();
+        await expect(dialog.locator("input[type=password]")).toBeVisible();
+      }
       break;
-    case "engine-add-key":
-      await openAdvancedEngines(page);
-      await page
-        .getByRole("button", { name: both("Aggiungi strumento AI", "Add AI tool") })
-        .click();
-      await dialog
-        .getByRole("tab", { name: both("Chiave API", "API key") })
-        .click();
-      await expect(
-        dialog.getByRole("tab", {
-          name: both("Chiave API", "API key"),
-          selected: true,
-        }),
-      ).toBeVisible();
-      break;
+    }
     case "export-lesson":
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
@@ -5489,6 +5521,7 @@ test("M14 every application route in both languages, themes and supported widths
               // Tabbing beyond a dropdown closes it. Reopen it for visual/axe checks.
               if (
                 (name === "library-row-menu" ||
+                  (name === "engine-menu" && process.platform !== "win32") ||
                   name === "library-kind-menu" ||
                   name === "plan-unfinished-menu" ||
                   name === "plan-now-other" ||

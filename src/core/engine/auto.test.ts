@@ -342,3 +342,60 @@ describe("automatic choice with Cursor Agent and Antigravity", () => {
     }
   });
 });
+
+describe("the order the student put their tools in", () => {
+  const providersOf = (plan: ReturnType<typeof planAuto>) =>
+    Object.fromEntries(Object.entries(plan).map(([feature, choice]) => [feature, choice.provider]));
+
+  it("gives every task to the first tool of the list, each on the model of its tier", () => {
+    expect(summary(planAuto([claude, codex], undefined, ["codex", "claude"]))).toEqual({
+      chat: "codex:gpt-6-luna:low",
+      map: "codex:gpt-6-luna:low",
+      cards: "codex:gpt-6-luna:low",
+      grading: "codex:gpt-5.6-terra:medium",
+      lesson: "codex:gpt-5.6-terra:medium",
+      vision: "codex:gpt-5.6-terra:medium",
+      default: "codex:gpt-5.6-terra:medium",
+      plan: "codex:gpt-6-sol:high",
+    });
+    expect(new Set(Object.values(providersOf(planAuto([claude, codex], undefined, ["claude", "codex"]))))).toEqual(
+      new Set(["claude"]),
+    );
+  });
+
+  it("follows the list, not the order the ready tools came in", () => {
+    expect(planAuto([codex, claude], undefined, ["claude", "codex"])).toEqual(
+      planAuto([claude, codex], undefined, ["claude", "codex"]),
+    );
+  });
+
+  it("hands a task the first tool cannot do to the next one that can", () => {
+    // Gemini reads no pictures, so photos go to the second tool and the rest stays on the first.
+    const plan = providersOf(planAuto([antigravity, claude], undefined, ["antigravity", "claude"]));
+    expect(plan.vision).toBe("claude");
+    expect(new Set(Object.entries(plan).filter(([feature]) => feature !== "vision").map(([, id]) => id))).toEqual(
+      new Set(["antigravity"]),
+    );
+  });
+
+  it("uses a tool the list leaves out only after the listed ones", () => {
+    const plan = providersOf(planAuto([claude, codex, antigravity], undefined, ["antigravity"]));
+    // Claude came before ChatGPT among the ready tools, so it is the second choice, for the photos Gemini cannot read.
+    expect(plan.vision).toBe("claude");
+    expect(plan.chat).toBe("antigravity");
+  });
+
+  it("skips a listed tool that is not ready", () => {
+    expect(
+      new Set(Object.values(providersOf(planAuto([codex], undefined, ["claude", "codex"])))),
+    ).toEqual(new Set(["codex"]));
+  });
+
+  it("shares the work as before with no list, and for a pool the list does not name", () => {
+    expect(planAuto([claude, codex], undefined, null)).toEqual(planAuto([claude, codex]));
+    // Only API keys are ready: the list names subscriptions, so it does not apply.
+    expect(planAuto([anthropicApi, openaiApi], undefined, ["claude", "codex"])).toEqual(
+      planAuto([anthropicApi, openaiApi]),
+    );
+  });
+});

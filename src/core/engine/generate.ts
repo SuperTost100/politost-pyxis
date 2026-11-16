@@ -7,10 +7,12 @@ import { engineSeesImages } from "./capabilities";
 import {
   benchEngine,
   benchModel,
+  clearLimitBefore,
   engineClock,
   clearSignOutBefore,
   isBenched,
   isModelBenched,
+  markMissing,
   markSignedOut,
 } from "./bench";
 import { modelName } from "./efforts";
@@ -23,7 +25,7 @@ import {
   type Selection,
   type TurnInput,
 } from "./funnel";
-import { fallbackSelection } from "./selection";
+import { fallbackSelection, type FallbackReason } from "./selection";
 import { reportUsage, withUsageScope, type UsageScope } from "./usage";
 
 export type GenerateInput = {
@@ -53,7 +55,7 @@ export type GenerateInput = {
 export type EngineFallback = {
   from: string;
   to: string;
-  reason: "limit" | "signed-out" | "model";
+  reason: FallbackReason;
 };
 
 export type GenerateOutput = EngineResult & {
@@ -70,6 +72,13 @@ let onFallback: ((event: EngineFallback) => void) | undefined;
  * unbounded walk would keep the student waiting through every model the engine lists.
  */
 export const MODEL_STEPS = 3;
+
+/**
+ * How many more tools a call tries after the first one it moved to was out as well (out of requests, signed out, not
+ * installed). Each tool that fails this way is marked and left out of the next step, so the walk ends by itself with
+ * the last tool; the bound only keeps a call from walking a list longer than the tools Pyxis offers.
+ */
+export const ENGINE_STEPS = 6;
 
 /** Core tells the window which engine answered instead, so the student knows why the reply looks different. */
 export function setFallbackListener(
@@ -186,8 +195,8 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
     const { usage, ...rest } = input;
     return withUsageScope(usage, () => generate(rest));
   }
-  // An automatic engine still out after a usage limit or a sign-out, or a model the subscription refused, is skipped
-  // until it is back.
+  // An automatic engine still out after a usage limit, a sign-out or a missing program, or a model the subscription
+  // refused, is skipped until it is back.
   const instead = isBenched(input.selection.provider)
     ? usableFallback(input)
     : isModelBenched(input.selection.provider, input.selection.model)
@@ -198,46 +207,58 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   const startedAt = engineClock();
   try {
     const output = await generateOnce(input);
-    // An engine that answers is signed in, whatever a call refused before this one began said.
-    clearSignOutBefore(input.selection.provider, startedAt);
+    answered(input.selection.provider, startedAt);
     return output;
   } catch (err) {
-    const reason =
-      !input.signal?.aborted && !isAbort(err)
-        ? fallbackReason(err, input.selection.provider)
-        : undefined;
-    // An engine Pyxis chose that hit its usage limit, was signed out or refused the model: the next ready engine, or
-    // the same engine's next model after a refusal, answers instead. Later automatic calls skip it until its limit
-    // resets, it is signed in again or the refused model's day is over. A pinned model is marked too, so Settings can
-    // say the engine is missing it.
-    if (reason === "model")
-      benchModel(
-        input.selection.provider,
-        input.selection.model,
-        Date.now(),
-        suggestedModel(err),
-      );
-    // A refused sign-in is marked even when no engine can answer instead, or a pinned engine would keep reading
-    // "Ready" in Settings while every call to it fails.
-    if (reason === "signed-out") markSignedOut(input.selection.provider);
+    // An engine Pyxis chose that hit its usage limit, was signed out, was not installed or refused the model: the next
+    // ready engine, or the same engine's next model after a refusal, answers instead. Later automatic calls skip it
+    // until its limit resets, it is signed in again, its program is back or the refused model's day is over. The
+    // failure is marked even when no engine can answer instead and for a model the student pinned, so Settings says
+    // what is wrong with the engine and the next automatic call does not start with it.
+    const reason = markFailure(input, input.selection, err);
     const next = reason ? usableFallback(input, reason) : undefined;
     if (!reason || !next) throw engineIpcError(err, input.selection.provider);
-    if (reason === "limit")
-      benchEngine(
-        input.selection.provider,
-        reason,
-        err && typeof err === "object" && "limit" in err
-          ? (err.limit as { resetAt?: string; retryAfterMs?: number })
-          : undefined,
-      );
     return moveOn(input, next, reason);
   }
+}
+
+/** An engine that answers is signed in and has requests left, whatever a call that failed before this one began said. */
+function answered(provider: string, startedAt: number): void {
+  clearSignOutBefore(provider, startedAt);
+  clearLimitBefore(provider, startedAt);
+}
+
+/**
+ * Why a failed call may move to another tool, after marking what the failure says about the engine it ran on: out of
+ * requests until its limit resets, signed out, not installed, or without this model. A stopped call marks nothing.
+ */
+function markFailure(
+  input: GenerateInput,
+  selection: GenerateInput["selection"],
+  err: unknown,
+): FallbackReason | undefined {
+  if (input.signal?.aborted || isAbort(err)) return undefined;
+  const reason = fallbackReason(err, selection.provider);
+  if (reason === "model")
+    benchModel(selection.provider, selection.model, Date.now(), suggestedModel(err));
+  if (reason === "signed-out") markSignedOut(selection.provider);
+  if (reason === "not-installed") markMissing(selection.provider);
+  if (reason === "limit")
+    benchEngine(
+      selection.provider,
+      reason,
+      err && typeof err === "object" && "limit" in err
+        ? (err.limit as { resetAt?: string; retryAfterMs?: number })
+        : undefined,
+    );
+  return reason;
 }
 
 /**
  * Answers on `next` instead of the selected engine, and says so when `reason` is given (an engine skipped because it is
  * already out says nothing). When the subscription refuses that model too, the task moves to the engine's next model,
- * up to `MODEL_STEPS` times in all.
+ * up to `MODEL_STEPS` times in all. When `next` turns out to be out as well (out of requests, signed out, not
+ * installed), the task goes on down the list, up to `ENGINE_STEPS` tools in all.
  */
 async function moveOn(
   input: GenerateInput,
@@ -260,22 +281,26 @@ async function moveOn(
     onFallback?.(fallback);
     return { ...output, fallback };
   } catch (err) {
-    if (
-      step >= MODEL_STEPS ||
-      !(err instanceof IpcError && err.code === "model-not-included")
-    )
-      throw err;
-    const further = usableFallback(input, "model");
-    if (!further) throw err;
-    return moveOn(input, further, reason ?? "model", step + 1);
+    const why = err instanceof Failed ? err.reason : undefined;
+    const cause = err instanceof Failed ? err.error : err;
+    if (!why || step >= (why === "model" ? MODEL_STEPS : ENGINE_STEPS)) throw cause;
+    // `answerOn` marked the engine that failed, so the next step leaves it out.
+    const further = usableFallback(input, why);
+    if (!further) throw cause;
+    return moveOn(input, further, reason ?? why, step + 1);
   }
 }
 
+/** A failure of the engine a task moved to, with the reason the task may move again. */
+class Failed {
+  constructor(
+    readonly error: unknown,
+    readonly reason: FallbackReason,
+  ) {}
+}
+
 /** The engine an automatic selection moves to. A turn that carries a picture only moves to an engine that can see it. */
-function usableFallback(
-  input: GenerateInput,
-  reason?: "limit" | "signed-out" | "model",
-) {
+function usableFallback(input: GenerateInput, reason?: FallbackReason) {
   const next = fallbackSelection(input.selection, reason);
   if (!next) return undefined;
   return !input.attachments?.length || engineSeesImages(next) ? next : undefined;
@@ -289,19 +314,14 @@ async function answerOn(
   const startedAt = engineClock();
   try {
     const output = await generateOnce({ ...input, selection });
-    clearSignOutBefore(selection.provider, startedAt);
+    answered(selection.provider, startedAt);
     return output;
   } catch (err) {
-    // The engine answering instead can refuse its sign-in too, and Settings must stop calling it ready. Its model can
-    // be refused as well, and the next step must not pick it again.
-    const reason =
-      !input.signal?.aborted && !isAbort(err)
-        ? fallbackReason(err, selection.provider)
-        : undefined;
-    if (reason === "signed-out") markSignedOut(selection.provider);
-    if (reason === "model")
-      benchModel(selection.provider, selection.model, Date.now(), suggestedModel(err));
-    throw engineIpcError(err, selection.provider);
+    // The engine answering instead can be out too: Settings must stop calling it ready, and the next step must not
+    // pick it, or its refused model, again.
+    const reason = markFailure(input, selection, err);
+    const error = engineIpcError(err, selection.provider);
+    throw reason ? new Failed(error, reason) : error;
   }
 }
 

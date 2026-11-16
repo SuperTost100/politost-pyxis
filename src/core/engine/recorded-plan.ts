@@ -26,10 +26,24 @@ export function recordedPlanRun(
   // part differently.
   let calls = 0;
   let texts = 0;
+  // `"limited": { "codex": { "resetAt": "…", "until": "path" } }` puts a tool out of requests: every call to it fails
+  // with the usage limit a CLI reports (with the reset time, when one is given) until the test creates the `until`
+  // file. Without `until` it stays out for the whole run.
+  const limited = (replies.limited ?? {}) as Record<string, { resetAt?: string; until?: string }>;
   return async (input) => {
     await delay(Math.min(Math.max(delayMs, 0), 10000), undefined, {
       signal: input.signal,
     });
+    const limit = input.selection ? limited[input.selection.provider] : undefined;
+    if (limit && !(limit.until && existsSync(limit.until)))
+      throw Object.assign(new Error("You've hit your usage limit."), {
+        code: "cli-failed",
+        limit: {
+          kind: "quota",
+          detail: "You've hit your usage limit.",
+          ...(limit.resetAt ? { resetAt: limit.resetAt } : {}),
+        },
+      });
     if (promptLog) appendFileSync(promptLog, `${JSON.stringify(input.prompt)}\n`);
     if (!input.responseSchema) {
       // A list of Markdown replies answers the calls in turn, round and round, with the same `fail`, `delayMs` and

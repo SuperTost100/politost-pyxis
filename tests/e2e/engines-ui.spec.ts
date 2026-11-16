@@ -1,29 +1,42 @@
-import { expect, test } from "@playwright/test";
-import {
-  chmodSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
-import { fromChiediToExams } from "./doors";
+import { standInTools } from "./tools";
 
-test("ENG-10 engine details, add paths and secure key-storage notice in both themes and languages", async () => {
+/** A connected tool's row in the list, by the id Pyxis knows the tool by. */
+const tool = (page: Page, id: string) => page.locator(`.engines-tool[data-tool="${id}"]`);
+
+/** Opens a tool's menu from its three dots and picks an item. */
+async function choose(page: Page, name: string, item: string | RegExp) {
+  await page.getByRole("button", { name: new RegExp(`^(Azioni su|Actions on) ${name}$`) }).click();
+  await page
+    .getByRole("region", { name: new RegExp(`^(Azioni su|Actions on) ${name}$`) })
+    .getByRole("menuitem", { name: item })
+    .click();
+}
+
+/** The words of the option a native picker shows. */
+const picked = (select: Locator) => select.evaluate((node: HTMLSelectElement) => node.selectedOptions[0]?.label ?? "");
+
+test("ENG-10 tool details, the key dialog and the secure key-storage notice in both themes and languages", async () => {
+  // The stand-in tools are POSIX shell scripts. Windows runs the panel's rules in the unit tests.
+  test.skip(process.platform === "win32", "stand-in tools are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-ui-"));
-  const app = await launchPyxis({ userData });
+  const tools = standInTools(["claude", "codex", "agent", "antigravity"]);
+  const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.getByRole("button", { name: "Salta" }).click();
     // Skipping saves the profile, then moves to Chiedi; wait so a reload or route change cannot land on setup.
-    await fromChiediToExams(page);
-    // Whatever engines this computer has, their notice is already confirmed, so no dialog covers the screen.
+    await expect(page).toHaveURL(/#\/ask$/);
+    // The tools' notice is already confirmed, so no dialog covers the screen.
     await page.evaluate(() =>
       window.pyxis.invoke("engines.acknowledge", {
         providers: ["claude", "codex", "agent", "antigravity"],
@@ -48,18 +61,20 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           await page.evaluate(
             async ({ language, theme }) => {
               localStorage.setItem("pyxis.lang", language);
-              localStorage.setItem("pyxis.engines.advanced", "1");
+              localStorage.removeItem("pyxis.engines.advanced");
               await window.pyxis.setAppearance(theme);
               location.hash = "/settings/engines";
             },
             { language, theme },
           );
           await page.reload();
-          await expect(
-            page.locator(".engines-list .px-engine").first(),
-          ).toBeVisible({ timeout: 30000 });
+          await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(4, { timeout: 30000 });
+          // Every tool is connected, so nothing waits to be connected.
+          await expect(page.getByRole("region", { name: language === "en" ? "To connect" : "Da collegare" })).toHaveCount(0);
+          // Advanced is open until the student closes it. The model of each task starts closed inside it and opens on
+          // its heading.
+          await expect(page.locator(".engines-advanced")).toHaveAttribute("open", "");
           await expect(page.locator(".engines-feature-row")).toHaveCount(8);
-          // The engine for each function starts closed; it opens on its heading.
           const perFeature = page.locator(".engines-section");
           await expect(perFeature).not.toHaveAttribute("open");
           await perFeature.locator("summary").click();
@@ -67,101 +82,67 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
           // Each task has its own reasoning effort next to its model.
           await expect(
             page.getByRole("combobox", {
-              name:
-                language === "en"
-                  ? "Chat: Reasoning effort"
-                  : "Chat: Livello di ragionamento",
+              name: language === "en" ? "Chat: Reasoning effort" : "Chat: Livello di ragionamento",
             }),
           ).toBeVisible();
           await expect(page.locator('[id^="engine-effort-"]')).toHaveCount(8);
-          // CLI Funnel enforces text-only access for every offered engine, so none is disabled.
-          for (const name of ["Cursor", "Gemini"])
-            await expect(
-              page.locator(".engines-list .engines-row", { hasText: name }),
-            ).toHaveCount(1);
-          await expect(page.locator(".engines-row.is-disabled")).toHaveCount(0);
           // A row reads by the tool's name, and the program behind it shows once, as the detail under it: it is what the
-          // student installs or signs in to.
-          const gemini = page.locator(".engines-list .engines-row", { hasText: "Gemini" });
-          await expect(gemini.locator(".px-engine-name")).toHaveText("Gemini");
-          await expect(gemini.locator(".px-engine-model")).toHaveText("Antigravity");
-          // Also a tool that has a model: the program stays in its row, once, beside the model.
-          for (const [name, program] of [["Claude", "Claude Code"], ["Cursor", "Cursor Agent"], ["Gemini", "Antigravity"]] as const) {
-            const toolRow = page
-              .locator(".engines-list .engines-row")
-              .filter({ has: page.locator(".px-engine-name", { hasText: new RegExp(`^${name}`) }) });
-            await expect(toolRow.locator(".px-engine-model"), `${language}, ${name}`).toContainText(program);
-            expect((await toolRow.innerText()).split(program).length - 1, `${language}, ${name}: the program shows once`).toBe(1);
+          // student installed and signed in to.
+          for (const [id, name, program] of [
+            ["claude", "Claude", "Claude Code"],
+            ["codex", "ChatGPT", "Codex"],
+            ["agent", "Cursor", "Cursor Agent"],
+            ["antigravity", "Gemini", "Antigravity"],
+          ] as const) {
+            await expect(tool(page, id).locator(".engines-tool-name")).toHaveText(name);
+            await expect(tool(page, id).locator(".px-ctl-description"), `${language}, ${name}`).toContainText(program);
+            expect(
+              (await tool(page, id).innerText()).split(program).length - 1,
+              `${language}, ${name}: the program shows once`,
+            ).toBe(1);
           }
           // Every function starts automatic. Nothing is pinned on a fresh profile.
           await expect(
             page.getByRole("button", {
-              name:
-                language === "en"
-                  ? "Back to automatic choice"
-                  : "Torna alla scelta automatica",
+              name: language === "en" ? "Back to automatic choice" : "Torna alla scelta automatica",
             }),
           ).toBeDisabled();
-          // The row's visible words name the button; "Details for ..." is its description.
-          const details = page.getByRole("button", { name: /^Claude/ });
-          await details.click();
-          const drawer = page.getByRole("dialog", {
-            name: "Claude",
-            exact: true,
-          });
-          await expect(drawer).toBeVisible();
-          // The drawer's head names the program once, quietly, beside the tool's name.
-          await expect(drawer.locator(".engines-drawer-program")).toHaveText("Claude Code");
+          // A tool's details open from its menu, on the dots as on a right-click.
+          await choose(page, "Claude", language === "en" ? "Details" : "Dettagli");
+          const details = page.getByRole("dialog", { name: "Claude", exact: true });
+          await expect(details).toBeVisible();
+          // The dialog names the program once, quietly, under the tool's name.
+          await expect(details.getByText("Claude Code", { exact: true })).toBeVisible();
           await expect(
-            drawer.getByRole("combobox", {
-              name: language === "en" ? "Model" : "Modello",
-            }),
+            details.getByRole("combobox", { name: language === "en" ? "Model" : "Modello" }),
           ).toBeVisible();
           await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
           await saveShot(page, `m15-engine-details-${language}-${theme}.png`, { fullPage: true });
-          await drawer
-            .getByRole("button", { name: /Close|Chiudi/, exact: true })
-            .click();
-          // Each row's action names its engine, so a screen reader can tell the buttons apart.
+          await details.getByRole("button", { name: /^(Close|Chiudi)$/ }).click();
+          await expect(details).toHaveCount(0);
+          // Each row's sign-out names its tool, so a screen reader can tell the buttons apart.
           await expect(
-            page.getByRole("button", {
-              name: /^(Install|Test|Sign in|Installa|Prova|Accedi) Gemini$/,
-            }),
+            page.getByRole("button", { name: language === "en" ? "Sign out of Claude" : "Scollega Claude" }),
           ).toHaveCount(1);
-          // Antigravity has no sign-out command: the drawer says how to sign out instead of offering a button that fails.
-          await page
-            .getByRole("button", { name: /^Gemini/ })
-            .click();
-          const agy = page.getByRole("dialog", {
-            name: "Gemini",
-            exact: true,
-          });
+          // Antigravity has no sign-out command: its row offers no button that would fail, and its details say how to
+          // sign out instead.
           await expect(
-            agy.getByText(
-              language === "en"
-                ? /no sign-out command/
-                : /non ha un comando per uscire/,
-            ),
-          ).toBeVisible();
-          await expect(
-            agy.getByRole("button", {
-              name: language === "en" ? "Sign out" : "Esci dall'account",
-            }),
+            page.getByRole("button", { name: language === "en" ? "Sign out of Gemini" : "Scollega Gemini" }),
           ).toHaveCount(0);
-          await agy
-            .getByRole("button", { name: /Close|Chiudi/, exact: true })
-            .click();
+          await tool(page, "antigravity").locator(".engines-tool-name").click({ button: "right" });
           await page
-            .getByRole("button", {
-              name: language === "en" ? "Add AI tool" : "Aggiungi strumento AI",
-            })
+            .getByRole("region", { name: /^(Azioni su|Actions on) Gemini$/ })
+            .getByRole("menuitem", { name: language === "en" ? "Details" : "Dettagli" })
             .click();
-          const modal = page.getByRole("dialog");
-          await modal
-            .getByRole("tab", {
-              name: language === "en" ? "API key" : "Chiave API",
-            })
-            .click();
+          const agy = page.getByRole("dialog", { name: "Gemini", exact: true });
+          await expect(
+            agy.getByText(language === "en" ? /no sign-out command/ : /non ha un comando per uscire/),
+          ).toBeVisible();
+          await agy.getByRole("button", { name: /^(Close|Chiudi)$/ }).click();
+          await expect(agy).toHaveCount(0);
+
+          // The API key has its row under Advanced.
+          const add = page.getByRole("button", { name: language === "en" ? "Add a key" : "Aggiungi una chiave" });
           // macOS always has a Keychain, and asking it would bring up the password prompt, so the form shows unasked.
           const darwin = process.platform === "darwin";
           if (darwin)
@@ -169,6 +150,8 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
               await app.evaluate(() => (globalThis as { keyringProbes?: number }).keyringProbes),
             ).toBe(0);
           if (canSave || darwin) {
+            await add.click();
+            const modal = page.getByRole("dialog", { name: language === "en" ? "Add a key" : "Aggiungi una chiave" });
             await expect(modal.locator("input[type=password]")).toBeVisible();
             await expect(modal.getByRole("combobox")).toBeVisible();
             await expect(
@@ -176,58 +159,41 @@ test("ENG-10 engine details, add paths and secure key-storage notice in both the
             ).toBeDisabled();
             await modal.locator("input[type=password]").focus();
             await page.keyboard.press("Tab");
-            await expect(
-              modal.locator("input[type=password]"),
-            ).not.toBeFocused();
+            await expect(modal.locator("input[type=password]")).not.toBeFocused();
+            await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+            await saveShot(page, `m15-engine-add-form-${language}-${theme}.png`, { fullPage: true });
+            // The way out is the dialog's own Annulla, beside the key's button.
+            await modal.getByRole("button", { name: /^(Cancel|Annulla)$/ }).click();
+            await expect(modal).toHaveCount(0);
           } else {
-            await expect(modal.locator("input[type=password]")).toHaveCount(0);
+            // Without a keyring the row says why no key can be saved, and offers no button that would fail.
+            await expect(add).toHaveCount(0);
             await expect(
-              modal.getByText(
+              page.getByText(
                 language === "en"
                   ? /Secure key storage is unavailable/
                   : /archiviazione sicura delle chiavi non è disponibile/,
               ),
             ).toBeVisible();
+            await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
+            await saveShot(page, `m15-engine-add-${language}-${theme}.png`, { fullPage: true });
           }
-          await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
-          await saveShot(page, `m15-engine-add-${canSave ? "form-" : ""}${language}-${theme}.png`, { fullPage: true });
-          // The way out is the dialog's own button: Annulla beside the key's button, or Chiudi with nothing to confirm.
-          await modal.getByRole("button", { name: /^(Cancel|Annulla|Close|Chiudi)$/ }).click();
         }
   } finally {
     await app.close();
     removeTestFolder(userData);
+    rmSync(tools.bin, { recursive: true, force: true });
   }
 });
 
-test("Automatic engines: simple view says it in one sentence, and advanced can pin and return to automatic", async () => {
+test("Automatic engines: the page says it in one sentence, and Advanced can pin and return to automatic", async () => {
   // The stand-in CLIs are POSIX shell scripts. Windows still runs the selection policy in the unit tests.
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-auto-"));
-  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
-  // Stand-ins for the two CLIs: they report a version and a signed-in account, nothing more.
-  const fake = (name: string, body: string) => {
-    const path = join(bin, name);
-    writeFileSync(path, `#!/bin/sh\n${body}\n`);
-    chmodSync(path, 0o755);
-    return path;
-  };
-  const env = {
-    // Only the two stand-ins exist: engines installed on this computer must not show up.
-    HOME: bin,
-    PATH: "/usr/bin:/bin",
-    CLI_FUNNEL_NO_SHELL_PATH: "1",
-    CLI_FUNNEL_CLAUDE_BIN: fake(
-      "claude",
-      `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
-    ),
-    CLI_FUNNEL_CODEX_BIN: fake(
-      "codex",
-      `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
-    ),
-  };
-  const app = await launchPyxis({ userData, env });
+  // Only the two stand-ins exist: engines installed on this computer must not show up.
+  const tools = standInTools(["claude", "codex"]);
+  const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -244,94 +210,72 @@ test("Automatic engines: simple view says it in one sentence, and advanced can p
     const notice = page.getByRole("dialog", { name: "What leaves this computer" });
     await expect(notice).toBeVisible({ timeout: 30000 });
     await expect(notice.getByText("Claude sends them to Anthropic.")).toBeVisible();
-    await expect(page.locator(".engines-summary")).toHaveCount(0);
+    const summary = page.locator(".engines-summary");
+    await expect(summary).not.toContainText("ChatGPT");
     await notice.getByRole("button", { name: "I understand" }).click();
     await expect(notice).toHaveCount(0);
-    // One plain sentence, with the engines' names and no list of which does what.
-    await expect(page.locator(".engines-summary-body")).toHaveText(
-      "Automatic choicePyxis picks the right tool for each job by itself, out of ChatGPT and Claude, and uses the cheapest model that is good enough.",
+    // One plain sentence under the page's title, with the engines' names and no list of which does what.
+    await expect(summary).toHaveText(
+      "Pyxis picks the right tool for each job by itself, out of ChatGPT and Claude, and uses the cheapest model that is good enough.",
       { timeout: 30000 },
     );
-    await expect(page.locator(".engines-list .px-engine")).toHaveCount(2);
-    await expect(page.locator(".engines-feature-row")).toHaveCount(0);
-    // Which engines Pyxis may use waits under Advanced options, and the week's tokens under debug mode.
-    const choice = page.getByRole("radiogroup", { name: "Which AI tools Pyxis may use" });
+    await expect(page.locator(".engines-tools .engines-tool")).toHaveCount(2);
+    // The tools not on this computer wait under "To connect".
+    const toConnect = page.getByRole("region", { name: "To connect" });
+    for (const name of ["Cursor", "Gemini"])
+      await expect(toConnect.getByRole("button", { name: `Install and sign in to ${name}` })).toBeVisible();
+    // The model of each task waits under Advanced, and the week's tokens under debug mode.
+    const advanced = page.locator(".engines-advanced");
     const week = page.getByRole("region", { name: "This week" });
-    await expect(choice).toHaveCount(0);
+    await expect(page.locator(".engines-feature-row")).toHaveCount(8);
     await expect(week).toHaveCount(0);
     await saveShot(page, "engines-simple-en.png", { fullPage: true });
-    await page.getByRole("switch", { name: "Advanced options" }).click();
-    await expect(page.locator(".engines-feature-row")).toHaveCount(8);
-    await expect(choice).toBeVisible();
-    await expect(choice.getByRole("radio", { name: /^Automatic/ })).toBeChecked();
-    await expect(week).toHaveCount(0);
     await page.getByRole("switch", { name: "Show technical details and debug" }).click();
     await expect(week).toBeVisible();
     await saveShot(page, "engines-debug-en.png", { fullPage: true });
-    // Debug mode alone keeps the table, with the advanced options closed.
-    await page.getByRole("switch", { name: "Advanced options" }).click();
-    await expect(choice).toHaveCount(0);
+    // Debug mode alone keeps the table, with Advanced closed.
+    await advanced.locator("> summary").click();
+    await expect(page.getByRole("switch", { name: "Show technical details and debug" })).toBeHidden();
     await expect(week).toBeVisible();
-    await page.getByRole("switch", { name: "Advanced options" }).click();
+    await advanced.locator("> summary").click();
     // The table sits in a section that starts closed.
     await page.locator(".engines-section > summary").click();
-    await expect(page.locator(".engines-list .px-engine")).toHaveCount(4);
-    // Advanced options add no second primary button: Add engine is a secondary one.
-    await expect(
-      page.getByRole("button", { name: "Add AI tool" }),
-    ).not.toHaveClass(/ant-btn-primary/);
-    const chat = page
-      .locator(".engines-feature-row")
-      .filter({ has: page.locator('label[for="engine-chat"]') })
-      .locator(".engines-feature-model .ant-select");
-    await expect(chat).toContainText("Automatic");
+    const chat = page.getByRole("combobox", { name: "Chat", exact: true });
+    expect(await picked(chat)).toBe("Automatic");
     await expect(page.locator(".engines-auto-model").first()).toBeVisible();
     // Every task starts at its own reasoning level: low for chat, high for exams.
-    const effortOf = (task: string) =>
-      page.getByRole("combobox", { name: `${task}: Reasoning effort` });
+    const effortOf = (task: string) => page.getByRole("combobox", { name: `${task}: Reasoning effort` });
     await expect(effortOf("Chat")).toBeEnabled();
-    await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Chat") }),
-    ).toContainText("Automatic · Low");
-    await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
-    ).toContainText("Automatic · High");
+    expect(await picked(effortOf("Chat"))).toBe("Automatic · Low");
+    expect(await picked(effortOf("Exams"))).toBe("Automatic · High");
     // The student's pick is kept, and shows after a reload of the stored choices.
-    await effortOf("Exams").click();
-    await page
-      .locator(".ant-select-item-option")
-      .filter({ hasText: /^Maximum$/ })
-      .click();
-    await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
-    ).toContainText("Maximum");
+    await effortOf("Exams").selectOption({ label: "Maximum" });
+    await expect.poll(() => picked(effortOf("Exams"))).toBe("Maximum");
     const stored = await page.evaluate(
       () => window.pyxis.invoke("engines.features", {}) as Promise<Record<string, { effort?: string; effortChoice?: string }>>,
     );
     expect(stored.plan).toMatchObject({ effort: "max", effortChoice: "max" });
-    // Pin chat to a Claude model, then return everything to automatic.
-    await page.getByRole("combobox", { name: "Chat", exact: true }).click();
-    // Models are named with their engine as the student knows it, never with an internal id such as "claude".
-    const options = page.locator(".ant-select-item-option");
-    await expect(options.filter({ hasText: /^Claude · / }).first()).toBeVisible();
-    await expect(options.filter({ hasText: /^(claude|codex|agent) · / })).toHaveCount(0);
-    await options.filter({ hasText: /^Claude · / }).first().click();
-    await expect(chat).not.toContainText("Automatic");
-    const back = page.getByRole("button", {
-      name: "Back to automatic choice",
-    });
+    // Pin chat to a Claude model, then return everything to automatic. Models are named with their engine as the
+    // student knows it, never with an internal id such as "claude".
+    const labels = await chat.locator("option").allTextContents();
+    const claudeModel = labels.find((label) => label.startsWith("Claude · "));
+    expect(claudeModel).toBeTruthy();
+    expect(labels.filter((label) => /^(claude|codex|agent) · /.test(label))).toEqual([]);
+    await chat.selectOption({ label: claudeModel! });
+    await expect.poll(() => picked(chat)).toBe(claudeModel);
+    // The list says a task is set by hand, so the order alone does not explain where chat goes.
+    await expect(page.getByText("1 feature is pinned by hand under Advanced.")).toBeVisible();
+    const back = page.getByRole("button", { name: "Back to automatic choice" });
     await expect(back).toBeEnabled();
     await back.click();
-    await expect(chat).toContainText("Automatic");
+    await expect.poll(() => picked(chat)).toBe("Automatic");
     await expect(back).toBeDisabled();
     // Back to automatic also returns the efforts to the tasks' own levels.
-    await expect(
-      page.locator(".engines-feature-effort", { has: effortOf("Exams") }),
-    ).toContainText("Automatic · High");
+    await expect.poll(() => picked(effortOf("Exams"))).toBe("Automatic · High");
   } finally {
     await app.close();
     removeTestFolder(userData);
-    rmSync(bin, { recursive: true, force: true });
+    rmSync(tools.bin, { recursive: true, force: true });
   }
 });
 
@@ -340,42 +284,8 @@ test("Automatic engines: with all four CLIs ready, the summary names each engine
   test.skip(process.platform === "win32", "stand-in CLIs are shell scripts");
   test.setTimeout(180000);
   const userData = mkdtempSync(join(tmpdir(), "pyxis-engine-four-"));
-  const bin = mkdtempSync(join(tmpdir(), "pyxis-engine-bin-"));
-  const fake = (name: string, body: string) => {
-    const path = join(bin, name);
-    writeFileSync(path, `#!/bin/sh\n${body}\n`);
-    chmodSync(path, 0o755);
-    return path;
-  };
-  const env = {
-    // Antigravity counts as signed in with a Gemini key and a model list.
-    GEMINI_API_KEY: "test-key",
-    CLI_FUNNEL_CLAUDE_BIN: fake(
-      "claude",
-      `case "$1" in --version) echo "2.1.0";; auth) echo '{"loggedIn":true,"authMethod":"claude.ai"}';; esac`,
-    ),
-    CLI_FUNNEL_CODEX_BIN: fake(
-      "codex",
-      `case "$1" in --version) echo "codex-cli 0.150.0";; login) echo "Logged in using ChatGPT";; *) exit 1;; esac`,
-    ),
-    CLI_FUNNEL_AGENT_BIN: fake(
-      "agent",
-      `case "$1" in
-  --version) echo "2026.09.28-64d2043";;
-  status) echo '{"isAuthenticated":true}';;
-  about) echo '{}';;
-  --list-models) printf 'gemini-3.8-flash - Gemini 3.8 Flash\\nclaude-sonnet-5-5 - Claude Sonnet 5.5\\nclaude-opus-5-5 - Claude Opus 5.5\\ngpt-5.6-sol - GPT-5.6 Sol\\n';;
-esac`,
-    ),
-    CLI_FUNNEL_AGY_BIN: fake(
-      "agy",
-      `case "$1" in
-  --version) echo "1.3.0";;
-  models) printf 'gemini-3.8-flash\\tGemini 3.8 Flash\\ngemini-3.1-pro\\tGemini 3.1 Pro\\n';;
-esac`,
-    ),
-  };
-  const app = await launchPyxis({ userData, env });
+  const tools = standInTools(["claude", "codex", "agent", "antigravity"]);
+  const app = await launchPyxis({ userData, env: tools.env });
   try {
     const page = await app.firstWindow();
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -404,7 +314,7 @@ esac`,
   } finally {
     await app.close();
     removeTestFolder(userData);
-    rmSync(bin, { recursive: true, force: true });
+    rmSync(tools.bin, { recursive: true, force: true });
   }
 });
 
@@ -455,14 +365,12 @@ esac`,
       location.hash = "/settings/engines";
     });
     await page.reload();
-    const row = (name: string) =>
-      page.locator(".engines-list .px-engine", { hasText: name });
-    await expect(row("Cursor")).toContainText("Ready", { timeout: 30000 });
+    await expect(tool(page, "agent")).toContainText("Connected", { timeout: 30000 });
     await expect(page.locator(".engines-summary")).toContainText("Cursor", {
       timeout: 30000,
     });
 
-    await page.getByRole("button", { name: "Test Cursor" }).click();
+    await choose(page, "Cursor", "Test");
     // The message names the engine and offers its sign-in here, instead of sending the student to the page they are on.
     await expect(
       page.getByText(
@@ -470,8 +378,11 @@ esac`,
       ),
     ).toBeVisible({ timeout: 30000 });
     await expect(page.getByText(/Settings, AI tools/)).toHaveCount(0);
-    await expect(row("Cursor")).toContainText("Sign-in expired");
-    await expect(row("Cursor")).not.toContainText("Ready");
+    // The tool leaves the connected ones: it waits under "To connect", where its row says why and offers the sign-in.
+    await expect(tool(page, "agent")).toHaveCount(0);
+    const waiting = page.getByRole("region", { name: "To connect" }).locator("li", { hasText: "Cursor" });
+    await expect(waiting).toContainText("Sign-in expired");
+    await expect(waiting.getByRole("button", { name: "Sign in to Cursor" })).toBeVisible();
     await expect(page.locator(".engines-summary")).not.toContainText(
       "Cursor",
       { timeout: 30000 },
@@ -485,7 +396,7 @@ esac`,
       tags: ["wcag2a", "wcag2aa", "wcag21aa"],
     });
     await saveShot(page, "engines-refused-en.png", { fullPage: true });
-    await page.getByRole("button", { name: "Sign in to Cursor" }).click();
+    await waiting.getByRole("button", { name: "Sign in to Cursor" }).click();
     await expect(
       page.getByRole("dialog", { name: "Set up Cursor" }),
     ).toBeVisible();
@@ -574,16 +485,18 @@ esac`,
       location.hash = "/settings/engines";
     });
     await page.reload();
-    const row = page.locator(".engines-list .px-engine", { hasText: "Cursor" });
-    await expect(row).toContainText("Ready", { timeout: 30000 });
+    const row = tool(page, "agent");
+    await expect(row).toContainText("Connected", { timeout: 30000 });
     // The row names the models the plan gives the engine, never their ids.
     await expect(row).toContainText("Claude Opus 5.5", { timeout: 30000 });
     await expect(row).not.toContainText("claude-opus-5-5");
     // A tool with models in its row still names its program, once.
-    await expect(row.locator(".px-engine-model")).toContainText("Cursor Agent");
+    await expect(row.locator(".px-ctl-description")).toContainText("Cursor Agent");
     expect((await row.innerText()).split("Cursor Agent").length - 1).toBe(1);
+    // One tool has nothing to be put in order with: no grip, and no place.
+    await expect(row.getByRole("button", { name: "Reorder Cursor" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Test Cursor" }).click();
+    await choose(page, "Cursor", "Test");
     await expect(
       page.getByText("Your Cursor subscription doesn't include the chosen model."),
     ).toBeVisible({ timeout: 30000 });
@@ -606,7 +519,7 @@ esac`,
     await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
     await saveShot(page, "engines-model-refused-en.png", { fullPage: true });
     // The next Prova skips the refused model, answers on Grok and names it as the engine lists it.
-    await page.getByRole("button", { name: "Test Cursor" }).click();
+    await choose(page, "Cursor", "Test");
     await expect(page.locator(".engines-result")).toContainText("Grok 4.7", { timeout: 30000 });
     await expect(page.locator(".engines-result")).not.toContainText("grok-4.7");
   } finally {
