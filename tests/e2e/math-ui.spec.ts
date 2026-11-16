@@ -120,7 +120,14 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
     });
     const code = page.getByRole("textbox", { name: /Codice Python|Python code/ });
     await code.fill("print('42')");
-    await code.press("ControlOrMeta+Enter");
+    // The key is sent in the same task that checks Run is still disabled, which it is until the read has returned, so the
+    // test cannot pass because the read came back first on a slow runner.
+    await page.evaluate(() => {
+      const run = [...document.querySelectorAll("button")].find((button) => /^(Esegui|Run)$/.test(button.getAttribute("aria-label") ?? button.textContent?.trim() ?? ""));
+      if (!run) throw new Error("no Run button");
+      if (!run.disabled) throw new Error("the read of the Python pack had already returned");
+      document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
+    });
     await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
   } finally {
     await app.close();
