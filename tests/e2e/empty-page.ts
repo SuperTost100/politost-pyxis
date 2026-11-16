@@ -47,9 +47,10 @@ export async function expectEmptyPage(
 
 /**
  * Where the empty block sits: its drawing, line and button, taken together, are centred across the page column and down
- * the room that runs from under the page's head to the window's bottom edge, to within 3px. In a window too short for
- * the block, the room grows with it: the block then sits under the head, clear of it, and the page scrolls. The page is
- * not taller than the window otherwise, so it shows no scrollbar of its own.
+ * the room that runs from under the page's head to the window's bottom edge, to within 3px. Whether the block fits is
+ * decided from its size, its own vertical padding and the room under the head, never from whether the page happens to
+ * scroll. When it fits, the page is not taller than the window and the block is centred. When it cannot fit, the page
+ * does scroll and the block keeps 16px under the head and above the page's end.
  */
 export async function expectCentred(page: Page) {
   await expect(page.locator(".px-empty")).toBeVisible();
@@ -70,11 +71,13 @@ export async function expectCentred(page: Page) {
       bottom: Math.max(...parts.map((part) => part.bottom)),
     };
     const room = rect(empty);
+    const style = getComputedStyle(empty);
     const column = rect(document.querySelector(".shell-page")!);
     const before = empty.previousElementSibling ? rect(empty.previousElementSibling) : null;
     return {
       block,
       room: { top: room.top, bottom: room.bottom },
+      padding: parseFloat(style.paddingTop) + parseFloat(style.paddingBottom),
       column: { left: column.left, right: column.right },
       headBottom: before?.bottom ?? null,
       overflow: document.documentElement.scrollHeight - window.innerHeight,
@@ -84,11 +87,13 @@ export async function expectCentred(page: Page) {
   const { block, room, column } = found;
   expect(Math.abs((block.left + block.right) / 2 - (column.left + column.right) / 2), "centred across the page").toBeLessThanOrEqual(3);
   if (found.headBottom !== null) expect(block.top, "clear of the head").toBeGreaterThanOrEqual(found.headBottom);
-  if (found.overflow <= 0) {
+  const fits = block.bottom - block.top + found.padding <= found.innerHeight - room.top;
+  if (fits) {
+    expect(found.overflow, "the block fits under the head, so the page does not scroll").toBeLessThanOrEqual(0);
     // The room runs from under the head to the window's bottom edge, whatever the block's own box is.
     expect(Math.abs((block.top + block.bottom) / 2 - (room.top + found.innerHeight) / 2), "centred down the room under the head").toBeLessThanOrEqual(3);
   } else {
-    // Too short for the block: the page scrolls and the block keeps a gap under the head and above the page's end.
+    expect(found.overflow, "the block cannot fit under the head, so the page scrolls").toBeGreaterThan(0);
     expect(block.top - (found.headBottom ?? 0), "a gap under the head").toBeGreaterThanOrEqual(16);
     expect(room.bottom - block.bottom, "a gap under the block").toBeGreaterThanOrEqual(16);
   }

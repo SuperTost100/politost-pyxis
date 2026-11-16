@@ -92,6 +92,31 @@ test("Esami with no exam says what will appear, keeps the dots in its head and h
   }
 });
 
+test("Esami with no exam but flashcards due keeps its small block under the due line, with no drawing and not centred", async () => {
+  const { page, open, finish } = await start("exams-due");
+  try {
+    const db = open();
+    seedSubjects(db, [{ id: "phys", name: "Fisica I" }]);
+    db.exec(`INSERT INTO cards(id,subject_id,front,back,created_at) VALUES
+      ('c-free-1','phys','Che cos’è il campo?','Una grandezza in ogni punto.',1),
+      ('c-free-2','phys','Che cos’è la massa?','La resistenza ad accelerare.',2)`);
+    db.close();
+    for (const look of looks) {
+      await show(page, look, "/exams");
+      await expect(page.getByText(look.language === "it" ? "Oggi hai 2 flashcard da ripassare" : "You have 2 flashcards to review today")).toBeVisible();
+      await expectEmptyPage(page, {
+        line: look.language === "it" ? /^Qui compariranno i tuoi esami/ : /^Your exams will appear here/,
+        action: look.language === "it" ? "Nuovo esame" : "New exam",
+        small: true,
+      });
+      await expect(page.locator(".px-empty-centred")).toHaveCount(0);
+      await saveShot(page, `empty-pages/exams-due-${look.key}.png`);
+    }
+  } finally {
+    await finish();
+  }
+});
+
 test("Esami with every exam archived says where they are, and its one button opens them", async () => {
   const { page, open, finish } = await start("archived");
   try {
