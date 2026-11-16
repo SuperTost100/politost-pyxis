@@ -1,4 +1,12 @@
 import {
+  FIGURE_KINDS,
+  drawableKinds,
+  figureKinds,
+  figureProblem,
+  type FigureKind,
+  type PackId,
+} from "../../shared/figure-kinds";
+import {
   FIGURE_MAX,
   figureImages,
   figureKey,
@@ -7,9 +15,6 @@ import {
 } from "../../shared/smart-text";
 import { runPython, type PythonRun } from "./python";
 import { runtimeRequest } from "./runtime-client";
-
-/** Run time of one figure's code. The sandbox caps a run at 10 s; a figure that needs longer is left out. */
-export const FIGURE_TIMEOUT_MS = 8000;
 
 export type FigureRunner = (
   code: string,
@@ -25,31 +30,57 @@ export const noSandbox: FigureRunner = async () => ({
   truncated: false,
 });
 
+/** What draws figures now: the sandbox runner and the kinds it can draw with the packs that are downloaded. */
+export type FigureDrawer = { run: FigureRunner; kinds: readonly FigureKind[] };
+
 /**
- * The sandbox runner to use, or null when figures are off: the caller's runner when given, otherwise the real sandbox
- * once its runtime is downloaded.
+ * What draws figures, or null when figures are off: the caller's runner when given, which draws every kind, otherwise
+ * the real sandbox with the kinds whose packs are downloaded.
  */
 export async function figureRunner(
   python?: FigureRunner | null,
-): Promise<FigureRunner | null> {
-  if (python !== undefined) return python;
-  return (await figuresAvailable()) ? runPython : null;
+): Promise<FigureDrawer | null> {
+  if (python !== undefined)
+    return python ? { run: python, kinds: figureKinds } : null;
+  const kinds = await availableKinds();
+  return kinds.length ? { run: runPython, kinds } : null;
 }
 
-/** Figures are offered to the model only when the sandbox can draw them: the Python runtime is downloaded. */
-async function figuresAvailable(): Promise<boolean> {
+/** A kind is offered to the model only when the sandbox can draw it: every pack it needs is downloaded. */
+async function availableKinds(): Promise<FigureKind[]> {
   try {
     const status = (await runtimeRequest("status", {}, 5000)) as {
-      phase?: string;
+      packs?: Partial<Record<PackId, string>>;
     };
-    return status.phase === "ready";
+    return drawableKinds((pack) => status.packs?.[pack] === "ready");
   } catch {
-    return false;
+    return [];
   }
 }
 
-/** The model's code between a fixed prologue and the `plt.show()` that hands the open figure to the sandbox. */
-function figureProgram(code: string): string {
+/**
+ * The model's code between a fixed prologue and the `plt.show()` that hands the open figure to the sandbox. A circuit
+ * adds its elements to the drawing `d`, which is drawn after the code in dark ink at a size that reads in a lesson.
+ * schemdraw sizes the figure to the circuit, and the tight box keeps a label that reaches past it.
+ */
+export function figureProgram(figure: FigureData): string {
+  if (figure.figureKind === "circuit")
+    return [
+      "import matplotlib",
+      "matplotlib.use('Agg')",
+      "import matplotlib.pyplot as plt",
+      "plt.close('all')",
+      "plt.rcParams.update({'savefig.bbox': 'tight', 'savefig.pad_inches': 0.15})",
+      "import schemdraw",
+      "import schemdraw.elements as elm",
+      "schemdraw.use('matplotlib')",
+      "d = schemdraw.Drawing(show=False)",
+      "d.config(inches_per_unit=0.8, fontsize=15, lw=1.8, color='#15181e')",
+      figure.code,
+      "if d.elements:",
+      "    d.draw(show=False).getfig()",
+      "plt.show()",
+    ].join("\n");
   return [
     "import matplotlib",
     "matplotlib.use('Agg')",
@@ -57,25 +88,54 @@ function figureProgram(code: string): string {
     "import numpy as np",
     "plt.close('all')",
     "plt.rcParams.update({'figure.figsize': (6.4, 4.0), 'font.size': 11, 'axes.grid': True, 'grid.alpha': 0.3})",
-    code,
+    figure.code,
     "plt.show()",
   ].join("\n");
 }
 
+const FIGURE_TAG = /^\[(?:figures|figure:([a-z]+))\] /;
+
+/**
+ * The figure instruction of a system text, for the kinds that can be drawn now. The instruction comes from the
+ * `figures` partial, whose lines start with a tag: `[figures]` on the shared rules and `[figure:<kind>]` on a kind's
+ * line. The lines of kinds that cannot be drawn are left out, the whole instruction is left out when none can, the
+ * tags are removed and `[max]` becomes the most figures this text may ask for.
+ */
+export function figureText(
+  text: string,
+  kinds: readonly FigureKind[],
+  max: number,
+): string {
+  return text
+    .split("\n")
+    .flatMap((line) => {
+      const tag = FIGURE_TAG.exec(line);
+      if (!tag) return [line];
+      if (!kinds.length || (tag[1] && !kinds.includes(tag[1] as FigureKind)))
+        return [];
+      return [line.slice(tag[0].length).replaceAll("[max]", String(max))];
+    })
+    .join("\n");
+}
+
 /**
  * Draws the figures a lesson or an answer asks for, one sandbox run each, and removes every figure block that did not
- * give an image (code that failed, timed out, drew nothing, or past the first FIGURE_MAX), so the rest of the text is
- * saved as written. `known` holds images already drawn for the same code, which are kept without running it again.
+ * give an image (a kind not in `kinds`, code past its kind's limits, code that failed, timed out or drew nothing, or
+ * past the first FIGURE_MAX), so the rest of the text is saved as written. `known` holds images already drawn for the
+ * same kind and code, which are kept without running it again. `kinds` are the kinds the runner can draw: every kind
+ * when left out.
  */
 export async function drawFigures(
   markdown: string,
   options: {
     python?: FigureRunner;
+    kinds?: readonly FigureKind[];
     known?: Record<string, string>;
     signal?: AbortSignal;
   } = {},
 ): Promise<{ markdown: string; figures: Record<string, string> }> {
   const python = options.python ?? runPython;
+  const kinds = options.kinds ?? figureKinds;
   const known = figureImages(options.known);
   const requested: FigureData[] = [];
   mapFigureBlocks(markdown, (figure) => {
@@ -85,7 +145,7 @@ export async function drawFigures(
   const figures: Record<string, string> = {};
   const tried = new Set<string>();
   for (const figure of requested) {
-    const key = figureKey(figure.code);
+    const key = figureKey(figure.code, figure.figureKind);
     if (tried.has(key)) continue;
     if (tried.size === FIGURE_MAX) break;
     tried.add(key);
@@ -94,9 +154,14 @@ export async function drawFigures(
       figures[key] = known[key];
       continue;
     }
+    if (
+      !kinds.includes(figure.figureKind) ||
+      figureProblem(figure.figureKind, figure.code)
+    )
+      continue;
     const result = await python(
-      figureProgram(figure.code),
-      FIGURE_TIMEOUT_MS,
+      figureProgram(figure),
+      FIGURE_KINDS[figure.figureKind].timeoutMs,
     ).catch(() => null);
     const image =
       result && !result.timedOut && !result.truncated
@@ -108,7 +173,7 @@ export async function drawFigures(
   options.signal?.throwIfAborted();
   return {
     markdown: mapFigureBlocks(markdown, (figure) =>
-      figure && figures[figureKey(figure.code)] ? null : "",
+      figure && figures[figureKey(figure.code, figure.figureKind)] ? null : "",
     ),
     figures,
   };

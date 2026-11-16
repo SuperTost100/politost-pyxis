@@ -132,6 +132,10 @@ describe("checkClaim", () => {
     jobs[0]!.state = "failed";
     tools.runtimeDownload();
     expect(calls).toEqual(["start", "retry"]);
+    // A download that finished is over: asking again starts a new one, which fetches what the workspace lacks now.
+    jobs[0]!.state = "succeeded";
+    tools.runtimeDownload();
+    expect(calls).toEqual(["start", "retry", "start"]);
     expect(() => toolHandlers().runtimeDownload()).toThrow(
       /runtime-unavailable/,
     );

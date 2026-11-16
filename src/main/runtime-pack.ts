@@ -1,24 +1,104 @@
 import { randomUUID } from "node:crypto";
 import type { BigIntStats } from "node:fs";
-import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import manifest from "../../resources/pyodide-manifest.json";
+import {
+  mkdir,
+  open,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import { join, sep } from "node:path";
+import drawing from "../../resources/drawing-manifest.json";
+import pyodide from "../../resources/pyodide-manifest.json";
 import { readCapped } from "../core/sources/capped-body";
 import { sha256 } from "../core/sources/quality";
+import { runtimePackIds, type PackId } from "../shared/figure-kinds";
 
-export const runtimeManifest = manifest;
+type PackFile = { name: string; size: number; sha256: string; url: string };
+type Pack = {
+  version: string;
+  files: PackFile[];
+  totalBytes: number;
+  /** Whether the folders of earlier versions are deleted once this version is verified. */
+  replacesOlder: boolean;
+};
+function pack(version: string, files: PackFile[], replacesOlder: boolean): Pack {
+  return {
+    version,
+    files,
+    totalBytes: files.reduce((sum, file) => sum + file.size, 0),
+    replacesOlder,
+  };
+}
+/**
+ * The downloaded packs, each pinned by version, size and SHA-256 in its manifest and kept in
+ * `workspace/runtimes/<pack>/<version>/`. Python's files all come from one folder of its CDN. The drawing pack's
+ * files come from where each renderer is published, so every file names its own URL. Python runs need only `pyodide`;
+ * `figure-kinds.ts` says which packs each kind of figure needs.
+ */
+export const runtimePacks: Record<PackId, Pack> = {
+  pyodide: pack(
+    pyodide.version,
+    pyodide.files.map((file) => ({ ...file, url: pyodide.baseURL + file.name })),
+    false,
+  ),
+  drawing: pack(drawing.version, drawing.files, true),
+};
+export type PackPhase = "idle" | "downloading" | "ready" | "failed";
+/**
+ * `packs` is each pack on its own. The rest describes the download as the Python page shows it: `ready` when every
+ * pack is there, and otherwise the bytes of the packs still missing, which is what Download fetches.
+ */
 export type RuntimeStatus = {
-  phase: "idle" | "downloading" | "ready" | "failed";
+  phase: PackPhase;
+  bytes: number;
+  totalBytes: number;
+  error?: string;
+  packs: Record<PackId, PackPhase>;
+};
+/** `bytes` and `totalBytes` count the download that is running, over every pack it fetches. */
+type State = {
+  packs: Record<PackId, PackPhase>;
   bytes: number;
   totalBytes: number;
   error?: string;
 };
-const states = new Map<string, RuntimeStatus>();
-const installs = new Map<string, Promise<string>>();
+const states = new Map<string, State>();
+const installs = new Map<string, Promise<void>>();
 const controllers = new Map<string, AbortController>();
-const totalBytes = manifest.files.reduce((sum, file) => sum + file.size, 0);
-function runtimeStatus(workspace: string): RuntimeStatus {
-  return states.get(workspace) ?? { phase: "idle", bytes: 0, totalBytes };
+const everyByte = runtimePackIds.reduce(
+  (sum, id) => sum + runtimePacks[id].totalBytes,
+  0,
+);
+function stateOf(workspace: string): State {
+  let state = states.get(workspace);
+  if (!state) {
+    state = { packs: { pyodide: "idle", drawing: "idle" }, bytes: 0, totalBytes: 0 };
+    states.set(workspace, state);
+  }
+  return state;
+}
+function summary(state: State): RuntimeStatus {
+  const packs = { ...state.packs };
+  const missing = runtimePackIds.filter((id) => packs[id] !== "ready");
+  const totalBytes = missing.reduce(
+    (sum, id) => sum + runtimePacks[id].totalBytes,
+    0,
+  );
+  if (missing.some((id) => packs[id] === "downloading"))
+    return {
+      phase: "downloading",
+      bytes: state.bytes,
+      totalBytes: state.totalBytes,
+      packs,
+    };
+  if (!missing.length)
+    return { phase: "ready", bytes: everyByte, totalBytes: everyByte, packs };
+  if (missing.some((id) => packs[id] === "failed"))
+    return { phase: "failed", bytes: 0, totalBytes, error: state.error, packs };
+  return { phase: "idle", bytes: 0, totalBytes, packs };
 }
 /**
  * Runtime files whose hash matched, by path, with the size, modification time and inode they had then. Every Python run
@@ -29,16 +109,17 @@ const verified = new Map<string, string>();
 function stamp(stats: BigIntStats): string {
   return `${stats.size}:${stats.mtimeNs}:${stats.ino}`;
 }
-function runtimePath(workspace: string, name: string): string {
-  return join(workspace, "runtimes", "pyodide", manifest.version, name);
+function packRoot(workspace: string, id: PackId): string {
+  return join(workspace, "runtimes", id, runtimePacks[id].version);
 }
 export async function verifiedRuntimeFile(
   workspace: string,
+  id: PackId,
   name: string,
 ): Promise<Uint8Array | undefined> {
-  const file = manifest.files.find((file) => file.name === name);
+  const file = runtimePacks[id].files.find((file) => file.name === name);
   if (!file) return undefined;
-  const path = runtimePath(workspace, name);
+  const path = join(packRoot(workspace, id), name);
   try {
     const handle = await open(path, "r");
     try {
@@ -64,8 +145,12 @@ export async function verifiedRuntimeFile(
   }
 }
 /** Whether a runtime file is in place and verified, without reading it again when it is unchanged since its last check. */
-async function runtimeFileReady(workspace: string, name: string): Promise<boolean> {
-  const path = runtimePath(workspace, name);
+async function runtimeFileReady(
+  workspace: string,
+  id: PackId,
+  name: string,
+): Promise<boolean> {
+  const path = join(packRoot(workspace, id), name);
   const known = verified.get(path);
   if (known) {
     try {
@@ -75,42 +160,56 @@ async function runtimeFileReady(workspace: string, name: string): Promise<boolea
       return false;
     }
   }
-  return Boolean(await verifiedRuntimeFile(workspace, name));
+  return Boolean(await verifiedRuntimeFile(workspace, id, name));
 }
-/** Disk truth: every manifest file present and hash-verified. Never downloads. */
+/** Disk truth for one pack: every file of its manifest present and hash-verified. */
+async function packOnDisk(workspace: string, id: PackId): Promise<boolean> {
+  const files = await Promise.all(
+    runtimePacks[id].files.map((file) =>
+      runtimeFileReady(workspace, id, file.name),
+    ),
+  );
+  return files.every(Boolean);
+}
+/**
+ * Disk truth for every pack that is not being downloaded. Never downloads. A pack whose download failed stays failed
+ * until its files are there.
+ */
 export async function currentRuntimeStatus(
   workspace: string,
 ): Promise<RuntimeStatus> {
-  const state = runtimeStatus(workspace);
-  if (state.phase === "downloading") return state;
-  const files = await Promise.all(
-    manifest.files.map((file) => runtimeFileReady(workspace, file.name)),
-  );
-  if (files.every(Boolean)) {
-    const ready: RuntimeStatus = {
-      phase: "ready",
-      bytes: totalBytes,
-      totalBytes,
-    };
-    states.set(workspace, ready);
-    return ready;
-  }
-  if (state.phase === "failed") return state;
-  const idle: RuntimeStatus = { phase: "idle", bytes: 0, totalBytes };
-  states.set(workspace, idle);
-  return idle;
+  const state = stateOf(workspace);
+  const idle = runtimePackIds.filter((id) => state.packs[id] !== "downloading");
+  const onDisk = await Promise.all(idle.map((id) => packOnDisk(workspace, id)));
+  idle.forEach((id, index) => {
+    // A download that started during the look owns the pack's phase.
+    if (state.packs[id] === "downloading") return;
+    state.packs[id] = onDisk[index]
+      ? "ready"
+      : state.packs[id] === "failed"
+        ? "failed"
+        : "idle";
+  });
+  return summary(state);
 }
-/** Execution entry: the runtime must already be installed by explicit consent. */
-export async function requireRuntime(workspace: string): Promise<void> {
-  if (runtimeStatus(workspace).phase === "ready") return;
-  if ((await currentRuntimeStatus(workspace)).phase !== "ready")
+/** Execution entry: the pack must already be installed by explicit consent. */
+export async function requireRuntime(
+  workspace: string,
+  id: PackId = "pyodide",
+): Promise<void> {
+  if (stateOf(workspace).packs[id] === "ready") return;
+  if ((await currentRuntimeStatus(workspace)).packs[id] !== "ready")
     throw new Error("runtime-missing");
 }
 export function cancelRuntimeDownload(workspace: string): void {
   controllers.get(workspace)?.abort();
 }
-/** Only the explicit local-runtime-download job calls this. */
-export function downloadRuntime(workspace: string): Promise<string> {
+/**
+ * Fetches every pack that is not on disk. Only the explicit local-runtime-download job calls this, so a workspace that
+ * has Python but lacks a newer pack gets that pack when the student presses Download on the Python page, never on its
+ * own.
+ */
+export function downloadRuntime(workspace: string): Promise<void> {
   const existing = installs.get(workspace);
   if (existing) return existing;
   const controller = new AbortController();
@@ -118,19 +217,16 @@ export function downloadRuntime(workspace: string): Promise<string> {
   const promise = install(workspace, controller.signal).catch(
     (error: unknown) => {
       installs.delete(workspace);
-      states.set(
-        workspace,
-        controller.signal.aborted
-          ? { phase: "idle", bytes: 0, totalBytes }
-          : {
-              ...runtimeStatus(workspace),
-              phase: "failed",
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "runtime-download-failed",
-            },
-      );
+      const state = stateOf(workspace);
+      const cancelled = controller.signal.aborted;
+      for (const id of runtimePackIds)
+        if (state.packs[id] === "downloading")
+          state.packs[id] = cancelled ? "idle" : "failed";
+      state.error = cancelled
+        ? undefined
+        : error instanceof Error
+          ? error.message
+          : "runtime-download-failed";
       throw error;
     },
   );
@@ -151,24 +247,67 @@ export async function invalidateRuntime(workspace: string): Promise<void> {
   installs.delete(workspace);
   controllers.delete(workspace);
   states.delete(workspace);
-  for (const name of manifest.files.map((file) => file.name))
-    verified.delete(runtimePath(workspace, name));
+  const root = join(workspace, "runtimes") + sep;
+  for (const path of [...verified.keys()])
+    if (path.startsWith(root)) verified.delete(path);
 }
-async function install(
+async function install(workspace: string, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  const state = stateOf(workspace);
+  // A pack that is already there is left alone, so Python keeps running while another pack downloads.
+  const missing: PackId[] = [];
+  for (const id of runtimePackIds) {
+    if (await packOnDisk(workspace, id)) state.packs[id] = "ready";
+    else missing.push(id);
+  }
+  signal.throwIfAborted();
+  state.bytes = 0;
+  state.totalBytes = missing.reduce(
+    (sum, id) => sum + runtimePacks[id].totalBytes,
+    0,
+  );
+  state.error = undefined;
+  for (const id of missing) state.packs[id] = "downloading";
+  for (const id of missing) {
+    await installPack(workspace, id, signal, state);
+    state.packs[id] = "ready";
+    if (runtimePacks[id].replacesOlder) await removeOlderVersions(workspace, id);
+  }
+}
+/** Deletes the folders of a pack's earlier versions, which nothing reads once this version is verified. */
+async function removeOlderVersions(workspace: string, id: PackId): Promise<void> {
+  const root = join(workspace, "runtimes", id);
+  // Best effort: a folder that cannot be listed or deleted only keeps its space.
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  await Promise.all(
+    entries
+      .filter(
+        (entry) => entry.isDirectory() && entry.name !== runtimePacks[id].version,
+      )
+      .map((entry) =>
+        rm(join(root, entry.name), { recursive: true, force: true }).catch(
+          () => undefined,
+        ),
+      ),
+  );
+}
+async function installPack(
   workspace: string,
+  id: PackId,
   signal: AbortSignal,
-): Promise<string> {
-  const root = join(workspace, "runtimes", "pyodide", manifest.version);
+  state: State,
+): Promise<void> {
+  const root = packRoot(workspace, id);
+  const { files } = runtimePacks[id];
   signal.throwIfAborted();
   await mkdir(root, { recursive: true });
   signal.throwIfAborted();
-  states.set(workspace, { phase: "downloading", bytes: 0, totalBytes });
-  for (let offset = 0; offset < manifest.files.length; offset += 4) {
+  for (let offset = 0; offset < files.length; offset += 4) {
     const batch = await Promise.allSettled(
-      manifest.files.slice(offset, offset + 4).map(async (file) => {
+      files.slice(offset, offset + 4).map(async (file) => {
         signal.throwIfAborted();
-        if (!(await runtimeFileReady(workspace, file.name))) {
-          const response = await fetch(manifest.baseURL + file.name, {
+        if (!(await runtimeFileReady(workspace, id, file.name))) {
+          const response = await fetch(file.url, {
             signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
           });
           if (!response.ok || !response.body)
@@ -192,17 +331,11 @@ async function install(
           }
         }
         signal.throwIfAborted();
-        states.set(workspace, {
-          phase: "downloading",
-          bytes: runtimeStatus(workspace).bytes + file.size,
-          totalBytes,
-        });
+        state.bytes += file.size;
       }),
     );
     const failed = batch.find((result) => result.status === "rejected");
     if (failed?.status === "rejected") throw failed.reason;
   }
   signal.throwIfAborted();
-  states.set(workspace, { phase: "ready", bytes: totalBytes, totalBytes });
-  return root;
 }

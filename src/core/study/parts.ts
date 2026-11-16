@@ -999,8 +999,8 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
   const topic = db.prepare("SELECT title FROM topics WHERE id = ?").pluck().get(input.topicId) as string;
   const headings = otherHeadings(db, outline, part);
   const request = partRequest({ topic, outline, part, headings, passages });
-  const python = await figureRunner(input.python);
-  const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)]
+  const drawer = await figureRunner(input.python);
+  const system = [lessonSystem(context, grounded, drawer?.kinds ?? [], "lesson.part"), interestsLine(db)]
     .filter(Boolean)
     .join("\n");
   const selection = input.selection ?? selectionFor(db, "lesson");
@@ -1030,7 +1030,7 @@ export async function writePart(db: Database.Database, input: WritePartInput): P
     } else problems = checked.problems;
   }
   if (!shaped || !engine) throw new Error("lesson-part-invalid");
-  const { markdown, figures } = await withFigures(shaped.markdown, python, { signal: input.signal });
+  const { markdown, figures } = await withFigures(shaped.markdown, drawer, { signal: input.signal });
   input.signal?.throwIfAborted();
   const passageIds = passages.map((passage) => passage.id);
   const summary = shaped.summary ?? (part.about || null);
@@ -1272,8 +1272,8 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
       request = `${head}${label}${fittedMaterial(passages, budget)}`;
     }
   }
-  const python = await figureRunner(input.python);
-  const system = [lessonSystem(context, grounded, python != null, "lesson.part"), interestsLine(db)].filter(Boolean).join("\n");
+  const drawer = await figureRunner(input.python);
+  const system = [lessonSystem(context, grounded, drawer?.kinds ?? [], "lesson.part"), interestsLine(db)].filter(Boolean).join("\n");
   const selection = input.selection ?? selectionFor(db, "lesson");
   let problems: string[] = [];
   let shaped: Extract<PartShape, { ok: true }> | null = null;
@@ -1306,7 +1306,7 @@ export async function rewritePartSection(db: Database.Database, input: PartSecti
   }
   if (!shaped || !engine) throw new Error("lesson-part-invalid");
   // Figures the rest of the part already has keep their images; a new one in the rewritten section is drawn.
-  const { markdown, figures } = await withFigures(shaped.markdown, python, { known: saved.figures, signal: input.signal });
+  const { markdown, figures } = await withFigures(shaped.markdown, drawer, { known: saved.figures, signal: input.signal });
   input.signal?.throwIfAborted();
   const summary = shaped.summary ?? part.summary;
   db.transaction(() => {

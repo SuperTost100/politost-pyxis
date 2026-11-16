@@ -59,3 +59,17 @@ describe("input length limits", () => {
     expect(refusal(() => requests["chats.ask"].input.parse({ text: 4 })).code).toBe("internal");
   });
 });
+
+describe("a flashcard review's time", () => {
+  it("never refuses a rating, whatever time the page measured", () => {
+    // A card open past a day (the laptop asleep), a clock that went back, and numbers that are not a duration at all.
+    for (const seconds of [0, 45.6, 86_401, 3 * 86_400, 1e15, Infinity, -1, -86_400, NaN])
+      expect(requests["study.rate"].input.parse({ cardId: "c", rating: "good", seconds }), String(seconds)).toMatchObject({
+        cardId: "c",
+        rating: "good",
+      });
+    expect(requests["study.rate"].input.parse({ cardId: "c", rating: "good" })).toEqual({ cardId: "c", rating: "good" });
+    // The rest of the request is still checked.
+    expect(() => requests["study.rate"].input.parse({ cardId: "c", rating: "fine", seconds: 3 })).toThrow();
+  });
+});

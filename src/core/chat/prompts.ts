@@ -1,7 +1,9 @@
+import type { FigureKind } from "../../shared/figure-kinds";
 import {
   systemPrompt,
   type TemplateId,
 } from "../engine/prompts";
+import { figureText } from "../math/figures";
 import type { AnswerWay } from "./way";
 
 export type ChatTemplateId = Extract<
@@ -23,23 +25,20 @@ export function chatTemplateId(input: { way: AnswerWay; general?: boolean }): Ch
 }
 
 /**
- * ASK-03: with the switch off, the follow-up instruction is left out of the template. The figure instruction is left
- * out when there is no sandbox to draw figures in.
+ * ASK-03: with the switch off, the follow-up instruction is left out of the template. The figure instruction offers
+ * the kinds in `figures`, at most two in an answer, and is left out when nothing can draw one.
  */
 export function chatSystemPrompt(
   id: ChatTemplateId,
   contentLanguage: string,
   followups = true,
-  figures = false,
+  figures: readonly FigureKind[] = [],
 ): string {
-  return systemPrompt(id, { contentLanguage })
+  const text = systemPrompt(id, { contentLanguage })
     .split("\n")
-    .filter(
-      (line) =>
-        (followups || !line.includes("<followups>")) &&
-        (figures || !line.includes("pyxis-figure")),
-    )
+    .filter((line) => followups || !line.includes("<followups>"))
     .join("\n");
+  return figureText(text, figures, 2);
 }
 
 /**

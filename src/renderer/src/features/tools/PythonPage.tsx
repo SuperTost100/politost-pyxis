@@ -47,7 +47,11 @@ export function PythonPage() {
   const [busy, setBusy] = useState(false);
   const [starting, setStarting] = useState(false);
   const { data: jobs = [] } = useJobs();
-  const job = jobs.find((item) => item.kind === "local-runtime-download");
+  // A download that finished earlier stays in today's list; the one to follow is the one still to finish.
+  const job = jobs.find(
+    (item) =>
+      item.kind === "local-runtime-download" && item.state !== "succeeded",
+  );
   const active = job?.state === "queued" || job?.state === "running";
   const runtime = useQuery({
     queryKey: ["python-runtime"],
@@ -57,7 +61,11 @@ export function PythonPage() {
         ? 500
         : false,
   });
-  const ready = runtime.data?.phase === "ready";
+  // Python runs with its own pack. The download is done when every pack is there, the drawing files included.
+  const ready = runtime.data?.packs.pyodide === "ready";
+  const complete = runtime.data?.phase === "ready";
+  // Python is there and only the drawing files are missing: the same download, offered for what is left.
+  const drawings = ready && !complete;
   const tooLong = code.length > pythonMaxChars;
   const canRun = ready && !tooLong && !busy;
   // Opening a snippet replaces the editor, so ask first when that would lose code that is not saved anywhere else.
@@ -141,16 +149,20 @@ export function PythonPage() {
       }
     >
       <section className="px-python" onKeyDown={onKeyDown}>
-        {!ready && runtime.data ? (
+        {!complete && runtime.data ? (
           <div className="px-python-consent" role="group">
-            <p className="body-strong">{t("python.consentTitle")}</p>
+            <p className="body-strong">
+              {t(drawings ? "python.drawingsTitle" : "python.consentTitle")}
+            </p>
             <p className="small">
-              {t("python.consentBody", { size: megabytes })}
+              {t(drawings ? "python.drawingsBody" : "python.consentBody", {
+                size: megabytes,
+              })}
             </p>
             {active || runtime.data.phase === "downloading" ? (
               <div className="px-python-actions">
                 <span className="meta" role="status">
-                  {t("python.download", {
+                  {t(drawings ? "python.drawingsDownload" : "python.download", {
                     current: mb(runtime.data.bytes),
                     total: megabytes,
                   })}
@@ -177,7 +189,9 @@ export function PythonPage() {
                   {t(
                     job?.state === "failed" || job?.state === "cancelled"
                       ? "python.retryDownload"
-                      : "python.downloadAction",
+                      : drawings
+                        ? "python.drawingsAction"
+                        : "python.downloadAction",
                     { size: megabytes },
                   )}
                 </Button>

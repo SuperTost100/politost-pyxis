@@ -25,8 +25,14 @@ const manifest = JSON.parse(await readFile("resources/pyodide-manifest.json", "u
 for (const file of manifest.files) {
   await pinned(join(".tmp/pyodide", file.name), new URL(file.name, manifest.baseURL).href, file.sha256, file.size);
 }
+const drawing = JSON.parse(await readFile("resources/drawing-manifest.json", "utf8")) as {
+  files: Array<{name: string; url: string; sha256: string; size: number}>;
+};
+for (const file of drawing.files) {
+  await pinned(join(".tmp/drawing", file.name), file.url, file.sha256, file.size);
+}
 for (const [language, file] of Object.entries(OCR_DATA_FILES)) {
   await pinned(join(".tmp/tessdata-fast", `${language}.traineddata`), `${OCR_DATA_BASE}${language}.traineddata`, file.sha256, file.size);
 }
 await downloadModel(".tmp/e5", AbortSignal.timeout(300_000));
-console.log("Pinned Python, OCR and embedding fixtures verified.");
+console.log("Pinned Python, drawing, OCR and embedding fixtures verified.");

@@ -23,10 +23,11 @@ function lane(kind) {
 }
 // Aborting also settles a load that the terminated worker will never finish.
 function reset(kind, current) { current.worker.terminate(); current.abort(new Error("runtime-reset")); if (lanes.get(kind) === current) lanes.delete(kind); }
-async function execute(kind, payload, timeoutMs) {
+// `wheels` are the pack files a Python run installs before its code, such as the drawing pack's schemdraw.
+async function execute(kind, payload, timeoutMs, wheels = []) {
   const current = lane(kind);
   const operation = async () => {
-    if (lanes.get(kind) !== current) return execute(kind, payload, timeoutMs);
+    if (lanes.get(kind) !== current) return execute(kind, payload, timeoutMs, wheels);
     try { await current.ready; } catch (error) { reset(kind, current); throw error; }
     const id = ++nextId;
     const token = crypto.randomUUID();
@@ -62,7 +63,7 @@ async function execute(kind, payload, timeoutMs) {
         }
       };
       current.worker.addEventListener("message", onMessage);
-      current.worker.postMessage({ type: "run", id, token, payload });
+      current.worker.postMessage({ type: "run", id, token, payload, wheels });
     });
   };
   const result = current.tail.then(operation, operation);
@@ -70,7 +71,7 @@ async function execute(kind, payload, timeoutMs) {
   return result;
 }
 Object.defineProperty(window, "pyxisRuntime", { value: Object.freeze({
-  run: (code, timeoutMs = 10000) => execute("python", code, timeoutMs),
+  run: (code, timeoutMs = 10000, wheels = []) => execute("python", code, timeoutMs, wheels),
   check: (claim) => execute("check", claim, 10000),
   grade: (input) => execute("check", { grade: input }, 10000),
   stop: (kind) => { const current = lanes.get(kind); if (current) reset(kind, current); },

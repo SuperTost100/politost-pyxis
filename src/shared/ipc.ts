@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { LINK_MODES, MATERIAL_KINDS, MAX_LINK_PATHS, MAX_SUBJECT_NAME } from "./linked-folders";
 import { FILE_KINDS } from "./file-kind";
+import { runtimePackIds } from "./figure-kinds";
 import { checkClaimSchema, anchoredCheckSchema } from "./math-check";
 import { MAX_EXAM_AT, PLAN_FILE_PARTS, PLAN_TITLE_MAX, planFileSchema } from "./plan-file";
 import { examSessionsSchema } from "./exam-sessions";
@@ -162,6 +163,17 @@ const reviewSessionSchema = z.object({
   // The quiz attempt whose wrong answers this review starts from, when the student asked to review its mistakes.
   fromAttemptId: z.string().optional(),
   cards: z.array(dueCardSchema),
+  // The cards of this review the student has answered, oldest first, each with its latest answer: the end of the
+  // card phase lists them under the answer given, and they survive leaving the page.
+  answers: z.array(
+    z.object({
+      cardId: z.string(),
+      reviewId: z.string(),
+      rating: z.enum(["again", "hard", "good", "easy"]),
+      front: z.string(),
+      subject: z.string().nullable(),
+    }),
+  ),
   attemptId: z.string(),
   questions: z.array(
     quizQuestionSchema,
@@ -395,6 +407,7 @@ const guidedContext = z.object({
   language: z.enum(["it", "en"]),
 });
 
+const runtimePhaseSchema = z.enum(["idle", "downloading", "ready", "failed"]);
 const EducationLevelSchema = z.enum([
   "primary",
   "lower-secondary",
@@ -1263,7 +1276,9 @@ export const requests = {
     output: reviewSessionSchema,
   },
   "study.reviewSession": {
-    input: z.object({ planId: z.string() }),
+    // The unfinished review. With `finished` also the one whose cards are all answered and that has nothing left to ask
+    // (its `answers` are what the end of the card phase lists), while it is within its time to live.
+    input: z.object({ planId: z.string(), finished: z.boolean().optional() }),
     output: reviewSessionSchema.nullable(),
   },
   "study.reviewDiscard": {
@@ -1750,6 +1765,12 @@ export const requests = {
     input: z.object({
       cardId: z.string(),
       rating: z.enum(["again", "hard", "good", "easy"]),
+      /**
+       * How long the card was on screen before the rating; core keeps at most a minute of it as study time
+       * (`reviewSeconds`). Any number is accepted, a negative one or NaN from a clock that went back too, so the
+       * measurement can never refuse the rating.
+       */
+      seconds: z.custom<number>((value) => typeof value === "number").optional(),
     }),
     output: z.object({
       intervalDays: z.number(),
@@ -1828,13 +1849,15 @@ export const requests = {
       reason: z.string().optional(),
     }),
   },
+  // The download as the Python page shows it, over the packs still missing, and each pack on its own in `packs`.
   "tools.runtime": {
     input: z.object({}),
     output: z.object({
-      phase: z.enum(["idle", "downloading", "ready", "failed"]),
+      phase: runtimePhaseSchema,
       bytes: z.number(),
       totalBytes: z.number(),
       error: z.string().optional(),
+      packs: z.record(z.enum(runtimePackIds), runtimePhaseSchema),
     }),
   },
   "tools.runtimeDownload": {
@@ -2344,11 +2367,11 @@ export const requests = {
         preparation: z.number().min(0).max(1).nullable(),
         path: z.number().min(0).max(1).nullable(),
         today: z.number().min(0).max(1).nullable(),
-        // Oggi in minutes: what today's steps add up to and the exam's part of the student's goal for the day. Null
-        // whenever `today` is.
+        // Oggi in minutes: all the minutes the student studied today, on any exam and on flashcards, and the goal for
+        // the day. The same on every exam. Null whenever `today` is.
         todayMinutes: z.object({ done: z.number().min(0), target: z.number().min(0) }).nullable(),
-        // Why Oggi measures nothing for an exam still ahead: no weekly hours, no date, or the exam is today.
-        todayUnmeasured: z.enum(["no-goal", "no-date", "exam-day"]).nullable(),
+        // Why Oggi measures nothing: no weekly hours.
+        todayUnmeasured: z.literal("no-goal").nullable(),
         // The path's next step, due cards aside.
         next: z
           .object({

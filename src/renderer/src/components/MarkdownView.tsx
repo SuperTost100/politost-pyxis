@@ -86,7 +86,7 @@ const components: Components = {
       return (
         <Figure
           caption={figure?.caption ?? ""}
-          image={figure ? figures?.[figureKey(figure.code)] : undefined}
+          image={figure ? figures?.[figureKey(figure.code, figure.figureKind)] : undefined}
           drawing={drawing}
         />
       );
