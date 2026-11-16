@@ -24,9 +24,10 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { drawingPinned, stagePacks as stageOnly } from "./drawing-packs";
 
 // Without a kind the block is a plot, as every figure was before circuits.
-const figure = (caption: string, code: string, kind?: "circuit") =>
+const figure = (caption: string, code: string, kind?: "circuit" | "graph") =>
   ["```pyxis-figure", JSON.stringify({ kind, caption, code }), "```"].join("\n");
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -456,6 +457,130 @@ test("a circuit whose code reaches for the network or the host fails with an err
   } finally {
     await app.close();
     await new Promise((resolve) => server.close(resolve));
+    removeTestFolder(userData);
+  }
+});
+
+const automaton = [
+  "digraph automa {",
+  "  rankdir=LR; node [shape=circle fontname=\"Helvetica\"];",
+  "  start [shape=point]; q2 [shape=doublecircle];",
+  "  start -> q0; q0 -> q1 [label=\"a\"]; q1 -> q2 [label=\"b\"]; q2 -> q0 [label=\"c\"]; q1 -> q1 [label=\"a\"];",
+  "}",
+].join("\n");
+const tree = 'digraph albero { node [shape=box fontname="Helvetica"]; Radice -> Sinistra; Radice -> Destra; Sinistra -> "Foglia A"; Sinistra -> "Foglia B"; Destra -> "Foglia C" }';
+
+test("a graph in a lesson and an Ask answer is drawn by the drawing window, with the drawing pack alone", async () => {
+  test.skip(!drawingPinned(), "Requires the pinned drawing fixtures in .tmp/drawing.");
+  test.setTimeout(300000);
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-graphs-"));
+  // No Python: a graph is not drawn by it.
+  stageOnly(userData, ["drawing"]);
+  const book = join(userData, "automi.ptsb");
+  writeFileSync(
+    book,
+    makeBook({
+      id: "automi",
+      chapters: [{ title: "Automi", text: "## p1 | Automi\nUn automa a stati finiti ha stati e transizioni.\n" }],
+    }),
+  );
+  const lessonText = [
+    "## Gli automi a stati finiti",
+    "",
+    "Un automa è un insieme di stati e di transizioni etichettate dai simboli che legge.",
+    "",
+    figure("Un automa con tre stati: $q_2$ è lo stato finale.", automaton, "graph"),
+    "",
+    "## Gli alberi",
+    "",
+    "Un albero è un grafo senza cicli, con una radice.",
+    "",
+    figure("Un albero binario con tre foglie.", tree, "graph"),
+    "",
+    ["```pyxis-check", JSON.stringify({ question: "Quanti stati ha l'automa?", options: ["tre", "due", "quattro"], answer: 0, explanation: "q0, q1 e q2." }), "```"].join("\n"),
+  ].join("\n");
+  const replies = {
+    markdown: { markdown: lessonText },
+    questions: {
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        stem: `Che cos'è un automa ${i + 1}?`,
+        options: ["Un modello a stati", "Un albero", "Un numero", "Una lista"],
+        correct: 0,
+        topicIndex: 0,
+        passageIds: ["{{passage:0}}"],
+        explanation: "Ha stati e transizioni.",
+      })),
+    },
+  };
+  const answerText = ["Un albero binario ha al più due figli per nodo.", "", figure("Un albero con tre foglie.", tree, "graph"), "", "Le foglie non hanno figli."].join("\n");
+  const app = await launchPyxis({
+    userData,
+    env: { HOME: userData, PYXIS_E2E_PLAN_REPLIES: JSON.stringify(replies), PYXIS_E2E_REPLY: answerText },
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const { sourceId } = (await importPickedSource(page, app, book)) as { sourceId: string };
+    await expect
+      .poll(async () => ((await page.evaluate(() => window.pyxis.invoke("sources.list", {}))) as Array<{ id: string; status: string }>).find((row) => row.id === sourceId)?.status)
+      .toBe("ready");
+    const { planId } = (await page.evaluate(
+      (sourceId) => window.pyxis.invoke("plans.create", { title: "Automi", sourceIds: [sourceId], language: "it" }),
+      sourceId,
+    )) as { planId: string };
+    await expect
+      .poll(async () => ((await page.evaluate((planId) => window.pyxis.invoke("plans.build", { planId }), planId)) as { state: string } | null)?.state, { timeout: 60000 })
+      .toBe("succeeded");
+    const plan = (await page.evaluate((planId) => window.pyxis.invoke("plans.read", { planId }), planId)) as { topics: Array<{ id: string }> };
+    const topicId = plan.topics[0]!.id;
+    await page.evaluate(({ planId, topicId }) => (location.hash = `/plans/${planId}/lesson/${topicId}`), { planId, topicId });
+    const figures = page.locator("figure.px-figure");
+    await expect(figures).toHaveCount(2, { timeout: 120000 });
+    await expect(figures.first().getByRole("img")).toHaveAttribute("alt", /automa con tre stati/);
+    await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /albero binario/);
+    for (const width of await figures.getByRole("img").evaluateAll((images) => images.map((image) => (image as HTMLImageElement).naturalWidth))) {
+      expect(width).toBeGreaterThanOrEqual(150);
+      expect(width).toBeLessThanOrEqual(2000);
+    }
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    await expect(page.getByText("Quanti stati ha l'automa?")).toBeVisible();
+    await expectNoAxeViolations(page);
+    for (const [lang, theme, width] of [
+      ["it", "light", 1280],
+      ["it", "dark", 1280],
+      ["en", "dark", 960],
+      ["en", "light", 960],
+    ] as const) {
+      await look(page, lang, theme, width);
+      await expect(figures).toHaveCount(2);
+      await figures.first().scrollIntoViewIfNeeded();
+      await saveShot(page, `graph/lesson-automaton-${lang}-${theme}-${width}.png`);
+      await figures.nth(1).scrollIntoViewIfNeeded();
+      await saveShot(page, `graph/lesson-tree-${lang}-${theme}-${width}.png`);
+    }
+
+    const asked = (await page.evaluate(() => window.pyxis.invoke("chats.ask", { text: "Com'è fatto un albero binario?", allowGeneral: true }))) as {
+      chatId: string;
+      message: { figures?: Record<string, string> };
+    };
+    expect(Object.keys(asked.message.figures ?? {})).toHaveLength(1);
+    await page.evaluate((chatId) => (location.hash = `/ask/${chatId}`), asked.chatId);
+    await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
+    await expect(page.getByText("Le foglie non hanno figli.")).toBeVisible();
+    await expect(page.getByText("pyxis-")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+    for (const [lang, theme, width] of [
+      ["it", "dark", 1280],
+      ["en", "light", 1280],
+    ] as const) {
+      await look(page, lang, theme, width);
+      await expect(page.locator(".px-msg figure.px-figure")).toHaveCount(1);
+      await saveShot(page, `graph/ask-tree-${lang}-${theme}-${width}.png`);
+    }
+  } finally {
+    await app.close();
     removeTestFolder(userData);
   }
 });

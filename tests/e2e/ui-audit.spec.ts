@@ -1287,8 +1287,8 @@ const auditRecapText = [
 ].join("\n");
 
 /**
- * The part's text with a plot after its first section and a circuit after its second, and the two images as core
- * stores them. The images in tests/fixtures were drawn once by the pinned Python and drawing packs; the code here
+ * The part's text with a plot after its first section and a graph and a circuit after its second, and the images as
+ * core stores them. The images in tests/fixtures were drawn once by the pinned Python and drawing packs; the code here
  * only gives each image its key.
  */
 const auditFigures = (
@@ -1304,6 +1304,12 @@ const auditFigures = (
       "Quando non è nessuno dei due",
       "Un circuito RC in serie con il generatore $V_s$.",
       "d += elm.SourceV().up().label('$V_s$')\nd += elm.Resistor().right().label('R = 1 kΩ')",
+    ],
+    [
+      "graph",
+      "Quando non è nessuno dei due",
+      "Il grafo delle definizioni: dall'intorno all'insieme aperto, dalla frontiera all'insieme chiuso.",
+      'digraph { rankdir=LR; node [shape=box fontname="Helvetica"]; "Intorno" -> "Punto interno" -> "Insieme aperto"; "Frontiera" -> "Insieme chiuso" }',
     ],
   ] as const
 ).map(([kind, after, caption, code]) => ({
@@ -3451,10 +3457,11 @@ async function openState(page: Page, name: string) {
     }
     case "lesson-part-figures": {
       const figures = page.locator("figure.px-figure");
-      await expect(figures).toHaveCount(2);
+      await expect(figures).toHaveCount(3);
       await expect(figures.nth(0).getByRole("img")).toHaveAttribute("alt", /palla aperta/);
-      await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /circuito RC/);
-      // Both images have loaded, so the page is at its final height.
+      await expect(figures.nth(1).getByRole("img")).toHaveAttribute("alt", /grafo delle definizioni/);
+      await expect(figures.nth(2).getByRole("img")).toHaveAttribute("alt", /circuito RC/);
+      // Every image has loaded, so the page is at its final height.
       await expect
         .poll(() =>
           figures.getByRole("img").evaluateAll((images) => images.every((image) => (image as HTMLImageElement).naturalWidth > 0)),
