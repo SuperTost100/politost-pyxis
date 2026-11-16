@@ -427,3 +427,172 @@ test("the flashcard grid shows eight cards of a subject, unfolds the rest from i
     removeTestFolder(userData);
   }
 });
+
+/** Eleven physics cards (eight show) and three chemistry cards, with the app open on their list. */
+async function openForza(label: string) {
+  const userData = mkdtempSync(join(tmpdir(), `pyxis-card-${label}-`));
+  const app = await launchPyxis({ userData });
+  const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Salta" }).click();
+  await fromChiediToExams(page);
+  await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
+  const db = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+  seedSubjects(db, [{ id: "s-phys", name: "Fisica", position: 0 }, { id: "s-chem", name: "Chimica", position: 1 }]);
+  seedPlan(db, { id: "p-phys", subjectId: "s-phys", title: "Fisica 1", language: "it", topics: [{ id: "t-dyn", title: "Dinamica" }] });
+  seedPlan(db, { id: "p-chem", subjectId: "s-chem", title: "Chimica generale", language: "it", topics: [{ id: "t-atoms", title: "Atomi" }] });
+  const insert = db.prepare(
+    "INSERT INTO cards(id,plan_id,topic_id,front,back,seed_key,grounding,created_at) VALUES(?,?,?,?,?,?,?,?)",
+  );
+  for (let index = 1; index <= 11; index++)
+    insert.run(`f${index}`, "p-phys", "t-dyn", `Forza numero ${String(index).padStart(2, "0")}?`, `Risposta ${index}.`, `kf${index}`, "sources", 10 + index);
+  for (let index = 1; index <= 3; index++)
+    insert.run(`c${index}`, "p-chem", "t-atoms", `Atomo numero ${index}?`, `Risposta ${index}.`, `kc${index}`, "sources", 50 + index);
+  await page.evaluate(() => {
+    location.hash = "#/flashcards/all";
+  });
+  await page.reload();
+  await expect(page.getByRole("status")).toHaveText("14 flashcards");
+  return {
+    page,
+    db,
+    insert,
+    close: async () => {
+      if (db.isOpen) db.close();
+      await app.close();
+      removeTestFolder(userData);
+    },
+  };
+}
+
+const editFlashcard = (page: Page) => page.getByRole("group", { name: "Edit flashcard" });
+
+test("a search or a filter that would take the edited card off the page asks first, and staying keeps the typing", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await openForza("lose-search");
+  try {
+    const leave = page.getByRole("dialog", { name: "Leave without saving?" });
+    const search = page.getByRole("textbox", { name: "Search flashcards" });
+    await page.getByRole("button", { name: /^Edit: Forza numero 01/ }).click();
+    await editFlashcard(page).getByRole("textbox", { name: "Front" }).fill("Forza uno cambiata?");
+
+    // A search with no room for the card asks; staying puts the search back and keeps the typing.
+    await search.fill("atomo");
+    await expect(leave).toBeVisible();
+    await leave.getByRole("button", { name: "Stay here" }).click();
+    await expect(leave).toHaveCount(0);
+    await expect(search).toHaveValue("");
+    await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza uno cambiata?");
+    await expect(page.getByRole("status")).toHaveText("14 flashcards");
+
+    // A filter asks the same, and staying leaves it as it was.
+    await choose(page, "Show", "Suspended");
+    await expect(leave).toBeVisible();
+    await leave.getByRole("button", { name: "Stay here" }).click();
+    await expect(leave).toHaveCount(0);
+    await expect(page.locator("#card-status").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("All flashcards");
+    await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza uno cambiata?");
+
+    // Leaving drops the typing, and the card comes back as it was saved.
+    await search.fill("atomo");
+    await expect(leave).toBeVisible();
+    await leave.getByRole("button", { name: "Leave without saving" }).click();
+    await expect(leave).toHaveCount(0);
+    await expect(editFlashcard(page)).toHaveCount(0);
+    await expect(page.getByRole("status")).toHaveText("3 flashcards");
+    await page.getByRole("button", { name: "Clear filters" }).click();
+    await expect(page.getByText("Forza numero 01?")).toBeVisible();
+    await expect(page.getByText("Forza uno cambiata?")).toHaveCount(0);
+  } finally {
+    await close();
+  }
+});
+
+test("the typing in a card survives a refresh that moves the card to another list", async () => {
+  test.setTimeout(120_000);
+  const { page, close } = await openForza("lose-move");
+  try {
+    // Unfolded, the ninth card is in the second list; deleting one of the first eight moves it into the first.
+    await page.getByRole("button", { name: "Show the other 3 flashcards" }).click();
+    await expect(page.locator(".px-ct")).toHaveCount(14);
+    await page.getByRole("button", { name: /^Edit: Forza numero 09/ }).click();
+    const editor = editFlashcard(page);
+    await editor.getByRole("textbox", { name: "Back" }).fill("Una bozza lunga.");
+    await cardAction(page, "Forza numero 01\\?", "Delete the flashcard…");
+    await page
+      .getByRole("dialog", { name: "Delete this flashcard?" })
+      .getByRole("button", { name: "Delete the flashcard", exact: true })
+      .click();
+    await expect(page.getByText("Forza numero 01?")).toHaveCount(0);
+    await expect(editFlashcard(page).getByRole("textbox", { name: "Back" })).toHaveValue("Una bozza lunga.");
+    await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza numero 09?");
+  } finally {
+    await close();
+  }
+});
+
+test("a card that a refresh pushes past its subject's first eight stays open with its typing", async () => {
+  test.setTimeout(120_000);
+  const { page, db, insert, close } = await openForza("lose-push");
+  try {
+    await page.getByRole("button", { name: /^Edit: Forza numero 08/ }).click();
+    await editFlashcard(page).getByRole("textbox", { name: "Back" }).fill("Una bozza lunga.");
+    // A new card sorts before it (as an import does), and the next change refreshes the list.
+    insert.run("f0", "p-phys", "t-dyn", "Forza numero 00?", "Risposta 0.", "kf0", "sources", 1);
+    await cardAction(page, "Forza numero 02\\?", "Suspend");
+    await expect(page.getByText("Forza numero 00?")).toBeVisible();
+    await expect(editFlashcard(page).getByRole("textbox", { name: "Back" })).toHaveValue("Una bozza lunga.");
+    await editFlashcard(page).getByRole("button", { name: "Save" }).click();
+    await expect(editFlashcard(page)).toHaveCount(0);
+    expect(db.prepare("SELECT back FROM cards WHERE id = 'f8'").get()).toEqual({ back: "Una bozza lunga." });
+  } finally {
+    await close();
+  }
+});
+
+test("a save that finishes after another card was opened closes nothing of that card", async () => {
+  test.setTimeout(120_000);
+  const { page, db, close } = await openForza("lose-save");
+  try {
+    await page.getByRole("button", { name: /^Edit: Forza numero 01/ }).click();
+    await editFlashcard(page).getByRole("textbox", { name: "Front" }).fill("Forza uno salvata?");
+    // The write lock is held, so the save waits in core.
+    db.exec("BEGIN IMMEDIATE");
+    await editFlashcard(page).getByRole("button", { name: "Save" }).click();
+    await expect(editFlashcard(page).getByRole("button", { name: "Save" })).toBeDisabled();
+    // Another card is opened meanwhile; it opens once the save is over, without a question about the saved one.
+    await page.getByRole("button", { name: /^Edit: Forza numero 02/ }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    db.exec("ROLLBACK");
+    await expect(page.getByText("Forza uno salvata?")).toBeVisible();
+    const second = editFlashcard(page);
+    await expect(second.getByRole("textbox", { name: "Front" })).toHaveValue("Forza numero 02?");
+    await second.getByRole("textbox", { name: "Front" }).fill("Forza due cambiata?");
+    // Nothing the finished save does touches the editor that is open now.
+    await page.waitForTimeout(500);
+    await expect(second.getByRole("textbox", { name: "Front" })).toHaveValue("Forza due cambiata?");
+    expect(db.prepare("SELECT front FROM cards WHERE id = 'f1'").get()).toEqual({ front: "Forza uno salvata?" });
+  } finally {
+    await close();
+  }
+});
+
+test("an edit of a card that no longer exists closes, and leaves no question behind", async () => {
+  test.setTimeout(120_000);
+  const { page, db, close } = await openForza("lose-gone");
+  try {
+    await page.getByRole("button", { name: /^Edit: Forza numero 03/ }).click();
+    await editFlashcard(page).getByRole("textbox", { name: "Back" }).fill("Una bozza.");
+    // The card is deleted behind the page's back, and the next change refreshes the list. A card being edited has no
+    // menu of its own, so this is the way it can disappear.
+    db.exec("DELETE FROM cards WHERE id = 'f3'");
+    await cardAction(page, "Forza numero 02\\?", "Suspend");
+    await expect(page.getByText("Forza numero 03?")).toHaveCount(0);
+    await expect(editFlashcard(page)).toHaveCount(0);
+    // There is no typing left to lose, so leaving the page goes straight.
+    await page.getByRole("link", { name: /^Flashcards?\b/ }).click();
+    await expect(page).toHaveURL(/#\/flashcards$/);
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  } finally {
+    await close();
+  }
+});

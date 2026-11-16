@@ -28,15 +28,19 @@ export type SubjectSection = {
   more: BrowsedCard[];
   /** What the subject has that is not on the page: the cards the button offers. */
   hidden: number;
+  /** The card being edited when it ranks past the first eight of a subject that is not open: it stays on the page. */
+  pinned: BrowsedCard | null;
 };
 
 /**
  * The page's subjects in the order they arrive, each with its first eight cards and, when the student has opened it,
- * the rest. A subject that is not open shows eight even when the answer holds more (it was asked for open a moment ago).
+ * the rest. A subject that is not open shows eight even when the answer holds more (it was asked for open a moment ago),
+ * except for `keepId`, the card being edited, which the answer holds wherever it ranks and which the section pins.
  */
 export function sectionsOf(
   data: Pick<Browse, "groups" | "cards">,
   open: ReadonlySet<string>,
+  keepId?: string,
 ): SubjectSection[] {
   const bySubject = new Map<string, BrowsedCard[]>();
   for (const card of data.cards) {
@@ -50,6 +54,10 @@ export function sectionsOf(
     const cards = bySubject.get(key) ?? [];
     const shown = cards.slice(0, PER_SUBJECT);
     const more = open.has(key) ? cards.slice(PER_SUBJECT) : [];
+    const pinned =
+      keepId && !shown.some((card) => card.id === keepId) && !more.some((card) => card.id === keepId)
+        ? (cards.find((card) => card.id === keepId) ?? null)
+        : null;
     return {
       key,
       subjectId: group.subjectId,
@@ -58,7 +66,8 @@ export function sectionsOf(
       noExam: group.noExam,
       shown,
       more,
-      hidden: Math.max(0, group.count - shown.length - more.length),
+      hidden: Math.max(0, group.count - shown.length - more.length - (pinned ? 1 : 0)),
+      pinned,
     };
   });
 }

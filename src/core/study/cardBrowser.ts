@@ -104,7 +104,8 @@ const PAGE_MAX = 100;
  * Cards across every exam, grouped by subject and ordered subject, exam, topic, creation; in each subject the cards
  * with no exam come after its exams'. With `perSubject` the result is not a page: it holds the first `perSubject` cards
  * of every subject and all the cards of the subjects in `expand` (`null` is "No subject"), and `offset` and `limit` are
- * ignored. A subject is the card's own, which for an exam's card is the exam's. Cards of an
+ * ignored. `keep` names cards that stay in the result wherever they rank, when they match the filters: the card the
+ * student is editing, which a change in the list may push past its subject's first cards. A subject is the card's own, which for an exam's card is the exam's. Cards of an
  * archived exam or topic stay out, as in the review queue. `planId: null` keeps only the cards with no exam. Every word of the search has to
  * appear in the front or the back, compared on the folded copy in `cards.search_text`.
  */
@@ -119,6 +120,7 @@ export function browseCards(
     limit?: number;
     perSubject?: number;
     expand?: Array<string | null>;
+    keep?: string[];
   },
   now: number,
 ): BrowseResult {
@@ -195,9 +197,10 @@ export function browseCards(
          WHERE r.rank <= ?
            OR (r.sid IS NULL AND ? = 1)
            OR r.sid IN (SELECT value FROM json_each(?))
+           OR r.id IN (SELECT value FROM json_each(?))
          ORDER BY r.seq`,
       )
-      .all(...params, Math.max(1, input.perSubject), openNone, JSON.stringify(open)) as Row[];
+      .all(...params, Math.max(1, input.perSubject), openNone, JSON.stringify(open), JSON.stringify(input.keep ?? [])) as Row[];
   } else {
     const offset = Math.max(0, input.offset ?? 0);
     const limit = Math.min(PAGE_MAX, Math.max(1, input.limit ?? 25));

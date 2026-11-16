@@ -236,44 +236,53 @@ function LiveTile({ card, actions }: { card: BrowsedCard; actions: CardActions }
   );
 }
 
+/** What the student has typed into the card being edited. The page keeps it, so no redraw of the list can drop it. */
+export type Draft = { id: string; front: string; back: string; field: "front" | "back" };
+
 /**
  * A card being edited, where it stands: the card grows out of its own place into two fields, and the foot holds the
- * schedule note (or what a often-forgotten card needs), Annulla and Salva. The draft lives here, so typing redraws this
- * card and nothing else; `dirty` lets the page ask before the typing would be lost.
+ * schedule note (or what a often-forgotten card needs), Annulla and Salva. The typing is written to `draft`, which the
+ * page owns, so a list that draws this card again in another place (it moved from the open part into the first eight)
+ * brings it back as it was, with the focus in the same field; `grow` is where the card was, which it grows out of once.
  */
 export function CardEditor({
   card,
-  from,
+  draft,
+  grow,
   saving,
   failed,
-  dirty,
   onSave,
   onCancel,
 }: {
   card: BrowsedCard;
-  /** Where the card was when the student opened it, which it grows out of. */
-  from: DOMRect | null;
+  draft: MutableRefObject<Draft | null>;
+  grow: MutableRefObject<DOMRect | null>;
   saving: boolean;
   failed: boolean;
-  dirty: MutableRefObject<(() => boolean) | null>;
   onSave: (front: string, back: string) => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const [front, setFront] = useState(card.front);
-  const [back, setBack] = useState(card.back);
+  const start = draft.current?.id === card.id ? draft.current : { id: card.id, front: card.front, back: card.back, field: "front" as const };
+  const [front, setFront] = useState(start.front);
+  const [back, setBack] = useState(start.back);
   const root = useRef<HTMLLIElement>(null);
-  dirty.current = () => front !== card.front || back !== card.back;
+  const write = (patch: Partial<Draft>) => {
+    draft.current = { ...(draft.current?.id === card.id ? draft.current : start), ...patch };
+  };
   const valid = front.trim() !== "" && back.trim() !== "";
 
-  // The card opens out of the place it was in, as a mask that grows, so the text never stretches; the front field has
-  // the focus. With reduced motion it only appears.
+  // The card opens out of the place it was in, as a mask that grows, so the text never stretches; the field the student
+  // was in has the focus. With reduced motion it only appears.
   useLayoutEffect(() => {
     const node = root.current;
     if (!node) return;
-    const field = node.querySelector<HTMLTextAreaElement>("textarea");
+    const fields = node.querySelectorAll<HTMLTextAreaElement>("textarea");
+    const field = fields[start.field === "back" ? 1 : 0];
     field?.focus();
     field?.setSelectionRange(field.value.length, field.value.length);
+    const from = grow.current;
+    grow.current = null;
     const to = node.getBoundingClientRect();
     if (!from || !from.width || !to.width || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const right = Math.max(0, to.width - from.width);
@@ -286,7 +295,7 @@ export function CardEditor({
       { duration: 240, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
     );
     return () => animation.cancel();
-    // Runs once: the page keys this component by its card.
+    // Runs once for each time the card is drawn.
   }, []);
 
   return (
@@ -310,7 +319,11 @@ export function CardEditor({
           id={`browse-${card.id}-front`}
           autoSize={{ minRows: 2, maxRows: 8 }}
           value={front}
-          onChange={(event) => setFront(event.target.value)}
+          onFocus={() => write({ field: "front" })}
+          onChange={(event) => {
+            setFront(event.target.value);
+            write({ front: event.target.value });
+          }}
         />
         <label className="label" htmlFor={`browse-${card.id}-back`}>
           {t("cards.back")}
@@ -319,7 +332,11 @@ export function CardEditor({
           id={`browse-${card.id}-back`}
           autoSize={{ minRows: 2, maxRows: 8 }}
           value={back}
-          onChange={(event) => setBack(event.target.value)}
+          onFocus={() => write({ field: "back" })}
+          onChange={(event) => {
+            setBack(event.target.value);
+            write({ back: event.target.value });
+          }}
         />
         {failed ? <Notice tone="danger">{t("cards.actionFailed")}</Notice> : null}
         <div className="px-ct-editfoot">

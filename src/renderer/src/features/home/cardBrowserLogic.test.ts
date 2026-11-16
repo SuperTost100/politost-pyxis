@@ -87,6 +87,18 @@ describe("the subjects of the card browser", () => {
     ]);
   });
 
+  it("pins the card being edited when it ranks past the eight of a subject that is not open", () => {
+    const data = { groups: [{ subjectId: "a", subject: "Analisi", count: 11, noExam: 0 }], cards: many("a", 11) };
+    const [pinned] = sectionsOf(data, new Set(), "a-9");
+    expect(pinned!.shown.map((item) => item.id)).not.toContain("a-9");
+    expect(pinned!.pinned?.id).toBe("a-9");
+    expect(pinned!.hidden).toBe(2);
+    // Within the eight, or in the open part, it is already on the page.
+    expect(sectionsOf(data, new Set(), "a-3")[0]!.pinned).toBeNull();
+    expect(sectionsOf(data, new Set(["a"]), "a-9")[0]!.pinned).toBeNull();
+    expect(sectionsOf(data, new Set(), "elsewhere")[0]!.pinned).toBeNull();
+  });
+
   it("asks for the open subjects in a fixed order, with null for the cards with no subject", () => {
     expect(expandRequest(["b", "none", "a"])).toEqual(["a", "b", null]);
     expect(expandRequest(["b", "a"])).toEqual(["a", "b"]);

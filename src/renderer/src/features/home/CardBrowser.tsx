@@ -16,7 +16,7 @@ import { invoke } from "../../lib/ipc";
 import { usePlans } from "../../lib/queries";
 import { NewCardDialog } from "../flashcards/NewCardDialog";
 import { AnkiDialog } from "./AnkiDialog";
-import { CardEditor, CardTile, type CardActions } from "./CardTile";
+import { CardEditor, CardTile, type CardActions, type Draft } from "./CardTile";
 import {
   cardName,
   expandRequest,
@@ -57,11 +57,20 @@ export function CardBrowser({
   const [status, setStatus] = useState<Status>("all");
   /** The subjects the student has opened past their first eight, by `subjectKey`. */
   const [expanded, setExpanded] = useState<string[]>([]);
-  /** The card being edited where it stands, and the place it grows out of. */
-  const [editing, setEditing] = useState<{ card: Card; from: DOMRect | null } | null>(null);
-  const dirty = useRef<(() => boolean) | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
+  /** The card being edited where it stands. */
+  const [editing, setEditing] = useState<{ card: Card } | null>(null);
+  // What the functions below read when they run, which may be after the render they were made in: an answer that comes
+  // back, a question that is answered, a save that ends.
+  const editingNow = useRef(editing);
+  editingNow.current = editing;
+  /** What has been typed into it, which no redraw of the list can drop, and where the card was, which it grows out of. */
+  const draft = useRef<Draft | null>(null);
+  const grow = useRef<DOMRect | null>(null);
+  /** The card whose save is under way, and that save. */
+  const [saving, setSaving] = useState<string | null>(null);
+  const savingNow = useRef<string | null>(null);
+  const pendingSave = useRef<Promise<void> | null>(null);
+  const [saveFailed, setSaveFailed] = useState<string | null>(null);
   const [actionFailed, setActionFailed] = useState(false);
   const [done, setDone] = useState("");
   const [anki, setAnki] = useState<"import" | "export" | null>(null);
@@ -70,12 +79,20 @@ export function CardBrowser({
   const newButton = useRef<HTMLSpanElement>(null);
   const summary = useRef<HTMLParagraphElement>(null);
 
-  // The search waits for a pause in typing, then starts again from each subject's first eight.
+  // The search waits for a pause in typing, then starts again from each subject's first eight. With typing in a card's
+  // edit that the search would drop, it asks first, and staying puts the search back.
   useEffect(() => {
-    const timer = window.setTimeout(() => setQuery(text), 200);
+    if (text === query) return;
+    const timer = window.setTimeout(
+      () =>
+        void startOver(
+          () => setQuery(text),
+          () => setText(query),
+        ),
+      200,
+    );
     return () => window.clearTimeout(timer);
-  }, [text]);
-  useEffect(() => setExpanded([]), [query]);
+  }, [text, query]);
 
   const open = useMemo(() => new Set(expanded), [expanded]);
   const list = useQuery({
@@ -88,6 +105,8 @@ export function CardBrowser({
         status,
         perSubject: PER_SUBJECT,
         expand: expandRequest(expanded),
+        // The card being edited stays in the answer wherever a change in the list ranks it.
+        keep: editingNow.current ? [editingNow.current.card.id] : undefined,
       }),
     placeholderData: keepPreviousData,
   });
@@ -108,6 +127,13 @@ export function CardBrowser({
       });
     }
   }, [emptyPage, data, newCard]);
+
+  // A card that is no longer there, deleted or archived behind the page's back, takes its edit with it: the answer holds
+  // the card being edited wherever it ranks (`keep`), so one missing from it is gone, and there is nothing to save to.
+  useEffect(() => {
+    if (!editing || !data || list.isPlaceholderData || savingNow.current === editing.card.id) return;
+    if (!data.cards.some((card) => card.id === editing.card.id)) setEdit(null);
+  }, [data, editing, list.isPlaceholderData]);
 
   // The browser lists only exams that hold cards, so the exam it was opened for is looked up among all of them: an
   // exam with no flashcards yet keeps its filter and shows an empty result, and one that does not exist is dropped.
@@ -205,9 +231,26 @@ export function CardBrowser({
     afterDialog(() => requestAnimationFrame(go));
   }
 
-  /** Whether the edit open now may close: it holds typing only when it differs from the card, and the student is asked then. */
+  /** Opens or closes the edit for the functions that run next, which read `editingNow` before the page is drawn again. */
+  function setEdit(next: { card: Card } | null) {
+    editingNow.current = next;
+    setEditing(next);
+  }
+
+  /** Whether the typing in the edit open now differs from the card as it is saved. */
+  const typed = () => {
+    const open = editingNow.current;
+    const held = draft.current;
+    return Boolean(open && held && held.id === open.card.id && (held.front !== open.card.front || held.back !== open.card.back));
+  };
+
+  /**
+   * Whether the edit open now may close. It holds typing to lose only when it differs from the card, and the student is
+   * asked then; one whose save is under way keeps nothing to lose, since the save has what was typed.
+   */
   async function mayDropEdit() {
-    if (!editing || !dirty.current?.()) return true;
+    const open = editingNow.current;
+    if (!open || savingNow.current === open.card.id || !typed()) return true;
     const answer = await confirm({
       title: t("leave.title"),
       body: t("cardBrowser.leaveEdit"),
@@ -218,40 +261,64 @@ export function CardBrowser({
     return answer === "confirm";
   }
   // Leaving the page asks the same question while an edit holds typing.
-  useLeaveGuard({ dirty: () => Boolean(editing && dirty.current?.()), body: t("cardBrowser.leaveEdit") });
+  useLeaveGuard({ dirty: () => typed() && savingNow.current !== editingNow.current?.card.id, body: t("cardBrowser.leaveEdit") });
+  // The draft goes with the edit it belonged to.
+  useEffect(() => {
+    if (!editing) draft.current = null;
+  }, [editing]);
 
   async function openEdit(card: Card, from: DOMRect | null) {
-    if (editing?.card.id === card.id) return;
+    if (editingNow.current?.card.id === card.id) return;
+    // A save that is under way ends first, so what it does to the page cannot reach the card opened now.
+    await pendingSave.current;
+    if (editingNow.current?.card.id === card.id) return;
     if (!(await mayDropEdit())) return;
-    setSaveFailed(false);
+    setSaveFailed(null);
     setDone("");
-    setEditing({ card, from });
+    draft.current = { id: card.id, front: card.front, back: card.back, field: "front" };
+    grow.current = from;
+    setEdit({ card });
   }
 
   async function cancelEdit() {
-    if (!editing) return;
-    const id = editing.card.id;
+    const open = editingNow.current;
+    if (!open) return;
     if (!(await mayDropEdit())) return;
-    setEditing(null);
-    focusCard(id);
+    // Closing is for the edit that was asked about, not for another opened while the question was open.
+    if (editingNow.current !== open) return;
+    setEdit(null);
+    focusCard(open.card.id);
   }
 
-  async function save(front: string, back: string) {
-    if (!editing) return;
-    const { card } = editing;
-    setSaving(true);
-    setSaveFailed(false);
-    try {
-      // Saving an existing card needs only its id; the exam, when it has one, has to match.
-      await invoke("study.save", { planId: card.planId ?? undefined, cardId: card.id, front, back });
-      await refresh();
-      setEditing(null);
-      focusCard(card.id);
-    } catch {
-      setSaveFailed(true);
-    } finally {
-      setSaving(false);
-    }
+  function save(front: string, back: string) {
+    const mine = editingNow.current;
+    if (!mine) return;
+    const { card } = mine;
+    const run = (async () => {
+      savingNow.current = card.id;
+      setSaving(card.id);
+      setSaveFailed(null);
+      try {
+        // Saving an existing card needs only its id; the exam, when it has one, has to match.
+        await invoke("study.save", { planId: card.planId ?? undefined, cardId: card.id, front, back });
+        await refresh();
+        // The save ends the edit that started it, and only that one: the student may have opened another card since.
+        if (editingNow.current === mine) {
+          setEdit(null);
+          focusCard(card.id);
+        }
+      } catch {
+        if (editingNow.current === mine) setSaveFailed(card.id);
+        else setActionFailed(true);
+      } finally {
+        savingNow.current = null;
+        setSaving(null);
+      }
+    })();
+    pendingSave.current = run;
+    void run.then(() => {
+      if (pendingSave.current === run) pendingSave.current = null;
+    });
   }
 
   // The card's buttons call these through one object that never changes, so a keystroke in an editor, or a card being
@@ -299,9 +366,9 @@ export function CardBrowser({
   }
 
   /** A filter changes what the page shows, so it starts again from each subject's first eight. */
-  async function startOver(change: () => void) {
-    if (!(await mayDropEdit())) return;
-    setEditing(null);
+  async function startOver(change: () => void, stay?: () => void) {
+    if (!(await mayDropEdit())) return stay?.();
+    setEdit(null);
     change();
     setExpanded([]);
     setDone("");
@@ -344,7 +411,7 @@ export function CardBrowser({
       </>
     );
 
-  const sections = data ? sectionsOf(data, open) : [];
+  const sections = data ? sectionsOf(data, open, editing?.card.id) : [];
 
   /** Opens a subject past its first eight, or closes it again. */
   async function toggle(section: SubjectSection) {
@@ -353,9 +420,10 @@ export function CardBrowser({
       return;
     }
     // Closing hides the cards past the eighth: an edit open in one of them is asked about first.
-    if (editing && section.more.some((card) => card.id === editing.card.id)) {
+    const editedNow = editingNow.current;
+    if (editedNow && section.more.some((card) => card.id === editedNow.card.id)) {
       if (!(await mayDropEdit())) return;
-      setEditing(null);
+      setEdit(null);
     }
     setExpanded((current) => current.filter((key) => key !== section.key));
   }
@@ -395,11 +463,11 @@ export function CardBrowser({
         <CardEditor
           key={card.id}
           card={editing.card}
-          from={editing.from}
-          saving={saving}
-          failed={saveFailed}
-          dirty={dirty}
-          onSave={(front, back) => void save(front, back)}
+          draft={draft}
+          grow={grow}
+          saving={saving === card.id}
+          failed={saveFailed === card.id}
+          onSave={(front, back) => save(front, back)}
           onCancel={() => void cancelEdit()}
         />
       ) : (
@@ -569,6 +637,8 @@ export function CardBrowser({
                     {/* The first subject's cards are drawn at once; the others draw as they come near the window. */}
                     {tiles(section.shown, index > 0)}
                   </ul>
+                  {/* The card being edited, when a change in the list ranked it past the eight: it stays, with its typing. */}
+                  {section.pinned ? <ul className="px-ct-grid">{tiles([section.pinned])}</ul> : null}
                   {section.more.length > 0 ? (
                     <Reveal className="px-cardbrowser-more">
                       <ul className="px-ct-grid" aria-labelledby={`card-subject-${section.key}`}>

@@ -518,4 +518,21 @@ describe("card browser", () => {
     expect(card.state).toBe("scheduled");
     expect(card.dueAt).not.toBeNull();
   });
+
+  it("keeps a named card in the result past its subject's first cards, when it matches", () => {
+    const db = library();
+    const unit = idOf(db, "Unità della forza?");
+    const first = browseCards(db, { perSubject: 1 }, T0);
+    expect(first.cards.map((card) => card.front)).not.toContain("Unità della forza?");
+    const kept = browseCards(db, { perSubject: 1, keep: [unit] }, T0);
+    expect(kept.cards.map((card) => card.front)).toEqual([
+      "Velocità media?",
+      "Unità della forza?",
+      "Numero atomico?",
+      "Sparsa",
+    ]);
+    // A kept card that the search leaves out stays out, and a card that is gone is no error.
+    expect(browseCards(db, { perSubject: 1, keep: [unit], query: "atomico" }, T0).cards.map((card) => card.front)).toEqual(["Numero atomico?"]);
+    expect(browseCards(db, { perSubject: 1, keep: ["nessuna"] }, T0).cards).toHaveLength(3);
+  });
 });

@@ -1625,6 +1625,8 @@ export const requests = {
       limit: z.number().int().min(1).max(100).optional(),
       perSubject: z.number().int().min(1).max(100).optional(),
       expand: z.array(z.string().nullable()).max(500).optional(),
+      // Cards that stay in the result wherever they rank, when they match: the one being edited.
+      keep: z.array(z.string()).max(20).optional(),
     }),
     output: z.object({
       total: z.number().int(),
