@@ -2,6 +2,20 @@
 
 The shapes every screen is built from. A new screen picks from these before it invents anything.
 
+## The page column
+
+Every page of the shell sits in one column, `--page-width` wide (920px, in `tokens.css`) and starting at `--page-start` (`global.css`). The way back above a title, the title, the line under it and the right end of the head, where the page's menu and main action are, therefore land on the same x on every page: with the sidebar open or folded, at 1280 and at 960, and with large text. `tests/e2e/page-column.spec.ts` measures them.
+
+| Part       | Rule                                                                                                                                                                                                                                                                                                                                                 |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Container  | `.px-shell-container` on the shell's `<main>` and on the strip above it that holds "Riprendi l'esame" (`Shell.tsx`). It has no other width: a page sets no `max-width`, side padding or side margin of its own, and its loading state sits in the same column, so nothing moves when the data arrives                                                |
+| Width      | `--page-width`, 920px, as far as the window allows. The column shrinks with the window and never grows past it                                                                                                                                                                                                                                       |
+| Start      | `--page-start`: the column is centred in the area beside the sidebar, at least 24px from it, and it moves toward the sidebar before it narrows when Attività, in the window's top-right corner, would otherwise have less than `--corner-room` at the right. At 1280 with the sidebar open the column is 920px wide and starts 26px from the sidebar |
+| Inside     | A page that needs room inside the column lays itself out in it: the exam page's grid and the Library's shelves answer to the column's own width (container queries), the flashcard grid and a map's canvas fill it                                                                                                                                   |
+| Own layout | Chiedi runs edge to edge beside the sidebar with a 768px reading column (`AskPage.css`). A map fills the window's height (`px-shell-fill`). The study pages, the new exam, the guided exam and the tools have their own bar and are not in the shell. Setup keeps its own step widths, centred in the column                                         |
+
+A new page uses the column as it is. When something inside it does not fit at 920px, change that thing, and ask before widening the column for one page.
+
 ## Page head
 
 The title in Young Serif (`.title-1`), one line under it on what the page is for, and the page's main action on the right. While the page is empty the main action leaves the head, because the [empty state](#empty-states) offers it once; the page's dots stay, and the action comes back when the first item arrives, with the head the same size and in the same place.

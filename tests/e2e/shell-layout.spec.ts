@@ -60,7 +60,7 @@ test("the window opens on Chiedi, with the greeting and the composer in the midd
   }
 });
 
-test("the sidebar navigates from settings, folds to icons and every shell page uses the full column", async () => {
+test("the sidebar navigates from settings, folds to icons and every shell page uses the one column", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-shell-layout-"));
   const app = await launchPyxis({ userData });
   try {
@@ -110,10 +110,8 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(library).not.toHaveAttribute("aria-current", "page");
 
-    // Ask, Maps and shared plans share one column width, Settings and its subpages share a wider one for the sidebar,
-    // the exam list has its own 828px column with its padding, and the sidebar stays put at the left edge.
+    // Every page but Chiedi sits in the one 920px column, and the sidebar stays put at the left edge.
     const widths: number[] = [];
-    const settingsWidths: number[] = [];
     const sideBoxes = new Set<string>();
     for (const hash of [
       "#/exams",
@@ -139,10 +137,8 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
       }
       const container = page.locator(".px-shell-container");
       await expect(container).toBeVisible();
-      // The column changes width with the route, a moment after the hash: measure once the new page has laid out.
-      await expect
-        .poll(async () => Math.round((await container.boundingBox())!.width))
-        .toBe(hash.startsWith("#/settings") ? 960 : hash === "#/exams" ? 876 : 768);
+      // The column's width does not change with the route; measure once the new page has laid out.
+      await expect.poll(async () => Math.round((await container.boundingBox())!.width)).toBe(920);
       // Maps loads its page on first visit; measure once it is there, so a late chunk can't hide a page of another width.
       if (hash === "#/maps") {
         await expect(page.getByRole("heading", { level: 1, name: "Mappe" })).toBeVisible();
@@ -150,15 +146,9 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
           Math.round((await page.locator(".shell-page").boundingBox())!.width),
         );
       }
-      if (hash === "#/exams") continue;
-      (hash.startsWith("#/settings") ? settingsWidths : widths).push(
-        Math.round((await container.boundingBox())!.width),
-      );
+      widths.push(Math.round((await container.boundingBox())!.width));
     }
-    expect(new Set(widths).size).toBe(1);
-    expect(widths[0]).toBe(768);
-    expect(new Set(settingsWidths).size).toBe(1);
-    expect(settingsWidths[0]).toBe(960);
+    expect(widths).toEqual([920, 920, 920, 920, 920]);
     expect([...sideBoxes]).toEqual(["0,0,260,760"]);
 
     // Folded, the sidebar is a column of icons whose links keep their names, and it stays folded after a reload.
