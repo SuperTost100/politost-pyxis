@@ -238,7 +238,7 @@ test("the Python page offers both packs as one download, and only the drawing fi
     // A workspace that downloaded Python before the drawing files existed: Python runs, and the rest is on offer.
     stage("pyodide");
     await page.reload();
-    await expect(page.getByText("I disegni dei circuiti richiedono un piccolo download")).toBeVisible();
+    await expect(page.getByText("Circuiti e grafi richiedono un piccolo download")).toBeVisible();
     await expect(page.getByRole("button", { name: `Scarica (${megabytes("drawing")} MB)` })).toBeVisible();
     await expect(page.getByText("Python richiede un download una tantum")).toHaveCount(0);
     await run.click();
