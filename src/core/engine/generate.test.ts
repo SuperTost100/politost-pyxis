@@ -560,7 +560,7 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
-  it("retries at most once and then shows the second engine's error", async () => {
+  it("shows the second engine's error when it is out too and no third one is ready", async () => {
     const db = automaticChat();
     let calls = 0;
     const error = await generate({

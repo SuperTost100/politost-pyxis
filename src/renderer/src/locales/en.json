@@ -2708,7 +2708,30 @@
         "other_other": "{{count}} done"
       }
     },
-    "lessonPartInvalid": "I couldn't write this part of the lesson. Try again."
+    "lessonPartInvalid": "I couldn't write this part of the lesson. Try again.",
+    "out": {
+      "why": "{{tool}} is out of requests.",
+      "back": {
+        "today": "They are back at {{time}}.",
+        "tomorrow": "They are back tomorrow at {{time}}.",
+        "later": "They are back on {{day}}."
+      },
+      "at": {
+        "today": "at {{time}}",
+        "tomorrow": "tomorrow at {{time}}",
+        "later": "on {{day}}"
+      },
+      "goOn": "Continue with {{tool}}",
+      "wait": {
+        "today": "Wait until {{time}}",
+        "tomorrow": "Wait until tomorrow",
+        "later": "Wait until {{day}}"
+      },
+      "waiting": "Starts again by itself when {{tool}}'s requests are back, {{when}}",
+      "stopWaiting": "Stop waiting"
+    },
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting"
   },
   "errors": {
     "coreRestarted": "The internal engine restarted",
@@ -3052,9 +3075,6 @@
     "notInstalled": "Not installed",
     "install": "Install",
     "cliDocs": "CLI Funnel instructions",
-    "add": "Add AI tool",
-    "cliPath": "Installed program",
-    "apiPath": "API key",
     "provider": "Provider",
     "apiKey": "API key",
     "saveAndTest": "Save and test",
@@ -3064,7 +3084,6 @@
     "effort": "Reasoning effort",
     "fast": "Fast mode",
     "useDefault": "Use as default",
-    "signOut": "Sign out",
     "signOutUnsupported": "This AI tool has no sign-out command. To sign out, open the program and use its account menu.",
     "update": "Update",
     "remove": "Remove",
@@ -3096,7 +3115,6 @@
     "searchFoldersUnavailable": "This CLI Funnel version does not report the folders it searched. Detected program paths are listed above.",
     "modelAdvice": "Use a mid-tier model or better for building exams and grading.",
     "terminalInstructions": "Run this command in your terminal to finish sign-in.",
-    "termsLink": "Provider terms",
     "termsDetail": "Your provider's terms, usage limits and privacy policy apply to every call. Pyxis does not include an AI subscription.",
     "usage": {
       "title": "This week",
@@ -3111,7 +3129,6 @@
     },
     "cancel": "Cancel",
     "keyRemoved": "API key removed. Choose another default AI tool if needed.",
-    "title": "Tools",
     "terms": "A test sends one short sentence to the provider you pick.",
     "disclosure": "The text, the retrieved passages and the attachments leave this computer and go to that AI tool's vendor.",
     "disclosureLocal": "Every task uses the model on this computer, so nothing leaves it.",
@@ -3141,9 +3158,10 @@
     "code": "Sign-in code",
     "sendCode": "Send",
     "fallback": {
-      "limit": "{{from}} reached its usage limit, so {{to}} answered.",
+      "limit": "{{from}} ran out of requests, so {{to}} answered.",
       "signed-out": "{{from}} is signed out, so {{to}} answered.",
-      "model": "Your {{from}} subscription doesn't include this model, so {{to}} answered."
+      "model": "Your {{from}} subscription doesn't include this model, so {{to}} answered.",
+      "not-installed": "{{from}} is no longer installed, so {{to}} answered."
     },
     "errors": {
       "not-installed": "The program is not installed.",
@@ -3173,18 +3191,16 @@
       "vision": "Images"
     },
     "perFeature": "AI tools by feature",
-    "advanced": "Advanced options",
-    "allEngines": "All AI tools",
+    "advanced": "Advanced",
     "automatic": "Automatic",
     "backToAuto": "Back to automatic choice",
-    "installHelp": "Pyxis needs an AI tool to answer. Press Install next to the AI you already pay for, then sign in. Pyxis picks the model.",
+    "installHelp": "Pyxis needs an AI tool to answer. Connect the AI you already pay for above: Pyxis chooses the model.",
     "auto": {
-      "title": "Automatic choice",
       "summary": "Pyxis picks the right tool for each job by itself, out of {{names}}, and uses the cheapest model that is good enough.",
       "single": "Pyxis uses {{name}} for everything, with the cheapest model that is good enough.",
       "none": "No AI tool is ready.",
-      "pinned_one": "{{count}} feature is pinned by hand in the advanced options.",
-      "pinned_other": "{{count}} features are pinned by hand in the advanced options."
+      "pinned_one": "{{count}} feature is pinned by hand under Advanced.",
+      "pinned_other": "{{count}} features are pinned by hand under Advanced."
     },
     "task": {
       "chat": "chat",
@@ -3195,7 +3211,6 @@
       "vision": "photos",
       "grading": "grading"
     },
-    "allCliAdded": "All supported AI tools are already listed in Settings. Use their details to connect or configure them.",
     "local": {
       "suggestTitle": "This computer can run a model by itself",
       "suggestBody": "Pyxis suggests {{model}}. It runs here through Ollama, a free program, so it works offline, costs nothing and your material stays on this computer.",
@@ -3250,7 +3265,9 @@
       "ready": "Ready",
       "limited": "Ready, with limits",
       "signedOut": "Needs sign-in",
-      "refused": "Sign-in expired"
+      "refused": "Sign-in expired",
+      "connected": "Connected",
+      "outOfRequests": "Out of requests"
     },
     "choice": {
       "title": "Which AI tools Pyxis may use",
@@ -3264,7 +3281,8 @@
     },
     "testErrors": {
       "modelNotIncluded": "Your {{name}} subscription doesn't include the chosen model. Pick another one in the AI tool's details.",
-      "other": "{{name}} test: {{message}}"
+      "other": "{{name}} test: {{message}}",
+      "quota": "{{name}} is out of requests. Until they are back, Pyxis goes on with the next tool."
     },
     "signInTo": "Sign in to {{name}}",
     "chooseModel": "Choose another model",
@@ -3273,7 +3291,57 @@
     "debug": "Show technical details and debug",
     "debugHint": "Pyxis keeps a log of every AI call the jobs in Activity make, on this computer: which AI and model, how long it took, the request and the reply. Keys and tokens are hidden, and nothing is sent anywhere.",
     "debugFailed": "This choice couldn't be saved. Try again.",
-    "perFeatureHint": "Pyxis picks the AI tool and reasoning level for each function by itself. Here you can change them one by one."
+    "perFeatureHint": "Pyxis picks the AI tool and reasoning level for each function by itself. Here you can change them one by one.",
+    "intro": {
+      "listed": "Pyxis uses the first one on the list. If it runs out of requests for the day, it moves on to the next."
+    },
+    "connected": {
+      "title": "Connected",
+      "none": "No tool is connected. Connect one below to start."
+    },
+    "toConnect": {
+      "title": "To connect",
+      "install": "Install and sign in",
+      "installNamed": "Install and sign in to {{name}}"
+    },
+    "order": {
+      "hint": "Drag them to change the order.",
+      "hintShared": "Drag them to decide which one it uses first.",
+      "reset": "Let Pyxis decide",
+      "reorder": "Reorder {{name}}",
+      "place": ", position {{position}}",
+      "instructions": "Press Space to pick the tool up, use the up and down arrow keys to move it, and press Space to drop it. Press Escape to cancel.",
+      "picked": "Picked up {{name}}, position {{position}} of {{count}}.",
+      "moved": "{{name}}, position {{position}} of {{count}}.",
+      "dropped": "{{name}} is at position {{position}} of {{count}}.",
+      "cancelled": "Reordering cancelled, {{name}} is back where it was.",
+      "up": "Move up",
+      "down": "Move down",
+      "failed": "The change could not be saved. Try again."
+    },
+    "tool": {
+      "actions": "Actions on {{name}}",
+      "stopUsing": "Don't use",
+      "useAgain": "Use again",
+      "off": "Not in use"
+    },
+    "limit": {
+      "today": "Requests are back at {{time}}.",
+      "tomorrow": "Requests are back tomorrow at {{time}}.",
+      "later": "Requests are back on {{day}}."
+    },
+    "testing": "Testing…",
+    "disconnecting": "Signing out…",
+    "disconnect": "Sign out",
+    "disconnectNamed": "Sign out of {{name}}",
+    "signOutConfirm": {
+      "title": "Sign out of {{name}}?",
+      "body": "Pyxis signs out of your {{name}} account on this computer and won't use it until you sign in again."
+    },
+    "key": {
+      "hint": "For those who pay for a service by use. The key stays on this computer.",
+      "add": "Add a key"
+    }
   },
   "graph": {
     "title": "Graph",

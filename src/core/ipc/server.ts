@@ -9,6 +9,7 @@ import { configureSignOuts, setModelRefusalListener } from "../engine/bench";
 import { setModelNamesListener } from "../engine/efforts";
 import { signOutStore } from "../engine/choice";
 import { setFallbackListener } from "../engine/generate";
+import { jobEngine } from "../engine/selection";
 import { currentUsageScope, setUsageRecorder, storeUsage } from "../engine/usage";
 import type { z } from "zod";
 import {
@@ -301,6 +302,8 @@ const routes = {
   "jobs.retry": ["jobs", "retry"],
   "jobs.resume": ["jobs", "resume"],
   "jobs.dismiss": ["jobs", "dismiss"],
+  "jobs.retryWith": ["jobs", "retryWith"],
+  "jobs.wait": ["jobs", "wait"],
   "jobs.log": ["jobs", "log"],
   "debug.get": ["jobs", "debugGet", "bare"],
   "debug.set": ["jobs", "debugSet"],
@@ -308,6 +311,7 @@ const routes = {
   "engines.acknowledge": ["engines", "acknowledge"],
   "engines.choice": ["engines", "choice", "bare"],
   "engines.choose": ["engines", "choose"],
+  "engines.reorder": ["engines", "reorder"],
   "engines.setEffort": ["engines", "setEffort"],
   "engines.features": ["engines", "features", "bare"],
   "engines.names": ["engines", "names", "bare"],
@@ -775,10 +779,15 @@ export function bindEngines(
   installerFixture?: string,
 ): void {
   configureDisclosure(db);
-  // A refused sign-in outlasts a restart. When one starts or ends, Settings shows it and the automatic plan follows.
-  configureSignOuts(signOutStore(db), (provider) => {
+  // A refused sign-in and a usage limit outlast a restart. When one starts or ends, Settings shows it, and for a
+  // sign-in the automatic plan follows.
+  configureSignOuts(signOutStore(db), (provider, change) => {
     broadcast("engine.status", { provider });
-    void engines?.signInChanged().catch(() => undefined);
+    // A limit leaves the plan as it is: its tasks go to the next tool until it resets, and the tool's own usage report
+    // may know when that is. A program that is gone has its detection read again.
+    if (change === "limit") void engines?.limitChanged(provider).catch(() => undefined);
+    else if (change === "missing") void engines?.installChanged(provider).catch(() => undefined);
+    else void engines?.signInChanged().catch(() => undefined);
   });
   // A model the subscription refused leaves the automatic choice, so the tasks that used it move now, a job's retry
   // starts on the next model, and Settings shows the engine without it.
@@ -792,9 +801,10 @@ export function bindEngines(
     refusals = setTimeout(refreshAutoEngines, 500);
   });
   setFallbackListener((event) => {
-    broadcast("engine.fallback", event);
     // A call a job made: the finished job tells which engine answered.
     const jobId = currentUsageScope()?.jobId;
+    // The student just chose that tool for the job, so there is nothing to tell them again.
+    if (!jobEngine(jobId)) broadcast("engine.fallback", event);
     if (jobId) jobRunner?.noteFallback(jobId, event);
   });
   setUsageRecorder((usage, where) => {
