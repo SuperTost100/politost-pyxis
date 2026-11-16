@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from "react";
+import { useRef, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { IconButton } from "./IconButton";
 import { FormulaDock } from "./math/FormulaDock";
@@ -19,6 +19,9 @@ export function MathInput({
   rows,
   autoSize,
   maxLength,
+  note,
+  formulaLabel,
+  keysGroup,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -28,10 +31,16 @@ export function MathInput({
   rows?: number;
   autoSize?: { minRows?: number; maxRows?: number };
   maxLength?: number;
+  /** A line about what is written, shown right under the field and above the formula keyboard. */
+  note?: ReactNode;
+  /** The sigma button's name, for a page with more than one of these fields. "Inserisci formula" otherwise. */
+  formulaLabel?: string;
+  /** Fields with the same group show one formula keyboard between them. */
+  keysGroup?: string;
 }) {
   const { t } = useTranslation();
   const field = useRef<MathTextEditorHandle>(null);
-  const formula = useFormulaKeys(field);
+  const formula = useFormulaKeys(field, keysGroup);
   const minRows = autoSize?.minRows ?? rows ?? 2;
   const maxRows = Math.max(autoSize?.maxRows ?? 12, minRows);
   return (
@@ -47,11 +56,12 @@ export function MathInput({
         value={value}
         onChange={onChange}
       />
+      {note}
       <FormulaDock {...formula.dock} open={formula.open && !disabled} />
       <div className="px-mathinput-bar">
         <IconButton
           icon="sigma"
-          label={t("math.toggle")}
+          label={formulaLabel ?? t("math.toggle")}
           variant="ghost"
           size="sm"
           pressed={formula.open}

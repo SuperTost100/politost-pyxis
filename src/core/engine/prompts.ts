@@ -92,7 +92,17 @@ export type PromptTemplate = {
 // Identifier placeholders only; literal blanks such as {{1}} are not placeholders.
 const PLACEHOLDER = /\{\{([A-Za-z_]\w*)\}\}/g;
 
+/**
+ * Templates and partials are bundled from the files as they were checked out, and a Windows checkout gives them CRLF.
+ * Every text is read with LF endings, so the prompt a model gets, the lines the figure instruction is cut by and the
+ * tests read the same on every platform.
+ */
+export function lf(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
 export function parseTemplate(id: TemplateId, source: string): PromptTemplate {
+  source = lf(source);
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(source);
   if (!match) throw new Error(`prompt-template-invalid:${id}`);
   const meta: Record<string, string> = {};
@@ -122,8 +132,11 @@ export function partialsOf(template: PromptTemplate): PartialId[] {
   ] as PartialId[];
 }
 
-export function partialText(id: PartialId): string {
-  return PARTIAL_SOURCES[id].trim();
+export function partialText(
+  id: PartialId,
+  sources: Record<PartialId, string> = PARTIAL_SOURCES,
+): string {
+  return lf(sources[id]).trim();
 }
 
 /** A language as a name, such as "Spanish" or "Brazilian Portuguese": letters, spaces and hyphens, one short line. */
