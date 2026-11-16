@@ -1,6 +1,7 @@
 .px-onboarding {
-  /* The steps keep their own widths, centred in the page column: setup is a closed flow with no sidebar. */
-  width: min(720px, calc(100vw - var(--space-12)));
+  /* One column for every step, so the mark, the stepper and the title stay where they are. A step whose content is
+     narrower puts it in `.px-onboarding-narrow`. Setup is a closed flow with no sidebar. */
+  width: min(920px, calc(100vw - var(--space-12)));
   max-width: 100%;
   margin-inline: auto;
   display: flex;
@@ -8,9 +9,13 @@
   gap: 26px;
   padding-bottom: var(--space-8);
 }
-/* The AI tools and the material choices need the room of four and two cards side by side. */
-.px-onboarding.is-wide {
-  width: min(920px, calc(100vw - var(--space-12)));
+/* The first step is a form: its card, switch and buttons keep the width of a form, at the column's left edge. */
+.px-onboarding-narrow {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
 }
 .px-onboarding h1,
 .px-onboarding h2,

@@ -2913,11 +2913,6 @@
       "recommended": "Consigliato"
     },
     "plan": {},
-    "gap": {
-      "severe": "grave",
-      "minor": "lieve",
-      "fill": "Colma"
-    },
     "buttons": {
       "continue": "Continua",
       "newPlan": "Nuovo esame",
@@ -2967,12 +2962,6 @@
       "exercises": "Esercizi",
       "review": "Ripasso",
       "sim": "Simulazione"
-    },
-    "gapSamples": {
-      "severe": "Confondi calore e lavoro nel segno del bilancio energetico.",
-      "minor": "Dimentichi di convertire la velocità angolare in rad/s.",
-      "topic1": "Termodinamica · Primo principio",
-      "topic2": "Cinematica · Moto circolare"
     },
     "quizSamples": {
       "a": "Il calore è una funzione di stato",

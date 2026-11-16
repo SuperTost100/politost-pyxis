@@ -11,7 +11,6 @@ import { Composer } from "../../components/Composer";
 import { ContextBlock } from "../../components/ContextBlock";
 import { DialogGallery } from "./DialogGallery";
 import { EngineRow } from "../../components/EngineRow";
-import { GapItem } from "../../components/GapItem";
 import { Icon } from "../../components/Icon";
 import { ICON_MAP, type IconName } from "../../components/iconMap";
 import { IconButton } from "../../components/IconButton";
@@ -285,33 +284,6 @@ export function ComponentGallery() {
           label={t("components.path.sim")}
           state="planned"
         />
-      </Section>
-
-      <Section
-        eyebrow={t("gallery.sections.progress")}
-        title="GapItem"
-        layout="col"
-      >
-        <GapItem
-          severity="severe"
-          topic={t("components.gapSamples.topic1")}
-          onFill={() => {}}
-          fillLabel={t("components.gap.fill")}
-          severitySevereLabel={t("components.gap.severe")}
-          severityMinorLabel={t("components.gap.minor")}
-        >
-          {t("components.gapSamples.severe")}
-        </GapItem>
-        <GapItem
-          severity="minor"
-          topic={t("components.gapSamples.topic2")}
-          onFill={() => {}}
-          fillLabel={t("components.gap.fill")}
-          severitySevereLabel={t("components.gap.severe")}
-          severityMinorLabel={t("components.gap.minor")}
-        >
-          {t("components.gapSamples.minor")}
-        </GapItem>
       </Section>
 
       <Section

@@ -1,24 +1,29 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { addBook, subjectForBook, useBookAdding } from "../lib/bookAdding";
 import { useSources, useSubjects } from "../lib/queries";
 import { Button } from "./Button";
 import { useFreeBooks } from "../lib/freeBooks";
 import { Logo } from "./Logo";
-import { openSourceViewer } from "./SourceViewer";
+import { openSourceViewer, type FocusAfter } from "./SourceViewer";
 import "./BookReaderBar.css";
 
 /**
  * Opens the source reader on a free book that may not be in the Library yet. Under its head the reader says whether the
  * book is in the Library and, when it is not, adds it. `subjectId` is the shelf an add puts it on: the subject whose row
- * opened it; without one the subject is found by name.
+ * opened it; without one the subject is found by name. `focusAfter` says where the focus goes when the reader closes and
+ * the row that opened it is gone, as it is once the book is added from the reader.
  */
-export function openBook(bookId: string, options: { subjectId?: string; choice?: BookChoice } = {}): void {
-  const { choice } = options;
+export function openBook(bookId: string, options: { subjectId?: string; choice?: BookChoice; focusAfter?: FocusAfter } = {}): void {
+  const { choice, focusAfter } = options;
   openSourceViewer(
     { bookId },
-    { bar: () => (choice ? <ChoiceBookBar choice={choice} /> : <LibraryBookBar bookId={bookId} subjectId={options.subjectId} />) },
+    {
+      bar: () => (choice ? <ChoiceBookBar choice={choice} /> : <LibraryBookBar bookId={bookId} subjectId={options.subjectId} />),
+      focusAfter,
+    },
   );
 }
 
@@ -72,9 +77,20 @@ function LibraryBookBar({ bookId, subjectId }: { bookId: string; subjectId?: str
       : t("books.reader.inUnsorted");
   // Until the catalog answers, the reader has nothing to add: it can read the book from the address alone.
   const target = subjectId ?? (book ? subjectForBook(subjects.data ?? [], book) : undefined);
+  // The add button goes when the book is in the Library, and with it the focus; the line that says where the book went
+  // takes it, so the reader still hears Escape.
+  const text = useRef<HTMLParagraphElement>(null);
+  const added = useRef(false);
+  useEffect(() => {
+    if (!sourceId || !added.current) return;
+    added.current = false;
+    const active = document.activeElement;
+    // Only a focus that is lost moves; one the student put somewhere else in the meantime stays there.
+    if (!active || active === document.body) text.current?.focus({ preventScroll: true });
+  }, [sourceId]);
   return (
     <div className={sourceId ? "px-book-bar is-in" : "px-book-bar"}>
-      <p className="px-book-bar-text" role="status">
+      <p className="px-book-bar-text" role="status" ref={text} tabIndex={-1}>
         {sourceId ? <Check size={15} aria-hidden /> : null}
         <span>{sourceId ? where : t("books.reader.notInLibrary")}</span>
       </p>
@@ -82,7 +98,12 @@ function LibraryBookBar({ bookId, subjectId }: { bookId: string; subjectId?: str
         <Button
           size="sm"
           disabled={adding}
-          onClick={() => void addBook(client, bookId, { subjectId: target })}
+          onClick={() => {
+            added.current = true;
+            void addBook(client, bookId, { subjectId: target }).then((result) => {
+              if (!result) added.current = false;
+            });
+          }}
         >
           {adding ? <Logo working decorative size={14} /> : null}
           {t(adding ? "books.adding" : "books.reader.addToLibrary")}

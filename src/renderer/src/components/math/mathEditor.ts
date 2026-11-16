@@ -2,6 +2,7 @@ import katex from "katex";
 import type { MathfieldElement } from "mathlive";
 import { loadMathLive, mathLive } from "./loadMathLive";
 import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathString";
+import { TypedBraces } from "./typedBraces";
 
 /**
  * Drives one editable element that holds text with formulas inline. The text is plain, newlines
@@ -33,6 +34,8 @@ type Edit = {
   ready: Promise<MathfieldElement | null>;
   /** Characters typed before MathLive finished loading; they go into the field once it exists. */
   pending: string;
+  /** Reads the braces typed into the formula. */
+  braces: TypedBraces;
   onKey: (event: KeyboardEvent) => void;
 };
 
@@ -360,6 +363,7 @@ export class MathEditor {
       typed,
       ready: Promise.resolve(null),
       pending: "",
+      braces: new TypedBraces(),
       onKey: (event) => this.onChipKey(edit, event),
     };
     chip.addEventListener("keydown", edit.onKey, true);
@@ -374,7 +378,17 @@ export class MathEditor {
       field.menuItems = [];
       focusField(field);
       field.position = edge === "start" ? 0 : field.lastOffset;
-      if (edit.pending) field.executeCommand(["typedText", edit.pending, { focus: true, feedback: false }]);
+      // The keys typed while MathLive loaded, with braces read as they are when typed live.
+      let run = "";
+      const flush = () => {
+        if (run) field.executeCommand(["typedText", run, { focus: true, feedback: false }]);
+        run = "";
+      };
+      for (const key of edit.pending) {
+        if (key === "{" || key === "}" || /^\d$/.test(key)) flush();
+        if (!edit.braces.key(field, key)) run += key;
+      }
+      flush();
       return field;
     };
     const loaded = mathLive();
@@ -415,6 +429,11 @@ export class MathEditor {
   private onChipKey(edit: Edit, event: KeyboardEvent) {
     if (event.isComposing || this.edit !== edit) return;
     const field = edit.field;
+    if (field && edit.braces.key(field, event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     const empty = !field || !field.getValue("latex-without-placeholders").trim();
     if (event.key === "Escape" && field?.mode !== "latex") this.leave("after");
     else if (event.key === "Tab") this.leave(event.shiftKey ? "before" : "after");

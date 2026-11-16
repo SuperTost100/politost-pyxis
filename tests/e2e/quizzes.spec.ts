@@ -710,6 +710,71 @@ test("open answer: its formula is read back in words, and the optional steps are
   }
 });
 
+test("open answer: braces typed in a formula group, and the reading under the field follows", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    await go(page, `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`);
+    const answer = page.getByRole("textbox", { name: "La tua risposta" });
+    const reads = page.locator(".px-quiz-reads.is-shown");
+    await answer.click();
+    await page.waitForFunction(() => customElements.get("math-field") !== undefined);
+    await page.keyboard.type("La legge oraria è $s=t^{3}-t^{2}$");
+    await expect(reads).toHaveText("Si leggeLa legge oraria è s uguale a t al cubo meno t al quadrato");
+    await expect(answer).not.toContainText(/lbrace|rbrace|[{}]/);
+    await saveShot(page, "quiz-open-braces-it-light-1280.png", { animations: "disabled" });
+    await answer.fill("");
+    await page.keyboard.type("Un insieme: $A=\\{1,2\\} $");
+    await expect(reads).toHaveText("Si leggeUn insieme: A uguale a {1,2}");
+  } finally {
+    await done();
+  }
+});
+
+test("open answer: the formula button under each field says what it does, in both languages", async () => {
+  test.setTimeout(120000);
+  const { page, planId, topics, done } = await launch(openReplies());
+  try {
+    const quiz = await invoke<{ attemptId: string }>(page, "study.quizStart", {
+      planId,
+      topicId: topics[0]!.id,
+      types: ["open"],
+    });
+    await expect
+      .poll(async () => (await invoke<{ state: string }>(page, "study.quizRead", { attemptId: quiz.attemptId })).state, {
+        timeout: 20000,
+      })
+      .toBe("succeeded");
+    const address = `/plans/${planId}/quiz/${topics[0]!.id}?attempt=${quiz.attemptId}`;
+    for (const [lang, visible, names] of [
+      ["it", "Inserisci formula", ["Inserisci formula nella risposta", "Inserisci formula nei passaggi"]],
+      ["en", "Insert formula", ["Insert formula in the answer", "Insert formula in the steps"]],
+    ] as const) {
+      await page.evaluate((value) => localStorage.setItem("pyxis.lang", value), lang);
+      await page.reload();
+      await go(page, address);
+      for (const name of names) {
+        const button = page.getByRole("button", { name });
+        // The word is on the button, as on "Nuova flashcard", and the name adds which field it is for.
+        await expect(button).toHaveText(visible);
+        await expect(button).toHaveAttribute("aria-pressed", "false");
+      }
+    }
+  } finally {
+    await done();
+  }
+});
+
 test("quiz screens in both languages and themes", async () => {
   test.setTimeout(240000);
   const { page, planId, topics, done } = await launch(openReplies(), 2500);
