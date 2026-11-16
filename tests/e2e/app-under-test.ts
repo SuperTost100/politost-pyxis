@@ -1,7 +1,7 @@
 import { _electron as electron, test, type ElectronApplication } from "@playwright/test";
-import { readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { withoutLaunchEnvironment } from "./trace-clean";
+import { saveTrace } from "./trace-save";
 import { removeTestFolder } from "./cleanup";
 
 export type LaunchOptions = {
@@ -88,17 +88,12 @@ async function traceUntilClosed(app: ElectronApplication) {
   app.close = async () => {
     try {
       const info = test.info();
-      const path = info.outputPath(`trace-${number}.zip`);
-      await context.tracing.stop({ path });
-      try {
-        writeFileSync(path, withoutLaunchEnvironment(readFileSync(path)));
-      } catch (error) {
-        // A trace that still holds the environment of the job it came from is never kept.
-        rmSync(path, { force: true });
-        throw error;
-      }
-      if (statSync(path).size <= TRACE_MAX_BYTES) await info.attach(`trace-${number}`, { path, contentType: "application/zip" });
-      rmSync(path, { force: true });
+      await saveTrace({
+        stop: (path) => context.tracing.stop({ path }),
+        attach: (path) => info.attach(`trace-${number}`, { path, contentType: "application/zip" }),
+        maxBytes: TRACE_MAX_BYTES,
+        clean: withoutLaunchEnvironment,
+      });
     } catch (error) {
       // A trace that cannot be saved must not fail the test that asked for the app to close, and one that could not be
       // cleaned of the launch's environment is not kept.
