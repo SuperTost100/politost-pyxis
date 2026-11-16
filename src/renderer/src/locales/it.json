@@ -1133,7 +1133,7 @@
     "showMore_other": "Mostra le altre {{count}} flashcard",
     "showFewer": "Mostra meno",
     "loadingMore": "Carico le flashcard…",
-    "reviewSubject": "Ripassa le flashcard senza esame di {{subject}}",
+    "reviewSubject": "Ripassa quelle senza esame di {{subject}}",
     "reviewNoExam": "Ripassa quelle senza esame",
     "noMatchQuery": "Nessuna flashcard contiene «{{query}}».",
     "leaveEdit": "Le modifiche a questa flashcard non sono state salvate.",

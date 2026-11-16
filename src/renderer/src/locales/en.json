@@ -1133,7 +1133,7 @@
     "showMore_other": "Show the other {{count}} flashcards",
     "showFewer": "Show fewer",
     "loadingMore": "Loading flashcards…",
-    "reviewSubject": "Review the flashcards of {{subject}} with no exam",
+    "reviewSubject": "Review the ones with no exam of {{subject}}",
     "reviewNoExam": "Review the ones with no exam",
     "noMatchQuery": "No flashcard contains “{{query}}”.",
     "leaveEdit": "Your changes to this flashcard have not been saved.",

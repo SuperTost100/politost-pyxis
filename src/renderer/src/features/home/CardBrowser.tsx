@@ -430,7 +430,8 @@ export function CardBrowser({
         <MenuItemArea as="header" className="px-subpage-head" menu={ankiMenu} region={t("cardBrowser.more")}>
           <div className="px-cardbrowser-title">
             <h1 className="title-1">{title}</h1>
-            <p className="px-cardbrowser-lead">{lead || "\u00a0"}</p>
+            {/* The line keeps its room while the list loads or a search finds nothing, so the toolbar stays where it is. */}
+            {emptyPage ? null : <p className="px-cardbrowser-lead">{lead || "\u00a0"}</p>}
           </div>
           <MenuButton rightClick menu={ankiMenu} label={t("cardBrowser.more")} />
         </MenuItemArea>

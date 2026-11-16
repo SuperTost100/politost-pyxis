@@ -216,7 +216,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.locator("#card-exam").click();
     await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Senza esame"]').click();
     await expect(page.locator(".px-cardbrowser-summary")).toContainText("2 flashcard");
-    await physics.getByRole("button", { name: "Ripassa le flashcard senza esame di Fisica I" }).click();
+    await physics.getByRole("button", { name: "Ripassa quelle senza esame di Fisica I" }).click();
     await expect(page).toHaveURL(/#\/cards\/subject\/phys$/);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Fisica I");
     await expect(card).toContainText("Accelerazione");
