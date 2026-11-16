@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { saveProposedInput, whatWouldBeLost, type ProposalTarget } from "./newCardLogic";
+import { NEW_SUBJECT, chosenSubject, saveProposedInput, whatWouldBeLost, type ProposalTarget } from "./newCardLogic";
 
 const idle = { step: "form", proposals: 0, front: "", back: "", newName: "", naming: false, focus: "" } as const;
 
@@ -56,5 +56,29 @@ describe("saveProposedInput", () => {
       { front: "A?", back: "B.", passageId: "p1", source: { title: "Bramanti", page: 3 } } as (typeof rows)[number],
     ]).cards;
     expect(card).toEqual({ front: "A?", back: "B.", passageId: "p1" });
+  });
+});
+
+describe("chosenSubject", () => {
+  const subjects = [{ id: "ana" }, { id: "phys" }];
+
+  it("keeps a subject that exists, and takes the first when the one asked for is gone or none was", () => {
+    expect(chosenSubject(subjects, "phys", "hand")).toBe("phys");
+    expect(chosenSubject(subjects, "", "pyxis")).toBe("ana");
+    expect(chosenSubject(subjects, "deleted", "hand")).toBe("ana");
+  });
+
+  it("offers a new subject to name when there is none, by hand only, and keeps it while it is being named", () => {
+    expect(chosenSubject([], "", "hand")).toBe(NEW_SUBJECT);
+    expect(chosenSubject([], "", "pyxis")).toBe("");
+    expect(chosenSubject(subjects, NEW_SUBJECT, "hand")).toBe(NEW_SUBJECT);
+    expect(chosenSubject(subjects, NEW_SUBJECT, "pyxis")).toBe("ana");
+  });
+
+  it("keeps a subject the list lacks while the list may be older than it, and drops it once a read confirms it is gone", () => {
+    expect(chosenSubject(subjects, "chem", "hand", true)).toBe("chem");
+    expect(chosenSubject(subjects, "chem", "pyxis", true)).toBe("chem");
+    expect(chosenSubject(subjects, "chem", "hand", false)).toBe("ana");
+    expect(chosenSubject([], "", "hand", true)).toBe(NEW_SUBJECT);
   });
 });

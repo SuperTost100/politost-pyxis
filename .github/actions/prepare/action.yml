@@ -66,9 +66,10 @@ runs:
       with:
         path: |
           .tmp/pyodide
+          .tmp/drawing
           .tmp/tessdata-fast
           .tmp/e5
-        key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/prepare-fixtures.ts', 'resources/pyodide-manifest.json', 'src/core/sources/ocr-data.ts', 'src/core/sources/embed.ts') }}
+        key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/prepare-fixtures.ts', 'resources/pyodide-manifest.json', 'resources/drawing-manifest.json', 'src/core/sources/ocr-data.ts', 'src/core/sources/embed.ts') }}
     - if: inputs.fixtures == 'true'
       shell: bash
       run: npm run test:fixtures

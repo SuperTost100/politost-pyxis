@@ -126,13 +126,17 @@ export function ExamSettingsPage() {
   const asking = useRef(false);
 
   // "Set the hours" on the exam's page opens this page at the weekly hours, with the focus in the field once it can take
-  // it (it waits for the planner).
+  // it (it waits for the planner). That is decided once, when the field can first take the focus: it goes there only if
+  // the focus is still nowhere in the page (on the body, or on the control outside it that brought the student here). A
+  // student who has gone to a field of the page meanwhile has chosen it, and what they type goes on there.
   const arrival = useLocation().state as { focus?: string } | null;
   const focusHours = useRef(arrival?.focus === "hours");
+  const page = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const field = focusHours.current ? document.getElementById("set-weekly-hours") : null;
     if (!(field instanceof HTMLInputElement) || field.disabled) return;
     focusHours.current = false;
+    if (page.current?.contains(document.activeElement) && document.activeElement !== page.current) return;
     field.scrollIntoView({ block: "center" });
     field.focus({ preventScroll: true });
   });
@@ -292,7 +296,7 @@ export function ExamSettingsPage() {
   const archived = data?.archivedAt != null;
 
   return (
-    <div className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
+    <div ref={page} className={dirty ? "px-exam-settings has-savebar" : "px-exam-settings"}>
       <BackControl target={back} variant="page" />
       <h1 className="title-1">{t("planOverview.settings")}</h1>
       {/* A plan still being built cannot be saved; its page leads back to the build. */}

@@ -15,7 +15,8 @@ import { ProposedCards, type ProposedRow } from "../../components/ProposedCards"
 import { errorProvider, useEngineError } from "../../lib/engineError";
 import { canTakeFocus } from "../../app/focusable";
 import { invoke } from "../../lib/ipc";
-import { saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
+import { NEW_SUBJECT, chosenSubject, saveProposedInput, whatWouldBeLost, type Loss, type ProposalTarget } from "./newCardLogic";
+import { newCardsQuery } from "./newCardPlaces";
 import "./NewCardDialog.css";
 
 /** Who writes the new flashcards: the student ("Scrivila tu") or Pyxis ("Falla fare a Pyxis"). */
@@ -25,12 +26,8 @@ type Places = RequestOutput<"study.newCardPlaces">;
 type Subject = Places["subjects"][number];
 type Proposal = RequestOutput<"study.cardsForSubject">;
 
-/** The value of the "Nuova materia…" option, which no subject id can be. */
-const NEW_SUBJECT = "\u0000new";
 /** A topic option's value: its exam and its id. The empty value is the whole subject. */
 const topicValue = (planId: string, topicId: string) => `${planId}\u0000${topicId}`;
-
-export const newCardsQuery = { queryKey: ["new-card-places"], queryFn: () => invoke("study.newCardPlaces", {}) };
 
 /** Everything a new card changes: the Flashcard page, the daily review and the decks it can be studied in. */
 async function refreshCards(client: QueryClient, planId?: string | null) {
@@ -43,7 +40,7 @@ async function refreshCards(client: QueryClient, planId?: string | null) {
       ["plans", "today"],
       ["plans", "rings"],
       ["plans", "examlessDue"],
-      ["new-card-places"],
+      newCardsQuery.queryKey,
     ].map((queryKey) => client.invalidateQueries({ queryKey })),
     ...(planId
       ? ["cards", "card-queue", "review-session", "plan"].map((key) =>
@@ -146,8 +143,13 @@ export function NewCardDialog({
   // Counts the times the dialog has been opened. A reply that comes back from an earlier opening is not this one's.
   const opening = useRef(0);
 
+  // The list is the state of the workspace once the read that made it has ended without failing: before that it may be
+  // older than a subject made a moment ago, and a missing subject that was asked for is not yet a missing one.
+  const readSettled = !places.isFetching && !places.isError;
   const subject = subjects.find((item) => item.id === subjectId);
   const isNew = subjectId === NEW_SUBJECT;
+  // The subject asked for is not in the list the dialog holds yet: nothing is filed or written until it is.
+  const waiting = subjectId !== "" && !isNew && !subject;
   const [topicPlan, topicId] = topic ? topic.split("\u0000") : ["", ""];
   const topicTitle = subject?.topics.find((group) => group.planId === topicPlan)?.topics.find((item) => item.id === topicId)
     ?.title;
@@ -158,48 +160,52 @@ export function NewCardDialog({
     cancel.current = null;
   }
 
-  // Whether the student has typed, pressed a key or clicked inside the dialog since it opened: the focus it was given
-  // while the subjects were still being read is theirs from then on.
-  const touched = useRef(false);
-
-  // Everything starts again each time it opens, on the side and the subject it was asked for.
+  // Everything starts again each time it opens, on the side and the subject it was asked for. The state is set while
+  // rendering, so the first thing drawn is the dialog as it starts and the focus, which goes to its first field as it
+  // opens, finds that field: the subject when the places are known already, Fronte when they are not.
+  const [wasOpen, setWasOpen] = useState(false);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setSide(openSide);
+      setSubjectId(
+        places.data
+          ? chosenSubject(places.data.subjects, openSubject ?? "", openSide, !readSettled)
+          : (openSubject ?? ""),
+      );
+      setPlanId("");
+      setNewName("");
+      setFront("");
+      setBack("");
+      setErrors({});
+      setHandFailed(false);
+      setSaving(false);
+      setAdded(0);
+      setAnnounce("");
+      setTopic("");
+      setFocusText("");
+      setCount(NEW_CARDS.start);
+      setStep("form");
+      setRows([]);
+      setMade(null);
+      setFailure(null);
+      setSavingProposed(false);
+    }
+  }
   useEffect(() => {
     if (!open) return;
     opening.current += 1;
-    touched.current = false;
-    setSide(openSide);
-    setSubjectId(openSubject ?? "");
-    setPlanId("");
-    setNewName("");
-    setFront("");
-    setBack("");
-    setErrors({});
-    setHandFailed(false);
-    setSaving(false);
     busy.current = false;
-    setAdded(0);
-    setAnnounce("");
-    setTopic("");
-    setFocusText("");
-    setCount(NEW_CARDS.start);
-    setStep("form");
-    setRows([]);
-    setMade(null);
-    setFailure(null);
-    setSavingProposed(false);
     takeBack();
   }, [open]);
 
   // Once the subjects are known: the one asked for if it exists, else the first, else a new one to name.
   useEffect(() => {
     if (!open || !places.data) return;
-    setSubjectId((current) => {
-      if (current === NEW_SUBJECT && side === "hand") return current;
-      if (current && places.data.subjects.some((item) => item.id === current)) return current;
-      const first = places.data.subjects[0]?.id;
-      return first ?? (side === "hand" ? NEW_SUBJECT : "");
-    });
-  }, [open, places.data, side]);
+    setSubjectId((current) =>
+      chosenSubject(places.data.subjects, current, side, current === openSubject && !readSettled),
+    );
+  }, [open, places.data, readSettled, side]);
 
   useEffect(
     () => () => {
@@ -209,28 +215,14 @@ export function NewCardDialog({
     [],
   );
 
-  // The dialog gives the focus to a field the moment it opens (`firstControl`), so a fast typist loses no keys. Once the
-  // subjects are known the field it would choose may be another one: the focus moves there only while the student has
-  // pressed no key and clicked nowhere in the dialog, so neither what they typed nor where they went is taken from them.
-  const focused = useRef(false);
-  useEffect(() => {
-    if (!open) {
-      focused.current = false;
-      return;
-    }
-    if (focused.current || !places.data || !subjectId) return;
-    focused.current = true;
-    requestAnimationFrame(() => {
-      // A key or a click inside the dialog since it opened: wherever the focus is now, it is the student's.
-      if (touched.current) return;
-      firstField()?.focus();
-    });
-  }, [open, places.data, subjectId]);
-
   /**
-   * The field the focus goes to: the first one of the side on show that can take it. While the subjects are still being
-   * read the subject's own list is off, so a card written by hand starts in Fronte, the first field a student can type
-   * in; with no subject in the workspace it is the new subject's name.
+   * The field the focus goes to as the dialog opens: the first one of the side on show that can take it. What opens the
+   * dialog reads the subjects first (`whenPlacesRead`), so normally they are known and this is the subject's list, or
+   * with no subject in the workspace the new subject's name. When the read was too slow the subject's list is still off,
+   * so a card written by hand starts in Fronte, the first field a student can type in, and the focus stays there when
+   * the subjects arrive. Typing, dictation and a screen reader's insertion all go to the field that has the focus, and
+   * nothing tells the dialog that one has begun until the text lands, so a focus moved by the dialog could take the text
+   * to another field.
    */
   function firstField(): HTMLElement | null {
     const pane = card.current?.querySelector(`[data-pane="${side}"]`);
@@ -358,7 +350,7 @@ export function NewCardDialog({
         target = made.id;
         targetName = made.name;
         void client.invalidateQueries({ queryKey: ["subjects"] });
-        await client.invalidateQueries({ queryKey: ["new-card-places"] });
+        await client.invalidateQueries({ queryKey: newCardsQuery.queryKey });
         if (mine === opening.current) {
           setSubjectId(made.id);
           setNewName("");
@@ -513,10 +505,10 @@ export function NewCardDialog({
           </span>
         ),
         tone: "secondary",
-        disabled: !places.data,
+        disabled: !places.data || waiting,
         onClick: () => void saveByHand(true),
       },
-      { label: t("flashcards.new.save"), disabled: !places.data, onClick: () => void saveByHand(false) },
+      { label: t("flashcards.new.save"), disabled: !places.data || waiting, onClick: () => void saveByHand(false) },
     ];
   else
     actions = [
@@ -541,8 +533,7 @@ export function NewCardDialog({
           : { label: t("flashcards.new.make"), disabled: !canMake, onClick: () => void make() },
     ];
 
-  // Where the focus goes as it opens: the first field of the side on show, whether or not the subjects are known yet, and
-  // the effect above moves it once they are, unless the student has already typed or gone to a field of their own.
+  // Where the focus goes as it opens: the first field of the side on show, whether or not the subjects are known yet.
   const firstControl = useMemo(
     () => ({
       get current() {
@@ -571,13 +562,7 @@ export function NewCardDialog({
       onClosed={onClosed}
       actions={actions}
     >
-      <div
-        ref={card}
-        className="px-nc-card"
-        onKeyDownCapture={() => (touched.current = true)}
-        onPointerDownCapture={() => (touched.current = true)}
-        onInputCapture={() => (touched.current = true)}
-      >
+      <div ref={card} className="px-nc-card">
         {reviewing ? null : working ? (
           // What Pyxis was asked, while it works; its proposals then say it in their own line.
           <p className="small px-nc-summary">
@@ -604,7 +589,7 @@ export function NewCardDialog({
         )}
 
           <div className="px-nc-body">
-            {places.isError && !places.data ? (
+            {places.isError && (!places.data || waiting) ? (
               <Notice tone="danger" action={{ label: t("flashcards.new.retry"), onClick: () => void places.refetch() }}>
                 {t("flashcards.loadFailed")}
               </Notice>
@@ -616,7 +601,7 @@ export function NewCardDialog({
                 subjects={subjects}
                 value={subjectId}
                 allowNew
-                disabled={saving || !places.data}
+                disabled={saving || !places.data || waiting}
                 onChange={chooseSubject}
               />
               <Fold shut={!isNew}>
@@ -739,7 +724,7 @@ export function NewCardDialog({
                       id="nc-py-subject"
                       subjects={subjects}
                       value={subjectId === NEW_SUBJECT ? "" : subjectId}
-                      disabled={!places.data}
+                      disabled={!places.data || waiting}
                       onChange={chooseSubject}
                     />
                     <Fold shut={!subject || subject.topics.length === 0}>

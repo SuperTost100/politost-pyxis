@@ -606,18 +606,6 @@ describe("exam rings", () => {
     expect(ring.todayUnmeasured).toBeNull();
   });
 
-  it("says why Oggi is unmeasured with weekly hours: no date, or the exam is today", () => {
-    const db = openDatabase(":memory:");
-    addPlan(db, "undated");
-    addPlan(db, "today", { examIn: 0 });
-    addPlan(db, "past", { examIn: -2 });
-    savePlannerHours(db, { hours: 7 }, now);
-    recordStep(db, "undated", { activity: "lesson", topicId: "undated-t0" }, day(0, 9));
-    expect(ringOf(db, "undated")).toMatchObject({ today: null, todayUnmeasured: "no-date" });
-    expect(ringOf(db, "today")).toMatchObject({ today: null, todayUnmeasured: "exam-day" });
-    expect(ringOf(db, "past")).toMatchObject({ today: null, todayUnmeasured: null });
-  });
-
   it("counts today's minutes against the goal for the day with weekly hours", () => {
     const db = openDatabase(":memory:");
     addPlan(db, "a", { examIn: 4 });
@@ -653,26 +641,30 @@ describe("exam rings", () => {
       expect(todayPlan(db, now).items[0]).toMatchObject({ complete: false, minutesToday: 50 });
     });
 
-    it("gives each of two exams its part of the goal: 10 of 26 minutes for two alike", () => {
+    it("gives two exams the same whole day: 10 of 51 minutes on both, whichever one the step was on", () => {
       const db = openDatabase(":memory:");
       withIntro(db, "a", 64);
       withIntro(db, "b", 64);
       savePlannerHours(db, { hours: 6 }, now);
       recordStep(db, "a", { activity: "intro", topicId: null }, day(0, 9));
-      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 10, target: 26 });
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 10, target: 51 });
       expect(ringOf(db, "a").today).toBeLessThan(1);
-      expect(ringOf(db, "b").todayMinutes).toEqual({ done: 0, target: 26 });
+      expect(ringOf(db, "b").todayMinutes).toEqual({ done: 10, target: 51 });
+      expect(ringOf(db, "b").today).toBe(ringOf(db, "a").today);
     });
 
-    it("is full once today's steps reach the goal, within 2.5 minutes, and not before", () => {
+    it("is full once the day's minutes reach the goal, and not before", () => {
       const db = openDatabase(":memory:");
       withIntro(db, "a", 64);
       savePlannerHours(db, { hours: 6 }, now);
-      // A lesson (30) and exercises (20) make 50 of 51: inside the tolerance.
+      // A lesson (30) and exercises (20) make 50 of 51: one minute short of the day, so the ring is still open.
       recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
       expect(ringOf(db, "a").today).toBeLessThan(1);
       recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
-      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 50, target: 51 } });
+      expect(ringOf(db, "a")).toMatchObject({ todayMinutes: { done: 50, target: 51 } });
+      expect(ringOf(db, "a").today).toBeLessThan(1);
+      recordStep(db, "a", { activity: "quiz", topicId: "a-t0" }, day(0, 11));
+      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 70, target: 51 } });
     });
 
     it("takes this week's own hours over the usual ones", () => {
@@ -698,7 +690,7 @@ describe("exam rings", () => {
     });
   });
 
-  it("plans nothing today for a share too small to ask for, a past exam or an archived one", () => {
+  it("shows the day on a past exam and on one with a small share, and nothing on an archived one", () => {
     const db = openDatabase(":memory:");
     for (const id of ["a", "b", "c", "d"]) addPlan(db, id, { examIn: 4 });
     addPlan(db, "past", { examIn: -2 });
@@ -706,8 +698,9 @@ describe("exam rings", () => {
     db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'old'").run();
     dueCard(db, "c1", "old", "old-t0");
     savePlannerHours(db, { hours: 0.5 }, now);
-    expect(ringOf(db, "a").today).toBeNull();
-    expect(ringOf(db, "past").today).toBeNull();
+    // 0.5 hours a week is 4 minutes a day, whatever small share of it each exam's work would get.
+    expect(ringOf(db, "a")).toMatchObject({ today: 0, todayMinutes: { done: 0, target: 4 } });
+    expect(ringOf(db, "past")).toMatchObject({ today: 0, todayMinutes: { done: 0, target: 4 } });
     // A past exam keeps its path and its preparation.
     expect(ringOf(db, "past").path).toBe(0);
     const old = ringOf(db, "old");
@@ -803,13 +796,17 @@ describe("exam rings", () => {
       const db = openDatabase(":memory:");
       addPlan(db, "a", { examIn: 64 });
       withParts(db);
-      // 1.5 hours a week is about 13 minutes a day: 6 and 5 minutes are 11, within the 2.5 minutes Oggi allows.
+      // 1.5 hours a week is about 13 minutes a day: 6 and 5 minutes are 11, two short of it.
       savePlannerHours(db, { hours: 1.5 }, now);
       done(db, 1, day(0, 8));
       expect(ringOf(db, "a").today).toBeCloseTo(6 / ((1.5 * 60) / 7));
       done(db, 2, day(0, 9));
-      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 11, target: 13 } });
+      expect(ringOf(db, "a")).toMatchObject({ todayMinutes: { done: 11, target: 13 } });
+      expect(ringOf(db, "a").today).toBeLessThan(1);
+      // Oggi's list still ticks the exam off within 2.5 minutes of its slice, which is the whole day for one exam.
       expect(todayPlan(db, now).items[0]).toMatchObject({ complete: true, done: [] });
+      done(db, 3, day(0, 9));
+      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 18, target: 13 } });
       db.close();
     });
 
@@ -886,6 +883,159 @@ describe("exam rings", () => {
       expect(results[1]).toEqual(results[0]);
       expect(results[0]!.todayMinutes).toEqual({ done: 30, target: 51 });
       expect(results[0]!.piece).toEqual({ kind: "topic", topicId: "a-t1", minutes: 60 });
+    });
+  });
+
+  describe("Oggi is the student's whole day, the same on every exam", () => {
+    /** Seven hours a week is 60 minutes a day; three dated exams, the closest with a lesson in parts of 4 and 5 minutes. */
+    const oneHourDay = () => {
+      const db = openDatabase(":memory:");
+      addPlan(db, "a", { examIn: 4 });
+      addPlan(db, "b", { examIn: 10 });
+      addPlan(db, "c", { examIn: 30 });
+      seedOutline(db, {
+        planId: "a",
+        topicId: "a-t0",
+        createdAt: day(-3),
+        parts: [4, 5].map((minutes) => ({ minutes, kind: "part" as const, markdown: "## Parte\n\nUn testo." })),
+      });
+      db.exec("INSERT INTO subjects (id, name, created_at) VALUES ('phys', 'Fisica 2', 1)");
+      savePlannerHours(db, { hours: 7 }, now);
+      return db;
+    };
+    /** `count` cards, `exam` of them on exam b and the rest with no exam, each reviewed now in `seconds`. */
+    const review = (db: Db, count: number, seconds: number | undefined, exam = count) => {
+      for (let index = 0; index < count; index += 1) {
+        const id = `card-${db.prepare("SELECT COUNT(*) AS n FROM cards").pluck().get()}`;
+        if (index < exam) dueCard(db, id, "b", "b-t0");
+        else db.prepare("INSERT INTO cards (id, subject_id, front, back, created_at) VALUES (?, 'phys', 'F', 'B', 1)").run(id);
+        rateCard(db, id, "good", now, seconds);
+      }
+    };
+    const everyExam = (db: Db) => ["a", "b", "c"].map((id) => ringOf(db, id));
+
+    it("reads 13 of 60 minutes on every exam after a 4-minute part and 27 card reviews, and is not full", () => {
+      // What Tost saw: a day of one hour, 27 flashcards reviewed, and "fatto, 4 min" with the ring closed on the exam
+      // whose lesson part took 4 minutes, because the exam's slice of the day was a few minutes and cards counted for none.
+      const db = oneHourDay();
+      markPartDone(db, { planId: "a", topicId: "a-t0", position: 1 }, day(0, 9));
+      // 20 reviews on an exam and 7 with no exam, 20 seconds each: 9 minutes.
+      review(db, 27, 20, 20);
+      for (const ring of everyExam(db)) {
+        expect(ring.todayMinutes).toEqual({ done: 13, target: 60 });
+        expect(ring.today).toBeCloseTo(13 / 60);
+        expect(ring.todayUnmeasured).toBeNull();
+      }
+    });
+
+    it("closes every ring once the day's minutes reach the goal, and reads the minutes over it", () => {
+      const db = oneHourDay();
+      recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 9));
+      recordStep(db, "b", { activity: "lesson", topicId: "b-t0" }, day(0, 10));
+      // 20 + 30 minutes of steps, then cards: 9 minutes leave 1 short, 10 minutes close the day.
+      review(db, 27, 20);
+      for (const ring of everyExam(db)) {
+        expect(ring.todayMinutes).toEqual({ done: 59, target: 60 });
+        expect(ring.today).toBeLessThan(1);
+      }
+      review(db, 3, 20);
+      for (const ring of everyExam(db)) expect(ring).toMatchObject({ today: 1, todayMinutes: { done: 60, target: 60 } });
+      recordStep(db, "c", { activity: "quiz", topicId: "c-t0" }, day(0, 11));
+      for (const ring of everyExam(db)) expect(ring).toMatchObject({ today: 1, todayMinutes: { done: 80, target: 60 } });
+    });
+
+    it("counts a review's time up to a minute, so a card left open does not count its whole wait", () => {
+      const db = oneHourDay();
+      review(db, 2, 600);
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 2, target: 60 });
+    });
+
+    it("counts a review made before the time was recorded as studied, and as no minutes", () => {
+      const db = oneHourDay();
+      review(db, 5, undefined);
+      expect(db.prepare("SELECT seconds FROM card_reviews").pluck().all()).toEqual([null, null, null, null, null]);
+      expect(ringOf(db, "a")).toMatchObject({ today: 0, todayMinutes: { done: 0, target: 60 } });
+    });
+
+    it("counts only the reviews made today, and takes a review back out of the minutes", () => {
+      const db = oneHourDay();
+      review(db, 1, 60);
+      db.prepare("UPDATE card_reviews SET reviewed_at = ?").run(day(-1, 23));
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 0, target: 60 });
+      dueCard(db, "fresh", "b", "b-t0");
+      const state = rateCard(db, "fresh", "good", now + 1, 45);
+      expect(ringOf(db, "a").todayMinutes?.done).toBeCloseTo(0.75);
+      db.prepare("DELETE FROM card_reviews WHERE id = ?").run(state.reviewId);
+      expect(ringOf(db, "a").todayMinutes?.done).toBe(0);
+    });
+
+    it("counts the steps and parts of every exam once, an archived exam's too, and each lesson with its parts once", () => {
+      const db = oneHourDay();
+      addPlan(db, "old", { examIn: 3 });
+      recordStep(db, "old", { activity: "quiz", topicId: "old-t0" }, day(0, 8));
+      db.prepare("UPDATE plans SET archived_at = 1 WHERE id = 'old'").run();
+      recordStep(db, "b", { activity: "practice", topicId: "b-t0" }, day(0, 9));
+      // Part 1 of 4 minutes, then part 2 of 5 finishes the lesson: its step names a part and adds no 30 minutes.
+      markPartDone(db, { planId: "a", topicId: "a-t0", position: 1 }, day(0, 9));
+      markPartDone(db, { planId: "a", topicId: "a-t0", position: 2 }, day(0, 9));
+      expect(readSteps(db, "a").filter((step) => step.activity === "lesson")).toHaveLength(1);
+      // 20 (archived quiz) + 20 (practice) + 4 + 5 (parts).
+      for (const ring of everyExam(db)) expect(ring.todayMinutes).toEqual({ done: 49, target: 60 });
+      expect(ringOf(db, "old").today).toBeNull();
+    });
+
+    it("shows the same day on an exam with no date, on its own day and after it, and takes no slice of it", () => {
+      const db = oneHourDay();
+      addPlan(db, "undated");
+      addPlan(db, "today", { examIn: 0 });
+      addPlan(db, "past", { examIn: -2 });
+      recordStep(db, "undated", { activity: "practice", topicId: "undated-t0" }, day(0, 9));
+      for (const id of ["a", "b", "c", "undated", "today", "past"])
+        expect(ringOf(db, id), id).toMatchObject({ today: 20 / 60, todayMinutes: { done: 20, target: 60 }, todayUnmeasured: null });
+    });
+
+    it("shows the goal as the settings give it, not rounded to five minutes", () => {
+      const db = oneHourDay();
+      savePlannerHours(db, { hours: 6 }, now);
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 0, target: 51 });
+      savePlannerHours(db, { week: dayKey(startOfWeek(now)), hours: 5 }, now);
+      expect(ringOf(db, "c").todayMinutes).toEqual({ done: 0, target: 43 });
+    });
+
+    it("measures nothing on any exam without weekly hours, whatever was studied", () => {
+      const db = oneHourDay();
+      savePlannerHours(db, { hours: null }, now);
+      review(db, 3, 30);
+      for (const ring of everyExam(db)) expect(ring).toMatchObject({ today: null, todayMinutes: null, todayUnmeasured: "no-goal" });
+    });
+
+    it("has no goal in a week of zero hours: nothing planned until something is studied, then done", () => {
+      const db = oneHourDay();
+      savePlannerHours(db, { week: dayKey(startOfWeek(now)), hours: 0 }, now);
+      expect(ringOf(db, "a")).toMatchObject({ today: null, todayMinutes: null, todayUnmeasured: null });
+      review(db, 2, 30);
+      expect(ringOf(db, "a")).toMatchObject({ today: 1, todayMinutes: { done: 1, target: 0 } });
+    });
+
+    it("leaves the split of the day among the exams to Oggi's list, which still asks each exam its slice", () => {
+      const db = oneHourDay();
+      const slices = todayPlan(db, now).items.map((item) => [item.planId, item.minutesToday, item.complete]);
+      expect(slices.map(([id]) => id)).toEqual(["a", "b", "c"]);
+      // The exams' slices of 60 minutes differ, and each is complete on its own steps alone.
+      const minutes = slices.map(([, value]) => value as number);
+      expect(new Set(minutes).size).toBeGreaterThan(1);
+      expect(minutes.reduce((sum, value) => sum + value, 0)).toBeGreaterThanOrEqual(55);
+      expect(minutes.reduce((sum, value) => sum + value, 0)).toBeLessThanOrEqual(70);
+      review(db, 27, 20);
+      expect(todayPlan(db, now).items.map((item) => item.complete)).toEqual([false, false, false]);
+      recordStep(db, "a", { activity: "lesson", topicId: "a-t0" }, day(0, 9));
+      recordStep(db, "a", { activity: "practice", topicId: "a-t0" }, day(0, 10));
+      const [a, b] = todayPlan(db, now).items;
+      expect(a).toMatchObject({ complete: true, minutesLeft: 0 });
+      expect(b!.complete).toBe(false);
+      // The ring does not follow the slice: 50 + 9 minutes of 60, the same on both.
+      expect(ringOf(db, "a").todayMinutes).toEqual({ done: 59, target: 60 });
+      expect(ringOf(db, "b").todayMinutes).toEqual({ done: 59, target: 60 });
     });
   });
 
