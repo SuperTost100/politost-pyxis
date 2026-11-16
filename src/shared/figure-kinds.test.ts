@@ -255,8 +255,13 @@ describe("a graph's DOT text", () => {
   });
 
   it("allows only the five layout engines", () => {
-    for (const layout of ["dot", "neato", "circo", "fdp", "twopi", "NEATO"])
+    for (const layout of ["dot", "neato", "circo", "fdp", "twopi"])
       expect(figureProblem("graph", `digraph { layout=${layout}; a -> b }`), layout).toBeNull();
+    // Graphviz reads the value exactly, so a spelling it would not find is refused, whatever the check once folded.
+    for (const layout of ["NEATO", "Neato", '" neato"', '"neato "'])
+      expect(figureProblem("graph", `digraph { layout=${layout}; a -> b }`), layout).toBe(
+        `layout=${layout.replaceAll('"', "")} is not allowed: use one of dot, neato, circo, fdp, twopi, in lower case with no spaces`,
+      );
     for (const layout of ["sfdp", "osage", "patchwork", "nop", "nop2", "ortho", '"../../x"'])
       expect(figureProblem("graph", `digraph { layout=${layout}; a -> b }`), layout).toBe(
         `layout=${layout.replaceAll('"', "")} is not allowed: use one of dot, neato, circo, fdp, twopi`,

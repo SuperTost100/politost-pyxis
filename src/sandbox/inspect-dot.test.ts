@@ -117,6 +117,55 @@ describe.skipIf(!available)("what Graphviz understood of a DOT text", () => {
   });
 });
 
+describe.skipIf(!available)("what the checks accept, Graphviz draws", () => {
+  beforeAll(async () => {
+    const module = (await import(pathToFileURL(file).href)) as { Graphviz: { load: () => Promise<GraphvizLibrary> } };
+    library = await module.Graphviz.load();
+  });
+
+  // Every spelling of a value that the checks read without regard to case or spaces, with the engine they chose. A text
+  // that passes them has to draw: a figure that passes and then fails is lost to the student, and the model is told nothing.
+  const spellings = [
+    ...["dot", "neato", "circo", "fdp", "twopi"].flatMap((name) => [
+      name,
+      name.toUpperCase(),
+      name[0]!.toUpperCase() + name.slice(1),
+      ` ${name}`,
+      `${name} `,
+      `"${name}"`,
+      `"${name.toUpperCase()}"`,
+    ]).map((value) => `digraph { layout=${value}; a -> b -> c }`),
+    ...["layout=NEATO", "layout=Neato", "layout=nEATo", 'layout=" neato"', 'layout="neato "'].map((attr) => `digraph { subgraph cluster_0 { ${attr}; a -> b } c }`),
+    ...["Arial", "ARIAL", "arial", " Arial", "Arial ", "Helvetica", "HELVETICA", "helvetica", ""].flatMap((name) => [
+      `digraph { graph [fontname="${name}"]; node [fontname="${name}"]; edge [fontname="${name}" labelfontname="${name}"]; a -> b [label=x] }`,
+      `digraph { a [fontname="${name}"]; subgraph cluster_0 { fontname="${name}"; b } a -> b [headlabel=h taillabel=t labelfontname="${name}"] }`,
+    ]),
+    ...["utf-8", "UTF-8", "utf8", "UTF8", " utf-8", "utf-8 ", '"Utf-8"'].map((value) => `digraph { charset="${value.replaceAll('"', "")}"; a -> b }`),
+    'digraph { charset=utf8; a -> b }',
+  ];
+
+  it("draws every spelling of layout, fontname and charset that the checks pass, with the engine they chose", () => {
+    const passing: string[] = [];
+    for (const text of spellings) {
+      const check = checkDot(text);
+      if (check.problem !== null) continue;
+      passing.push(text);
+      const styled = styledDot(text);
+      expect(inspectDot(library, styled), text).toBeNull();
+      expect(() => library.layout(styled, "svg", check.layout), text).not.toThrow();
+    }
+    // Some of them pass, so the test is not about nothing.
+    expect(passing.length).toBeGreaterThan(20);
+    expect(passing).toContain("digraph { layout=neato; a -> b -> c }");
+  });
+
+  it("refuses a layout that is not one of the five in lower case, as Graphviz reads the attribute", () => {
+    for (const value of ["NEATO", "Neato", " neato", "neato "])
+      expect((checkDot(`digraph { layout="${value}"; a -> b }`) as { problem: string }).problem, value).toMatch(/^layout=.* is not allowed: use one of dot, neato, circo, fdp, twopi, in lower case with no spaces$/);
+    expect(checkDot("digraph { layout=neato; a -> b }")).toMatchObject({ problem: null, layout: "neato" });
+  });
+});
+
 describe("describeGraphvizError", () => {
   it("keeps the kind, the line and a short token with no markup, and drops the rest of the message", () => {
     expect(describeGraphvizError("Error: syntax error in line 3 near '->'\n")).toBe('syntax error in line 3, near "-"');
