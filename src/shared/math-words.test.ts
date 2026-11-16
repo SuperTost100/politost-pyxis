@@ -64,6 +64,13 @@ describe("formulaWords", () => {
     expect(both("\\vec{F}=m\\vec{a}")).toEqual(["vettore F uguale a m vettore a", "vector F equals m vector a"]);
   });
 
+  it("keeps the exponent of a function's bracketed argument", () => {
+    expect(both("\\sin(x)^{a+b}")).toEqual(["seno di (x) alla (a più b)", "sine of (x) to the (a plus b)"]);
+    expect(both("\\sin\\left(x\\right)^{2}")).toEqual(["seno di (x) al quadrato", "sine of (x) squared"]);
+    expect(both("\\sin(x)")).toEqual(["seno di x", "sine of x"]);
+    expect(both("\\sin\\left(x+1\\right)")).toEqual(["seno di (x più 1)", "sine of (x plus 1)"]);
+  });
+
   it("takes one symbol for an argument written without braces, as LaTeX does", () => {
     // `x^12` is x to the 1, then a 2; `\\frac12` is one half.
     expect(both("x^12")).toEqual(["x alla 1 2", "x to the 1 2"]);

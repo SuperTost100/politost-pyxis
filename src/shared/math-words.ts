@@ -654,18 +654,20 @@ class Reader {
     // The argument: what is in the brackets after the name, or the term after it.
     const [argument, after] = this.term(here, to);
     if (!argument || argument.kind === "link") return [{ text: label, kind: "closed" }, next];
-    const bracketed = argument.kind === "closed" && /^\(.*\)$/s.test(argument.text);
-    const bare = bracketed ? this.plain(here, to) : null;
+    const bare = argument.kind === "closed" ? this.plain(here, to, after) : null;
     return [{ text: `${label} ${words.of} ${bare ?? bracket(argument)}`, kind: "open" }, after];
   }
 
   /** What is inside the round brackets that open at `at`, without them when it is a single term: "x", not "(x)". */
-  private plain(at: number, to: number): string | null {
+  private plain(at: number, to: number, after: number): string | null {
     const left = this.is(at, to, "command", "left");
     const open = left ? this.skip(at + 1, to) : at;
     if (!this.is(open, to, "char", "(")) return null;
     const end = left ? this.right(open, to) : this.closing(open, to, "(", ")");
-    const inner = end < 0 ? null : this.read(open + 1, end);
+    // The brackets can go only when they hold the whole argument: not one that goes on with an exponent or an index.
+    const closed = left && end >= 0 ? this.skip(end + 1, to) : end;
+    if (end < 0 || closed + 1 !== after) return null;
+    const inner = this.read(open + 1, end);
     return inner && inner.kind !== "open" && inner.kind !== "link" ? inner.text : null;
   }
 }
