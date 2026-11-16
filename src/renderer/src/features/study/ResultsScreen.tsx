@@ -30,6 +30,8 @@ export type ResultItem = {
   /** The grade of a partly right answer or of an exercise, in words. */
   score?: string;
   answer: string;
+  /** The steps the student wrote under an open answer, when there are some. */
+  steps?: string;
   /** Set when the student wrote the answer, so it shows as written, not as Markdown. See `answerSource`. */
   typed?: AnswerSource;
   /** Open answers and exercises: Markdown, the two answers one under the other. */
@@ -433,6 +435,14 @@ function Answer({ id, item, planId }: { id: string; item: ResultItem; planId: st
             <span className="px-res-answer-empty">{t(waiting ? "quiz.noAnswer" : "results.dontKnowAnswer")}</span>
           )}
         </dd>
+        {item.steps ? (
+          <>
+            <dt>{t("quiz.yourSteps")}</dt>
+            <dd className="px-res-answer is-steps">
+              <TypedAnswer text={item.steps} source="math" />
+            </dd>
+          </>
+        ) : null}
         {showExpected ? (
           <>
             <dt>{item.expectedLabel}</dt>

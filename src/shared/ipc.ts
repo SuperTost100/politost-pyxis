@@ -142,6 +142,8 @@ const masteryPartSchema = z.object({
 const quizResultSchema = z.object({
   score: z.number(),
   picks: z.record(z.string(), z.string()),
+  // The steps written under an open answer, by question id; only the questions that have some.
+  steps: z.record(z.string(), z.string()).optional(),
   results: z.array(
     z.object({
       id: z.string(),
@@ -1118,6 +1120,8 @@ export const requests = {
       attemptId: z.string(),
       planId: z.string().optional(),
       picks: z.record(z.string(), z.string().max(20000)),
+      // The optional steps under an open answer, by question id.
+      steps: z.record(z.string(), z.string().max(20000)).optional(),
       index: z.number().int().min(0).max(99),
       // Skipped questions in the order they were skipped, from the quiz screen before 0.5; read back, not written.
       skipped: z.array(z.string()).max(100).optional(),
@@ -1134,6 +1138,7 @@ export const requests = {
       draft: z
         .object({
           picks: z.record(z.string(), z.string()),
+          steps: z.record(z.string(), z.string()).optional(),
           index: z.number(),
           skipped: z.array(z.string()).optional(),
           marked: z.array(z.string()).optional(),
@@ -1201,6 +1206,7 @@ export const requests = {
     input: z.object({
       attemptId: z.string(),
       picks: z.record(z.string(), z.string()),
+      steps: z.record(z.string(), z.string().max(20000)).optional(),
     }),
     // A grading job id means results are not final; follow it with study.quizGrading.
     output: z.object({
