@@ -7,9 +7,10 @@ type Handle = { requests: () => unknown[]; evaluate: (script: string) => Promise
 /**
  * Attaches to the failing test what the Python sandbox did, so a run that did not answer in time can be told apart: stuck
  * in the queue or in the clearing of the session, still opening the window, still loading Python, or running the code.
- * `requests` are the main process's records of the last requests (epoch milliseconds), `marks` the moments of the sandbox
- * page's lanes (`python-start`, `-ready`, `-run`, `-done`, and `check-` ones) on the same clock, and `now` the time of the
- * reading. The reading itself never fails the test: a window that is gone is recorded as such.
+ * `requests` are the main process's records of the last requests (epoch milliseconds). `queued` is when a request was made,
+ * before any wait behind earlier ones, and one dropped before its turn has an `outcome` and no `entered`. `marks` are the
+ * moments of the sandbox page's lanes (`python-start`, `-ready`, `-run`, `-done`, and `check-` ones) on the same clock, and
+ * `now` is the time of the reading. The reading itself never fails the test: a window that is gone is recorded as such.
  */
 export async function attachPythonRecording(app: ElectronApplication, name = "python-recording") {
   const recording = await app

@@ -240,6 +240,56 @@ describe("python runtime queue", () => {
     expect(pythonTestHandle().requests().at(-1)).toMatchObject({ outcome: "runtime-crashed" });
   });
 
+  it("records a request from the moment it is made, through its wait behind the one holding the lane, and when it is dropped before its turn", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.now();
+    const first = handleRuntimeRequest("python", { code: "1" });
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    vi.setSystemTime(start + 5000);
+    const second = handleRuntimeRequest("python", { code: "2" });
+    const late = handleRuntimeRequest("python", { code: "3" }, start + 8000);
+    await tick();
+    const [, waiting, expiring] = pythonTestHandle().requests().slice(-3);
+    expect(waiting).toMatchObject({ queued: start + 5000 });
+    expect(waiting!.entered).toBeUndefined();
+    expect(waiting!.ended).toBeUndefined();
+    expect(expiring).toMatchObject({ queued: start + 5000 });
+
+    vi.setSystemTime(start + 9000);
+    fake.held[0]!.settle({ stdout: "1\n" });
+    await first;
+    await vi.waitFor(() => expect(fake.held).toHaveLength(2));
+    const [, running, stuck] = pythonTestHandle().requests().slice(-3);
+    // Date moves on with the clock after setSystemTime, so the time it entered is not exactly the one that was set.
+    expect(running).toMatchObject({ queued: start + 5000 });
+    expect(running!.entered).toBeGreaterThanOrEqual(start + 9000);
+    expect(running!.ended).toBeUndefined();
+    expect(stuck!.entered).toBeUndefined();
+
+    fake.held[1]!.settle({ stdout: "2\n" });
+    await second;
+    await expect(late).rejects.toThrow("runtime-expired");
+    const dropped = pythonTestHandle().requests().at(-1)!;
+    expect(dropped).toMatchObject({ queued: start + 5000, outcome: "runtime-expired" });
+    expect(dropped.ended).toBeTypeOf("number");
+    expect(dropped.entered).toBeUndefined();
+  });
+
+  it("records a queued request that the runtime's disposal dropped", async () => {
+    const first = handleRuntimeRequest("python", { code: "1" }).catch(() => undefined);
+    await vi.waitFor(() => expect(fake.held).toHaveLength(1));
+    const queued = handleRuntimeRequest("python", { code: "2" });
+    const dropped = expect(queued).rejects.toThrow("runtime-disposed");
+    await tick();
+    // Disposing closes the window the first request runs in, which ends it as crashed; the second never gets its turn.
+    disposePythonRuntime();
+    await first;
+    await dropped;
+    expect(pythonTestHandle().requests().at(-1)).toMatchObject({ outcome: "runtime-disposed" });
+    expect(pythonTestHandle().requests().at(-1)!.entered).toBeUndefined();
+    expect(pythonTestHandle().requests().at(-1)!.ended).toBeTypeOf("number");
+  });
+
   it("keeps queued work when the same workspace is configured again", async () => {
     const first = handleRuntimeRequest("check", claim);
     const second = handleRuntimeRequest("check", claim);
