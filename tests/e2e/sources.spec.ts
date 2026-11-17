@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { faxScanPdf, manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
@@ -61,9 +61,7 @@ test("M4 chapter panel, highlight and responsive 600-page import", async () => {
       page.getByRole("button", { name: "Fisica", exact: true }),
     ).toBeFocused();
     await page.getByRole("combobox", { name: "Cerca in" }).click();
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')
-      .click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]'));
     await page
       .getByRole("textbox", { name: "Cerca nei brani" })
       .fill("energia cinetica");
@@ -178,7 +176,7 @@ test("the PDF viewer draws a fax-encoded figure", async () => {
       )
       .toBe("ready");
     await page.getByRole("combobox", { name: "Cerca in" }).click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]').click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]'));
     await page.getByRole("textbox", { name: "Cerca nei brani" }).fill("Pendulum");
     await page.keyboard.press("Enter");
     await page.locator(".px-library-hit").filter({ hasText: "Pendulum" }).first().click();

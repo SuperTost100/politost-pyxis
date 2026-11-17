@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis, setUp } from "./app-under-test";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -577,7 +577,7 @@ test("after an import the exam's back control reads Esami and every way back lea
     for (const way of ["control", "menu", "mouse"] as const) {
       // Opened from Esami's menu, the way a link or a chosen file is: the opener page, then the review, then the exam.
       await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
-      await page.getByRole("menuitem", { name: "Importa da un link" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Importa da un link" }));
       await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
       await page.locator('input[type="file"]').first().setInputFiles({
         name: "Analisi.pyxis",
@@ -648,11 +648,11 @@ test("a file picked in the dialog on Esami adds the exam and leaves the window o
     const entries = await page.evaluate(() => history.length);
     await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
     const chooser = page.waitForEvent("filechooser");
-    await page.getByRole("menuitem", { name: "Importa da un file .pyxis" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Importa da un file .pyxis" }));
     await (await chooser).setFiles({ name: "Analisi.pyxis", mimeType: "application/json", buffer: Buffer.from(shared("Analisi")) });
     const dialog = page.getByRole("dialog", { name: "Importa un esame" });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Aggiungi ai miei esami", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Aggiungi ai miei esami", exact: true }));
     await expect(dialog).toHaveCount(0);
     await expect(page).toHaveURL(/#\/exams$/);
     expect(await page.evaluate(() => history.length)).toBe(entries);

@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 
 /** The cards in the workspace, oldest first. */
@@ -94,7 +94,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     await expect(dialog).toBeVisible();
 
     // Empty faces are refused next to their fields, and the focus goes to the first.
-    await dialog.getByRole("button", { name: "Salva", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Salva", exact: true }));
     const front = dialog.getByRole("textbox", { name: "Fronte" });
     const back = dialog.getByRole("textbox", { name: "Retro" });
     await expect(front).toHaveAttribute("aria-invalid", "true");
@@ -106,7 +106,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     // A formula goes in at the caret and shows under the field as the flashcard draws it.
     await front.fill("Formula degli alcani?\nIn una riga.");
     await back.fill("Sono ");
-    await dialog.getByRole("button", { name: "Inserisci formula nel retro" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Inserisci formula nel retro" }));
     await expect(back).toBeFocused();
     await page.keyboard.type("C_nH_{2n+2}");
     await expect(back).toHaveValue("Sono $ C_nH_{2n+2} $");
@@ -132,13 +132,13 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
     await expect(front).toBeFocused();
 
     // Pyxis needs an AI tool and says how to set one up; the written card stays on its side.
-    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
     await expect(dialog.getByRole("radio", { name: "Falla fare a Pyxis" })).toHaveAttribute("aria-checked", "true");
     await expect(dialog.getByText(/Pyxis scrive le flashcard dal materiale di una materia, e non hai ancora materie/)).toBeVisible();
-    await dialog.getByRole("radio", { name: "Scrivila tu" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Scrivila tu" }));
     await expect(front).toHaveValue("Formula degli alcani?\nIn una riga.");
 
-    await dialog.getByRole("button", { name: "Salva", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Salva", exact: true }));
     await expect(dialog).toHaveCount(0);
     // It is on the page at once, under its new subject, and the focus is back on the button.
     const subject = page.getByRole("region", { name: "Chimica organica" });
@@ -161,7 +161,7 @@ test("a flashcard written by hand from the empty Flashcard page, with no exam, l
 
     // Now the subject exists, Pyxis's side names what it needs: an AI tool, and a way to connect one.
     await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
-    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
     await expect(dialog.getByText(/serve uno strumento AI collegato/)).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Collega uno strumento" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Crea le flashcard" })).toBeDisabled();
@@ -583,7 +583,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
 
     // ---- Pyxis: Argomento for a subject with topics, "Su cosa?" and how many.
     await open.click();
-    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
     await expect(dialog.getByText(/Pyxis le scrive dal materiale di Analisi 1 che hai in Libreria/)).toBeVisible();
     const pySubject = dialog.getByRole("combobox", { name: "Materia" });
     await expect(pySubject).toHaveValue("ana");
@@ -595,7 +595,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
 
     // The AI tool fails: the error is in the dialog with Riprova, and nothing is saved.
     const before = cards(userData).length;
-    await dialog.getByRole("button", { name: "Crea le flashcard" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Crea le flashcard" }));
     const failed = dialog.getByRole("alert").filter({ hasText: /Pyxis non è riuscito a scrivere le flashcard|limite/ });
     await expect(failed).toBeVisible();
     expect(cards(userData)).toHaveLength(before);
@@ -623,7 +623,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await list.nth(0).getByRole("textbox", { name: "Retro" }).fill("Per ogni ε esiste δ.");
     await list.nth(2).getByRole("button", { name: "Scarta la flashcard 3" }).click();
     await expect(list).toHaveCount(2);
-    await dialog.getByRole("button", { name: "Salva 2 flashcard" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Salva 2 flashcard" }));
     await expect(dialog).toHaveCount(0);
     // Each one is linked to a passage of Limiti that matches "Su cosa?", never to the other topic's.
     const topicPassage = expect.stringMatching(/^pa[01]$/);
@@ -653,7 +653,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
 
     // A subject with no material says what is missing instead of writing anything.
     await open.click();
-    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
     await pySubject.selectOption({ label: "Geometria e algebra lineare per l’ingegneria dell’informazione" });
     await expect(dialog.getByText(/In Libreria non c’è ancora materiale di Geometria/)).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Crea le flashcard" })).toBeDisabled();
@@ -687,7 +687,7 @@ test("Pyxis writes a subject's flashcards to check before saving, and another pa
     await expect(dialog.getByRole("button", { name: "Salva 30 flashcard" })).toBeInViewport();
     await shot(page, "7-pyxis-thirty");
     // Closing with proposals not saved asks first; then nothing is saved.
-    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Annulla" }));
     const unsaved = await expectCloseQuestion(
       page,
       "Uscire senza salvare?",
@@ -785,7 +785,7 @@ test("proposals name their source, a dropped one can no longer be saved, and Pyx
     const list = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
     const ask = async () => {
       await open.click();
-      await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+      await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
       await dialog.getByRole("combobox", { name: "Argomento" }).selectOption({ label: "Limiti" });
       await dialog.getByRole("button", { name: "Crea le flashcard" }).click();
     };
@@ -828,6 +828,7 @@ test("proposals name their source, a dropped one can no longer be saved, and Pyx
     // Finding 11: Pyxis still says how many it wrote, not how many are left.
     await expect(lead).toBeVisible();
     await expect(dialog.getByRole("status").filter({ hasText: "Ne ho scritte 2" })).toHaveCount(0);
+    // A plain click: the dropped card's exit is held on purpose, and Save must work while it leaves.
     await dialog.getByRole("button", { name: "Salva 2 flashcard" }).click();
     await expect(dialog).toHaveCount(0);
     expect(cards(userData).slice(1).map((row) => row.front)).toEqual(["Primo?", "Terzo?"]);
@@ -836,7 +837,7 @@ test("proposals name their source, a dropped one can no longer be saved, and Pyx
     await ask();
     await expect(list).toHaveCount(3);
     for (const n of [3, 2, 1]) {
-      await dialog.getByRole("button", { name: `Scarta la flashcard ${n}` }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: `Scarta la flashcard ${n}` }));
       await expect(list).toHaveCount(n - 1);
     }
     await expect(dialog.getByRole("button", { name: "Cambia la richiesta" })).toBeFocused();
@@ -1012,7 +1013,7 @@ test("a proposed face with a formula shows its preview, and a long face wraps in
     await toFlashcards(page);
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     await page.getByRole("button", { name: "Nuova flashcard", exact: true }).click();
-    await dialog.getByRole("radio", { name: "Falla fare a Pyxis" }).click();
+    await clickSettled(page, dialog.getByRole("radio", { name: "Falla fare a Pyxis" }));
     await dialog.getByRole("combobox", { name: "Argomento" }).selectOption({ label: "Limiti" });
     await dialog.getByRole("button", { name: "Crea le flashcard" }).click();
     const list = dialog.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");

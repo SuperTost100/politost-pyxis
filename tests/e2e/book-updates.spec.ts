@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 
@@ -201,9 +201,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
 
     // The books list says the same, with Update in place of Add.
     await page.getByRole("button", { name: "Altro sulla Libreria", exact: true }).click();
-    await page
-      .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
-      .click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     const dialog = page.getByRole("dialog", {
       name: "Libri PoliTost gratuiti",
     });
@@ -241,7 +239,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await noAxeViolations(page);
 
     await update.click();
-    await question.getByRole("button", { name: "Aggiorna il libro", exact: true }).click();
+    await clickSettled(page, question.getByRole("button", { name: "Aggiorna il libro", exact: true }));
     await expect(
       page.getByText(
         "Fisica di prova si sta aggiornando alla versione 1.1.0.",
@@ -261,12 +259,10 @@ test("Book updates: a newer free book updates the same source in place, flags ch
       page.getByText("Nuova versione disponibile: 1.1.0"),
     ).toHaveCount(0);
     await page.getByRole("button", { name: "Altro sulla Libreria", exact: true }).click();
-    await page
-      .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
-      .click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     await expect(dialog.getByText("Nella tua libreria")).toBeVisible();
     await expect(dialog.getByText("Nuova versione disponibile")).toBeHidden();
-    await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: /Close|Chiudi/ }));
 
     // Still one source; the lesson citing rewritten text is flagged, the other is not.
     expect(
@@ -316,7 +312,7 @@ test("Book updates: a newer free book updates the same source in place, flags ch
     await expect(
       rebuild.getByText("Energia", { exact: true }),
     ).toBeVisible();
-    await rebuild.getByRole("button", { name: "Applica le modifiche" }).click();
+    await clickSettled(page, rebuild.getByRole("button", { name: "Applica le modifiche" }));
     await expect(rebuild).toBeHidden();
     expect(await titles()).toEqual(["Moti", "Forze", "Energia"]);
     await saveShot(page, "book-update-rebuilt-it.png", { animations: "disabled" });

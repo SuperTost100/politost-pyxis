@@ -10,6 +10,7 @@ import { fromChiediToExams } from "./doors";
 import { drawingPinned, pythonPinned, stagePacks } from "./drawing-packs";
 import { packServer } from "./pack-server";
 import { SHOTS, saveShot } from "./shots";
+import { clickSettled } from "./settled";
 
 // Settings › Studio › "Disegni e Python": two rows, one for Python and one for the drawings, each downloaded, updated and
 // removed on its own. Every download comes from a local server that stands in for the CDNs (PYXIS_E2E_PACK_BASE), which a
@@ -367,20 +368,23 @@ test("each row's menu opens on the dots, on a right-click and from the keyboard,
     }
     // One dialog asks, and Annulla leaves everything as it was.
     let menu = await openMenu(page, "drawing", "dots");
-    await menu.getByRole("menuitem", { name: "Rimuovi i disegni" }).click();
+    await clickSettled(page, menu.getByRole("menuitem", { name: "Rimuovi i disegni" }));
     const dialog = page.getByRole("dialog", { name: "Rimuovere i disegni?" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("e con loro i circuiti");
     await saveShot(page, "settings/it-light-remove.png");
-    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Annulla" }));
     await expect(dialog).toHaveCount(0);
     expect(existsSync(packFolder(userData, "drawing"))).toBe(true);
     await expect(row(page, "drawing")).toHaveAttribute("data-phase", "ready");
 
     // Confirmed: the files go and the row offers the download again, at once; Python is not touched.
     menu = await openMenu(page, "drawing", "right-click");
-    await menu.getByRole("menuitem", { name: "Rimuovi i disegni" }).click();
-    await page.getByRole("dialog", { name: "Rimuovere i disegni?" }).getByRole("button", { name: "Rimuovi", exact: true }).click();
+    await clickSettled(page, menu.getByRole("menuitem", { name: "Rimuovi i disegni" }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Rimuovere i disegni?" }).getByRole("button", { name: "Rimuovi", exact: true }),
+    );
     await expect(row(page, "drawing").getByRole("button", { name: /^Scarica i disegni/ })).toBeVisible({ timeout: 30000 });
     expect(existsSync(join(userData, "workspace/runtimes/drawing"))).toBe(false);
     expect(existsSync(packFolder(userData, "pyodide"))).toBe(true);
@@ -389,7 +393,7 @@ test("each row's menu opens on the dots, on a right-click and from the keyboard,
 
     // Python the same way, and it says what stops working.
     menu = await openMenu(page, "pyodide", "dots");
-    await menu.getByRole("menuitem", { name: "Rimuovi Python" }).click();
+    await clickSettled(page, menu.getByRole("menuitem", { name: "Rimuovi Python" }));
     const python = page.getByRole("dialog", { name: "Rimuovere Python?" });
     await expect(python).toContainText("non si disegnano grafici e circuiti");
     await python.getByRole("button", { name: "Rimuovi", exact: true }).click();
@@ -447,8 +451,8 @@ test("a graph is drawn with the drawings' pack alone after it is downloaded from
     // Removed: the picture already made stays with its answer, and a new answer has none.
     await openPacks(page);
     await row(page, "drawing").getByRole("button", { name: "Altro sui disegni" }).click();
-    await page.getByRole("menuitem", { name: "Rimuovi i disegni" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Rimuovi", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rimuovi i disegni" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Rimuovi", exact: true }));
     await expect(row(page, "drawing").getByRole("button", { name: /^Scarica i disegni/ })).toBeVisible({ timeout: 30000 });
     // A new answer has none, as before the download.
     await askFromPage(page, "Ancora uno?");
@@ -578,7 +582,7 @@ test("pictures of every state of the rows", async () => {
     await shoot(page, "menu", menuOf("drawing"));
     await shoot(page, "remove", async () => {
       await menuOf("drawing")();
-      await page.getByRole("menuitem").click();
+      await clickSettled(page, page.getByRole("menuitem"));
       await expect(page.getByRole("dialog")).toBeVisible();
       await page.waitForTimeout(400);
     });
@@ -593,8 +597,8 @@ test("pictures of every state of the rows", async () => {
     // Python alone.
     await openPacks(page);
     await row(page, "drawing").getByRole("button", { name: /^(Altro sui disegni|More about the drawings)$/ }).click();
-    await page.getByRole("menuitem").click();
-    await page.getByRole("dialog").getByRole("button", { name: /^(Rimuovi|Remove)$/ }).click();
+    await clickSettled(page, page.getByRole("menuitem"));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: /^(Rimuovi|Remove)$/ }));
     await expect(drawings).toHaveAttribute("data-phase", "idle", { timeout: 30000 });
     await shoot(page, "python");
 

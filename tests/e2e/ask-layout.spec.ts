@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu, lastMenuLabels } from "./native-menu";
@@ -167,7 +167,7 @@ test("Ask: recent chats, automatic titles, rename and delete, greeting and the t
     await expect(dialog).toHaveCount(0);
     await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Teorema fondamentale" }).click();
-    await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
+    await clickSettled(page, page.getByRole("button", { name: "Elimina la chat", exact: true }));
     await expect(page.getByText("Le tue chat compaiono qui.")).toBeVisible();
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
@@ -236,7 +236,7 @@ test("Ask: All chats shows in the sidebar only when there are more chats than it
     // Deleting a chat leaves exactly as many as the sidebar lists, and the link goes without a reload.
     await answerNextMenu(app, "Elimina la chat…");
     await list.getByRole("button", { name: "Azioni per Argomento 20" }).click();
-    await page.getByRole("button", { name: "Elimina la chat", exact: true }).click();
+    await clickSettled(page, page.getByRole("button", { name: "Elimina la chat", exact: true }));
     // Known and unexplained: on the Intel Mac runner (run 43883525076) the click above did nothing. The report's page
     // still held the confirmation, not busy, and "Argomento 20" in the list, so the delete never started and the sidebar
     // had nothing to read again. The same as the dialog clicks of dialogs.spec.ts and leave-with-typing.spec.ts, and it did

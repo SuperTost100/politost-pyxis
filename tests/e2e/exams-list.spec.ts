@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 const day = 86_400_000;
 
@@ -218,7 +219,7 @@ test("Esami with no exam says what will appear and keeps New exam and the import
     await page.getByRole("button", { name: "Altro su Esami" }).click();
     await expect(page.getByRole("menuitem", { name: "Importa da un file .pyxis" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Tutte le flashcard" })).toHaveCount(0);
-    await page.getByRole("menuitem", { name: "Quaderno degli errori" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Quaderno degli errori" }));
     await expect(page).toHaveURL(/#\/exams\/mistakes$/);
     await expect(page.getByRole("heading", { name: "Quaderno degli errori" })).toBeVisible();
     await page.getByRole("main").getByRole("button", { name: "Torna a Esami" }).click();

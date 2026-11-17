@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource } from "./seed";
 import { SHOTS, saveShot } from "./shots";
+import { clickSettled } from "./settled";
 
 const day = 86_400_000;
 
@@ -76,7 +77,7 @@ async function expectContent(page: Page, label: string, content: Locator) {
 
 async function pickFromMenu(page: Page, item: string) {
   await page.locator(".px-exam-head").getByRole("button", { name: "More for this exam", exact: true }).click();
-  await page.getByRole("menuitem", { name: item, exact: true }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: item, exact: true }));
 }
 
 test("the exam page shows its rings, Adesso, the path and its sections, and reaches every feature moved onto it", async () => {
@@ -301,7 +302,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await pickFromMenu(page, "Share the exam");
     const share = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Save file" }) });
     await expect(share).toBeVisible();
-    await share.getByRole("button", { name: "Cancel" }).click();
+    await clickSettled(page, share.getByRole("button", { name: "Cancel" }));
     await expect(share).toBeHidden();
     await page.getByRole("button", { name: "Exam settings" }).click();
     await expect(page).toHaveURL(/#\/plans\/p-fis\/settings$/);
@@ -323,7 +324,7 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
       location.hash = "/plans/p-fis/sources";
     });
     await page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" }).click();
-    await page.getByRole("menuitem", { name: "Remove from exam" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Remove from exam" }));
     const removal = page.getByRole("dialog", { name: "Remove “Fisica I, Mazzoldi” from the exam?" });
     await expect(removal).toContainText("the source stays in the Library");
     await expect(removal.getByRole("button", { name: "Cancel" })).toBeFocused();
@@ -331,8 +332,11 @@ test("the exam page shows its rings, Adesso, the path and its sections, and reac
     await expect(removal).toHaveCount(0);
     await expect(page.getByText("Fisica I, Mazzoldi").first()).toBeVisible();
     await page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" }).click();
-    await page.getByRole("menuitem", { name: "Remove from exam" }).click();
-    await page.getByRole("dialog", { name: "Remove “Fisica I, Mazzoldi” from the exam?" }).getByRole("button", { name: "Remove from exam", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Remove from exam" }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Remove “Fisica I, Mazzoldi” from the exam?" }).getByRole("button", { name: "Remove from exam", exact: true }),
+    );
     await expect(removal).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Actions for Fisica I, Mazzoldi" })).toHaveCount(0);
 

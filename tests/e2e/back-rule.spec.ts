@@ -9,6 +9,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
+import { clickSettled } from "./settled";
 
 /**
  * The walk that guards the rule for going back: every page with a back control is reached the ways a student reaches
@@ -75,7 +76,7 @@ const direct = (path: string) => async ({ page }: Walk) => {
 /** Opens Settings from the profile menu, as a student does. */
 async function openSettings(page: Page) {
   await page.getByRole("button", { name: /^Profilo/ }).click();
-  await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Impostazioni" }));
   await expect(page.getByRole("heading", { level: 1, name: "Profilo" })).toBeVisible();
 }
 
@@ -393,7 +394,7 @@ const rows: Row[] = [
     reach: async (walk) => {
       await rows[0]!.reach(walk);
       await walk.page.getByRole("banner").getByRole("button", { name: "Altre azioni" }).click();
-      await walk.page.getByRole("menuitem", { name: "Mappa" }).click();
+      await clickSettled(walk.page, walk.page.getByRole("menuitem", { name: "Mappa" }));
       await expect(walk.page.getByRole("heading", { level: 1, name: "Funzioni di più variabili" })).toBeVisible();
     },
     label: "Funzioni di più variabili",
@@ -507,7 +508,7 @@ const rows: Row[] = [
     reach: async ({ page }) => {
       await start(page, "#/exams", "Esami");
       await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
-      await page.getByRole("menuitem", { name: "Importa da un link" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Importa da un link" }));
       await expect(page.getByRole("heading", { level: 1, name: "Apri un esame condiviso" })).toBeVisible();
     },
     label: "Esami",
@@ -1015,7 +1016,7 @@ test("the sidebar lights the section the page came from, and every row opens its
   await rows[1]!.reach(walk);
   await expect(lit(page)).toHaveAccessibleName("Esami");
   await page.getByRole("button", { name: /^Profilo/ }).click();
-  await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Impostazioni" }));
   await expect(page).toHaveURL(/#\/settings$/);
   await expect(lit(page)).toHaveAccessibleName("Esami");
   // The rows go to the sections' main pages, whatever page the student left them on.
@@ -1062,7 +1063,7 @@ test("the label follows the app's language, also after a reload", async () => {
   const { page } = walk;
   await start(page, "#/exams", "Esami");
   await page.getByRole("button", { name: /^(Altro su Esami|More for Exams)$/ }).click();
-  await page.getByRole("menuitem", { name: "Quaderno degli errori" }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Quaderno degli errori" }));
   await expect(backControl(page)).toHaveText("Esami");
   await page.evaluate(() => localStorage.setItem("pyxis.lang", "en"));
   await page.reload();

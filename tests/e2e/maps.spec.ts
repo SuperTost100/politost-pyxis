@@ -19,7 +19,7 @@ import { expectNoAxeViolations } from "./axe";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { atRest } from "./settled";
+import { atRest, clickSettled } from "./settled";
 
 test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PNG", async () => {
   test.setTimeout(240_000);
@@ -344,10 +344,7 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
     await actual.click();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("dialog")).toBeVisible();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Annulla" })
-      .click();
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Annulla" }));
     for (const [language, theme, width] of [
       ["it", "dark", 1280],
       ["it", "light", 960],
@@ -375,8 +372,8 @@ test("MAP-01 through MAP-04 saved positions, model patch, keyboard and screen PN
       await expectNoAxeViolations(page);
       rmSync(output, { force: true });
       await page.getByRole("button", { name: /^(Altro|More)$/ }).click();
-      await page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }).click();
-      await page.getByRole("menuitem", { name: /^(Solo quello che vedi|Just what you see)/ }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }));
+      await clickSettled(page, page.getByRole("menuitem", { name: /^(Solo quello che vedi|Just what you see)/ }));
       await expect
         .poll(() => existsSync(output), { timeout: 20000 })
         .toBe(true);

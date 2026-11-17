@@ -7,6 +7,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 async function launch() {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-composer-"));
@@ -44,7 +45,7 @@ test("Ask composer: a formula sits inline in the text, leaves as $...$ and rende
 
     // "Scrivi una formula" in the plus menu opens a formula at the caret and the keyboard under the field.
     await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
-    await page.getByRole("menuitem", { name: "Scrivi una formula" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scrivi una formula" }));
     const keys = page.getByRole("group", { name: "Tastiera per formule" });
     await expect(keys).toBeVisible();
     const field = box.locator(".px-mathchip math-field");

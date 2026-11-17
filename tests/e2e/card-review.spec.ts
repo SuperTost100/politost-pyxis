@@ -8,6 +8,7 @@ import { seedPlan, seedSource } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 /** One topic with three cards Pyxis wrote (one from a passage), one hand-made card, and a finished card build. */
 function seed(db: DatabaseSync) {
@@ -150,7 +151,7 @@ test("card review: the study bar, ratings only under the card, undo, the card me
 
     // Suspend from the card's menu, then Undo.
     await page.getByRole("button", { name: "Flashcard actions" }).click();
-    await page.getByRole("menuitem", { name: /Suspend/ }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: /Suspend/ }));
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard suspended.");
     await expect(front).toHaveText("Unità della forza?");
     await undoLast.click();
@@ -187,7 +188,7 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await page.mouse.click(pointer.x, pointer.y, { button: "right" });
     await expect(open).toHaveCount(1);
     await expect(open.getByRole("menuitem", { name: /^Edit/ })).toBeVisible();
-    await open.getByRole("menuitem", { name: /^Suspend/ }).click();
+    await clickSettled(page, open.getByRole("menuitem", { name: /^Suspend/ }));
     await expect(page.locator(".px-cards-undo")).toContainText("Flashcard suspended.");
     await undoLast.click();
     await expect(front).toHaveText("Seconda legge di Newton?");
@@ -284,7 +285,7 @@ test("card review: the study bar, ratings only under the card, undo, the card me
     await page.keyboard.press("d");
     const confirm = page.getByRole("dialog", { name: "Delete this flashcard?" });
     await expect(confirm).toBeVisible();
-    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Cancel" }));
     expect(count("SELECT COUNT(*) AS n FROM cards WHERE id = 'c4'")).toBe(1);
 
     // Export is in the bar's menu.
@@ -585,7 +586,7 @@ test("new flashcard: a form grown from the bar adds to the deck, closes on Esc a
     await open.click();
     await expect(frontField).toHaveValue("Una bozza");
     // Cancel closes it too and throws the draft away.
-    await form.getByRole("button", { name: "Cancel", exact: true }).click();
+    await clickSettled(page, form.getByRole("button", { name: "Cancel", exact: true }));
     await expect(form).toHaveCount(0);
     await expect(open).toBeFocused();
     await open.click();
@@ -688,9 +689,11 @@ test("card browser: a card forgotten six times is tagged and filtered", async ()
     await page.reload();
     await expect(page.getByRole("status")).toHaveText("4 flashcards");
     await page.getByRole("combobox", { name: "Show" }).click();
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Often forgotten"]')
-      .click();
+    await clickSettled(
+      page,
+      page
+        .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Often forgotten"]'),
+    );
     await expect(page.getByRole("status")).toHaveText("1 flashcard");
     const card = page.getByRole("listitem");
     await expect(card).toContainText("Often forgotten");

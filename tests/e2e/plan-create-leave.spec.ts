@@ -7,6 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedSource } from "./seed";
+import { clickSettled } from "./settled";
 
 /**
  * A new exam is created by a request that can still be on its way when the student leaves the form (the leave question,
@@ -93,7 +94,10 @@ test("an exam made from a book after the student left the form does not take the
     await page.getByRole("button", { name: "Crea l'esame" }).click();
     // Leaves the form by its back control and answers the question.
     await page.getByRole("button", { name: /^Torna a / }).click();
-    await page.getByRole("dialog", { name: "Uscire senza salvare?" }).getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Uscire senza salvare?" }).getByRole("button", { name: "Esci senza salvare" }),
+    );
     await expect(page).toHaveURL(/#\/exams$/);
     await examIsMade(page);
     // The exam is made while the student is on Esami: the window, and its address, stay as they were.
