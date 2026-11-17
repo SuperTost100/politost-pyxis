@@ -72,6 +72,14 @@ export function CardBrowser({
   const [saving, setSaving] = useState<string | null>(null);
   const savingNow = useRef<string | null>(null);
   const pendingSave = useRef<Promise<void> | null>(null);
+  // What a question or a save that ends after the student left the page must not touch: the page that is open then.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [saveFailed, setSaveFailed] = useState<string | null>(null);
   const [actionFailed, setActionFailed] = useState(false);
   const [done, setDone] = useState("");
@@ -229,6 +237,7 @@ export function CardBrowser({
   function focusCard(id: string) {
     let tries = 0;
     const go = () => {
+      if (!mounted.current) return;
       const node = document.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(id)}"] .px-ct-open`);
       if (node) node.focus();
       else if (++tries < 20) requestAnimationFrame(go);
@@ -257,6 +266,8 @@ export function CardBrowser({
    */
   async function mayDropEdit() {
     await pendingSave.current;
+    // A page that was left while it waited has no edit to ask about, and its callers have nothing left to do.
+    if (!mounted.current) return false;
     const open = editingNow.current;
     if (!open || !typed()) return true;
     const answer = await confirm({
@@ -332,8 +343,9 @@ export function CardBrowser({
         // Saving an existing card needs only its id; the exam, when it has one, has to match.
         await invoke("study.save", { planId: card.planId ?? undefined, cardId: card.id, front, back });
         await refresh();
-        // The save ends the edit that started it, and only that one: the student may have opened another card since.
-        if (editingNow.current === mine) {
+        // The save ends the edit that started it, and only that one: the student may have opened another card since, or
+        // left the page, which has nothing to close.
+        if (mounted.current && editingNow.current === mine) {
           const held = draft.current;
           if (held && held.id === card.id && (held.front !== front || held.back !== back)) {
             // The student went on typing while it saved, and the save did not carry that: the edit stays open with it.
@@ -344,11 +356,12 @@ export function CardBrowser({
           }
         }
       } catch {
+        if (!mounted.current) return;
         if (editingNow.current === mine) setSaveFailed(card.id);
         else setActionFailed(true);
       } finally {
         savingNow.current = null;
-        setSaving(null);
+        if (mounted.current) setSaving(null);
       }
     })();
     pendingSave.current = run;
@@ -403,7 +416,7 @@ export function CardBrowser({
 
   /** A filter changes what the page shows, so it starts again from each subject's first eight. */
   async function startOver(change: () => void, stay?: () => void) {
-    if (!(await mayDropEdit())) return stay?.();
+    if (!(await mayDropEdit())) return mounted.current ? stay?.() : undefined;
     setEdit(null);
     change();
     setExpanded([]);

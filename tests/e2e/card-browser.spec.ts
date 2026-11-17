@@ -622,7 +622,7 @@ test("a filter chosen while a save is pending waits for the save, and a save tha
     // Leaving the page asks too, since the save may still fail.
     await page.getByRole("link", { name: /^Flashcards?\b/ }).click();
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(editFlashcard(page)).toBeVisible();
     // A filter that would take the card off the page does not close the edit while its save may still fail.
@@ -630,7 +630,7 @@ test("a filter chosen while a save is pending waits for the save, and a save tha
     db.exec("COMMIT");
     // The save failed, so the typing is still there and the filter asks what to do with it.
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(page.locator("#card-status").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("All flashcards");
     await expect(editFlashcard(page).getByText("That didn't work. Try again.")).toBeVisible();
@@ -639,6 +639,53 @@ test("a filter chosen while a save is pending waits for the save, and a save tha
     await close();
   }
 });
+
+// A filter or a search that waits for a pending save, and the student leaves the page before it ends. Whether the save
+// then fails or works, the page that is gone asks nothing and changes nothing on the one that is open.
+for (const how of ["filter", "search"] as const)
+  for (const ending of ["fails", "works"] as const)
+    test(`a ${how} waiting for a save that ${ending} after the student left the page opens no question there`, async () => {
+      test.setTimeout(120_000);
+      const { page, db, close } = await openForza(`lose-left-${how}-${ending}`);
+      try {
+        const leave = page.getByRole("dialog", { name: "Leave without saving?" });
+        // The search waits for a pause in typing on the page's clock, which the test moves on at once.
+        if (how === "search") await page.clock.install();
+        await page.getByRole("button", { name: /^Edit: Forza numero 01/ }).click();
+        await editFlashcard(page).getByRole("textbox", { name: "Front" }).fill("Forza uno salvata?");
+        db.exec("BEGIN IMMEDIATE");
+        if (ending === "fails") db.exec("DELETE FROM cards WHERE id = 'f1'");
+        await editFlashcard(page).getByRole("button", { name: "Save" }).click();
+        await expect(editFlashcard(page).getByRole("button", { name: "Save" })).toBeDisabled();
+        if (how === "filter") await choose(page, "Show", "Suspended");
+        else {
+          await page.getByRole("textbox", { name: "Search flashcards" }).fill("atomo");
+          await page.clock.runFor(300);
+        }
+        // The student leaves for another page, and confirms that the typing goes.
+        await page.getByRole("link", { name: /^Flashcards?\b/ }).click();
+        await clickSettled(page, leave.getByRole("button", { name: "Leave without saving" }));
+        await expect(page).toHaveURL(/#\/flashcards$/);
+        await expect(page.getByRole("group", { name: "Edit flashcard" })).toHaveCount(0);
+        db.exec(ending === "fails" ? "COMMIT" : "ROLLBACK");
+        // Core answers in order, so a read after the save's answer comes back once the page has handled that answer;
+        // two frames then let it draw whatever it asked for.
+        await page.evaluate(() => window.pyxis.invoke("plans.list", {}));
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        // The page that is open now is free: it moves on with no question.
+        await page.evaluate(() => {
+          location.hash = "#/exams";
+        });
+        await expect(page).toHaveURL(/#\/exams$/);
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        expect(db.prepare("SELECT front FROM cards WHERE id = 'f1'").get()).toEqual(
+          ending === "works" ? { front: "Forza uno salvata?" } : undefined,
+        );
+      } finally {
+        await close();
+      }
+    });
 
 test("typing added while a save is pending stays in the edit when the save ends", async () => {
   test.setTimeout(120_000);
