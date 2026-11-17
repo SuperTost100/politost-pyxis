@@ -153,6 +153,12 @@ const TYPED: Array<[name: string, steps: Step[], stored: string]> = [
   ["Backspace over the whole group", ["$t^{12", { press: "Backspace" }, { press: "Backspace" }, { press: "Backspace" }, "}+1$"], "$t+1$"],
   ["a selection inside the group replaced", ["$t^{12", { press: "Shift+ArrowLeft" }, { press: "Shift+ArrowLeft" }, "3}+1$"], "$t^3+1$"],
   ["everything selected and replaced", ["$t^{12", { press: "ControlOrMeta+a" }, "x}+1$"], "$x+1$"],
+  // MathLive rebuilds its model for an inline shortcut (`pi` becomes \pi) and for an undo, and the group is still the group.
+  ["an inline shortcut in a braced exponent", ["$x^{pi}+1$"], "$x^{\\pi}+1$"],
+  ["an inline shortcut in a braced index, then more", ["$x_{alpha}-1$"], "$x_{\\alpha}-1$"],
+  ["an inline shortcut inside a group inside a group", ["$a^{b^{pi}c}+1$"], "$a^{b^{\\pi}c}+1$"],
+  ["undo and redo inside a typed group", ["$t^{12", { press: "ControlOrMeta+z" }, { press: "ControlOrMeta+Shift+z" }, "}+1$"], "$t^{12}+1$"],
+  ["undo inside a typed group, which ends it", ["$t^{12", { press: "ControlOrMeta+z" }, "3}+1$"], "$t3+1$"],
 ];
 
 test("Ask composer: braces typed in a formula group as in LaTeX, and \\{ is a literal brace", async () => {

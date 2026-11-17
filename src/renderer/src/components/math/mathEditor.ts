@@ -2,6 +2,7 @@ import katex from "katex";
 import type { MathfieldElement } from "mathlive";
 import { loadMathLive, mathLive } from "./loadMathLive";
 import { cleanLatex, parseMathText, serializeMathText, type MathSegment } from "./mathString";
+import { replayKeys } from "./replayKeys";
 import { TypedBraces } from "./typedBraces";
 
 /**
@@ -379,16 +380,7 @@ export class MathEditor {
       focusField(field);
       field.position = edge === "start" ? 0 : field.lastOffset;
       // The keys typed while MathLive loaded, with braces read as they are when typed live.
-      let run = "";
-      const flush = () => {
-        if (run) field.executeCommand(["typedText", run, { focus: true, feedback: false }]);
-        run = "";
-      };
-      for (const key of edit.pending) {
-        if (key === "{" || key === "}" || /^\d$/.test(key)) flush();
-        if (!edit.braces.key(field, key)) run += key;
-      }
-      flush();
+      replayKeys(field, edit.braces, edit.pending);
       return field;
     };
     const loaded = mathLive();
