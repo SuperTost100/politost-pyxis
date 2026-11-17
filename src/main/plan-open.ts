@@ -18,10 +18,10 @@ export function isPlanFileName(path: string): boolean {
 /**
  * Whether a plan file that arrives with no main window should open one. Not before startup has made its first window:
  * startup may still be waiting on a dialog, and it creates that window itself, after the handlers the window calls on
- * load are registered. The file waits and the window takes it then.
+ * load are registered. The file waits and the window takes it then. The caller has found there is no main window.
  */
-export function needsWindowForPlan(startupDone: boolean, windowCount: number): boolean {
-  return startupDone && windowCount === 0;
+export function needsWindowForPlan(startupDone: boolean): boolean {
+  return startupDone;
 }
 
 export function planFileFromArgv(argv: readonly string[], workingDirectory = process.cwd()): string | null {

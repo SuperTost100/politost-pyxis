@@ -86,15 +86,10 @@ describe("readOpenedPlan", () => {
 
 describe("needsWindowForPlan", () => {
   it("leaves the first window to startup, which may still be showing a dialog", () => {
-    expect(needsWindowForPlan(false, 0)).toBe(false);
+    expect(needsWindowForPlan(false)).toBe(false);
   });
 
-  it("opens a window once startup is done and none is left (a closed window on macOS)", () => {
-    expect(needsWindowForPlan(true, 0)).toBe(true);
-  });
-
-  it("never adds a second window", () => {
-    expect(needsWindowForPlan(true, 1)).toBe(false);
-    expect(needsWindowForPlan(false, 1)).toBe(false);
+  it("opens a window once startup is done and the main window is gone (a closed window on macOS)", () => {
+    expect(needsWindowForPlan(true)).toBe(true);
   });
 });

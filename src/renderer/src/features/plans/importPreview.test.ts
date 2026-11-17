@@ -218,6 +218,36 @@ describe("why a file cannot be opened or imported", () => {
     expect(previewPlan(sessions([{ date: day(-9) }, { date: day(-2) }]), [], now).exam?.at).toBe(day(-2));
   });
 
+  it("shows the exam the import will make: none for a file whose sessions are an empty list", () => {
+    const day = Date.UTC(2027, 1, 2);
+    const now = Date.UTC(2026, 10, 1);
+    // An empty list of sessions is what the file says: core keeps it and makes no exam, whatever `examAt` holds.
+    const empty = { ...file, sources: [], sessions: [], examAt: day };
+    expect(previewPlan(empty, [], now).exam).toBeNull();
+    const db = openDatabase(":memory:");
+    const imported = importPlan(db, importRequest(empty, previewPlan(empty, []), defaultChoices(previewPlan(empty, [])), {}));
+    expect(db.prepare("SELECT exam_at FROM plans WHERE id = ?").pluck().get(imported)).toBeNull();
+    db.close();
+    // Without a list the older single date stands, and a list with a session shows that session.
+    expect(previewPlan({ ...file, examAt: day }, [], now).exam).toEqual({ at: day, time: null, label: null });
+    expect(previewPlan({ ...file, sessions: [{ date: day, time: "09:00" }], examAt: null }, [], now).exam).toEqual({
+      at: day,
+      time: "09:00",
+      label: null,
+    });
+  });
+
+  it("says the progress comes when a card keeps its schedule, as the import stores it", () => {
+    const schedule = { rating: "good" as const, state: { intervalDays: 3, ease: 2.5, dueAt: 1 }, at: 1 };
+    const scheduled = { ...file, sources: [], cards: [{ ...file.cards[0]!, schedule }], progress: [] };
+    expect(previewPlan(file, []).progress).toBe(false);
+    expect(previewPlan(scheduled, []).progress).toBe(true);
+    const db = openDatabase(":memory:");
+    importPlan(db, importRequest(scheduled, previewPlan(scheduled, []), defaultChoices(previewPlan(scheduled, [])), {}));
+    expect(db.prepare("SELECT count(*) AS n FROM card_reviews").get()).toEqual({ n: 1 });
+    db.close();
+  });
+
   it("keeps hostile and very long text exactly as the file has it, so the page can only show it as text", () => {
     const hostile = '<img src=x onerror="window.pwned=1"><script>alert(1)</script>';
     // The schema stops titles at 500 characters and the author at 200; a title with no space is the worst case for the layout.

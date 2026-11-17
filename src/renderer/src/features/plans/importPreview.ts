@@ -99,6 +99,9 @@ function previewExam(file: PlanFile, now: number): PreviewExam | null {
   const next = nextExamDate(sessions.map((session) => session.date), now);
   const session = sessions.find((one) => one.date === next);
   if (session) return { at: session.date, time: session.time ?? null, label: session.label ?? null };
+  // A list of sessions, even an empty one, is what the file says: the import keeps it, and the older single date is
+  // read only from a file that has no list (`fileSessions` in core).
+  if (file.sessions) return null;
   return file.examAt == null ? null : { at: file.examAt, time: null, label: null };
 }
 
@@ -136,7 +139,8 @@ export function previewPlan(
       maps: (file.maps ?? []).reduce((sum, map) => sum + map.entries.length, 0),
       exercises: (file.exercises ?? []).length,
     },
-    progress: (file.progress ?? []).length > 0,
+    // A card's schedule is kept by the import whether or not the file lists progress, so it is progress that comes.
+    progress: (file.progress ?? []).length > 0 || file.cards.some((card) => card.schedule !== undefined),
     generalTopics: file.topics.filter(
       (topic) => !topic.archived && topic.grounding === "general",
     ).length,

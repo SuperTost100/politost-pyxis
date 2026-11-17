@@ -188,7 +188,7 @@ function branches(node: unknown): Array<Record<string, unknown>> {
  * restored here and in every structured answer, so no feature shows "m", a tab and "heta" for `m\theta`.
  */
 export function tryJson(text: string, verbatim?: readonly string[]): unknown {
-  const value = parseLooseJson(text);
+  const value = parseLooseJson(text, verbatim);
   return value === undefined ? undefined : repaired(value, verbatim);
 }
 

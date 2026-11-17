@@ -222,7 +222,8 @@ async function checkPages(label: string, pages: Array<[string, string, string]>,
         seen[name] = await measure(page);
         if (shots) {
           mkdirSync(shots, { recursive: true });
-          const slug = route.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+          // The name too: the opener and the review of a file share an address, and each keeps its own picture.
+          const slug = `${route}-${name}`.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
           await page.screenshot({ path: join(shots, `${setup.width}${setup.fold ? "f" : "o"}${setup.large ? "L" : ""}-${label}${slug}${theme === "dark" ? "-dark" : ""}.png`) });
         }
       }

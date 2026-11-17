@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "electron-vite";
 import { build as viteBuild } from "vite";
@@ -24,27 +24,18 @@ const parser = resolve(
   "node_modules/@politost/content-core/src/parser.ts",
 );
 
-function copySandboxPage(): Plugin {
-  return {
-    name: "copy-sandbox-page",
-    apply: "build",
-    generateBundle() {
-      for (const [name, sourceName] of [
-        ["sandbox.html", "index.html"],
-        ["host.js", "host.js"],
-        ["python-worker.js", "python-worker.js"],
-        ["check-worker.js", "check-worker.js"],
-        ["symbolic.py", "symbolic.py"],
-        ["draw.html", "draw.html"],
-      ] as const) {
-        this.emitFile({
-          type: "asset",
-          fileName: `runtime/${name}`,
-          source: readFileSync(resolve(root, "src/sandbox", sourceName)),
-        });
-      }
-    },
-  };
+/** The files of the windows that run untrusted work, as the app serves them: the Python sandbox page and its scripts. */
+function sandboxFiles(): Array<[name: string, source: Buffer]> {
+  return (
+    [
+      ["sandbox.html", "index.html"],
+      ["host.js", "host.js"],
+      ["python-worker.js", "python-worker.js"],
+      ["check-worker.js", "check-worker.js"],
+      ["symbolic.py", "symbolic.py"],
+      ["draw.html", "draw.html"],
+    ] as const
+  ).map(([name, sourceName]) => [name, readFileSync(resolve(root, "src/sandbox", sourceName))]);
 }
 
 /**
@@ -52,39 +43,77 @@ function copySandboxPage(): Plugin {
  * DOMPurify and the code that turns a drawing into a picture. The worker (src/sandbox/draw-worker.ts) runs the
  * downloaded Graphviz, in a context that shares nothing with the page. Both ship with the app, never with the pack.
  */
-function drawScripts(): Plugin {
+async function drawScriptFiles(): Promise<Array<[name: string, source: string]>> {
   const scripts = [
     { entry: "src/sandbox/draw-host.ts", name: "PyxisDrawHost", file: "draw-host.js" },
     { entry: "src/sandbox/draw-worker.ts", name: "PyxisDrawWorker", file: "draw-worker.js" },
   ];
+  const files: Array<[string, string]> = [];
+  for (const script of scripts) {
+    const built = await viteBuild({
+      configFile: false,
+      logLevel: "silent",
+      root,
+      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      build: {
+        write: false,
+        minify: "oxc",
+        lib: {
+          entry: resolve(root, script.entry),
+          formats: ["iife"],
+          name: script.name,
+          fileName: () => script.file,
+        },
+      },
+    });
+    const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
+      "output" in result ? result.output : [],
+    );
+    const chunks = outputs.filter((output) => output.type === "chunk");
+    if (chunks.length !== 1) throw new Error(`${script.file} must be one file.`);
+    files.push([script.file, chunks[0]!.code]);
+  }
+  return files;
+}
+
+function copySandboxPage(): Plugin {
+  return {
+    name: "copy-sandbox-page",
+    apply: "build",
+    generateBundle() {
+      for (const [name, source] of sandboxFiles())
+        this.emitFile({ type: "asset", fileName: `runtime/${name}`, source });
+    },
+  };
+}
+
+function drawScripts(): Plugin {
   return {
     name: "draw-scripts",
     apply: "build",
     async generateBundle() {
-      for (const script of scripts) {
-        const built = await viteBuild({
-          configFile: false,
-          logLevel: "silent",
-          root,
-          define: { "process.env.NODE_ENV": JSON.stringify("production") },
-          build: {
-            write: false,
-            minify: "oxc",
-            lib: {
-              entry: resolve(root, script.entry),
-              formats: ["iife"],
-              name: script.name,
-              fileName: () => script.file,
-            },
-          },
-        });
-        const outputs = (Array.isArray(built) ? built : [built]).flatMap((result) =>
-          "output" in result ? result.output : [],
-        );
-        const chunks = outputs.filter((output) => output.type === "chunk");
-        if (chunks.length !== 1) throw new Error(`${script.file} must be one file.`);
-        this.emitFile({ type: "asset", fileName: `runtime/${script.file}`, source: chunks[0]!.code });
-      }
+      for (const [name, source] of await drawScriptFiles())
+        this.emitFile({ type: "asset", fileName: `runtime/${name}`, source });
+    },
+  };
+}
+
+/**
+ * `npm run dev` serves the renderer without its build-only plugins, and the runtime protocol reads the windows' files
+ * from `out/renderer/runtime`. So the dev server writes them there when it starts, with what the build emits; without
+ * it a fresh checkout has no Python or drawing window in dev, and an earlier build leaves the scripts as they were at
+ * that build. Editing a script takes a restart of the dev server.
+ * shortcut: no watching of `src/sandbox`; Vite's watcher gave this plugin no event under electron-vite dev, so a watch
+ * needs its own, which is worth adding when the scripts are edited often.
+ */
+function devRuntimeFiles(): Plugin {
+  return {
+    name: "dev-runtime-files",
+    apply: "serve",
+    async configureServer() {
+      const folder = resolve(root, "out/renderer/runtime");
+      mkdirSync(folder, { recursive: true });
+      for (const [name, source] of [...sandboxFiles(), ...(await drawScriptFiles())]) writeFileSync(resolve(folder, name), source);
     },
   };
 }
@@ -179,7 +208,7 @@ export default defineConfig({
         "@shared": resolve(root, "src/shared"),
       },
     },
-    plugins: [react(), katexWoff2Only(), copySandboxPage(), drawScripts(), pdfjsImageDecoders(), cspMeta()],
+    plugins: [react(), katexWoff2Only(), copySandboxPage(), drawScripts(), devRuntimeFiles(), pdfjsImageDecoders(), cspMeta()],
     define: { __PYXIS_COMMIT__: JSON.stringify(buildCommit()) },
     // electron-vite leaves the renderer unminified; minifying it shrinks what the window parses at startup.
     build: { minify: "oxc" },
