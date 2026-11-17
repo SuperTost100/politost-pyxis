@@ -8,9 +8,14 @@ describe("the main window", () => {
     expect(endsWithMainWindow("darwin")).toBe(false);
   });
 
-  it("is made again when there is none, or the one there was is destroyed", () => {
-    expect(needsMainWindow(null)).toBe(true);
-    expect(needsMainWindow({ isDestroyed: () => true })).toBe(true);
-    expect(needsMainWindow({ isDestroyed: () => false })).toBe(false);
+  it("is made again when there is none, or the one there was is destroyed, once startup has made the first", () => {
+    expect(needsMainWindow(null, true)).toBe(true);
+    expect(needsMainWindow({ isDestroyed: () => true }, true)).toBe(true);
+    expect(needsMainWindow({ isDestroyed: () => false }, true)).toBe(false);
+  });
+
+  it("is left to startup before it has made the first, which may still be copying the old profile's settings", () => {
+    expect(needsMainWindow(null, false)).toBe(false);
+    expect(needsMainWindow({ isDestroyed: () => true }, false)).toBe(false);
   });
 });

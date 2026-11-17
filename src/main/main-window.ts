@@ -10,7 +10,11 @@ export function endsWithMainWindow(platform: string): boolean {
   return platform !== "darwin";
 }
 
-/** Whether the app has no main window and one has to be made (the dock icon clicked, a plan file opened). */
-export function needsMainWindow(main: { isDestroyed(): boolean } | null): boolean {
-  return main === null || main.isDestroyed();
+/**
+ * Whether a main window has to be made now (the dock icon clicked, a plan file opened): the app has none, or the one it
+ * had is destroyed, and startup has made its first. Before that startup is on its way to the window (it may still be
+ * copying an old profile's settings, in a hidden window of its own) and makes it itself, so no other path makes one.
+ */
+export function needsMainWindow(main: { isDestroyed(): boolean } | null, startupDone: boolean): boolean {
+  return startupDone && (main === null || main.isDestroyed());
 }

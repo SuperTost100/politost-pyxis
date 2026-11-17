@@ -12,7 +12,7 @@ import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { MAX_LINK_PATHS } from "../shared/linked-folders";
 import { fetchPlanText } from "./plan-fetch";
 import { endsWithMainWindow, needsMainWindow } from "./main-window";
-import { isPlanFileName, needsWindowForPlan, planFileFromArgv, readOpenedPlan } from "./plan-open";
+import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
 import {
@@ -1927,7 +1927,7 @@ function openPlanFile(path: string | null): void {
   waitingPlanPath = path;
   // The window may not exist yet (a launch from the file), or have been closed on macOS. It takes the file when it loads.
   if (!mainWindow || mainWindow.isDestroyed()) {
-    if (needsWindowForPlan(startupWindowCreated)) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
     return;
   }
   showWindow();
@@ -2023,7 +2023,7 @@ app.whenReady().then(() => {
     startupWindowCreated = true;
   });
   app.on("activate", () => {
-    if (needsMainWindow(mainWindow)) createWindow();
+    if (needsMainWindow(mainWindow, startupWindowCreated)) createWindow();
   });
 });
 
