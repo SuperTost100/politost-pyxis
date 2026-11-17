@@ -138,6 +138,39 @@ describe("a job whose tool ran out of requests", () => {
     expect(stateOf(database, id)).toBe("failed");
   });
 
+  it("does not send a photo's job to a tool that cannot see it, and lets it go on with one that can", async () => {
+    const database = db();
+    rememberReady(ready("claude", "agent", "codex"));
+    const { runner } = asking(database, pinned, outOfRequests);
+    // A photo import that stopped because its tool ran out of requests.
+    let calls = 0;
+    runner.register("source-import-vision", {
+      jobClass: "local",
+      steps: [
+        {
+          name: "read",
+          label: "read",
+          run: async () => {
+            calls += 1;
+            if (calls === 1) throw new Error("quota [codex]: You've hit your usage limit");
+            return "text";
+          },
+        },
+      ],
+    });
+    const handlers = jobHandlers(runner, false, database);
+    const id = runner.start("source-import-vision", {});
+    await until(database, id, "failed");
+    // Cursor takes no pictures, so the job is not sent there, and stays as it was.
+    expect(() => handlers.retryWith({ jobId: id, provider: "agent" })).toThrow(IpcError);
+    expect(stateOf(database, id)).toBe("failed");
+    expect(calls).toBe(1);
+    // Claude takes them.
+    handlers.retryWith({ jobId: id, provider: "claude" });
+    await until(database, id, "succeeded");
+    expect(calls).toBe(2);
+  });
+
   it("waits until the tool's requests are back, shows when, and starts again by itself", async () => {
     vi.useFakeTimers({ now: Date.parse("2026-11-16T22:00:00Z"), toFake: ["Date", "setTimeout", "clearTimeout"] });
     const database = db();

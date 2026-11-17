@@ -4,8 +4,10 @@ import type { AutoProvider } from "./auto";
 import {
   benchEngine,
   clearBench,
+  clearLimitBefore,
   configureSignOuts,
   DEFAULT_LIMIT_MS,
+  engineClock,
   isBenched,
   isMissing,
   limitedUntil,
@@ -297,6 +299,8 @@ describe("a tool that is out of requests", () => {
   });
 
   it("is marked even when no other tool can answer, and for a model the student pinned", async () => {
+    // The reset is a date in the future of the test's clock, which is why the clock is set.
+    vi.useFakeTimers({ now: at });
     const db = automaticChat("claude");
     rememberReady(ready.filter((provider) => provider.id === "claude"));
     await expect(ask(db, ["claude"], () => limited("2026-12-01T00:00:00Z"))).rejects.toMatchObject({ code: "quota" });
@@ -372,6 +376,45 @@ describe("a tool that is out of requests", () => {
     await handlers.limitChanged("claude");
     expect(asked).toEqual(["antigravity"]);
     expect(limitedUntil("claude")).toBe(Date.parse("2026-11-16T15:00:00Z"));
+    db.close();
+  });
+
+  it("does not let a usage report asked about one limit replace the next limit the tool hits", async () => {
+    vi.useFakeTimers({ now: at });
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    let answer!: (report: unknown) => void;
+    useFunnel({ rateLimits: () => new Promise((resolve) => (answer = resolve)) });
+    benchEngine("antigravity", "limit");
+    const asking = handlers.limitChanged("antigravity");
+    // The tool answers a call and is back, then hits its limit again with no reset time: a new limit, a new guess.
+    clearLimitBefore("antigravity", engineClock());
+    expect(limitedUntil("antigravity")).toBeUndefined();
+    benchEngine("antigravity", "limit");
+    answer({ provider: "antigravity", limit: { kind: "quota", detail: "", resetAt: "2026-11-17T07:00:00Z" } });
+    await asking;
+    // The report was about the first limit, so the second keeps its own guess, which its own report may still replace.
+    expect(limitedUntil("antigravity")).toBe(at + DEFAULT_LIMIT_MS);
+    expect(limitIsGuess("antigravity")).toBe(true);
+    db.close();
+  });
+
+  it("clears a refined limit for a test that began after the failure, since the report does not date the failure again", async () => {
+    vi.useFakeTimers({ now: at });
+    const db = openDatabase(":memory:");
+    const handlers = engineHandlers(db, () => undefined);
+    let answer!: (report: unknown) => void;
+    useFunnel({ rateLimits: () => new Promise((resolve) => (answer = resolve)) });
+    benchEngine("antigravity", "limit");
+    const asking = handlers.limitChanged("antigravity");
+    // A test starts while the report is on its way, and the report then moves the limit to the tool's own time.
+    const testStarted = engineClock();
+    answer({ provider: "antigravity", limit: { kind: "quota", detail: "", resetAt: "2026-11-17T07:00:00Z" } });
+    await asking;
+    expect(limitedUntil("antigravity")).toBe(Date.parse("2026-11-17T07:00:00Z"));
+    // The limit was hit before the test began, so the test that answers shows the tool has requests.
+    clearLimitBefore("antigravity", testStarted);
+    expect(limitedUntil("antigravity")).toBeUndefined();
     db.close();
   });
 

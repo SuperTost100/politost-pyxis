@@ -12,9 +12,9 @@ import {
   isSignedOut,
   MODEL_REFUSED_MS,
 } from "./bench";
-import { generate, setFallbackListener } from "./generate";
+import { generate, setFallbackListener, type GenerateInput } from "./generate";
 import { FunnelError, type EngineResult } from "./funnel";
-import { rememberReady, selectionFor } from "./selection";
+import { chooseJobEngine, rememberOrder, rememberReady, selectionFor } from "./selection";
 import { currentUsageScope, withUsageScope } from "./usage";
 
 const selection = { provider: "claude" as const, model: "claude-sonnet-4-6" };
@@ -667,6 +667,36 @@ describe("switching engines on a usage limit or sign-out", () => {
     db.close();
   });
 
+  it("keeps a job's picture off the tool the student chose for it when that tool cannot see it", async () => {
+    const db = automaticChat();
+    rememberReady([
+      ready[0]!,
+      { id: "agent", kind: "cli", effort: true, models: [{ id: "gemini-3.8-flash", efforts: [] }] },
+    ]);
+    const asked: string[] = [];
+    const call = (jobId: string, attachments?: GenerateInput["attachments"]) =>
+      withUsageScope({ jobId, kind: "source-import-vision" }, () =>
+        generate({
+          selection: selectionFor(db, "chat"),
+          prompt: "hi",
+          attachments,
+          run: async (input) => {
+            asked.push(input.selection.provider);
+            return result({ text: "ok", provider: input.selection.provider });
+          },
+        }),
+      );
+    // A job told to go on with Cursor goes there with text, as before.
+    chooseJobEngine("job-text", "agent");
+    await call("job-text");
+    expect(asked).toEqual(["agent"]);
+    // With a picture it stays on the tool it was on, as an automatic move would not leave it for one that cannot see.
+    chooseJobEngine("job-picture", "agent");
+    await call("job-picture", [{ type: "image", mediaType: "image/png", data: "aGk=" }]);
+    expect(asked).toEqual(["agent", "claude"]);
+    db.close();
+  });
+
   it("does not move a turn with a picture to an engine that cannot see it", async () => {
     const db = automaticChat();
     rememberReady([
@@ -813,6 +843,37 @@ describe("a chosen engine whose subscription refuses the model", () => {
       params: { provider: "agent" },
     });
     expect(calls).toBe(4);
+    db.close();
+  });
+
+  it("lets a tool reached after three out of requests try its next model, since no model was refused before", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare(
+      "INSERT INTO feature_engines (feature, selection_json, updated_at) VALUES ('plan', ?, 1)",
+    ).run(JSON.stringify({ provider: "claude", model: "claude-opus-5-5", auto: true }));
+    const other = (id: string, model: string): AutoProvider => ({ id, kind: "cli", effort: false, models: [{ id: model, efforts: [] }] });
+    rememberReady([other("claude", "claude-opus-5-5"), other("codex", "gpt-5.6-sol"), other("antigravity", "gemini-3.7-pro"), cursor]);
+    // The student's order puts Cursor last: three tools are out of requests before it is reached.
+    rememberOrder(["claude", "codex", "antigravity", "agent"]);
+    const asked: string[] = [];
+    try {
+      const output = await generate({
+        selection: selectionFor(db, "plan"),
+        prompt: "hi",
+        run: async (input) => {
+          asked.push(`${input.selection.provider}:${input.selection.model}`);
+          if (input.selection.provider !== "agent")
+            throw Object.assign(new Error("You've hit your usage limit"), { code: "cli-failed" });
+          // Cursor refuses its first model; its next one answers.
+          if (asked.filter((entry) => entry.startsWith("agent")).length === 1) throw refusal("Claude Opus 5.5", ".");
+          return result({ text: "ciao", provider: "agent", model: input.selection.model });
+        },
+      });
+      expect(output.text).toBe("ciao");
+      expect(asked.map((entry) => entry.split(":")[0])).toEqual(["claude", "codex", "antigravity", "agent", "agent"]);
+    } finally {
+      rememberOrder(null);
+    }
     db.close();
   });
 

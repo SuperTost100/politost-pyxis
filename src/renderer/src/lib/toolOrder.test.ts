@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RequestOutput } from "../../../shared/ipc";
-import { isConnected, limitWhen, limitsOf, movedOrder, nextTool, shownOrder, toggledUse } from "./toolOrder";
+import { callAfter, isConnected, limitWhen, limitsOf, movedOrder, nextTool, shownOrder, toggledUse } from "./toolOrder";
 
 const tool = (id: string) => ({ id });
 
@@ -147,5 +147,43 @@ describe("the tool a stopped job goes on with", () => {
 
   it("takes a tool whose limit has passed", () => {
     expect(nextTool([row("claude"), row("codex", { limitedUntil: 500 })], null, "claude", NOW)?.id).toBe("codex");
+  });
+});
+
+describe("callAfter", () => {
+  afterEach(() => vi.useRealTimers());
+  const day = 24 * 3_600_000;
+
+  it("calls a second after the time, and not before", () => {
+    vi.useFakeTimers({ now: 0 });
+    const fire = vi.fn();
+    callAfter(2 * day, fire);
+    vi.advanceTimersByTime(2 * day);
+    expect(fire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(fire).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits out a time further away than a timer holds, in stretches, and calls once at the end", () => {
+    vi.useFakeTimers({ now: 0 });
+    const fire = vi.fn();
+    callAfter(30 * day, fire);
+    // The first stretch ends at about 24.8 days, and nothing is called: the reset is still ahead.
+    vi.advanceTimersByTime(26 * day);
+    expect(fire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(4 * day);
+    expect(fire).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(fire).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops when asked, between stretches too", () => {
+    vi.useFakeTimers({ now: 0 });
+    const fire = vi.fn();
+    const stop = callAfter(30 * day, fire);
+    vi.advanceTimersByTime(26 * day);
+    stop();
+    vi.advanceTimersByTime(10 * day);
+    expect(fire).not.toHaveBeenCalled();
   });
 });
