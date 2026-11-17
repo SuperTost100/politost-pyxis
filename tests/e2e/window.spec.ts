@@ -11,6 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { animationsSettled } from "./settled";
@@ -602,13 +603,17 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
 });
 
 // The Mac bundle leaves out SwiftShader (build/after-pack.cjs). The packaged app must report the same GPU features as
-// Electron's own build, which still has it.
+// Electron's own build, which still has it. Both are started from their executables, so Playwright treats them alike:
+// an Electron it starts without an executable path gets its loader, which sets Chromium switches in the app, and
+// Playwright 1.65 added --enable-unsafe-swiftshader to them. That made the build in out/ report "unavailable_software"
+// where the package, which gets no loader, reported "disabled_off".
 test("the packaged app reports the same GPU features as Electron's build", async () => {
   const packaged = process.env.PYXIS_DIST_APP;
   test.skip(!packaged, "Set PYXIS_DIST_APP to the packaged executable.");
-  async function features(executablePath?: string) {
+  if (!packaged) return;
+  async function features(executablePath: string, args: string[] = []) {
     const userData = mkdtempSync(join(tmpdir(), "pyxis-gpu-"));
-    const app = await launchPyxis({ userData, packaged: executablePath ?? false });
+    const app = await launchPyxis({ userData, packaged: executablePath, args });
     try {
       const page = await app.firstWindow();
       await page.waitForLoadState("load");
@@ -622,7 +627,10 @@ test("the packaged app reports the same GPU features as Electron's build", async
       removeTestFolder(userData);
     }
   }
-  const electronBuild = await features();
+  const electronBinary: string = createRequire(import.meta.url)("electron");
+  const electronBuild = await features(electronBinary, [
+    join(process.cwd(), process.env.PYXIS_OUT ?? "out", "main/index.js"),
+  ]);
   const packagedBuild = await features(packaged);
   expect(packagedBuild).toEqual(electronBuild);
 });
