@@ -15,6 +15,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { attachPythonRecording } from "./python-recording";
 
 async function launch(reply?: string, extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-ui-"));
@@ -100,6 +101,9 @@ test("MATH-02 Python UI and failed Solver badge in both languages and themes", a
     await expect(page.locator(".px-check-badge.is-failed")).toBeFocused();
     await expectNoAxeViolations(page);
     await saveShot(page, "m9-failed-light.png");
+  } catch (error) {
+    await attachPythonRecording(app);
+    throw error;
   } finally {
     await app.close();
     removeTestFolder(userData);
@@ -129,6 +133,9 @@ test("Ctrl+Enter pressed before the Python page knows Python is there runs the c
       document.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true }));
     });
     await expect(page.locator(".px-python pre").first()).toHaveText("42\n", { timeout: 60000 });
+  } catch (error) {
+    await attachPythonRecording(app);
+    throw error;
   } finally {
     await app.close();
     removeTestFolder(userData);

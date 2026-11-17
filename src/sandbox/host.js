@@ -2,16 +2,22 @@ const BASE = "pyxis-runtime://sandbox/";
 const LOAD_TIMEOUT_MS = 60000;
 const lanes = new Map();
 let nextId = 0;
+// When each lane started, got ready, was sent a request and answered, as performance marks that the end-to-end tests read
+// from this page: a run that takes long shows whether Python was still loading. One mark of each name, the last one, and a
+// lane that starts again drops the marks of the one before.
+const mark = (name) => { performance.clearMarks(name); performance.mark(name); };
 function lane(kind) {
   let value = lanes.get(kind);
   if (!value) {
+    for (const step of ["ready", "run", "done"]) performance.clearMarks(kind + "-" + step);
+    mark(kind + "-start");
     const worker = new Worker(BASE + (kind === "python" ? "python-worker.js" : "check-worker.js"));
     const buffer = typeof SharedArrayBuffer === "function" ? new Uint8Array(new SharedArrayBuffer(1)) : null;
     let abort;
     const ready = new Promise((resolve, reject) => {
       abort = reject;
       const timer = setTimeout(() => reject(new Error("runtime-load-timeout")), LOAD_TIMEOUT_MS);
-      worker.addEventListener("message", (event) => { if (event.data?.type === "ready") { clearTimeout(timer); resolve(); } if (event.data?.type === "load-error") { clearTimeout(timer); reject(new Error(String(event.data.error).slice(0, 2000))); } });
+      worker.addEventListener("message", (event) => { if (event.data?.type === "ready") { mark(kind + "-ready"); clearTimeout(timer); resolve(); } if (event.data?.type === "load-error") { clearTimeout(timer); reject(new Error(String(event.data.error).slice(0, 2000))); } });
       worker.addEventListener("error", () => { clearTimeout(timer); reject(new Error("runtime-worker-error")); }, { once: true });
     });
     ready.catch(() => undefined);
@@ -38,7 +44,7 @@ async function execute(kind, payload, timeoutMs, wheels = []) {
       let ended = false;
       const finish = (check) => {
         if (ended) return;
-        ended = true; clearTimeout(interrupt); clearTimeout(kill);
+        ended = true; mark(kind + "-done"); clearTimeout(interrupt); clearTimeout(kill);
         current.worker.removeEventListener("message", onMessage);
         resolve(kind === "check" ? (check ?? { state: "none", reason: "check-timeout" }) : { stdout, stderr, images, timedOut, truncated });
       };
@@ -63,6 +69,7 @@ async function execute(kind, payload, timeoutMs, wheels = []) {
         }
       };
       current.worker.addEventListener("message", onMessage);
+      mark(kind + "-run");
       current.worker.postMessage({ type: "run", id, token, payload, wheels });
     });
   };
