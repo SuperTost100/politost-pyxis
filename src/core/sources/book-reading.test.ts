@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { strToU8, zipSync } from "fflate";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openDatabase } from "../db/connection";
 import { createRunner } from "../jobs/runner";
 import { addSubject } from "../plans/subjects";
@@ -15,6 +15,7 @@ import { parseSmartbook } from "./smartbook";
 
 const dirs: string[] = [];
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 const temp = (prefix: string) => {
@@ -151,6 +152,47 @@ describe("reading a free book before it is added", () => {
     ctx.db.close();
   });
 
+  it("reads a book that was added with no network at all, after the catalog it was read from has expired", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const ctx = setup();
+    const added = await ctx.handlers.importBook({ id: "fisica-demo" });
+    await expect.poll(() => (ctx.db.prepare("SELECT state FROM jobs WHERE id = ?").get(added.jobId!) as { state: string }).state, { timeout: 15_000 }).toBe("succeeded");
+    // The site is gone, and the five minutes the catalog is kept have passed: the book is read from what is stored.
+    rmSync(ctx.siteDir, { recursive: true, force: true });
+    vi.setSystemTime(Date.now() + 10 * 60_000);
+    const later = sourceHandlers(ctx.db, ctx.workspace, ctx.runner, undefined, undefined, ctx.transport);
+    for (const handlers of [ctx.handlers, later]) {
+      expect((await handlers.bookPreview({ id: "fisica-demo" })).chapters).toEqual([
+        { number: 1, title: "Moti" },
+        { number: 2, title: "Forze" },
+      ]);
+      expect((await handlers.bookChapter({ id: "fisica-demo", chapter: 1 }))[0]?.text).toBe(SPEED);
+    }
+    // A book that is not stored still needs the catalog, which has the address and the checksum of its package.
+    await expect(ctx.handlers.bookPreview({ id: "altro" })).rejects.toMatchObject({ messageKey: "sources.books.offline" });
+    ctx.db.close();
+  });
+
+  it("goes on reading a book that was opened before it is added from the held package, whatever the catalog says by then", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const ctx = setup();
+    const preview = await ctx.handlers.bookPreview({ id: "fisica-demo" });
+    expect(preview.chapters).toHaveLength(2);
+    // The catalog now lists a newer version of the book with one chapter fewer, and its five minutes have passed.
+    const catalog = JSON.parse(readFileSync(join(ctx.siteDir, "catalog.json"), "utf8"));
+    catalog.books[0].version = "1.1.0";
+    catalog.books[0].sha256 = "a".repeat(64);
+    writeFileSync(join(ctx.siteDir, "catalog.json"), JSON.stringify(catalog));
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    // The chapter comes from the package the chapters were listed from, so the two agree, and nothing is downloaded.
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 2 }))[0]?.text).toContain("massa per accelerazione");
+    expect(ctx.downloads.packages).toBe(1);
+    // With the site gone as well, the book still reads while it is held.
+    rmSync(ctx.siteDir, { recursive: true, force: true });
+    expect((await ctx.handlers.bookChapter({ id: "fisica-demo", chapter: 1 }))[0]?.text).toBe(SPEED);
+    ctx.db.close();
+  });
+
   it("adds a book that was never read with one download, and refuses an unknown shelf before downloading anything", async () => {
     const ctx = setup();
     await expect(ctx.handlers.importBook({ id: "fisica-demo", subjectId: "gone" })).rejects.toMatchObject({ messageKey: "sources.sort.subjectMissing" });
@@ -158,6 +200,23 @@ describe("reading a free book before it is added", () => {
     expect(count(ctx.db, "sources")).toBe(0);
     await ctx.handlers.importBook({ id: "fisica-demo" });
     expect(ctx.downloads.packages).toBe(1);
+    ctx.db.close();
+  });
+
+  it("refuses the add, and imports nothing, when the shelf is deleted while the book downloads", async () => {
+    const ctx = setup();
+    const subject = addSubject(ctx.db, "Fisica 1");
+    // The shelf goes while the package is on its way.
+    const deleting: BooksTransport = (url, max, signal, progress) => {
+      if (url.endsWith(".ptsb")) ctx.db.prepare("DELETE FROM subjects WHERE id = ?").run(subject.id);
+      return ctx.transport(url, max, signal, progress);
+    };
+    const handlers = sourceHandlers(ctx.db, ctx.workspace, ctx.runner, undefined, undefined, deleting);
+    await expect(handlers.importBook({ id: "fisica-demo", subjectId: subject.id })).rejects.toMatchObject({
+      messageKey: "sources.sort.subjectMissing",
+    });
+    expect(count(ctx.db, "sources")).toBe(0);
+    expect(count(ctx.db, "jobs")).toBe(0);
     ctx.db.close();
   });
 

@@ -295,6 +295,19 @@ export function sourceHandlers(
     if (!book) throw new Error("books-missing");
     return book;
   };
+  /**
+   * The copy of a catalog book the student added (it is in the Library), once its read is over, found from the link the
+   * import wrote on the source (`catalog_id`) and nothing else: a book that was added opens with no network, whatever
+   * the catalog says now. A copy kept hidden for an exam after the book left the Library is not "added" here.
+   */
+  const addedBook = (catalogId: string) =>
+    db
+      .prepare(
+        `SELECT id, title, catalog_version AS version FROM sources
+         WHERE catalog_id = ? AND kind = 'smartbook' AND status = 'ready' AND library = 1
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(catalogId) as { id: string; title: string; version: string | null } | undefined;
   /** The source holding this exact package once its read is over, so a reader of the book needs no package at all. */
   const storedBook = (book: CatalogBook): string | null => {
     const id = existingSourceFor(db, book.sha256);
@@ -339,9 +352,10 @@ export function sourceHandlers(
           (item) => item.id === input.id,
         );
         if (!book) throw new Error("books-missing");
+        const subjectGone = () =>
+          Boolean(input.subjectId) && !db.prepare(`SELECT 1 FROM subjects WHERE id = ?`).get(input.subjectId);
         // Where the book goes: the shelf the student added it from. A subject that is gone refuses before anything is downloaded.
-        if (input.subjectId && !db.prepare(`SELECT 1 FROM subjects WHERE id = ?`).get(input.subjectId))
-          throw new Error("subject-missing");
+        if (subjectGone()) throw new Error("subject-missing");
         const place = (result: { sourceId: string; jobId?: string; title: string; subject: string }) => {
           if (input.subjectId) moveSource(db, result.sourceId, { subjectId: input.subjectId });
           return result;
@@ -358,6 +372,8 @@ export function sourceHandlers(
         const bytes =
           reading.bytesOf(book) ??
           (await downloadBook(book, booksTransport, maxSourceBytes(".ptsb"), signal));
+        // The download took time: the shelf may be gone by now, and then nothing is imported.
+        if (subjectGone()) throw new Error("subject-missing");
         let imported;
         try {
           imported = enqueueSourceData(db, workspace, runner, bytes, ".ptsb", book.title, undefined, undefined, {
@@ -386,6 +402,9 @@ export function sourceHandlers(
      */
     async bookPreview(input: { id: string }, signal?: AbortSignal) {
       try {
+        const added = addedBook(input.id);
+        if (added)
+          return { title: added.title, subject: "", version: added.version ?? "", chapters: smartbookChapters(db, added.id) };
         const book = await catalogBook(input.id, signal);
         const stored = storedBook(book);
         if (stored)
@@ -403,6 +422,10 @@ export function sourceHandlers(
     },
     async bookChapter(input: { id: string; chapter: number }, signal?: AbortSignal) {
       try {
+        const added = addedBook(input.id);
+        if (added) return chapterPassages(db, added.id, input.chapter).map(({ id, text }) => ({ id, text }));
+        const held = reading.heldFor(input.id);
+        if (held) return parsedChapter(held, input.chapter);
         const book = await catalogBook(input.id, signal);
         const stored = storedBook(book);
         if (stored) return chapterPassages(db, stored, input.chapter).map(({ id, text }) => ({ id, text }));

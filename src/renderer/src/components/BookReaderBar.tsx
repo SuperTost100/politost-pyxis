@@ -97,7 +97,8 @@ function LibraryBookBar({ bookId, subjectId }: { bookId: string; subjectId?: str
       {!sourceId && book ? (
         <Button
           size="sm"
-          disabled={adding}
+          // The shelf the book goes on comes from the subjects read, unless the reader was opened for one.
+          disabled={adding || (subjectId === undefined && subjects.isPending)}
           onClick={() => {
             added.current = true;
             void addBook(client, bookId, { subjectId: target }).then((result) => {

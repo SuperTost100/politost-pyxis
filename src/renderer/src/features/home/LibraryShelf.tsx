@@ -76,7 +76,7 @@ const UNSORTED_CAP = 8;
  * How a moved file's new cover arrives, and what gets focus once it has landed. A file that left "Da sistemare" grows
  * on its shelf where it lands (`grow`); one moved from another shelf comes out of the box it had there (`from`).
  */
-type Landing = { from?: DOMRect; grow?: boolean; focus: "cover" | { picker: string } | null };
+type Landing = { from?: DOMRect; grow?: boolean; focus: "cover" | "lost" | { picker: string } | null };
 
 /** How long a row of "Da sistemare" takes to fade and close once its file has a subject. */
 const ROW_EXIT_MS = 420;
@@ -281,7 +281,7 @@ export function LibraryShelf({
       if (placeWhenReady(bySubject.get(subject.id) ?? [], source) >= SHELF_CAP)
         setExpanded((current) => new Set(current).add(subject.id));
       // The next row's choice gets focus from here, not from the new cover, which may not be drawn.
-      if (focus && focus !== "cover") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
+      if (focus && typeof focus === "object") pendingFocus.current = `[data-unsorted-id="${CSS.escape(focus.picker)}"] select`;
       try {
         await Promise.all([
           client.invalidateQueries({ queryKey: ["sources"] }),
@@ -433,16 +433,21 @@ export function LibraryShelf({
   function addFromRow(book: FreeBook, subject: Subject) {
     const row = root.current?.querySelector<HTMLElement>(`[data-book-offer="${CSS.escape(book.id)}"]`);
     const hadFocus = row?.contains(document.activeElement) ?? false;
+    // The focus still belongs to this add while it is on the row or lost; one the student put elsewhere is not moved.
+    const stillMine = () => {
+      const active = document.activeElement;
+      return !active || active === document.body || Boolean(row?.contains(active));
+    };
     void addBook(client, book.id, {
       subjectId: subject.id,
       onImported: (added) => {
         const from = root.current?.querySelector(`[data-pending-book="${CSS.escape(book.id)}"] .px-cover-art`)?.getBoundingClientRect();
-        landing.current.set(added.sourceId, { from, focus: hadFocus ? "cover" : null });
+        landing.current.set(added.sourceId, { from, focus: hadFocus ? "lost" : null });
         setSaid(t("books.offer.added", { title: book.title, subject: subject.name }));
       },
     }).then((added) => {
-      // A failed add leaves the row where it was, so the focus stays on it.
-      if (!added) row?.querySelector<HTMLElement>("button")?.focus();
+      // A failed add leaves the row where it was, and the focus goes back to it unless the student moved on.
+      if (!added && hadFocus && stillMine()) row?.querySelector<HTMLElement>("button")?.focus();
     });
   }
   function hideRow(subject: Subject) {
@@ -872,6 +877,9 @@ const Cover = memo(function Cover({
     const land = onLanded(source.id);
     if (!land) return;
     if (land.focus === "cover") openRef.current?.focus();
+    // A book added from its row takes the focus only if the focus is lost by now, as it is when the row it was on is
+    // gone: a student who moved to another control meanwhile keeps it.
+    else if (land.focus === "lost" && (!document.activeElement || document.activeElement === document.body)) openRef.current?.focus();
     const art = item.current?.querySelector<HTMLElement>(".px-cover-art");
     if (!art || window.matchMedia(STILL).matches) return;
     if (land.grow) {

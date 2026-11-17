@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -137,6 +137,101 @@ test("Once the exam is being created the choice is locked in the reader too, and
     await expect(row(page).getByRole("checkbox")).toBeChecked();
     // And the exam is made with the book, as the page said.
     await expect.poll(() => db<{ title: string }>(userData, "SELECT s.title FROM plan_sources ps JOIN sources s ON s.id = ps.source_id"), { timeout: 30_000 }).toEqual([{ title: "Fisica 1" }]);
+  } finally {
+    await finish(run);
+  }
+});
+
+test("Sources picked or taken out while the book downloads are the ones the exam is made with", async () => {
+  test.setTimeout(180_000);
+  const run = await start({ PYXIS_E2E_BOOKS_DELAY: "4000" });
+  const { page, userData } = run;
+  try {
+    const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed.exec(`
+      INSERT INTO sources (id, kind, title, status, library, created_at, updated_at) VALUES ('a', 'pdf', 'Appunti A', 'ready', 1, 1, 1);
+      INSERT INTO sources (id, kind, title, status, library, created_at, updated_at) VALUES ('b', 'pdf', 'Appunti B', 'ready', 1, 2, 2);`);
+    seed.close();
+    await page.reload();
+    await toMaterial(page, "Fisica 1");
+    await expect(row(page)).toBeVisible({ timeout: 30_000 });
+    const fromLibrary = async (title: string) => {
+      await page.getByRole("button", { name: "Dalla tua libreria" }).click();
+      const picker = page.getByRole("dialog", { name: "Aggiungi dalla libreria" });
+      await picker.getByRole("checkbox", { name: new RegExp(title) }).check();
+      await picker.getByRole("button", { name: "Aggiungi 1 fonte" }).click();
+    };
+    await fromLibrary("Appunti A");
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
+    await expect(row(page).getByRole("checkbox")).toBeDisabled();
+    // The book is downloading: the student takes A out and puts B in, and the exam is made with that.
+    await page.getByRole("button", { name: "Togli Appunti A dall'esame" }).click();
+    await fromLibrary("Appunti B");
+    await expect
+      .poll(() => db<{ title: string }>(userData, "SELECT s.title FROM plan_sources ps JOIN sources s ON s.id = ps.source_id ORDER BY s.title"), { timeout: 30_000 })
+      .toEqual([{ title: "Appunti B" }, { title: "Fisica 1" }]);
+  } finally {
+    await finish(run);
+  }
+});
+
+test("After a creation that failed the book is among the sources, in the reader too, which can take it out", async () => {
+  test.setTimeout(180_000);
+  const lose = join(tmpdir(), `pyxis-exam-books-lose-${process.pid}-${Date.now()}`);
+  const run = await start({ PYXIS_E2E_READ_FAIL: `plans.create=${lose}` });
+  const { page } = run;
+  try {
+    await toMaterial(page, "Fisica 1");
+    await expect(row(page)).toBeVisible({ timeout: 30_000 });
+    await row(page).getByRole("button", { name: "Apri il libro Fisica 1" }).click();
+    const panel = reader(page, "Fisica 1");
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    // The book is added, and then the exam fails to be made.
+    writeFileSync(lose, "");
+    await page.getByRole("button", { name: "Crea l'esame" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Qualcosa non ha funzionato" })).toBeVisible({ timeout: 30_000 });
+    // The book is now a source of the form, and the reader says so and acts on that source.
+    const sourcesList = page.getByRole("list", { name: "Fonti dell'esame" });
+    await expect(sourcesList.getByText("Fisica 1")).toBeVisible();
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    await panel.getByRole("button", { name: "Togli dalle fonti" }).click();
+    await expect(panel.getByText("Non è tra le fonti di questo esame.")).toBeVisible();
+    await expect(sourcesList).toHaveCount(0);
+    await panel.getByRole("button", { name: "Aggiungi alle fonti" }).click();
+    await expect(panel.getByText("È tra le fonti di questo esame.")).toBeVisible();
+    await expect(sourcesList.getByText("Fisica 1")).toBeVisible();
+  } finally {
+    await finish(run);
+    rmSync(lose, { force: true });
+  }
+});
+
+test("An exam cannot be created while the offered book is added from another place, and is made with it once it is in", async () => {
+  test.setTimeout(180_000);
+  const run = await start({ PYXIS_E2E_BOOKS_DELAY: "6000" });
+  const { page, userData } = run;
+  try {
+    const seed = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10_000 });
+    seed.exec(`INSERT INTO subjects (id, name, position, created_at) VALUES ('fis', 'Fisica 1', 0, 1);`);
+    seed.close();
+    await toLibrary(page);
+    await page.reload();
+    // The shelf adds the book, and the student goes on to a new exam while it downloads.
+    await page
+      .getByRole("group", { name: "C'è un libro PoliTost per questa materia" })
+      .getByRole("button", { name: "Aggiungi Fisica 1" })
+      .click();
+    await toMaterial(page, "Fisica 1");
+    await expect(row(page)).toBeVisible({ timeout: 30_000 });
+    await expect(row(page).getByRole("checkbox")).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Crea l'esame" })).toBeDisabled();
+    // Once the book is in the Library it is a source of the exam, ticked as it was, and Create makes the exam with it.
+    const create = page.getByRole("button", { name: "Crea l'esame" });
+    await expect(create).toBeEnabled({ timeout: 30_000 });
+    await expect(page.getByRole("list", { name: "Fonti dell'esame" }).getByText("Fisica 1")).toBeVisible();
+    await create.click();
+    await expect.poll(() => db<{ title: string }>(userData, "SELECT s.title FROM plan_sources ps JOIN sources s ON s.id = ps.source_id")).toEqual([{ title: "Fisica 1" }]);
+    expect(smartbooks(userData)).toEqual([{ title: "Fisica 1" }]);
   } finally {
     await finish(run);
   }

@@ -272,6 +272,51 @@ test("A focus the student chose elsewhere stays put when the book from the reade
   }
 });
 
+test("A focus the student chose elsewhere stays put when the book added from its row arrives, and one left on the row goes to the cover", async () => {
+  test.setTimeout(180_000);
+  const run = await start({ PYXIS_E2E_READ_DELAY: "sources.importBook=3000" });
+  const { page } = run;
+  try {
+    const cover = shelf(page, "Fisica 1").locator(".px-cover", { has: page.getByRole("button", { name: "Fisica 1", exact: true }) });
+    // Chimica's book: added with the focus left where the add put it, which is lost once the row has gone.
+    const chemistry = offer(page, "Chimica").getByRole("button", { name: "Aggiungi Chimica di base" });
+    await chemistry.focus();
+    await page.keyboard.press("Enter");
+    await expect(shelf(page, "Chimica").getByRole("button", { name: "Chimica di base", exact: true })).toBeFocused({ timeout: 30_000 });
+    // Fisica 1's book: the student moves on to another control while it downloads, and keeps it.
+    await offer(page).getByRole("button", { name: "Aggiungi Fisica 1" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(offer(page).getByText("Scarico il libro…")).toBeVisible();
+    const chosen = page.getByRole("button", { name: "Collega una cartella" });
+    await chosen.focus();
+    await expect(chosen).toBeFocused();
+    await expect(cover).toBeVisible({ timeout: 30_000 });
+    await expect(chosen).toBeFocused();
+  } finally {
+    await finish(run);
+  }
+});
+
+test("A free book cannot be added from the list before the subjects have been read, so it lands on its shelf", async () => {
+  test.setTimeout(180_000);
+  // The subjects take a while to come: the list can be open before they are there.
+  const run = await start({ PYXIS_E2E_READ_DELAY: "subjects.list=4000" });
+  const { page } = run;
+  try {
+    await page.getByRole("button", { name: "Altro sulla Libreria" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
+    const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
+    const add = dialog.getByRole("button", { name: "Aggiungi Fisica 1" });
+    await expect(add).toBeVisible({ timeout: 30_000 });
+    await expect(add).toBeDisabled();
+    await expect(add).toBeEnabled({ timeout: 30_000 });
+    await add.click();
+    await expect.poll(async () => (await books(page)).filter((row) => row.kind === "smartbook").map((row) => row.subject), { timeout: 30_000 }).toEqual(["Fisica 1"]);
+  } finally {
+    await finish(run);
+  }
+});
+
 test("A file's menu reopened with the mouse takes every quick arrow press", async () => {
   test.setTimeout(120_000);
   const run = await start({}, false);

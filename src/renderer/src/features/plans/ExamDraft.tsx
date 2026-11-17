@@ -73,16 +73,36 @@ export function useExamDraft({
     [subject, title],
     (freeBooks.data ?? []).filter((book) => !book.sourceId),
   )[0];
-  const bookOn = offered !== undefined && !leftOut.has(offered.id);
-  const setBookOn = (on: boolean) => {
-    if (!offered) return;
+  // The book this exam was offered, kept once it has been seen. When it is added (by this form, or from another place
+  // while the form is open) it leaves the offer and becomes the Library source `bookSource`, which the form then
+  // treats as any picked source: the tick is whether that source is picked.
+  const [askedBook, setAskedBook] = useState<string | null>(null);
+  if (offered && askedBook !== offered.id) setAskedBook(offered.id);
+  const bookSource = (askedBook ? freeBooks.data?.find((book) => book.id === askedBook)?.sourceId : null) ?? null;
+  const bookOn = bookSource ? picked.includes(bookSource) : offered !== undefined && !leftOut.has(offered.id);
+  const setLeft = (id: string, left: boolean) =>
     setLeftOut((current) => {
       const next = new Set(current);
-      if (on) next.delete(offered.id);
-      else next.add(offered.id);
+      if (left) next.add(id);
+      else next.delete(id);
       return next;
     });
+  const setBookOn = (on: boolean) => {
+    if (bookSource) {
+      if (on) setPicked((current) => (current.includes(bookSource) ? current : [...current, bookSource]));
+      else setPicked((current) => current.filter((id) => id !== bookSource));
+      if (askedBook) setLeft(askedBook, !on);
+      return;
+    }
+    if (offered) setLeft(offered.id, !on);
   };
+  // A book ticked on this form that arrives in the Library by another add joins the exam, unless it was left out.
+  const joined = useRef(new Set<string>());
+  useEffect(() => {
+    if (!askedBook || !bookSource || joined.current.has(askedBook)) return;
+    joined.current.add(askedBook);
+    if (!leftOut.has(askedBook)) setPicked((current) => (current.includes(bookSource) ? current : [...current, bookSource]));
+  }, [askedBook, bookSource]);
   // Nothing is chosen for the student: a made-up deadline would start pushing simulations within days.
   const [examChoice, setExamChoice] = useState<ExamChoice>(seed?.examChoice ?? "");
   const [sessions, setSessions] = useState<SessionDraft[]>(
@@ -135,37 +155,44 @@ export function useExamDraft({
     carries: (pathname) => pathname === GUIDED_PATH && snapshot === handedOver.current,
   });
 
+  // What the form holds now. Creating the exam can wait on a download, and the student may go on choosing meanwhile: the
+  // exam is made from what the form holds when the creation gets to it, so nothing they did in the meantime is lost.
+  const now = useRef({ title, subject, picked, sources: sources.data, sessions, target, language, style, leftOut });
+  now.current = { title, subject, picked, sources: sources.data, sessions, target, language, style, leftOut };
+
   /** Creates the exam and starts its build. Resolves with the new plan's id, or null when it did not start. */
   async function create(): Promise<string | null> {
-    const name = title.trim();
-    if (!name || starting) return null;
+    if (!title.trim() || starting) return null;
     setStartError(null);
     setStarting(true);
     try {
-      let sourceIds = picked;
-      let bookTitle: { id: string; title: string } | null = null;
+      let added: { sourceId: string; title: string } | null = null;
       if (offered && bookOn) {
         // The ticked book is downloaded now. If that fails the exam is not made, and the tick stays for another try.
-        const added = await addBook(client, offered.id);
-        if (!added) {
+        const result = await addBook(client, offered.id);
+        if (!result) {
           setStartError(addFailure(offered.id) ?? "sources.books.offline");
           return null;
         }
-        // It is a source of the form from here on, so a later failure keeps it.
-        pick([added.sourceId]);
-        sourceIds = [...picked, added.sourceId];
-        bookTitle = { id: added.sourceId, title: added.title };
+        // It is a source of the form from here on, so a later failure keeps it, unless it was unticked meanwhile.
+        if (!now.current.leftOut.has(offered.id)) {
+          pick([result.sourceId]);
+          added = result;
+        }
       }
+      const form = now.current;
+      const name = form.title.trim() || title.trim();
+      const sourceIds = added && !form.picked.includes(added.sourceId) ? [...form.picked, added.sourceId] : form.picked;
       const result = await invoke("plans.create", {
         title: name,
-        subject: subject.trim() || undefined,
+        subject: form.subject.trim() || undefined,
         sourceIds,
-        sessions: sessionsFromDrafts(sessions),
-        target,
-        language,
-        style,
+        sessions: sessionsFromDrafts(form.sessions),
+        target: form.target,
+        language: form.language,
+        style: form.style,
         topicTitles: sourceIds.map(
-          (id) => (sources.data ?? []).find((source) => source.id === id)?.title || (bookTitle?.id === id ? bookTitle.title : ""),
+          (id) => (form.sources ?? []).find((source) => source.id === id)?.title || (added?.sourceId === id ? added.title : ""),
         ),
       });
       if (!result) return null;
@@ -387,6 +414,9 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
   // The reader opened on the offered book says whether it is ticked, and follows the tick made on this page.
   const latestOn = useRef(draft.bookOn);
   latestOn.current = draft.bookOn;
+  // The setter of the tick as it is now, which changes once the book is added and is a source of the form.
+  const latestSet = useRef(draft.setBookOn);
+  latestSet.current = draft.setBookOn;
   // Once the exam is being created the choice is made: the reader shows it locked, as the page does.
   const latestStarting = useRef(draft.starting);
   latestStarting.current = draft.starting;
@@ -410,7 +440,7 @@ export function MaterialStep({ draft }: { draft: ExamDraft }) {
                   const book = draft.offered;
                   if (book)
                     openBook(book.id, {
-                      choice: { words: "exam", on: () => latestOn.current, set: draft.setBookOn, locked: () => latestStarting.current },
+                      choice: { words: "exam", on: () => latestOn.current, set: (on) => latestSet.current(on), locked: () => latestStarting.current },
                     });
                 },
               }
@@ -519,7 +549,8 @@ export function MaterialPrimary({
       type="primary"
       shape="round"
       loading={draft.starting}
-      disabled={draft.starting || reason}
+      // While another place adds the offered book, creating the exam would ask for the same download.
+      disabled={draft.starting || draft.bookBusy || reason}
       aria-describedby={!draft.title.trim() ? "wizard-create-reason" : undefined}
       onClick={() =>
         void draft.create().then((planId) => {

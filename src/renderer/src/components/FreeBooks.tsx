@@ -114,7 +114,9 @@ export function FreeBooks({ open, onClose }: { open: boolean; onClose: () => voi
       <Button
         shape="round"
         loading={busy}
-        disabled={(adding.adding.size > 0 && !busy) || updater.busy !== null}
+        // The subject a book belongs on comes from the subjects read: until it has answered, an add would put the book
+        // in "Da sistemare" even when a subject has its name.
+        disabled={(adding.adding.size > 0 && !busy) || updater.busy !== null || subjects.isPending}
         aria-label={t(busy ? "books.addingNamed" : "books.addNamed", {
           title: book.title,
         })}
