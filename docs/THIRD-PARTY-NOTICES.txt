@@ -1,4 +1,4 @@
-PoliTost Pyxis 0.5.0-dev.11
+PoliTost Pyxis 0.5.0-dev.12
 
 MIT License
 
@@ -26258,7 +26258,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-@rc-component/menu 1.6.1
+@rc-component/menu 1.6.2
 License metadata: MIT
 
 --- LICENSE ---
@@ -26327,8 +26327,32 @@ SOFTWARE.
 
 ========================================================================
 
-@rc-component/motion 1.3.3
+@rc-component/motion 1.4.0
 License metadata: MIT
+
+--- LICENSE ---
+MIT License
+
+Copyright (c) 2019-present react-component
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 --- LICENSE.md ---
 The MIT License (MIT)
@@ -28670,7 +28694,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ========================================================================
 
-@xyflow/react 12.12.1
+@xyflow/react 13.0.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -28699,7 +28723,7 @@ SOFTWARE.
 
 ========================================================================
 
-@xyflow/system 0.0.84
+@xyflow/system 1.0.0
 License metadata: MIT
 
 --- LICENSE ---
@@ -28728,7 +28752,7 @@ SOFTWARE.
 
 ========================================================================
 
-antd 6.7.0
+antd 6.7.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -29325,7 +29349,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ========================================================================
 
-compute-scroll-into-view 3.1.1
+compute-scroll-into-view 3.2.2
 License metadata: MIT
 
 --- LICENSE ---
@@ -32942,7 +32966,7 @@ IN THE SOFTWARE.
 
 ========================================================================
 
-i18next 27.1.1
+i18next 27.1.3
 License metadata: MIT
 
 --- LICENSE ---
@@ -86936,6 +86960,38 @@ SOFTWARE.
 
 ========================================================================
 
+react-compiler-runtime 1.0.0
+License metadata: MIT
+
+--- LICENSE (repository root, at the package gitHead) ---
+Source: https://raw.githubusercontent.com/facebook/react/5c15c1cd3442f28044217703b5625f98c40042ee/LICENSE
+SHA-256: da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93
+
+MIT License
+
+Copyright (c) Meta Platforms, Inc. and affiliates.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+========================================================================
+
 react-dom 19.3.1
 License metadata: MIT
 
@@ -86965,7 +87021,7 @@ SOFTWARE.
 
 ========================================================================
 
-react-i18next 18.0.1
+react-i18next 18.0.2
 License metadata: MIT
 
 --- LICENSE ---
@@ -87554,7 +87610,7 @@ SOFTWARE.
 
 ========================================================================
 
-scroll-into-view-if-needed 3.1.0
+scroll-into-view-if-needed 3.2.1
 License metadata: MIT
 
 --- LICENSE ---
@@ -90988,7 +91044,7 @@ SOFTWARE.
 
 ========================================================================
 
-zustand 4.5.7
+zustand 5.1.0
 License metadata: MIT
 
 --- LICENSE ---
