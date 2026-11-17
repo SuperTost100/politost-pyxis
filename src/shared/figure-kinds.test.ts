@@ -269,6 +269,86 @@ describe("a graph's DOT text", () => {
     expect(figureProblem("graph", "digraph { node [layout=sfdp]; a }")).toMatch(/layout=sfdp is not allowed/);
   });
 
+  it("reads every attribute list of a default statement, and checks each one", () => {
+    // `node [a][b]` is two lists, as it is after a node or an edge.
+    for (const text of [
+      "digraph { node [shape=box][fontsize=11]; a -> b }",
+      "digraph { edge [color=red][style=dashed]; a -> b }",
+      "digraph { graph [rankdir=LR][nodesep=1]; a -> b }",
+      "digraph { node [shape=box] [fontsize=11] [color=blue]; a }",
+    ])
+      expect(checkDot(text), text).toMatchObject({ problem: null });
+    // Every list gets the same checks as the first: the second cannot carry what the first could not.
+    expect(figureProblem("graph", 'digraph { node [shape=box][URL="x"]; a }')).toMatch(/the attribute URL is not allowed/);
+    expect(figureProblem("graph", 'digraph { node [shape=box][fontname="Times"]; a }')).toMatch(/fontname=Times is not allowed/);
+    expect(figureProblem("graph", "digraph { node [shape=box][layout=sfdp]; a }")).toMatch(/layout=sfdp is not allowed/);
+    expect(figureProblem("graph", "digraph { node [shape=box][mclimit=9]; a }")).toMatch(/the attribute mclimit is not allowed/);
+    expect(figureProblem("graph", "digraph { node [shape=box][fontsize=11; a }")).toMatch(/expected an attribute name inside/);
+    // Only lists: a name after the first one is a statement of its own, and a default still needs its bracket.
+    expect(figureProblem("graph", "digraph { node [shape=box] fontsize; a }")).toBeNull();
+    expect(figureProblem("graph", "digraph { node shape=box; a }")).toMatch(/expected "\[" after a graph, node or edge default/);
+  });
+
+  it("counts the edges of a strict graph once for each pair of nodes, and holds every other graph to the same count as before", () => {
+    const names = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`).join(" ");
+    // 18 nodes joined to themselves: 324 pairs written, 171 different edges in a strict graph (loops included).
+    const all = `{${names("n", 18)}} -- {${names("n", 18)}}`;
+    expect(checkDot(`strict graph { ${all} }`)).toMatchObject({ problem: null, nodes: 18, edges: 171 });
+    expect(checkDot(`STRICT Graph { ${all} }`)).toMatchObject({ problem: null, edges: 171 });
+    expect(checkDot(`graph { ${all} }`)).toEqual({ problem: `the graph has 324 edges: keep it within ${DOT_EDGES_MAX}` });
+    // A directed strict graph has an edge for each ordered pair: all 324 of them are different.
+    expect(checkDot(`strict digraph { {${names("n", 18)}} -> {${names("n", 18)}} }`)).toEqual({
+      problem: `the graph has 324 edges: keep it within ${DOT_EDGES_MAX}`,
+    });
+    // The same edge written again, and the same pair the other way round, is one edge of a strict graph and several of another.
+    expect(checkDot("strict graph { a -- b; b -- a; a -- b }")).toMatchObject({ nodes: 2, edges: 1 });
+    expect(checkDot("graph { a -- b; b -- a; a -- b }")).toMatchObject({ edges: 3 });
+    expect(checkDot("strict digraph { a -> b; b -> a; a -> b }")).toMatchObject({ edges: 2 });
+    expect(checkDot("digraph { a -> b; b -> a; a -> b }")).toMatchObject({ edges: 3 });
+    const again = (n: number) => `${Array.from({ length: n }, () => "a -- b").join("; ")}`;
+    expect(checkDot(`strict graph { ${again(DOT_EDGES_MAX + 50)} }`)).toMatchObject({ problem: null, edges: 1 });
+    expect(checkDot(`graph { ${again(DOT_EDGES_MAX + 1)} }`)).toEqual({ problem: `the graph has ${DOT_EDGES_MAX + 1} edges: keep it within ${DOT_EDGES_MAX}` });
+    // Different pairs are all counted: 20 by 20 names is 400 of them, strict or not.
+    expect(checkDot(`strict graph { {${names("a", 20)}} -- {${names("b", 20)}} }`)).toEqual({
+      problem: `the graph has 400 edges: keep it within ${DOT_EDGES_MAX}`,
+    });
+    // A subgraph named again stands for what it holds, and a subgraph with nothing in it is counted as one node each time.
+    expect(checkDot(`strict graph { subgraph s { ${names("n", 18)} } subgraph s {} -- subgraph s {} }`)).toMatchObject({ edges: 171 });
+    expect(checkDot(`strict graph { ${Array.from({ length: DOT_EDGES_MAX + 1 }, () => "subgraph {} -- subgraph {}").join("; ")} }`)).toEqual({
+      problem: `the graph has ${DOT_EDGES_MAX + 1} edges: keep it within ${DOT_EDGES_MAX}`,
+    });
+  });
+
+  it("selects the engine from the graph's own layout, and checks the attribute wherever it is written", () => {
+    // `layout` is an attribute of the graph. On a node, an edge or a subgraph it is another thing, and it selects nothing.
+    for (const text of [
+      "digraph { node [layout=neato]; a -> b -> c }",
+      "digraph { edge [layout=circo]; a -> b }",
+      "digraph { a [layout=fdp]; a -> b }",
+      "digraph { a -> b [layout=twopi] }",
+      "digraph { subgraph s { layout=twopi; a -> b } }",
+      "digraph { subgraph s { graph [layout=fdp]; a -> b } }",
+      "digraph { {layout=neato; a} -> b }",
+    ])
+      expect(checkDot(text), text).toMatchObject({ problem: null, layout: "dot" });
+    for (const [text, layout] of [
+      ["digraph { layout=neato; a -> b }", "neato"],
+      ["digraph { graph [layout=circo]; a -> b }", "circo"],
+      ["digraph { graph [fontsize=9][layout=fdp]; a -> b }", "fdp"],
+      ["digraph { subgraph s { layout=twopi; a } layout=neato; a -> b }", "neato"],
+    ] as const)
+      expect(checkDot(text), text).toMatchObject({ problem: null, layout });
+    // A spelling Graphviz would not find, or an engine this app does not draw with, is refused in every place.
+    for (const text of [
+      "digraph { node [layout=sfdp]; a }",
+      "digraph { a [layout=NEATO] }",
+      "digraph { edge [layout=osage]; a -> b }",
+      "digraph { subgraph s { layout=ortho; a } }",
+      'digraph { a -> b [layout="../x"] }',
+    ])
+      expect(figureProblem("graph", text), text).toMatch(/layout=.* is not allowed: use one of/);
+  });
+
   it("refuses text that is not one DOT graph, with a message the model can act on", () => {
     expect(figureProblem("graph", "")).toMatch(/starts with "graph" or "digraph"/);
     expect(figureProblem("graph", "a -> b")).toMatch(/starts with "graph" or "digraph"/);

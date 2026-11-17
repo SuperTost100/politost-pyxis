@@ -127,12 +127,23 @@ function lex(code: string): Lexed {
 
 class Stop extends Error {}
 
+/** One end of an edge: how many nodes it stands for, and which ones, so a strict graph can tell its edges apart. */
+type Operand = { count: number; ids: Iterable<string> };
+
 /** Reads the token list as a DOT graph: the first problem it finds stops the walk. */
 class Walker {
   private at = 0;
   readonly nodes = new Set<string>();
   edges = 0;
+  /** The engine the root graph's own `layout` asks for. A `layout` anywhere else is checked and selects nothing. */
   layout: DotLayout | null = null;
+  /** A strict graph holds one edge for each pair of nodes, and an undirected one does not tell a pair's two orders apart. */
+  private strict = false;
+  private directed = true;
+  /** How deep in braces the walk is: 1 is the root graph's own body. */
+  private depth = 0;
+  private readonly pairs = new Set<string>();
+  private empties = 0;
   /** Where the graph's body starts: just after its opening brace. */
   body = 0;
   /**
@@ -171,8 +182,10 @@ class Walker {
   }
 
   graph(): void {
-    if (this.isKeyword("strict")) this.at++;
+    this.strict = this.isKeyword("strict");
+    if (this.strict) this.at++;
     if (!this.isKeyword("graph", "digraph")) this.fail('a DOT text starts with "graph" or "digraph"');
+    this.directed = this.isKeyword("digraph");
     this.at++;
     if (this.startsAtom()) this.atom();
     const brace = this.peek();
@@ -185,11 +198,13 @@ class Walker {
   /** The statements up to the } that closes the block, which it reads. Returns the nodes the block named. */
   private statements(): Set<string> {
     const named = new Set<string>();
+    this.depth++;
     for (;;) {
       const token = this.peek();
       if (!token) this.fail('a "{" is never closed');
       if (token.kind === "punct" && token.value === "}") {
         this.at++;
+        this.depth--;
         return named;
       }
       if (token.kind === "punct" && token.value === ";") {
@@ -202,9 +217,10 @@ class Walker {
 
   private statement(named: Set<string>): void {
     if (this.isKeyword("graph", "node", "edge")) {
-      this.at++;
+      const keyword = (this.next() as { value: string }).value.toLowerCase();
       if (!this.isPunct("[")) this.fail('expected "[" after a graph, node or edge default');
-      this.attributes();
+      // Every list is read, as after a node or an edge: `node [shape=box][fontsize=11]`.
+      while (this.isPunct("[")) this.attributes(keyword === "graph" && this.depth === 1);
       return;
     }
     // `name = value` sets a graph attribute. The name is read as Graphviz reads one: quoted strings joined by +.
@@ -213,7 +229,7 @@ class Walker {
       const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(name, this.value());
+        this.attribute(name, this.value(), this.depth === 1);
         return;
       }
       this.at = start;
@@ -222,44 +238,70 @@ class Walker {
     while (this.peek()?.kind === "edgeop") {
       this.at++;
       const following = this.operand(named);
-      this.edges += previous * following;
+      this.join(previous, following);
       if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
       previous = following;
     }
-    while (this.isPunct("[")) this.attributes();
+    while (this.isPunct("[")) this.attributes(false);
   }
 
-  /** A node (with its port) or a subgraph. Returns how many nodes it stands for. */
-  private operand(named: Set<string>): number {
+  /**
+   * The edges an edge operator makes between two ends: a pair for each node of one and each node of the other. In a
+   * strict graph the same pair is one edge however often it is written, and in an undirected one so is the pair the
+   * other way round, so only the pairs that differ are counted. Any other graph counts every pair it writes. A strict
+   * graph is expanded only up to what the product allows (150 by 150), and only where the limits are checked.
+   */
+  private join(from: Operand, to: Operand): void {
+    if (!this.strict || !this.limits) {
+      this.edges += from.count * to.count;
+      return;
+    }
+    const targets = [...to.ids];
+    for (const a of from.ids)
+      for (const b of targets) this.pairs.add(this.directed || a <= b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+    this.edges = this.pairs.size;
+  }
+
+  /** The ends of an edge that holds no node: each is a node of its own, so none is ever taken for another. */
+  private emptyEnd(): string[] {
+    return [`\u0001${this.empties++}`];
+  }
+
+  /** A node (with its port) or a subgraph, with how many nodes it stands for and which. */
+  private operand(named: Set<string>): Operand {
     if (this.isKeyword("subgraph") || this.isPunct("{")) {
       if (this.isKeyword("subgraph")) {
         this.at++;
         const name = this.startsAtom() ? this.atom() : "";
         // A subgraph named but not opened refers to one written elsewhere: what it holds so far is what it stands for.
-        if (!this.isPunct("{")) return Math.max(1, this.subgraphs.get(name)?.size ?? 0);
+        if (!this.isPunct("{")) {
+          const held = this.subgraphs.get(name);
+          return held?.size ? { count: held.size, ids: held } : { count: 1, ids: this.emptyEnd() };
+        }
         this.expect("{");
         const inside = this.statements();
         for (const node of inside) named.add(node);
-        if (name === "") return Math.max(1, inside.size);
+        if (name === "") return inside.size ? { count: inside.size, ids: inside } : { count: 1, ids: this.emptyEnd() };
         const members = this.subgraphs.get(name) ?? new Set<string>();
         for (const node of inside) members.add(node);
         this.subgraphs.set(name, members);
-        return Math.max(1, members.size);
+        return members.size ? { count: members.size, ids: members } : { count: 1, ids: this.emptyEnd() };
       }
       this.expect("{");
       const inside = this.statements();
       for (const node of inside) named.add(node);
-      return Math.max(1, inside.size);
+      return inside.size ? { count: inside.size, ids: inside } : { count: 1, ids: this.emptyEnd() };
     }
     if (!this.startsAtom()) this.fail("expected a node name, a subgraph or an attribute in the DOT text");
-    this.node(this.atom(), named);
+    const name = this.atom();
+    this.node(name, named);
     // A port: node:port or node:port:compass.
     for (let parts = 0; parts < 2 && this.isPunct(":"); parts++) {
       this.at++;
       if (!this.startsAtom()) this.fail('expected a port name after ":"');
       this.atom();
     }
-    return 1;
+    return { count: 1, ids: [name] };
   }
 
   private node(name: string, named: Set<string>): void {
@@ -296,8 +338,8 @@ class Walker {
     return this.atom();
   }
 
-  /** `[a=b, c=d; e]`, read from the opening bracket. */
-  private attributes(): void {
+  /** `[a=b, c=d; e]`, read from the opening bracket. `rootGraph`: they are the root graph's own attributes. */
+  private attributes(rootGraph: boolean): void {
     this.expect("[");
     for (;;) {
       const token = this.peek();
@@ -314,12 +356,13 @@ class Walker {
       const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(name, this.value());
-      } else this.attribute(name, "true");
+        this.attribute(name, this.value(), rootGraph);
+      } else this.attribute(name, "true", rootGraph);
     }
   }
 
-  private attribute(name: string, value: string): void {
+  /** `rootGraph`: the attribute is the root graph's own, which is the only place `layout` selects the engine. */
+  private attribute(name: string, value: string, rootGraph: boolean): void {
     const key = name.toLowerCase();
     if (REFUSED.has(key) || key.endsWith("url") || key.endsWith("href"))
       this.fail(
@@ -342,7 +385,8 @@ class Walker {
         const spelling = (DOT_LAYOUTS as readonly string[]).includes(value.trim().toLowerCase());
         this.fail(`layout=${value} is not allowed: use one of ${DOT_LAYOUTS.join(", ")}${spelling ? ", in lower case with no spaces" : ""}`);
       }
-      this.layout = value as DotLayout;
+      // Checked in every place: on a node, an edge or a subgraph it is another attribute, and picks no engine.
+      if (rootGraph) this.layout = value as DotLayout;
     }
   }
 }
