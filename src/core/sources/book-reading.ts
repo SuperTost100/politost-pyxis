@@ -4,7 +4,7 @@ import { parseSmartbook, type ParsedSmartbook } from "./smartbook";
 /** How long a book read before it was added stays in memory. */
 const KEEP_MS = 10 * 60_000;
 
-type Held = { sha: string; bytes: Uint8Array; parsed: ParsedSmartbook; timer: ReturnType<typeof setTimeout> };
+type Held = { id: string; sha: string; bytes: Uint8Array; parsed: ParsedSmartbook; timer: ReturnType<typeof setTimeout> };
 
 /**
  * The one free book being read before it is added. Its package is downloaded and checked as an add would, then kept in
@@ -38,7 +38,7 @@ export function createBookReading(keepMs = KEEP_MS) {
           drop();
           const timer = setTimeout(drop, keepMs);
           timer.unref?.();
-          held = { sha: book.sha256, bytes, parsed, timer };
+          held = { id: book.id, sha: book.sha256, bytes, parsed, timer };
           return held;
         })().finally(() => loading.delete(book.sha256));
         loading.set(book.sha256, pending);
@@ -53,6 +53,13 @@ export function createBookReading(keepMs = KEEP_MS) {
           else signal.addEventListener("abort", stop, { once: true });
         }),
       ]);
+    },
+    /**
+     * The parsed package when the book with this id is the one held, whatever the catalog lists for it now: a reader
+     * goes on from the package its chapters were listed from, so the text and the chapter count agree.
+     */
+    heldFor(id: string): ParsedSmartbook | null {
+      return held?.id === id ? held.parsed : null;
     },
     /** The package's bytes when this book is the one held, so adding it does not download it again. */
     bytesOf(book: CatalogBook): Uint8Array | null {
