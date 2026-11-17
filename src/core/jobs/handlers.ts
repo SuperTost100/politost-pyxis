@@ -7,6 +7,7 @@ import type Database from "better-sqlite3";
 import { putSetting } from "../settings";
 import { callsOf, clearJobLogs, readJobLog, setDebugOn } from "../debug/log";
 import { limitedUntil, onLimitChange } from "../engine/bench";
+import { engineSeesImages } from "../engine/capabilities";
 import { chooseJobEngine, selectionOn } from "../engine/selection";
 import type { Runner } from "./runner";
 
@@ -17,6 +18,12 @@ function limitedToolOf(db: Database.Database, jobId: string): string | undefined
     | undefined;
   if (row?.state !== "failed") return undefined;
   return /^quota \[([\w-]+)\]/.exec(row.error ?? "")?.[1];
+}
+
+/** Whether a job sends a picture to the model: a photo import that a vision engine reads (`source-import-vision`). */
+function carriesImage(db: Database.Database, jobId: string): boolean {
+  const row = db.prepare("SELECT kind FROM jobs WHERE id = ?").get(jobId) as { kind: string } | undefined;
+  return row?.kind === "source-import-vision";
 }
 
 /** Whether debug mode is on, as stored. Off until the student turns it on. */
@@ -64,10 +71,14 @@ export function jobHandlers(runner: Runner, dev: boolean, db?: Database.Database
     },
     /**
      * The job stopped because its tool ran out of requests, and the student has it go on with `provider`. Every model
-     * call of the job goes there from now on, and the job starts again from the step it stopped at.
+     * call of the job goes there from now on, and the job starts again from the step it stopped at. A job that sends a
+     * picture only goes to a tool that can see it, as an automatic move does.
      */
     retryWith(input: RequestInput<"jobs.retryWith">): RequestOutput<"jobs.retryWith"> {
-      if (!selectionOn(input.provider)) throw new IpcError("engine-missing", "engines.errors.engine-missing");
+      const picture = db ? carriesImage(db, input.jobId) : false;
+      const there = selectionOn(input.provider, picture ? "vision" : undefined);
+      if (!there || (picture && !engineSeesImages(there)))
+        throw new IpcError("engine-missing", "engines.errors.engine-missing");
       chooseJobEngine(input.jobId, input.provider);
       runner.retry(input.jobId);
       return {};

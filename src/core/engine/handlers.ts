@@ -35,11 +35,12 @@ import {
   clearSignOut,
   clearSignOutBefore,
   engineClock,
+  guessedLimitMark,
   isMissing,
   isSignedOut,
   limitedUntil,
-  limitIsGuess,
   markSignedOut,
+  refineLimit,
   refusedModelsOf,
   signedOutSince,
 } from "./bench";
@@ -654,14 +655,16 @@ export function engineHandlers(
      * it (Claude, ChatGPT and Gemini have one), so the engine stays out until then instead of Pyxis's 30 minutes.
      */
     async limitChanged(provider: string) {
-      if (!limitIsGuess(provider)) return;
+      const mark = guessedLimitMark(provider);
+      if (mark === undefined) return;
       try {
         const usage = await getFunnel().rateLimits(provider as ProviderId, {
           signal: AbortSignal.timeout(30_000),
         });
-        // Still the same guess: a call that answered meanwhile, or a limit with its own time, wins.
-        if (usage.limit?.resetAt && limitIsGuess(provider))
-          benchEngine(provider, "limit", { resetAt: usage.limit.resetAt });
+        // The report answers for the limit asked about: one that was cleared or hit again meanwhile, or that got its
+        // own time, keeps what it has, and the moment it was hit stays.
+        const reset = usage.limit?.resetAt ? Date.parse(usage.limit.resetAt) : NaN;
+        if (Number.isFinite(reset)) refineLimit(provider, mark, reset);
       } catch {
         // No usage report (Cursor, an API key) or it failed: the guess stands.
       }

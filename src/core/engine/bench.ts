@@ -117,6 +117,30 @@ export function limitIsGuess(provider: string): boolean {
   return limited.get(provider)?.guessed === true;
 }
 
+/**
+ * Names the engine's limit while its wait is a guess: the moment on `engineClock` it was hit, or undefined when it has
+ * no limit or one with its own time. A question about the limit takes this before it is asked and gives it back to
+ * `refineLimit`, which then knows whether the limit is still that one.
+ */
+export function guessedLimitMark(provider: string): number | undefined {
+  const limit = limited.get(provider);
+  return limit?.guessed ? limit.since : undefined;
+}
+
+/**
+ * Replaces the guessed wait of the limit named by `mark` with the time the engine's usage report gave. A limit that was
+ * cleared or hit again since is another one, and keeps what it has. The moment the limit was hit stays, so a test that
+ * began after it still clears it.
+ */
+export function refineLimit(provider: string, mark: number, until: number): void {
+  const limit = limited.get(provider);
+  if (!limit?.guessed || limit.since !== mark) return;
+  limited.set(provider, { until, since: limit.since, guessed: false });
+  store?.saveLimit(provider, until);
+  onChange?.(provider, "limit");
+  limitChanged(provider, until);
+}
+
 function forgetLimit(provider: string): boolean {
   if (!limited.delete(provider)) return false;
   store?.saveLimit(provider, null);

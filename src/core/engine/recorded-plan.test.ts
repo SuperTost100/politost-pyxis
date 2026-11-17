@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -169,5 +169,21 @@ describe("a recorded tool that is out of requests", () => {
       limit: { kind: "quota", resetAt: "2026-12-01T00:00:00Z" },
     });
     await expect(run({ prompt: "{}", selection: selection("claude") })).resolves.toMatchObject({ text: "ok" });
+  });
+
+  it("can give the reset as a wait counted from the failing call, so a test sets it when it uses it", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-11-17T10:00:00Z"), toFake: ["Date"] });
+    try {
+      const run = recordedPlanRun(JSON.stringify({ limited: { codex: { resetInMs: 25_000 } } }));
+      await expect(run({ prompt: "{}", selection: selection("codex") })).rejects.toMatchObject({
+        limit: { kind: "quota", resetAt: "2026-11-17T10:00:25.000Z" },
+      });
+      vi.setSystemTime(Date.parse("2026-11-17T10:05:00Z"));
+      await expect(run({ prompt: "{}", selection: selection("codex") })).rejects.toMatchObject({
+        limit: { resetAt: "2026-11-17T10:05:25.000Z" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

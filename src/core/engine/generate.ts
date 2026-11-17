@@ -214,7 +214,7 @@ export async function generate(input: GenerateInput): Promise<GenerateOutput> {
   const chosen = jobEngine(currentUsageScope()?.jobId);
   const chosenSelection =
     chosen && chosen !== input.selection.provider
-      ? selectionOn(chosen, input.selection.chosenFor)
+      ? seenBy(input, selectionOn(chosen, input.selection.chosenFor))
       : undefined;
   if (chosenSelection) return moveOn(input, chosenSelection, "limit");
   // An automatic engine still out after a usage limit, a sign-out or a missing program, or a model the subscription
@@ -276,17 +276,26 @@ function markFailure(
   return reason;
 }
 
+/** How many times a call has moved to another tool and to another model of the same tool, each with its own bound. */
+type Moves = { tools: number; models: number };
+
+/** `moves` after a move from the engine `from` to `to`: a move that keeps the tool is a model's, any other a tool's. */
+function counted(moves: Moves, from: string, to: string): Moves {
+  return from === to ? { ...moves, models: moves.models + 1 } : { ...moves, tools: moves.tools + 1 };
+}
+
 /**
  * Answers on `next` instead of the selected engine, and says so when `reason` is given (an engine skipped because it is
  * already out says nothing). When the subscription refuses that model too, the task moves to the engine's next model,
  * up to `MODEL_STEPS` times in all. When `next` turns out to be out as well (out of requests, signed out, not
- * installed), the task goes on down the list, up to `ENGINE_STEPS` tools in all.
+ * installed), the task goes on down the list, up to `ENGINE_STEPS` tools in all. The two are counted apart, so tools
+ * that were out of requests never use up the models a later tool may need, and the walk still ends.
  */
 async function moveOn(
   input: GenerateInput,
   next: GenerateInput["selection"],
   reason?: EngineFallback["reason"],
-  step = 1,
+  moves: Moves = counted({ tools: 0, models: 0 }, input.selection.provider, next.provider),
 ): Promise<GenerateOutput> {
   try {
     const output = await answerOn(input, next);
@@ -305,11 +314,13 @@ async function moveOn(
   } catch (err) {
     const why = err instanceof Failed ? err.reason : undefined;
     const cause = err instanceof Failed ? err.error : err;
-    if (!why || step >= (why === "model" ? MODEL_STEPS : ENGINE_STEPS)) throw cause;
+    if (!why) throw cause;
     // `answerOn` marked the engine that failed, so the next step leaves it out.
     const further = usableFallback(input, why);
     if (!further) throw cause;
-    return moveOn(input, further, reason ?? why, step + 1);
+    const after = counted(moves, next.provider, further.provider);
+    if (after.tools > ENGINE_STEPS || after.models > MODEL_STEPS) throw cause;
+    return moveOn(input, further, reason ?? why, after);
   }
 }
 
@@ -321,11 +332,18 @@ class Failed {
   ) {}
 }
 
-/** The engine an automatic selection moves to. A turn that carries a picture only moves to an engine that can see it. */
+/**
+ * `selection` when this call may go there: a call that carries a picture only goes to an engine that can see it, however
+ * the engine was chosen (by the automatic plan, or by the student for a job), and otherwise stays where it is.
+ */
+function seenBy<T extends { provider: string; model: string }>(input: GenerateInput, selection: T | undefined): T | undefined {
+  if (!selection) return undefined;
+  return !input.attachments?.length || engineSeesImages(selection) ? selection : undefined;
+}
+
+/** The engine an automatic selection moves to. */
 function usableFallback(input: GenerateInput, reason?: FallbackReason) {
-  const next = fallbackSelection(input.selection, reason);
-  if (!next) return undefined;
-  return !input.attachments?.length || engineSeesImages(next) ? next : undefined;
+  return seenBy(input, fallbackSelection(input.selection, reason));
 }
 
 async function answerOn(

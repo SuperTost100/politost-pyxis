@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { engineChoiceQuery, enginesQuery } from "../../lib/queries";
-import { limitsOf, nextTool } from "../../lib/toolOrder";
+import { callAfter, limitsOf, nextTool } from "../../lib/toolOrder";
 
 /**
  * The tools as the jobs list needs them: which are out of requests and until when, and the tools a stopped job can go
@@ -18,15 +18,11 @@ export function useToolLimits() {
   const soonest = Math.min(...limits.values());
   useEffect(() => {
     if (!Number.isFinite(soonest)) return;
-    // setTimeout holds at most about 24 days; a longer wait looks again then.
-    const timer = setTimeout(
-      () => {
-        setNow(Date.now());
-        void client.invalidateQueries({ queryKey: enginesQuery.queryKey });
-      },
-      Math.min(Math.max(soonest - Date.now(), 0) + 1000, 2 ** 31 - 1),
-    );
-    return () => clearTimeout(timer);
+    // A wait longer than a timer holds (about 24 days) is made in stretches by `callAfter`.
+    return callAfter(soonest, () => {
+      setNow(Date.now());
+      void client.invalidateQueries({ queryKey: enginesQuery.queryKey });
+    });
   }, [soonest, client]);
   return {
     limits,

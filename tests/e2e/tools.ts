@@ -147,7 +147,7 @@ export async function jobsNow(page: Page) {
     const [open, done] = (await Promise.all([
       window.pyxis.invoke("jobs.list", {}),
       window.pyxis.invoke("jobs.finished", {}),
-    ])) as Array<Array<{ id: string; state: string; error: string | null; fallback?: { from: string; to: string; reason: string } }>>;
+    ])) as Array<Array<{ id: string; state: string; error: string | null; waitingUntil?: number; fallback?: { from: string; to: string; reason: string } }>>;
     return [...open!, ...done!];
   });
 }

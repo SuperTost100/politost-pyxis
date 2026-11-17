@@ -91,6 +91,23 @@ export function limitsOf(
   );
 }
 
+/** The longest wait a timer holds: a longer one fires at once. About 24.8 days. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * Calls `fire` a second after `until`. A wait longer than a timer holds is made in stretches: the timer that ends one
+ * looks at the clock again and waits for the rest. Returns how to stop.
+ */
+export function callAfter(until: number, fire: () => void, clock: () => number = Date.now): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const arm = () => {
+    const wait = Math.max(until - clock(), 0) + 1000;
+    timer = setTimeout(wait > LONGEST_TIMER_MS ? arm : fire, Math.min(wait, LONGEST_TIMER_MS));
+  };
+  arm();
+  return () => clearTimeout(timer);
+}
+
 /**
  * The tool a stopped job can go on with: the first connected tool of the student's order, other than `failed`, that is
  * in use and has requests left. Without an order, the tools in the order Pyxis found them.
