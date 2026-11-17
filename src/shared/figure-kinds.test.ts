@@ -312,6 +312,17 @@ describe("a graph's DOT text", () => {
     expect(checkDot(`strict graph { {${names("a", 20)}} -- {${names("b", 20)}} }`)).toEqual({
       problem: `the graph has 400 edges: keep it within ${DOT_EDGES_MAX}`,
     });
+    // An edge with a `key` is a new edge of a strict graph when its pair is the other way round, so with a key anywhere in
+    // an undirected strict graph the two orders of a pair are counted apart (Graphviz builds 392 edges from this text).
+    const keyed = `strict graph { {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} [key=k] }`;
+    expect(checkDot(keyed)).toEqual({ problem: `the graph has 392 edges: keep it within ${DOT_EDGES_MAX}` });
+    expect(checkDot(keyed.replace(" [key=k]", ""))).toMatchObject({ problem: null, nodes: 28, edges: 196 });
+    // Wherever the key is, whatever its case, and whichever edges it names.
+    expect(checkDot(`strict graph { edge [KEY=k]; {${names("a", 14)}} -- {${names("b", 14)}}; {${names("b", 14)}} -- {${names("a", 14)}} }`)).toEqual({
+      problem: `the graph has 392 edges: keep it within ${DOT_EDGES_MAX}`,
+    });
+    expect(checkDot("strict graph { a -- b; b -- a [key=k] }")).toMatchObject({ problem: null, edges: 2 });
+    expect(checkDot("strict graph { a -- b; b -- a }")).toMatchObject({ problem: null, edges: 1 });
     // A subgraph named again stands for what it holds, and a subgraph with nothing in it is counted as one node each time.
     expect(checkDot(`strict graph { subgraph s { ${names("n", 18)} } subgraph s {} -- subgraph s {} }`)).toMatchObject({ edges: 171 });
     expect(checkDot(`strict graph { ${Array.from({ length: DOT_EDGES_MAX + 1 }, () => "subgraph {} -- subgraph {}").join("; ")} }`)).toEqual({
@@ -326,18 +337,28 @@ describe("a graph's DOT text", () => {
       "digraph { edge [layout=circo]; a -> b }",
       "digraph { a [layout=fdp]; a -> b }",
       "digraph { a -> b [layout=twopi] }",
+    ])
+      expect(checkDot(text), text).toMatchObject({ problem: null, layout: "dot" });
+    // Written as an attribute of a subgraph it is another thing again: Graphviz cannot draw the graph at all (it says the
+    // layout was not done, whichever engine it is given), so the check says where `layout` goes.
+    for (const text of [
       "digraph { subgraph s { layout=twopi; a -> b } }",
       "digraph { subgraph s { graph [layout=fdp]; a -> b } }",
       "digraph { {layout=neato; a} -> b }",
+      "digraph { layout=neato; subgraph cluster_c { layout=circo; a } }",
     ])
-      expect(checkDot(text), text).toMatchObject({ problem: null, layout: "dot" });
+      expect(checkDot(text), text).toEqual({
+        problem: expect.stringMatching(/^layout=\w+ is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself/),
+      });
     for (const [text, layout] of [
       ["digraph { layout=neato; a -> b }", "neato"],
       ["digraph { graph [layout=circo]; a -> b }", "circo"],
       ["digraph { graph [fontsize=9][layout=fdp]; a -> b }", "fdp"],
-      ["digraph { subgraph s { layout=twopi; a } layout=neato; a -> b }", "neato"],
+      ["digraph { subgraph s { label=x; a } layout=neato; a -> b }", "neato"],
     ] as const)
       expect(checkDot(text), text).toMatchObject({ problem: null, layout });
+    // A subgraph's own graph attributes other than the layout are as they were.
+    expect(checkDot("digraph { subgraph cluster_c { label=x; graph [color=red]; a } }")).toMatchObject({ problem: null, layout: "dot" });
     // A spelling Graphviz would not find, or an engine this app does not draw with, is refused in every place.
     for (const text of [
       "digraph { node [layout=sfdp]; a }",

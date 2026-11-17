@@ -127,6 +127,9 @@ function lex(code: string): Lexed {
 
 class Stop extends Error {}
 
+/** Whose attributes a list holds: the root graph's own, another graph's (a subgraph), or a node's or an edge's. */
+type Owner = "root" | "graph" | "other";
+
 /** One end of an edge: how many nodes it stands for, and which ones, so a strict graph can tell its edges apart. */
 type Operand = { count: number; ids: Iterable<string> };
 
@@ -143,6 +146,10 @@ class Walker {
   /** How deep in braces the walk is: 1 is the root graph's own body. */
   private depth = 0;
   private readonly pairs = new Set<string>();
+  /** The pairs of an undirected strict graph in the order they were written, for when a `key` makes that order count. */
+  private readonly ordered = new Set<string>();
+  /** A `key` attribute was written somewhere: in a strict graph it makes an edge of a pair that is already there. */
+  private keyed = false;
   private empties = 0;
   /** Where the graph's body starts: just after its opening brace. */
   body = 0;
@@ -193,6 +200,9 @@ class Walker {
     this.body = brace!.at + 1;
     this.statements();
     if (this.peek()) this.fail("only one graph is allowed: remove what follows its closing }");
+    // A `key` written after the edges it names changes how they count, so the count is taken again at the end.
+    this.recount();
+    if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
   }
 
   /** The statements up to the } that closes the block, which it reads. Returns the nodes the block named. */
@@ -220,7 +230,7 @@ class Walker {
       const keyword = (this.next() as { value: string }).value.toLowerCase();
       if (!this.isPunct("[")) this.fail('expected "[" after a graph, node or edge default');
       // Every list is read, as after a node or an edge: `node [shape=box][fontsize=11]`.
-      while (this.isPunct("[")) this.attributes(keyword === "graph" && this.depth === 1);
+      while (this.isPunct("[")) this.attributes(keyword === "graph" ? (this.depth === 1 ? "root" : "graph") : "other");
       return;
     }
     // `name = value` sets a graph attribute. The name is read as Graphviz reads one: quoted strings joined by +.
@@ -229,7 +239,7 @@ class Walker {
       const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(name, this.value(), this.depth === 1);
+        this.attribute(name, this.value(), this.depth === 1 ? "root" : "graph");
         return;
       }
       this.at = start;
@@ -242,7 +252,7 @@ class Walker {
       if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
       previous = following;
     }
-    while (this.isPunct("[")) this.attributes(false);
+    while (this.isPunct("[")) this.attributes("other");
   }
 
   /**
@@ -258,8 +268,20 @@ class Walker {
     }
     const targets = [...to.ids];
     for (const a of from.ids)
-      for (const b of targets) this.pairs.add(this.directed || a <= b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
-    this.edges = this.pairs.size;
+      for (const b of targets) {
+        this.pairs.add(this.directed || a <= b ? `${a}\u0000${b}` : `${b}\u0000${a}`);
+        if (!this.directed) this.ordered.add(`${a}\u0000${b}`);
+      }
+    this.recount();
+  }
+
+  /**
+   * The edges of a strict graph: its different pairs. Graphviz folds the two orders of a pair of an undirected graph only
+   * while no edge has a `key`; with one, an edge whose ends are the other way round is a new edge, so the orders are
+   * counted apart.
+   */
+  private recount(): void {
+    if (this.strict && this.limits) this.edges = this.keyed && !this.directed ? this.ordered.size : this.pairs.size;
   }
 
   /** The ends of an edge that holds no node: each is a node of its own, so none is ever taken for another. */
@@ -338,8 +360,8 @@ class Walker {
     return this.atom();
   }
 
-  /** `[a=b, c=d; e]`, read from the opening bracket. `rootGraph`: they are the root graph's own attributes. */
-  private attributes(rootGraph: boolean): void {
+  /** `[a=b, c=d; e]`, read from the opening bracket. `owner`: whose attributes they are, as `attribute` reads it. */
+  private attributes(owner: Owner): void {
     this.expect("[");
     for (;;) {
       const token = this.peek();
@@ -356,14 +378,18 @@ class Walker {
       const name = this.atom();
       if (this.isPunct("=")) {
         this.at++;
-        this.attribute(name, this.value(), rootGraph);
-      } else this.attribute(name, "true", rootGraph);
+        this.attribute(name, this.value(), owner);
+      } else this.attribute(name, "true", owner);
     }
   }
 
-  /** `rootGraph`: the attribute is the root graph's own, which is the only place `layout` selects the engine. */
-  private attribute(name: string, value: string, rootGraph: boolean): void {
+  /**
+   * `owner` says whose the attribute is: the root graph's, another graph's (a subgraph or a cluster), or anything else
+   * (a node, an edge, or a default for them).
+   */
+  private attribute(name: string, value: string, owner: Owner): void {
     const key = name.toLowerCase();
+    if (key === "key") this.keyed = true;
     if (REFUSED.has(key) || key.endsWith("url") || key.endsWith("href"))
       this.fail(
         `the attribute ${name} is not allowed: it reaches for a file, a link or an element name, so remove it`,
@@ -385,8 +411,12 @@ class Walker {
         const spelling = (DOT_LAYOUTS as readonly string[]).includes(value.trim().toLowerCase());
         this.fail(`layout=${value} is not allowed: use one of ${DOT_LAYOUTS.join(", ")}${spelling ? ", in lower case with no spaces" : ""}`);
       }
-      // Checked in every place: on a node, an edge or a subgraph it is another attribute, and picks no engine.
-      if (rootGraph) this.layout = value as DotLayout;
+      // Only the root graph's own picks the engine, and Graphviz cannot lay out a graph that sets it in a subgraph (it says
+      // "Layout was not done" whichever engine it is given), so that is refused with where it goes. On a node or an edge it
+      // is another attribute: checked here like the rest, and ignored by Graphviz.
+      if (owner === "graph")
+        this.fail(`layout=${value} is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself, at its top level (digraph { layout=${value}; ... })`);
+      if (owner === "root") this.layout = value as DotLayout;
     }
   }
 }
