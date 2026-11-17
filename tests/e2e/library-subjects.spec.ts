@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { openBox, trackEvents, withTrail } from "./event-trail";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { seedSource, seedSubjects } from "./seed";
 
@@ -65,7 +65,7 @@ async function addFiles(app: ElectronApplication, page: Page, paths: string[]) {
   await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
   if (paths.length > 1) {
     await expect(dialog.getByText(`${paths.length} file importati.`)).toBeVisible();
-    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Fatto", exact: true }));
   }
   await expect(dialog).toBeHidden();
 }
@@ -79,7 +79,7 @@ const cover = (page: Page, subject: string, title: string) => shelf(page, subjec
 /** The menu items Sposta in opens, from a menu that is open. */
 async function moveTo(page: Page, subject: string) {
   await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
-  await page.getByRole("menuitem", { name: subject, exact: true }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: subject, exact: true }));
 }
 const subjectNames = async (page: Page) =>
   (await page.evaluate(() => window.pyxis.invoke("subjects.list", {}))).map((subject) => subject.name).sort();
@@ -139,7 +139,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     // And by a right-click, into a subject it names there.
     await limits.click({ button: "right" });
     await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Nuova materia…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Nuova materia…" }));
     const named = page.getByRole("dialog", { name: "Sposta in una materia nuova" });
     await named.getByLabel("Nome della materia").fill("Analisi matematica");
     await named.getByRole("button", { name: "Sposta", exact: true }).click();
@@ -153,7 +153,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
 
     // Two subjects cannot share a name: the refusal sits next to the field, and Escape keeps the old name.
     await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina", exact: true }));
     const rename = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
     await rename.fill("probabilità");
     await rename.press("Enter");
@@ -170,7 +170,7 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await page.keyboard.press("Escape");
     // An empty one does, from a right-click on its name, and asks once with Annulla focused.
     await shelf(page, "Fisica 2").getByRole("heading", { name: "Fisica 2" }).click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la materia…" }));
     const confirm = page.getByRole("dialog", { name: "Eliminare la materia «Fisica 2»?" });
     await expect(confirm.getByRole("button", { name: "Annulla" })).toBeFocused();
     await animationsSettled(page);
@@ -194,15 +194,21 @@ test("Files added from the Library go on the shelf of a subject the student has,
     await expect(shelf(page, "Analisi 1")).toBeVisible();
     // The type filter keeps the files of that kind.
     await page.getByRole("combobox", { name: "Tipo" }).click();
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Dispensa" }).click();
+    await clickSettled(
+      page,
+      page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Dispensa" }),
+    );
     await expect(cover(page, "Probabilità", "Calcolo delle probabilita, dispense")).toBeVisible();
     await expect(shelf(page, "Analisi 1")).toHaveCount(0);
 
     // A new map of a subject opens the new-map dialog with that subject chosen.
     await page.getByRole("combobox", { name: "Tipo" }).click();
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Tutti i tipi" }).click();
+    await clickSettled(
+      page,
+      page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Tutti i tipi" }),
+    );
     await page.getByRole("button", { name: "Azioni sulla materia Probabilità", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Nuova mappa di questa materia" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Nuova mappa di questa materia" }));
     await expect(page).toHaveURL(/#\/maps\?subject=/);
     const newMap = page.getByRole("dialog", { name: "Nuova mappa" });
     await expect(newMap).toBeVisible();
@@ -472,8 +478,11 @@ test("A subject offers its delete as soon as its last file is removed", async ()
     await page.keyboard.press("Escape");
     // The file goes; the page is not reopened, and the delete is there.
     await page.getByRole("button", { name: "Azioni per Dinamica" }).click();
-    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Eliminare «Dinamica»?" }).getByRole("button", { name: "Elimina il file", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina il file…", exact: true }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Eliminare «Dinamica»?" }).getByRole("button", { name: "Elimina il file", exact: true }),
+    );
     await expect(shelf(page, "Fisica 2")).toContainText("nessun file");
     await page.getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
     await expect(page.getByRole("menuitem", { name: "Elimina la materia…" })).toBeVisible();
@@ -1299,27 +1308,27 @@ test("With subjects and no files the Library shows the subjects with the add-a-f
     const subjectDots = shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" });
     await subjectDots.click();
     await expect(page.getByRole("menuitem", { name: "Nuova mappa di questa materia" })).toBeVisible();
-    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la materia…" }));
     // Annulla gives the focus back to the subject's dots.
-    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Annulla" }));
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(subjectDots).toBeFocused();
     await subjectDots.click();
-    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la materia…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }));
     await expect(shelf(page, "Fisica 2")).toHaveCount(0);
     await expect(shelf(page, "Analisi 1")).toBeVisible();
     await expect(empty).toBeVisible();
     // A subject renamed on a page that has no files.
     await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina", exact: true }));
     await page.getByRole("textbox", { name: "Nome della materia Analisi 1" }).fill("Analisi uno");
     await page.keyboard.press("Enter");
     await expect(shelf(page, "Analisi uno")).toBeVisible();
     // With the last subject gone, no card is left: today's empty page.
     await shelf(page, "Analisi uno").getByRole("button", { name: "Azioni sulla materia Analisi uno" }).click();
-    await page.getByRole("menuitem", { name: "Elimina la materia…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la materia…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la materia", exact: true }));
     await expect(page.locator(".px-shelf-subject")).toHaveCount(0);
     await expect(empty).toBeVisible();
     await expect(page.locator(".px-shelves")).toHaveCount(0);
@@ -1379,7 +1388,7 @@ test("When the subjects cannot be read again, a file moved to a new subject stay
     try {
       await cover(page, "Analisi 1", "Limiti").click({ button: "right" });
       await page.getByRole("menuitem", { name: "Sposta in", exact: true }).hover();
-      await page.getByRole("menuitem", { name: "Nuova materia…" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Nuova materia…" }));
       const named = page.getByRole("dialog", { name: "Sposta in una materia nuova" });
       await named.getByLabel("Nome della materia").fill("Chimica");
       await named.getByRole("button", { name: "Sposta", exact: true }).click();
@@ -1418,10 +1427,10 @@ test("A rename that answers late does not close another subject's rename field",
     const stuck = page.evaluate(() => window.pyxis.invoke("chats.rename", { chatId: "nothing", title: "Nothing" })).catch(() => undefined);
     // Analisi 1 is renamed: leaving its field sends the new name, whose answer waits until the student has gone on to Fisica 2.
     await shelf(page, "Analisi 1").getByRole("button", { name: "Azioni sulla materia Analisi 1" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina", exact: true }));
     await page.getByRole("textbox", { name: "Nome della materia Analisi 1" }).fill("Analisi uno");
     await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina", exact: true }));
     const second = page.getByRole("textbox", { name: "Nome della materia Fisica 2" });
     await second.fill("Fisica due");
     await expect(second).toBeFocused();
@@ -1470,7 +1479,7 @@ test("A subject's menu offers flashcards of the subject, which open the Flashcar
     await page.keyboard.press("Escape");
 
     await shelf(page, "Fisica 2").getByRole("button", { name: "Azioni sulla materia Fisica 2" }).click();
-    await menu.getByRole("menuitem", { name: "Crea flashcard di questa materia" }).click();
+    await clickSettled(page, menu.getByRole("menuitem", { name: "Crea flashcard di questa materia" }));
     const dialog = page.getByRole("dialog", { name: "Nuova flashcard" });
     await expect(dialog).toBeVisible();
     await expect(page).toHaveURL(/#\/flashcards$/);

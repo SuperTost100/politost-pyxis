@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { launchPyxis, setUp } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -389,7 +389,7 @@ test("Non lo so (key 0) and Segna per dopo (key S) are saved, counted at Consegn
       "Consegni con 1 domanda vuota e 1 domanda segnata per dopo? Quella vuota conta come «non lo so».",
     );
     await shoot("handin", "it");
-    await confirm.getByRole("button", { name: "Consegna", exact: true }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Consegna", exact: true }));
     // Eight right answers; the "Non lo so" and the blank one are wrong answers with no pick.
     await expect(score(page)).toContainText("8 punti su 10.");
     // The two to review are open; the right ones fold to a line.

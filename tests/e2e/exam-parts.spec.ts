@@ -11,7 +11,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { partText, recapText } from "./part-texts";
 import { seedPlan, seedSource } from "./seed";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 
 const day = 86_400_000;
 const startOfToday = () => new Date().setHours(0, 0, 0, 0);
@@ -196,10 +196,10 @@ test("the exam page suggests the next part of a lesson in parts, picks up from i
     await expect(items).toHaveCount(0);
     await expect(other).toBeFocused();
     await other.click();
-    await page.getByRole("menuitem", { name: /^Esercizi/ }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: /^Esercizi/ }));
     await backToExam(page, /#\/plans\/p-an2\/practice\/t-fun$/);
     await other.click();
-    await page.getByRole("menuitem", { name: /^Flashcard/ }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: /^Flashcard/ }));
     await backToExam(page, /#\/plans\/p-an2\/cards\/t-fun$/);
     // The other keys that move through a menu reach it the same way when they come before it has the focus: sent in the
     // same task as the click that opens it again, in order, they lead where the menu's own keys would.
@@ -524,7 +524,7 @@ test("the exam page and the part page meet: Continua, Per oggi basta, a part row
     // Rileggi una parte opens a part already read, with its answer.
     await now.getByRole("button", { name: "Scegli altro", exact: true }).click();
     await page.getByRole("menuitem", { name: /^Rileggi una parte/ }).hover();
-    await page.getByRole("menuitem", { name: /^Parte 1 · Intorni/ }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: /^Parte 1 · Intorni/ }));
     await expect(page).toHaveURL(/#\/plans\/p-walk\/lesson\/t-fun\?part=1$/);
     await expect(title).toHaveText(/^Intorni e distanza in /);
     await expect(page.getByText("Giusto.", { exact: true })).toBeVisible();

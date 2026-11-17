@@ -12,7 +12,7 @@ import { unzipSync } from "fflate";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { fromChiediToExams } from "./doors";
 
@@ -132,7 +132,7 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       await page
         .getByRole("button", { name: /^(Altro sulle flashcard|More on the flashcards)$/ })
         .click();
-      await page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: /^(Esporta|Export)$/ }));
       await expect(modal).toBeVisible();
       const pdfRadio = modal.getByRole("radio", { name: "PDF", exact: true });
       await pdfRadio.focus();
@@ -146,7 +146,7 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
       if (!(language === "en" && theme === "light"))
         await modal.getByRole("button", { name: /^(Annulla|Cancel)$/ }).click();
     }
-    await modal.getByText("Anki", { exact: true }).click();
+    await clickSettled(page, modal.getByText("Anki", { exact: true }));
     await expect(
       modal.getByRole("radio", { name: "Anki", exact: true }),
     ).toBeChecked();
@@ -167,10 +167,12 @@ test("EXP-01/03 quiz PDF with math, exact attempt, native Anki save and export m
     await page
       .getByRole("button", { name: /^(Esporta|Export)$/, exact: true })
       .click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: /^(Salva file|Save file)$/, exact: true })
-      .click();
+    await clickSettled(
+      page,
+      page
+        .getByRole("dialog")
+        .getByRole("button", { name: /^(Salva file|Save file)$/, exact: true }),
+    );
     await expect(
       page.getByRole("dialog", { name: /^(Esporta|Export)$/ }),
     ).not.toBeVisible();

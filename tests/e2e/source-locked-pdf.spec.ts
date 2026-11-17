@@ -7,7 +7,7 @@ import { lockedPdf } from "../../src/core/sources/test-pdf";
 import { importPickedSource } from "./picked-source";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -116,7 +116,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     await page.getByRole("button", { name: "Azioni per Appunti" }).click();
     await expect(page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" })).toBeVisible();
     await shoot(page, "source-refresh-menu");
-    await page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Controlla se c'è una nuova versione" }));
     // A lookup failure is not yet named as a link failure (see #125), so either message counts as the refusal.
     await expect(page.getByRole("alert").getByText(/^Non riesco a leggere (quel link|questo file)\.$/)).toBeVisible({ timeout: 30000 });
     expect(await page.evaluate(() => window.pyxis.invoke("jobs.list", {}))).toEqual([]);
@@ -129,7 +129,7 @@ test("SRC a locked PDF asks for its password, and a link source offers a check f
     // The details, from the file's menu, say where and when the link was saved. The check itself stays in the row
     // menu used above: an action the row menu has is not repeated as a panel button.
     await page.getByRole("button", { name: "Azioni per Appunti" }).click();
-    await page.getByRole("menuitem", { name: "Dettagli della fonte" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Dettagli della fonte" }));
     const details = page.getByRole("dialog", { name: "Appunti" });
     await expect(details.getByText(/Salvata da appunti\.invalid il/)).toBeVisible();
     await expect(details.getByRole("button", { name: "Controlla se c'è una nuova versione" })).toHaveCount(0);

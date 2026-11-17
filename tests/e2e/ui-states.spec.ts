@@ -13,6 +13,7 @@ import { makeBook } from "./book";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 function smartbook() {
   return makeBook({
@@ -171,9 +172,7 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
     await goto(page, "/exams/library");
     // Passages are searched in the Contenuto scope of the title field; Enter asks at once.
     await page.getByRole("combobox", { name: "Cerca in" }).click();
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]')
-      .click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Contenuto"]'));
     const query = page.getByRole("textbox", { name: "Cerca nei brani" });
     const none = (text: string) => page.getByText(`Nessun brano delle tue fonti corrisponde a «${text}».`);
 
@@ -198,14 +197,17 @@ test("UI-02 a passage search says when nothing matches, ignores an empty query a
     // The hits replace the list in the Contenuto scope, so the source is removed from the Titoli scope.
     const pickScope = async (name: string) => {
       await page.getByRole("combobox", { name: "Cerca in" }).click();
-      await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${name}"]`).click();
+      await clickSettled(page, page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${name}"]`));
     };
     await pickScope("Titoli");
     // The typed words filter titles in this scope, so the field is emptied to list the source again.
     await page.getByRole("textbox", { name: "Cerca una fonte per titolo" }).fill("");
     await page.getByRole("button", { name: "Azioni per Fisica" }).click();
-    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
-    await page.getByRole("dialog", { name: /^Eliminare «.*»\?$/ }).getByRole("button", { name: "Elimina il file", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina il file…", exact: true }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: /^Eliminare «.*»\?$/ }).getByRole("button", { name: "Elimina il file", exact: true }),
+    );
     await expect(page.getByRole("button", { name: "Azioni per Fisica" })).toHaveCount(0);
     await pickScope("Contenuto");
     await query.fill("moto rettilineo");

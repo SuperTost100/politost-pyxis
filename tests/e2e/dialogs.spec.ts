@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 
 /** Picks an item of the application menu the way a click on it would: its handler runs in the main process. */
 async function pick(app: ElectronApplication, id: string) {
@@ -115,16 +115,16 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
     await expect(opener).toBeFocused();
 
     await opener.click();
-    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Annulla" }));
     await expect(confirm).toHaveCount(0);
     await expect(answer).toHaveText("Ultima risposta: annulla");
     await expect(opener).toBeFocused();
 
     await opener.click();
-    await confirm.getByRole("button", { name: "Elimina l'esame" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Elimina l'esame" }));
     await expect(answer).toHaveText("Ultima risposta: conferma");
     await opener.click();
-    await confirm.getByRole("button", { name: "Archivia invece" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Archivia invece" }));
     // Known and unexplained: on the Intel Mac runner (run 43835591394) the click above did nothing and the answer stayed
     // "conferma" for 15 s. It did not repeat in 40 loops of this step under CPU throttling and stalls on Linux. See
     // pull request 491; a trace of the next failure on macOS is kept in the job's artifact.
@@ -158,7 +158,7 @@ test("DIALOG-01 the one dialog: focus, Tab, Escape, Annulla, the red button, a m
     await expect(form).toBeVisible();
     await expect(subject).toBeFocused();
     await subject.click();
-    await page.getByRole("menuitem", { name: "Fisica 1" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Fisica 1" }));
     await expect(form.getByRole("button", { name: "Materia: Fisica 1" })).toBeVisible();
     await expect(form).toBeVisible();
     await page.keyboard.press("Escape");
@@ -311,7 +311,10 @@ test("DIALOG-02 exam settings, the whiteboard and Nuova flashcard ask once befor
     await page.getByRole("button", { name: "Impostazioni dell'esame" }).click();
     await name.fill("Fisica generale");
     await page.getByRole("button", { name: "Elimina l'esame…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Eliminare «Fisica 1»?" }).getByRole("button", { name: "Elimina l'esame" }).click();
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Eliminare «Fisica 1»?" }).getByRole("button", { name: "Elimina l'esame" }),
+    );
     await expect(page).toHaveURL(/#\/exams$/);
     await expect(page.getByRole("dialog", { name: "Uscire senza salvare?" })).toHaveCount(0);
 

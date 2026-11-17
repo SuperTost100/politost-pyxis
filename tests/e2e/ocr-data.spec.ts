@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OCR_DATA_FILES, ocrDataDir } from "../../src/core/sources/ocr-data";
 import { launchPyxis } from "./app-under-test";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -294,7 +294,7 @@ test("OCR data: files that are there and cannot be read are said so, nothing is 
     expect(files.requests).toEqual([]);
 
     // Try again while the files still cannot be read checks them again and says so, still without a download.
-    await dialog.getByRole("button", { name: "Riprova" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Riprova" }));
     await expect(dialog.getByText(/non riesce ancora a leggere i file che ha già/)).toBeVisible({ timeout: 30_000 });
     await expect.poll(() => ocrJobs(page), { timeout: 30000 }).toMatchObject([{ state: "failed", error: "ocr-data-unreadable" }]);
     await animationsSettled(page);
@@ -323,7 +323,7 @@ test("OCR data: files that are there and cannot be read are said so, nothing is 
         join(process.env.PYXIS_TESSDATA_DIR ?? join(process.cwd(), ".tmp", "tessdata-fast"), `${lang}.traineddata`),
         join(tessDir(userData), `${lang}.traineddata`),
       );
-    await dialog.getByRole("button", { name: "Riprova" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Riprova" }));
     await expect(dialog.getByText("La lettura delle scansioni è pronta")).toBeVisible();
     await animationsSettled(page);
     await saveShot(page, "ocr-unreadable/photo-import-card-after-try-again-it-dark-960-large.png");

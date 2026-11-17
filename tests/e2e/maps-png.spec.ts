@@ -7,7 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedSubjects } from "./seed";
-import { atRest } from "./settled";
+import { atRest, clickSettled } from "./settled";
 import { SHOTS } from "./shots";
 import { radialFixtures, storedGraph } from "../fixtures/maps";
 
@@ -349,8 +349,8 @@ async function start() {
 async function exportView(page: Page, saved: string) {
   rmSync(saved, { force: true });
   await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Esporta" }).click();
-  await page.getByRole("menuitem", { name: "Solo quello che vedi" }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Esporta" }));
+  await clickSettled(page, page.getByRole("menuitem", { name: "Solo quello che vedi" }));
   await expect(page.getByText("File salvato")).toBeVisible();
   expect(existsSync(saved)).toBe(true);
   return readFileSync(saved).toString("base64");

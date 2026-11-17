@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 test("the window opens on Chiedi, with the greeting and the composer in the middle, and the brand goes back to it", async () => {
@@ -82,7 +82,7 @@ test("the sidebar navigates from settings, folds to icons and every shell page u
     // Settings, from the profile's menu at the foot, keeps the row of the page it was opened from lit, and each navigates.
     const settings = async () => {
       await side.getByRole("button", { name: /^Profilo/ }).click();
-      await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Impostazioni" }));
       await expect(page).toHaveURL(/#\/settings$/);
     };
     await settings();
@@ -234,7 +234,7 @@ test("a notice opens in the page column, under the drag strip and Attività, no 
       // How far the page itself scrolls: the exam page can run a few pixels past the window, with its way back above it.
       const scroll = () => page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight);
       await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
-      await page.getByRole("menuitem", { name: /^(Aggiungi al calendario|Add to calendar)$/ }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: /^(Aggiungi al calendario|Add to calendar)$/ }));
       const notice = page.locator(".ant-message-notice", {
         hasText: /File del calendario salvato|Calendar file saved/,
       });

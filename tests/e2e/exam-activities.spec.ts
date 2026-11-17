@@ -15,7 +15,7 @@ import { makeBook } from "./book";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { importPickedSource } from "./picked-source";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 const replies = {
@@ -156,7 +156,7 @@ async function fromAltro(page: Page) {
     .locator(".px-exam-head")
     .getByRole("button", { name: "Altro sull'esame", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Crea un'attività" }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Crea un'attività" }));
   const dialog = dialogOf(page);
   await expect(dialog).toBeVisible();
   await animationsSettled(page);
@@ -215,7 +215,7 @@ test("Crea un'attività starts every kind in one step, from Altro and from a top
     await page.keyboard.press("Space");
     await expect(chips.first()).toHaveAttribute("aria-pressed", "false");
     for (const name of ["Completamento", "Abbinamento", "Risposta aperta"])
-      await dialog.getByRole("button", { name, exact: true }).click();
+      await clickSettled(page, dialog.getByRole("button", { name, exact: true }));
     const last = dialog.getByRole("button", {
       name: "Vero o falso",
       exact: true,
@@ -432,7 +432,7 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
       "Riprendi",
       "Elimina l'attività…",
     ]);
-    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina l'attività…" }));
     const confirm = page.getByRole("dialog", {
       name: "Eliminare «Quiz su Limiti»?",
     });
@@ -471,7 +471,7 @@ test("Da finire lists an unfinished quiz, resumes it at its question, and delete
       "Riprendi",
       "Elimina l'attività…",
     ]);
-    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina l'attività…" }));
     const again = page.getByRole("dialog", {
       name: "Eliminare «Quiz su Derivate»?",
     });
@@ -555,11 +555,13 @@ test("Elimina on a row whose activity is already gone drops the row, with no fai
     db.prepare("DELETE FROM attempts WHERE id = ?").run(attemptId);
     db.close();
     await block.getByRole("button", { name: "Azioni su Quiz su Limiti" }).click();
-    await page.getByRole("menuitem", { name: "Elimina l'attività…" }).click();
-    await page
-      .getByRole("dialog", { name: "Eliminare «Quiz su Limiti»?" })
-      .getByRole("button", { name: "Elimina l'attività", exact: true })
-      .click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina l'attività…" }));
+    await clickSettled(
+      page,
+      page
+        .getByRole("dialog", { name: "Eliminare «Quiz su Limiti»?" })
+        .getByRole("button", { name: "Elimina l'attività", exact: true }),
+    );
     await expect(page.locator(".px-unf")).toHaveCount(0);
     await expect(page.getByText("Non riesco a eliminare")).toHaveCount(0);
   } finally {
@@ -737,7 +739,7 @@ test("Resta qui, asked on leaving the settings the Oggi action opened, gives the
     await page.getByRole("button", { name: /^Torna a / }).click();
     const question = page.getByRole("dialog", { name: "Uscire senza salvare?" });
     await expect(question).toBeVisible();
-    await question.getByRole("button", { name: "Resta qui" }).click();
+    await clickSettled(page, question.getByRole("button", { name: "Resta qui" }));
     await expect(question).toHaveCount(0);
     await expect(page).toHaveURL(new RegExp(`#/plans/${planId}/settings$`));
     await expect(hours).toHaveValue("7");

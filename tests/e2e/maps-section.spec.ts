@@ -12,6 +12,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 function graph(labels: string[]) {
   return {
@@ -146,8 +147,8 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     const exportAs = async (item: string) => {
       rmSync(saved, { force: true });
       await page.getByRole("button", { name: "Altro", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Esporta" }).click();
-      await page.getByRole("menuitem", { name: item }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Esporta" }));
+      await clickSettled(page, page.getByRole("menuitem", { name: item }));
       // The notice from the previous export may still show, so wait for the file itself.
       await expect
         .poll(() => existsSync(saved), { timeout: 30_000 })
@@ -201,12 +202,14 @@ test("the Maps section lists maps by subject, searches, opens one in the shell a
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
     const choose = async (field: string, option: string) => {
-      await dialog.getByLabel(field).click();
-      await page
-        .locator(
-          `.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`,
-        )
-        .click();
+      await clickSettled(page, dialog.getByLabel(field));
+      await clickSettled(
+        page,
+        page
+          .locator(
+            `.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`,
+          ),
+      );
     };
     await choose("Materia", "Fisica");
     await choose("Argomento", "Forze");

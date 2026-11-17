@@ -30,7 +30,7 @@ import { packServer } from "./pack-server";
 import { AuditRecord } from "./audit-record";
 import { makeBook } from "./book";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { atRest } from "./settled";
+import { atRest, clickSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { answerNextMenu } from "./native-menu";
@@ -1159,7 +1159,7 @@ const sidebarFolded = async (page: Page) =>
 /** Opens a file's details from its menu: a click on the file opens the source panel instead. */
 async function openDetails(page: Page, title: string) {
   await page.getByRole("button", { name: both(`Azioni per ${title}`, `Actions for ${title}`) }).click();
-  await page.getByRole("menuitem", { name: both("Dettagli della fonte", "Source details") }).click();
+  await clickSettled(page, page.getByRole("menuitem", { name: both("Dettagli della fonte", "Source details") }));
 }
 
 /** Advanced in AI tools, opened if a state before this one left it closed. */
@@ -1191,7 +1191,7 @@ async function openAddSources(page: Page, tab?: RegExp) {
 async function openExport(page: Page, menu?: RegExp) {
   if (menu) {
     await page.getByRole("button", { name: menu }).click();
-    await page.getByRole("menuitem", { name: both("Esporta", "Export") }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: both("Esporta", "Export") }));
   } else await page.getByRole("button", { name: both("Esporta", "Export") }).first().click();
   await expect(
     page
@@ -3535,14 +3535,16 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: both("Azioni sulla flashcard", "Flashcard actions") })
         .click();
-      await page
-        .getByRole("menuitem", { name: /^(Elimina la flashcard…|Delete the flashcard…)( D)?$/ })
-        .click();
+      await clickSettled(
+        page,
+        page
+          .getByRole("menuitem", { name: /^(Elimina la flashcard…|Delete the flashcard…)( D)?$/ }),
+      );
       await expect(dialog).toBeVisible();
       break;
     case "ask-formula": {
       await page.getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") }).click();
-      await page.getByRole("menuitem", { name: both("Scrivi una formula", "Write a formula") }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Scrivi una formula", "Write a formula") }));
       const keys = page.getByRole("group", {
         name: both("Tastiera per formule", "Formula keyboard"),
       });
@@ -3629,12 +3631,7 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
         .click();
-      await page
-        .getByRole("menuitem", {
-          name: both("Riscrivi", "Rewrite"),
-          exact: true,
-        })
-        .click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Riscrivi", "Rewrite"), exact: true, }));
       await expect(
         page
           .getByRole("dialog")
@@ -3765,7 +3762,10 @@ async function openState(page: Page, name: string) {
         await expect(page.getByRole("dialog", { name: both("Riscrivere questa parte\\?", "Rewrite this part\\?") })).toBeVisible();
       }
       if (name === "lesson-part-section") {
-        await page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") }).click();
+        await clickSettled(
+          page,
+          page.getByRole("menuitem", { name: both("Riscrivi una sezione", "Rewrite a section") }),
+        );
         const dialog = page.getByRole("dialog", { name: both("Quale sezione riscrivo\\?", "Which section should I rewrite\\?") });
         await expect(dialog.getByRole("radio")).toHaveCount(2);
       }
@@ -4209,11 +4209,13 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
         .click();
-      await page
-        .getByRole("menuitem", {
-          name: both("Allega file o immagine", "Attach file or image"),
-        })
-        .click();
+      await clickSettled(
+        page,
+        page
+          .getByRole("menuitem", {
+            name: both("Allega file o immagine", "Attach file or image"),
+          }),
+      );
       await auditApp!.evaluate((_, path) => {
         process.env.PYXIS_E2E_FILE = path;
       }, auditPicked);
@@ -4249,11 +4251,13 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: both("Aggiungi un file o una formula", "Add a file or a formula") })
         .click();
-      await page
-        .getByRole("menuitem", {
-          name: both("Allega file o immagine", "Attach file or image"),
-        })
-        .click();
+      await clickSettled(
+        page,
+        page
+          .getByRole("menuitem", {
+            name: both("Allega file o immagine", "Attach file or image"),
+          }),
+      );
       await auditApp!.evaluate((_, path) => {
         process.env.PYXIS_E2E_FILE = path;
       }, auditPicked);
@@ -4420,11 +4424,13 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("combobox", { name: both("Cerca in", "Search in") })
         .click();
-      await page
-        .locator(
-          '.ant-select-dropdown:visible .ant-select-item-option:is([title="Contenuto"],[title="Content"])',
-        )
-        .click();
+      await clickSettled(
+        page,
+        page
+          .locator(
+            '.ant-select-dropdown:visible .ant-select-item-option:is([title="Contenuto"],[title="Content"])',
+          ),
+      );
       await page
         .getByRole("textbox", { name: both("Cerca nei brani", "Search passages") })
         .fill("forza");
@@ -4489,18 +4495,26 @@ async function openState(page: Page, name: string) {
     }
     case "library-books-open": {
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
-      await page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") }).click();
-      await dialog.getByRole("button", { name: both("Apri Fisica di prova", "Open Fisica di prova") }).click();
+      await clickSettled(
+        page,
+        page.getByRole("menuitem", { name: both("Libri PoliTost gratuiti", "Free PoliTost books") }),
+      );
+      await clickSettled(
+        page,
+        dialog.getByRole("button", { name: both("Apri Fisica di prova", "Open Fisica di prova") }),
+      );
       await expect(page.getByRole("complementary", { name: "Fisica di prova" }).getByText("La velocità media è lo spazio percorso")).toBeVisible();
       break;
     }
     case "library-books-update":
       await page.getByRole("button", { name: both("Altro sulla Libreria", "More for the Library") }).click();
-      await page
-        .getByRole("menuitem", {
-          name: both("Libri PoliTost gratuiti", "Free PoliTost books"),
-        })
-        .click();
+      await clickSettled(
+        page,
+        page
+          .getByRole("menuitem", {
+            name: both("Libri PoliTost gratuiti", "Free PoliTost books"),
+          }),
+      );
       await expect(
         dialog.getByRole("button", {
           name: both("Aggiorna Fisica di prova", "Update Fisica di prova"),
@@ -4542,10 +4556,12 @@ async function openState(page: Page, name: string) {
       const withTopics = name === "maps-new-topics";
       await page.getByRole("button", { name: both("Nuova mappa", "New map") }).click();
       await expect(dialog).toBeVisible();
-      await dialog.getByLabel(both("Materia", "Subject")).click();
-      await page
-        .locator(`.ant-select-dropdown:visible .ant-select-item-option[title^="${withTopics ? "Fisica" : "Chimica"}"]`)
-        .click();
+      await clickSettled(page, dialog.getByLabel(both("Materia", "Subject")));
+      await clickSettled(
+        page,
+        page
+          .locator(`.ant-select-dropdown:visible .ant-select-item-option[title^="${withTopics ? "Fisica" : "Chimica"}"]`),
+      );
       const topic = dialog.getByLabel(both("Argomento", "Topic"));
       // The select folds out of the subject select when the subject has topics, and is not there at all otherwise.
       if (withTopics) await expect(topic).toBeVisible();
@@ -4623,15 +4639,15 @@ async function openState(page: Page, name: string) {
       await page.locator(".px-map-actions").getByRole("button", { name: both("Altro", "More") }).click();
       await expect(page.getByRole("menuitem", { name: both("Rinomina", "Rename") })).toBeVisible();
       if (name === "map-export") {
-        await page.getByRole("menuitem", { name: both("Esporta", "Export") }).click();
+        await clickSettled(page, page.getByRole("menuitem", { name: both("Esporta", "Export") }));
         await expect(page.getByRole("menuitem", { name: /^(Schema in testo|Outline as text)/ })).toBeVisible();
       }
       if (name === "map-rename") {
-        await page.getByRole("menuitem", { name: both("Rinomina", "Rename") }).click();
+        await clickSettled(page, page.getByRole("menuitem", { name: both("Rinomina", "Rename") }));
         await expect(page.getByRole("textbox", { name: both("Nome della mappa", "Map name") })).toBeFocused();
       }
       if (name === "map-delete") {
-        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }).click();
+        await clickSettled(page, page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }));
         await expect(dialog).toBeVisible();
       }
       break;
@@ -4646,7 +4662,7 @@ async function openState(page: Page, name: string) {
       await tile.locator(".px-maps-thumb").click({ button: "right" });
       await expect(page.getByRole("menuitem", { name: both("Apri", "Open") })).toBeVisible();
       if (name === "maps-delete") {
-        await page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }).click();
+        await clickSettled(page, page.getByRole("menuitem", { name: both("Elimina la mappa…", "Delete the map…") }));
         await expect(dialog).toBeVisible();
       }
       break;
@@ -4712,10 +4728,12 @@ async function openState(page: Page, name: string) {
       if (name === "library-folders-missing")
         await expect(list.getByRole("button", { name: both("Trova la cartella…", "Find the folder…") })).toBeVisible();
       if (name !== "library-folders-unlink") break;
-      await list
-        .getByRole("button", { name: both("Azioni sulla cartella Polito › Tecnologie Digitali", "Actions on the folder Polito › Tecnologie Digitali") })
-        .click();
-      await page.getByRole("menuitem", { name: both("Scollega…", "Unlink…") }).click();
+      await clickSettled(
+        page,
+        list
+          .getByRole("button", { name: both("Azioni sulla cartella Polito › Tecnologie Digitali", "Actions on the folder Polito › Tecnologie Digitali") }),
+      );
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Scollega…", "Unlink…") }));
       await expect(page.getByRole("dialog", { name: /^(Scollegare|Unlink)/ })).toBeVisible();
       break;
     }
@@ -4748,7 +4766,7 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ })
         .click();
-      await page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }));
       await expect(
         page.getByRole("dialog", { name: /^(Eliminare|Delete) [«“]Appunti di fisica[»”]\?$/ }),
       ).toBeVisible();
@@ -4756,34 +4774,42 @@ async function openState(page: Page, name: string) {
     case "library-remove-in-use":
       // An exam still uses the file, so the first answer leads to a second question and nothing is removed yet.
       await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
-      await page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }).click();
-      await page
-        .getByRole("dialog", { name: /^(Eliminare|Delete) [«“]Appunti di fisica[»”]\?$/ })
-        .getByRole("button", { name: both("Elimina il file", "Delete the file"), exact: true })
-        .click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Elimina il file…", "Delete the file…") }));
+      await clickSettled(
+        page,
+        page
+          .getByRole("dialog", { name: /^(Eliminare|Delete) [«“]Appunti di fisica[»”]\?$/ })
+          .getByRole("button", { name: both("Elimina il file", "Delete the file"), exact: true }),
+      );
       await expect(
         page.getByRole("dialog", { name: both("Eliminare il file anche se un esame lo usa\\?", "Delete the file even though an exam uses it\\?") }),
       ).toBeVisible();
       break;
     case "library-replace-in-use":
       await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
-      await page.getByRole("menuitem", { name: both("Sostituisci il file", "Replace file") }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Sostituisci il file", "Replace file") }));
       await expect(page.getByRole("dialog", { name: both("Sostituire il file\\?", "Replace the file\\?") })).toBeVisible();
       break;
     case "plan-unfinished-delete":
     case "plan-unfinished-delete-long":
       await page.locator(".px-unf-dots").nth(name === "plan-unfinished-delete" ? 0 : 2).click();
-      await page.getByRole("menuitem", { name: both("Elimina l'attività…", "Delete the activity…") }).click();
+      await clickSettled(
+        page,
+        page.getByRole("menuitem", { name: both("Elimina l'attività…", "Delete the activity…") }),
+      );
       await expect(page.getByRole("dialog", { name: /^(Eliminare|Delete) [«“]/ })).toBeVisible();
       break;
     case "library-subject-delete":
       await page.getByRole("heading", { name: "Probabilità e statistica", exact: true }).click({ button: "right" });
-      await page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") }).click();
+      await clickSettled(
+        page,
+        page.getByRole("menuitem", { name: both("Elimina la materia…", "Delete the subject…") }),
+      );
       await expect(page.getByRole("dialog", { name: /^(Eliminare la materia|Delete the subject) / })).toBeVisible();
       break;
     case "plan-sources-remove":
       await page.getByRole("button", { name: /^(Azioni per|Actions for) Appunti di fisica$/ }).click();
-      await page.getByRole("menuitem", { name: both("Rimuovi dall'esame", "Remove from exam") }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Rimuovi dall'esame", "Remove from exam") }));
       await expect(page.getByRole("dialog", { name: /^(Rimuovere|Remove) .* (dall'esame|from the exam)\?$/ })).toBeVisible();
       break;
     case "library-row-menu":
@@ -5003,7 +5029,7 @@ async function openState(page: Page, name: string) {
       if (process.platform === "win32") break;
       await connectedTools(page);
       await page.getByRole("button", { name: both("Azioni su Claude", "Actions on Claude") }).click();
-      await page.getByRole("menuitem", { name: both("Dettagli", "Details") }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Dettagli", "Details") }));
       await expect(dialog).toBeVisible();
       break;
     case "engine-menu":
@@ -5030,9 +5056,7 @@ async function openState(page: Page, name: string) {
       await page
         .getByRole("button", { name: both("Altre azioni", "More actions") })
         .click();
-      await page
-        .getByRole("menuitem", { name: both("Esporta", "Export") })
-        .click();
+      await clickSettled(page, page.getByRole("menuitem", { name: both("Esporta", "Export") }));
       await expect(
         page
           .getByRole("dialog")
@@ -5102,12 +5126,12 @@ async function openState(page: Page, name: string) {
         await expect(dialog.locator(".px-formula-preview .katex").first()).toBeVisible();
         break;
       }
-      await dialog.getByRole("radio", { name: both("Falla fare a Pyxis", "Let Pyxis write them") }).click();
+      await clickSettled(page, dialog.getByRole("radio", { name: both("Falla fare a Pyxis", "Let Pyxis write them") }));
       await subject.selectOption({ label: "Chimica" });
       await dialog.getByRole("combobox", { name: both("Argomento", "Topic") }).selectOption({ label: "Struttura dell’atomo" });
       await dialog.getByRole("textbox", { name: /^(Su cosa\?|About what\?)/ }).fill("il numero atomico");
       if (name === "flashcards-new-pyxis") break;
-      await dialog.getByRole("button", { name: both("Crea le flashcard", "Make the flashcards") }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: both("Crea le flashcard", "Make the flashcards") }));
       if (name === "flashcards-new-working") {
         await expect(dialog.getByRole("button", { name: both("Sto scrivendo", "Writing") })).toBeDisabled();
         break;
@@ -5151,9 +5175,11 @@ async function openState(page: Page, name: string) {
           name: /^(Altre azioni|More actions): Che cos’è il numero atomico/,
         })
         .click();
-      await page
-        .getByRole("menuitem", { name: both("Elimina la flashcard…", "Delete the flashcard…") })
-        .click();
+      await clickSettled(
+        page,
+        page
+          .getByRole("menuitem", { name: both("Elimina la flashcard…", "Delete the flashcard…") }),
+      );
       await expect(dialog).toBeVisible();
       break;
     case "plan-settings-changes":
@@ -5739,10 +5765,13 @@ async function walk(slice: typeof auditRoutes) {
               if (name === "plan-create" || name === "plan-create-simulation") {
                 // Creating an activity by hand sits in the exam page's menu.
                 await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
-                await page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }).click();
+                await clickSettled(page, page.getByRole("menuitem", { name: /Crea un'attività|Create an activity/ }));
                 await expect(page.getByRole("dialog")).toBeVisible();
                 if (name === "plan-create-simulation")
-                  await page.getByRole("dialog").getByRole("radio", { name: /^(Simulazione|Simulation)$/ }).click();
+                  await clickSettled(
+                    page,
+                    page.getByRole("dialog").getByRole("radio", { name: /^(Simulazione|Simulation)$/ }),
+                  );
               }
               if (name === "plan-done") {
                 // The topic the path is on is open, its finished steps ticked.

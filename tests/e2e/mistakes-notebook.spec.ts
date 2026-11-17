@@ -9,6 +9,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, fromExamsMenu } from "./doors";
+import { clickSettled } from "./settled";
 
 const mcq = (id: string, topicId: string, stem: string) => ({
   id,
@@ -292,18 +293,18 @@ test("the mistakes notebook collects misses by exam and topic and asks them agai
 
     // One exam only.
     await page.getByRole("combobox", { name: "Exam" }).click();
-    await page
-      .locator(
-        '.ant-select-dropdown:visible .ant-select-item-option[title="Chimica generale"]',
-      )
-      .click();
+    await clickSettled(
+      page,
+      page
+        .locator(
+          '.ant-select-dropdown:visible .ant-select-item-option[title="Chimica generale"]',
+        ),
+    );
     await expect(page.getByRole("status")).toHaveText("1 question to redo from quizzes, quick checks and simulations");
 
     // Redo a question from the notebook narrowed to one exam: answered right, it leaves; the topic's mastery moves.
     await page.getByRole("combobox", { name: "Exam" }).click();
-    await page
-      .locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica 1"]')
-      .click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica 1"]'));
     await expect(page.getByRole("status")).toHaveText("4 questions to redo from quizzes, quick checks and simulations");
     await expect(page.getByRole("heading", { level: 3 })).toHaveText(["Dinamica", "Cinematica"]);
     await entry("Che cosa causa").getByRole("button", { name: "Redo" }).click();

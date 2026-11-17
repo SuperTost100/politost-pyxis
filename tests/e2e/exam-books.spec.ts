@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { booksSite } from "./books-site";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 /** Stand-in replies, so creating an exam does not need an AI tool: the build only has to start. */
@@ -235,7 +235,7 @@ test("The first file of a new subject can bring the book along, which is read fi
     await expect(offer.getByRole("checkbox")).toBeChecked();
     await panel.getByRole("button", { name: "Chiudi" }).click();
     expect(smartbooks(userData)).toEqual([]);
-    await dialog.getByRole("button", { name: "Sposta" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Sposta" }));
     // The file moved to the new subject, and the book follows it onto that shelf.
     const shelf = page.getByRole("region", { name: /^Chimica (\d+ file|nessun file)/ });
     await expect(shelf.getByRole("button", { name: "Slide di chimica", exact: true })).toBeVisible();

@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { seedPlan, seedSubjects } from "./seed";
 import { saveShot } from "./shots";
+import { clickSettled } from "./settled";
 
 test("the Flashcard section lists each subject's flashcards and starts every review from them, with no exam at all", async () => {
   test.setTimeout(120_000);
@@ -168,8 +169,11 @@ test("after the last flashcard is removed, the Flashcard section still leads to 
 
     // The last flashcard is removed, and the message says where to find it.
     await page.getByRole("button", { name: /^Altre azioni: Numero atomico\?/ }).click();
-    await page.getByRole("menuitem", { name: "Elimina la flashcard…", exact: true }).click();
-    await page.getByRole("dialog", { name: "Eliminare questa flashcard?" }).getByRole("button", { name: "Elimina la flashcard", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la flashcard…", exact: true }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Eliminare questa flashcard?" }).getByRole("button", { name: "Elimina la flashcard", exact: true }),
+    );
     await expect(page.getByRole("status")).toHaveText("Flashcard rimossa. Puoi ripristinarla da Rimosse.");
 
     // The section has nothing left to list and offers one button, but the way to the removed ones is still there.
@@ -177,10 +181,10 @@ test("after the last flashcard is removed, the Flashcard section still leads to 
     await expect(page).toHaveURL(/#\/flashcards$/);
     await expect(page.getByRole("button", { name: "Nuova flashcard", exact: true })).toHaveCount(1);
     await page.locator(".px-fc-head").getByRole("button", { name: "Altro sulle flashcard", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Sfoglia tutte", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Sfoglia tutte", exact: true }));
     await expect(page).toHaveURL(/#\/flashcards\/all$/);
     await page.getByRole("combobox", { name: "Mostra" }).click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Rimosse"]').click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Rimosse"]'));
     const removed = page.getByRole("listitem").filter({ hasText: "Numero atomico?" });
     await expect(removed).toBeVisible();
     await removed.getByRole("button", { name: /^Ripristina: Numero atomico\?/ }).click();

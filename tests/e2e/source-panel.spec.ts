@@ -7,7 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { BOOK_PAGES, CITED_PAGE, FIGURE_BYTES, LONG_TITLE, seedPanelReads, seedSourcePanel } from "./source-panel-fixture";
 
 async function launch() {
@@ -135,7 +135,7 @@ test("the Library opens each file in the source panel, at its first page, and pa
 
     // The file's menu is in the panel's head, the same as the cover's: Dettagli puts the details in the panel's place.
     await sheet.getByRole("button", { name: `Azioni su «${LONG_TITLE}»` }).click();
-    await page.getByRole("menuitem", { name: "Dettagli della fonte" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Dettagli della fonte" }));
     await expect(page.getByRole("dialog", { name: LONG_TITLE })).toBeVisible();
     await expect(sheet).toHaveCount(0);
   } finally {

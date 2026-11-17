@@ -8,6 +8,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 async function launch(extra: Record<string, string> = {}) {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-math-keyboard-"));
@@ -77,7 +78,7 @@ test("Composer: the formula keyboard types into a formula opened at the caret", 
     const toggle = {
       click: async () => {
         await page.getByRole("button", { name: "Aggiungi un file o una formula" }).click();
-        await page.getByRole("menuitem", { name: "Scrivi una formula" }).click();
+        await clickSettled(page, page.getByRole("menuitem", { name: "Scrivi una formula" }));
       },
     };
     await toggle.click();
@@ -164,7 +165,7 @@ test("Composer: the keyboard follows the interface language", async () => {
     });
     await page.reload();
     await page.getByRole("button", { name: "Add a file or a formula" }).click();
-    await page.getByRole("menuitem", { name: "Write a formula" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Write a formula" }));
     const keys = page.getByRole("group", { name: "Formula keyboard" });
     await expect(keys.getByRole("button", { name: "Square root" })).toBeVisible();
     await expect(keys.getByRole("button", { name: "Done", exact: true })).toBeEnabled();

@@ -7,6 +7,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { standInTools } from "./tools";
+import { clickSettled } from "./settled";
 
 /** A connected tool's row in the list, by the id Pyxis knows the tool by. */
 const tool = (page: Page, id: string) => page.locator(`.engines-tool[data-tool="${id}"]`);
@@ -130,15 +131,17 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
             page.getByRole("button", { name: language === "en" ? "Sign out of Gemini" : "Scollega Gemini" }),
           ).toHaveCount(0);
           await tool(page, "antigravity").locator(".engines-tool-name").click({ button: "right" });
-          await page
-            .getByRole("region", { name: /^(Azioni su|Actions on) Gemini$/ })
-            .getByRole("menuitem", { name: language === "en" ? "Details" : "Dettagli" })
-            .click();
+          await clickSettled(
+            page,
+            page
+              .getByRole("region", { name: /^(Azioni su|Actions on) Gemini$/ })
+              .getByRole("menuitem", { name: language === "en" ? "Details" : "Dettagli" }),
+          );
           const agy = page.getByRole("dialog", { name: "Gemini", exact: true });
           await expect(
             agy.getByText(language === "en" ? /no sign-out command/ : /non ha un comando per uscire/),
           ).toBeVisible();
-          await agy.getByRole("button", { name: /^(Close|Chiudi)$/ }).click();
+          await clickSettled(page, agy.getByRole("button", { name: /^(Close|Chiudi)$/ }));
           await expect(agy).toHaveCount(0);
 
           // The API key has its row under Advanced.
@@ -163,7 +166,7 @@ test("ENG-10 tool details, the key dialog and the secure key-storage notice in b
             await expectNoAxeViolations(page, { tags: ["wcag2a", "wcag2aa", "wcag21aa"] });
             await saveShot(page, `m15-engine-add-form-${language}-${theme}.png`, { fullPage: true });
             // The way out is the dialog's own Annulla, beside the key's button.
-            await modal.getByRole("button", { name: /^(Cancel|Annulla)$/ }).click();
+            await clickSettled(page, modal.getByRole("button", { name: /^(Cancel|Annulla)$/ }));
             await expect(modal).toHaveCount(0);
           } else {
             // Without a keyring the row says why no key can be saved, and offers no button that would fail.
@@ -212,7 +215,7 @@ test("Automatic engines: the page says it in one sentence, and Advanced can pin 
     await expect(notice.getByText("Claude sends them to Anthropic.")).toBeVisible();
     const summary = page.locator(".engines-summary");
     await expect(summary).not.toContainText("ChatGPT");
-    await notice.getByRole("button", { name: "I understand" }).click();
+    await clickSettled(page, notice.getByRole("button", { name: "I understand" }));
     await expect(notice).toHaveCount(0);
     // One plain sentence under the page's title, with the engines' names and no list of which does what.
     await expect(summary).toHaveText(
@@ -300,7 +303,7 @@ test("Automatic engines: with all four CLIs ready, the summary names each engine
     await page.reload();
     const notice = page.getByRole("dialog", { name: "What leaves this computer" });
     await expect(notice).toBeVisible({ timeout: 30000 });
-    await notice.getByRole("button", { name: "I understand" }).click();
+    await clickSettled(page, notice.getByRole("button", { name: "I understand" }));
     const summary = page.locator(".engines-summary");
     await expect(summary).toContainText("Pyxis picks the right tool for each job by itself, out of ", {
       timeout: 30000,

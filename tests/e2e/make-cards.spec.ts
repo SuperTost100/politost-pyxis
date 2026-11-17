@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { SHOTS, saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -115,7 +115,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     await page.reload();
     // The subject is chosen on the new chat's first page, from the chip in its header.
     await page.getByRole("button", { name: /^Subject: Pyxis picks/ }).click();
-    await page.getByRole("menuitemradio", { name: "Analisi", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitemradio", { name: "Analisi", exact: true }));
     const box = page.getByRole("textbox", { name: "Message" });
     await box.fill("Come si risolve un integrale per parti?");
     await box.press("Enter");
@@ -145,7 +145,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     await cards.nth(0).getByRole("textbox", { name: "Back" }).fill("Quando l'integrando è un prodotto.");
     await cards.nth(2).getByRole("button", { name: "Drop flashcard 3" }).click();
     await expect(cards).toHaveCount(2);
-    await dialog.getByRole("button", { name: "Save 2 flashcards" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Save 2 flashcards" }));
     await expect(dialog).toHaveCount(0);
     await expect(page.getByText("Saved 2 flashcards to Integrali.")).toBeVisible();
     expect(rows(userData)).toEqual([
@@ -195,7 +195,7 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     await expect(dialog.locator("#mc-topic").locator("xpath=ancestor::div[contains(@class,'ant-select')][1]")).toContainText("Integrali");
     await dialog.getByRole("button", { name: "Make flashcards" }).click();
     await expect(cards).toHaveCount(3);
-    await dialog.getByRole("button", { name: "Save 3 flashcards" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Save 3 flashcards" }));
     await expect(page.getByText(/Saved 1 flashcard to Integrali\. 2 were already there\./)).toBeVisible();
     expect(rows(userData)).toHaveLength(3);
     // The dialog covers the selection until it has shrunk away, and a selection under it gets no menu.
@@ -204,9 +204,9 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
     // Cancel leaves nothing behind.
     await select();
     await menu.getByRole("button", { name: "Make flashcards" }).click();
-    await dialog.getByRole("button", { name: "Make flashcards" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Make flashcards" }));
     await expect(cards).toHaveCount(3);
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Cancel" }));
     await expect(dialog).toHaveCount(0);
     expect(rows(userData)).toHaveLength(3);
 
@@ -216,13 +216,13 @@ test("flashcards from an Ask answer and from selected text: pick a place, review
       await select();
       await shot(page, "5-selection-menu-dark");
       await menu.getByRole("button", { name: "Make flashcards" }).click();
-      await dialog.getByRole("button", { name: "Make flashcards" }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: "Make flashcards" }));
       await expect(cards).toHaveCount(3);
       await shot(page, "6-dialog-review-dark");
       await page.setViewportSize({ width: 480, height: 800 });
       await shot(page, "7-dialog-review-narrow-dark");
       await page.setViewportSize({ width: 1280, height: 800 });
-      await dialog.getByRole("button", { name: "Cancel" }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: "Cancel" }));
       await page.evaluate(() => window.getSelection()?.removeAllRanges());
       // The source opened above sits in the source panel, which Escape closes.
       await page.keyboard.press("Escape");
@@ -264,7 +264,7 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
           }),
         ),
       );
-      await dialog.getByRole("button", { name: "Make flashcards" }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: "Make flashcards" }));
       await expect(cards).toHaveCount(3);
     };
 
@@ -321,6 +321,7 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
     await expect(dialog.getByRole("button", { name: "Save 2 flashcards" })).toBeVisible();
     await expect(dialog.locator(".px-pc-card[data-leaving]")).toHaveCount(1);
     await expect(cards).toHaveCount(2);
+    // A plain click: the dropped card's exit is held on purpose, and Save must work while it leaves.
     await dialog.getByRole("button", { name: "Save 2 flashcards" }).click();
     await expect(dialog).toHaveCount(0);
     // The rows come back by front: the first card, which was dropped, is not among them.
@@ -332,12 +333,12 @@ test("in the map's dialog a dropped flashcard cannot be saved, its source is nam
     // Every card dropped: the focus goes to "Make again", which is still there.
     await ask();
     for (const n of [3, 2, 1]) {
-      await dialog.getByRole("button", { name: `Drop flashcard ${n}` }).click();
+      await clickSettled(page, dialog.getByRole("button", { name: `Drop flashcard ${n}` }));
       await expect(cards).toHaveCount(n - 1);
     }
     await expect(dialog.getByRole("button", { name: "Make again" })).toBeFocused();
     await expect(dialog.getByText("You dropped every flashcard")).toBeVisible();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Cancel" }));
     await expect(dialog).toHaveCount(0);
   } finally {
     await app.close();

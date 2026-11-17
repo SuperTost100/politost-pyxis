@@ -7,6 +7,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 /** A map of `root` with one branch and one concept. */
 function graph(root: string) {
@@ -73,7 +74,7 @@ test("a tile's name field stays open with its word when it is left empty", async
     const card = tile(page, "Circuiti RC");
     await card.hover();
     await card.getByRole("button", { name: "Altro su Circuiti RC" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina" }));
     const field = page.getByRole("textbox", { name: "Nome della mappa" });
     await expect(field).toBeFocused();
     await field.fill("   ");
@@ -152,7 +153,7 @@ test("a deleted map's note for Mappe never pulls back a page the student opens r
     await tile(page, "Circuiti RC").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1, name: "Circuiti RC" })).toBeVisible();
     await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
     // The delete leaves through the map's way back, back to Mappe, which then reads a note once to shrink the tile. The
     // student moves on in the same instant, through the sidebar: that move has to win, whether it lands before the way
     // back, while it is under way, or after Mappe has opened.

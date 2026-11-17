@@ -11,6 +11,7 @@ import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedLessonBeforeParts } from "./lesson-before-parts";
+import { clickSettled } from "./settled";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -259,8 +260,8 @@ test("a quick check can be answered while the lesson is still being written, and
 
     // Rewriting the lesson: until the new text starts, the old lesson on screen takes no pick, which would be dropped.
     await page.getByRole("button", { name: "Altre azioni" }).click();
-    await page.getByRole("menuitem", { name: "Riscrivi", exact: true }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Riscrivi", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi", exact: true }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Riscrivi", exact: true }));
     await expect(status).toBeVisible();
     const recapRegion = page.getByRole("region", { name: "Ripasso finale" });
     await expect(recapRegion.getByRole("button", { name: /Newton/ })).toBeDisabled();

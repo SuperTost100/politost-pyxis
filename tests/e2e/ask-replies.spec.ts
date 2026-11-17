@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 const CONTINUATION = " ha un massimo e un minimo su un intervallo chiuso.";
 
@@ -75,11 +76,7 @@ test("Ask: a reply cut short offers Continue, the reply menu answers with the st
         name: "Rispondi di nuovo con il modello più potente",
       }),
     ).toBeVisible();
-    await page
-      .getByRole("menuitem", {
-        name: "Rispondi di nuovo con il modello più potente",
-      })
-      .click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rispondi di nuovo con il modello più potente", }));
     // The recorded reply answers again and replaces the continued one.
     await expect(
       page.locator(".px-msg:not(.px-msg-user) .px-msg-text"),

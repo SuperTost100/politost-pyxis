@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PNG } from "pngjs";
 import { launchPyxis } from "./app-under-test";
+import { clickSettled } from "./settled";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
@@ -94,9 +95,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
         expect(await strokes(page)).toBe(1);
         await page.getByRole("button", { name: /^(Back to|Torna a) / }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
-        await page
-          .getByRole("button", { name: /Stay here|Resta qui/ })
-          .click();
+        await clickSettled(page, page.getByRole("button", { name: /Stay here|Resta qui/ }));
         await expect(page.getByRole("dialog")).not.toBeVisible();
         await page
           .getByRole("button", { name: /Save|Salva/, exact: true })
@@ -143,7 +142,7 @@ test("ASK-05 themes, drawing shortcuts, unsaved guard and current PNG attachment
     ).toBeEnabled();
     await page.getByRole("button", { name: "Torna a Chiedi" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
-    await page.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, page.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/ask$/);
     await page.evaluate(() => {
       location.hash = "/tools/whiteboard";
@@ -393,7 +392,7 @@ test("ASK-05 an empty board cannot be saved, one eraser drag removes what it cro
     await page.keyboard.press("Control+z");
     expect(await strokes(page)).toBe(2);
     await page.getByRole("button", { name: "Torna a Chiedi" }).click();
-    await page.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, page.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/ask$/);
   } finally {
     await app.close();

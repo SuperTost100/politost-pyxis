@@ -78,3 +78,14 @@ export async function animationsSettled(page: Page, within?: Locator) {
   };
   await expect.poll(() => (within ? within.evaluate(busy) : page.evaluate(busy, undefined))).toBe(0);
 }
+
+/**
+ * Clicks `target` once it is drawn and nothing is still opening. A list, menu or dialog the test has just opened can sit
+ * at its first animation frame, where Playwright measures `target`; it grows before the button comes back up, the release
+ * lands on another element and the click is lost. A student can't click what is not drawn yet.
+ */
+export async function clickSettled(page: Page, target: Locator) {
+  await target.waitFor();
+  await animationsSettled(page);
+  await target.click();
+}

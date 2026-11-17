@@ -7,7 +7,7 @@ import {
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { launchPyxis, setUp } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
@@ -107,7 +107,7 @@ test("SRC-07 picking a folder lists its files, imports the ticked ones and says 
     ).toBeVisible();
     // Every file handled leaves the checklist.
     await expect(rows).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Fatto", exact: true }));
     await expect(dialog).toBeHidden();
     await expect
       .poll(async () =>
@@ -142,14 +142,14 @@ test("SRC-07 the file picker takes several files and the result lists them", asy
     await expect(
       dialog.getByText(/cinematica\.txt.*Già in libreria: uso quella/),
     ).toBeVisible();
-    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Fatto", exact: true }));
     await expect(dialog).toBeHidden();
     // Choosing the same file again later changes nothing in the library either.
     await answerPicker(app, [files.cinematica]);
     const again = await openAdd(page);
     await again.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(again.getByText("Nessun file nuovo.")).toBeVisible();
-    await again.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, again.getByRole("button", { name: "Fatto", exact: true }));
     const titles = await page.evaluate(() =>
       window.pyxis.invoke("sources.list", {}),
     );
@@ -180,7 +180,7 @@ test("SRC-07 pasting the same text twice keeps one source and says it is already
     const dialog = await paste("Appunti di cinematica");
     await expect(dialog.getByText("Non è stato aggiunto nulla di nuovo.")).toBeVisible();
     await expect(dialog.getByText(/Cinematica.*Già in libreria: uso quella/)).toBeVisible();
-    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Fatto", exact: true }));
     await expect(dialog).toBeHidden();
     const titles = await page.evaluate(() => window.pyxis.invoke("sources.list", {}));
     expect(titles.map((row) => row.title)).toEqual(["Cinematica"]);
@@ -225,7 +225,7 @@ test("PLAN-01 the wizard starts with no sources and includes whatever is importe
     dialog = await openAdd(page);
     await dialog.getByRole("button", { name: "Scegli i file", exact: true }).click();
     await expect(dialog.getByText("Nessun file nuovo.")).toBeVisible();
-    await dialog.getByRole("button", { name: "Fatto", exact: true }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Fatto", exact: true }));
     await expect(page.getByText("3 fonti nell'esame")).toBeVisible();
     await expect(list.getByText("vecchio")).toBeVisible();
     expect(

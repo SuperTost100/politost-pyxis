@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource } from "./seed";
+import { clickSettled } from "./settled";
 
 /**
  * An answer typed into the exercises page lives only in the window, so every way out of the page asks "Uscire senza
@@ -103,7 +104,7 @@ test("an answer typed on the exercises page is asked about by every way out, and
     }
     // Leaving drops the answer and goes where the control said.
     await control().click();
-    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/plans\/p-ex$/);
 
     // With nothing typed, and with an answer wiped out again, nothing asks.
@@ -254,7 +255,7 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
       await expect(name).toHaveValue("Fisica generale");
     }
     await control("Esami").click();
-    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
     // Known and unexplained: on the Intel Mac runner (run 43840904857) the click above did nothing, and for 15 s the
     // address stayed `#/plans/new` with the question still open. It did not repeat in 15 loops of this step under CPU
     // throttling on Linux. See pull request 491; a trace of the next failure on macOS is kept in the job's artifact.
@@ -291,13 +292,13 @@ test("a half-filled new exam and a guided exam are asked about by every way out,
       await expect(page).toHaveURL(/#\/plans\/new\/guided$/);
     }
     await control("Nuovo esame").click();
-    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/plans\/new$/);
     await expect(page.getByRole("heading", { name: "Da cosa studi?" })).toBeVisible();
     await page.getByRole("button", { name: "Passo precedente" }).click();
     await expect(name).toHaveValue("Fisica generale");
     await control("Esami").click();
-    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/exams$/);
 
     // The wait while an exam builds holds nothing: its build goes on in Attività, so leaving asks nothing.
@@ -346,7 +347,7 @@ test("any field written or changed on the new exam is asked about, and the untou
       await change();
       await control.click();
       await expect(leave, what).toBeVisible();
-      await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+      await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
       await expect(page).toHaveURL(/#\/exams$/);
     }
     await page.getByRole("button", { name: "Nuovo esame" }).click();
@@ -391,7 +392,7 @@ test("Avanti into the guided exam asks once the new exam's answers changed since
     // Changed, Avanti would restore "Fisica A": it asks, and staying keeps the new name.
     await pick(app, "forward");
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Resta qui" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Resta qui" }));
     await expect(page).toHaveURL(/#\/plans\/new$/);
     await expect(name).toHaveValue("Fisica B");
   } finally {

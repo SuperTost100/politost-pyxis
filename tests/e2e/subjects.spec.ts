@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -25,7 +25,7 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await expect(page).toHaveURL(/#\/exams$/);
     // With no plans yet, the subjects are in the same menu the exam list has.
     await page.getByRole("button", { name: "Altro su Esami", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Gestisci materie" }));
     await animationsSettled(page);
     for (const name of ["Fisica", "Analisi"]) {
       await page.getByRole("textbox", { name: "Nuova materia" }).fill(name);
@@ -96,7 +96,7 @@ test("ASK-01 subjects are managed from the Exams home: add, rename, reorder by k
     await page.getByRole("link", { name: "Nuova chat", exact: true }).click();
     // The new chat's subject chip lists what is left.
     await page.getByRole("button", { name: /^Materia: sceglie Pyxis/ }).click();
-    await page.getByRole("menuitemradio", { name: "Fisica", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitemradio", { name: "Fisica", exact: true }));
     await expect(page.getByRole("button", { name: "Materia della chat: Fisica, scelta da te" })).toHaveText("Fisica");
   } finally { await app.close(); removeTestFolder(userData); }
 });

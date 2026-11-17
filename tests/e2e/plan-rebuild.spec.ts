@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { manyPagePdf } from "../../src/core/sources/test-pdf";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -283,7 +283,7 @@ test("PLAN-13 rebuild is reviewed, durable across restart, and applies exactly w
       .click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByText("Non cambia nulla finché non lo applichi")).toBeVisible();
-    await dialog.getByRole("button", { name: "Confronta con le fonti" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Confronta con le fonti" }));
     // The review appears once the durable job finished; closing and reopening keeps it.
     await expect(dialog.getByText("1 argomento mantenuto")).toBeVisible({
       timeout: 30000,

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -215,7 +215,10 @@ test("past exams: add one, see what was read, practise it and follow it in a sim
     }, plan.planId);
     for (const title of ["Appello di settembre (scansione)", "Analisi 1, appello di giugno"]) {
       await page.locator(".px-paper", { hasText: title }).getByRole("button", { name: "Remove" }).click();
-      await page.getByRole("dialog").getByRole("button", { name: "Remove from the exam", exact: true }).click();
+      await clickSettled(
+        page,
+        page.getByRole("dialog").getByRole("button", { name: "Remove from the exam", exact: true }),
+      );
       await expect(page.getByText(title)).toHaveCount(0);
     }
     await expect(page.getByText("No past exams yet")).toBeVisible();

@@ -11,7 +11,7 @@ import { fromChiediToExams } from "./doors";
 import { seedLessonBeforeParts } from "./lesson-before-parts";
 import { partText } from "./part-texts";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 // Lessons written before parts, with the recorded engine: an unfinished one is rewritten in parts when it is opened,
@@ -418,7 +418,7 @@ test("a finished old lesson opens as it was, and Riscrivi in parti asks first, c
     await page.getByRole("button", { name: "Altre azioni" }).click();
 
     // It asks first; Annulla leaves everything as it was.
-    await page.getByRole("menuitem", { name: "Riscrivi in parti" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi in parti" }));
     const dialog = page.getByRole("dialog", { name: "Riscrivere la lezione in parti brevi?" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Pyxis divide il capitolo in parti brevi e scrive la prima adesso, le altre mentre leggi.");
@@ -434,8 +434,8 @@ test("a finished old lesson opens as it was, and Riscrivi in parti asks first, c
 
     // Then yes: the same working state, then part 1.
     await page.getByRole("button", { name: "Altre azioni" }).click();
-    await page.getByRole("menuitem", { name: "Riscrivi in parti" }).click();
-    await dialog.getByRole("button", { name: "Riscrivi in parti" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi in parti" }));
+    await clickSettled(page, dialog.getByRole("button", { name: "Riscrivi in parti" }));
     await expect(page).toHaveURL(/\/lesson\/t-funzioni\?part=1$/);
     await expect(working(page, "Sto riscrivendo la lezione in parti brevi")).toBeVisible();
     // The plan is saved and part 1 is being written. The version the rewrite keeps opens read-only: no Livello, no
