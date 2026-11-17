@@ -70,11 +70,15 @@ async function cardAction(page: Page, card: string, action: string) {
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label }).click();
   // The listbox only exposes the options next to the active one, so pick from the visible list.
-  await page
-    .locator(
-      `.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`,
-    )
-    .click();
+  const item = page.locator(
+    `.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`,
+  );
+  // The list opens growing from 80% of its height. A slow Mac drew that opening late, holding the list at its first
+  // frame, still and invisible, where the click found the option; the list grew before the button came back up, the
+  // release landed on the group's label above it, and nothing was chosen. A student cannot click what is not drawn yet.
+  await item.waitFor();
+  await animationsSettled(page);
+  await item.click();
 }
 
 test("the flashcard browser groups, searches, edits, suspends, deletes and restores", async () => {
