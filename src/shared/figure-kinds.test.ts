@@ -339,17 +339,37 @@ describe("a graph's DOT text", () => {
       "digraph { a -> b [layout=twopi] }",
     ])
       expect(checkDot(text), text).toMatchObject({ problem: null, layout: "dot" });
-    // Written as an attribute of a subgraph it is another thing again: Graphviz cannot draw the graph at all (it says the
-    // layout was not done, whichever engine it is given), so the check says where `layout` goes.
+    // Where only a subgraph sets a layout, Graphviz cannot draw the graph at all (it says the layout was not done,
+    // whichever engine it is given), so the check says where `layout` goes. Where the root sets one too, the graph is
+    // drawn, with the root's engine, wherever the root sets it.
     for (const text of [
       "digraph { subgraph s { layout=twopi; a -> b } }",
       "digraph { subgraph s { graph [layout=fdp]; a -> b } }",
       "digraph { {layout=neato; a} -> b }",
-      "digraph { layout=neato; subgraph cluster_c { layout=circo; a } }",
+      "digraph { subgraph cluster_c { layout=circo; a -> b } subgraph s { layout=neato; c } }",
     ])
       expect(checkDot(text), text).toEqual({
         problem: expect.stringMatching(/^layout=\w+ is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself/),
       });
+    expect(checkDot("digraph { subgraph s { layout=twopi; a -> b } }")).toEqual({
+      problem: "layout=twopi is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself, at its top level (digraph { layout=twopi; ... })",
+    });
+    for (const [text, layout] of [
+      ["digraph { layout=neato; subgraph cluster_c { layout=circo; a -> b } }", "neato"],
+      ["digraph { subgraph cluster_c { layout=circo; a -> b } layout=neato }", "neato"],
+      ["digraph { graph [layout=neato]; subgraph cluster_c { layout=circo; a -> b } }", "neato"],
+      ["digraph { layout=dot; subgraph cluster_c { layout=neato; a -> b } }", "dot"],
+      ["digraph { layout=twopi; subgraph s { graph [layout=fdp]; a } {layout=circo; b} -> c }", "twopi"],
+    ] as const)
+      expect(checkDot(text), text).toMatchObject({ problem: null, layout });
+    // A value Graphviz would not take is refused wherever it is written, whether or not the root sets a layout.
+    for (const text of [
+      "digraph { subgraph s { layout=sfdp; a } }",
+      "digraph { layout=neato; subgraph s { layout=sfdp; a } }",
+      "digraph { subgraph s { layout=NEATO; a } layout=neato }",
+      "digraph { layout=neato; subgraph s { graph [layout=osage]; a } }",
+    ])
+      expect(figureProblem("graph", text), text).toMatch(/layout=.* is not allowed: use one of/);
     for (const [text, layout] of [
       ["digraph { layout=neato; a -> b }", "neato"],
       ["digraph { graph [layout=circo]; a -> b }", "circo"],

@@ -148,6 +148,8 @@ class Walker {
   private readonly pairs = new Set<string>();
   /** The pairs of an undirected strict graph in the order they were written, for when a `key` makes that order count. */
   private readonly ordered = new Set<string>();
+  /** The first `layout` a subgraph set, for the end of the walk: it is refused only when the root graph set none. */
+  private subgraphLayout: string | null = null;
   /** A `key` attribute was written somewhere: in a strict graph it makes an edge of a pair that is already there. */
   private keyed = false;
   private empties = 0;
@@ -200,6 +202,12 @@ class Walker {
     this.body = brace!.at + 1;
     this.statements();
     if (this.peek()) this.fail("only one graph is allowed: remove what follows its closing }");
+    // Graphviz draws a graph whose root sets a layout whatever a subgraph sets, and cannot draw one where only a subgraph
+    // sets it ("Layout was not done", whichever engine it is given); so that is refused, with where the layout goes.
+    if (this.layout === null && this.subgraphLayout !== null)
+      this.fail(
+        `layout=${this.subgraphLayout} is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself, at its top level (digraph { layout=${this.subgraphLayout}; ... })`,
+      );
     // A `key` written after the edges it names changes how they count, so the count is taken again at the end.
     this.recount();
     if (this.limits && this.edges > DOT_EDGES_MAX) this.tooMany("edges", this.edges, DOT_EDGES_MAX);
@@ -411,11 +419,9 @@ class Walker {
         const spelling = (DOT_LAYOUTS as readonly string[]).includes(value.trim().toLowerCase());
         this.fail(`layout=${value} is not allowed: use one of ${DOT_LAYOUTS.join(", ")}${spelling ? ", in lower case with no spaces" : ""}`);
       }
-      // Only the root graph's own picks the engine, and Graphviz cannot lay out a graph that sets it in a subgraph (it says
-      // "Layout was not done" whichever engine it is given), so that is refused with where it goes. On a node or an edge it
-      // is another attribute: checked here like the rest, and ignored by Graphviz.
-      if (owner === "graph")
-        this.fail(`layout=${value} is set inside a subgraph, where Graphviz cannot draw it: set the layout on the graph itself, at its top level (digraph { layout=${value}; ... })`);
+      // Only the root graph's own picks the engine. One a subgraph sets is noted for the end of the walk, and on a node or an
+      // edge it is another attribute: checked here like the rest, and ignored by Graphviz.
+      if (owner === "graph") this.subgraphLayout ??= value;
       if (owner === "root") this.layout = value as DotLayout;
     }
   }
