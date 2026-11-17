@@ -25,7 +25,6 @@ import {
   EdgeLabelRenderer,
   Handle,
   Position,
-  applyNodeChanges,
   getBezierPath,
   useInternalNode,
   type BuiltInEdge,
@@ -34,7 +33,7 @@ import {
   type Node,
   type NodeProps,
   type ReactFlowInstance,
-  type NodeChange,
+  type NodeChangeset,
   type Viewport,
 } from "@xyflow/react";
 import { BackControl } from "../../components/BackControl";
@@ -1073,8 +1072,9 @@ export function MapPage() {
     );
   }
   const changes = useCallback(
-    (changes: NodeChange<FlowNode>[]) => {
-      setNodes((current) => applyNodeChanges(changes, current));
+    (changeset: NodeChangeset<FlowNode>) => {
+      setNodes((current) => changeset.applyTo(current));
+      const changes = changeset.toArray();
       const wide = changes.flatMap((change) =>
         change.type === "dimensions" && change.dimensions
           ? [[change.id, Math.ceil(change.dimensions.width)] as const]
@@ -1693,6 +1693,8 @@ export function MapPage() {
                 edges={edges}
                 nodeTypes={nodeTypes}
                 proOptions={{ hideAttribution: true }}
+                // Version 13 follows the system's colors and paints a dark canvas; the map's own colors come from the app.
+                forceColorMode="light"
                 edgeTypes={edgeTypes}
                 edgesFocusable={false}
                 minZoom={CANVAS_MIN_ZOOM}
