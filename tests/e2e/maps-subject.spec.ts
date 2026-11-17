@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { saveShot } from "./shots";
 import { expectNoAxeViolations } from "./axe";
+import { clickSettled } from "./settled";
 
 function collection(id: string, title: string, labels: string[]) {
   return JSON.stringify({
@@ -103,13 +104,13 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
     await dialog.getByLabel("Materia").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]').click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]'));
     // No exam means no topics: the dialog has no topic select, no disabled one and no note about it.
     await expect(dialog.getByLabel("Argomento")).toBeHidden();
     await expect(dialog.getByText("non hanno ancora argomenti")).toHaveCount(0);
     await expect(dialog.getByLabel("Come la vuoi?")).toBeVisible();
     await saveShot(page, "maps-subject/new-map-subject.png");
-    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Crea la mappa" }));
     await expect(page).toHaveURL(/#\/maps\/phys\?from=maps$/);
     // One click builds the map: the page shows the working mark where the map will appear, and no second button.
     await expect(page.locator(".px-map-working")).toBeVisible();
@@ -175,7 +176,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await cards.getByRole("button", { name: "Crea flashcard", exact: true }).click();
     const proposed = cards.getByRole("list", { name: "Flashcard proposte" }).getByRole("listitem");
     await expect(proposed).toHaveCount(2);
-    await cards.getByRole("button", { name: "Salva 2 flashcard" }).click();
+    await clickSettled(page, cards.getByRole("button", { name: "Salva 2 flashcard" }));
     await expect(cards).toHaveCount(0);
     await expect(page.getByText("2 flashcard salvate in Fisica I.")).toBeVisible();
     const saved = new DatabaseSync(join(userData, "workspace", "pyxis.db"), { timeout: 10000 });
@@ -214,7 +215,7 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await expect(physics.locator(".px-ct")).toHaveCount(2);
     await saveShot(page, "maps-subject/cards-browser-no-exam.png");
     await page.locator("#card-exam").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Senza esame"]').click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Senza esame"]'));
     await expect(page.locator(".px-cardbrowser-summary")).toContainText("2 flashcard");
     await physics.getByRole("button", { name: "Ripassa quelle senza esame di Fisica I" }).click();
     await expect(page).toHaveURL(/#\/cards\/subject\/phys$/);
@@ -264,12 +265,18 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     // A new map of one topic of the subject's exam opens by subject and topic.
     await page.getByRole("complementary", { name: "Barra laterale" }).getByRole("link", { name: /^Mappe/ }).click();
     await page.getByRole("button", { name: "Nuova mappa" }).click();
-    await dialog.getByLabel("Materia").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I · 1 mappa"]').click();
-    await dialog.getByLabel("Argomento").click();
+    await clickSettled(page, dialog.getByLabel("Materia"));
+    await clickSettled(
+      page,
+      page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I · 1 mappa"]'),
+    );
+    await clickSettled(page, dialog.getByLabel("Argomento"));
     await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-group")).toHaveText(["Meccanica"]);
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto · 1 mappa"]').click();
-    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
+    await clickSettled(
+      page,
+      page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto · 1 mappa"]'),
+    );
+    await clickSettled(page, dialog.getByRole("button", { name: "Crea la mappa" }));
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".react-flow__node")).toHaveCount(3);
 
@@ -284,7 +291,10 @@ test("a map belongs to a subject: built without an exam, listed by subject, with
     await saveShot(cards, "maps-subject/cards-with-exam.png");
     // "Nessun esame" takes the exam away again, and the cards can still be made.
     await cards.locator("#mc-plan").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Nessun esame"]').click();
+    await clickSettled(
+      page,
+      page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Nessun esame"]'),
+    );
     await expect(cards.locator("#mc-topic")).toHaveCount(0);
     await expect(cards.getByRole("button", { name: "Crea flashcard", exact: true })).toBeEnabled();
     await cards.getByRole("button", { name: "Annulla" }).click();
@@ -420,10 +430,10 @@ test("one request makes one map, even when the topic's material is read in three
     await page.getByRole("button", { name: "Nuova mappa" }).click();
     const dialog = page.getByRole("dialog", { name: "Nuova mappa" });
     await dialog.getByLabel("Materia").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]').click();
-    await dialog.getByLabel("Argomento").click();
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto"]').click();
-    await dialog.getByRole("button", { name: "Crea la mappa" }).click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Fisica I"]'));
+    await clickSettled(page, dialog.getByLabel("Argomento"));
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Moto"]'));
+    await clickSettled(page, dialog.getByRole("button", { name: "Crea la mappa" }));
     await expect(page).toHaveURL(/#\/maps\/phys\/t-motion\?from=maps$/);
     await expect(page.locator(".px-map-working")).toBeVisible();
     await expect(page.locator(".react-flow__node").first()).toBeVisible({ timeout: 60_000 });

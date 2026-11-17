@@ -7,6 +7,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { saveShot } from "./shots";
 import { jobsNow, makeCards, RECORDED_CARDS, seedChimica, standInTools, useTools } from "./tools";
+import { clickSettled } from "./settled";
 
 /** The names of the connected tools, top to bottom. */
 const listed = (page: Page) => page.locator(".engines-tools .engines-tool-name");
@@ -109,7 +110,7 @@ test("Strumenti AI: the connected tools are put in order with the mouse, the key
     // A menu that closes stays on the page while it shrinks away, so each one is found by the tool it belongs to.
     const menu = (name: string) => page.getByRole("region", { name: `Azioni su ${name}` });
     await page.locator('.engines-tool[data-tool="claude"] .px-ctl-title').click({ button: "right" });
-    await menu("Claude").getByRole("menuitem", { name: "Sposta su" }).click();
+    await clickSettled(page, menu("Claude").getByRole("menuitem", { name: "Sposta su" }));
     await expect(listed(page)).toHaveText(["ChatGPT", "Claude", "Cursor"]);
     await expect(page.locator(".engines-panel p[role=status].visually-hidden")).toHaveText(
       "Claude è in posizione 2 di 3.",
@@ -258,7 +259,7 @@ test("Strumenti AI: a tool the student turns off keeps its row and takes no work
 
     // ---- Turned off from its menu: the first tool keeps its row, loses its place and takes no work.
     await page.getByRole("button", { name: "Azioni su ChatGPT" }).click();
-    await menu(page, "ChatGPT").getByRole("menuitem", { name: "Non usare" }).click();
+    await clickSettled(page, menu(page, "ChatGPT").getByRole("menuitem", { name: "Non usare" }));
     const chatgpt = page.locator('.engines-tool[data-tool="codex"]');
     await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Non in uso");
     await expect(chatgpt.locator(".engines-tool-n")).toHaveCount(0);
@@ -275,7 +276,7 @@ test("Strumenti AI: a tool the student turns off keeps its row and takes no work
 
     // ---- Used again: it takes its place back, and with it the work, since it is first in the list.
     await page.getByRole("button", { name: "Azioni su ChatGPT" }).click();
-    await menu(page, "ChatGPT").getByRole("menuitem", { name: "Usa di nuovo" }).click();
+    await clickSettled(page, menu(page, "ChatGPT").getByRole("menuitem", { name: "Usa di nuovo" }));
     await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Collegato");
     await expect(page.locator(".engines-tool-n")).toHaveText(["1", "2"]);
     // Every tool is in use again, also one connected later.
@@ -286,7 +287,7 @@ test("Strumenti AI: a tool the student turns off keeps its row and takes no work
     await page.getByRole("button", { name: "Scollega ChatGPT" }).click();
     const ask = page.getByRole("dialog", { name: "Scollegare ChatGPT?" });
     await expect(ask).toBeVisible();
-    await ask.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, ask.getByRole("button", { name: "Annulla" }));
     await expect(ask).toHaveCount(0);
     await expect(chatgpt.locator(".engines-tool-state")).toHaveText("Collegato");
   } finally {

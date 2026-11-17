@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
@@ -738,8 +738,8 @@ test("MAP-12 exporting a radial map as SVG draws the picture the page shows", as
       await mapAtRest(page);
       rmSync(saved, { force: true });
       await page.getByRole("button", { name: "Altro", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Esporta" }).click();
-      await page.getByRole("menuitem", { name: "Mappa intera SVG" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Esporta" }));
+      await clickSettled(page, page.getByRole("menuitem", { name: "Mappa intera SVG" }));
       await expect.poll(() => existsSync(saved), { timeout: 30_000 }).toBe(true);
       await expect(page.getByText("File salvato")).toBeVisible();
       // The file is the whole map, unfolded, drawn from the radial plan: no two boxes touch, no link passes behind a

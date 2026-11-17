@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan, seedSubjects } from "./seed";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toAllFlashcards } from "./doors";
 
@@ -62,9 +62,7 @@ async function cardAction(page: Page, card: string, action: string) {
   await page
     .getByRole("button", { name: new RegExp(`^More actions: ${card}`) })
     .click();
-  await page
-    .getByRole("menuitem", { name: action, exact: true })
-    .click();
+  await clickSettled(page, page.getByRole("menuitem", { name: action, exact: true }));
 }
 
 async function choose(page: Page, label: string, option: string) {
@@ -73,12 +71,7 @@ async function choose(page: Page, label: string, option: string) {
   const item = page.locator(
     `.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`,
   );
-  // The list opens growing from 80% of its height. A slow Mac drew that opening late, holding the list at its first
-  // frame, still and invisible, where the click found the option; the list grew before the button came back up, the
-  // release landed on the group's label above it, and nothing was chosen. A student cannot click what is not drawn yet.
-  await item.waitFor();
-  await animationsSettled(page);
-  await item.click();
+  await clickSettled(page, item);
 }
 
 test("the flashcard browser groups, searches, edits, suspends, deletes and restores", async () => {
@@ -194,17 +187,17 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await again.getByRole("button", { name: "Cancel" }).click();
     const leave = page.getByRole("dialog", { name: "Leave without saving?" });
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(again.getByRole("textbox", { name: "Back" })).toHaveValue("Cambiato.");
     await page.getByRole("button", { name: /^Edit: Velocità media\?/ }).click();
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(again).toBeVisible();
     await again.getByRole("textbox", { name: "Back" }).press("Escape");
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Leave without saving" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Leave without saving" }));
     await expect(again).toBeHidden();
     await expect(edited).toContainText("Il numero di protoni.");
     await expect(page.getByRole("button", { name: /^Edit: Numero atomico \(Z\)\?/ })).toBeFocused();
@@ -236,20 +229,20 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await page.keyboard.press("Escape");
     const askLeave = page.getByRole("dialog", { name: "Leave without saving?" });
     await expect(askLeave).toBeVisible();
-    await askLeave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, askLeave.getByRole("button", { name: "Stay here" }));
     await expect(askLeave).toHaveCount(0);
     await expect(editBox).toBeVisible();
     await expect(editBox.getByRole("textbox", { name: "Back" })).toHaveValue("Cambiato di nuovo.");
     await page.keyboard.press("Escape");
     await expect(askLeave).toBeVisible();
-    await askLeave.getByRole("button", { name: "Leave without saving" }).click();
+    await clickSettled(page, askLeave.getByRole("button", { name: "Leave without saving" }));
     await expect(editBox).toBeHidden();
 
     // A right-click on a card's row opens the same menu as its dots, and a pick acts the same way.
     const speedRow = page.getByRole("listitem").filter({ hasText: "Velocità media?" });
     await speedRow.click({ button: "right" });
     await expect(page.getByRole("region", { name: "More actions" }).getByRole("menuitem")).toHaveText(["Edit", "Suspend", "Delete the flashcard…"]);
-    await page.getByRole("menuitem", { name: "Suspend", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Suspend", exact: true }));
     await expect(speedRow).toContainText("Suspended");
     await cardAction(page, "Velocità media\\?", "Resume");
     await expect(speedRow).not.toContainText("Suspended");
@@ -276,7 +269,7 @@ test("the flashcard browser groups, searches, edits, suspends, deletes and resto
     await expect(page.getByRole("button", { name: /^More actions: Unità della forza/ })).toBeFocused();
     await expect(page.getByText("Unità della forza?")).toBeVisible();
     await cardAction(page, "Unità della forza\\?", "Delete the flashcard…");
-    await confirm.getByRole("button", { name: "Delete the flashcard", exact: true }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Delete the flashcard", exact: true }));
     await expect(page.getByRole("status")).toHaveText(
       "Flashcard removed. You can restore it under Removed.",
     );
@@ -514,7 +507,7 @@ test("a search or a filter that would take the edited card off the page asks fir
     // A search with no room for the card asks; staying puts the search back and keeps the typing.
     await search.fill("atomo");
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(search).toHaveValue("");
     await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza uno cambiata?");
@@ -523,7 +516,7 @@ test("a search or a filter that would take the edited card off the page asks fir
     // A filter asks the same, and staying leaves it as it was.
     await choose(page, "Show", "Suspended");
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Stay here" }));
     await expect(leave).toHaveCount(0);
     await expect(page.locator("#card-status").locator("xpath=ancestor::*[contains(@class,'ant-select')][1]")).toContainText("All flashcards");
     await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza uno cambiata?");
@@ -531,7 +524,7 @@ test("a search or a filter that would take the edited card off the page asks fir
     // Leaving drops the typing, and the card comes back as it was saved.
     await search.fill("atomo");
     await expect(leave).toBeVisible();
-    await leave.getByRole("button", { name: "Leave without saving" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Leave without saving" }));
     await expect(leave).toHaveCount(0);
     await expect(editFlashcard(page)).toHaveCount(0);
     await expect(page.getByRole("status")).toHaveText("3 flashcards");
@@ -554,10 +547,12 @@ test("the typing in a card survives a refresh that moves the card to another lis
     const editor = editFlashcard(page);
     await editor.getByRole("textbox", { name: "Back" }).fill("Una bozza lunga.");
     await cardAction(page, "Forza numero 01\\?", "Delete the flashcard…");
-    await page
-      .getByRole("dialog", { name: "Delete this flashcard?" })
-      .getByRole("button", { name: "Delete the flashcard", exact: true })
-      .click();
+    await clickSettled(
+      page,
+      page
+        .getByRole("dialog", { name: "Delete this flashcard?" })
+        .getByRole("button", { name: "Delete the flashcard", exact: true }),
+    );
     await expect(page.getByText("Forza numero 01?")).toHaveCount(0);
     await expect(editFlashcard(page).getByRole("textbox", { name: "Back" })).toHaveValue("Una bozza lunga.");
     await expect(editFlashcard(page).getByRole("textbox", { name: "Front" })).toHaveValue("Forza numero 09?");

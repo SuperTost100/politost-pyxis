@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
 import { saveShot } from "./shots";
 
@@ -665,7 +665,7 @@ test("First setup: interests added on the first step show in Settings > Profile 
 
     // Opened from the profile menu, as a student does: the router made that entry, so the leave question can hold it.
     await button(page, /^Ada/).click();
-    await page.getByRole("menuitem", { name: "Impostazioni" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Impostazioni" }));
     await expect(button(page, "Togli calcio")).toBeVisible();
     await expect(button(page, "Togli chitarra")).toBeVisible();
     await expect(page.getByRole("switch", { name: "Usa i miei interessi negli esempi" })).toBeChecked();
@@ -682,7 +682,7 @@ test("First setup: interests added on the first step show in Settings > Profile 
     await expect(page).toHaveURL(/#\/onboarding\?again=1$/);
     await expect(button(page, "Togli calcio")).toHaveCount(0);
     await button(page, "Torna a Impostazioni").click();
-    await leave.getByRole("button", { name: "Esci senza salvare" }).click();
+    await clickSettled(page, leave.getByRole("button", { name: "Esci senza salvare" }));
     await expect(page).toHaveURL(/#\/settings$/);
     expect((await profile(page))?.interests).toEqual(["calcio", "chitarra"]);
     await button(page, "Rifai la configurazione").click();
@@ -858,7 +858,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
     await button(page, "Salta").click();
     await expect(page).toHaveURL(/#\/ask$/);
     await expect(notice(page)).toBeVisible({ timeout: 30000 });
-    await notice(page).getByRole("button", { name: "Non ora" }).click();
+    await clickSettled(page, notice(page).getByRole("button", { name: "Non ora" }));
     await expect(notice(page)).toHaveCount(0);
     await app.close();
 
@@ -887,7 +887,7 @@ test("Engine notice: a profile with unacknowledged engines sees it once at launc
       location.hash = "/settings/engines";
     });
     await expect(notice(page)).toBeVisible({ timeout: 30000 });
-    await notice(page).getByRole("button", { name: "Ho capito" }).click();
+    await clickSettled(page, notice(page).getByRole("button", { name: "Ho capito" }));
     await expect(notice(page)).toHaveCount(0);
     expect(
       (await page.evaluate(() => window.pyxis.invoke("engines.overview", {})))

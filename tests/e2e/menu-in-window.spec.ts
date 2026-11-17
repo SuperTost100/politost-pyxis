@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 
 const WIDTH = 960;
 const HEIGHT = 600;
@@ -186,7 +186,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     });
     await rightClickInCorner(page, rows.nth(corner));
     await expectMenuInWindow(page, open);
-    await open.getByRole("menuitem").last().click();
+    await clickSettled(page, open.getByRole("menuitem").last());
     await expect(
       page.getByRole("dialog", { name: "Eliminare questa flashcard?" }),
     ).toBeVisible();
@@ -206,10 +206,10 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
     await expectMenuInWindow(page, open);
     // The menu's own last item, by name: "Sposta in" draws its submenu inside the menu, and where the pointer comes to
     // rest on it after the right-click (the macOS layout), the last item counted would be the submenu's.
-    await open.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await clickSettled(page, open.getByRole("menuitem", { name: "Elimina il file…", exact: true }));
     const confirm = page.getByRole("dialog", { name: /^Eliminare «Dispensa \d\d»\?$/ });
     await expect(confirm).toBeVisible();
-    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Annulla" }));
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
     // The same cover's dots open the menu inside the window. "Sposta in", taller than the window, opens inside it too and
@@ -240,9 +240,7 @@ test("A right-click menu near the window's bottom-right corner opens inside the 
       await sub.evaluate((list) => list.scrollHeight > list.clientHeight),
     ).toBe(true);
     expect(await root.boundingBox()).toEqual(before);
-    await sub
-      .getByRole("menuitem", { name: "Materia 16", exact: true })
-      .click();
+    await clickSettled(page, sub.getByRole("menuitem", { name: "Materia 16", exact: true }));
     await expect(
       page
         .getByRole("region", { name: "Materia 16 1 file" })

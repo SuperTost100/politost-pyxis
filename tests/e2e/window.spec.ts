@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
@@ -495,10 +495,7 @@ test("release loop: onboarding, smartbook, plan, lesson, quiz, export and restor
       .getByRole("button", { name: "Impostazioni dell'esame", exact: true })
       .click();
     await page.getByRole("button", { name: "Esporta", exact: true }).click();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Salva file", exact: true })
-      .click();
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Salva file", exact: true }));
     // Windows shows the file before the write has finished, so wait until it parses.
     const readExport = () => {
       try {

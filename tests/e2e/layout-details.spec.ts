@@ -9,7 +9,7 @@ import { seedPlan, seedSource } from "./seed";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 
 const sizes = [
   { width: 1280, height: 800 },
@@ -95,7 +95,7 @@ test("LAYOUT-01 the exam page names the lesson once, its path row keeps one type
           // The topic's steps and the dialog that creates an activity call the lesson by the same name.
           await expect(page.locator(".px-xpath-substep").first()).toContainText(lessonName);
           await page.locator(".px-exam-head").getByRole("button", { name: /^(Altro sull'esame|More for this exam)$/ }).click();
-          await page.getByRole("menuitem", { name: /^(Crea un'attività|Create an activity)$/ }).click();
+          await clickSettled(page, page.getByRole("menuitem", { name: /^(Crea un'attività|Create an activity)$/ }));
           const create = page.getByRole("dialog", { name: /^(Crea un'attività|Create an activity)$/ });
           await expect(create).toContainText(lessonName);
           await page.keyboard.press("Escape");
@@ -410,7 +410,7 @@ test("LAYOUT-05 a reading page keeps the jobs entry, also with no job to show, a
     const bar = page.locator(".px-reader-bar");
     const entry = bar.getByRole("button", { name: /^(Attività|Background tasks)/ });
     await entry.click();
-    await page.getByRole("button", { name: /^(Chiudi le finite|Clear finished)$/ }).click();
+    await clickSettled(page, page.getByRole("button", { name: /^(Chiudi le finite|Clear finished)$/ }));
     await expect(entry).toHaveAccessibleName(/(Nessuna attività oggi|Nothing has run today)/);
     await expect(bar).toBeVisible();
   } finally {

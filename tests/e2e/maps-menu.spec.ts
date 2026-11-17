@@ -8,7 +8,7 @@ import { seedPlan, seedSource, seedSubjects } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { expectNoAxeViolations } from "./axe";
-import { atRest } from "./settled";
+import { atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 /** A map of `root` with these branches, each with its concepts. */
@@ -241,7 +241,7 @@ test("a map is renamed in place on its page and on its tile, and an empty name i
     const dots = page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true });
     const rename = async () => {
       await dots.click();
-      await page.getByRole("menuitem", { name: "Rinomina" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina" }));
       return page.getByRole("textbox", { name: "Nome della mappa" });
     };
     let field = await rename();
@@ -281,7 +281,7 @@ test("a map is renamed in place on its page and on its tile, and an empty name i
     await card.hover();
     await card.getByRole("button", { name: "Altro su Successioni" }).click();
     expect(await menuItems(page)).toEqual(["Apri", "Rinomina", "Esporta", "-", "Elimina la mappa…"]);
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina" }));
     const tileField = page.getByRole("textbox", { name: "Nome della mappa" });
     await expect(tileField).toBeFocused();
     await tileField.fill("Successioni e serie");
@@ -337,7 +337,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     const dots = page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true });
     const askDelete = async () => {
       await dots.click();
-      await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+      await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
       const dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Teoremi sui limiti»?" });
       await expect(dialog).toBeVisible();
       return dialog;
@@ -347,7 +347,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await expect(dialog.getByRole("button", { name: "Annulla" })).toBeFocused();
     await expectNoAxeViolations(page);
     await saveShot(page, "maps-menu/confirm.png");
-    await dialog.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Annulla" }));
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("heading", { level: 1, name: "Teoremi sui limiti" })).toBeVisible();
     // The focus is back on the dots that opened the menu.
@@ -356,7 +356,7 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     dialog = await askDelete();
     const position = () => page.evaluate(() => (history.state as { idx: number }).idx);
     const onMap = await position();
-    await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Elimina la mappa" }));
     // Mappe as the student left it, not at the map's subject.
     await expect(page).toHaveURL(/#\/maps$/);
     // The map left through its way back: the window went back one entry to Mappe, which no longer has a map ahead of it.
@@ -381,13 +381,13 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     await campo.locator(".px-maps-thumb").click({ button: "right" });
     await expect(campo).toHaveClass(/is-ctx/);
     expect(await menuItems(page)).toEqual(["Apri", "Rinomina", "Esporta", "-", "Elimina la mappa…"]);
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
     dialog = page.getByRole("dialog", { name: "Eliminare la mappa «Campo elettrico»?" });
     await dialog.getByRole("button", { name: "Annulla" }).click();
     await expect(campo).toHaveCount(1);
     await campo.locator(".px-maps-thumb").click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
+    await clickSettled(page, dialog.getByRole("button", { name: "Elimina la mappa" }));
     await expect(campo).toHaveCount(0);
     await expect(tile(page, "Circuiti RC").getByRole("link")).toBeFocused();
     await expect(page.locator(".px-maps-subject", { hasText: "Fisica 2" }).locator("header .small")).toHaveText("1 mappa");
@@ -395,8 +395,8 @@ test("a map is deleted after one confirmation, from its page or its tile, and it
     // The last map of a subject, deleted from its page: the subject leaves Mappe with it.
     await tile(page, "Struttura dell’atomo").getByRole("link").click();
     await dots.click();
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }));
     // Back to Mappe as it was, at the subject the student was looking at.
     await expect(page).toHaveURL(/#\/maps\?subject=an$/);
     await expect(page.getByRole("heading", { level: 2, name: "Chimica" })).toHaveCount(0);
@@ -436,8 +436,8 @@ test("a map deleted from its tile gives the focus to the tile that takes its pla
 
     const campo = tile(page, "Campo elettrico");
     await campo.locator(".px-maps-thumb").click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }));
     // The tile is out of the page.
     await expect(page.locator('[data-map-id="m-campo"]')).toHaveCount(0);
     // The dialog is still on screen, and the focus has not gone anywhere yet.
@@ -472,8 +472,8 @@ test("a map deleted while the window's move back is late still shrinks away on M
     });
     const dots = page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true });
     await dots.click();
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }));
     // The list is read again without the map and the page shows the topic's other one: the delete is known to the page.
     await expect(page.getByRole("heading", { level: 1, name: "Limiti" })).toBeVisible();
     // One task later, after React has run the effects of the commit that drew it: whatever the page does about the missing
@@ -517,8 +517,8 @@ test("a delete that fails says so on the tile, which stays", async () => {
     away.close();
     await card.hover();
     await card.getByRole("button", { name: "Altro su Successioni" }).click();
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina la mappa" }));
     await expect(card.getByRole("alert")).toHaveText("Non riesco a eliminare la mappa. Riprova.");
     await expect(card).toHaveCount(1);
     const back = db();
@@ -564,7 +564,7 @@ test("deleting a map still being written stops its build, and the build never br
     await page.locator(".px-map-actions").getByRole("button", { name: "Altro", exact: true }).click();
     await expect(page.getByRole("menuitem", { name: "Rinomina" })).toHaveAttribute("aria-disabled", "true");
     await expect(page.getByRole("menuitem", { name: "Esporta" })).toHaveAttribute("aria-disabled", "true");
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
     const dialog = page.getByRole("dialog", { name: `Eliminare la mappa «${asked}»?` });
     await expect(dialog).toContainText("Pyxis smette di scriverla");
     await dialog.getByRole("button", { name: "Elimina la mappa" }).click();
@@ -747,7 +747,7 @@ test("renaming a tile on a fresh launch shows the name field in the design's own
     const card = tile(page, "Successioni");
     await card.hover();
     await card.getByRole("button", { name: "Altro su Successioni" }).click();
-    await page.getByRole("menuitem", { name: "Rinomina" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rinomina" }));
     const field = page.getByRole("textbox", { name: "Nome della mappa" });
     await expect(field).toBeFocused();
     // The field wears the tokens' own border (the focus one, as it has the focus), surface, ink and corners, not the browser's.

@@ -9,7 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { answerNextMenu, lastMenuAt, lastMenuLabels } from "./native-menu";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 
 /** The labels of the open menu, a separator left out. */
 const itemsOf = async (page: Page, region: string) => {
@@ -425,7 +425,7 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     expect(await opensEveryWay(page, answerDots, "Altre azioni", [stronger])).toEqual([stronger]);
     await oneMenuAtATime(page, answerDots, "Altre azioni");
     await answerDots.click({ button: "right" });
-    await page.getByRole("menuitem", { name: stronger }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: stronger }));
     await expect(page.locator(".px-msg:not(.px-msg-user) .px-msg-text")).toHaveText(reply, { timeout: 30_000 });
 
     // A finished lesson: rewrite in parts, regenerate, rewrite a section, the map and export; the last one opens the
@@ -439,10 +439,10 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     expect(lessonItems).toEqual(["Riscrivi in parti", "Riscrivi", "Riscrivi una sezione", "Mappa", "Esporta"]);
     await oneMenuAtATime(page, lessonDots, "Altre azioni");
     await lessonDots.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Esporta" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Esporta" }));
     const exportDialog = page.getByRole("dialog", { name: "Esporta" });
     await expect(exportDialog.getByRole("button", { name: "Salva file" })).toBeVisible();
-    await exportDialog.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, exportDialog.getByRole("button", { name: "Annulla" }));
     await expect(exportDialog).toBeHidden();
 
     // A map: rename, export (with its formats) and delete; the last one asks first.
@@ -477,10 +477,10 @@ test("an answer's, a lesson's and a map's three dots open by click, right-click 
     await expect(panel).toBeHidden();
     await page.emulateMedia({ reducedMotion: "reduce" });
     await mapDots.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Elimina la mappa…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina la mappa…" }));
     const confirm = page.getByRole("dialog");
     await expect(confirm.getByRole("button", { name: "Elimina la mappa" })).toBeVisible();
-    await confirm.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, confirm.getByRole("button", { name: "Annulla" }));
     await expect(confirm).toBeHidden();
   } finally {
     await app.close();

@@ -8,7 +8,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 /** A second-year student's subjects, one with a name too long for a line and one no symbol fits. */
@@ -159,10 +159,10 @@ test("Every file in the Library is drawn by its kind, a book by its subject's sy
     await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-option")).toHaveText([
       "Tutti i tipi", "Libro", "Slide", "Tema d'esame", "Appunti", "Esercizi", "Foto", "Dispensa",
     ]);
-    await option("Tema d'esame").click();
+    await clickSettled(page, option("Tema d'esame"));
     await expect(page.locator(".px-cover")).toHaveCount(3);
     await page.getByRole("combobox", { name: "Tipo" }).click();
-    await option("Tutti i tipi").click();
+    await clickSettled(page, option("Tutti i tipi"));
 
     for (const [language, theme] of [["it", "dark"], ["en", "light"]] as const)
       for (const width of [1280, 960]) {
@@ -307,7 +307,7 @@ test("When a change takes the last file out of a filtered or searched list, the 
     await page.reload();
     const filter = page.getByRole("combobox", { name: "Tipo" });
     await filter.click();
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Foto" }).click();
+    await clickSettled(page, page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: "Foto" }));
 
     /** Changes a file's kind from the keyboard alone: its menu, "Tipo", the kind below "Foto" in the list. */
     const makeHandout = async (title: string) => {
@@ -362,14 +362,14 @@ test("The focus stays in the page when the file that held it is renamed out of a
       for (const [index, name] of path.entries()) {
         const item = page.getByRole("menuitem", { name, exact: true });
         if (index < path.length - 1) await item.hover();
-        else await item.click();
+        else await clickSettled(page, item);
       }
     };
 
     /** Deletes a file from its menu and answers the question the menu leads to; the dialog has closed when this returns. */
     const remove = async (title: string) => {
       await choose(title, "Elimina il file…");
-      await page.getByRole("dialog").getByRole("button", { name: "Elimina il file", exact: true }).click();
+      await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Elimina il file", exact: true }));
       await expect(page.getByRole("dialog")).toHaveCount(0);
     };
 
@@ -387,12 +387,12 @@ test("The focus stays in the page when the file that held it is renamed out of a
     // menu came from the keyboard on the cover. The file stays.
     const dots = page.getByRole("button", { name: "Azioni per Fotogrammi di Quarto potere", exact: true });
     await dots.click();
-    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina il file…", exact: true }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Annulla" }));
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(dots).toBeFocused();
     await choose("Fotogrammi di Quarto potere", "Elimina il file…");
-    await page.getByRole("dialog").getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Annulla" }));
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("button", moved)).toBeFocused();
 

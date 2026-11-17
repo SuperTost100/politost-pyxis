@@ -9,6 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { saveShot } from "./shots";
 import { expectNoAxeViolations } from "./axe";
+import { clickSettled } from "./settled";
 
 const labels = ["Limiti", "Definizione", "Teoremi", "Dimostrazioni", "Esempi", "Successioni", "Continuità", "Derivate"];
 /** What the recorded engine answers a request with an instruction: a map of these concepts, the first being the root. */
@@ -80,7 +81,7 @@ function dialogs(page: Page) {
   };
   const choose = async (dialog: ReturnType<typeof page.getByRole>, field: string, option: string) => {
     await dialog.getByLabel(field).click();
-    await page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`).click();
+    await clickSettled(page, page.locator(`.ant-select-dropdown:visible .ant-select-item-option[title="${option}"]`));
   };
   /** Asks for a map of Limiti in these words; `topic` is the option as the select shows it ("Limiti · 1 mappa"). */
   const ask = async (words: string, topic = "Limiti") => {
@@ -152,7 +153,7 @@ test("a map asked for in the student's own words reaches the engine, and a secon
     ).toContainText("Tutta la materia");
     await dialog.getByLabel("Argomento").click();
     await expect(page.locator(".ant-select-dropdown:visible .ant-select-item-group")).toHaveText(["Analisi 1"]);
-    await page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Limiti"]').click();
+    await clickSettled(page, page.locator('.ant-select-dropdown:visible .ant-select-item-option[title="Limiti"]'));
     await dialog.getByLabel("Come la vuoi?").fill(`  ${first}  `);
     await expectNoAxeViolations(page);
     await dialog.getByRole("button", { name: "Crea la mappa" }).click();
@@ -500,7 +501,7 @@ test("Cambia la richiesta on a topic that already has a map shows the request, a
 
     // The map is still there: the switcher beside the title opens it, and the request is gone from the page.
     await page.locator(".px-map-title-row").getByRole("button", { name: /^Mappe di Limiti, ora: / }).click();
-    await page.getByRole("menuitemradio").first().click();
+    await clickSettled(page, page.getByRole("menuitemradio").first());
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     await expect(field).toHaveCount(0);
 
@@ -781,7 +782,7 @@ test("the only map of a topic is one choice away from a request that found nothi
     await expect(field).toBeVisible({ timeout: 60_000 });
     // The switcher offers the one map, and choosing it shows the map and takes the request away.
     await page.locator(".px-map-title-row").getByRole("button", { name: /^Mappe di Limiti, ora: / }).click();
-    await page.getByRole("menuitemradio").first().click();
+    await clickSettled(page, page.getByRole("menuitemradio").first());
     await expect(page.locator(".react-flow__node").first()).toBeVisible();
     await expect(field).toHaveCount(0);
     expect(errors).toEqual([]);

@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { atRest } from "./settled";
+import { atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 // The recorded engine answers every question with this reply, which cites the first passage it was given.
@@ -128,7 +128,7 @@ test("Ask: a new chat picks its subject from the Library, says what it used, and
     await expect(menu.getByRole("menuitemradio")).toHaveText(["Analisi 1", "Fisica 2", "Storia", "Tutta la Libreria"]);
     await expect(menu.getByRole("menuitemradio", { name: "Fisica 2" })).toHaveAttribute("aria-checked", "true");
     await saveShot(page, "ask-subject/menu.png");
-    await menu.getByRole("menuitemradio", { name: "Analisi 1" }).click();
+    await clickSettled(page, menu.getByRole("menuitemradio", { name: "Analisi 1" }));
     // The correction is the student's, said aloud, and the field takes the focus back.
     await expect(chip(page)).toHaveAccessibleName("Materia della chat: Analisi 1, scelta da te");
     await expect(page.getByRole("status").filter({ hasText: "Da ora in questa chat uso le fonti di Analisi 1." })).toHaveCount(1);
@@ -146,7 +146,7 @@ test("Ask: a new chat picks its subject from the Library, says what it used, and
     // The whole Library is a choice too, and it sticks.
     await atRest(chip(page));
     await chip(page).click();
-    await page.getByRole("menuitemradio", { name: "Tutta la Libreria" }).click();
+    await clickSettled(page, page.getByRole("menuitemradio", { name: "Tutta la Libreria" }));
     await expect(chip(page)).toHaveText("Tutta la Libreria");
     await ask(page, "Campo elettrico di un filo carico");
     expect(await stored(page)).toMatchObject({ subject: null, subjectBy: "student" });
@@ -254,7 +254,7 @@ test("Ask: a subject chosen on a new chat's first page survives the whiteboard, 
     await openAsk(page);
     await atRest(chip(page));
     await chip(page).click();
-    await page.getByRole("menuitemradio", { name: "Fisica 2" }).click();
+    await clickSettled(page, page.getByRole("menuitemradio", { name: "Fisica 2" }));
     await expect(chip(page)).toHaveAccessibleName("Materia della chat: Fisica 2, scelta da te");
 
     // The whiteboard: draw, attach the drawing, and come back to the new chat with the subject still chosen.
@@ -384,7 +384,7 @@ test("Ask: an older chat with sources picked by hand keeps them and shows it, an
     await chip(page).click();
     const menu = page.getByRole("region", { name: "Materia della chat" });
     await expect(menu.getByRole("menuitemradio", { name: "La fonte scelta a mano" })).toHaveAttribute("aria-checked", "true");
-    await menu.getByRole("menuitemradio", { name: "Fisica 2" }).click();
+    await clickSettled(page, menu.getByRole("menuitemradio", { name: "Fisica 2" }));
     await expect(chip(page)).toHaveText("Fisica 2");
     expect(await stored(page)).toMatchObject({ subject: "Fisica 2", subjectBy: "student", sourceIds: [] });
   } finally {
@@ -410,7 +410,7 @@ test("Ask: a chat opened from an exam with no subject says it is that exam, not 
     const menu = page.getByRole("region", { name: "Materia della chat" });
     await expect(menu.getByRole("menuitemradio", { name: "I file dell'esame Analisi, scritto di luglio" })).toHaveAttribute("aria-checked", "true");
     await saveShot(page, "ask-subject/exam-menu.png");
-    await menu.getByRole("menuitemradio", { name: "Analisi 1" }).click();
+    await clickSettled(page, menu.getByRole("menuitemradio", { name: "Analisi 1" }));
     await expect(chip(page)).toHaveText("Analisi 1");
   } finally {
     await finish(app, userData, db);

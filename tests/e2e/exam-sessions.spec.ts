@@ -7,7 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 
@@ -202,7 +202,7 @@ test("EXAM-01 an exam holds a written and an oral session, and a finished exam c
     const leaveAfter = page.getByRole("dialog", { name: "Leave without saving?" });
     await expect(leaveAfter).toContainText("You changed the name.");
     expect((await read("plan-b"))!.archivedAt).not.toBeNull();
-    await leaveAfter.getByRole("button", { name: "Stay here" }).click();
+    await clickSettled(page, leaveAfter.getByRole("button", { name: "Stay here" }));
     await expect(settingsPage.getByRole("button", { name: "Restore", exact: true })).toBeVisible();
     await expect(settingsPage.getByLabel("Exam name")).toHaveValue("Analisi 2 bis");
     await saveBar.getByRole("button", { name: "Discard changes" }).click();

@@ -9,7 +9,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { partText } from "./part-texts";
 import { seedPlan, seedSource, seedSubjects } from "./seed";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 // The level of a part and its rewrites, with the recorded engine: "Livello" on part 2 writes it again at the level
@@ -195,7 +195,7 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     // "Riscrivi questa parte": the dialog, which Annulla closes with nothing started.
     const jobs = jobCount();
     await dots(page).click();
-    await page.getByRole("menuitem", { name: "Riscrivi questa parte" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi questa parte" }));
     const confirm = page.getByRole("dialog", { name: "Riscrivere questa parte?" });
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText("quello che hai già finito resta finito");
@@ -207,8 +207,11 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     expect(jobCount()).toBe(jobs);
     // Confirmed: the working state in place, then the new text with its question open again, and the part done.
     await dots(page).click();
-    await page.getByRole("menuitem", { name: "Riscrivi questa parte" }).click();
-    await page.getByRole("dialog", { name: "Riscrivere questa parte?" }).getByRole("button", { name: "Riscrivi" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi questa parte" }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Riscrivere questa parte?" }).getByRole("button", { name: "Riscrivi" }),
+    );
     await expect(working(page, "Sto riscrivendo la parte 2")).toBeVisible();
     await expect(page.getByText("Finché la nuova versione non è pronta, quella di adesso resta qui sotto.")).toBeVisible();
     await expect(page.getByText("Frontiera semplice: l'idea")).toBeVisible();
@@ -224,7 +227,7 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
 
     // One section of the part: the dialog lists the part's sections, and only the one chosen changes.
     await dots(page).click();
-    await page.getByRole("menuitem", { name: "Riscrivi una sezione" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi una sezione" }));
     const sections = page.getByRole("dialog", { name: "Quale sezione riscrivo?" });
     await expect(sections.getByText("Il resto della parte resta com'è.")).toBeVisible();
     await expect(sections.getByRole("radio")).toHaveCount(2);
@@ -244,8 +247,11 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
 
     // Writing the part again fails: the failure is in place, the text stays, and Riprova writes it.
     await dots(page).click();
-    await page.getByRole("menuitem", { name: "Riscrivi questa parte" }).click();
-    await page.getByRole("dialog", { name: "Riscrivere questa parte?" }).getByRole("button", { name: "Riscrivi" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Riscrivi questa parte" }));
+    await clickSettled(
+      page,
+      page.getByRole("dialog", { name: "Riscrivere questa parte?" }).getByRole("button", { name: "Riscrivi" }),
+    );
     const failed = page.getByText("Non sono riuscito a riscrivere la parte 2. La versione di adesso non è cambiata.");
     await expect(failed).toBeVisible({ timeout: 30_000 });
     await expect(failed).toBeInViewport();
@@ -259,7 +265,7 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
 
     // A level that fails: the menu names the level of the text on screen, and the failure names the one that failed.
     await levelButton(page).click();
-    await page.getByRole("menuitem", { name: "Tecnico" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Tecnico" }));
     const levelFailed = page.getByText("Non sono riuscito a riscrivere la parte 2 al livello Tecnico.", { exact: false });
     await expect(levelFailed).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("heading", { level: 2, name: "Frontiera riprovata: l'idea" })).toBeVisible();
@@ -309,7 +315,7 @@ test("a part's level, its rewrites and a section rewritten, with the earlier tex
     const before = jobCount();
     await levelButton(page).click();
     await expect(page.getByText("Vale per questa parte e per le prossime")).toBeVisible();
-    await page.getByRole("menuitem", { name: "Bilanciato" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Bilanciato" }));
     const outlineWording = () => {
       const read = db();
       const row = read.prepare("SELECT wording FROM lesson_outlines WHERE topic_id = 't-funzioni'").get() as { wording: string | null };

@@ -12,6 +12,7 @@ import { launchPyxis, setUp } from "./app-under-test";
 import { seedPlan, seedSource } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
+import { clickSettled } from "./settled";
 
 const mac = process.platform === "darwin";
 
@@ -504,7 +505,7 @@ test("a menu pick leaves a dialog, unsaved text and a running simulation alone, 
     await expect(page.locator(".px-update-notice")).toHaveCount(0);
     // An open dialog.
     await page.getByRole("button", { name: "Altro su Esami", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Gestisci materie" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Gestisci materie" }));
     const manage = page.getByRole("dialog");
     await expect(manage).toBeVisible();
     await pick(app, "settings");

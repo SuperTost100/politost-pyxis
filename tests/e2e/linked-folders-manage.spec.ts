@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { launchPyxis, setUp } from "./app-under-test";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
-import { animationsSettled, atRest } from "./settled";
+import { animationsSettled, atRest, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 /** Two course folders, Polito › Fisica and Polito › Analisi, with a few notes each. */
@@ -180,7 +180,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     writeFileSync(join(folders.fisica, "Potenziale.txt"), "Il potenziale elettrico è il lavoro per unità di carica.");
     await openList(page);
     await dots(page, folders.fisica).click();
-    await page.getByRole("menuitem", { name: "Rileggi adesso" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rileggi adesso" }));
     await expect(status(page)).toHaveText(`Rileggo «${label(folders.fisica)}».`);
     await expect(row(page, folders.fisica)).toContainText("4 file · controllata", { timeout: 60000 });
     await expect(shelf(page, "Fisica").locator(".px-cover", { hasText: "Potenziale" })).toBeVisible();
@@ -195,7 +195,10 @@ test("The Library lists its linked folders, reads one again, finds one that move
       }) as typeof shell.openPath;
     });
     await dots(page, folders.analisi).click();
-    await page.getByRole("menuitem", { name: /^Mostra (nel Finder|in Esplora file|nel gestore dei file)$/ }).click();
+    await clickSettled(
+      page,
+      page.getByRole("menuitem", { name: /^Mostra (nel Finder|in Esplora file|nel gestore dei file)$/ }),
+    );
     expect(await page.evaluate(() => window.pyxis.revealLinkedFolder("not-a-folder"))).toBe(false);
     // Pyxis keeps a folder by its real path, as the system resolves it (`realpathSync.native`): a temporary folder behind a
     // link (macOS's /var is /private/var) or under a short name (Windows's RUNNER~1) opens at its full real path.
@@ -208,7 +211,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     renameSync(folders.analisi, moved);
     await openList(page);
     await dots(page, folders.analisi).click();
-    await page.getByRole("menuitem", { name: "Rileggi adesso" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Rileggi adesso" }));
     await expect(row(page, folders.analisi)).toContainText("Non la trovo più: forse l'hai spostata o rinominata.", {
       timeout: 30000,
     });
@@ -232,7 +235,7 @@ test("The Library lists its linked folders, reads one again, finds one that move
     // Scollega… from a right-click asks first, with Annulla focused; Annulla changes nothing.
     await atRest(row(page, folders.fisica));
     await row(page, folders.fisica).click({ button: "right" });
-    await page.getByRole("menuitem", { name: "Scollega…" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scollega…" }));
     const confirm = page.getByRole("dialog").filter({ hasText: `Scollegare «${label(folders.fisica)}»?` });
     await expect(confirm).toBeVisible();
     await expect(confirm).toContainText("I 4 file di questa cartella escono dalla Libreria. Sul computer non cambia niente");
@@ -251,8 +254,8 @@ test("The Library lists its linked folders, reads one again, finds one that move
     const onDisk = snapshot(folders.base);
     await openList(page);
     await dots(page, folders.fisica).click();
-    await page.getByRole("menuitem", { name: "Scollega…" }).click();
-    await confirm.getByRole("button", { name: "Scollega", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scollega…" }));
+    await clickSettled(page, confirm.getByRole("button", { name: "Scollega", exact: true }));
     await expect(status(page)).toHaveText(`Ho scollegato «${label(folders.fisica)}»: 4 file tolti dalla Libreria.`);
     await expect(control(page)).toHaveText("1 cartella collegata");
     await expect(control(page)).toBeFocused();
@@ -300,7 +303,7 @@ test("Deleting a file of a linked folder says it stays in the folder, and the ne
       location.hash = "/exams/library";
     });
     await page.getByRole("button", { name: "Azioni per Temi d'esame", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Elimina il file…", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina il file…", exact: true }));
     const confirm = page.getByRole("dialog", { name: "Eliminare «Temi d'esame»?" });
     await expect(confirm).toContainText("Il file esce dalla Libreria.");
     await expect(confirm).toContainText("Nella cartella collegata il file resta, ma Pyxis non lo legge più.");
@@ -346,8 +349,8 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     db.exec("CREATE TRIGGER e2e_refuse BEFORE DELETE ON linked_folders BEGIN SELECT RAISE(ABORT, 'e2e'); END");
     await openList(page);
     await dots(page, folders.analisi).click();
-    await page.getByRole("menuitem", { name: "Scollega…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scollega…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }));
     // The confirmation closes, then the list opens again on the folder.
     await expect(page.getByRole("dialog", { name: /^Scollegare/ })).toHaveCount(0);
     await expect(list(page)).toBeVisible();
@@ -365,8 +368,8 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     await openList(page);
     await expect(row(page, folders.fisica)).toContainText(/Leggo (la cartella…|i file · \d+ di \d+)/);
     await dots(page, folders.fisica).click();
-    await page.getByRole("menuitem", { name: "Scollega…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scollega…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }));
     await expect(control(page)).toHaveText("1 cartella collegata");
     await expect
       .poll(async () =>
@@ -380,8 +383,8 @@ test("An unlink that fails changes nothing and says so in the list; one during a
     // Then the only folder left: the control links one again, as before any folder was linked.
     await openList(page);
     await dots(page, folders.analisi).click();
-    await page.getByRole("menuitem", { name: "Scollega…" }).click();
-    await page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Scollega…" }));
+    await clickSettled(page, page.getByRole("dialog").getByRole("button", { name: "Scollega", exact: true }));
     // The confirmation closed on a control that is gone: the focus goes to the one that took its place.
     await expect(page.getByRole("button", { name: "Collega una cartella", exact: true })).toBeFocused();
     await expect(status(page)).toHaveText(`Ho scollegato «${label(folders.analisi)}»: 2 file tolti dalla Libreria.`);

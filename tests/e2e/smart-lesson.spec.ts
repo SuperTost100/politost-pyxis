@@ -11,6 +11,7 @@ import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 const block = (kind: string, body: unknown) =>
   ["```pyxis-" + kind, JSON.stringify(body), "```"].join("\n");
@@ -292,10 +293,10 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     await language(page, "it", "light");
     // Export opens from the menu.
     await page.getByRole("button", { name: "Altre azioni" }).click();
-    await page.getByRole("menuitem", { name: "Esporta" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Esporta" }));
     const exportDialog = page.getByRole("dialog", { name: "Esporta" });
     await expect(exportDialog.getByRole("button", { name: "Salva file" })).toBeVisible();
-    await exportDialog.getByRole("button", { name: "Annulla" }).click();
+    await clickSettled(page, exportDialog.getByRole("button", { name: "Annulla" }));
     await expect(exportDialog).toBeHidden();
 
     // Quick check: instant feedback and the explanation.
@@ -387,7 +388,7 @@ test("smart lesson: opening never completes it, checks give feedback, the recap 
     };
     expect(checkAnswers()).toBe(4);
     await page.getByRole("button", { name: "Livello Bilanciato" }).click();
-    await page.getByRole("menuitem", { name: "Semplice" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Semplice" }));
     await expect(page.getByRole("button", { name: "Livello Semplice" })).toBeVisible();
     // Writing: an in-place status with Stop and skeleton lines, then the lesson.
     const status = page.getByRole("status").filter({ hasText: /^Sto scrivendo/ });

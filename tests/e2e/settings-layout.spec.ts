@@ -7,6 +7,7 @@ import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
 import { expectNoAxeViolations } from "./axe";
 import { saveShot } from "./shots";
+import { clickSettled } from "./settled";
 
 test("settings show six pages in a sidebar from 960px and drill down below it", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-settings-layout-"));
@@ -168,7 +169,7 @@ test("settings show six pages in a sidebar from 960px and drill down below it", 
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(sidebar).toBeVisible();
     await expect(drawer).toBeVisible();
-    await drawer.getByRole("button", { name: /^(Close|Chiudi)$/ }).click();
+    await clickSettled(page, drawer.getByRole("button", { name: /^(Close|Chiudi)$/ }));
     await expect(drawer).toHaveCount(0);
     await sidebar.getByRole("button", { name: "Dati e privacy" }).click();
 

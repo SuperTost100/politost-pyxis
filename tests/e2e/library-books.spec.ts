@@ -8,7 +8,7 @@ import { expectNoAxeViolations } from "./axe";
 import { booksSite } from "./books-site";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams, toLibrary } from "./doors";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { saveShot } from "./shots";
 
 function seed(userData: string) {
@@ -125,7 +125,7 @@ test("A book about a subject is offered once on its shelf, read before it is add
     await expect(offer(page)).toHaveCount(0);
     // The subject's menu still has the book, so the dismissal costs nothing.
     await shelf(page, "Fisica 1").getByRole("button", { name: /^Azioni sulla materia Fisica 1/ }).click();
-    await page.getByRole("menuitem", { name: "Apri il libro PoliTost" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Apri il libro PoliTost" }));
     await expect(reader(page, "Fisica 1")).toBeVisible();
   } finally {
     await finish(run);
@@ -333,13 +333,13 @@ test("The full list opens any book it does not have in the reader and adds it, a
   const { page } = run;
   try {
     await page.getByRole("button", { name: "Altro sulla Libreria" }).click();
-    await page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await expect(dialog.getByText("Chimica di base")).toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByRole("button", { name: "Apri Chimica di base" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Aggiungi Chimica di base" })).toBeVisible();
     await saveShot(page, "library-books/list-it-light-1280.png", { fullPage: true });
-    await dialog.getByRole("button", { name: "Apri Chimica di base" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Apri Chimica di base" }));
     await expect(dialog).toHaveCount(0);
     const panel = reader(page, "Chimica di base");
     await expect(panel.getByText("L'atomo ha un nucleo.")).toBeVisible({ timeout: 30_000 });
@@ -350,7 +350,7 @@ test("The full list opens any book it does not have in the reader and adds it, a
     // The list closed when the book opened; it says the book is in the Library when it opens again.
     await expect(dialog).toHaveCount(0);
     await page.getByRole("button", { name: "Altro sulla Libreria" }).click();
-    await page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     await expect(page.getByRole("dialog", { name: "Libri PoliTost gratuiti" }).getByText("Nella tua libreria", { exact: true })).toBeVisible();
   } finally {
     await finish(run);
@@ -366,7 +366,7 @@ test("Offline, no offer shows and nothing looks broken; the list says it could n
     await expect(offer(page)).toHaveCount(0);
     await expect(page.getByRole("alert")).toHaveCount(0);
     await page.getByRole("button", { name: "Altro sulla Libreria" }).click();
-    await page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
     const dialog = page.getByRole("dialog", { name: "Libri PoliTost gratuiti" });
     await expect(dialog.getByText("Non riesco a raggiungere books.politost.it")).toBeVisible({ timeout: 30_000 });
     await expect(dialog.getByRole("button", { name: "Riprova" })).toBeVisible();

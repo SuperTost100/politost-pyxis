@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { animationsSettled } from "./settled";
+import { animationsSettled, clickSettled } from "./settled";
 import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { expectNoAxeViolations } from "./axe";
@@ -116,12 +116,12 @@ test("an Anki package imports into a topic with its history, in both themes", as
     // A file that is not a package says so.
     // Import and export sit in the page's menu, the dots in its head.
     await page.getByRole("button", { name: "More for flashcards", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Import from Anki" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Import from Anki" }));
     const dialog = page.getByRole("dialog", { name: "Import from Anki" });
     const bad = join(fixtures, "not-anki.apkg");
     writeFileSync(bad, "plain text, not a zip file at all, just padding here");
     await pick(app, bad);
-    await dialog.getByRole("button", { name: "Choose file" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Choose file" }));
     await expect(dialog.getByRole("alert")).toContainText(
       "not an Anki package",
     );
@@ -181,7 +181,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
       await page.evaluate(() => window.pyxis.setAppearance("light"));
     }
 
-    await dialog.getByRole("button", { name: "Done" }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: "Done" }));
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("status")).toHaveText("4 flashcards");
     await expect(
@@ -218,7 +218,7 @@ test("an Anki package imports into a topic with its history, in both themes", as
 
     // Export from the same tab reaches a file with the cards.
     await page.getByRole("button", { name: "More for flashcards", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Export to Anki" }).click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Export to Anki" }));
     const exporting = page.getByRole("dialog", { name: "Export to Anki" });
     await expect(exporting.getByRole("checkbox")).not.toBeChecked();
     if (SHOTS) {

@@ -12,6 +12,7 @@ import { makeBook } from "./book";
 import { expectNoAxeViolations } from "./axe";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 // A folder laid out like books.politost.it: the catalog and one package. `tamper` lists a checksum that does not match.
 function booksSite(options: { tamper?: boolean } = {}) {
@@ -59,9 +60,7 @@ const button = (page: Page, name: string | RegExp) =>
 /** With sources in the Library, the free books sit in the page's menu, the dots in its head. */
 async function openBooksFromMenu(page: Page) {
   await button(page, "Altro sulla Libreria").click();
-  await page
-    .getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true })
-    .click();
+  await clickSettled(page, page.getByRole("menuitem", { name: "Libri PoliTost gratuiti", exact: true }));
 }
 
 test("Free books: setup no longer offers them, the Library puts a book in, a new exam takes it from there, and the Library shows it as already there", async () => {
@@ -99,7 +98,7 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
     await dialog.getByRole("button", { name: "Aggiungi Fisica di prova" }).click();
     // Added from the Library, the book is listed as in it.
     await expect(dialog.getByText("Nella tua libreria")).toBeVisible({ timeout: 30000 });
-    await dialog.getByRole("button", { name: /Close|Chiudi/ }).click();
+    await clickSettled(page, dialog.getByRole("button", { name: /Close|Chiudi/ }));
 
     const imported = async () =>
       (
@@ -142,13 +141,15 @@ test("Free books: setup no longer offers them, the Library puts a book in, a new
     expect(await imported()).toHaveLength(1);
 
     // Removed from the Library, the book can be added again: the dialog no longer calls it in the library.
-    await again.getByRole("button", { name: /Close|Chiudi/ }).click();
+    await clickSettled(page, again.getByRole("button", { name: /Close|Chiudi/ }));
     await button(page, "Azioni per Fisica di prova").click();
-    await page.getByRole("menuitem", { name: "Elimina il file…" }).click();
-    await page
-      .getByRole("dialog", { name: "Eliminare «Fisica di prova»?" })
-      .getByRole("button", { name: "Elimina il file", exact: true })
-      .click();
+    await clickSettled(page, page.getByRole("menuitem", { name: "Elimina il file…" }));
+    await clickSettled(
+      page,
+      page
+        .getByRole("dialog", { name: "Eliminare «Fisica di prova»?" })
+        .getByRole("button", { name: "Elimina il file", exact: true }),
+    );
     await expect.poll(async () => (await imported()).length).toBe(0);
     await openBooksFromMenu(page);
     await expect(

@@ -7,6 +7,7 @@ import { launchPyxis } from "./app-under-test";
 import { seedPlan } from "./seed";
 import { removeTestFolder } from "./cleanup";
 import { fromChiediToExams } from "./doors";
+import { clickSettled } from "./settled";
 
 test("onboarding save and invalid plan imports remain retryable", async () => {
   const userData = mkdtempSync(join(tmpdir(), "pyxis-form-recovery-"));
@@ -73,7 +74,7 @@ test("onboarding save and invalid plan imports remain retryable", async () => {
       await expect(menu).toBeHidden();
       await expect(trigger).toBeFocused();
       await page.keyboard.press("Enter");
-      await menu.getByRole("menuitem", { name: "Importa da un link" }).click();
+      await clickSettled(page, menu.getByRole("menuitem", { name: "Importa da un link" }));
       await expect(page).toHaveURL(/#\/exams\/get$/);
     } finally {
       db.close();
