@@ -252,11 +252,13 @@ export function CardBrowser({
 
   /**
    * Whether the edit open now may close. It holds typing to lose only when it differs from the card, and the student is
-   * asked then; one whose save is under way keeps nothing to lose, since the save has what was typed.
+   * asked then. A save that is under way ends first: it closes the edit when it works, and when it fails the typing is
+   * still there to ask about.
    */
   async function mayDropEdit() {
+    await pendingSave.current;
     const open = editingNow.current;
-    if (!open || savingNow.current === open.card.id || !typed()) return true;
+    if (!open || !typed()) return true;
     const answer = await confirm({
       title: t("leave.title"),
       body: t("cardBrowser.leaveEdit"),
@@ -266,8 +268,8 @@ export function CardBrowser({
     });
     return answer === "confirm";
   }
-  // Leaving the page asks the same question while an edit holds typing.
-  useLeaveGuard({ dirty: () => typed() && savingNow.current !== editingNow.current?.card.id, body: t("cardBrowser.leaveEdit") });
+  // Leaving the page asks the same question while an edit holds typing, a pending save included: it may still fail.
+  useLeaveGuard({ dirty: typed, body: t("cardBrowser.leaveEdit") });
   // Escape closes the edit also when the focus is not in it, on another card or on the page, and asks the same question
   // (Escape in the edit's own fields is handled there). A menu, a list or a dialog that is open takes its Escape first.
   const isEditing = editing !== null;
@@ -312,8 +314,8 @@ export function CardBrowser({
     const open = editingNow.current;
     if (!open) return;
     if (!(await mayDropEdit())) return;
-    // Closing is for the edit that was asked about, not for another opened while the question was open.
-    if (editingNow.current !== open) return;
+    // Closing is for the card that was asked about, not for another opened while the question was open.
+    if (editingNow.current?.card.id !== open.card.id) return;
     setEdit(null);
     focusCard(open.card.id);
   }
@@ -332,8 +334,14 @@ export function CardBrowser({
         await refresh();
         // The save ends the edit that started it, and only that one: the student may have opened another card since.
         if (editingNow.current === mine) {
-          setEdit(null);
-          focusCard(card.id);
+          const held = draft.current;
+          if (held && held.id === card.id && (held.front !== front || held.back !== back)) {
+            // The student went on typing while it saved, and the save did not carry that: the edit stays open with it.
+            setEdit({ card: { ...card, front: front.trim(), back: back.trim() } });
+          } else {
+            setEdit(null);
+            focusCard(card.id);
+          }
         }
       } catch {
         if (editingNow.current === mine) setSaveFailed(card.id);

@@ -90,6 +90,38 @@ export function timedSteps(
 ): Record<string, string> {
   return (quizExpired(db, attemptId, now) ? quizDraft(db, attemptId)?.draft.steps : steps) ?? {};
 }
+/**
+ * Stores the answers and steps that were handed in as the attempt's draft. The page cancels its autosave when it hands
+ * in, so the draft holds what the last save caught, and a page opened while the answers are graded would show that
+ * beside the submitted ones; `saveQuizDraft` refuses once the grading job exists, so this runs before the job starts.
+ */
+function freezeDraft(
+  db: Database.Database,
+  attemptId: string,
+  picks: Record<string, string>,
+  steps: Record<string, string>,
+  now: number,
+) {
+  const row = db
+    .prepare(
+      "SELECT id, payload_json FROM attempt_answers WHERE attempt_id = ? AND json_type(payload_json, '$.draft') = 'object' LIMIT 1",
+    )
+    .get(attemptId) as { id: string; payload_json: string } | undefined;
+  const saved = row ? (JSON.parse(row.payload_json) as Record<string, unknown> & { draft: Record<string, unknown> }) : undefined;
+  const { steps: _replaced, ...kept } = saved?.draft ?? { index: 0 };
+  const payload = JSON.stringify({
+    ...saved,
+    draft: { ...kept, picks, ...(Object.keys(steps).length ? { steps } : {}) },
+  });
+  if (row) db.prepare("UPDATE attempt_answers SET payload_json = ? WHERE id = ?").run(payload, row.id);
+  else
+    db.prepare("INSERT INTO attempt_answers (id, attempt_id, payload_json, created_at) VALUES (?, ?, ?, ?)").run(
+      uuidv7(now),
+      attemptId,
+      payload,
+      now,
+    );
+}
 function quizAttempt(db: Database.Database, attemptId: string) {
   const row = db
     .prepare(
@@ -735,6 +767,7 @@ export function submitQuiz(
     next: 0,
     submittedAt: deadlineAt != null ? Math.min(now, deadlineAt) : now,
   };
+  freezeDraft(db, attemptId, picks, steps, now);
   return { jobId: runner.start("quiz-grade", params) };
 }
 
