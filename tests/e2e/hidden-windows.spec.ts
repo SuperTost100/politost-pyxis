@@ -96,6 +96,48 @@ test("closing the main window after Python ran ends the app, with the Python win
   }
 });
 
+test("on macOS, closing the main window leaves the app and its Python window open, and an activation makes one main window", async () => {
+  test.skip(process.platform !== "darwin", "The Mac half of the defect: Windows and Linux end the app with the main window, as the tests above show.");
+  test.skip(!existsSync(".tmp/pyodide/pyodide.js"), "Requires the pinned Pyodide runtime fixture in .tmp/pyodide.");
+  test.setTimeout(180_000);
+  const manifest = JSON.parse(readFileSync(join(process.cwd(), "resources/pyodide-manifest.json"), "utf8")) as { version: string };
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-hidden-windows-"));
+  const pack = join(userData, "workspace/runtimes/pyodide", manifest.version);
+  mkdirSync(pack, { recursive: true });
+  cpSync(join(process.cwd(), ".tmp/pyodide"), pack, { recursive: true });
+  const app = await launchPyxis({ userData });
+  const mainWindows = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.webContents.getURL().startsWith("pyxis-app://app/index.html")).length);
+  const hiddenWindows = () =>
+    app.evaluate(() => (globalThis as unknown as { pyxisE2ePython: { windows: () => number[] } }).pyxisE2ePython.windows().length);
+  try {
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Salta" }).click();
+    await fromChiediToExams(page);
+    const ran = (await page.evaluate(() => window.pyxis.invoke("tools.python", { code: "print(6 * 7)" }))) as { stdout: string };
+    expect(ran.stdout).toContain("42");
+    expect(await hiddenWindows()).toBe(1);
+    // The main window closes, and the app stays, with its hidden window and no main window.
+    const main = await app.browserWindow(page);
+    await main.evaluate((window) => window.close());
+    await expect.poll(mainWindows).toBe(0);
+    expect(app.process().exitCode).toBeNull();
+    expect(await hiddenWindows()).toBe(1);
+    // The dock icon is clicked: one main window, which shows the app. The hidden window is not taken for it.
+    await app.evaluate(({ app: electron }) => electron.emit("activate"));
+    await expect.poll(mainWindows, { timeout: 30_000 }).toBe(1);
+    const again = app.windows().find((window) => window.url().startsWith("pyxis-app://app/index.html"))!;
+    await expect(again.getByRole("navigation", { name: "Sezioni" })).toBeVisible({ timeout: 30_000 });
+    // A second click makes none.
+    await app.evaluate(({ app: electron }) => electron.emit("activate"));
+    expect(await mainWindows()).toBe(1);
+    expect(await hiddenWindows()).toBe(1);
+  } finally {
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
+  }
+});
+
 test("an activation while the old profile's settings are being copied makes no second main window", async () => {
   test.setTimeout(120_000);
   // A profile whose window an earlier version saved, and no record of a copy: startup opens a hidden window to copy
