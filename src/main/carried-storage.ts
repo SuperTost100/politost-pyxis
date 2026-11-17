@@ -14,7 +14,7 @@ export async function carryStorage(
   marker: string,
   userData: string,
   rendererRoot: string,
-  open: () => void,
+  open: () => void | Promise<void>,
 ): Promise<void> {
   if (existsSync(marker)) return open();
   // Only a profile whose window an earlier version opened (and saved the size of) has anything to carry.
@@ -74,7 +74,7 @@ export async function carryStorage(
   }
   save(marker, carried);
   try {
-    open();
+    await open();
   } finally {
     probe.destroy();
   }

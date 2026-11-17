@@ -1,5 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchPyxis } from "./app-under-test";
@@ -97,45 +97,32 @@ test("closing the main window after Python ran ends the app, with the Python win
 });
 
 test("an activation while the old profile's settings are being copied makes no second main window", async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(120_000);
   // A profile whose window an earlier version saved, and no record of a copy: startup opens a hidden window to copy
-  // what the renderer stored, and makes the main window when that is done. macOS activates the app in between. The copy
-  // is over in a moment, so a launch that returns after it tries again (up to six times) until the activation lands in it.
-  let landed = false;
-  for (let attempt = 0; attempt < 6 && !landed; attempt++) {
-    const userData = mkdtempSync(join(tmpdir(), "pyxis-activate-"));
-    writeFileSync(join(userData, "window.json"), JSON.stringify({ width: 1280, height: 832 }));
-    const marker = join(userData, "storage-carried.json");
-    const app = await launchPyxis({ userData, packaged: false });
-    try {
-      // Emitted as the system does, while the hidden window is the only one: it must not make the main window.
-      const during = await app.evaluate(
-        async ({ app: electron, BrowserWindow }, path) => {
-          const { existsSync } = process.getBuiltinModule("node:fs");
-          for (let tries = 0; tries < 400 && !existsSync(path); tries++) {
-            if (BrowserWindow.getAllWindows().length > 0) {
-              electron.emit("activate");
-              return true;
-            }
-            await new Promise((resolve) => setTimeout(resolve, 2));
-          }
-          return false;
-        },
-        marker,
-      );
-      if (!during) continue;
-      landed = true;
-      await expect.poll(() => existsSync(marker), { timeout: 30_000 }).toBe(true);
-      await expect
-        .poll(() => app.windows().filter((window) => window.url().startsWith("pyxis-app://app/index.html")).length, { timeout: 30_000 })
-        .toBeGreaterThan(0);
-      // Both windows, if there were two, exist by now.
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      expect(app.windows().filter((window) => window.url().startsWith("pyxis-app://app/index.html"))).toHaveLength(1);
-    } finally {
-      await app.close().catch(() => undefined);
-      removeTestFolder(userData);
-    }
+  // what the renderer stored, and makes the main window when that is done. The test holds startup after the copy, with
+  // the hidden window still open, and activates the app there as macOS does.
+  const userData = mkdtempSync(join(tmpdir(), "pyxis-activate-"));
+  writeFileSync(join(userData, "window.json"), JSON.stringify({ width: 1280, height: 832 }));
+  const marker = join(userData, "storage-carried.json");
+  const hold = join(userData, "first-window-hold");
+  writeFileSync(hold, "");
+  const app = await launchPyxis({ userData, packaged: false, env: { PYXIS_E2E_FIRST_WINDOW_HOLD: hold } });
+  const mainWindows = () =>
+    app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.webContents.getURL().startsWith("pyxis-app://app/index.html")).length);
+  try {
+    // The copy is over and recorded, and the main window is waiting on the hold: only the hidden window exists.
+    await expect.poll(() => existsSync(marker), { timeout: 30_000 }).toBe(true);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    await app.evaluate(({ app: electron }) => electron.emit("activate"));
+    // Startup makes the first window itself: the activation made none.
+    expect(await mainWindows()).toBe(0);
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    rmSync(hold);
+    await expect.poll(mainWindows, { timeout: 30_000 }).toBe(1);
+    // Exactly one: a second one would have been made with it, or by the activation.
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+  } finally {
+    await app.close().catch(() => undefined);
+    removeTestFolder(userData);
   }
-  expect(landed, "no launch was activated while the settings were being copied").toBe(true);
 });

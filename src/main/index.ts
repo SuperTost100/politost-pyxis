@@ -11,7 +11,7 @@ import {
 import { MAX_DROPPED_FILES, SOURCE_EXTENSIONS } from "../shared/source-types";
 import { MAX_LINK_PATHS } from "../shared/linked-folders";
 import { fetchPlanText } from "./plan-fetch";
-import { endsWithMainWindow, needsMainWindow } from "./main-window";
+import { endsWithMainWindow, firstWindowHold, needsMainWindow, windowAction } from "./main-window";
 import { isPlanFileName, planFileFromArgv, readOpenedPlan } from "./plan-open";
 import { openTerminal } from "./terminal";
 import { stageWorkspaceMove } from "./workspace-move";
@@ -453,12 +453,21 @@ let reminders: StudyReminders | null = null;
 /** Notifications stay referenced until the student acts on them or the system drops them, or they could be collected first. */
 const shownReminders = new Set<Notification>();
 
+/** The page a reminder asked for before startup had made its first window, which opens on that page. */
+let waitingAppPath: string | null = null;
+
 /** Brings the window forward and opens a page in it. After the last window closed on macOS, a new one starts there. */
 function openAppPath(path: string): void {
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  const action = windowAction(mainWindow, startupWindowCreated);
+  if (action === "wait") {
+    waitingAppPath = path;
+    return;
+  }
+  if (action === "create") {
     createWindow(path);
     return;
   }
+  if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
@@ -1896,13 +1905,22 @@ function registerProtocols(): void {
   if (!isDev) registerAppProtocol(rendererRoot);
 }
 
+/** The first window, on the page a reminder asked for meanwhile, once a test that holds startup has let it go. */
+async function makeFirstWindow(): Promise<void> {
+  const hold = firstWindowHold(process.env);
+  while (hold && existsSync(hold)) await new Promise((resolve) => setTimeout(resolve, 25));
+  const path = waitingAppPath;
+  waitingAppPath = null;
+  createWindow(path ?? undefined);
+}
+
 function openFirstWindow(): Promise<void> | void {
-  if (isDev) return createWindow();
+  if (isDev) return makeFirstWindow();
   return carryStorage(
     userFile("storage-carried.json"),
     app.getPath("userData"),
     rendererRoot,
-    createWindow,
+    makeFirstWindow,
   );
 }
 

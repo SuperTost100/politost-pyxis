@@ -16,5 +16,22 @@ export function endsWithMainWindow(platform: string): boolean {
  * copying an old profile's settings, in a hidden window of its own) and makes it itself, so no other path makes one.
  */
 export function needsMainWindow(main: { isDestroyed(): boolean } | null, startupDone: boolean): boolean {
-  return startupDone && (main === null || main.isDestroyed());
+  return windowAction(main, startupDone) === "create";
+}
+
+/**
+ * What a request that needs the main window does: `use` the one there is, `create` one (startup is done and there is
+ * none), or `wait`, because startup has not made its first yet and makes it itself, with what was asked kept for it.
+ */
+export function windowAction(main: { isDestroyed(): boolean } | null, startupDone: boolean): "use" | "create" | "wait" {
+  if (main !== null && !main.isDestroyed()) return "use";
+  return startupDone ? "create" : "wait";
+}
+
+/**
+ * Tests only: the file `PYXIS_E2E_FIRST_WINDOW_HOLD` names, while startup has to wait for it to go before it makes its
+ * first window. Nothing outside a run with PYXIS_E2E=1 reads it.
+ */
+export function firstWindowHold(env: Record<string, string | undefined>): string | undefined {
+  return env["PYXIS_E2E"] === "1" ? env["PYXIS_E2E_FIRST_WINDOW_HOLD"] : undefined;
 }
